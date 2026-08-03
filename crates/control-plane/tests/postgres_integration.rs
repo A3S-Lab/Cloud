@@ -65,6 +65,8 @@ mod edge_support;
 mod executions_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
+#[path = "support/g0_external_release.rs"]
+mod g0_external_release_support;
 #[path = "support/gateway_replica_recovery.rs"]
 mod gateway_replica_recovery_support;
 #[path = "support/gateway_rollouts.rs"]
@@ -134,6 +136,20 @@ async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_bo
     )
     .await
     .expect("persistent Build Flow process-death gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires private GitHub, exact A3S Box, external Registry, and Vault Transit providers"]
+async fn postgres_g0_external_release_persists_verified_evidence_and_workload_handoff() {
+    let Some(admin_url) = std::env::var(g0_external_release_support::POSTGRES_ENV).ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        g0_external_release_support::exercise_external_release,
+    )
+    .await
+    .expect("G0 external release provider gate");
 }
 
 #[test]

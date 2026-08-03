@@ -457,15 +457,24 @@ validation, publication, attestation, and cleanup effect. Its retained JSON
 evidence records all nine kills and is revision-bound alongside the logical
 event-loss matrix.
 
+The manual external-provider workflow now composes the operator-owned boundary
+without replacing those recovery gates. It resolves a private GitHub revision,
+prepares the production source Artifact, passes that exact Artifact and
+BuildRun identity through the real Box build/process-death/cache/removal gate,
+publishes and remotely verifies the admitted graph in an HTTPS Registry, signs
+and locally verifies deterministic evidence through Vault Transit, restores the
+succeeded BuildRun from PostgreSQL, and creates one idempotent
+`cloud.deployment@3` Workload handoff. Its private `0700`/`0600` handoffs are
+deleted before only digest- and revision-bound public evidence is uploaded.
+
 Migration `060` invalidates pre-Box BuildRuns as rebuild-required, cancels
 known `cloud.build@1` through `@4` histories through A3S Flow, and removes the
 old Runtime and Cloud-cache projections. Dockerfile remains a source-recipe
 format, not an executor selection. Durable BuildRun logs remain unavailable and
-return `503` until Box supplies its authoritative log contract. The retained
-external-provider workflow currently certifies private GitHub resolution only;
-`G0` remains in progress until the exact Box build revision, external registry
-publication, signing, restart replay, cache reuse, and zero-residue cleanup are
-certified together on Linux.
+return `503` until Box supplies its authoritative log contract. `G0` remains in
+progress until a successful execution of the combined external-provider
+workflow and the separate persistent Fleet/Flow gate is retained on the exact
+Linux Cloud/Box revisions; defining the workflow is not release evidence.
 
 The current `H0.1` foundation maps every existing single-instance Workload to
 one stable replica and member. Replica identity survives immutable revision
@@ -1104,16 +1113,16 @@ signing, or local verification. Node-local Artifact locations, Box operation
 state, signing private keys, and provider credentials are not part of the
 public BuildRun state.
 
-The `G0 external provider conformance` workflow binds its evidence to the exact
-Cloud revision. Its retained private-source job proves credential-free replay
-and checkout removal. The Box provider workflow now defines the complementary
-revision-bound native build, post-publication process-death replay,
-immediate-parent cache hydration, authoritative removal evidence, and the
-nine-boundary Fleet/Flow command event-loss matrix in both logical and
-PostgreSQL-backed `SIGKILL` forms. `G0` still requires a retained successful
-execution of the new persistent gate together with the operator-owned HTTPS
-Registry and Vault Transit boundary and the published Workload handoff. No
-build-log success is claimed while the Box log contract is absent.
+The `G0 external provider conformance` workflow now binds one private GitHub
+revision and production input Artifact to the exact Box output, external HTTPS
+Registry graph, locally verified Vault Transit signature, restored PostgreSQL
+BuildRun, and published Workload handoff. The Box provider workflow separately
+defines post-publication process-death replay, immediate-parent cache hydration,
+authoritative removal evidence, and the nine-boundary Fleet/Flow command
+event-loss matrix in both logical and PostgreSQL-backed `SIGKILL` forms. `G0`
+still requires retained successful executions of both operator gates on the
+exact revisions. No build-log success is claimed while the Box log contract is
+absent.
 
 The detailed request contracts, failure boundaries, and acceptance evidence
 remain in the [Development Plan](docs/development-plan.md).

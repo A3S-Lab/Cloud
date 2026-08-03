@@ -30,6 +30,8 @@ const CACHE_RESET_ENV: &str = "A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET";
 const EVIDENCE_DIR_ENV: &str = "A3S_CLOUD_TEST_G0_EVIDENCE_DIR";
 const CLOUD_REVISION_ENV: &str = "A3S_CLOUD_TEST_CLOUD_REVISION";
 const BOX_REVISION_ENV: &str = "A3S_CLOUD_TEST_BOX_REVISION";
+const PRIVATE_SOURCE_HANDOFF_ENV: &str = "A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF";
+const BOX_RELEASE_HANDOFF_DIR_ENV: &str = "A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR";
 const PROBE_TEST: &str = "box_build::tests::real_box_build_post_publication_crash_probe";
 const PROBE_PARENT_ENV: &str = "A3S_CLOUD_G0_BOX_BUILD_PROBE_PARENT";
 const PROBE_INPUT_ENV: &str = "A3S_CLOUD_G0_BOX_BUILD_PROBE_INPUT";
@@ -43,6 +45,47 @@ const BUILD_TIMEOUT: Duration = Duration::from_secs(120);
 struct BuildProbeInput {
     start: NodeCommandEnvelope,
     inspect: NodeCommandEnvelope,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PrivateSourceHandoff {
+    schema: String,
+    cloud_revision: String,
+    build_run_id: Uuid,
+    revision: serde_json::Value,
+    source_content_digest: String,
+    input_artifact: HandoffBuildArtifact,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HandoffBuildArtifact {
+    uri: String,
+    digest: String,
+    media_type: String,
+    size_bytes: u64,
+}
+
+struct SourceInput {
+    artifact: ArtifactRef,
+    content_digest: String,
+    build_run_id: Uuid,
+    kind: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BoxReleaseHandoff<'a> {
+    schema: &'static str,
+    cloud_revision: &'a str,
+    box_revision: &'a str,
+    build_run_id: Uuid,
+    source_content_digest: &'a str,
+    source_artifact: &'a ArtifactRef,
+    build_request_digest: String,
+    output: &'a NodeBoxBuildOutput,
+    commands: [&'a NodeCommandEnvelope; 3],
 }
 
 #[derive(Clone)]
@@ -225,13 +268,17 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
     let image_references_before = image_references(&home).await?;
     let image_content_before = image_content_digests(&home).await?;
     let receipt_residue_before = build_receipt_residue(&home).await?;
-    let source = seed_source(&transport).await?;
+    let source = seed_source(&transport, &cloud_revision).await?;
     let node_id = Uuid::now_v7();
-    let first = build_request(&source, 1, "cloud-g0-build-first", None)?;
+    let first_correlation_id = Uuid::now_v7();
+    let first_operation_id = build_operation_id(source.build_run_id)?;
+    let first = build_request(&source.artifact, 1, &first_operation_id, None)?;
     let first_probe = BuildProbeInput {
         start: command(
             node_id,
             1,
+            source.build_run_id,
+            first_correlation_id,
             NodeCommandPayload::BoxBuildStart {
                 request: Box::new(first.clone()),
             },
@@ -239,6 +286,8 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
         inspect: command(
             node_id,
             2,
+            source.build_run_id,
+            first_correlation_id,
             NodeCommandPayload::BoxBuildInspect {
                 request: Box::new(first.clone()),
             },
@@ -272,7 +321,15 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
     {
         return Err("Agent restart did not replay the exact published Box build output".into());
     }
-    remove_and_replay(&recovered, node_id, 3, &first).await?;
+    let first_remove = remove_and_replay(
+        &recovered,
+        node_id,
+        3,
+        source.build_run_id,
+        first_correlation_id,
+        &first,
+    )
+    .await?;
     require_no_local_artifact_files(&node_state).await?;
 
     reset_native_cache(&home).await?;
@@ -283,10 +340,16 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
     if parent_cache.receipt.entry_count == 0 {
         return Err("first Box build cache did not contain a reusable native layer".into());
     }
+    if parent_cache.receipt.source_digest != source.artifact.digest {
+        return Err("first Box build cache changed the admitted source Artifact digest".into());
+    }
+    let second_build_run_id = Uuid::now_v7();
+    let second_correlation_id = Uuid::now_v7();
+    let second_operation_id = build_operation_id(second_build_run_id)?;
     let second = build_request(
-        &source,
+        &source.artifact,
         2,
-        "cloud-g0-build-second",
+        &second_operation_id,
         Some(NodeBoxBuildCacheInput {
             artifact: parent_cache.artifact.artifact.clone(),
             receipt: parent_cache.receipt.clone(),
@@ -295,6 +358,8 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
     let second_start = command(
         node_id,
         4,
+        second_build_run_id,
+        second_correlation_id,
         NodeCommandPayload::BoxBuildStart {
             request: Box::new(second.clone()),
         },
@@ -302,6 +367,8 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
     let second_inspect = command(
         node_id,
         5,
+        second_build_run_id,
+        second_correlation_id,
         NodeCommandPayload::BoxBuildInspect {
             request: Box::new(second.clone()),
         },
@@ -319,7 +386,21 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
     {
         return Err("retry Box build did not preserve the immediate-parent cache identity".into());
     }
-    remove_and_replay(&retry, node_id, 6, &second).await?;
+    if second_cache.receipt.source_digest != source.artifact.digest {
+        return Err("retry Box build cache changed the admitted source Artifact digest".into());
+    }
+    if second_output.descriptor != first_output.descriptor {
+        return Err("immediate-parent cache replay changed the deterministic OCI root".into());
+    }
+    remove_and_replay(
+        &retry,
+        node_id,
+        6,
+        second_build_run_id,
+        second_correlation_id,
+        &second,
+    )
+    .await?;
     require_no_local_artifact_files(&node_state).await?;
 
     if image_references(&home).await? != image_references_before {
@@ -332,11 +413,25 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
         return Err("Box removal left a build receipt, workspace, or cache export".into());
     }
 
+    write_box_release_handoff(
+        &transport,
+        &cloud_revision,
+        &box_revision,
+        &source,
+        &first,
+        &first_output,
+        [&first_probe.start, &first_probe.inspect, &first_remove],
+    )
+    .await?;
+
     let evidence = serde_json::json!({
         "schema": "a3s.cloud.g0-box-build-provider-evidence.v1",
         "cloudRevision": cloud_revision,
         "boxRevision": box_revision,
-        "sourceDigest": source.digest,
+        "buildRunId": source.build_run_id,
+        "sourceKind": source.kind,
+        "sourceContentDigest": source.content_digest,
+        "sourceDigest": source.artifact.digest,
         "firstOutputDigest": first_output.descriptor.digest,
         "retryOutputDigest": second_output.descriptor.digest,
         "parentCacheKey": parent_cache.receipt.key,
@@ -346,6 +441,9 @@ async fn real_box_native_build_replays_after_process_death_reuses_parent_cache_a
             "immediateParentCacheDownloaded": true,
             "nativeCacheHydrated": true,
             "cacheIdentityPreserved": true,
+            "cacheSourceBound": true,
+            "reproducibleOutput": true,
+            "productionOperationIdentity": true,
             "authoritativeRemovalReplay": true,
             "operationReceiptsRemoved": true,
             "imageReferencesRestored": true,
@@ -427,22 +525,141 @@ fn build_executor(
     )
 }
 
-async fn seed_source(transport: &FileArtifactTransport) -> TestResult<ArtifactRef> {
-    let archive = directory_archive(&[
-        (
-            "Containerfile",
-            b"FROM scratch\nCOPY payload.txt /payload.txt\nLABEL org.opencontainers.image.title=\"a3s-cloud-g0\"\n",
-            0o644,
-        ),
-        ("payload.txt", b"exact Box-native G0 build input\n", 0o644),
-    ]);
-    let digest = format!("sha256:{:x}", Sha256::digest(&archive));
-    transport.store_blob(&digest, &archive).await?;
-    Ok(ArtifactRef {
-        uri: artifact_uri(&digest)?,
-        digest,
-        media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+async fn seed_source(
+    transport: &FileArtifactTransport,
+    cloud_revision: &str,
+) -> TestResult<SourceInput> {
+    let Some(handoff_path) = std::env::var_os(PRIVATE_SOURCE_HANDOFF_ENV).map(PathBuf::from) else {
+        let archive = directory_archive(&[
+            (
+                "Containerfile",
+                b"FROM scratch\nCOPY payload.txt /payload.txt\nLABEL org.opencontainers.image.title=\"a3s-cloud-g0\"\n",
+                0o644,
+            ),
+            ("payload.txt", b"exact Box-native G0 build input\n", 0o644),
+        ]);
+        let digest = format!("sha256:{:x}", Sha256::digest(&archive));
+        transport.store_blob(&digest, &archive).await?;
+        return Ok(SourceInput {
+            artifact: ArtifactRef {
+                uri: artifact_uri(&digest)?,
+                digest: digest.clone(),
+                media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+            },
+            content_digest: digest,
+            build_run_id: Uuid::now_v7(),
+            kind: "synthetic",
+        });
+    };
+    if !handoff_path.is_absolute() {
+        return Err("private source handoff path must be absolute".into());
+    }
+    let handoff: PrivateSourceHandoff =
+        serde_json::from_slice(&tokio::fs::read(&handoff_path).await?)?;
+    if handoff.schema != "a3s.cloud.g0-private-source-handoff.v1"
+        || handoff.cloud_revision != cloud_revision
+        || handoff.build_run_id.is_nil()
+        || handoff.source_content_digest.len() != 71
+        || !handoff.source_content_digest.starts_with("sha256:")
+        || handoff.revision.is_null()
+    {
+        return Err("private source handoff identity is invalid".into());
+    }
+    let input = handoff.input_artifact;
+    if input.size_bytes == 0
+        || input.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
+        || input.uri != artifact_uri(&input.digest)?
+    {
+        return Err("private source handoff Artifact is invalid".into());
+    }
+    let archive_path = handoff_path
+        .parent()
+        .ok_or("private source handoff path has no parent")?
+        .join("source-input.tar");
+    let archive = tokio::fs::read(&archive_path).await?;
+    if archive.len() as u64 != input.size_bytes
+        || format!("sha256:{:x}", Sha256::digest(&archive)) != input.digest
+    {
+        return Err("private source handoff archive changed before Box admission".into());
+    }
+    transport.store_blob(&input.digest, &archive).await?;
+    Ok(SourceInput {
+        artifact: ArtifactRef {
+            uri: input.uri,
+            digest: input.digest,
+            media_type: input.media_type,
+        },
+        content_digest: handoff.source_content_digest,
+        build_run_id: handoff.build_run_id,
+        kind: "private_github",
     })
+}
+
+async fn write_box_release_handoff(
+    transport: &FileArtifactTransport,
+    cloud_revision: &str,
+    box_revision: &str,
+    source: &SourceInput,
+    request: &NodeBoxBuildRequest,
+    output: &NodeBoxBuildOutput,
+    commands: [&NodeCommandEnvelope; 3],
+) -> TestResult {
+    let Some(directory) = std::env::var_os(BOX_RELEASE_HANDOFF_DIR_ENV).map(PathBuf::from) else {
+        return Ok(());
+    };
+    if source.kind != "private_github" || !directory.is_absolute() {
+        return Err("Box release handoff requires an absolute private-source directory".into());
+    }
+    require_absent_then_create(&directory).await?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700)).await?;
+    }
+    if request.source != source.artifact
+        || commands[0].sequence != 1
+        || commands[1].sequence != 2
+        || commands[2].sequence != 3
+        || commands.iter().any(|command| {
+            command.node_id != commands[0].node_id
+                || command.aggregate_id != source.build_run_id
+                || command.correlation_id != commands[0].correlation_id
+                || command.validate().is_err()
+                || command_request(command).is_err()
+                || command_request(command).ok() != Some(request)
+        })
+    {
+        return Err("Box release handoff command chain changed its source build identity".into());
+    }
+    let output_artifact = &output.artifact.artifact;
+    let archive = tokio::fs::read(transport.blob_path(&output_artifact.digest)?).await?;
+    if archive.len() as u64 != output.artifact.size_bytes
+        || format!("sha256:{:x}", Sha256::digest(&archive)) != output_artifact.digest
+    {
+        return Err("Box release output changed before external publication handoff".into());
+    }
+    write_durable(&directory.join("box-output.tar"), &archive).await?;
+    let handoff = BoxReleaseHandoff {
+        schema: "a3s.cloud.g0-box-release-handoff.v1",
+        cloud_revision,
+        box_revision,
+        build_run_id: source.build_run_id,
+        source_content_digest: &source.content_digest,
+        source_artifact: &source.artifact,
+        build_request_digest: request.binding_digest()?,
+        output,
+        commands,
+    };
+    let mut encoded = serde_json::to_vec_pretty(&handoff)?;
+    encoded.push(b'\n');
+    write_durable(&directory.join("box-output.json"), &encoded).await?;
+    #[cfg(unix)]
+    for path in ["box-output.tar", "box-output.json"] {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(directory.join(path), std::fs::Permissions::from_mode(0o600))
+            .await?;
+    }
+    Ok(())
 }
 
 fn build_request(
@@ -451,13 +668,7 @@ fn build_request(
     operation_id: &str,
     cache: Option<NodeBoxBuildCacheInput>,
 ) -> TestResult<NodeBoxBuildRequest> {
-    let architecture = match std::env::consts::ARCH {
-        "x86_64" => "amd64",
-        "aarch64" => "arm64",
-        architecture => {
-            return Err(format!("unsupported Box build gate architecture {architecture}").into())
-        }
-    };
+    let architecture = target_architecture()?;
     let source_acl = format!(
         concat!(
             "build \"oci\" {{\n",
@@ -489,22 +700,42 @@ fn build_request(
     Ok(request)
 }
 
+fn target_architecture() -> TestResult<&'static str> {
+    match std::env::consts::ARCH {
+        "x86_64" => Ok("amd64"),
+        "aarch64" => Ok("arm64"),
+        architecture => {
+            Err(format!("unsupported Box build gate architecture {architecture}").into())
+        }
+    }
+}
+
+fn build_operation_id(build_run_id: Uuid) -> TestResult<String> {
+    Ok(format!(
+        "cloud-build-{build_run_id}-linux-{}",
+        target_architecture()?
+    ))
+}
+
 fn command(
     node_id: Uuid,
     sequence: u64,
+    aggregate_id: Uuid,
+    correlation_id: Uuid,
     payload: NodeCommandPayload,
 ) -> Result<NodeCommandEnvelope, String> {
-    let issued_at = Utc::now();
+    let issued_at = chrono::DateTime::from_timestamp_micros(Utc::now().timestamp_micros())
+        .ok_or_else(|| "Box build command timestamp exceeds PostgreSQL precision".to_owned())?;
     NodeCommandEnvelope::new(
         NodeCommandMetadata {
             command_id: Uuid::now_v7(),
             lease_id: Uuid::now_v7(),
             node_id,
             sequence,
-            aggregate_id: Uuid::now_v7(),
+            aggregate_id,
             issued_at,
             not_after: issued_at + ChronoDuration::minutes(10),
-            correlation_id: Uuid::now_v7(),
+            correlation_id,
         },
         payload,
     )
@@ -546,11 +777,15 @@ async fn remove_and_replay(
     executor: &BoxBuildCommandExecutor,
     node_id: Uuid,
     sequence: u64,
+    aggregate_id: Uuid,
+    correlation_id: Uuid,
     request: &NodeBoxBuildRequest,
-) -> TestResult {
+) -> TestResult<NodeCommandEnvelope> {
     let command = command(
         node_id,
         sequence,
+        aggregate_id,
+        correlation_id,
         NodeCommandPayload::BoxBuildRemove {
             request: Box::new(request.clone()),
         },
@@ -572,7 +807,7 @@ async fn remove_and_replay(
     {
         return Err("Box build removal replay reported a second mutation".into());
     }
-    Ok(())
+    Ok(command)
 }
 
 async fn require_parent_cache_download(

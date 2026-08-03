@@ -206,7 +206,7 @@ Status as of 2026-08-03:
 | N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
-| G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow now defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. A retained successful execution of the new persistent gate plus external Registry/Vault and published-Workload certification still block G0 verification |
+| G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. The manual external-provider workflow now binds a private GitHub revision and production input to that exact Box output, an operator HTTPS Registry graph, a locally verified Vault Transit signature, a restart-restored PostgreSQL BuildRun, and one `cloud.deployment@3` Workload handoff. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Retained successful executions of both operator gates still block G0 verification |
 | C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance and the clean real PostgreSQL/A3S Box gate pass. `C0.3` and `C0.4` remain planned. |
 | A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` now has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair through the existing reconciler, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, and failed-draft recovery through the existing idempotent BuildRun retry and Flow. Product yanking and deterministic selection, and management surfaces remain before `A0.3`; `A0.4` Agent deployment and `A0.5` Skill/catalog work also remain. |
 | U0 | In progress; unavailable | `U0.1` pins the canonical A3S Use host contract and adds explicit capabilities, plan, apply, enablement, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. Root compatibility locking, production Manager composition, and every Plugins module/schema/API remain open; no user-facing capability is claimed. |
@@ -1151,9 +1151,10 @@ The current independently testable G0 slices are implemented:
   remove. A PostgreSQL 17 gate now repeats those nine boundaries with a fresh
   production runtime and store connection in each subprocess, kills each host
   with `SIGKILL` before the targeted Flow completion append, and requires exact
-  Fleet command, BuildRun, evidence, and side-effect recovery. Its retained
-  execution, the exact Linux Box provider and real cache hit, external
-  Registry/Vault, and the combined zero-residue gate remain open.
+  Fleet command, BuildRun, evidence, and side-effect recovery. Retained
+  executions of that persistent matrix and the combined private-source, exact
+  Linux Box/cache/removal, external Registry/Vault, and published-Workload gate
+  remain open.
 
 These slices establish source persistence, anonymous-first and
 installation-token resolution, authenticated provider ingress, verified tenant
@@ -1194,17 +1195,19 @@ cache, idempotent removal, and restoration of operation receipts, ImageStore
 references, and node Artifact state. It also contains the nine-boundary
 Fleet/Flow completion-event-loss matrix for the exact build command chain.
 That matrix is also implemented as nine OS-process `SIGKILL` boundaries over
-the PostgreSQL Flow, Fleet, and BuildRun stores. Exact external-provider and
-Registry/publication/signing evidence, a retained successful execution of the
-new persistent gate, and final published-Workload certification remain open.
+the PostgreSQL Flow, Fleet, and BuildRun stores. The manual external-provider
+workflow now passes one private source and production Artifact through the exact
+Box handoff, external HTTPS Registry publication/replay, locally verified Vault
+Transit signing, durable BuildRun restoration, and one idempotent published
+Workload handoff. Retained successful executions of this combined workflow and
+the persistent process-death gate remain open.
 
 ### Work
 
 - Configure an operator-controlled GitHub App/private repository and run the
-  implemented installation-token resolution/checkout workflow. Do not promote
-  local fixture or rehearsal evidence to external-provider certification until
-  that run is recorded; never persist token or private-key material in source
-  state.
+  implemented combined external-provider workflow. Do not promote local fixture
+  or rehearsal evidence until that run and the separate persistent Box/Flow
+  run are recorded; never persist token or private-key material in source state.
   GitLab, Bitbucket, and other providers require their own real webhook,
   credential, ref-race, and retry evidence before becoming available.
 - Keep source and registry credentials as secret references. They may be

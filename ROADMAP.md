@@ -321,20 +321,16 @@ The current `G0` implementation includes:
 - migration of every pre-Box BuildRun to an explicit rebuild-required outcome,
   plus A3S Flow cancellation of known retired build histories on startup.
 
-The retained external-provider workflow certifies private GitHub resolution
-only. The Box provider workflow now defines a revision-bound real Linux build
-slice that kills the Agent-side process after Box completion and Artifact
-publication, replays the exact output through a reconstructed executor,
-hydrates a cleared native cache from the immediate parent's Artifact, and
-requires idempotent removal with operation receipts, ImageStore references, and
-node Artifact state restored to baseline. The same workflow now defines a
-nine-boundary Fleet/Flow event-loss matrix across start dispatch and
-acknowledgement, output receipt persistence, and every cancel/inspect/remove
-dispatch and acknowledgement. `G0` remains in progress until these gates have
-retained execution evidence together with external Registry and signing
-boundaries, process-level persistent Fleet/Flow interruption replay, and the
-published Workload handoff. Durable BuildRun logs also remain unavailable until
-Box exposes the authoritative contract Cloud can transport.
+The manual external-provider workflow now defines the complete private source,
+production input, exact Box output, external HTTPS Registry, locally verified
+Vault Transit evidence, PostgreSQL restart restoration, and
+`cloud.deployment@3` Workload handoff chain. The Box provider workflow defines
+the complementary real Linux Agent-process-death/cache/removal gate and a
+nine-boundary Fleet/Flow event-loss matrix in both logical and PostgreSQL-backed
+`SIGKILL` forms. `G0` remains in progress until successful executions of both
+operator gates are retained on the exact revisions. Durable BuildRun logs also
+remain unavailable until Box exposes the authoritative contract Cloud can
+transport.
 
 `C0` now includes the initial `C0.1` automation slices:
 
@@ -615,17 +611,13 @@ shared-kernel execution requires an explicit `sandbox` selection.
 
 Next outcome:
 
-1. execute and retain the defined revision-bound Linux Box build-consumer and
-   nine-boundary Fleet/Flow event-loss gates without introducing another
-   executor, cache, journal, image store, or scheduler;
-2. promote the exact Fleet/Flow matrix from injected completion-event loss to
-   OS-process interruption over persistent Flow and Fleet stores;
-3. combine the implemented immediate-parent Box cache hydration and
-   authoritative removal evidence with one external Registry publication, one
-   locally verified signature, and one persisted evidence document;
-4. expose build logs only after Box publishes its authoritative durable log
+1. execute and retain the revision-bound Linux Box build-consumer and both
+   forms of the nine-boundary Fleet/Flow event-loss matrix;
+2. execute and retain the manual private-source-to-published-Workload workflow
+   against an operator-owned HTTPS Registry and Vault Transit key;
+3. expose build logs only after Box publishes its authoritative durable log
    contract; and
-5. promote `G0` only after the complete private-source-to-published-Workload
+4. promote `G0` only after the complete private-source-to-published-Workload
    evidence remains green with operator-owned providers.
 
 `G0` is complete only when an exact source revision produces a verifiable,

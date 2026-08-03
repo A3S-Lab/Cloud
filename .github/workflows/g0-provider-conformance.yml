@@ -11,47 +11,161 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  github-private-provider:
-    name: Private GitHub provider
+  external-release-provider:
+    name: Private source to published Workload
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: a3s-cloud-conformance
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      A3S_HOME: /tmp/g0-provider-${{ github.run_id }}-${{ github.run_attempt }}
+      EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-g0-provider-evidence
+      PRIVATE_HANDOFF_DIR: ${{ runner.temp }}/a3s-cloud-g0-private-handoff
+      BOX_HANDOFF_DIR: ${{ runner.temp }}/a3s-cloud-g0-private-handoff/box-release
     defaults:
       run:
         shell: bash
-        working-directory: apps/cloud
     steps:
       - name: Checkout Cloud
         uses: actions/checkout@v4
         with:
           path: apps/cloud
 
-      - name: Read pinned Runtime revision
-        id: runtime_revision
+      - name: Read pinned provider revisions
+        id: revisions
+        working-directory: apps/cloud
         run: |
-          revision=$(<tools/runtime-conformance/runtime-revision)
-          [[ $revision =~ ^[0-9a-f]{40}$ ]]
-          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+          box_revision=$(<tools/box-conformance/box-revision)
+          oci_runtime_revision=$(<tools/box-conformance/oci-runtime-revision)
+          runtime_revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $box_revision =~ ^[0-9a-f]{40}$ ]]
+          [[ $oci_runtime_revision =~ ^[0-9a-f]{40}$ ]]
+          [[ $runtime_revision =~ ^[0-9a-f]{40}$ ]]
+          grep --fixed-strings "rev = \"$box_revision\"" Cargo.toml
+          grep --fixed-strings "rev = \"$runtime_revision\"" Cargo.toml
+          echo "box=$box_revision" >>"$GITHUB_OUTPUT"
+          echo "oci_runtime=$oci_runtime_revision" >>"$GITHUB_OUTPUT"
+          echo "runtime=$runtime_revision" >>"$GITHUB_OUTPUT"
 
-      - name: Checkout Runtime
+      - name: Checkout exact A3S Box
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Box
+          ref: ${{ steps.revisions.outputs.box }}
+          path: crates/box
+          submodules: recursive
+
+      - name: Checkout exact A3S OCI Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/OCI-Runtime
+          ref: ${{ steps.revisions.outputs.oci_runtime }}
+          path: crates/oci-runtime
+
+      - name: Checkout exact A3S Runtime
         uses: actions/checkout@v4
         with:
           repository: A3S-Lab/Runtime
-          ref: ${{ steps.runtime_revision.outputs.revision }}
+          ref: ${{ steps.revisions.outputs.runtime }}
           path: crates/runtime
 
-      - name: Install stable Rust
+      - name: Verify exact provider dependency closure
+        env:
+          BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          OCI_RUNTIME_REVISION: ${{ steps.revisions.outputs.oci_runtime }}
+          RUNTIME_REVISION: ${{ steps.revisions.outputs.runtime }}
+        run: |
+          test "$(git -C crates/box rev-parse HEAD)" = "$BOX_REVISION"
+          test "$(git -C crates/oci-runtime rev-parse HEAD)" = "$OCI_RUNTIME_REVISION"
+          test "$(git -C crates/runtime rev-parse HEAD)" = "$RUNTIME_REVISION"
+          grep --fixed-strings \
+            "rev = \"$BOX_REVISION\"" apps/cloud/Cargo.toml
+          grep --fixed-strings \
+            "?rev=$BOX_REVISION#$BOX_REVISION" apps/cloud/Cargo.lock
+          grep --fixed-strings \
+            "rev = \"$RUNTIME_REVISION\"" apps/cloud/Cargo.toml
+          grep --fixed-strings \
+            "?rev=$RUNTIME_REVISION#$RUNTIME_REVISION" apps/cloud/Cargo.lock
+          grep --fixed-strings \
+            "rev = \"$OCI_RUNTIME_REVISION\"" crates/box/src/Cargo.toml
+          grep --fixed-strings \
+            "?rev=$OCI_RUNTIME_REVISION#$OCI_RUNTIME_REVISION" crates/box/src/Cargo.lock
+
+      - name: Install stable Rust and build dependencies
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          target: x86_64-unknown-linux-musl
 
-      - name: Certify private resolution and credential-free replay
+      - name: Install host dependencies and non-VM libkrun link stub
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential musl-tools protobuf-compiler
+          sed -nE \
+            's/^[[:space:]]*pub fn (krun_[A-Za-z0-9_]+).*/long \1(void) { return -1; }/p' \
+            crates/box/src/deps/libkrun-sys/src/lib.rs \
+            | sort -u >"$RUNNER_TEMP/krun-stub.c"
+          test -s "$RUNNER_TEMP/krun-stub.c"
+          gcc -shared -o "$RUNNER_TEMP/libkrun.so" "$RUNNER_TEMP/krun-stub.c"
+          sudo install -m 0755 "$RUNNER_TEMP/libkrun.so" /usr/lib/libkrun.so
+          sudo ldconfig
+          grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
+          grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
+
+      - name: Build exact Box and OCI Runtime artifacts
+        env:
+          A3S_DEPS_STUB: "1"
+        run: |
+          cargo build --manifest-path crates/box/src/Cargo.toml --locked \
+            -p a3s-box-cli -p a3s-box-shim -p a3s-box-runtime
+          cargo build --manifest-path crates/box/src/Cargo.toml --locked --release \
+            -p a3s-box-guest-init --target x86_64-unknown-linux-musl
+          cargo build --manifest-path crates/oci-runtime/Cargo.toml --locked --release \
+            -p a3s-oci-cli -p a3s-oci-agent
+
+      - name: Install dedicated Box provider home
+        run: |
+          test ! -e "$A3S_HOME"
+          runtime_socket="$A3S_HOME/run/a3s-oci/00000000-0000-0000-0000-000000000000/runtime.sock"
+          test "${#runtime_socket}" -lt 108
+          install -d -m 0755 "$A3S_HOME/bin"
+          install -m 0755 crates/box/src/target/debug/a3s-box-shim \
+            "$A3S_HOME/bin/a3s-box-shim"
+          install -m 0755 \
+            crates/box/src/target/x86_64-unknown-linux-musl/release/a3s-box-guest-init \
+            "$A3S_HOME/bin/a3s-box-guest-init"
+          install -m 0755 crates/oci-runtime/target/release/a3s-oci \
+            "$A3S_HOME/bin/a3s-oci"
+          install -m 0755 crates/oci-runtime/target/release/a3s-oci-agent \
+            "$A3S_HOME/bin/a3s-oci-agent"
+          sudo install -d -m 0700 "$A3S_HOME/runtime-secrets"
+          sudo mount -t tmpfs \
+            -o size=16m,uid=0,gid=0,mode=0700,nosuid,nodev,noexec \
+            a3s-cloud-g0-runtime-secrets "$A3S_HOME/runtime-secrets"
+          mountpoint -q "$A3S_HOME/runtime-secrets"
+
+      - name: Resolve private source and prepare exact production input
+        working-directory: apps/cloud
         env:
           A3S_CLOUD_TEST_GITHUB_APP_CLIENT_ID: ${{ secrets.G0_GITHUB_APP_CLIENT_ID }}
           A3S_CLOUD_TEST_GITHUB_APP_PRIVATE_KEY: ${{ secrets.G0_GITHUB_APP_PRIVATE_KEY }}
           A3S_CLOUD_TEST_GITHUB_INSTALLATION_ID: ${{ secrets.G0_GITHUB_INSTALLATION_ID }}
           A3S_CLOUD_TEST_GITHUB_PRIVATE_BRANCH: ${{ secrets.G0_GITHUB_PRIVATE_BRANCH }}
           A3S_CLOUD_TEST_GITHUB_PRIVATE_REPOSITORY: ${{ secrets.G0_GITHUB_PRIVATE_REPOSITORY }}
-          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-g0-provider-evidence
+          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ env.EVIDENCE_DIR }}
+          A3S_CLOUD_TEST_G0_PRIVATE_HANDOFF_DIR: ${{ env.PRIVATE_HANDOFF_DIR }}
         run: |
           required=(
             A3S_CLOUD_TEST_GITHUB_APP_CLIENT_ID
@@ -68,6 +182,9 @@ jobs:
           cargo test -p a3s-cloud-control-plane --test github_private_source --locked \
             real_github_installation_token_resolves_and_checks_out_a_private_repository \
             -- --ignored --exact --nocapture --test-threads=1
+          test "$(stat -c '%a' "$PRIVATE_HANDOFF_DIR")" = "700"
+          test "$(stat -c '%a' "$PRIVATE_HANDOFF_DIR/source-input.tar")" = "600"
+          test "$(stat -c '%a' "$PRIVATE_HANDOFF_DIR/source-handoff.json")" = "600"
           python3 - <<'PY'
           import json
           import os
@@ -77,14 +194,211 @@ jobs:
           document = json.loads(evidence.read_text(encoding="utf-8"))
           assert document["schema"] == "a3s.cloud.g0-private-github-provider-evidence.v1"
           assert document["cloudRevision"] == os.environ["A3S_CLOUD_TEST_CLOUD_REVISION"]
+          assert document["buildInputDigest"].startswith("sha256:")
+          assert document["buildInputBytes"] > 0
           assert all(document["checks"].values())
           PY
 
-      - name: Upload private-provider evidence
+      - name: Build private input through exact Box and export release handoff
+        working-directory: apps/cloud
+        env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_TEST_G0_BOX_BUILD: "1"
+          A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET: "1"
+          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ env.EVIDENCE_DIR }}
+          A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF: ${{ env.PRIVATE_HANDOFF_DIR }}/source-handoff.json
+          A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR: ${{ env.BOX_HANDOFF_DIR }}
+          A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_DEPS_STUB: "1"
+        run: |
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          cloud_revision=$(git rev-parse HEAD)
+          set +e
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-g0-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_CLOUD_TEST_G0_BOX_BUILD="$A3S_CLOUD_TEST_G0_BOX_BUILD" \
+            A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET="$A3S_CLOUD_TEST_G0_BOX_BUILD_ALLOW_CACHE_RESET" \
+            A3S_CLOUD_TEST_G0_EVIDENCE_DIR="$A3S_CLOUD_TEST_G0_EVIDENCE_DIR" \
+            A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF="$A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF" \
+            A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR="$A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR" \
+            A3S_CLOUD_TEST_CLOUD_REVISION="$cloud_revision" \
+            A3S_CLOUD_TEST_BOX_REVISION="$A3S_CLOUD_TEST_BOX_REVISION" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --locked -p a3s-cloud-node-agent --lib \
+              box_build::tests::real_box_native_build_replays_after_process_death_reuses_parent_cache_and_cleans \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$RUNNER_TEMP/g0-box-build.log"
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          if (( gate_status != 0 )); then
+            exit "$gate_status"
+          fi
+          grep --fixed-strings 'A3S_CLOUD_G0_BOX_BUILD_CERTIFIED' \
+            "$RUNNER_TEMP/g0-box-build.log" \
+            >"$EVIDENCE_DIR/box-build-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/box-build-certification.txt")" -eq 1
+          test "$(sudo stat -c '%a' "$BOX_HANDOFF_DIR")" = "700"
+          test "$(sudo stat -c '%a' "$BOX_HANDOFF_DIR/box-output.tar")" = "600"
+          test "$(sudo stat -c '%a' "$BOX_HANDOFF_DIR/box-output.json")" = "600"
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            '.schema == "a3s.cloud.g0-box-build-provider-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and .sourceKind == "private_github"
+             and ([.checks[]] | all)' \
+            "$EVIDENCE_DIR/box-build-provider.json" >/dev/null
+
+      - name: Publish externally, sign with Vault, persist evidence, and hand off Workload
+        working-directory: apps/cloud
+        env:
+          A3S_CLOUD_TEST_G0_EXTERNAL_RELEASE: "1"
+          A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ env.EVIDENCE_DIR }}
+          A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF: ${{ env.PRIVATE_HANDOFF_DIR }}/source-handoff.json
+          A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR: ${{ env.BOX_HANDOFF_DIR }}
+          A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+          A3S_CLOUD_TEST_REGISTRY_URL: ${{ secrets.G0_REGISTRY_URL }}
+          A3S_CLOUD_TEST_REGISTRY_REPOSITORY_PREFIX: ${{ secrets.G0_REGISTRY_REPOSITORY_PREFIX }}
+          A3S_CLOUD_TEST_REGISTRY_USERNAME: ${{ secrets.G0_REGISTRY_USERNAME }}
+          A3S_CLOUD_TEST_REGISTRY_PASSWORD: ${{ secrets.G0_REGISTRY_PASSWORD }}
+          A3S_CLOUD_TEST_VAULT_ADDR: ${{ secrets.G0_VAULT_ADDR }}
+          A3S_CLOUD_TEST_VAULT_TOKEN: ${{ secrets.G0_VAULT_TOKEN }}
+          A3S_CLOUD_TEST_VAULT_TRANSIT_MOUNT: ${{ secrets.G0_VAULT_TRANSIT_MOUNT }}
+          A3S_CLOUD_TEST_VAULT_SIGNING_KEY: ${{ secrets.G0_VAULT_BUILD_EVIDENCE_KEY }}
+        run: |
+          required=(
+            A3S_CLOUD_TEST_REGISTRY_URL
+            A3S_CLOUD_TEST_REGISTRY_REPOSITORY_PREFIX
+            A3S_CLOUD_TEST_REGISTRY_USERNAME
+            A3S_CLOUD_TEST_REGISTRY_PASSWORD
+            A3S_CLOUD_TEST_VAULT_ADDR
+            A3S_CLOUD_TEST_VAULT_TOKEN
+            A3S_CLOUD_TEST_VAULT_TRANSIT_MOUNT
+            A3S_CLOUD_TEST_VAULT_SIGNING_KEY
+          )
+          for name in "${required[@]}"; do
+            [[ -n ${!name:-} ]]
+          done
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          cloud_revision=$(git rev-parse HEAD)
+          set +e
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-g0-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_CLOUD_TEST_G0_EXTERNAL_RELEASE="$A3S_CLOUD_TEST_G0_EXTERNAL_RELEASE" \
+            A3S_CLOUD_TEST_G0_EVIDENCE_DIR="$A3S_CLOUD_TEST_G0_EVIDENCE_DIR" \
+            A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF="$A3S_CLOUD_TEST_G0_PRIVATE_SOURCE_HANDOFF" \
+            A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR="$A3S_CLOUD_TEST_G0_BOX_HANDOFF_DIR" \
+            A3S_CLOUD_TEST_CLOUD_REVISION="$cloud_revision" \
+            A3S_CLOUD_TEST_BOX_REVISION="$A3S_CLOUD_TEST_BOX_REVISION" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_CLOUD_TEST_REGISTRY_URL="$A3S_CLOUD_TEST_REGISTRY_URL" \
+            A3S_CLOUD_TEST_REGISTRY_REPOSITORY_PREFIX="$A3S_CLOUD_TEST_REGISTRY_REPOSITORY_PREFIX" \
+            A3S_CLOUD_TEST_REGISTRY_USERNAME="$A3S_CLOUD_TEST_REGISTRY_USERNAME" \
+            A3S_CLOUD_TEST_REGISTRY_PASSWORD="$A3S_CLOUD_TEST_REGISTRY_PASSWORD" \
+            A3S_CLOUD_TEST_VAULT_ADDR="$A3S_CLOUD_TEST_VAULT_ADDR" \
+            A3S_CLOUD_TEST_VAULT_TOKEN="$A3S_CLOUD_TEST_VAULT_TOKEN" \
+            A3S_CLOUD_TEST_VAULT_TRANSIT_MOUNT="$A3S_CLOUD_TEST_VAULT_TRANSIT_MOUNT" \
+            A3S_CLOUD_TEST_VAULT_SIGNING_KEY="$A3S_CLOUD_TEST_VAULT_SIGNING_KEY" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_g0_external_release_persists_verified_evidence_and_workload_handoff \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$RUNNER_TEMP/g0-external-release.log"
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          if (( gate_status != 0 )); then
+            exit "$gate_status"
+          fi
+          grep --extended-regexp \
+            '^A3S_CLOUD_G0_EXTERNAL_RELEASE_CERTIFIED .* store=postgresql$' \
+            "$RUNNER_TEMP/g0-external-release.log" \
+            >"$EVIDENCE_DIR/external-release-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/external-release-certification.txt")" -eq 1
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+            '.schema == "a3s.cloud.g0-external-release-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and .signingKeyVersion > 0
+             and (.publishedResourceIdentityDigest | startswith("sha256:"))
+             and ([.checks[]] | all)' \
+            "$EVIDENCE_DIR/external-release.json" >/dev/null
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          evidence = Path(os.environ["A3S_CLOUD_TEST_G0_EVIDENCE_DIR"])
+          public = b"\n".join(path.read_bytes() for path in evidence.iterdir() if path.is_file())
+          protected = [
+              os.environ["A3S_CLOUD_TEST_REGISTRY_URL"],
+              os.environ["A3S_CLOUD_TEST_REGISTRY_PASSWORD"],
+              os.environ["A3S_CLOUD_TEST_VAULT_ADDR"],
+              os.environ["A3S_CLOUD_TEST_VAULT_TOKEN"],
+          ]
+          assert all(value and value.encode() not in public for value in protected)
+          PY
+
+      - name: Verify provider cleanup and remove private handoff
+        if: always()
+        run: |
+          cleanup_status=0
+          install -d -m 0755 "$EVIDENCE_DIR"
+          if pgrep -fa 'a3s-box-shim|a3s-oci-agent|a3s-oci.*native-linux-service' \
+            >"$EVIDENCE_DIR/leaked-processes.txt"; then
+            cat "$EVIDENCE_DIR/leaked-processes.txt"
+            cleanup_status=1
+          fi
+          if test -e "$A3S_HOME/boxes.json"; then
+            sudo cp "$A3S_HOME/boxes.json" "$EVIDENCE_DIR/boxes-after.json"
+            jq -e 'type == "array" and length == 0' \
+              "$EVIDENCE_DIR/boxes-after.json" >/dev/null || cleanup_status=1
+          fi
+          if test -n "$(sudo find "$A3S_HOME/images/build-receipts/sha256" \
+              -mindepth 1 \
+              \( -name '*.json' -o -name '*.workspace' -o -name '*.cache' \) \
+              -print -quit 2>/dev/null)"; then
+            sudo find "$A3S_HOME/images/build-receipts/sha256" -mindepth 1 -maxdepth 2 -print \
+              >"$EVIDENCE_DIR/leaked-build-operation-paths.txt"
+            cleanup_status=1
+          fi
+          if mountpoint -q "$A3S_HOME/runtime-secrets"; then
+            sudo umount "$A3S_HOME/runtime-secrets" || cleanup_status=1
+          fi
+          if test -e "$PRIVATE_HANDOFF_DIR"; then
+            sudo rm -rf -- "$PRIVATE_HANDOFF_DIR"
+          fi
+          test ! -e "$PRIVATE_HANDOFF_DIR" || cleanup_status=1
+          if test -e "$A3S_HOME"; then
+            sudo rm -rf -- "$A3S_HOME"
+          fi
+          exit "$cleanup_status"
+
+      - name: Upload public G0 provider evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: g0-private-github-provider-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/a3s-cloud-g0-provider-evidence
+          name: g0-external-release-provider-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.EVIDENCE_DIR }}
           if-no-files-found: error
           retention-days: 30
