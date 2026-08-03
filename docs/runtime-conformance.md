@@ -157,6 +157,20 @@ digest, rejects release before durable Runtime fencing, then stops, releases,
 removes, and verifies absence. The evidence artifact contains one exact
 advertised-profile result and one exact allocation certification marker.
 
+The seventh `BX0.3` slice advances the pinned A3S Box revision to
+`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360`. The Node Agent accepts at most
+one bare `box.sev_snp` ACL block, requires the concrete MicroVM backend, and
+maps its typed generation and attestation policy directly into Box's one
+confidential Runtime driver. Hardware mode requires a canonical lowercase
+SHA-384 launch measurement and debug rejection; simulated reports require an
+explicit `simulate = true` opt-in and remain development evidence. The pinned
+Box revision binds each Runtime spec digest into the SNP report, persists a
+private generation-bound RA-TLS artifact before releasing the deferred guest
+workload, re-attests every running observation and automatic restart, rejects
+tampered or missing evidence, and defines separate simulated and hardware CI
+gates. The hardware gate is present but has not been executed for this lock,
+so hardware TEE certification remains release-blocking.
+
 The following evidence remains required before `BX0` is verified:
 
 1. Complete Sandbox/MicroVM/TEE isolation certification.

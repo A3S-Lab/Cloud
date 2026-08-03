@@ -4,6 +4,12 @@ use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use url::Url;
 
+mod box_runtime;
+
+pub use box_runtime::{
+    BoxRuntimeConfig, BoxRuntimeIsolation, BoxRuntimeSevSnpConfig, BoxRuntimeSevSnpGeneration,
+};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ControlPlaneConfig {
     pub enrollment_url: Url,
@@ -38,21 +44,6 @@ pub struct LogShippingConfig {
     pub poll_interval_ms: u64,
     pub max_batch_chunks: u16,
     pub max_batch_bytes: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BoxRuntimeConfig {
-    pub home_dir: PathBuf,
-    pub secret_root: PathBuf,
-    pub isolation: BoxRuntimeIsolation,
-    pub control_timeout_ms: u64,
-    pub task_poll_interval_ms: u64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BoxRuntimeIsolation {
-    Microvm,
-    Sandbox,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,7 +115,7 @@ impl NodeAgentConfig {
             &["poll_interval_ms", "max_batch_chunks", "max_batch_bytes"],
         )?;
         let box_runtime = one_block(&document, "box")?;
-        validate_block(
+        validate_box_block(
             box_runtime,
             &[
                 "home_dir",
@@ -192,9 +183,10 @@ impl NodeAgentConfig {
             box_runtime: BoxRuntimeConfig {
                 home_dir: PathBuf::from(string(box_runtime, "home_dir")?),
                 secret_root: PathBuf::from(string(box_runtime, "secret_root")?),
-                isolation: box_runtime_isolation(box_runtime)?,
+                isolation: box_runtime::isolation(box_runtime)?,
                 control_timeout_ms: integer(box_runtime, "control_timeout_ms")?,
                 task_poll_interval_ms: integer(box_runtime, "task_poll_interval_ms")?,
+                sev_snp: box_runtime::sev_snp(box_runtime)?,
             },
             gateway: GatewayControlConfig {
                 management_url: endpoint(
@@ -230,13 +222,7 @@ impl NodeAgentConfig {
             "gateway.certificate_directory",
             &self.gateway.certificate_directory,
         )?;
-        if !self.gateway.certificate_directory.is_absolute()
-            || self
-                .gateway
-                .certificate_directory
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
-        {
+        if !normalized_absolute_linux_directory(&self.gateway.certificate_directory) {
             return Err(ConfigError::Invalid(
                 "gateway.certificate_directory must be an absolute normalized directory".into(),
             ));
@@ -295,13 +281,7 @@ impl NodeAgentConfig {
             ));
         }
         validate_path("box.home_dir", &self.box_runtime.home_dir)?;
-        if !self.box_runtime.home_dir.is_absolute()
-            || self
-                .box_runtime
-                .home_dir
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
-        {
+        if !normalized_absolute_linux_directory(&self.box_runtime.home_dir) {
             return Err(ConfigError::Invalid(
                 "box.home_dir must be an absolute normalized directory".into(),
             ));
@@ -322,6 +302,7 @@ impl NodeAgentConfig {
                 "Box Runtime control timeout and Task poll interval are invalid".into(),
             ));
         }
+        self.box_runtime.validate_sev_snp()?;
         if !self
             .gateway
             .management_url
@@ -455,6 +436,81 @@ fn validate_block(block: &Block, fields: &[&str]) -> Result<(), ConfigError> {
     Ok(())
 }
 
+fn validate_box_block(block: &Block, fields: &[&str]) -> Result<(), ConfigError> {
+    if !block.labels.is_empty() {
+        return Err(ConfigError::Invalid(
+            "box block cannot contain labels".into(),
+        ));
+    }
+    let expected = fields.iter().copied().collect::<BTreeSet<_>>();
+    let actual = block
+        .attributes
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual != expected {
+        return Err(ConfigError::Invalid(format!(
+            "box block must contain exactly {}",
+            fields.join(", ")
+        )));
+    }
+    if block.blocks.iter().any(|nested| nested.name != "sev_snp") {
+        return Err(ConfigError::Invalid(
+            "box block contains an unsupported nested block".into(),
+        ));
+    }
+    if block
+        .blocks
+        .iter()
+        .filter(|nested| nested.name == "sev_snp")
+        .count()
+        > 1
+    {
+        return Err(ConfigError::Invalid(
+            "box.sev_snp block may appear only once".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_optional_block(
+    block: &Block,
+    required: &[&str],
+    optional: &[&str],
+) -> Result<(), ConfigError> {
+    if !block.labels.is_empty() || !block.blocks.is_empty() {
+        return Err(ConfigError::Invalid(format!(
+            "{}.{} block cannot contain labels or nested blocks",
+            "box", block.name
+        )));
+    }
+    let allowed = required
+        .iter()
+        .chain(optional.iter())
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if block
+        .attributes
+        .keys()
+        .any(|field| !allowed.contains(field.as_str()))
+    {
+        return Err(ConfigError::Invalid(format!(
+            "box.{} block contains an unsupported attribute",
+            block.name
+        )));
+    }
+    if let Some(missing) = required
+        .iter()
+        .find(|field| !block.attributes.contains_key(**field))
+    {
+        return Err(ConfigError::Invalid(format!(
+            "box.{}.{} is required",
+            block.name, missing
+        )));
+    }
+    Ok(())
+}
+
 fn string(block: &Block, field: &str) -> Result<String, ConfigError> {
     block
         .attributes
@@ -483,6 +539,37 @@ where
     }
     T::try_from(number as u64)
         .map_err(|_| ConfigError::Invalid(format!("{}.{} is out of range", block.name, field)))
+}
+
+fn optional_string(block: &Block, field: &str) -> Result<Option<String>, ConfigError> {
+    block
+        .attributes
+        .get(field)
+        .map(|value| {
+            value.as_str().map(str::to_owned).ok_or_else(|| {
+                ConfigError::Invalid(format!("{}.{} must be a string", block.name, field))
+            })
+        })
+        .transpose()
+}
+
+fn boolean(block: &Block, field: &str) -> Result<bool, ConfigError> {
+    block
+        .attributes
+        .get(field)
+        .and_then(Value::as_bool)
+        .ok_or_else(|| ConfigError::Invalid(format!("{}.{} must be a boolean", block.name, field)))
+}
+
+fn optional_integer<T>(block: &Block, field: &str) -> Result<Option<T>, ConfigError>
+where
+    T: TryFrom<u64>,
+{
+    if block.attributes.contains_key(field) {
+        integer(block, field).map(Some)
+    } else {
+        Ok(None)
+    }
 }
 
 fn endpoint(
@@ -547,16 +634,6 @@ fn valid_env_name(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
-}
-
-fn box_runtime_isolation(block: &Block) -> Result<BoxRuntimeIsolation, ConfigError> {
-    match string(block, "isolation")?.as_str() {
-        "microvm" => Ok(BoxRuntimeIsolation::Microvm),
-        "sandbox" => Ok(BoxRuntimeIsolation::Sandbox),
-        _ => Err(ConfigError::Invalid(
-            "box.isolation must be either microvm or sandbox".into(),
-        )),
-    }
 }
 
 #[cfg(test)]
@@ -626,6 +703,7 @@ gateway {
             Path::new("/run/a3s-cloud/box-secrets")
         );
         assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Microvm);
+        assert_eq!(config.box_runtime.sev_snp, None);
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
         assert_eq!(
             config.gateway.certificate_directory,
@@ -644,6 +722,7 @@ gateway {
         assert_eq!(config.logs.poll_interval_ms, 1000);
         assert_eq!(config.box_runtime.control_timeout_ms, 120000);
         assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Microvm);
+        assert_eq!(config.box_runtime.sev_snp, None);
         assert_eq!(config.gateway.management_url.path(), "/api/gateway");
     }
 
@@ -695,5 +774,126 @@ gateway {
         let config = NodeAgentConfig::parse(&sandbox).expect("Sandbox node config");
 
         assert_eq!(config.box_runtime.isolation, BoxRuntimeIsolation::Sandbox);
+    }
+
+    #[test]
+    fn parses_explicit_hardware_sev_snp_policy() {
+        let measurement = "ab".repeat(48);
+        let source = with_sev_snp(&format!(
+            r#"    generation = "genoa"
+    simulate = false
+    expected_measurement = "{measurement}"
+    require_no_debug = true
+    require_no_smt = true
+    allowed_policy_mask = 112
+    min_boot_loader_svn = 3
+    min_tee_svn = 4
+    min_snp_svn = 5
+    min_microcode_svn = 6"#
+        ));
+        let config = NodeAgentConfig::parse(&source).expect("hardware SEV-SNP node config");
+        let sev_snp = config.box_runtime.sev_snp.expect("explicit SEV-SNP config");
+
+        assert_eq!(sev_snp.generation, BoxRuntimeSevSnpGeneration::Genoa);
+        assert!(!sev_snp.simulate);
+        assert_eq!(
+            sev_snp.expected_measurement.as_deref(),
+            Some(measurement.as_str())
+        );
+        assert!(sev_snp.require_no_debug);
+        assert!(sev_snp.require_no_smt);
+        assert_eq!(sev_snp.allowed_policy_mask, Some(112));
+        assert_eq!(sev_snp.min_boot_loader_svn, Some(3));
+        assert_eq!(sev_snp.min_tee_svn, Some(4));
+        assert_eq!(sev_snp.min_snp_svn, Some(5));
+        assert_eq!(sev_snp.min_microcode_svn, Some(6));
+    }
+
+    #[test]
+    fn parses_explicit_simulated_sev_snp_without_a_measurement() {
+        let source = with_sev_snp(
+            r#"    generation = "milan"
+    simulate = true
+    require_no_debug = false
+    require_no_smt = false"#,
+        );
+        let config = NodeAgentConfig::parse(&source).expect("simulated SEV-SNP node config");
+        let sev_snp = config
+            .box_runtime
+            .sev_snp
+            .expect("explicit simulated SEV-SNP config");
+
+        assert_eq!(sev_snp.generation, BoxRuntimeSevSnpGeneration::Milan);
+        assert!(sev_snp.simulate);
+        assert_eq!(sev_snp.expected_measurement, None);
+    }
+
+    #[test]
+    fn rejects_ambiguous_or_unsupported_sev_snp_blocks() {
+        let valid = r#"    generation = "milan"
+    simulate = true
+    require_no_debug = true
+    require_no_smt = false"#;
+        let duplicate = with_sev_snp(&format!("{valid}\n  }}\n\n  sev_snp {{\n{valid}"));
+        assert!(NodeAgentConfig::parse(&duplicate).is_err());
+
+        let labeled = with_sev_snp(valid).replacen("sev_snp {", "sev_snp \"prod\" {", 1);
+        assert!(NodeAgentConfig::parse(&labeled).is_err());
+
+        let unknown_attribute = with_sev_snp(&format!("{valid}\n    provider = \"automatic\""));
+        assert!(NodeAgentConfig::parse(&unknown_attribute).is_err());
+
+        let unknown_block = CONFIG.replacen(
+            "  task_poll_interval_ms = 50\n}",
+            "  task_poll_interval_ms = 50\n\n  tdx {\n  }\n}",
+            1,
+        );
+        assert!(NodeAgentConfig::parse(&unknown_block).is_err());
+    }
+
+    #[test]
+    fn rejects_unsafe_hardware_sev_snp_policy() {
+        let base = r#"    generation = "milan"
+    simulate = false
+    require_no_debug = true
+    require_no_smt = false"#;
+        assert!(NodeAgentConfig::parse(&with_sev_snp(base)).is_err());
+
+        let uppercase_measurement = with_sev_snp(&format!(
+            "{base}\n    expected_measurement = \"{}\"",
+            "AB".repeat(48)
+        ));
+        assert!(NodeAgentConfig::parse(&uppercase_measurement).is_err());
+
+        let debug = with_sev_snp(&format!(
+            "{}\n    expected_measurement = \"{}\"",
+            base.replace("require_no_debug = true", "require_no_debug = false"),
+            "ab".repeat(48)
+        ));
+        assert!(NodeAgentConfig::parse(&debug).is_err());
+
+        let sandbox = with_sev_snp(&format!(
+            "{base}\n    expected_measurement = \"{}\"",
+            "ab".repeat(48)
+        ))
+        .replace("  isolation = \"microvm\"", "  isolation = \"sandbox\"");
+        assert!(NodeAgentConfig::parse(&sandbox).is_err());
+
+        let inexact_mask = with_sev_snp(
+            r#"    generation = "milan"
+    simulate = true
+    require_no_debug = true
+    require_no_smt = false
+    allowed_policy_mask = 9007199254740992"#,
+        );
+        assert!(NodeAgentConfig::parse(&inexact_mask).is_err());
+    }
+
+    fn with_sev_snp(body: &str) -> String {
+        CONFIG.replacen(
+            "  task_poll_interval_ms = 50\n}",
+            &format!("  task_poll_interval_ms = 50\n\n  sev_snp {{\n{body}\n  }}\n}}"),
+            1,
+        )
     }
 }

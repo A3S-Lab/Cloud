@@ -158,8 +158,10 @@ second deployment or reconciliation engine.
    materialization are implemented. Artifact mounts, persistent Volumes, tmpfs,
    and Task-output publication now use the same Box driver and existing Cloud
    Artifact boundary. The composite provider/Cloud Claim gate closes allocation
-   evidence; complete Sandbox/MicroVM/TEE isolation certification keeps the
-   gate in progress.
+   evidence. An optional ACL-native SEV-SNP policy now constructs Box's
+   confidential driver and consumes generation-bound attestation while keeping
+   simulation distinct from hardware evidence; complete Sandbox plus
+   hardware-backed MicroVM/TEE isolation certification keeps the gate in progress.
 4. `BX0.4` now implements the sole `cloud.build@5` path through typed Box
    commands and canonical ACL build plans. Box owns its operation journal,
    content-addressed cache, and images; Cloud retains Artifact transport, OCI
@@ -272,8 +274,19 @@ inspection, pre-fence release rejection, durable stop, release, removal, and
 cleanup. Both machine-checkable results are retained in one revision-bound
 artifact; Cloud adds no provider resource model or second Claim mechanism.
 
-`BX0.3` remains in progress only for complete Sandbox/MicroVM/TEE isolation
-certification.
+The seventh `BX0.3` slice pins A3S Box
+`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360` and adds one optional closed
+`box.sev_snp` ACL block to the existing Node Agent composition. It maps Milan
+or Genoa plus the exact launch measurement, debug/SMT checks, policy mask, and
+minimum TCB versions into Box's sole confidential Runtime driver. Hardware
+mode fails closed without a canonical lowercase SHA-384 measurement and debug
+rejection. Explicit simulation is development-only evidence. The pinned Box
+revision adds generation-bound RA-TLS persistence, deferred guest release,
+live recovery/restart re-attestation, tamper rejection, simulated conformance,
+and a separate hardware gate; the hardware gate has not yet run for this lock.
+
+`BX0.3` remains in progress only for complete Sandbox plus hardware-backed
+MicroVM/TEE isolation certification.
 
 `PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and

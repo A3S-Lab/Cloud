@@ -342,6 +342,19 @@ machine-checkable certification marker. The workflow retains both the complete
 advertised-profile result and the allocation marker in the same evidence
 artifact.
 
+The seventh `BX0.3` slice pins A3S Box
+`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360` and connects its confidential
+Runtime driver to the closed Node Agent ACL boundary. An optional, unique
+`box.sev_snp` block selects Milan or Genoa and maps the launch measurement,
+debug/SMT policy, allowed policy mask, and minimum TCB values into Box's sole
+`BoxRuntimeDriver`. Hardware mode fails configuration unless it pins a
+canonical 96-character lowercase SHA-384 measurement and rejects debug mode.
+Simulation remains an explicit development-only opt-in and is never reported
+as hardware evidence. Box now supplies generation-bound RA-TLS attestation,
+deferred workload release, restart re-attestation, tamper/recovery coverage,
+and a hardware CI gate; that hardware gate has not yet produced certification
+evidence, so this slice does not close TEE qualification.
+
 Complete Sandbox/MicroVM/TEE isolation evidence, builds, and the clean-host
 release loop remain release-blocking `BX0.3` through `BX0.5` work.
 
@@ -911,7 +924,32 @@ deployment workflows, release provenance, routing, and convergence decisions.
 The Box Runtime adapter maps Runtime's provider-neutral `Sandbox` requirement
 to the concrete backend selected by the required node-local `box.isolation`
 ACL field. The shipped profile selects MicroVM; shared-kernel Sandbox must be
-selected explicitly, and neither path can fall back automatically.
+selected explicitly, and neither path can fall back automatically. Nodes that
+must accept Runtime `Confidential` requests add an explicit SEV-SNP policy:
+
+```acl
+box {
+  home_dir = "/var/lib/a3s-box"
+  secret_root = "/run/a3s-cloud/box-secrets"
+  isolation = "microvm"
+  control_timeout_ms = 120000
+  task_poll_interval_ms = 50
+
+  sev_snp {
+    generation = "milan"
+    simulate = false
+    expected_measurement = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+    require_no_debug = true
+    require_no_smt = false
+  }
+}
+```
+
+Hardware mode requires the exact launch measurement and `require_no_debug =
+true`. `allowed_policy_mask` and the optional `min_boot_loader_svn`,
+`min_tee_svn`, `min_snp_svn`, and `min_microcode_svn` attributes tighten the
+attestation policy. `simulate = true` may omit the measurement but is only for
+development and conformance preparation; it is not hardware certification.
 
 Applications use this path today. Agent, MCP, and Skill publication has a
 verified `A0.1` identity foundation and `A0.2` hosted Git repository boundary.

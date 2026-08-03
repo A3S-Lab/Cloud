@@ -130,8 +130,52 @@ fn config(isolation: BoxRuntimeIsolation) -> (tempfile::TempDir, BoxRuntimeConfi
         isolation,
         control_timeout_ms: 60_000,
         task_poll_interval_ms: 50,
+        sev_snp: None,
     };
     (home, config)
+}
+
+#[test]
+fn maps_explicit_sev_snp_policy_into_the_confidential_box_driver() {
+    let (_home, mut config) = config(BoxRuntimeIsolation::Microvm);
+    let measurement = "ab".repeat(48);
+    config.sev_snp = Some(BoxRuntimeSevSnpConfig {
+        generation: BoxRuntimeSevSnpGeneration::Genoa,
+        simulate: true,
+        expected_measurement: Some(measurement.clone()),
+        require_no_debug: true,
+        require_no_smt: true,
+        allowed_policy_mask: Some(112),
+        min_boot_loader_svn: Some(3),
+        min_tee_svn: Some(4),
+        min_snp_svn: Some(5),
+        min_microcode_svn: Some(6),
+    });
+    let mapped = driver_sev_snp_config(config.sev_snp.as_ref().expect("SEV-SNP config"));
+
+    assert_eq!(mapped.generation, SevSnpGeneration::Genoa);
+    assert!(mapped.simulate);
+    assert_eq!(
+        mapped.attestation_policy.expected_measurement.as_deref(),
+        Some(measurement.as_str())
+    );
+    assert!(mapped.attestation_policy.require_no_debug);
+    assert!(mapped.attestation_policy.require_no_smt);
+    assert_eq!(mapped.attestation_policy.allowed_policy_mask, Some(112));
+    assert_eq!(
+        mapped
+            .attestation_policy
+            .min_tcb
+            .as_ref()
+            .and_then(|policy| policy.snp),
+        Some(5)
+    );
+
+    let materializer = Arc::new(CloudBoxSecretMaterializer::new());
+    let artifact_port = Arc::new(CloudBoxArtifactPort::new());
+    let driver = build_box_runtime_driver(&config, materializer, artifact_port)
+        .expect("confidential Box Runtime driver");
+    assert_eq!(driver.execution_isolation(), ExecutionIsolation::Microvm);
 }
 
 #[test]
@@ -190,6 +234,7 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
         isolation: BoxRuntimeIsolation::Sandbox,
         control_timeout_ms: 120_000,
         task_poll_interval_ms: 25,
+        sev_snp: None,
     };
     let artifacts = artifact_manager(runtime_state.path().join("node-state"), Uuid::now_v7())?;
     let provider = build_box_runtime_provider(&config, runtime_state.path())
@@ -451,6 +496,7 @@ async fn exercise_private_registry(
         isolation: BoxRuntimeIsolation::Sandbox,
         control_timeout_ms: 120_000,
         task_poll_interval_ms: 25,
+        sev_snp: None,
     };
     let provider = build_box_runtime_provider(&config, private_home.path().join("runtime-state"))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();

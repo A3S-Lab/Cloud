@@ -1,13 +1,18 @@
 use crate::artifact::CloudBoxArtifactPort;
 use crate::secret::CloudBoxSecretMaterializer;
-use crate::{BoxRuntimeConfig, BoxRuntimeIsolation, NodeRuntimeProvider};
+use crate::{
+    BoxRuntimeConfig, BoxRuntimeIsolation, BoxRuntimeSevSnpConfig, BoxRuntimeSevSnpGeneration,
+    NodeRuntimeProvider,
+};
+use a3s_box_core::config::SevSnpGeneration;
 use a3s_box_runtime::{
-    BoxArtifactPort, BoxRuntimeDriver, BoxRuntimeDriverConfig, BoxSecretMaterializer,
-    ExecutionIsolation,
+    AttestationPolicy, BoxArtifactPort, BoxRuntimeDriver, BoxRuntimeDriverConfig,
+    BoxRuntimeSevSnpConfig as DriverSevSnpConfig, BoxSecretMaterializer, ExecutionIsolation,
+    MinTcbPolicy,
 };
 use a3s_runtime::{
-    FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeResult,
-    RuntimeStateStore,
+    FileRuntimeStateStore, ManagedRuntimeClient, RuntimeClient, RuntimeDriver, RuntimeError,
+    RuntimeResult, RuntimeStateStore,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -42,23 +47,64 @@ fn build_box_runtime_driver(
     materializer: Arc<CloudBoxSecretMaterializer>,
     artifact_port: Arc<CloudBoxArtifactPort>,
 ) -> RuntimeResult<BoxRuntimeDriver> {
-    let driver = BoxRuntimeDriver::new_with_isolation(
-        BoxRuntimeDriverConfig {
-            home_dir: config.home_dir.clone(),
-            secret_root: config.secret_root.clone(),
-            control_timeout: Duration::from_millis(config.control_timeout_ms),
-            task_poll_interval: Duration::from_millis(config.task_poll_interval_ms),
-        },
-        match config.isolation {
-            BoxRuntimeIsolation::Microvm => ExecutionIsolation::Microvm,
-            BoxRuntimeIsolation::Sandbox => ExecutionIsolation::Sandbox,
-        },
-    )?;
+    config
+        .validate_sev_snp()
+        .map_err(|error| RuntimeError::InvalidRequest(error.to_string()))?;
+    let driver_config = BoxRuntimeDriverConfig {
+        home_dir: config.home_dir.clone(),
+        secret_root: config.secret_root.clone(),
+        control_timeout: Duration::from_millis(config.control_timeout_ms),
+        task_poll_interval: Duration::from_millis(config.task_poll_interval_ms),
+    };
+    let driver = match &config.sev_snp {
+        Some(sev_snp) => {
+            BoxRuntimeDriver::new_confidential(driver_config, driver_sev_snp_config(sev_snp))?
+        }
+        None => BoxRuntimeDriver::new_with_isolation(
+            driver_config,
+            match config.isolation {
+                BoxRuntimeIsolation::Microvm => ExecutionIsolation::Microvm,
+                BoxRuntimeIsolation::Sandbox => ExecutionIsolation::Sandbox,
+            },
+        )?,
+    };
     let materializer: Arc<dyn BoxSecretMaterializer> = materializer;
     let artifact_port: Arc<dyn BoxArtifactPort> = artifact_port;
     Ok(driver
         .with_secret_materializer(materializer)
         .with_artifact_port(artifact_port))
+}
+
+fn driver_sev_snp_config(config: &BoxRuntimeSevSnpConfig) -> DriverSevSnpConfig {
+    let min_tcb = [
+        config.min_boot_loader_svn,
+        config.min_tee_svn,
+        config.min_snp_svn,
+        config.min_microcode_svn,
+    ]
+    .iter()
+    .any(Option::is_some)
+    .then_some(MinTcbPolicy {
+        boot_loader: config.min_boot_loader_svn,
+        tee: config.min_tee_svn,
+        snp: config.min_snp_svn,
+        microcode: config.min_microcode_svn,
+    });
+    DriverSevSnpConfig {
+        generation: match config.generation {
+            BoxRuntimeSevSnpGeneration::Milan => SevSnpGeneration::Milan,
+            BoxRuntimeSevSnpGeneration::Genoa => SevSnpGeneration::Genoa,
+        },
+        simulate: config.simulate,
+        attestation_policy: AttestationPolicy {
+            expected_measurement: config.expected_measurement.clone(),
+            min_tcb,
+            require_no_debug: config.require_no_debug,
+            require_no_smt: config.require_no_smt,
+            allowed_policy_mask: config.allowed_policy_mask,
+            max_report_age_secs: None,
+        },
+    }
 }
 
 #[cfg(test)]

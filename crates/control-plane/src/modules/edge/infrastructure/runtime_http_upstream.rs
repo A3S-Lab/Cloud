@@ -109,6 +109,7 @@ mod tests {
                 isolation: BoxRuntimeIsolation::Sandbox,
                 control_timeout_ms: 120_000,
                 task_poll_interval_ms: 25,
+                sev_snp: None,
             },
             runtime_state.path(),
         )?;
@@ -153,6 +154,7 @@ mod tests {
                 isolation: BoxRuntimeIsolation::Sandbox,
                 control_timeout_ms: 120_000,
                 task_poll_interval_ms: 25,
+                sev_snp: None,
             },
             runtime_state.path(),
         )?;

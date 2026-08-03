@@ -199,7 +199,7 @@ Status as of 2026-08-03:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
-| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, and a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle. Complete isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
+| BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
@@ -380,8 +380,22 @@ The workflow retains the complete advertised-profile result and one
 machine-checkable allocation marker together. No provider resource model,
 Claim repository, scheduler, queue, Runtime driver, or node channel is added.
 
-The rest of `BX0.3` remains open only for complete Sandbox/MicroVM/TEE
-isolation certification.
+The seventh `BX0.3` slice pins A3S Box
+`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360` and wires its confidential
+Runtime constructor into the Node Agent's closed ACL configuration. The
+optional unique `box.sev_snp` block selects Milan or Genoa and carries the
+measurement, debug/SMT checks, policy mask, and minimum TCB versions without a
+second provider or lifecycle path. Hardware mode fails closed without a
+canonical lowercase SHA-384 measurement or debug rejection. Explicit
+simulation supports development and the provider conformance gate but cannot
+satisfy hardware evidence. The pinned Box implementation binds the Runtime
+spec digest into generation-private RA-TLS evidence, defers the guest workload
+until validation succeeds, reacquires evidence after recovery and restart, and
+adds distinct simulated and hardware CI gates. The hardware gate remains
+unexecuted for this integration revision.
+
+The rest of `BX0.3` remains open only for complete Sandbox plus hardware-backed
+MicroVM/TEE isolation certification.
 
 #### Exit gate
 

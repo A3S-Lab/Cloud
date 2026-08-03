@@ -143,6 +143,7 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
         isolation: BoxRuntimeIsolation::Sandbox,
         control_timeout_ms: 120_000,
         task_poll_interval_ms: 25,
+        sev_snp: None,
     };
     let volume_id = format!("cloud-box-volume-{}", Uuid::now_v7().simple());
     let first_spec = task_spec(

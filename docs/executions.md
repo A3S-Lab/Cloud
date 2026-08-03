@@ -19,7 +19,11 @@ Cloud owns:
 Runtime owns the provider-neutral Task contract and lifecycle. Box is the sole
 node-local provider. Each node must select the concrete `microvm` or `sandbox`
 backend explicitly through `box.isolation`; the shipped profile selects
-MicroVM, and Cloud never requests an automatic fallback.
+MicroVM, and Cloud never requests an automatic fallback. A node advertises and
+accepts `Confidential` executions only when its optional `box.sev_snp` ACL
+block constructs the confidential Box driver. Hardware mode must pin the
+expected launch measurement and reject debug mode; explicit simulation is
+development-only evidence and does not qualify a node as hardware-certified.
 
 Executions do not add another scheduler, node channel, provider adapter, log,
 artifact, or Secret store.
