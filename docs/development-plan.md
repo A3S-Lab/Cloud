@@ -170,16 +170,16 @@ The approval slice consumes `C0.3` grants and audit. Production multi-node work
 single-node gates.
 
 `U0` is a control-plane integration lane, not another plugin platform. `U0.1`
-freezes a typed remote-host boundary against the exact A3S Use contracts and
-adds missing public types or manager APIs upstream rather than reimplementing
-them in Cloud. `U0.2` is read-only. `U0.3` begins mutation only after the shared
-A3S Use Plugin Manager owns the complete parent saga and `C0.3` supplies Cloud
-authorization and audit. `U0.4` executable surfaces must prove that their host
-adapters use only the injected Runtime/Box and private A3S Use bindings, while
-any public or replicated service remains an explicit A0/MCP0 Workload; Secrets
-and Knowledge keep their existing boundaries. `U0.5` operates the same
-independent per-host assignments over H0/Fleet membership instead of adding a
-group rollout aggregate or plugin scheduler.
+pins and adapts the frozen typed remote-host boundary from the exact A3S Use
+contracts; any future missing public type or manager API is added upstream
+rather than reimplemented in Cloud. `U0.2` is read-only. `U0.3` begins mutation
+only after the shared A3S Use Plugin Manager owns the complete parent saga and
+`C0.3` supplies Cloud authorization and audit. `U0.4` executable surfaces must
+prove that their host adapters use only the injected Runtime/Box and private
+A3S Use bindings, while any public or replicated service remains an explicit
+A0/MCP0 Workload; Secrets and Knowledge keep their existing boundaries. `U0.5`
+operates the same independent per-host assignments over H0/Fleet membership
+instead of adding a group rollout aggregate or plugin scheduler.
 
 `MCP0.1` is contract work and may begin from the E0 model. Its implementation
 does not become available until `A0.3` provides an immutable release,
@@ -195,7 +195,7 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-08-02:
+Status as of 2026-08-03:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -209,7 +209,7 @@ Status as of 2026-08-02:
 | G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Exact Linux Box, parent-cache reuse, external Registry/Vault, process-death, and zero-residue certification still block G0 verification |
 | C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance and the clean real PostgreSQL/A3S Box gate pass. `C0.3` and `C0.4` remain planned. |
 | A0 | In progress | `A0.1` and `A0.2` are verified. Exact Agent/MCP/Skill identity, immutable release lifecycle, tenant-authorized Git Smart HTTP, tenant/Asset-bound repositories, A3S ORM-backed PostgreSQL leases/quotas/audit, same-lease refs/object recovery, shared-object backup/restore, and pinned `.a3s/asset.acl` admission pass focused and real PostgreSQL tests. `A0.3` publication, `A0.4` Agent deployment, and `A0.5` Skill/catalog surfaces remain. |
-| U0 | Planned | Architecture and delivery gates are defined. No Cloud plugin module, schema, API, Fleet payload, Node Agent host adapter, or product capability is implemented or claimed. A3S Use M2/M5/M6/M7 dependencies remain external gates. |
+| U0 | Planned | Architecture and delivery gates are defined. A3S Use now publishes the protocol-level-1 `PluginHostManager`, managed-scope, capabilities, plan/apply/enablement/observation, and canonical package-state contracts, but Cloud has not pinned or integrated them. No Cloud plugin module, schema, API, Fleet payload, Node Agent host adapter, or product capability is implemented or claimed. A3S Use M2 parent-saga completion and M5/M6/M7 production gates remain external dependencies. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Fleet dispatch/redelivery, exact acknowledgement and restart convergence, an executed real PostgreSQL gate for the new path, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
 | H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
@@ -1901,7 +1901,7 @@ implementation preference.
 | --- | --- | --- |
 | Registry enrollment | Cloud Plugins | Store tenant ownership, endpoint, exact trust-root object reference/digest/version, state, and audit; A3S Use alone verifies TUF metadata |
 | Catalog search and inspection | A3S Use | Call its bounded signed-catalog API and return canonical records; do not create a Cloud catalog schema or cache authority |
-| Desired package state | Cloud Plugins | One `PluginAssignment` for one package/host, initially bound to exactly one workspace, with one monotonically increasing Cloud assignment generation; multi-workspace coordination waits for a canonical Use parent saga |
+| Desired package state | Cloud Plugins using `a3s_use_core::PluginDesiredState` | One `PluginAssignment` for one package/host, initially bound to exactly one workspace, with one monotonically increasing Cloud assignment generation; Cloud does not define another lifecycle enum, and multi-workspace coordination waits for a canonical Use parent saga |
 | Package identity and surfaces | `a3s-use-core` | Reuse `<publisher>/<name>`, exact catalog records, and canonical Tool/MCP/Skill/UI/OKF surface types; route aliases never own state |
 | Lifecycle plan and confirmation | A3S Use canonical contracts | Persist only validated immutable review projection and digest; never edit, regenerate, or reinterpret the plan in Cloud |
 | Actor versus package authorization | Cloud Identity and A3S Use Workspace Grants respectively | Identity authorizes changing the tenant assignment; Use authorizes the exact package generation inside the workspace; neither grant model is copied or translated into the other |
@@ -1931,9 +1931,7 @@ modules/plugins/
 │   ├── commands/enroll_registry/
 │   ├── commands/rotate_registry_root/
 │   ├── commands/set_assignment/
-│   ├── commands/remove_assignment/
 │   ├── commands/confirm_plan/
-│   ├── commands/retry_assignment/
 │   ├── queries/search_catalog/
 │   ├── queries/inspect_catalog/
 │   ├── queries/list_assignments/
@@ -1950,21 +1948,27 @@ modules/plugins/
     └── dto/request + dto/response
 ```
 
-Domain code depends only on pure canonical contract types where needed. The
-Use catalog, Fleet, Flow, object, and persistence implementations remain
-infrastructure adapters behind constructor-injected ports. If A3S Use does not
-export a typed package ID, remote manager request/result, or host capability
-contract required by this boundary, `U0.1` adds it to A3S Use; Cloud does not
-create a similarly named local value object or JSON schema.
+Domain code depends only on pure canonical contract types where needed. In
+particular, package/surface identity, verified catalog selection,
+`PluginDesiredState`, plan/confirmation, managed scope, host capabilities, and
+plan/apply/enablement/observation request and result types come directly from
+`a3s-use-core`; Cloud does not wrap, fork, or restate them. The Use catalog,
+Fleet, Flow, object, and persistence implementations remain infrastructure
+adapters behind constructor-injected ports. If a future required canonical type
+or host operation is missing, it is added and released in A3S Use before Cloud
+consumes it; Cloud does not create a similarly named local value object or JSON
+schema.
 `domain/services` contains traits only; adapters and manager composition live
 under `infrastructure`, and controllers delegate to the command/query buses.
 
-`U0.1` lands cross-repository changes independently, then pins the exact
-`a3s-use-core` Cargo dependency and Use gitlink and adds the sorted Use
-component plus plugin-host protocol levels to `compat/cloud-stack.acl`. The
-gitlink, dependency, lock entry, canonical fixtures, and Cloud contract tests
-advance together; a branch, path dependency, or unrecorded compatible range is
-not release evidence.
+The upstream protocol-level-1 `PluginHostManager` contract is already frozen.
+`U0.1` pins its exact released `a3s-use-core` Cargo dependency and Use gitlink,
+then adds the sorted Use component plus plugin-host protocol level to
+`compat/cloud-stack.acl`. The gitlink, dependency, lock entry, canonical
+fixtures, and Cloud contract tests advance together; a branch, path dependency,
+or unrecorded compatible range is not release evidence. The remaining shared
+Manager composition is an upstream mutation gate, not work to be recreated in
+Cloud.
 
 ### Persistent model
 
@@ -1973,7 +1977,7 @@ U0 migrations add only these Plugins-owned tables through typed A3S ORM:
 | Record | Durable content | Explicitly excluded |
 | --- | --- | --- |
 | `plugin_registries` | Organization, normalized HTTPS endpoint, root-object reference, exact root digest/version, state, optimistic version, actor/audit correlation | TUF catalog rows, registry credentials, package targets, or package bytes |
-| `plugin_assignments` | Organization/project/environment, workspace scope, target host, registry, exact root catalog record/digest, selected surfaces, policy reference/digest, desired lifecycle, Cloud assignment generation, optimistic version, current Operation | Installed files, dependencies, grants, bindings, Runtime units, routes, or capability snapshots |
+| `plugin_assignments` | Organization/project/environment, workspace scope, target host, registry, exact root catalog record/digest, selected surfaces, policy reference/digest, canonical A3S Use desired state, Cloud assignment generation, optimistic version, current Operation | A Cloud-local lifecycle enum, installed files, dependencies, grants, bindings, Runtime units, routes, or capability snapshots |
 | `plugin_plan_projections` | Cloud Operation, assignment/host generation, Use operation ID, schema, plan digest, expiry, action, exact root transition, authority decision/digest, bounded impact and permission/provider evidence digests, confirmation reference, terminal reason | Mutable plan, package payload, provider client, credential, Secret value, or Use child-saga state |
 | `plugin_host_observations` | Assignment/host generation, Fleet command, Use operation, package/manifest/receipt digests, installed generation, capability generation/digest, enabled state, observed time, exact result code | Desired state, inferred health, local receipt content, Runtime Binding store, or capability registry |
 
@@ -1981,6 +1985,12 @@ The exact catalog selection is immutable within one assignment generation.
 Cloud assignment generation, Use installed generation, and Use capability
 generation are three different counters and must never be compared or copied
 as if they shared a sequence.
+
+`PluginRegistry` is the umbrella Cloud host's desired registry configuration,
+not a second TUF implementation. Any registry state retained by A3S Use on the
+target host is a fenced applied projection used by the sole Plugin Manager; it
+has no independent Cloud-facing mutation API, and its exact root/source digest
+returns only as observation evidence.
 
 U0.3 enforces one live Cloud assignment per `(organization, target host,
 package_id)`. A second workspace cannot request another version or surface set
@@ -1999,14 +2009,15 @@ the canonical A3S Use policy parser.
 
 `SetPluginAssignment` is the only package desired-state mutation. It accepts a
 catalog selection returned by the trusted query path, canonical selected
-surfaces, one existing same-tenant workspace/host, and desired lifecycle
-`enabled` or `disabled`. Exact replay returns the original aggregate and
-Operation; changed input under one idempotency key conflicts.
-
-`RemovePluginAssignment` changes desired lifecycle to `absent`; it does not
-delete the aggregate or imply that node-local bytes are gone. Canonical A3S
-Use uninstall retains user data. A future destructive purge would be a
-separate human-only product decision and is outside U0.
+surfaces, one existing same-tenant workspace/host, and the canonical A3S Use
+desired state `enabled`, `installed-disabled`, or `absent`. Exact replay returns
+the original aggregate and Operation; changed input under one idempotency key
+conflicts. REST `DELETE`, CLI remove, and UI enable/disable actions translate to
+this same command. `absent` retains the assignment evidence and requests the
+canonical A3S Use uninstall; it does not delete the aggregate or imply that
+node-local bytes are gone. Canonical uninstall retains user data. A future
+destructive purge would be a separate human-only product decision and is
+outside U0.
 
 There are no Cloud `InstallPlugin`, `UpgradePlugin`, `EnablePlugin`,
 `DisablePlugin`, and `UninstallPlugin` aggregates or workflows. Reconciliation
@@ -2033,6 +2044,12 @@ Search metadata does not install or download a package. REST, the shared
 TypeScript client, CLI, Web, and Management MCP map to these same commands and
 queries. Cloud does not proxy the local Use management MCP, and no management
 surface exposes plugin execution.
+
+Plugin management adds no `RetryPluginAssignment` command. The existing
+Operation retry/resume surface wakes the same Flow and preserves the current
+assignment generation, Use operation identity, and plan digest. A
+plugin-specific retry endpoint, queue, timer service, or recovery table would
+be a duplicate mechanism and fails the U0 architecture gate.
 
 Catalog search remains the canonical bounded A3S Use/TUF query and is not
 mirrored into Cloud Search. The existing Cloud Search context indexes only
@@ -2088,9 +2105,10 @@ upgrade, enablement changes, and removal:
    the existing Fleet acknowledgement/outbound-batch path. Cloud advances only
    when every assignment, node, workspace, command, operation, plan, receipt,
    and generation identity matches.
-10. A periodic Plugins reconciler scans non-converged assignments and resumes
-   the same Flow. Outbox events reduce latency but are never the only repair
-   path.
+10. The existing Flow recovery runner uses its ordinary lease/timer path to
+    scan non-converged assignments and resume the same Flow. Outbox events
+    reduce latency but are never the only repair path; Plugins adds no scheduler,
+    retry queue, or independent worker journal.
 
 Enable and disable use the canonical shared Manager operation and a dedicated
 typed Fleet payload because A3S Use operation plans cover install, upgrade, and
@@ -2110,9 +2128,9 @@ authority exactly as its canonical lifecycle requires.
 
 | Sub-gate | Work | Exit evidence |
 | --- | --- | --- |
-| `U0.1` | Pin exact Use revision, add missing public canonical types, remote-host service contract, and managed-scope mutation fence upstream, add compatibility fixtures, advertise Node host capabilities, and freeze plan/apply/enablement/observation Fleet payloads | Cross-repository canonical bytes/digests match; standalone and managed scopes cannot mutate each other; unknown schema/capability and mixed versions fail closed; no duplicate Cloud contract exists |
+| `U0.1` | Pin the exact Use revision that contains the frozen protocol-level-1 `PluginHostManager`, managed-scope, capabilities, and plan/apply/enablement/observation contracts; add compatibility fixtures, advertise Node host capabilities, and freeze corresponding Fleet payloads | Cross-repository canonical bytes/digests match; standalone and managed scopes cannot mutate each other; unknown schema/capability and mixed versions fail closed; no duplicate Cloud contract or lifecycle enum exists |
 | `U0.2` | Add `PluginRegistry`, root evidence, A3S ORM persistence, A3S Use catalog adapter, tenant queries, authorized search projection, API/client/CLI/Web/Management MCP reads | Real TUF registry refresh/cache verification, offline bounded read, root/metadata drift, SSRF, tenant denial, cursor, and no-package-download tests pass |
-| `U0.3` | Add `PluginAssignment`, one Flow, plan review/confirmation, Fleet/Agent adapter, safe non-executable apply, enable/disable/uninstall, observations, audit, and recovery | One exact Skill/UI package converges on one host; OKF joins only after Use M0K-C; cross-tenant scope/path/symlink attacks fail closed; install/upgrade/uninstall and every named crash point return one receipt and no partial capability generation |
+| `U0.3` | Add `PluginAssignment`, one Flow, plan review/confirmation, Fleet/Agent adapter, safe non-executable apply, enable/disable/uninstall, observations, audit, and recovery | One exact Skill/UI package converges on one host; OKF joins only after Use M0K-C-B; cross-tenant scope/path/symlink attacks fail closed; install/upgrade/uninstall and every named crash point return one receipt and no partial capability generation |
 | `U0.4` | Inject production permission/grant and host adapters for Tool Task, private Tool Service, standard MCP, UI, OKF, Secrets, Runtime/Box, private bindings, and Knowledge; require explicit A0/MCP0 promotion for any public or replicated service | A3S Use M5/M6 plus each owning component gate proves native semantics, exact authority, no fallback, no automatic Cloud deployment, prior-generation preservation, drain, and cleanup |
 | `U0.5` | Operate independent per-host assignments over existing H0/Fleet host membership; add node replacement/fencing, trust rotation/revocation, mixed-version upgrade, backup/restore, quotas, observability, and runbooks without a group rollout aggregate | Real multi-node loss/partition/return, supply-chain compromise, HA, load, restore, zero-residue, and compatibility-lock evidence passes without a plugin scheduler or second authority |
 
