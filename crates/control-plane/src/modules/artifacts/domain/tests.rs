@@ -1,6 +1,6 @@
-use super::test_support::evidence_for;
+use super::test_support::{evidence_for, succeeded_hosted_build};
 use super::{
-    BuildArtifact, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
+    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
@@ -478,6 +478,30 @@ fn hosted_release_build_retry_preserves_the_exact_subject_lineage() {
         BuildRun::id_for_subject_attempt(retry.subject, 2).expect("hosted attempt identity")
     );
     assert!(BuildRun::restore(retry).is_ok());
+}
+
+#[test]
+fn hosted_build_evidence_round_trips_its_closed_flattened_subject() {
+    let build = succeeded_hosted_build(
+        OrganizationId::new(),
+        AssetId::new(),
+        AssetReleaseId::new(),
+        Utc::now(),
+    );
+    let evidence = build.evidence.as_deref().expect("hosted build evidence");
+    let mut encoded = serde_json::to_value(evidence).expect("serialize hosted build evidence");
+    assert_eq!(
+        encoded["assetId"],
+        build.asset_id().expect("hosted Asset").to_string()
+    );
+    assert_eq!(
+        serde_json::from_value::<BuildEvidence>(encoded.clone())
+            .expect("deserialize hosted build evidence"),
+        *evidence
+    );
+
+    encoded["unexpectedSubjectIdentity"] = serde_json::json!("rejected");
+    assert!(serde_json::from_value::<BuildEvidence>(encoded).is_err());
 }
 
 fn artifact(fill: char) -> BuildArtifact {

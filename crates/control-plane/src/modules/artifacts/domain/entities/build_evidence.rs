@@ -54,7 +54,7 @@ pub struct BuildEvidence {
     pub attested_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum BuildEvidenceSubject {
     ExternalSourceRevision {
@@ -67,6 +67,39 @@ pub enum BuildEvidenceSubject {
         #[serde(rename = "assetReleaseId")]
         asset_release_id: AssetReleaseId,
     },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BuildEvidenceSubjectFields {
+    source_revision_id: Option<SourceRevisionId>,
+    asset_id: Option<AssetId>,
+    asset_release_id: Option<AssetReleaseId>,
+}
+
+impl<'de> Deserialize<'de> for BuildEvidenceSubject {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let fields = BuildEvidenceSubjectFields::deserialize(deserializer)?;
+        match (
+            fields.source_revision_id,
+            fields.asset_id,
+            fields.asset_release_id,
+        ) {
+            (Some(source_revision_id), None, None) => {
+                Ok(Self::ExternalSourceRevision { source_revision_id })
+            }
+            (None, Some(asset_id), Some(asset_release_id)) => Ok(Self::AssetRelease {
+                asset_id,
+                asset_release_id,
+            }),
+            _ => Err(serde::de::Error::custom(
+                "build evidence subject must identify exactly one external revision or Asset release",
+            )),
+        }
+    }
 }
 
 impl BuildEvidenceSubject {
