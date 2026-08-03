@@ -6,22 +6,28 @@ use a3s_cloud_contracts::{
     NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::modules::artifacts::application::{
-    BuildRunReconciler, BUILD_WORKFLOW_VERSION,
+    BuildRunReconciler, BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION,
 };
 use a3s_cloud_control_plane::modules::artifacts::domain::{
     RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
-    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
-    ValidatedOciBuildOutput,
+    BuildArtifact, BuildRun, BuildRunFinalization, BuildRunStatus, BuildSubject,
+    IBuildRunRepository, OciDescriptor, OciPublicationTarget, PostgresBuildRunRepository,
+    PublishedOciArtifact, ValidatedOciBuildOutput,
+};
+use a3s_cloud_control_plane::modules::assets::{
+    Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
+    CreateAssetReleaseWrite, IAssetRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    IOperationRepository, PostgresOperationRepository,
+    IOperationRepository, OperationProjection, OperationRequest, OperationStatus, OperationSubject,
+    PostgresOperationRepository, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId,
+    NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    SourceRevisionId,
 };
 use a3s_cloud_control_plane::modules::sources::domain::BuildPlatform;
 use a3s_cloud_control_plane::modules::workloads::{
@@ -118,8 +124,8 @@ pub async fn exercise_build_run_persistence(
     }
     assert_eq!(reserved[0].id, build_id);
     assert_eq!(reserved[0].organization_id, organization_id);
-    assert_eq!(reserved[0].project_id, project_id);
-    assert_eq!(reserved[0].environment_id, environment_id);
+    assert_eq!(reserved[0].project_id(), Some(project_id));
+    assert_eq!(reserved[0].environment_id(), Some(environment_id));
     assert_eq!(
         builds
             .list(organization_id, project_id, environment_id, 1)
@@ -197,7 +203,13 @@ pub async fn exercise_build_run_persistence(
     ));
 
     let mut forged = preparing.clone();
-    forged.project_id = ProjectId::new();
+    forged.subject = BuildSubject::external_source_revision(
+        ProjectId::new(),
+        forged.environment_id().expect("external environment"),
+        forged
+            .source_revision_id()
+            .expect("external source revision"),
+    );
     forged.aggregate_version += 1;
     forged.updated_at += Duration::milliseconds(1);
     assert!(matches!(
@@ -657,7 +669,12 @@ pub async fn exercise_build_run_persistence(
     );
     let mut cancelled = cancelling.clone();
     cancelled.complete(cancellation_accepted_at + Duration::milliseconds(2))?;
-    let cancelled = builds.save(cancelled, cancelling.aggregate_version).await?;
+    let cancelled = builds
+        .finalize(cancelled, cancelling.aggregate_version)
+        .await?;
+    let BuildRunFinalization::Completed(cancelled) = cancelled else {
+        return Err("external BuildRun finalization was unexpectedly rejected".into());
+    };
     let retry = BuildRun::retry(
         &cancelled,
         cancellation_accepted_at + Duration::milliseconds(3),
@@ -789,6 +806,521 @@ pub async fn exercise_build_run_persistence(
     Ok(())
 }
 
+pub async fn exercise_hosted_build_run_persistence(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let assets = PostgresAssetRepository::new(executor.clone());
+    let release = AssetRelease::draft(
+        asset,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse("1.0.0")?,
+        GitCommitSha::parse("a".repeat(40))?,
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))?,
+        chrono::Utc::now().max(asset.updated_at),
+    )?;
+    let idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{}/assets/{}/releases",
+            asset.organization_id, asset.id
+        ),
+        "postgres-hosted-build-draft",
+        release.id.as_uuid().as_bytes(),
+    )?;
+    assets
+        .create_release(CreateAssetReleaseWrite {
+            event: AssetReleaseDrafted::envelope(&release, release.id.as_uuid())?,
+            release: release.clone(),
+            idempotency: idempotency.clone(),
+        })
+        .await?;
+
+    // A draft can be committed before a reconciler process observes it. Two
+    // restarted workers must repair that gap by reserving exactly one BuildRun.
+    let left_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let right_repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let reserved_at = chrono::Utc::now().max(release.created_at);
+    let (left, right) = tokio::join!(
+        left_repository.reserve_pending(1, reserved_at),
+        right_repository.reserve_pending(1, reserved_at),
+    );
+    let mut reserved = left?;
+    reserved.extend(right?);
+    assert_eq!(reserved.len(), 1);
+    let mut build = reserved.pop().ok_or("hosted BuildRun was not reserved")?;
+    assert_eq!(build.organization_id, asset.organization_id);
+    assert_eq!(build.asset_id(), Some(asset.id));
+    assert_eq!(build.asset_release_id(), Some(release.id));
+    assert_eq!(build.project_id(), None);
+    assert_eq!(build.environment_id(), None);
+    assert_eq!(build.source_revision_id(), None);
+    assert_eq!(build.id, BuildRun::id_for_subject(build.subject));
+    assert_eq!(
+        left_repository
+            .find_by_asset_release(asset.organization_id, release.id)
+            .await?,
+        Some(build.clone())
+    );
+    assert!(left_repository
+        .find_by_asset_release(OrganizationId::new(), release.id)
+        .await?
+        .is_none());
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(String, Option<Uuid>, Option<Uuid>, Option<Uuid>, Uuid, Uuid)>(
+                    "select subject_kind, project_id, environment_id, source_revision_id, asset_id, asset_release_id from build_runs where organization_id = ",
+                )
+                .bind(asset.organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build.id.as_uuid()),
+            )
+            .await?,
+        (
+            "asset_release".into(),
+            None,
+            None,
+            None,
+            asset.id.as_uuid(),
+            release.id.as_uuid(),
+        )
+    );
+
+    let queued_version = build.aggregate_version;
+    build.begin_preparation(reserved_at + Duration::milliseconds(1))?;
+    build = left_repository.save(build, queued_version).await?;
+    assert_eq!(build.status, BuildRunStatus::Preparing);
+    assert_eq!(build.asset_id(), Some(asset.id));
+    assert_eq!(build.asset_release_id(), Some(release.id));
+
+    let operations = Arc::new(PostgresOperationRepository::new(executor.clone()));
+    let restarted = BuildRunReconciler::new(left_repository.clone(), operations.clone());
+    let repaired = restarted.run_once(10).await?;
+    assert_eq!(repaired.reserved, 0);
+    assert_eq!(repaired.started, 1);
+    assert_eq!(repaired.replayed, 0);
+    assert!(repaired.failures.is_empty());
+    let operation = operations
+        .find_request(build.operation_id)
+        .await?
+        .ok_or("hosted build operation was not enqueued")?;
+    assert_eq!(operation.organization_id, asset.organization_id);
+    assert_eq!(operation.workflow.name(), "cloud.build");
+    assert_eq!(operation.workflow.version(), BUILD_WORKFLOW_VERSION);
+    assert_eq!(
+        operation.input["buildRunId"],
+        serde_json::Value::String(build.id.to_string())
+    );
+    assert_eq!(
+        assets
+            .find_release(asset.organization_id, asset.id, release.id)
+            .await?
+            .map(|release| release.state),
+        Some(AssetReleaseState::Draft)
+    );
+
+    let publication_events = || {
+        database.fetch_one_as(
+            sql_query::<i64>("select count(*) from outbox_events where organization_id = ")
+                .bind(asset.organization_id.as_uuid())
+                .append(" and aggregate_id = ")
+                .bind(release.id.as_uuid())
+                .append(" and event_key = 'asset.release.published'"),
+        )
+    };
+    assert_eq!(publication_events().await?, 0);
+
+    // A terminal hosted failure keeps the immutable release draft recoverable.
+    // Recovery uses the generic BuildRun retry authority instead of creating an
+    // Asset-specific queue, worker, or state machine.
+    let first_attempt_id = build.id;
+    let expected = build.aggregate_version;
+    build.record_failure(
+        "injected hosted builder failure".into(),
+        build.updated_at + Duration::milliseconds(1),
+    )?;
+    build = left_repository.save(build, expected).await?;
+    let expected = build.aggregate_version;
+    build.complete(build.updated_at + Duration::milliseconds(1))?;
+    assert!(matches!(
+        left_repository.save(build.clone(), expected).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let failed = left_repository.finalize(build, expected).await?;
+    let BuildRunFinalization::Completed(failed) = failed else {
+        return Err("failed hosted Asset build was unexpectedly rejected".into());
+    };
+    assert_eq!(failed.status, BuildRunStatus::Failed);
+    assert_eq!(
+        assets
+            .find_release(asset.organization_id, asset.id, release.id)
+            .await?,
+        Some(release.clone())
+    );
+    assert_eq!(publication_events().await?, 0);
+
+    let retry = BuildRun::retry(&failed, failed.updated_at + Duration::milliseconds(1))?;
+    let retry_idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{}/build-runs/{}/retry",
+            asset.organization_id, failed.id
+        ),
+        "postgres-retry-hosted-build",
+        failed.id.to_string().as_bytes(),
+    )?;
+    let retry_request = RequestBuildRetryBundle {
+        retry: retry.clone(),
+        expected_previous_version: failed.aggregate_version,
+        idempotency: retry_idempotency.clone(),
+    };
+    let (left, right) = tokio::join!(
+        left_repository.request_retry(retry_request.clone()),
+        right_repository.request_retry(retry_request),
+    );
+    let retries = [left?, right?];
+    assert_eq!(retries.iter().filter(|result| result.replayed).count(), 1);
+    assert!(retries.iter().all(|result| result.value == retry));
+    assert_eq!(retry.attempt, 2);
+    assert_eq!(retry.retry_of_build_run_id, Some(first_attempt_id));
+    assert_eq!(retry.subject, failed.subject);
+    assert_eq!(retry.asset_id(), Some(asset.id));
+    assert_eq!(retry.asset_release_id(), Some(release.id));
+    assert_eq!(
+        left_repository
+            .find_by_asset_release(asset.organization_id, release.id)
+            .await?,
+        Some(retry.clone())
+    );
+    assert!(left_repository
+        .find_by_asset_release(OrganizationId::new(), release.id)
+        .await?
+        .is_none());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from build_runs where organization_id = ",)
+                    .bind(asset.organization_id.as_uuid())
+                    .append(" and asset_release_id = ")
+                    .bind(release.id.as_uuid()),
+            )
+            .await?,
+        2
+    );
+
+    // The retry is picked up by the same reconciler and cloud.build Flow.
+    let restarted = BuildRunReconciler::new(left_repository.clone(), operations.clone());
+    let repaired = restarted.run_once(10).await?;
+    assert_eq!(repaired.reserved, 0);
+    assert_eq!(repaired.started, 1);
+    assert_eq!(repaired.replayed, 0);
+    assert!(repaired.failures.is_empty());
+    let retry_operation = operations
+        .find_request(retry.operation_id)
+        .await?
+        .ok_or("hosted retry operation was not enqueued")?;
+    assert_eq!(retry_operation.organization_id, asset.organization_id);
+    assert_eq!(retry_operation.workflow.name(), BUILD_WORKFLOW_NAME);
+    assert_eq!(retry_operation.workflow.version(), BUILD_WORKFLOW_VERSION);
+    assert_eq!(
+        retry_operation.input["buildRunId"],
+        serde_json::Value::String(retry.id.to_string())
+    );
+
+    let mut retry = retry;
+    let queued_version = retry.aggregate_version;
+    retry.begin_preparation(retry.updated_at + Duration::milliseconds(1))?;
+    let retry = left_repository.save(retry, queued_version).await?;
+    let published = drive_hosted_release_publication(executor, asset, &release, retry).await?;
+    assert_eq!(published.state, AssetReleaseState::Published);
+    assert!(published.artifact.is_some());
+    assert!(published.provenance.is_some());
+    assert_eq!(publication_events().await?, 1);
+
+    Ok(())
+}
+
+pub async fn publish_hosted_release(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+    release: &AssetRelease,
+) -> Result<AssetRelease, Box<dyn std::error::Error>> {
+    let mut build = BuildRun::reserve_asset_release(
+        asset.organization_id,
+        asset.id,
+        release.id,
+        chrono::Utc::now().max(release.updated_at),
+    );
+    let database = Database::new(PostgresDialect, executor.clone());
+    let inserted = database
+        .execute(
+            sql_query::<()>(
+                "insert into build_runs (organization_id, subject_kind, project_id, environment_id, source_revision_id, asset_id, asset_release_id, id, attempt, retry_of_build_run_id, operation_id, status, evidence_required, aggregate_version, requested_at, updated_at) values (",
+            )
+            .bind(build.organization_id.as_uuid())
+            .append(", 'asset_release', null, null, null, ")
+            .bind(asset.id.as_uuid())
+            .append(", ")
+            .bind(release.id.as_uuid())
+            .append(", ")
+            .bind(build.id.as_uuid())
+            .append(", ")
+            .bind(build.attempt)
+            .append(", null, ")
+            .bind(build.operation_id.as_uuid())
+            .append(", ")
+            .bind(build.status.as_str())
+            .append(", ")
+            .bind(build.evidence_required)
+            .append(", ")
+            .bind(build.aggregate_version)
+            .append(", ")
+            .bind(build.requested_at)
+            .append(", ")
+            .bind(build.updated_at)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(inserted.rows_affected, 1);
+    let operation = OperationRequest::new(
+        build.operation_id,
+        build.organization_id,
+        OperationSubject::new("build_run", build.id.as_uuid())?,
+        WorkflowIdentity::new(BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)?,
+        serde_json::json!({
+            "organizationId": build.organization_id,
+            "buildRunId": build.id,
+        }),
+        build.requested_at,
+    );
+    let operation_id = operation.id;
+    PostgresOperationRepository::new(executor.clone())
+        .enqueue(operation)
+        .await?;
+    let expected = build.aggregate_version;
+    build.begin_preparation(build.updated_at + Duration::milliseconds(1))?;
+    let builds = PostgresBuildRunRepository::new(executor.clone());
+    build = builds.save(build, expected).await?;
+    let published = drive_hosted_release_publication(executor, asset, release, build).await?;
+    PostgresOperationRepository::new(executor.clone())
+        .upsert_projection(OperationProjection {
+            operation_id,
+            status: OperationStatus::Succeeded,
+            last_sequence: 1,
+            output: None,
+            error: None,
+            updated_at: published.updated_at,
+        })
+        .await?;
+    Ok(published)
+}
+
+async fn drive_hosted_release_publication(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+    release: &AssetRelease,
+    mut build: BuildRun,
+) -> Result<AssetRelease, Box<dyn std::error::Error>> {
+    if build.status != BuildRunStatus::Preparing
+        || build.organization_id != asset.organization_id
+        || build.asset_id() != Some(asset.id)
+        || build.asset_release_id() != Some(release.id)
+    {
+        return Err("hosted publication fixture received the wrong BuildRun".into());
+    }
+    let builds = PostgresBuildRunRepository::new(executor.clone());
+    let database = Database::new(PostgresDialect, executor.clone());
+    let node_id = NodeId::new();
+    let apply_command_id = NodeCommandId::new();
+    let cleanup_command_id = NodeCommandId::new();
+    let command_time = build.updated_at;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (",
+            )
+            .bind(asset.organization_id.as_uuid())
+            .append(", ")
+            .bind(node_id.as_uuid())
+            .append(", ")
+            .bind(format!("hosted build {}", build.id))
+            .append(", ")
+            .bind(format!("hosted-build-{}", build.id))
+            .append(", 'ready', ")
+            .bind(Uuid::now_v7())
+            .append(", 'test', 'test-runtime', 'test-runtime-1', ")
+            .bind(format!("sha256:{}", "f".repeat(64)))
+            .append(", ")
+            .bind(serde_json::json!({}))
+            .append(", ")
+            .bind(command_time)
+            .append(", ")
+            .bind(command_time)
+            .append(", 1)"),
+        )
+        .await?;
+    for (command_id, sequence, kind) in [
+        (apply_command_id, 1_i64, "box_build_start"),
+        (cleanup_command_id, 2_i64, "box_build_remove"),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into node_commands (id, node_id, sequence, aggregate_id, generation, command_kind, payload_schema, payload_digest, payload, issued_at, not_after, correlation_id) values (",
+                )
+                .bind(command_id.as_uuid())
+                .append(", ")
+                .bind(node_id.as_uuid())
+                .append(", ")
+                .bind(sequence)
+                .append(", ")
+                .bind(build.id.as_uuid())
+                .append(", 1, ")
+                .bind(kind)
+                .append(", 'test.command.v1', ")
+                .bind(format!("sha256:{}", "9".repeat(64)))
+                .append(", ")
+                .bind(serde_json::json!({}))
+                .append(", ")
+                .bind(command_time)
+                .append(", ")
+                .bind(command_time + Duration::minutes(1))
+                .append(", ")
+                .bind(build.id.as_uuid())
+                .append(")"),
+            )
+            .await?;
+    }
+
+    let mut at = build.updated_at;
+    let input_artifact = build_artifact('a', 4_096)?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_input(
+        format!("sha256:{}", "b".repeat(64)),
+        input_artifact.clone(),
+        at,
+    )?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.schedule(node_id, format!("sha256:{}", "c".repeat(64)), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.dispatch(apply_command_id, at)?;
+    build = builds.save(build, expected).await?;
+
+    let output_artifact = build_artifact('d', 8_192)?;
+    let box_output = box_output(&output_artifact, &input_artifact)?;
+    let descriptor = OciDescriptor::new(
+        box_output.descriptor.media_type.clone(),
+        box_output.descriptor.digest.clone(),
+        box_output.descriptor.size,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_validation(box_output, at)?;
+    build = builds.save(build, expected).await?;
+
+    let output = ValidatedOciBuildOutput {
+        artifact: output_artifact,
+        descriptor: descriptor.clone(),
+        platforms: vec![BuildPlatform::parse("linux/amd64")?],
+        content_bytes: 2_048,
+        blob_count: 3,
+    };
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_validated_output(output, at)?;
+    build = builds.save(build, expected).await?;
+
+    let target = OciPublicationTarget::new(
+        "registry.example.test",
+        format!("a3s/assets/{}/releases/{}", asset.id, release.id),
+        descriptor,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_publication(target.clone(), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_published_artifact(PublishedOciArtifact::from_target(&target), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_attestation(at)?;
+    build = builds.save(build, expected).await?;
+
+    let repository = format!(
+        "https://a3s.dev/cloud/assets/{}/releases/{}",
+        asset.id, release.id
+    );
+    let evidence = evidence_for(
+        &build,
+        at + Duration::milliseconds(1),
+        &repository,
+        release.commit_sha.as_str(),
+        Some(release.manifest_digest.as_str()),
+    )?;
+    let provenance_digest = evidence.provenance_digest.clone();
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_evidence(evidence, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_cleanup(cleanup_command_id, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.complete(at)?;
+    assert!(matches!(
+        builds.save(build.clone(), expected).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let (left, right) = tokio::join!(
+        builds.finalize(build.clone(), expected),
+        builds.finalize(build, expected),
+    );
+    let finalized = [left?, right?];
+    let BuildRunFinalization::Completed(succeeded) = &finalized[0] else {
+        return Err("active hosted Asset publication was unexpectedly rejected".into());
+    };
+    let succeeded = succeeded.clone();
+    assert_eq!(
+        finalized[1],
+        BuildRunFinalization::Completed(succeeded.clone())
+    );
+    assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
+    let replayed = builds
+        .finalize(succeeded.clone(), succeeded.aggregate_version)
+        .await?;
+    assert_eq!(replayed, BuildRunFinalization::Completed(succeeded.clone()));
+
+    let assets = PostgresAssetRepository::new(executor.clone());
+    let published = assets
+        .find_release(asset.organization_id, asset.id, release.id)
+        .await?
+        .ok_or("published hosted Asset release was not persisted")?;
+    assert_eq!(published.state, AssetReleaseState::Published);
+    let provenance = published
+        .provenance
+        .as_ref()
+        .ok_or("published hosted Asset release omitted provenance")?;
+    assert_eq!(provenance.build_run_id(), succeeded.id);
+    assert_eq!(provenance.provenance_digest().as_str(), provenance_digest);
+    Ok(published)
+}
+
 async fn attest_and_complete_published_build(
     builds: &Arc<PostgresBuildRunRepository>,
     executor: &PostgresExecutor,
@@ -807,7 +1339,13 @@ async fn attest_and_complete_published_build(
 
     let mut attested = attesting.clone();
     let attested_at = attesting.updated_at + Duration::milliseconds(1);
-    let evidence = evidence_for(&attesting, attested_at)?;
+    let evidence = evidence_for(
+        &attesting,
+        attested_at,
+        "https://github.com/A3S-Lab/Cloud",
+        &"a".repeat(40),
+        None,
+    )?;
     attested.record_evidence(evidence.clone(), attested_at)?;
     let attested = builds.save(attested, attesting.aggregate_version).await?;
     assert_eq!(attested.evidence.as_deref(), Some(&evidence));
@@ -833,7 +1371,18 @@ async fn attest_and_complete_published_build(
     let cleaning = builds.save(cleaning, attested.aggregate_version).await?;
     let mut succeeded = cleaning.clone();
     succeeded.complete(cleaning.updated_at + Duration::milliseconds(1))?;
-    let succeeded = builds.save(succeeded, cleaning.aggregate_version).await?;
+    assert!(matches!(
+        builds
+            .save(succeeded.clone(), cleaning.aggregate_version)
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let succeeded = builds
+        .finalize(succeeded, cleaning.aggregate_version)
+        .await?;
+    let BuildRunFinalization::Completed(succeeded) = succeeded else {
+        return Err("external BuildRun finalization was unexpectedly rejected".into());
+    };
     assert_eq!(succeeded.status, BuildRunStatus::Succeeded);
     assert_eq!(succeeded.evidence.as_deref(), Some(&evidence));
     assert_eq!(builds.find(organization_id, build_id).await?, succeeded);

@@ -116,6 +116,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 }
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, path: &str) {
+    if is_asset_git_advertisement(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "service", "in": "query", "required": true,
+                "schema": {
+                    "type": "string",
+                    "enum": ["git-upload-pack", "git-receive-pack"]
+                }
+            }),
+        );
+    }
     if path.ends_with("/search") {
         upsert_parameter(
             parameters,
@@ -210,6 +222,21 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
     if method != "post" || request_has_no_body(path) {
         return;
     }
+    if let Some(media_type) = asset_git_request_media_type(path) {
+        let mut content = Map::new();
+        content.insert(
+            media_type.to_owned(),
+            json!({ "schema": { "type": "string", "format": "binary" } }),
+        );
+        operation.insert(
+            "requestBody".into(),
+            json!({
+                "required": true,
+                "content": content
+            }),
+        );
+        return;
+    }
     let mut content = Map::new();
     content.insert(
         "application/json".into(),
@@ -233,7 +260,9 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
 fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut responses = Map::new();
     for status in success_statuses(method, path) {
-        let component = if path.ends_with("/stream") {
+        let component = if let Some(component) = asset_git_success_component(path) {
+            component.to_owned()
+        } else if path.ends_with("/stream") {
             "SseSuccess200".to_owned()
         } else if path == "/node-control/enroll" {
             format!("RawSuccess{status}")
@@ -242,7 +271,11 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         };
         responses.insert(status.to_string(), response_ref(&component));
     }
-    for status in [400, 404, 409, 422, 429, 500, 503] {
+    let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
+    if asset_git_request_media_type(path).is_some() {
+        error_statuses.extend([413, 415]);
+    }
+    for status in error_statuses {
         responses.insert(status.to_string(), response_ref(&format!("Error{status}")));
     }
     if !is_public || path == "/webhooks/github" {
@@ -328,6 +361,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Fleet"
     } else if path.contains("build-runs") {
         "Artifacts"
+    } else if path.contains("/assets/") {
+        "Assets"
     } else if path.contains("source-") || path.starts_with("/webhooks") {
         "Sources"
     } else if path.contains("secrets") {
@@ -352,6 +387,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
     matches!(method, "delete" | "patch" | "post" | "put")
         && (path == "/bootstrap" || path == "/organizations" || path.starts_with("/organizations/"))
         && !path.ends_with("/source-connections/github")
+        && !is_asset_git_path(path)
 }
 
 fn accepts_acl(path: &str) -> bool {
@@ -391,4 +427,37 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/source-revisions")
         || path.ends_with("/source-subscriptions/github")
         || path.ends_with("/source-connections/github")
+}
+
+fn is_asset_git_path(path: &str) -> bool {
+    path.contains("/assets/{asset_id}/git/")
+}
+
+fn is_asset_git_advertisement(path: &str) -> bool {
+    is_asset_git_path(path) && path.ends_with("/info/refs")
+}
+
+fn asset_git_request_media_type(path: &str) -> Option<&'static str> {
+    if !is_asset_git_path(path) {
+        return None;
+    }
+    if path.ends_with("/git-upload-pack") {
+        Some("application/x-git-upload-pack-request")
+    } else if path.ends_with("/git-receive-pack") {
+        Some("application/x-git-receive-pack-request")
+    } else {
+        None
+    }
+}
+
+fn asset_git_success_component(path: &str) -> Option<&'static str> {
+    if is_asset_git_advertisement(path) {
+        Some("AssetGitAdvertisementSuccess200")
+    } else if is_asset_git_path(path) && path.ends_with("/git-upload-pack") {
+        Some("AssetGitUploadPackSuccess200")
+    } else if is_asset_git_path(path) && path.ends_with("/git-receive-pack") {
+        Some("AssetGitReceivePackSuccess200")
+    } else {
+        None
+    }
 }

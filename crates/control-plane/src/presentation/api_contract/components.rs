@@ -61,8 +61,32 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             response_component(status, ""),
         );
     }
+    response_components.insert(
+        "AssetGitAdvertisementSuccess200".into(),
+        asset_git_response_component(
+            "Git Smart HTTP reference advertisement",
+            &[
+                "application/x-git-upload-pack-advertisement",
+                "application/x-git-receive-pack-advertisement",
+            ],
+        ),
+    );
+    response_components.insert(
+        "AssetGitUploadPackSuccess200".into(),
+        asset_git_response_component(
+            "Git Smart HTTP upload-pack result",
+            &["application/x-git-upload-pack-result"],
+        ),
+    );
+    response_components.insert(
+        "AssetGitReceivePackSuccess200".into(),
+        asset_git_response_component(
+            "Git Smart HTTP receive-pack result",
+            &["application/x-git-receive-pack-result"],
+        ),
+    );
     response_components.insert("SseSuccess200".into(), sse_response_component());
-    for status in [400, 401, 403, 404, 409, 422, 429, 500, 503] {
+    for status in [400, 401, 403, 404, 409, 413, 415, 422, 429, 500, 503] {
         response_components.insert(
             format!("Error{status}"),
             response_component(status, "#/components/schemas/ApiErrorResponse"),
@@ -103,6 +127,26 @@ fn sse_response_component() -> Value {
     })
 }
 
+fn asset_git_response_component(description: &str, media_types: &[&str]) -> Value {
+    let content = media_types
+        .iter()
+        .map(|media_type| {
+            (
+                (*media_type).to_owned(),
+                json!({ "schema": { "type": "string", "format": "binary" } }),
+            )
+        })
+        .collect::<Map<String, Value>>();
+    json!({
+        "description": description,
+        "headers": {
+            "x-request-id": { "schema": { "type": "string", "format": "uuid" } },
+            "x-a3s-api-contract-version": { "schema": { "type": "string", "example": OPENAPI_CONTRACT_VERSION } }
+        },
+        "content": content
+    })
+}
+
 fn status_description(status: u16) -> &'static str {
     match status {
         200 => "Success or idempotent replay",
@@ -114,6 +158,8 @@ fn status_description(status: u16) -> &'static str {
         403 => "Forbidden",
         404 => "Not Found",
         409 => "Conflict",
+        413 => "Payload Too Large",
+        415 => "Unsupported Media Type",
         422 => "Unprocessable Entity",
         429 => "Too Many Requests",
         500 => "Internal Server Error",

@@ -1,12 +1,21 @@
+mod backup;
+mod build_input;
+mod journal;
+mod manifest;
+mod protocol;
 #[cfg(test)]
 mod tests;
 
-use crate::infrastructure::{GitCommandError, GitCommandRunner};
+use crate::infrastructure::{GitCommandError, GitCommandRunner, ImmutableObjectClient};
 use crate::modules::assets::domain::{
-    validate_asset_repository_provision, Asset, AssetGitRepository, AssetGitRepositoryError,
-    AssetGitRepositoryWrite, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
+    validate_asset_repository_mutation, Asset, AssetGitBackup, AssetGitBuildInput,
+    AssetGitRepository, AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits,
+    AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal, AssetGitWriteLease,
+    AssetManifestAdmission, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
+use crate::modules::shared_kernel::domain::{BuildRunId, GitCommitSha, Sha256Digest};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -19,9 +28,12 @@ const MAX_GIT_COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 pub struct LocalAssetGitRepository {
     root: PathBuf,
     staging_root: PathBuf,
+    build_input_root: PathBuf,
     git_home: PathBuf,
     hooks: PathBuf,
     commands: GitCommandRunner,
+    backup_objects: Option<ImmutableObjectClient>,
+    backup_max_bytes: u64,
 }
 
 impl LocalAssetGitRepository {
@@ -47,11 +59,13 @@ impl LocalAssetGitRepository {
         let root = std::fs::canonicalize(root)
             .map_err(|error| storage(format!("could not canonicalize repository root: {error}")))?;
         let staging_root = root.join(".repository-staging");
+        let build_input_root = root.join(".build-inputs");
         let sandbox = root.join(".git-command-sandbox");
         let git_home = sandbox.join("home");
         let hooks = sandbox.join("hooks");
         for (path, label) in [
             (&staging_root, "staging root"),
+            (&build_input_root, "build input root"),
             (&sandbox, "Git sandbox"),
             (&git_home, "Git home"),
             (&hooks, "Git hooks"),
@@ -63,10 +77,28 @@ impl LocalAssetGitRepository {
         Ok(Self {
             root,
             staging_root,
+            build_input_root,
             git_home,
             hooks,
             commands,
+            backup_objects: None,
+            backup_max_bytes: 0,
         })
+    }
+
+    pub(crate) fn with_backup_objects(
+        mut self,
+        objects: ImmutableObjectClient,
+        maximum_bytes: u64,
+    ) -> Result<Self, AssetGitRepositoryError> {
+        if maximum_bytes == 0 {
+            return Err(AssetGitRepositoryError::Invalid(
+                "backup maximum must be positive".into(),
+            ));
+        }
+        self.backup_objects = Some(objects);
+        self.backup_max_bytes = maximum_bytes;
+        Ok(self)
     }
 
     async fn prepare(
@@ -91,6 +123,7 @@ impl LocalAssetGitRepository {
             ("receive.fsckObjects", "true".into()),
             ("transfer.fsckObjects", "true".into()),
             ("http.receivepack", "true".into()),
+            ("receive.autogc", "false".into()),
         ] {
             self.git(vec![
                 git_directory(staging),
@@ -162,6 +195,7 @@ impl LocalAssetGitRepository {
                 "true".to_owned(),
             ),
             (config_get_bool(path, "http.receivepack"), "true".to_owned()),
+            (config_get_bool(path, "receive.autogc"), "false".to_owned()),
         ];
         for (command, expected) in checks {
             let actual = self
@@ -201,7 +235,7 @@ impl IAssetGitRepository for LocalAssetGitRepository {
         &self,
         asset: &Asset,
     ) -> Result<AssetGitRepositoryWrite, AssetGitRepositoryError> {
-        validate_asset_repository_provision(asset).map_err(AssetGitRepositoryError::Invalid)?;
+        validate_asset_repository_mutation(asset).map_err(AssetGitRepositoryError::Invalid)?;
         let target = self.repository_path(asset);
         if let Some(repository) = self.inspect_optional(asset, &target).await? {
             return Ok(AssetGitRepositoryWrite {
@@ -256,6 +290,100 @@ impl IAssetGitRepository for LocalAssetGitRepository {
         self.inspect_optional(asset, &self.repository_path(asset))
             .await?
             .ok_or(AssetGitRepositoryError::NotFound)
+    }
+
+    async fn prepare_write(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+    ) -> Result<(), AssetGitRepositoryError> {
+        journal::prepare(self, asset, lease).await
+    }
+
+    async fn rollback_write(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+    ) -> Result<(), AssetGitRepositoryError> {
+        journal::rollback(self, asset, lease).await
+    }
+
+    async fn settle_write(
+        &self,
+        asset: &Asset,
+        journal: &AssetGitWriteJournal,
+    ) -> Result<(), AssetGitRepositoryError> {
+        journal::settle(self, asset, journal).await
+    }
+
+    async fn advertise(
+        &self,
+        asset: &Asset,
+        service: AssetGitService,
+    ) -> Result<Vec<u8>, AssetGitRepositoryError> {
+        protocol::advertise(self, asset, service).await
+    }
+
+    async fn execute_rpc(
+        &self,
+        asset: &Asset,
+        service: AssetGitService,
+        request: Vec<u8>,
+        limits: AssetGitRpcLimits,
+        write_lease: Option<&AssetGitWriteLease>,
+    ) -> Result<AssetGitRpcResponse, AssetGitRepositoryError> {
+        protocol::execute_rpc(self, asset, service, request, limits, write_lease).await
+    }
+
+    async fn repository_bytes(&self, asset: &Asset) -> Result<u64, AssetGitRepositoryError> {
+        protocol::repository_bytes(self, asset).await
+    }
+
+    async fn refs_digest(&self, asset: &Asset) -> Result<Sha256Digest, AssetGitRepositoryError> {
+        protocol::refs_digest(self, asset).await
+    }
+
+    async fn create_backup(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+        created_at: DateTime<Utc>,
+    ) -> Result<AssetGitBackup, AssetGitRepositoryError> {
+        backup::create(self, asset, lease, created_at).await
+    }
+
+    async fn restore_backup(
+        &self,
+        asset: &Asset,
+        lease: &AssetGitWriteLease,
+        backup: &AssetGitBackup,
+        maximum_repository_bytes: u64,
+    ) -> Result<AssetGitRpcResponse, AssetGitRepositoryError> {
+        backup::restore(self, asset, lease, backup, maximum_repository_bytes).await
+    }
+
+    async fn admit_manifest(
+        &self,
+        asset: &Asset,
+        commit_sha: &GitCommitSha,
+    ) -> Result<AssetManifestAdmission, AssetGitRepositoryError> {
+        manifest::admit(self, asset, commit_sha).await
+    }
+
+    async fn prepare_build_input(
+        &self,
+        asset: &Asset,
+        commit_sha: &GitCommitSha,
+        build_run_id: BuildRunId,
+    ) -> Result<AssetGitBuildInput, AssetGitRepositoryError> {
+        build_input::prepare(self, asset, commit_sha, build_run_id).await
+    }
+
+    async fn remove_build_input(
+        &self,
+        build_run_id: BuildRunId,
+    ) -> Result<(), AssetGitRepositoryError> {
+        build_input::remove(self, build_run_id).await
     }
 }
 

@@ -1,7 +1,8 @@
 use super::build_artifact::validate_sha256;
 use super::oci_publication::PublishedOciArtifact;
+use super::BuildSubject;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, BuildRunId, OperationId, SourceRevisionId,
+    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, OperationId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
 use base64::engine::general_purpose::STANDARD;
@@ -29,10 +30,13 @@ pub struct BuildEvidence {
     pub schema: String,
     pub build_run_id: BuildRunId,
     pub operation_id: OperationId,
-    pub source_revision_id: SourceRevisionId,
+    #[serde(flatten)]
+    pub subject: BuildEvidenceSubject,
     pub attempt: u32,
     pub repository: String,
     pub commit_sha: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
     pub source_content_digest: String,
     pub recipe: BuildRecipe,
     pub recipe_digest: String,
@@ -48,6 +52,113 @@ pub struct BuildEvidence {
     pub signing_key: BuildEvidenceSigningKey,
     pub verification_state: BuildEvidenceVerificationState,
     pub attested_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum BuildEvidenceSubject {
+    ExternalSourceRevision {
+        #[serde(rename = "sourceRevisionId")]
+        source_revision_id: SourceRevisionId,
+    },
+    AssetRelease {
+        #[serde(rename = "assetId")]
+        asset_id: AssetId,
+        #[serde(rename = "assetReleaseId")]
+        asset_release_id: AssetReleaseId,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct BuildEvidenceSubjectFields {
+    source_revision_id: Option<SourceRevisionId>,
+    asset_id: Option<AssetId>,
+    asset_release_id: Option<AssetReleaseId>,
+}
+
+impl<'de> Deserialize<'de> for BuildEvidenceSubject {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let fields = BuildEvidenceSubjectFields::deserialize(deserializer)?;
+        match (
+            fields.source_revision_id,
+            fields.asset_id,
+            fields.asset_release_id,
+        ) {
+            (Some(source_revision_id), None, None) => {
+                Ok(Self::ExternalSourceRevision { source_revision_id })
+            }
+            (None, Some(asset_id), Some(asset_release_id)) => Ok(Self::AssetRelease {
+                asset_id,
+                asset_release_id,
+            }),
+            _ => Err(serde::de::Error::custom(
+                "build evidence subject must identify exactly one external revision or Asset release",
+            )),
+        }
+    }
+}
+
+impl BuildEvidenceSubject {
+    pub const fn from_build_subject(subject: BuildSubject) -> Self {
+        match subject {
+            BuildSubject::ExternalSourceRevision {
+                source_revision_id, ..
+            } => Self::ExternalSourceRevision { source_revision_id },
+            BuildSubject::AssetRelease {
+                asset_id,
+                asset_release_id,
+            } => Self::AssetRelease {
+                asset_id,
+                asset_release_id,
+            },
+        }
+    }
+
+    pub fn matches(self, subject: BuildSubject) -> bool {
+        matches!(
+            (self, subject),
+            (
+                Self::ExternalSourceRevision {
+                    source_revision_id: left
+                },
+                BuildSubject::ExternalSourceRevision {
+                    source_revision_id: right,
+                    ..
+                }
+            ) if left == right
+        ) || matches!(
+            (self, subject),
+            (
+                Self::AssetRelease {
+                    asset_id: left_asset,
+                    asset_release_id: left_release,
+                },
+                BuildSubject::AssetRelease {
+                    asset_id: right_asset,
+                    asset_release_id: right_release,
+                }
+            ) if left_asset == right_asset && left_release == right_release
+        )
+    }
+
+    fn validate(self) -> Result<(), String> {
+        let valid = match self {
+            Self::ExternalSourceRevision { source_revision_id } => {
+                !source_revision_id.as_uuid().is_nil()
+            }
+            Self::AssetRelease {
+                asset_id,
+                asset_release_id,
+            } => !asset_id.as_uuid().is_nil() && !asset_release_id.as_uuid().is_nil(),
+        };
+        valid
+            .then_some(())
+            .ok_or_else(|| "build evidence subject identity is invalid".to_owned())
+    }
 }
 
 impl BuildEvidence {
@@ -71,6 +182,18 @@ impl BuildEvidence {
             || self.verification_state != BuildEvidenceVerificationState::Verified
         {
             return Err("build evidence identity or verification state is invalid".into());
+        }
+        self.subject.validate()?;
+        match (self.subject, &self.manifest_digest) {
+            (BuildEvidenceSubject::ExternalSourceRevision { .. }, None) => {}
+            (BuildEvidenceSubject::AssetRelease { .. }, Some(digest)) => {
+                validate_sha256(digest, "Asset manifest digest")?;
+            }
+            _ => {
+                return Err(
+                    "build evidence manifest digest does not match its typed subject".into(),
+                )
+            }
         }
         validate_sha256(&self.source_content_digest, "source content digest")?;
         validate_sha256(&self.recipe_digest, "build recipe digest")?;
@@ -147,7 +270,8 @@ impl BuildEvidence {
             || external.platforms != self.platforms
             || internal.build_run_id != self.build_run_id
             || internal.operation_id != self.operation_id
-            || internal.source_revision_id != self.source_revision_id
+            || internal.subject != self.subject
+            || external.manifest_digest != self.manifest_digest
             || internal.attempt != self.attempt
             || internal.build_request_digest != self.build_request_digest
             || self.provenance.predicate.run_details.builder.id != self.builder.uri
@@ -547,6 +671,10 @@ impl SlsaBuildDefinition {
             &self.internal_parameters.build_request_digest,
             "SLSA Box build request digest",
         )?;
+        self.internal_parameters.subject.validate()?;
+        if let Some(manifest_digest) = &self.external_parameters.manifest_digest {
+            validate_sha256(manifest_digest, "SLSA Asset manifest digest")?;
+        }
         if self.external_parameters.recipe.digest()? != self.external_parameters.recipe_digest
             || self.internal_parameters.attempt == 0
             || self.internal_parameters.operation_id.as_uuid()
@@ -566,6 +694,8 @@ impl SlsaBuildDefinition {
 pub struct SlsaExternalParameters {
     pub repository: String,
     pub commit_sha: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<String>,
     pub source_content_digest: String,
     pub recipe: BuildRecipe,
     pub recipe_digest: String,
@@ -577,7 +707,8 @@ pub struct SlsaExternalParameters {
 pub struct SlsaInternalParameters {
     pub build_run_id: BuildRunId,
     pub operation_id: OperationId,
-    pub source_revision_id: SourceRevisionId,
+    #[serde(flatten)]
+    pub subject: BuildEvidenceSubject,
     pub attempt: u32,
     pub build_request_digest: String,
 }

@@ -1,4 +1,4 @@
-use super::postgres_schema::{IdempotencyRecords, MigrationRecords, OutboxEvents};
+use super::postgres_schema::{AuditRecords, IdempotencyRecords, MigrationRecords, OutboxEvents};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use a3s_boot::HealthIndicatorResult;
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -8,9 +8,21 @@ use a3s_orm::{
     PostgresDialect, PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
     PostgresTransactionError, Query,
 };
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use uuid::Uuid;
+
+pub(crate) struct AuditWrite {
+    pub(crate) audit_id: Uuid,
+    pub(crate) organization_id: Uuid,
+    pub(crate) actor_id: Option<Uuid>,
+    pub(crate) action: &'static str,
+    pub(crate) aggregate_id: Uuid,
+    pub(crate) occurred_at: DateTime<Utc>,
+    pub(crate) request_id: Uuid,
+    pub(crate) details: serde_json::Value,
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum PostgresBootstrapError {
@@ -545,10 +557,42 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "061",
+            "hosted Asset Git repository controls",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/061_asset_git_repository_controls.sql"
+            )),
+        ),
+        Migration::new(
+            "062",
+            "canonical A3S Runtime artifact JSON contract",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/062_runtime_artifact_json_contract.sql"
+            )),
+        ),
+        Migration::new(
+            "063",
+            "hosted Asset build run subjects",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/063_hosted_asset_build_runs.sql"
+            )),
+        ),
+        Migration::new(
+            "064",
+            "atomic hosted Asset release publication",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/064_atomic_hosted_release_publication.sql"
+            )),
+        ),
+        Migration::new(
+            "065",
             "A3S Use Plugin Host node commands",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/061_plugin_host_commands.sql"
+                "/../../migrations/065_plugin_host_commands.sql"
             )),
         ),
     ]
@@ -714,6 +758,48 @@ pub(crate) async fn store_outbox(
     )
     .await?;
     require_one_row("outbox event", rows)
+}
+
+pub(crate) async fn store_audit(
+    transaction: &PostgresTransaction,
+    audit: &AuditWrite,
+) -> Result<(), PostgresPersistenceError> {
+    let valid_action = !audit.action.is_empty()
+        && audit.action.len() <= 255
+        && audit.action.split('.').count() >= 3
+        && audit.action.split('.').all(|segment| {
+            !segment.is_empty()
+                && segment
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte == b'-')
+        });
+    if audit.audit_id.is_nil()
+        || audit.organization_id.is_nil()
+        || audit.aggregate_id.is_nil()
+        || audit.request_id.is_nil()
+        || !valid_action
+        || !audit.details.is_object()
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "audit record is invalid".into(),
+        ));
+    }
+    require_one_row(
+        "audit record",
+        execute(
+            transaction,
+            insert_into::<AuditRecords>()
+                .value(AuditRecords::audit_id(), audit.audit_id)
+                .value(AuditRecords::organization_id(), audit.organization_id)
+                .value(AuditRecords::actor_id(), audit.actor_id)
+                .value(AuditRecords::action(), audit.action)
+                .value(AuditRecords::aggregate_id(), audit.aggregate_id)
+                .value(AuditRecords::occurred_at(), audit.occurred_at)
+                .value(AuditRecords::request_id(), audit.request_id)
+                .value(AuditRecords::details(), audit.details.clone()),
+        )
+        .await?,
+    )
 }
 
 pub(crate) fn require_one_row(

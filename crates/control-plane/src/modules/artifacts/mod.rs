@@ -12,14 +12,16 @@ pub use application::{
 pub use domain::{
     canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildArtifactPublicationError,
     BuildEvidence, BuildEvidenceBuilder, BuildEvidenceGenerationError, BuildEvidenceSigningError,
-    BuildEvidenceSigningKey, BuildEvidenceVerificationState, BuildInputPreparationError,
-    BuildOutputValidationError, BuildRun, BuildRunStatus, DsseEnvelope, DsseSignature,
-    IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer,
-    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, InTotoSubject,
-    NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite,
-    OciDescriptor, OciPublicationRequest, OciPublicationTarget, OpenNodeArtifact,
-    PreparedBuildInput, PublishedOciArtifact, RequestBuildRetryBundle, SlsaBuildDefinition,
-    SlsaBuilder, SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
+    BuildEvidenceSigningKey, BuildEvidenceSubject, BuildEvidenceVerificationState,
+    BuildInputPreparationError, BuildOutputValidationError, BuildRun, BuildRunFinalization,
+    BuildRunStatus, BuildSource, BuildSourceLocation, BuildSourceResolutionError, BuildSubject,
+    DsseEnvelope, DsseSignature, IBuildArtifactPublisher, IBuildEvidenceGenerator,
+    IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository,
+    IBuildSourceResolver, INodeArtifactStore, InTotoSubject, NodeArtifactDescriptor,
+    NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite, OciDescriptor,
+    OciPublicationRequest, OciPublicationTarget, OpenNodeArtifact, PreparedBuildInput,
+    PublishedOciArtifact, RequestBuildRetryBundle, SlsaBuildDefinition, SlsaBuilder,
+    SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
     SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum,
     SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship,
     ValidatedOciBuildOutput, VerifiedBuildEvidenceSignature, BUILD_EVIDENCE_SCHEMA,
@@ -28,9 +30,9 @@ pub use domain::{
 };
 pub use infrastructure::{
     BoxBuildEvidenceGenerator, BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime,
-    BuildFlowRuntimeDependencies, InMemoryBuildRunRepository, LocalBuildEvidenceSigner,
-    LocalNodeArtifactStore, OciBuildOutputValidator, OciRegistryArtifactPublisher,
-    OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository, SourceBuildInputPreparer,
-    VaultBuildEvidenceSigner,
+    BuildFlowRuntimeDependencies, CloudBuildSourceResolver, InMemoryBuildRunRepository,
+    LocalBuildEvidenceSigner, LocalNodeArtifactStore, OciBuildOutputValidator,
+    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
+    SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
 pub use presentation::ArtifactsModule;

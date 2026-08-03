@@ -1,3 +1,7 @@
+use a3s_cloud_contracts::NodeCommandPayload;
+use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
@@ -6,12 +10,14 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     OrganizationId, ProjectId, RepositoryError, ResourceName, WorkloadId, WorkloadReplicaId,
     WorkloadReplicaMemberId, WorkloadRevisionId,
 };
+use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
     IWorkloadRepository, OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess,
     ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_runtime::contract::RuntimeApplyRequest;
 use chrono::{Duration, Timelike, Utc};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -162,40 +168,30 @@ pub async fn exercise_workloads(
         )
         .await?;
     let node_id = NodeId::from_uuid(node_uuid);
-    let command_id = NodeCommandId::new();
-    let next_sequence = database
-        .fetch_one_as(
-            sql_query::<i64>(
-                "select coalesce(max(sequence), 0) + 1 from node_commands where node_id = ",
-            )
-            .bind(node_uuid),
-        )
+    let command_id = NodeCommandId::from_uuid(first_deployment_id.as_uuid());
+    let command_issued_at = now + Duration::seconds(2);
+    let command_deadline = command_issued_at + Duration::minutes(5);
+    let command = PostgresNodeRepository::new(executor.clone())
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: command_id,
+            node_id,
+            aggregate_id: first.workload.id.as_uuid(),
+            payload: NodeCommandPayload::RuntimeApply {
+                request: Box::new(RuntimeApplyRequest {
+                    schema: RuntimeApplyRequest::SCHEMA.into(),
+                    request_id: format!("deployment:{first_deployment_id}:apply"),
+                    deadline_at_ms: Some(u64::try_from(command_deadline.timestamp_millis())?),
+                    spec: project_runtime_spec(&first.revision)?,
+                }),
+                resource_claim: None,
+            },
+            issued_at: command_issued_at,
+            not_after: command_deadline,
+            correlation_id: first.operation.id.as_uuid(),
+        })
         .await?;
-    database
-        .execute(
-            sql_query::<()>(
-                "insert into node_commands (id, node_id, sequence, aggregate_id, generation, command_kind, payload_schema, payload_digest, payload, issued_at, not_after, correlation_id) values (",
-            )
-            .bind(command_id.as_uuid())
-            .append(", ")
-            .bind(node_uuid)
-            .append(", ")
-            .bind(next_sequence)
-            .append(", ")
-            .bind(first_deployment_id.as_uuid())
-            .append(", 1, 'runtime_apply', 'a3s.runtime.apply-request.v1', ")
-            .bind(format!("sha256:{}", "e".repeat(64)))
-            .append(", ")
-            .bind(json!({"fixture": "workload persistence"}))
-            .append(", ")
-            .bind(now + Duration::seconds(2))
-            .append(", ")
-            .bind(now + Duration::minutes(2))
-            .append(", ")
-            .bind(Uuid::now_v7())
-            .append(")"),
-        )
-        .await?;
+    assert!(!command.replayed);
+    assert_eq!(command.value.id, command_id);
 
     let resolving = repository
         .mark_resolving(first_deployment_id, 1, now + Duration::seconds(1))
@@ -241,7 +237,7 @@ pub async fn exercise_workloads(
         .mark_dispatched(
             first_deployment_id,
             scheduled.aggregate_version,
-            command_id,
+            command.value.id,
             now + Duration::seconds(3),
         )
         .await?;

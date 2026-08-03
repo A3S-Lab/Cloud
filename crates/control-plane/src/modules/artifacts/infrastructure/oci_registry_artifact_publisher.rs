@@ -364,14 +364,23 @@ impl IBuildArtifactPublisher for OciRegistryArtifactPublisher {
                 "build has no validated OCI output for publication".into(),
             )
         })?;
-        let repository = format!(
-            "{}/{}/{}/{}/{}",
-            self.repository_prefix,
-            build.organization_id,
-            build.project_id,
-            build.environment_id,
-            build.id
-        );
+        let repository = match build.subject {
+            crate::modules::artifacts::domain::BuildSubject::ExternalSourceRevision {
+                project_id,
+                environment_id,
+                ..
+            } => format!(
+                "{}/{}/{}/{}/{}",
+                self.repository_prefix, build.organization_id, project_id, environment_id, build.id
+            ),
+            crate::modules::artifacts::domain::BuildSubject::AssetRelease {
+                asset_id,
+                asset_release_id,
+            } => format!(
+                "{}/{}/assets/{}/releases/{}",
+                self.repository_prefix, build.organization_id, asset_id, asset_release_id
+            ),
+        };
         OciPublicationTarget::new(self.registry.clone(), repository, output.descriptor.clone())
             .map_err(BuildArtifactPublicationError::Invalid)
     }

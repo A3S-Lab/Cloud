@@ -24,6 +24,9 @@ impl Module for ManagementMcpModule {
             .get("/mcp", move |_request| async move {
                 super::protocol::method_not_allowed_response()
             })?
+            .delete("/mcp", move |_request| async move {
+                super::protocol::method_not_allowed_response()
+            })?
             .hide_from_openapi()])
     }
 }

@@ -3,16 +3,21 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::artifacts::domain::repositories::{
-    validate_build_run_retry, validate_build_run_transition,
+    validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
+    BuildRunFinalizationMode,
 };
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, IBuildRunRepository,
-    OciPublicationTarget, PublishedOciArtifact, RequestBuildCancellationBundle,
-    RequestBuildRetryBundle, ValidatedOciBuildOutput,
+    BuildArtifact, BuildEvidence, BuildRun, BuildRunFinalization, BuildRunStatus, BuildSubject,
+    IBuildRunRepository, OciPublicationTarget, PublishedOciArtifact,
+    RequestBuildCancellationBundle, RequestBuildRetryBundle, ValidatedOciBuildOutput,
+};
+use crate::modules::assets::infrastructure::{
+    apply_hosted_release, plan_hosted_release, verify_hosted_release_unpublished, HostedReleasePlan,
 };
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
-    OperationId, OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
+    NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
+    SourceRevisionId,
 };
 use a3s_cloud_contracts::NodeBoxBuildOutput;
 use a3s_orm::{
@@ -23,9 +28,28 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_BUILDS: &str = "select b.organization_id, b.project_id, b.environment_id, b.id, b.source_revision_id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.build_request_digest, b.box_build_output, b.output, b.publication_target, b.published_artifact, b.evidence_required, b.evidence, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
+const SELECT_BUILDS: &str = "select b.organization_id, b.subject_kind, b.project_id, b.environment_id, b.source_revision_id, b.asset_id, b.asset_release_id, b.id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.build_request_digest, b.box_build_output, b.output, b.publication_target, b.published_artifact, b.evidence_required, b.evidence, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
 
 type PendingRevisionRow = (Uuid, Uuid, Uuid, Uuid, DateTime<Utc>);
+type PendingAssetReleaseRow = (Uuid, Uuid, Uuid, DateTime<Utc>);
+
+enum PendingBuild {
+    External(PendingRevisionRow),
+    AssetRelease(PendingAssetReleaseRow),
+}
+
+impl PendingBuild {
+    fn sort_key(&self) -> (DateTime<Utc>, u8, Uuid) {
+        match self {
+            Self::External((_, _, _, source_revision_id, accepted_at)) => {
+                (*accepted_at, 0, *source_revision_id)
+            }
+            Self::AssetRelease((_, _, asset_release_id, drafted_at)) => {
+                (*drafted_at, 1, *asset_release_id)
+            }
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct PostgresBuildRunRepository {
@@ -51,23 +75,55 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                     let revisions = fetch_all::<PendingRevisionRow, _>(
                         transaction,
                         sql_query::<PendingRevisionRow>(
-                            "select r.organization_id, r.project_id, r.environment_id, r.id, r.accepted_at from external_source_revisions r left join build_runs b on b.organization_id = r.organization_id and b.source_revision_id = r.id where b.id is null order by r.accepted_at asc, r.id asc limit ",
+                            "select r.organization_id, r.project_id, r.environment_id, r.id, r.accepted_at from external_source_revisions r left join build_runs b on b.organization_id = r.organization_id and b.subject_kind = 'external_source_revision' and b.source_revision_id = r.id where b.id is null order by r.accepted_at asc, r.id asc limit ",
                         )
                         .bind(limit.max(1))
                         .append(" for update of r skip locked"),
                     )
                     .await?;
-                    let mut builds = Vec::with_capacity(revisions.len());
-                    for (organization_id, project_id, environment_id, revision_id, accepted_at) in
-                        revisions
-                    {
-                        let build = BuildRun::reserve(
-                            OrganizationId::from_uuid(organization_id),
-                            ProjectId::from_uuid(project_id),
-                            EnvironmentId::from_uuid(environment_id),
-                            SourceRevisionId::from_uuid(revision_id),
-                            reserved_at.max(accepted_at),
-                        );
+                    let releases = fetch_all::<PendingAssetReleaseRow, _>(
+                        transaction,
+                        sql_query::<PendingAssetReleaseRow>(
+                            "select r.organization_id, r.asset_id, r.id, r.created_at from asset_releases r join assets a on a.organization_id = r.organization_id and a.id = r.asset_id left join build_runs b on b.organization_id = r.organization_id and b.subject_kind = 'asset_release' and b.asset_release_id = r.id where r.state = 'draft' and a.state = 'active' and a.kind in ('agent', 'mcp') and b.id is null order by r.created_at asc, r.id asc limit ",
+                        )
+                        .bind(limit.max(1))
+                        .append(" for update of r skip locked"),
+                    )
+                    .await?;
+                    let mut pending = revisions
+                        .into_iter()
+                        .map(PendingBuild::External)
+                        .chain(releases.into_iter().map(PendingBuild::AssetRelease))
+                        .collect::<Vec<_>>();
+                    pending.sort_by_key(PendingBuild::sort_key);
+                    let mut builds = Vec::with_capacity(limit.max(1).min(pending.len()));
+                    for candidate in pending.into_iter().take(limit.max(1)) {
+                        let build = match candidate {
+                            PendingBuild::External((
+                                organization_id,
+                                project_id,
+                                environment_id,
+                                revision_id,
+                                accepted_at,
+                            )) => BuildRun::reserve(
+                                OrganizationId::from_uuid(organization_id),
+                                ProjectId::from_uuid(project_id),
+                                EnvironmentId::from_uuid(environment_id),
+                                SourceRevisionId::from_uuid(revision_id),
+                                reserved_at.max(accepted_at),
+                            ),
+                            PendingBuild::AssetRelease((
+                                organization_id,
+                                asset_id,
+                                asset_release_id,
+                                drafted_at,
+                            )) => BuildRun::reserve_asset_release(
+                                OrganizationId::from_uuid(organization_id),
+                                AssetId::from_uuid(asset_id),
+                                AssetReleaseId::from_uuid(asset_release_id),
+                                reserved_at.max(drafted_at),
+                            ),
+                        };
                         insert_build(transaction, &build).await?;
                         builds.push(build);
                     }
@@ -130,6 +186,26 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
                     .bind(organization_id.as_uuid())
                     .append(" and b.source_revision_id = ")
                     .bind(source_revision_id.as_uuid())
+                    .append(" order by b.attempt desc limit 1"),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .map(map_row)
+            .transpose()
+    }
+
+    async fn find_by_asset_release(
+        &self,
+        organization_id: OrganizationId,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<Option<BuildRun>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<BuildRunRow>(SELECT_BUILDS)
+                    .append(" where b.organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and b.asset_release_id = ")
+                    .bind(asset_release_id.as_uuid())
                     .append(" order by b.attempt desc limit 1"),
             )
             .await
@@ -321,6 +397,113 @@ impl IBuildRunRepository for PostgresBuildRunRepository {
             .await
             .map_err(transaction_error)
     }
+
+    async fn finalize(
+        &self,
+        build_run: BuildRun,
+        expected_version: u64,
+    ) -> Result<BuildRunFinalization, RepositoryError> {
+        let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let existing = find_build_for_update(
+                        transaction,
+                        build_run.organization_id,
+                        build_run.id,
+                    )
+                    .await?;
+                    let mode = validate_build_run_finalization(
+                        &existing,
+                        &build_run,
+                        expected_version,
+                    )
+                    .map_err(PostgresPersistenceError::Repository)?;
+
+                    if build_run.asset_release_id().is_none() {
+                        let completed = persist_finalized_build(
+                            transaction,
+                            existing,
+                            build_run,
+                            expected_version,
+                            mode,
+                        )
+                        .await?;
+                        return Ok(BuildRunFinalization::Completed(completed));
+                    }
+
+                    if build_run.status == BuildRunStatus::Succeeded {
+                        let plan = plan_hosted_release(transaction, &build_run).await?;
+                        return match plan {
+                            HostedReleasePlan::Reject(reason) => {
+                                if mode == BuildRunFinalizationMode::Replay {
+                                    return Err(PostgresPersistenceError::Invariant(format!(
+                                        "successful hosted BuildRun lost its release publication: {reason}"
+                                    )));
+                                }
+                                let mut rejected = existing.clone();
+                                rejected
+                                    .record_failure(reason, build_run.updated_at)
+                                    .map_err(|error| {
+                                        PostgresPersistenceError::Invariant(format!(
+                                            "hosted release rejection could not fail its BuildRun: {error}"
+                                        ))
+                                    })?;
+                                validate_build_run_transition(
+                                    &existing,
+                                    &rejected,
+                                    expected_version,
+                                )
+                                .map_err(PostgresPersistenceError::Repository)?;
+                                let rejected =
+                                    persist_build(transaction, &rejected, expected_version).await?;
+                                Ok(BuildRunFinalization::Rejected(rejected))
+                            }
+                            plan => {
+                                let completed = persist_finalized_build(
+                                    transaction,
+                                    existing,
+                                    build_run,
+                                    expected_version,
+                                    mode,
+                                )
+                                .await?;
+                                apply_hosted_release(transaction, plan).await?;
+                                Ok(BuildRunFinalization::Completed(completed))
+                            }
+                        };
+                    }
+
+                    verify_hosted_release_unpublished(transaction, &build_run).await?;
+                    let completed = persist_finalized_build(
+                        transaction,
+                        existing,
+                        build_run,
+                        expected_version,
+                        mode,
+                    )
+                    .await?;
+                    Ok(BuildRunFinalization::Completed(completed))
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+}
+
+async fn persist_finalized_build(
+    transaction: &a3s_orm::PostgresTransaction,
+    existing: BuildRun,
+    build_run: BuildRun,
+    expected_version: u64,
+    mode: BuildRunFinalizationMode,
+) -> Result<BuildRun, PostgresPersistenceError> {
+    match mode {
+        BuildRunFinalizationMode::Transition => {
+            persist_build(transaction, &build_run, expected_version).await
+        }
+        BuildRunFinalizationMode::Replay => Ok(existing),
+    }
 }
 
 async fn find_build_for_update(
@@ -447,20 +630,52 @@ async fn insert_build(
     transaction: &a3s_orm::PostgresTransaction,
     build: &BuildRun,
 ) -> Result<(), PostgresPersistenceError> {
+    let (subject_kind, project_id, environment_id, source_revision_id, asset_id, asset_release_id) =
+        match build.subject {
+            BuildSubject::ExternalSourceRevision {
+                project_id,
+                environment_id,
+                source_revision_id,
+            } => (
+                "external_source_revision",
+                Some(project_id.as_uuid()),
+                Some(environment_id.as_uuid()),
+                Some(source_revision_id.as_uuid()),
+                None,
+                None,
+            ),
+            BuildSubject::AssetRelease {
+                asset_id,
+                asset_release_id,
+            } => (
+                "asset_release",
+                None,
+                None,
+                None,
+                Some(asset_id.as_uuid()),
+                Some(asset_release_id.as_uuid()),
+            ),
+        };
     let inserted = execute(
         transaction,
         sql_query::<()>(
-            "insert into build_runs (organization_id, project_id, environment_id, id, source_revision_id, attempt, retry_of_build_run_id, operation_id, status, evidence_required, aggregate_version, requested_at, updated_at) values (",
+            "insert into build_runs (organization_id, subject_kind, project_id, environment_id, source_revision_id, asset_id, asset_release_id, id, attempt, retry_of_build_run_id, operation_id, status, evidence_required, aggregate_version, requested_at, updated_at) values (",
         )
         .bind(build.organization_id.as_uuid())
         .append(", ")
-        .bind(build.project_id.as_uuid())
+        .bind(subject_kind)
         .append(", ")
-        .bind(build.environment_id.as_uuid())
+        .bind(project_id)
+        .append(", ")
+        .bind(environment_id)
+        .append(", ")
+        .bind(source_revision_id)
+        .append(", ")
+        .bind(asset_id)
+        .append(", ")
+        .bind(asset_release_id)
         .append(", ")
         .bind(build.id.as_uuid())
-        .append(", ")
-        .bind(build.source_revision_id.as_uuid())
         .append(", ")
         .bind(build.attempt)
         .append(", ")
@@ -494,10 +709,13 @@ fn json_value<T: serde::Serialize>(value: Option<&T>) -> Result<Option<Value>, s
 
 struct BuildRunRow {
     organization_id: Uuid,
-    project_id: Uuid,
-    environment_id: Uuid,
+    subject_kind: String,
+    project_id: Option<Uuid>,
+    environment_id: Option<Uuid>,
+    source_revision_id: Option<Uuid>,
+    asset_id: Option<Uuid>,
+    asset_release_id: Option<Uuid>,
     id: Uuid,
-    source_revision_id: Uuid,
     attempt: u32,
     retry_of_build_run_id: Option<Uuid>,
     operation_id: Uuid,
@@ -527,33 +745,36 @@ impl FromRow for BuildRunRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {
             organization_id: decode(row, 0)?,
-            project_id: decode(row, 1)?,
-            environment_id: decode(row, 2)?,
-            id: decode(row, 3)?,
+            subject_kind: decode(row, 1)?,
+            project_id: decode(row, 2)?,
+            environment_id: decode(row, 3)?,
             source_revision_id: decode(row, 4)?,
-            attempt: decode(row, 5)?,
-            retry_of_build_run_id: decode(row, 6)?,
-            operation_id: decode(row, 7)?,
-            status: decode(row, 8)?,
-            source_content_digest: decode(row, 9)?,
-            input_artifact: decode(row, 10)?,
-            node_id: decode(row, 11)?,
-            command_id: decode(row, 12)?,
-            cleanup_command_id: decode(row, 13)?,
-            build_request_digest: decode(row, 14)?,
-            box_build_output: decode(row, 15)?,
-            output: decode(row, 16)?,
-            publication_target: decode(row, 17)?,
-            published_artifact: decode(row, 18)?,
-            evidence_required: decode(row, 19)?,
-            evidence: decode(row, 20)?,
-            failure: decode(row, 21)?,
-            aggregate_version: decode(row, 22)?,
-            requested_at: decode(row, 23)?,
-            updated_at: decode(row, 24)?,
-            started_at: decode(row, 25)?,
-            cancellation_requested_at: decode(row, 26)?,
-            finished_at: decode(row, 27)?,
+            asset_id: decode(row, 5)?,
+            asset_release_id: decode(row, 6)?,
+            id: decode(row, 7)?,
+            attempt: decode(row, 8)?,
+            retry_of_build_run_id: decode(row, 9)?,
+            operation_id: decode(row, 10)?,
+            status: decode(row, 11)?,
+            source_content_digest: decode(row, 12)?,
+            input_artifact: decode(row, 13)?,
+            node_id: decode(row, 14)?,
+            command_id: decode(row, 15)?,
+            cleanup_command_id: decode(row, 16)?,
+            build_request_digest: decode(row, 17)?,
+            box_build_output: decode(row, 18)?,
+            output: decode(row, 19)?,
+            publication_target: decode(row, 20)?,
+            published_artifact: decode(row, 21)?,
+            evidence_required: decode(row, 22)?,
+            evidence: decode(row, 23)?,
+            failure: decode(row, 24)?,
+            aggregate_version: decode(row, 25)?,
+            requested_at: decode(row, 26)?,
+            updated_at: decode(row, 27)?,
+            started_at: decode(row, 28)?,
+            cancellation_requested_at: decode(row, 29)?,
+            finished_at: decode(row, 30)?,
         })
     }
 }
@@ -577,12 +798,38 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         decode_json::<PublishedOciArtifact>(row.published_artifact, "published artifact")?;
     let evidence =
         decode_json::<BuildEvidence>(row.evidence, "supply-chain evidence")?.map(Box::new);
+    let subject = match (
+        row.subject_kind.as_str(),
+        row.project_id,
+        row.environment_id,
+        row.source_revision_id,
+        row.asset_id,
+        row.asset_release_id,
+    ) {
+        (
+            "external_source_revision",
+            Some(project_id),
+            Some(environment_id),
+            Some(source_revision_id),
+            None,
+            None,
+        ) => BuildSubject::external_source_revision(
+            ProjectId::from_uuid(project_id),
+            EnvironmentId::from_uuid(environment_id),
+            SourceRevisionId::from_uuid(source_revision_id),
+        ),
+        ("asset_release", None, None, None, Some(asset_id), Some(asset_release_id)) => {
+            BuildSubject::asset_release(
+                AssetId::from_uuid(asset_id),
+                AssetReleaseId::from_uuid(asset_release_id),
+            )
+        }
+        _ => return Err(corrupt("stored build subject shape is invalid")),
+    };
     BuildRun::restore(BuildRun {
         organization_id: OrganizationId::from_uuid(row.organization_id),
-        project_id: ProjectId::from_uuid(row.project_id),
-        environment_id: EnvironmentId::from_uuid(row.environment_id),
+        subject,
         id: BuildRunId::from_uuid(row.id),
-        source_revision_id: SourceRevisionId::from_uuid(row.source_revision_id),
         attempt: row.attempt,
         retry_of_build_run_id: row.retry_of_build_run_id.map(BuildRunId::from_uuid),
         operation_id: OperationId::from_uuid(row.operation_id),

@@ -9,17 +9,21 @@ pub use events::{
     AssetArchived, AssetCreated, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseYanked,
 };
 pub use repositories::{
-    AssetReleaseWrite, AssetReleaseWriteReference, AssetWrite, AssetWriteReference,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
+    AcquireAssetGitWriteLease, AssetGitRepositoryControlError, AssetGitWriteJournal,
+    AssetGitWriteLease, AssetGitWriteOperation, AssetGitWriteRecovery, AssetReleaseWrite,
+    AssetReleaseWriteReference, AssetWrite, AssetWriteReference, ClaimAssetGitWriteRecovery,
+    CompleteAssetGitWriteLease, CreateAssetReleaseWrite, CreateAssetWrite,
+    IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
     McpServiceProfileBinding, TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 pub use services::{
-    validate_asset_repository_provision, AssetGitRepository, AssetGitRepositoryError,
+    validate_asset_repository_mutation, AssetGitRepository, AssetGitRepositoryError,
     AssetGitRepositoryWrite, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
 pub use value_objects::{
-    AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseVersion, McpServiceProfile,
-    McpServiceProfileSpec, SKILL_BUNDLE_MEDIA_TYPE,
+    AssetGitBackup, AssetGitBuildInput, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
+    AssetManifestAdmission, AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseProvenance,
+    AssetReleaseVersion, McpServiceProfile, McpServiceProfileSpec, SKILL_BUNDLE_MEDIA_TYPE,
 };
 
 #[cfg(test)]

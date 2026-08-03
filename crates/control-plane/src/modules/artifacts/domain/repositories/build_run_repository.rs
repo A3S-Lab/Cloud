@@ -1,7 +1,7 @@
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
-    RepositoryError, SourceRevisionId,
+    AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId,
+    ProjectId, RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -18,6 +18,12 @@ pub struct RequestBuildRetryBundle {
     pub retry: BuildRun,
     pub expected_previous_version: u64,
     pub idempotency: IdempotencyRequest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BuildRunFinalization {
+    Completed(BuildRun),
+    Rejected(BuildRun),
 }
 
 #[async_trait]
@@ -43,6 +49,12 @@ pub trait IBuildRunRepository: Send + Sync {
         &self,
         organization_id: OrganizationId,
         source_revision_id: SourceRevisionId,
+    ) -> Result<Option<BuildRun>, RepositoryError>;
+
+    async fn find_by_asset_release(
+        &self,
+        organization_id: OrganizationId,
+        asset_release_id: AssetReleaseId,
     ) -> Result<Option<BuildRun>, RepositoryError>;
 
     async fn list(
@@ -78,6 +90,18 @@ pub trait IBuildRunRepository: Send + Sync {
         build_run: BuildRun,
         expected_version: u64,
     ) -> Result<BuildRun, RepositoryError>;
+
+    async fn finalize(
+        &self,
+        build_run: BuildRun,
+        expected_version: u64,
+    ) -> Result<BuildRunFinalization, RepositoryError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BuildRunFinalizationMode {
+    Transition,
+    Replay,
 }
 
 pub(crate) fn validate_build_run_retry(
@@ -177,14 +201,35 @@ pub(crate) fn validate_build_run_transition(
             matches_transition(existing, next, |candidate| {
                 candidate.retry_cleanup(command_id, at)
             })
-        })
-        || matches_transition(existing, next, |candidate| candidate.complete(at));
+        });
 
     if valid {
         Ok(())
     } else {
         Err(transition_conflict())
     }
+}
+
+pub(crate) fn validate_build_run_finalization(
+    existing: &BuildRun,
+    next: &BuildRun,
+    expected_version: u64,
+) -> Result<BuildRunFinalizationMode, RepositoryError> {
+    if existing == next && existing.status.is_terminal() {
+        return Ok(BuildRunFinalizationMode::Replay);
+    }
+    if !next.status.is_terminal()
+        || existing.aggregate_version != expected_version
+        || expected_version
+            .checked_add(1)
+            .is_none_or(|version| next.aggregate_version != version)
+        || !matches_transition(existing, next, |candidate| {
+            candidate.complete(next.updated_at)
+        })
+    {
+        return Err(transition_conflict());
+    }
+    Ok(BuildRunFinalizationMode::Transition)
 }
 
 fn matches_transition(

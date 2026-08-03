@@ -119,10 +119,10 @@ fn project_runtime_spec_with_digest(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDIA_TYPE;
+    use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
     use crate::modules::assets::domain::{
-        Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion,
-        McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec,
+        Asset, AssetKind, AssetRelease, AssetReleaseVersion, McpServiceProfile,
+        McpServiceProfileBinding, McpServiceProfileSpec,
     };
     use crate::modules::shared_kernel::domain::{
         canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, OrganizationId,
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn projects_an_opaque_semantics_profile_without_product_fields() {
-        let artifact_digest = format!("sha256:{}", "c".repeat(64));
+        let artifact_digest = format!("sha256:{}", "e".repeat(64));
         let created_at = canonical_timestamp(Utc::now());
         let organization_id = OrganizationId::new();
         let asset = Asset::create(
@@ -234,23 +234,15 @@ mod tests {
             &asset,
             AssetReleaseId::new(),
             AssetReleaseVersion::parse("1.0.0").expect("release version"),
-            GitCommitSha::parse("b".repeat(40)).expect("commit"),
-            Sha256Digest::parse(format!("sha256:{}", "d".repeat(64))).expect("manifest digest"),
+            GitCommitSha::parse("a".repeat(40)).expect("commit"),
+            Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("manifest digest"),
             created_at,
         )
         .expect("release");
+        let build = succeeded_hosted_build(organization_id, asset.id, release.id, created_at);
         release
-            .publish(
-                &asset,
-                AssetReleaseArtifact::oci_service(
-                    Sha256Digest::parse(&artifact_digest).expect("artifact digest"),
-                    OCI_IMAGE_MANIFEST_MEDIA_TYPE,
-                    4_096,
-                )
-                .expect("artifact"),
-                created_at + Duration::seconds(1),
-            )
-            .expect("publish");
+            .publish_from_build(&asset, &build)
+            .expect("publish from hosted BuildRun");
         let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
             protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
             endpoint_path: "/mcp".into(),

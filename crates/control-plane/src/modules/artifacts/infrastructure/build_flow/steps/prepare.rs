@@ -1,7 +1,9 @@
 use super::super::types::{BuildFlowInput, PrepareStepOutput, PreparedBuild};
 use super::super::{flow_error, BuildFlowRuntime};
 use super::common::bounded_reason;
-use crate::modules::artifacts::domain::{BuildInputPreparationError, BuildRunStatus};
+use crate::modules::artifacts::domain::{
+    BuildInputPreparationError, BuildRunStatus, BuildSourceResolutionError,
+};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use chrono::Utc;
 
@@ -32,34 +34,24 @@ pub(super) async fn prepare(
             reason: "build operation ownership validation failed".into(),
         });
     }
-    let revision = match runtime
-        .sources
-        .find(build.organization_id, build.source_revision_id)
-        .await
-    {
-        Ok(revision) => revision,
-        Err(RepositoryError::NotFound) => {
-            return Ok(PrepareStepOutput::Failed {
-                reason: "build source revision is unavailable".into(),
-            })
-        }
-        Err(error) => return Err(flow_error("could not load build source revision", error)),
-    };
-    if revision.organization_id != build.organization_id
-        || revision.project_id != build.project_id
-        || revision.environment_id != build.environment_id
-        || revision.id != build.source_revision_id
-    {
-        return Ok(PrepareStepOutput::Failed {
-            reason: "build source revision does not match persisted build ownership".into(),
-        });
-    }
     let deadline = build
         .requested_at
         .checked_add_signed(runtime.config.convergence_timeout)
         .ok_or_else(|| {
             a3s_flow::FlowError::Runtime("build preparation deadline overflowed".into())
         })?;
+    let source = match runtime.sources.resolve(&build).await {
+        Ok(source) => source,
+        Err(
+            error @ (BuildSourceResolutionError::Unavailable(_)
+            | BuildSourceResolutionError::Storage(_)),
+        ) if Utc::now() < deadline => return Err(flow_error("build source is not ready", error)),
+        Err(error) => {
+            return Ok(PrepareStepOutput::Failed {
+                reason: bounded_reason(error.to_string()),
+            })
+        }
+    };
     if build.cancellation_requested_at.is_some() {
         return Ok(PrepareStepOutput::CancellationRequested);
     }
@@ -83,7 +75,7 @@ pub(super) async fn prepare(
             .map_err(|error| flow_error("could not persist build preparation", error))?;
     }
     if build.status == BuildRunStatus::Preparing {
-        let prepared = match runtime.inputs.prepare(&build, &revision).await {
+        let prepared = match runtime.inputs.prepare(&build, &source).await {
             Ok(prepared) => prepared,
             Err(
                 error @ (BuildInputPreparationError::Unavailable(_)
@@ -131,14 +123,14 @@ pub(super) async fn prepare(
         prepared: Box::new(PreparedBuild {
             organization_id: build.organization_id,
             build_run_id: build.id,
-            source_revision_id: build.source_revision_id,
+            subject: build.subject,
             source_content_digest: build.source_content_digest.clone().ok_or_else(|| {
                 a3s_flow::FlowError::Runtime("prepared build omitted its source digest".into())
             })?,
             input_artifact: build.input_artifact.clone().ok_or_else(|| {
                 a3s_flow::FlowError::Runtime("prepared build omitted its input Artifact".into())
             })?,
-            recipe: revision.recipe,
+            recipe: source.recipe,
             convergence_deadline: deadline,
         }),
     })

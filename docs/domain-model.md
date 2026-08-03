@@ -367,9 +367,12 @@ Supporting immutable records:
 The context exposes one desired-state mutation instead of separate Cloud
 install, upgrade, enable, disable, and uninstall engines. A changed exact
 catalog selection or surface set increments the assignment generation;
-`enabled`, `disabled`, or `absent` intent lets reconciliation choose the
-matching canonical A3S Use manager operation. Package dependencies are resolved
-and reference-counted by A3S Use and never become synthetic Cloud assignments.
+the imported A3S Use `PluginDesiredState` value `enabled`,
+`installed-disabled`, or `absent` lets reconciliation choose the matching
+canonical A3S Use manager operation. REST/CLI/Web lifecycle verbs map to the
+same `SetPluginAssignment` command, and retry maps to the shared Operation/Flow
+resume path. Package dependencies are resolved and reference-counted by A3S
+Use and never become synthetic Cloud assignments.
 
 The context delegates catalog/TUF validation and every package-generation side
 effect to the shared A3S Use Plugin Manager, orchestration to Flow and
@@ -550,15 +553,39 @@ contexts' tables.
   `{root}/{organization_id}/{asset_id}.git`.
 - The repository starts on `main`; releases always pin a commit SHA rather than
   a mutable branch.
-- Archiving prevents new releases but never deletes existing releases.
-- Asset ACL changes are read from a commit and validated before release.
+- Upload-pack requires tenant read authority, and receive-pack requires
+  `asset:write`. Backup and restore remain typed internal commands carrying
+  actor and request identity through the same mutation fence. Every mutation is
+  rejected after the Asset is archived; archiving never deletes the repository
+  or its published releases.
+- One PostgreSQL control row owns the repository quota, observed usage,
+  single-writer lease, committed-cleanup lease, audit commit, and latest backup
+  receipt. A3S ORM is the only relational access path.
+- Every ref mutation prepares one local checksummed journal named by the same
+  lease ID. Before PostgreSQL completion it restores the exact prior refs and
+  removes newly introduced objects; after completion it is cleanup evidence
+  only. A stale lease cannot be overwritten before this recovery settles.
+- Backups are immutable digest-verified Git bundles stored through the shared
+  object client. Restore validates the receipt, refs digest, quota, and journal
+  before replacing refs.
+- Asset ACL is read only from `.a3s/asset.acl` at an exact reachable commit,
+  parsed with `a3s-acl`, and admitted only when its closed kind matches the
+  Asset.
 
 ### Asset release
 
 - A published release is immutable.
 - `(asset_id, version)` is unique.
 - The release binds `commit_sha`, `manifest_digest`, and `artifact_digest`.
-- Agent and MCP releases require an OCI artifact and runtime contract.
+- Agent and MCP releases require an OCI artifact and runtime contract. Only a
+  successful hosted BuildRun may publish them, and the release permanently
+  stores that exact `build_run_id` plus the SHA-256 identity of its locally
+  verified provenance. The complete signed evidence remains authoritative on
+  the BuildRun.
+- Hosted BuildRun completion, release publication, provenance binding, and the
+  publication Outbox fact are one A3S ORM transaction. Exact finalization
+  replay can repair only the same binding; ordinary BuildRun saves and generic
+  Asset transitions cannot publish an Agent or MCP release.
 - Skill releases require a bundle artifact and cannot contain a workload spec.
 - A yanked release remains addressable by existing deployments but is hidden
   from new selection.
@@ -596,9 +623,11 @@ contexts' tables.
   version, channel, target, package and manifest digests, plus a canonical
   sorted surface selection. Mutable tags, an unverified catalog listing, a
   route alias, or display metadata cannot become apply authority.
-- Desired lifecycle is exactly `enabled`, `disabled`, or `absent`. An explicit
-  update creates the next positive assignment generation; the reconciler never
-  changes a desired release merely because a registry publishes a newer one.
+- Desired state uses the canonical A3S Use `PluginDesiredState` values exactly:
+  `enabled`, `installed-disabled`, or `absent`. Cloud defines no parallel enum.
+  An explicit update creates the next positive assignment generation; the
+  reconciler never changes a desired release merely because a registry
+  publishes a newer one.
 - Each nonterminal generation owns one idempotent
   `cloud.plugin-assignment@1` Operation. Reusing an idempotency key with changed
   registry, package, surface, scope, host, policy, or desired lifecycle is a
@@ -1042,11 +1071,16 @@ tenant-owned successful BuildRun, creates a digest-pinned revision, and reuses
 the organization, project, environment, source revision, and BuildRun; derived
 rollback and Secret-rotation revisions preserve the reference, while ordinary
 manual Workload revisions do not invent one. The Artifacts context owns a
-deterministic initial `BuildRun` per accepted source revision plus a linear
-sequence of deterministic retry attempts. Every retry has a fresh BuildRun and
-Operation ID, records its attempt and immediate parent BuildRun, and retains the
-exact source revision. Each aggregate binds tenant/environment ownership, the
-exact `cloud.build@5` operation, immutable input and Box request/output
+deterministic initial `BuildRun` per typed build subject plus a linear sequence
+of deterministic retry attempts. A subject is exactly one external source
+revision with Project and Environment identity or one hosted AssetRelease with
+Asset identity. Migration 063 preserves that closed union, its foreign keys,
+and per-subject attempt uniqueness through A3S ORM; the bounded reconciler
+locks pending candidates from both owning contexts and repairs a
+draft-to-operation crash gap. Every retry has a fresh BuildRun and Operation
+ID, records its attempt and immediate parent BuildRun, and retains the exact
+subject. Each aggregate binds tenant and subject ownership, the exact
+`cloud.build@5` operation, immutable input and Box request/output
 identities, assigned node and command identities, validated OCI output,
 publication target/result, verified build evidence, terminal outcome, and
 cleanup. Box cache receipts remain inside the bound output rather than becoming
@@ -1286,10 +1320,11 @@ Gateway revision.
 
 ### Plugin assignment convergence state (planned U0)
 
-`PluginAssignment` stores desired lifecycle rather than operation progress:
+`PluginAssignment` stores the canonical A3S Use desired state rather than
+operation progress:
 
 ```text
-enabled | disabled | absent
+enabled | installed-disabled | absent
 ```
 
 The user-visible Operation projection uses the common Operation lifecycle with
@@ -1329,7 +1364,9 @@ partially installed or optimistically active.
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
 | Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
-| Asset repository refs and objects | Git repository store |
+| Asset repository refs, objects, immutable repository identity, and same-lease rollback journal | Tenant/Asset-qualified local Git repository store |
+| Asset repository writer lease, quota, applied usage, audit commit, cleanup obligation, and latest backup receipt | One PostgreSQL `asset_git_repository_controls` row through A3S ORM |
+| Asset repository backup bytes | Shared immutable-object infrastructure through the typed Assets adapter |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
 | Artifact bytes | OCI registry or S3-compatible object store |
 | Agent conversation, execution, event-stream head, semantic event metadata, immutable bindings, approval decisions, checkpoint descriptors, and fork lineage | PostgreSQL Agents tables through A3S ORM |

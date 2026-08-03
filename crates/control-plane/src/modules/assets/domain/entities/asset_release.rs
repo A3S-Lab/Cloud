@@ -1,5 +1,6 @@
+use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus};
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetReleaseArtifact, AssetReleaseVersion, AssetState,
+    Asset, AssetKind, AssetReleaseArtifact, AssetReleaseProvenance, AssetReleaseVersion, AssetState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, GitCommitSha, OrganizationId, Sha256Digest,
@@ -44,6 +45,7 @@ pub struct AssetRelease {
     pub commit_sha: GitCommitSha,
     pub manifest_digest: Sha256Digest,
     pub artifact: Option<AssetReleaseArtifact>,
+    pub provenance: Option<AssetReleaseProvenance>,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -74,6 +76,7 @@ impl AssetRelease {
             commit_sha,
             manifest_digest,
             artifact: None,
+            provenance: None,
             aggregate_version: 1,
             created_at,
             updated_at: created_at,
@@ -84,17 +87,108 @@ impl AssetRelease {
         Ok(release)
     }
 
-    pub fn publish(
+    pub fn publish_skill(
         &mut self,
         asset: &Asset,
         artifact: AssetReleaseArtifact,
         published_at: DateTime<Utc>,
     ) -> Result<(), String> {
+        if asset.kind != AssetKind::Skill {
+            return Err(
+                "Agent and MCP releases must be published by their successful BuildRun".into(),
+            );
+        }
+        self.publish_with(asset, artifact, None, published_at)
+    }
+
+    pub fn publish_from_build(&mut self, asset: &Asset, build: &BuildRun) -> Result<(), String> {
+        if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp) {
+            return Err("only Agent and MCP releases use hosted BuildRun publication".into());
+        }
+        let (artifact, provenance, published_at) = self.build_publication(build)?;
+        self.publish_with(asset, artifact, Some(provenance), published_at)
+    }
+
+    pub fn validate_build_publication(
+        &self,
+        asset: &Asset,
+        build: &BuildRun,
+    ) -> Result<(), String> {
+        self.validate_for(asset)?;
+        if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp)
+            || !matches!(
+                self.state,
+                AssetReleaseState::Published | AssetReleaseState::Yanked
+            )
+        {
+            return Err("Asset release is not a hosted build publication".into());
+        }
+        let (artifact, provenance, published_at) = self.build_publication(build)?;
+        if self.artifact.as_ref() != Some(&artifact)
+            || self.provenance.as_ref() != Some(&provenance)
+            || self.published_at != Some(published_at)
+        {
+            return Err("Asset release changed its immutable BuildRun publication".into());
+        }
+        Ok(())
+    }
+
+    fn build_publication(
+        &self,
+        build: &BuildRun,
+    ) -> Result<(AssetReleaseArtifact, AssetReleaseProvenance, DateTime<Utc>), String> {
+        if build.organization_id != self.organization_id
+            || build.asset_id() != Some(self.asset_id)
+            || build.asset_release_id() != Some(self.id)
+            || build.status != BuildRunStatus::Succeeded
+        {
+            return Err("successful BuildRun does not own this Asset release".into());
+        }
+        let evidence = build
+            .evidence
+            .as_deref()
+            .ok_or_else(|| "successful hosted BuildRun has no verified evidence".to_owned())?;
+        if evidence.commit_sha != self.commit_sha.as_str()
+            || evidence.manifest_digest.as_deref() != Some(self.manifest_digest.as_str())
+        {
+            return Err("hosted BuildRun evidence changed the release source identity".into());
+        }
+        let published = build
+            .published_artifact
+            .as_ref()
+            .ok_or_else(|| "successful hosted BuildRun has no published artifact".to_owned())?;
+        let artifact = AssetReleaseArtifact::oci_service(
+            Sha256Digest::parse(&published.digest)?,
+            published.media_type.clone(),
+            published.size_bytes,
+        )?;
+        let provenance = AssetReleaseProvenance::new(
+            build.id,
+            Sha256Digest::parse(&evidence.provenance_digest)?,
+        )?;
+        let published_at = build
+            .finished_at
+            .ok_or_else(|| "successful hosted BuildRun has no finish time".to_owned())?;
+        Ok((artifact, provenance, published_at))
+    }
+
+    fn publish_with(
+        &mut self,
+        asset: &Asset,
+        artifact: AssetReleaseArtifact,
+        provenance: Option<AssetReleaseProvenance>,
+        published_at: DateTime<Utc>,
+    ) -> Result<(), String> {
         self.validate_for(asset)?;
         artifact.validate_for(asset.kind)?;
+        if let Some(provenance) = &provenance {
+            provenance.validate()?;
+        }
         match self.state {
             AssetReleaseState::Draft => {}
-            AssetReleaseState::Published if self.artifact.as_ref() == Some(&artifact) => {
+            AssetReleaseState::Published
+                if self.artifact.as_ref() == Some(&artifact) && self.provenance == provenance =>
+            {
                 return Ok(())
             }
             AssetReleaseState::Published => {
@@ -115,6 +209,7 @@ impl AssetRelease {
             .ok_or_else(|| "Asset release aggregate version overflowed".to_owned())?;
         self.state = AssetReleaseState::Published;
         self.artifact = Some(artifact);
+        self.provenance = provenance;
         self.updated_at = published_at;
         self.published_at = Some(published_at);
         Ok(())
@@ -170,17 +265,31 @@ impl AssetRelease {
         if let Some(artifact) = &self.artifact {
             artifact.validate()?;
         }
+        if let Some(provenance) = &self.provenance {
+            provenance.validate()?;
+        }
+        let publication_binding_is_valid = self.artifact.as_ref().is_none_or(|artifact| {
+            matches!(
+                artifact.kind(),
+                crate::modules::assets::domain::AssetReleaseArtifactKind::OciService
+            ) == self.provenance.is_some()
+        });
         let state_is_valid = match self.state {
             AssetReleaseState::Draft => {
-                self.artifact.is_none() && self.published_at.is_none() && self.yanked_at.is_none()
+                self.artifact.is_none()
+                    && self.provenance.is_none()
+                    && self.published_at.is_none()
+                    && self.yanked_at.is_none()
             }
             AssetReleaseState::Published => {
                 self.artifact.is_some()
+                    && publication_binding_is_valid
                     && self.published_at == Some(self.updated_at)
                     && self.yanked_at.is_none()
             }
             AssetReleaseState::Yanked => {
                 self.artifact.is_some()
+                    && publication_binding_is_valid
                     && self.published_at.is_some_and(|published_at| {
                         published_at >= self.created_at
                             && published_at <= self.updated_at

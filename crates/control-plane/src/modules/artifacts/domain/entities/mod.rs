@@ -1,14 +1,16 @@
 mod build_artifact;
 mod build_evidence;
 mod build_run;
+mod build_source;
+mod build_subject;
 mod oci_descriptor;
 mod oci_publication;
 
 pub use build_artifact::{BuildArtifact, ValidatedOciBuildOutput};
 pub use build_evidence::{
     canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
-    BuildEvidenceSigningKey, BuildEvidenceVerificationState, DsseEnvelope, DsseSignature,
-    InTotoSubject, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
+    BuildEvidenceSigningKey, BuildEvidenceSubject, BuildEvidenceVerificationState, DsseEnvelope,
+    DsseSignature, InTotoSubject, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
     SlsaInternalParameters, SlsaProvenancePredicate, SlsaProvenanceStatement,
     SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo,
     SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, BUILD_EVIDENCE_SCHEMA,
@@ -16,6 +18,8 @@ pub use build_evidence::{
     SPDX_VERSION,
 };
 pub use build_run::{BuildRun, BuildRunStatus};
+pub use build_source::{BuildSource, BuildSourceLocation};
+pub use build_subject::BuildSubject;
 pub use oci_descriptor::{
     OciDescriptor, OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };

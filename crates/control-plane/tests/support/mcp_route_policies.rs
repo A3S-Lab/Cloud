@@ -1,13 +1,11 @@
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayManagementProtocol, McpGrantProjection, McpLimitsProjection,
-    NodeGatewayAck, MCP_PROTOCOL_VERSION,
+    NodeCommandPayload, NodeGatewayAck, MCP_PROTOCOL_VERSION,
 };
-use a3s_cloud_control_plane::modules::artifacts::domain::OCI_IMAGE_MANIFEST_MEDIA_TYPE;
 use a3s_cloud_control_plane::modules::assets::{
-    Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseDrafted,
-    AssetReleasePublished, AssetReleaseVersion, CreateAssetReleaseWrite, CreateAssetWrite,
-    IAssetRepository, IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
-    McpServiceProfileSpec, PostgresAssetRepository, TransitionAssetReleaseWrite,
+    Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
+    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
+    McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
 use a3s_cloud_control_plane::modules::edge::{
@@ -23,6 +21,7 @@ use a3s_cloud_control_plane::modules::edge::{
     ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
     StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
@@ -44,6 +43,7 @@ use a3s_cloud_control_plane::modules::workloads::{
     ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision,
 };
 use a3s_orm::{select_from, sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_runtime::contract::RuntimeApplyRequest;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
 use serde_json::json;
@@ -195,25 +195,12 @@ pub async fn exercise(
             )?,
         })
         .await?;
-    let mut published = release.clone();
-    published.publish(
-        &asset,
-        AssetReleaseArtifact::oci_service(digest('c')?, OCI_IMAGE_MANIFEST_MEDIA_TYPE, 4_096)?,
-        release.updated_at + Duration::milliseconds(1),
-    )?;
-    assets
-        .transition_release(TransitionAssetReleaseWrite {
-            release: published.clone(),
-            expected_aggregate_version: release.aggregate_version,
-            event: AssetReleasePublished::envelope(&published, Uuid::now_v7())?,
-            idempotency: idempotency(
-                organization_id,
-                format!("assets/{}/releases", asset.id),
-                "postgres-mcp-policy-publication",
-                b"mcp-policy-publication",
-            )?,
-        })
-        .await?;
+    let published =
+        crate::build_runs_support::publish_hosted_release(executor, &asset, &release).await?;
+    let published_artifact = published
+        .artifact
+        .as_ref()
+        .ok_or("published MCP release omitted its OCI artifact")?;
     let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
         protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
         endpoint_path: "/mcp".into(),
@@ -255,10 +242,10 @@ pub async fn exercise(
             artifact: OciArtifact {
                 uri: format!(
                     "oci://registry.integration.example/mcp/policy@{}",
-                    digest('c')?
+                    published_artifact.digest()
                 ),
-                digest: digest('c')?.to_string(),
-                media_type: OCI_IMAGE_MANIFEST_MEDIA_TYPE.into(),
+                digest: published_artifact.digest().to_string(),
+                media_type: published_artifact.media_type().into(),
             },
             process: ServiceProcess {
                 command: vec!["/app/mcp-server".into()],
@@ -381,11 +368,33 @@ pub async fn exercise(
             workload_created_at + Duration::milliseconds(2),
         )
         .await?;
+    let command_id = NodeCommandId::from_uuid(deployment.id.as_uuid());
+    let command_deadline = scheduled.updated_at + Duration::minutes(5);
+    let command = PostgresNodeRepository::new(executor.clone())
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: command_id,
+            node_id: scope.node_id,
+            aggregate_id: deployment.workload_id.as_uuid(),
+            payload: NodeCommandPayload::RuntimeApply {
+                request: Box::new(RuntimeApplyRequest {
+                    schema: RuntimeApplyRequest::SCHEMA.into(),
+                    request_id: format!("deployment:{}:apply", deployment.id),
+                    deadline_at_ms: Some(u64::try_from(command_deadline.timestamp_millis())?),
+                    spec: runtime_spec,
+                }),
+                resource_claim: None,
+            },
+            issued_at: scheduled.updated_at,
+            not_after: command_deadline,
+            correlation_id: deployment.operation_id.as_uuid(),
+        })
+        .await?;
+    assert!(!command.replayed);
     let applying = workloads
         .mark_dispatched(
             deployment.id,
             scheduled.aggregate_version,
-            NodeCommandId::new(),
+            command.value.id,
             workload_created_at + Duration::milliseconds(3),
         )
         .await?;

@@ -1,17 +1,17 @@
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseArtifactKind,
-    AssetReleaseState, AssetReleaseVersion, AssetState,
+    AssetReleaseProvenance, AssetReleaseState, AssetReleaseVersion, AssetState,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, GitCommitSha, OrganizationId, RepositoryError, ResourceName,
-    Sha256Digest,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
+    ResourceName, Sha256Digest,
 };
 use a3s_orm::{DecodeError, FromRow, FromValue, Row};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 pub(super) const SELECT_ASSETS: &str = "select a.id, a.organization_id, a.name, a.kind, a.state, a.aggregate_version, a.created_at, a.updated_at, a.archived_at from assets a";
-pub(super) const SELECT_RELEASES: &str = "select r.id, r.organization_id, r.asset_id, r.version, r.state, r.commit_sha, r.manifest_digest, r.artifact_kind, r.artifact_digest, r.artifact_media_type, r.artifact_size_bytes, r.aggregate_version, r.created_at, r.updated_at, r.published_at, r.yanked_at from asset_releases r";
+pub(super) const SELECT_RELEASES: &str = "select r.id, r.organization_id, r.asset_id, r.version, r.state, r.commit_sha, r.manifest_digest, r.artifact_kind, r.artifact_digest, r.artifact_media_type, r.artifact_size_bytes, r.build_run_id, r.provenance_digest, r.aggregate_version, r.created_at, r.updated_at, r.published_at, r.yanked_at from asset_releases r";
 
 pub(super) struct AssetRow {
     id: Uuid,
@@ -37,6 +37,8 @@ pub(super) struct AssetReleaseRow {
     artifact_digest: Option<String>,
     artifact_media_type: Option<String>,
     artifact_size_bytes: Option<u64>,
+    build_run_id: Option<Uuid>,
+    provenance_digest: Option<String>,
     aggregate_version: u64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -74,11 +76,13 @@ impl FromRow for AssetReleaseRow {
             artifact_digest: decode(row, 8)?,
             artifact_media_type: decode(row, 9)?,
             artifact_size_bytes: decode(row, 10)?,
-            aggregate_version: decode(row, 11)?,
-            created_at: decode(row, 12)?,
-            updated_at: decode(row, 13)?,
-            published_at: decode(row, 14)?,
-            yanked_at: decode(row, 15)?,
+            build_run_id: decode(row, 11)?,
+            provenance_digest: decode(row, 12)?,
+            aggregate_version: decode(row, 13)?,
+            created_at: decode(row, 14)?,
+            updated_at: decode(row, 15)?,
+            published_at: decode(row, 16)?,
+            yanked_at: decode(row, 17)?,
         })
     }
 }
@@ -109,6 +113,7 @@ impl AssetReleaseRow {
             self.artifact_media_type,
             self.artifact_size_bytes,
         )?;
+        let provenance = restore_provenance(self.build_run_id, self.provenance_digest)?;
         let release = AssetRelease {
             id: AssetReleaseId::from_uuid(self.id),
             organization_id: OrganizationId::from_uuid(self.organization_id),
@@ -121,6 +126,7 @@ impl AssetReleaseRow {
             manifest_digest: Sha256Digest::parse(self.manifest_digest)
                 .map_err(stored("Asset release manifest digest"))?,
             artifact,
+            provenance,
             aggregate_version: self.aggregate_version,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -131,6 +137,25 @@ impl AssetReleaseRow {
             .validate()
             .map_err(stored("Asset release aggregate"))?;
         Ok(release)
+    }
+}
+
+fn restore_provenance(
+    build_run_id: Option<Uuid>,
+    provenance_digest: Option<String>,
+) -> Result<Option<AssetReleaseProvenance>, RepositoryError> {
+    match (build_run_id, provenance_digest) {
+        (None, None) => Ok(None),
+        (Some(build_run_id), Some(provenance_digest)) => AssetReleaseProvenance::new(
+            BuildRunId::from_uuid(build_run_id),
+            Sha256Digest::parse(provenance_digest)
+                .map_err(stored("Asset release provenance digest"))?,
+        )
+        .map(Some)
+        .map_err(stored("Asset release provenance")),
+        _ => Err(RepositoryError::Storage(
+            "stored Asset release provenance is incomplete".into(),
+        )),
     }
 }
 

@@ -1,3 +1,5 @@
+mod git_controls;
+mod hosted_publications;
 mod mcp_profiles;
 mod queries;
 mod rows;
@@ -7,15 +9,21 @@ mod writes;
 mod typed_orm_tests;
 
 use crate::modules::assets::domain::{
-    Asset, AssetRelease, AssetReleaseWrite, AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite,
-    IAssetRepository, IMcpServiceProfileRepository, McpServiceProfileBinding,
-    TransitionAssetReleaseWrite, TransitionAssetWrite,
+    AcquireAssetGitWriteLease, Asset, AssetGitRepositoryControlError, AssetGitWriteJournal,
+    AssetGitWriteLease, AssetGitWriteRecovery, AssetRelease, AssetReleaseWrite, AssetWrite,
+    ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease, CreateAssetReleaseWrite,
+    CreateAssetWrite, IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
+    McpServiceProfileBinding, TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
+
+pub(crate) use hosted_publications::{
+    apply_hosted_release, plan_hosted_release, verify_hosted_release_unpublished, HostedReleasePlan,
+};
 
 #[derive(Clone)]
 pub struct PostgresAssetRepository {
@@ -85,6 +93,44 @@ impl IAssetRepository for PostgresAssetRepository {
         asset_id: AssetId,
     ) -> Result<Vec<AssetRelease>, RepositoryError> {
         queries::list_releases(&self.executor, organization_id, asset_id).await
+    }
+}
+
+#[async_trait]
+impl IAssetGitRepositoryControl for PostgresAssetRepository {
+    async fn claim_write_recovery(
+        &self,
+        request: ClaimAssetGitWriteRecovery,
+    ) -> Result<Option<AssetGitWriteRecovery>, AssetGitRepositoryControlError> {
+        git_controls::claim_write_recovery(&self.executor, request).await
+    }
+
+    async fn acquire_write(
+        &self,
+        request: AcquireAssetGitWriteLease,
+    ) -> Result<AssetGitWriteLease, AssetGitRepositoryControlError> {
+        git_controls::acquire_write(&self.executor, request).await
+    }
+
+    async fn complete_write(
+        &self,
+        completion: CompleteAssetGitWriteLease,
+    ) -> Result<(), AssetGitRepositoryControlError> {
+        git_controls::complete_write(&self.executor, completion).await
+    }
+
+    async fn abandon_write(
+        &self,
+        lease: &AssetGitWriteLease,
+    ) -> Result<(), AssetGitRepositoryControlError> {
+        git_controls::abandon_write(&self.executor, lease).await
+    }
+
+    async fn settle_write(
+        &self,
+        journal: &AssetGitWriteJournal,
+    ) -> Result<(), AssetGitRepositoryControlError> {
+        git_controls::settle_write(&self.executor, journal).await
     }
 }
 

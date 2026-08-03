@@ -176,7 +176,7 @@ pub(super) async fn create_release(
                 let inserted = execute(
                     transaction,
                     sql_query::<()>(
-                        "insert into asset_releases (organization_id, asset_id, id, version, state, commit_sha, manifest_digest, artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes, aggregate_version, created_at, updated_at, published_at, yanked_at) values (",
+                        "insert into asset_releases (organization_id, asset_id, id, version, state, commit_sha, manifest_digest, artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes, build_run_id, provenance_digest, aggregate_version, created_at, updated_at, published_at, yanked_at) values (",
                     )
                     .bind(bundle.release.organization_id.as_uuid())
                     .append(", ")
@@ -191,7 +191,7 @@ pub(super) async fn create_release(
                     .bind(bundle.release.commit_sha.as_str())
                     .append(", ")
                     .bind(bundle.release.manifest_digest.as_str())
-                    .append(", null, null, null, null, ")
+                    .append(", null, null, null, null, null, null, ")
                     .bind(bundle.release.aggregate_version)
                     .append(", ")
                     .bind(bundle.release.created_at)
@@ -263,52 +263,12 @@ pub(super) async fn transition_release(
                 bundle
                     .validate_against(&existing, &asset)
                     .map_err(invalid_transition)?;
-                let (artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes) =
-                    bundle
-                        .release
-                        .artifact
-                        .as_ref()
-                        .map_or((None, None, None, None), |artifact| {
-                            (
-                                Some(artifact.kind().as_str()),
-                                Some(artifact.digest().as_str()),
-                                Some(artifact.media_type()),
-                                Some(artifact.size_bytes()),
-                            )
-                        });
-                require_one_row(
-                    "Asset release transition",
-                    execute(
-                        transaction,
-                        sql_query::<()>("update asset_releases set state = ")
-                            .bind(bundle.release.state.as_str())
-                            .append(", artifact_kind = ")
-                            .bind(artifact_kind)
-                            .append(", artifact_digest = ")
-                            .bind(artifact_digest)
-                            .append(", artifact_media_type = ")
-                            .bind(artifact_media_type)
-                            .append(", artifact_size_bytes = ")
-                            .bind(artifact_size_bytes)
-                            .append(", aggregate_version = ")
-                            .bind(bundle.release.aggregate_version)
-                            .append(", updated_at = ")
-                            .bind(bundle.release.updated_at)
-                            .append(", published_at = ")
-                            .bind(bundle.release.published_at)
-                            .append(", yanked_at = ")
-                            .bind(bundle.release.yanked_at)
-                            .append(" where organization_id = ")
-                            .bind(bundle.release.organization_id.as_uuid())
-                            .append(" and asset_id = ")
-                            .bind(bundle.release.asset_id.as_uuid())
-                            .append(" and id = ")
-                            .bind(bundle.release.id.as_uuid())
-                            .append(" and aggregate_version = ")
-                            .bind(bundle.expected_aggregate_version),
-                    )
-                    .await?,
-                )?;
+                persist_release_transition(
+                    transaction,
+                    &bundle.release,
+                    bundle.expected_aggregate_version,
+                )
+                .await?;
                 store_outbox(transaction, &bundle.event).await?;
                 let reference = AssetReleaseWriteReference {
                     asset_id: bundle.release.asset_id,
@@ -324,6 +284,72 @@ pub(super) async fn transition_release(
         })
         .await
         .map_err(transaction_error)
+}
+
+pub(super) async fn persist_release_transition(
+    transaction: &PostgresTransaction,
+    release: &crate::modules::assets::domain::AssetRelease,
+    expected_aggregate_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    let (artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes) = release
+        .artifact
+        .as_ref()
+        .map_or((None, None, None, None), |artifact| {
+            (
+                Some(artifact.kind().as_str()),
+                Some(artifact.digest().as_str()),
+                Some(artifact.media_type()),
+                Some(artifact.size_bytes()),
+            )
+        });
+    let (build_run_id, provenance_digest) =
+        release
+            .provenance
+            .as_ref()
+            .map_or((None, None), |provenance| {
+                (
+                    Some(provenance.build_run_id().as_uuid()),
+                    Some(provenance.provenance_digest().as_str()),
+                )
+            });
+    require_one_row(
+        "Asset release transition",
+        execute(
+            transaction,
+            sql_query::<()>("update asset_releases set state = ")
+                .bind(release.state.as_str())
+                .append(", artifact_kind = ")
+                .bind(artifact_kind)
+                .append(", artifact_digest = ")
+                .bind(artifact_digest)
+                .append(", artifact_media_type = ")
+                .bind(artifact_media_type)
+                .append(", artifact_size_bytes = ")
+                .bind(artifact_size_bytes)
+                .append(", build_run_id = ")
+                .bind(build_run_id)
+                .append(", provenance_digest = ")
+                .bind(provenance_digest)
+                .append(", aggregate_version = ")
+                .bind(release.aggregate_version)
+                .append(", updated_at = ")
+                .bind(release.updated_at)
+                .append(", published_at = ")
+                .bind(release.published_at)
+                .append(", yanked_at = ")
+                .bind(release.yanked_at)
+                .append(" where organization_id = ")
+                .bind(release.organization_id.as_uuid())
+                .append(" and asset_id = ")
+                .bind(release.asset_id.as_uuid())
+                .append(" and id = ")
+                .bind(release.id.as_uuid())
+                .append(" and aggregate_version = ")
+                .bind(expected_aggregate_version),
+        )
+        .await?,
+    )?;
+    Ok(())
 }
 
 async fn replay_asset(

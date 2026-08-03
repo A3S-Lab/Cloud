@@ -69,28 +69,125 @@ conformanceIt(
     const readOnlyTokenId = uuidValue(readOnlyTokenData.id, 'REST read-only token ID');
     expect(readOnlyTokenData.scopes).toEqual(['cloud:read']);
 
-    const initialized = await mcpRequest(
+    const discovered = await mcpRequest(
       environment,
       environment.adminToken,
       {
         jsonrpc: '2.0',
         id: 1,
-        method: 'initialize',
-        params: {
-          protocolVersion: MCP_PROTOCOL_VERSION,
-          capabilities: {},
-          clientInfo: { name: 'a3s-cloud-c0-gate', version: '1.0.0' },
-        },
+        method: 'server/discover',
       },
       200,
       credentials,
-      'MCP initialize'
+      'MCP server discovery'
     );
-    expect(initialized.body.jsonrpc).toBe('2.0');
-    expect(initialized.body.id).toBe(1);
-    const initializeResult = objectValue(initialized.body.result, 'MCP initialize result');
-    expect(initializeResult.protocolVersion).toBe(MCP_PROTOCOL_VERSION);
-    expect(initialized.response.headers.get('mcp-session-id')).toBeNull();
+    expect(discovered.body.jsonrpc).toBe('2.0');
+    expect(discovered.body.id).toBe(1);
+    const discoverResult = objectValue(discovered.body.result, 'MCP discovery result');
+    expect(discoverResult.resultType).toBe('complete');
+    expect(discoverResult.supportedVersions).toEqual([MCP_PROTOCOL_VERSION]);
+    expect(objectValue(discoverResult.capabilities, 'MCP discovery capabilities')).toEqual({
+      tools: {},
+    });
+    const discoverMetadata = objectValue(discoverResult._meta, 'MCP discovery metadata');
+    const serverInfo = objectValue(
+      discoverMetadata['io.modelcontextprotocol/serverInfo'],
+      'MCP server information'
+    );
+    expect(serverInfo.name).toBe('a3s-cloud');
+    expect(discoverResult.ttlMs).toBe(0);
+    expect(discoverResult.cacheScope).toBe('private');
+    expect(discovered.response.headers.get('mcp-session-id')).toBeNull();
+
+    const unsupportedVersion = await mcpRequest(
+      environment,
+      environment.adminToken,
+      { jsonrpc: '2.0', id: 101, method: 'tools/list' },
+      400,
+      credentials,
+      'unsupported modern MCP version',
+      { bodyProtocolVersion: '1900-01-01', headerProtocolVersion: '1900-01-01' }
+    );
+    const unsupportedError = objectValue(unsupportedVersion.body.error, 'unsupported-version error');
+    expect(unsupportedError.code).toBe(-32022);
+    expect(unsupportedError.data).toEqual({
+      supported: [MCP_PROTOCOL_VERSION],
+      requested: '1900-01-01',
+    });
+
+    const headerMismatch = await mcpRequest(
+      environment,
+      environment.adminToken,
+      { jsonrpc: '2.0', id: 102, method: 'tools/list' },
+      400,
+      credentials,
+      'MCP protocol header mismatch',
+      { headerProtocolVersion: '2025-06-18' }
+    );
+    expect(objectValue(headerMismatch.body.error, 'header-mismatch error').code).toBe(-32020);
+
+    const methodHeaderMismatch = await mcpRequest(
+      environment,
+      environment.adminToken,
+      { jsonrpc: '2.0', id: 104, method: 'tools/list' },
+      400,
+      credentials,
+      'MCP method header mismatch',
+      { methodHeader: 'tools/call' }
+    );
+    expect(objectValue(methodHeaderMismatch.body.error, 'method-mismatch error').code).toBe(-32020);
+
+    const nameHeaderMismatch = await mcpRequest(
+      environment,
+      environment.adminToken,
+      toolCall(105, 'a3s_cloud_projects_list', {}),
+      400,
+      credentials,
+      'MCP name header mismatch',
+      { nameHeader: 'a3s_cloud_projects_create' }
+    );
+    expect(objectValue(nameHeaderMismatch.body.error, 'name-mismatch error').code).toBe(-32020);
+
+    const missingClientCapabilities = await mcpRequest(
+      environment,
+      environment.adminToken,
+      { jsonrpc: '2.0', id: 106, method: 'tools/list' },
+      400,
+      credentials,
+      'missing MCP client capabilities',
+      { includeClientCapabilities: false }
+    );
+    expect(objectValue(missingClientCapabilities.body.error, 'missing-capabilities error').code).toBe(-32602);
+
+    const ignoredLegacySession = await mcpRequest(
+      environment,
+      environment.adminToken,
+      { jsonrpc: '2.0', id: 107, method: 'tools/list' },
+      200,
+      credentials,
+      'ignored legacy MCP session identifier',
+      { sessionIdHeader: 'legacy-session' }
+    );
+    expect(ignoredLegacySession.response.headers.get('mcp-session-id')).toBeNull();
+
+    const legacyInitialize = await mcpRequest(
+      environment,
+      environment.adminToken,
+      {
+        jsonrpc: '2.0',
+        id: 103,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2025-06-18',
+          capabilities: {},
+          clientInfo: { name: 'legacy-client', version: '1.0.0' },
+        },
+      },
+      404,
+      credentials,
+      'removed legacy MCP initialize'
+    );
+    expect(objectValue(legacyInitialize.body.error, 'legacy initialize error').code).toBe(-32601);
 
     const adminCatalog = await listTools(
       environment,
@@ -627,7 +724,7 @@ workload "mcp-stop" {
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v4',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v5',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
@@ -664,7 +761,10 @@ workload "mcp-stop" {
         revokedToken: requestId(revokedRequest.body, 'revoked-token request ID'),
       },
       checks: [
-        'stateless-protocol-initialization',
+        'modern-per-request-metadata-and-header-validation',
+        'server-discovery-and-version-negotiation',
+        'legacy-initialize-removal',
+        'legacy-session-identifier-ignored-without-state',
         'scope-derived-tool-catalogs',
         'hidden-mutation-denial-without-side-effect',
         'rest-to-mcp-idempotency-replay',

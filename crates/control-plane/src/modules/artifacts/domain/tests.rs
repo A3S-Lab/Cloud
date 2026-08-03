@@ -1,10 +1,11 @@
-use super::test_support::evidence_for;
+use super::test_support::{evidence_for, succeeded_hosted_build};
 use super::{
-    BuildArtifact, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
+    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
+    AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
+    SourceRevisionId,
 };
 use crate::modules::sources::domain::BuildPlatform;
 use a3s_cloud_contracts::{
@@ -416,7 +417,7 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
     assert_eq!(failed.retry_of_build_run_id, None);
     assert_eq!(retry.attempt, 2);
     assert_eq!(retry.retry_of_build_run_id, Some(failed.id));
-    assert_eq!(retry.source_revision_id, failed.source_revision_id);
+    assert_eq!(retry.source_revision_id(), failed.source_revision_id());
     assert_eq!(retry.status, BuildRunStatus::Queued);
     assert!(retry.evidence_required);
     assert!(retry.evidence.is_none());
@@ -424,19 +425,83 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
     assert_eq!(retry.id.as_uuid(), retry.operation_id.as_uuid());
     assert_eq!(
         retry.id,
-        BuildRun::id_for_attempt(failed.source_revision_id, 2).expect("attempt identity")
+        BuildRun::id_for_attempt(
+            failed
+                .source_revision_id()
+                .expect("external source revision"),
+            2,
+        )
+        .expect("attempt identity")
     );
     assert!(BuildRun::restore(retry).is_ok());
 
     assert!(BuildRun::retry(&failed, now + Duration::milliseconds(1)).is_err());
     let queued = BuildRun::reserve(
         failed.organization_id,
-        failed.project_id,
-        failed.environment_id,
+        failed.project_id().expect("external project"),
+        failed.environment_id().expect("external environment"),
         SourceRevisionId::new(),
         now,
     );
     assert!(BuildRun::retry(&queued, now + Duration::milliseconds(3)).is_err());
+}
+
+#[test]
+fn hosted_release_build_retry_preserves_the_exact_subject_lineage() {
+    let now = Utc::now();
+    let organization_id = OrganizationId::new();
+    let asset_id = AssetId::new();
+    let asset_release_id = AssetReleaseId::new();
+    let mut failed =
+        BuildRun::reserve_asset_release(organization_id, asset_id, asset_release_id, now);
+    failed
+        .record_failure(
+            "hosted checkout failed".into(),
+            now + Duration::milliseconds(1),
+        )
+        .expect("record hosted failure");
+    failed
+        .complete(now + Duration::milliseconds(2))
+        .expect("complete hosted failure");
+
+    let retry = BuildRun::retry(&failed, now + Duration::milliseconds(3))
+        .expect("retry hosted release build");
+    assert_eq!(retry.organization_id, organization_id);
+    assert_eq!(retry.asset_id(), Some(asset_id));
+    assert_eq!(retry.asset_release_id(), Some(asset_release_id));
+    assert_eq!(retry.project_id(), None);
+    assert_eq!(retry.environment_id(), None);
+    assert_eq!(retry.source_revision_id(), None);
+    assert_eq!(retry.retry_of_build_run_id, Some(failed.id));
+    assert_eq!(
+        retry.id,
+        BuildRun::id_for_subject_attempt(retry.subject, 2).expect("hosted attempt identity")
+    );
+    assert!(BuildRun::restore(retry).is_ok());
+}
+
+#[test]
+fn hosted_build_evidence_round_trips_its_closed_flattened_subject() {
+    let build = succeeded_hosted_build(
+        OrganizationId::new(),
+        AssetId::new(),
+        AssetReleaseId::new(),
+        Utc::now(),
+    );
+    let evidence = build.evidence.as_deref().expect("hosted build evidence");
+    let mut encoded = serde_json::to_value(evidence).expect("serialize hosted build evidence");
+    assert_eq!(
+        encoded["assetId"],
+        build.asset_id().expect("hosted Asset").to_string()
+    );
+    assert_eq!(
+        serde_json::from_value::<BuildEvidence>(encoded.clone())
+            .expect("deserialize hosted build evidence"),
+        *evidence
+    );
+
+    encoded["unexpectedSubjectIdentity"] = serde_json::json!("rejected");
+    assert!(serde_json::from_value::<BuildEvidence>(encoded).is_err());
 }
 
 fn artifact(fill: char) -> BuildArtifact {

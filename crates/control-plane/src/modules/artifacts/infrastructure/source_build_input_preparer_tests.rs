@@ -4,7 +4,8 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{
-    GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision, SourceProviderCredential,
+    ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision,
+    SourceProviderCredential,
 };
 use crate::modules::sources::{GithubInstallationTokenIssuer, InMemoryGithubConnectionRepository};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,6 +19,7 @@ async fn prepared_source_is_deterministic_and_replayed_without_credentials(
     tokio::fs::write(source_directory.join("Dockerfile"), "FROM scratch\n").await?;
     tokio::fs::write(source_directory.join("message.txt"), "deterministic\n").await?;
     let (build, revision) = build_and_revision()?;
+    let source = BuildSource::from_external_revision(&revision)?;
     let checkout = Arc::new(ReplayCheckout::new(
         checked_out_source(&revision, build.id.as_uuid(), source_directory),
         false,
@@ -28,8 +30,8 @@ async fn prepared_source_is_deterministic_and_replayed_without_credentials(
     )?);
     let preparer = preparer(root.path(), checkout.clone(), store)?;
 
-    let first = preparer.prepare(&build, &revision).await?;
-    let replay = preparer.prepare(&build, &revision).await?;
+    let first = preparer.prepare(&build, &source).await?;
+    let replay = preparer.prepare(&build, &source).await?;
     assert_eq!(first, replay);
     assert_eq!(checkout.calls(), 4);
     assert_eq!(checkout.credential_calls(), 0);
@@ -45,6 +47,7 @@ async fn package_time_checkout_change_is_rejected() -> Result<(), Box<dyn std::e
     tokio::fs::create_dir(&source_directory).await?;
     tokio::fs::write(source_directory.join("Dockerfile"), "FROM scratch\n").await?;
     let (build, revision) = build_and_revision()?;
+    let source = BuildSource::from_external_revision(&revision)?;
     let checkout = Arc::new(ReplayCheckout::new(
         checked_out_source(&revision, build.id.as_uuid(), source_directory),
         true,
@@ -56,7 +59,7 @@ async fn package_time_checkout_change_is_rejected() -> Result<(), Box<dyn std::e
     let preparer = preparer(root.path(), checkout.clone(), store)?;
 
     assert!(matches!(
-        preparer.prepare(&build, &revision).await,
+        preparer.prepare(&build, &source).await,
         Err(BuildInputPreparationError::Integrity(_))
     ));
     assert_eq!(checkout.calls(), 2);

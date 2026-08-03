@@ -1,12 +1,13 @@
 use crate::modules::artifacts::domain::repositories::{
-    validate_build_run_retry, validate_build_run_transition,
+    validate_build_run_finalization, validate_build_run_retry, validate_build_run_transition,
 };
 use crate::modules::artifacts::domain::{
-    BuildRun, IBuildRunRepository, RequestBuildCancellationBundle, RequestBuildRetryBundle,
+    BuildRun, BuildRunFinalization, BuildRunStatus, IBuildRunRepository,
+    RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use crate::modules::shared_kernel::domain::{
-    BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId,
-    RepositoryError, SourceRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
+    OrganizationId, ProjectId, RepositoryError, SourceRevisionId,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -22,9 +23,11 @@ pub struct InMemoryBuildRunRepository {
 struct State {
     builds: BTreeMap<(OrganizationId, BuildRunId), BuildRun>,
     revisions: BTreeMap<SourceRevisionId, PendingRevision>,
+    asset_releases: BTreeMap<(OrganizationId, AssetReleaseId), PendingAssetRelease>,
     started_operations: BTreeSet<BuildRunId>,
     cancellation_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
     retry_idempotency: BTreeMap<(String, String), (String, BuildRun)>,
+    hosted_publications: BTreeMap<(OrganizationId, AssetReleaseId), (BuildRunId, String)>,
 }
 
 #[derive(Clone)]
@@ -33,6 +36,32 @@ struct PendingRevision {
     project_id: ProjectId,
     environment_id: EnvironmentId,
     accepted_at: DateTime<Utc>,
+}
+
+#[derive(Clone)]
+struct PendingAssetRelease {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    drafted_at: DateTime<Utc>,
+}
+
+#[derive(Clone)]
+enum PendingBuild {
+    External(SourceRevisionId, PendingRevision),
+    AssetRelease(AssetReleaseId, PendingAssetRelease),
+}
+
+impl PendingBuild {
+    fn sort_key(&self) -> (DateTime<Utc>, u8, uuid::Uuid) {
+        match self {
+            Self::External(source_revision_id, revision) => {
+                (revision.accepted_at, 0, source_revision_id.as_uuid())
+            }
+            Self::AssetRelease(asset_release_id, release) => {
+                (release.drafted_at, 1, asset_release_id.as_uuid())
+            }
+        }
+    }
 }
 
 impl InMemoryBuildRunRepository {
@@ -59,12 +88,42 @@ impl InMemoryBuildRunRepository {
         );
     }
 
+    pub async fn add_asset_release(
+        &self,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        drafted_at: DateTime<Utc>,
+    ) {
+        self.state.write().await.asset_releases.insert(
+            (organization_id, asset_release_id),
+            PendingAssetRelease {
+                organization_id,
+                asset_id,
+                drafted_at,
+            },
+        );
+    }
+
     pub async fn mark_operation_started(&self, build_run_id: BuildRunId) {
         self.state
             .write()
             .await
             .started_operations
             .insert(build_run_id);
+    }
+
+    pub async fn hosted_release_publication(
+        &self,
+        organization_id: OrganizationId,
+        asset_release_id: AssetReleaseId,
+    ) -> Option<(BuildRunId, String)> {
+        self.state
+            .read()
+            .await
+            .hosted_publications
+            .get(&(organization_id, asset_release_id))
+            .cloned()
     }
 }
 
@@ -79,24 +138,50 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         let existing_sources = state
             .builds
             .values()
-            .map(|build| build.source_revision_id)
+            .filter_map(BuildRun::source_revision_id)
             .collect::<BTreeSet<_>>();
-        let mut revisions = state
+        let existing_releases = state
+            .builds
+            .values()
+            .filter_map(|build| {
+                build
+                    .asset_release_id()
+                    .map(|asset_release_id| (build.organization_id, asset_release_id))
+            })
+            .collect::<BTreeSet<_>>();
+        let mut pending = state
             .revisions
             .iter()
             .filter(|(id, _)| !existing_sources.contains(id))
-            .map(|(id, revision)| (*id, revision.clone()))
+            .map(|(id, revision)| PendingBuild::External(*id, revision.clone()))
+            .chain(
+                state
+                    .asset_releases
+                    .iter()
+                    .filter(|(id, _)| !existing_releases.contains(id))
+                    .map(|((_, id), release)| PendingBuild::AssetRelease(*id, release.clone())),
+            )
             .collect::<Vec<_>>();
-        revisions.sort_by_key(|(id, revision)| (revision.accepted_at, *id));
+        pending.sort_by_key(PendingBuild::sort_key);
         let mut reserved = Vec::new();
-        for (source_revision_id, revision) in revisions.into_iter().take(limit.max(1)) {
-            let build = BuildRun::reserve(
-                revision.organization_id,
-                revision.project_id,
-                revision.environment_id,
-                source_revision_id,
-                reserved_at.max(revision.accepted_at),
-            );
+        for candidate in pending.into_iter().take(limit.max(1)) {
+            let build = match candidate {
+                PendingBuild::External(source_revision_id, revision) => BuildRun::reserve(
+                    revision.organization_id,
+                    revision.project_id,
+                    revision.environment_id,
+                    source_revision_id,
+                    reserved_at.max(revision.accepted_at),
+                ),
+                PendingBuild::AssetRelease(asset_release_id, release) => {
+                    BuildRun::reserve_asset_release(
+                        release.organization_id,
+                        release.asset_id,
+                        asset_release_id,
+                        reserved_at.max(release.drafted_at),
+                    )
+                }
+            };
             state
                 .builds
                 .insert((build.organization_id, build.id), build.clone());
@@ -148,7 +233,26 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             .values()
             .filter(|build| {
                 build.organization_id == organization_id
-                    && build.source_revision_id == source_revision_id
+                    && build.source_revision_id() == Some(source_revision_id)
+            })
+            .max_by_key(|build| build.attempt)
+            .cloned())
+    }
+
+    async fn find_by_asset_release(
+        &self,
+        organization_id: OrganizationId,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<Option<BuildRun>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .builds
+            .values()
+            .filter(|build| {
+                build.organization_id == organization_id
+                    && build.asset_release_id() == Some(asset_release_id)
             })
             .max_by_key(|build| build.attempt)
             .cloned())
@@ -169,8 +273,8 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
             .values()
             .filter(|build| {
                 build.organization_id == organization_id
-                    && build.project_id == project_id
-                    && build.environment_id == environment_id
+                    && build.project_id() == Some(project_id)
+                    && build.environment_id() == Some(environment_id)
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -313,11 +417,64 @@ impl IBuildRunRepository for InMemoryBuildRunRepository {
         state.builds.insert(key, build_run.clone());
         Ok(build_run)
     }
+
+    async fn finalize(
+        &self,
+        build_run: BuildRun,
+        expected_version: u64,
+    ) -> Result<BuildRunFinalization, RepositoryError> {
+        let build_run = BuildRun::restore(build_run).map_err(RepositoryError::Storage)?;
+        let mut state = self.state.write().await;
+        let key = (build_run.organization_id, build_run.id);
+        let existing = state
+            .builds
+            .get(&key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        validate_build_run_finalization(&existing, &build_run, expected_version)?;
+        if let Some(asset_release_id) = build_run.asset_release_id() {
+            let publication_key = (build_run.organization_id, asset_release_id);
+            if build_run.status == BuildRunStatus::Succeeded {
+                let provenance_digest = build_run
+                    .evidence
+                    .as_deref()
+                    .ok_or_else(|| {
+                        RepositoryError::Conflict(
+                            "successful hosted BuildRun has no verified evidence".into(),
+                        )
+                    })?
+                    .provenance_digest
+                    .clone();
+                match state.hosted_publications.get(&publication_key) {
+                    Some((build_run_id, digest))
+                        if *build_run_id == build_run.id && digest == &provenance_digest => {}
+                    Some(_) => {
+                        return Err(RepositoryError::Conflict(
+                            "hosted release publication changed during replay".into(),
+                        ))
+                    }
+                    None => {
+                        state
+                            .hosted_publications
+                            .insert(publication_key, (build_run.id, provenance_digest));
+                    }
+                }
+            } else if state.hosted_publications.contains_key(&publication_key) {
+                return Err(RepositoryError::Conflict(
+                    "failed or cancelled hosted BuildRun cannot own a published release".into(),
+                ));
+            }
+        }
+        state.builds.insert(key, build_run.clone());
+        Ok(BuildRunFinalization::Completed(build_run))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::artifacts::domain::test_support::hosted_build_ready_for_completion;
+    use crate::modules::artifacts::domain::BuildSubject;
     use chrono::Duration;
     use std::sync::Arc;
 
@@ -349,6 +506,35 @@ mod tests {
             .await
             .expect("find build")
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn concurrent_reservation_repairs_one_unbuilt_hosted_release() {
+        let repository = Arc::new(InMemoryBuildRunRepository::new());
+        let organization_id = OrganizationId::new();
+        let asset_id = AssetId::new();
+        let asset_release_id = AssetReleaseId::new();
+        let drafted_at = Utc::now();
+        repository
+            .add_asset_release(organization_id, asset_id, asset_release_id, drafted_at)
+            .await;
+
+        let (left, right) = tokio::join!(
+            repository.reserve_pending(1, drafted_at),
+            repository.reserve_pending(1, drafted_at)
+        );
+        let reserved =
+            left.expect("left reservation").len() + right.expect("right reservation").len();
+        assert_eq!(reserved, 1);
+        let build = repository
+            .find_by_asset_release(organization_id, asset_release_id)
+            .await
+            .expect("find hosted build")
+            .expect("hosted build");
+        assert_eq!(
+            build.subject,
+            BuildSubject::asset_release(asset_id, asset_release_id)
+        );
     }
 
     #[tokio::test]
@@ -400,7 +586,13 @@ mod tests {
         ));
 
         let mut forged = preparing.clone();
-        forged.project_id = ProjectId::new();
+        forged.subject = BuildSubject::external_source_revision(
+            ProjectId::new(),
+            forged.environment_id().expect("external environment"),
+            forged
+                .source_revision_id()
+                .expect("external source revision"),
+        );
         forged.aggregate_version += 1;
         forged.updated_at += Duration::milliseconds(3);
         assert!(matches!(
@@ -530,10 +722,19 @@ mod tests {
         completed
             .complete(requested_at + Duration::milliseconds(2))
             .expect("complete failure");
+        assert!(matches!(
+            repository
+                .save(completed.clone(), failed.aggregate_version)
+                .await,
+            Err(RepositoryError::Conflict(_))
+        ));
         let completed = repository
-            .save(completed, failed.aggregate_version)
+            .finalize(completed, failed.aggregate_version)
             .await
-            .expect("save terminal failure");
+            .expect("finalize terminal failure");
+        let BuildRunFinalization::Completed(completed) = completed else {
+            panic!("external BuildRun finalization was rejected");
+        };
         let retry = BuildRun::retry(&completed, requested_at + Duration::milliseconds(3))
             .expect("retry build");
         let idempotency = IdempotencyRequest::new(
@@ -576,7 +777,12 @@ mod tests {
         );
         assert_eq!(
             repository
-                .list(organization_id, retry.project_id, retry.environment_id, 10)
+                .list(
+                    organization_id,
+                    retry.project_id().expect("external project"),
+                    retry.environment_id().expect("external environment"),
+                    10,
+                )
                 .await
                 .expect("list attempts")
                 .len(),
@@ -597,5 +803,67 @@ mod tests {
             repository.request_retry(another).await,
             Err(RepositoryError::Conflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn hosted_success_finalizes_once_and_replays_the_same_publication_binding() {
+        let repository = InMemoryBuildRunRepository::new();
+        let organization_id = OrganizationId::new();
+        let asset_id = AssetId::new();
+        let asset_release_id = AssetReleaseId::new();
+        let requested_at = Utc::now();
+        repository
+            .add_asset_release(organization_id, asset_id, asset_release_id, requested_at)
+            .await;
+        let queued = repository
+            .reserve_pending(1, requested_at)
+            .await
+            .expect("reserve hosted build")
+            .pop()
+            .expect("queued hosted build");
+        let ready = hosted_build_ready_for_completion(
+            organization_id,
+            asset_id,
+            asset_release_id,
+            requested_at,
+        );
+        assert_eq!(ready.id, queued.id);
+        repository
+            .state
+            .write()
+            .await
+            .builds
+            .insert((organization_id, ready.id), ready.clone());
+
+        let expected = ready.aggregate_version;
+        let mut succeeded = ready;
+        succeeded
+            .complete(succeeded.updated_at + Duration::milliseconds(1))
+            .expect("complete hosted build");
+        assert!(matches!(
+            repository.save(succeeded.clone(), expected).await,
+            Err(RepositoryError::Conflict(_))
+        ));
+        let finalized = repository
+            .finalize(succeeded.clone(), expected)
+            .await
+            .expect("finalize hosted build");
+        assert_eq!(
+            finalized,
+            BuildRunFinalization::Completed(succeeded.clone())
+        );
+        let evidence = succeeded.evidence.as_deref().expect("hosted evidence");
+        assert_eq!(
+            repository
+                .hosted_release_publication(organization_id, asset_release_id)
+                .await,
+            Some((succeeded.id, evidence.provenance_digest.clone()))
+        );
+
+        let replayed = repository
+            .finalize(succeeded.clone(), succeeded.aggregate_version)
+            .await
+            .expect("replay hosted finalization");
+        assert_eq!(replayed, BuildRunFinalization::Completed(succeeded));
     }
 }
