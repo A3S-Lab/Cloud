@@ -8,9 +8,10 @@ use a3s_cloud_control_plane::config::{
 };
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::assets::{
-    AcquireAssetGitWriteLease, AssetGitRpcLimits, AssetGitService, AssetGitWriteOperation,
-    AssetGitWriteRecovery, ClaimAssetGitWriteRecovery, IAssetGitRepository,
-    IAssetGitRepositoryControl, LocalAssetGitRepository, PostgresAssetRepository,
+    AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
+    AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, ClaimAssetGitWriteRecovery,
+    CreateAssetWrite, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
+    LocalAssetGitRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
@@ -21,7 +22,7 @@ use a3s_cloud_control_plane::modules::operations::{
     WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    OperationId, OrganizationId, ProjectId,
+    AssetId, IdempotencyRequest, OperationId, OrganizationId, ProjectId, ResourceName,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -141,11 +142,31 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return Ok(());
     };
-    let isolated = IsolatedPostgresDatabase::create(&admin_url).await?;
-    // Keep the large end-to-end future off the libtest worker stack while its
-    // process-death probes exercise nested Runtime and Flow recovery paths.
-    let foundation = Box::pin(exercise_postgres_foundation(isolated.url().to_owned()));
-    let result = AssertUnwindSafe(foundation).catch_unwind().await;
+    run_isolated_postgres(&admin_url, exercise_postgres_foundation).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_hosted_draft_recovery_is_atomic() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_postgres_hosted_draft_recovery)
+        .await
+        .expect("hosted draft recovery PostgreSQL gate");
+}
+
+async fn run_isolated_postgres<F, Fut>(
+    admin_url: &str,
+    exercise: F,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), Box<dyn std::error::Error>>>,
+{
+    let isolated = IsolatedPostgresDatabase::create(admin_url).await?;
+    let result = AssertUnwindSafe(Box::pin(exercise(isolated.url().to_owned())))
+        .catch_unwind()
+        .await;
     let cleanup = isolated.cleanup().await;
 
     match result {
@@ -168,6 +189,46 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
             std::panic::resume_unwind(panic_payload)
         }
     }
+}
+
+async fn exercise_postgres_hosted_draft_recovery(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = OrganizationId::new();
+    let created_at = Utc::now();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", 'Hosted recovery tenant', 'hosted-recovery-tenant', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    let asset = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("Hosted recovery Agent")?,
+        AssetKind::Agent,
+        created_at,
+    )?;
+    PostgresAssetRepository::new(executor.clone())
+        .create_asset(CreateAssetWrite {
+            event: AssetCreated::envelope(&asset, asset.id.as_uuid())?,
+            idempotency: IdempotencyRequest::new(
+                format!("organizations/{organization_id}/assets"),
+                "postgres-hosted-recovery-asset",
+                asset.id.as_uuid().as_bytes(),
+            )?,
+            asset: asset.clone(),
+        })
+        .await?;
+
+    build_runs_support::exercise_hosted_build_run_persistence(&executor, &asset).await
 }
 
 async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::error::Error>> {
@@ -1467,8 +1528,6 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         &response_id(&source)?,
     )
     .await?;
-    build_runs_support::exercise_hosted_build_run_persistence(&executor, &hosted_git_asset).await?;
-
     source_subscription_support::exercise_source_subscriptions(
         &app,
         &executor,
@@ -1687,7 +1746,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
     assert_eq!(outbox_events, 38);
-    assert_eq!(idempotency_records, 30);
+    assert_eq!(idempotency_records, 28);
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(

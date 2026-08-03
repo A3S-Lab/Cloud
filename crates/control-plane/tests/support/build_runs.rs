@@ -21,8 +21,8 @@ use a3s_cloud_control_plane::modules::assets::{
     CreateAssetReleaseWrite, IAssetRepository, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    IOperationRepository, OperationRequest, OperationSubject, PostgresOperationRepository,
-    WorkflowIdentity,
+    IOperationRepository, OperationProjection, OperationRequest, OperationStatus, OperationSubject,
+    PostgresOperationRepository, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha, IdempotencyRequest, NodeCommandId,
@@ -1094,6 +1094,7 @@ pub async fn publish_hosted_release(
         }),
         build.requested_at,
     );
+    let operation_id = operation.id;
     PostgresOperationRepository::new(executor.clone())
         .enqueue(operation)
         .await?;
@@ -1101,7 +1102,18 @@ pub async fn publish_hosted_release(
     build.begin_preparation(build.updated_at + Duration::milliseconds(1))?;
     let builds = PostgresBuildRunRepository::new(executor.clone());
     build = builds.save(build, expected).await?;
-    drive_hosted_release_publication(executor, asset, release, build).await
+    let published = drive_hosted_release_publication(executor, asset, release, build).await?;
+    PostgresOperationRepository::new(executor.clone())
+        .upsert_projection(OperationProjection {
+            operation_id,
+            status: OperationStatus::Succeeded,
+            last_sequence: 1,
+            output: None,
+            error: None,
+            updated_at: published.updated_at,
+        })
+        .await?;
+    Ok(published)
 }
 
 async fn drive_hosted_release_publication(
