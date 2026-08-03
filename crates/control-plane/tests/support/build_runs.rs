@@ -12,7 +12,7 @@ use a3s_cloud_control_plane::modules::artifacts::domain::{
     RequestBuildCancellationBundle, RequestBuildRetryBundle,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, BuildRunStatus, IBuildRunRepository, OciDescriptor,
+    BuildArtifact, BuildRun, BuildRunStatus, BuildSubject, IBuildRunRepository, OciDescriptor,
     OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
     ValidatedOciBuildOutput,
 };
@@ -118,8 +118,8 @@ pub async fn exercise_build_run_persistence(
     }
     assert_eq!(reserved[0].id, build_id);
     assert_eq!(reserved[0].organization_id, organization_id);
-    assert_eq!(reserved[0].project_id, project_id);
-    assert_eq!(reserved[0].environment_id, environment_id);
+    assert_eq!(reserved[0].project_id(), Some(project_id));
+    assert_eq!(reserved[0].environment_id(), Some(environment_id));
     assert_eq!(
         builds
             .list(organization_id, project_id, environment_id, 1)
@@ -197,7 +197,13 @@ pub async fn exercise_build_run_persistence(
     ));
 
     let mut forged = preparing.clone();
-    forged.project_id = ProjectId::new();
+    forged.subject = BuildSubject::external_source_revision(
+        ProjectId::new(),
+        forged.environment_id().expect("external environment"),
+        forged
+            .source_revision_id()
+            .expect("external source revision"),
+    );
     forged.aggregate_version += 1;
     forged.updated_at += Duration::milliseconds(1);
     assert!(matches!(

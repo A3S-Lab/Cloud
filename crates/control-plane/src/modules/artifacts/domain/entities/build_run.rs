@@ -1,9 +1,10 @@
 use super::build_artifact::{validate_sha256, BuildArtifact, ValidatedOciBuildOutput};
 use super::build_evidence::BuildEvidence;
 use super::oci_publication::{OciPublicationTarget, PublishedOciArtifact};
+use super::BuildSubject;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, BuildRunId, EnvironmentId, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, SourceRevisionId,
+    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, NodeCommandId, NodeId,
+    OperationId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use a3s_cloud_contracts::NodeBoxBuildOutput;
 use chrono::{DateTime, Utc};
@@ -78,10 +79,9 @@ impl BuildRunStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BuildRun {
     pub organization_id: OrganizationId,
-    pub project_id: ProjectId,
-    pub environment_id: EnvironmentId,
+    #[serde(flatten)]
+    pub subject: BuildSubject,
     pub id: BuildRunId,
-    pub source_revision_id: SourceRevisionId,
     pub attempt: u32,
     pub retry_of_build_run_id: Option<BuildRunId>,
     pub operation_id: OperationId,
@@ -115,6 +115,22 @@ impl BuildRun {
         ))
     }
 
+    pub fn id_for_subject(subject: BuildSubject) -> BuildRunId {
+        match subject {
+            BuildSubject::ExternalSourceRevision {
+                source_revision_id, ..
+            } => Self::id_for(source_revision_id),
+            BuildSubject::AssetRelease {
+                asset_release_id, ..
+            } => {
+                let mut identity = [0_u8; 30];
+                identity[..14].copy_from_slice(b"asset_release\0");
+                identity[14..].copy_from_slice(asset_release_id.as_uuid().as_bytes());
+                BuildRunId::from_uuid(Uuid::new_v5(&BUILD_RUN_NAMESPACE, &identity))
+            }
+        }
+    }
+
     pub fn id_for_attempt(
         source_revision_id: SourceRevisionId,
         attempt: u32,
@@ -134,6 +150,35 @@ impl BuildRun {
         )))
     }
 
+    pub fn id_for_subject_attempt(
+        subject: BuildSubject,
+        attempt: u32,
+    ) -> Result<BuildRunId, String> {
+        if attempt == 0 {
+            return Err("build attempt must be positive".into());
+        }
+        if let Some(source_revision_id) = subject.source_revision_id() {
+            return Self::id_for_attempt(source_revision_id, attempt);
+        }
+        if attempt == 1 {
+            return Ok(Self::id_for_subject(subject));
+        }
+        let mut identity = [0_u8; 34];
+        identity[..14].copy_from_slice(b"asset_release\0");
+        identity[14..30].copy_from_slice(
+            subject
+                .asset_release_id()
+                .ok_or_else(|| "build subject has no stable attempt identity".to_owned())?
+                .as_uuid()
+                .as_bytes(),
+        );
+        identity[30..].copy_from_slice(&attempt.to_be_bytes());
+        Ok(BuildRunId::from_uuid(Uuid::new_v5(
+            &BUILD_RUN_NAMESPACE,
+            &identity,
+        )))
+    }
+
     pub fn reserve(
         organization_id: OrganizationId,
         project_id: ProjectId,
@@ -141,14 +186,37 @@ impl BuildRun {
         source_revision_id: SourceRevisionId,
         requested_at: DateTime<Utc>,
     ) -> Self {
+        Self::reserve_subject(
+            organization_id,
+            BuildSubject::external_source_revision(project_id, environment_id, source_revision_id),
+            requested_at,
+        )
+    }
+
+    pub fn reserve_asset_release(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        requested_at: DateTime<Utc>,
+    ) -> Self {
+        Self::reserve_subject(
+            organization_id,
+            BuildSubject::asset_release(asset_id, asset_release_id),
+            requested_at,
+        )
+    }
+
+    fn reserve_subject(
+        organization_id: OrganizationId,
+        subject: BuildSubject,
+        requested_at: DateTime<Utc>,
+    ) -> Self {
         let requested_at = canonical_timestamp(requested_at);
-        let id = Self::id_for(source_revision_id);
+        let id = Self::id_for_subject(subject);
         Self {
             organization_id,
-            project_id,
-            environment_id,
+            subject,
             id,
-            source_revision_id,
             attempt: 1,
             retry_of_build_run_id: None,
             operation_id: OperationId::from_uuid(id.as_uuid()),
@@ -191,13 +259,11 @@ impl BuildRun {
             .attempt
             .checked_add(1)
             .ok_or_else(|| "build attempt overflowed".to_owned())?;
-        let id = Self::id_for_attempt(previous.source_revision_id, attempt)?;
+        let id = Self::id_for_subject_attempt(previous.subject, attempt)?;
         let retry = Self {
             organization_id: previous.organization_id,
-            project_id: previous.project_id,
-            environment_id: previous.environment_id,
+            subject: previous.subject,
             id,
-            source_revision_id: previous.source_revision_id,
             attempt,
             retry_of_build_run_id: Some(previous.id),
             operation_id: OperationId::from_uuid(id.as_uuid()),
@@ -234,6 +300,26 @@ impl BuildRun {
         self.finished_at = self.finished_at.map(canonical_timestamp);
         self.validate()?;
         Ok(self)
+    }
+
+    pub const fn project_id(&self) -> Option<ProjectId> {
+        self.subject.project_id()
+    }
+
+    pub const fn environment_id(&self) -> Option<EnvironmentId> {
+        self.subject.environment_id()
+    }
+
+    pub const fn source_revision_id(&self) -> Option<SourceRevisionId> {
+        self.subject.source_revision_id()
+    }
+
+    pub const fn asset_id(&self) -> Option<AssetId> {
+        self.subject.asset_id()
+    }
+
+    pub const fn asset_release_id(&self) -> Option<AssetReleaseId> {
+        self.subject.asset_release_id()
     }
 
     pub fn begin_preparation(&mut self, at: DateTime<Utc>) -> Result<(), String> {
@@ -594,12 +680,13 @@ impl BuildRun {
     }
 
     fn validate(&self) -> Result<(), String> {
-        let expected_id = Self::id_for_attempt(self.source_revision_id, self.attempt)?;
+        self.subject.validate()?;
+        let expected_id = Self::id_for_subject_attempt(self.subject, self.attempt)?;
         let expected_retry = if self.attempt == 1 {
             None
         } else {
-            Some(Self::id_for_attempt(
-                self.source_revision_id,
+            Some(Self::id_for_subject_attempt(
+                self.subject,
                 self.attempt - 1,
             )?)
         };
@@ -842,7 +929,7 @@ impl BuildRun {
         if !self.evidence_required
             || evidence.build_run_id != self.id
             || evidence.operation_id != self.operation_id
-            || evidence.source_revision_id != self.source_revision_id
+            || !evidence.subject.matches(self.subject)
             || evidence.attempt != self.attempt
             || Some(evidence.source_content_digest.as_str())
                 != self.source_content_digest.as_deref()

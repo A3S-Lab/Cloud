@@ -15,10 +15,10 @@ pub use application::{AssetGitApplicationService, AssetGitApplicationServiceOpti
 
 pub use domain::{
     AcquireAssetGitWriteLease, Asset, AssetArchived, AssetCreated, AssetGitBackup,
-    AssetGitRepository, AssetGitRepositoryControlError, AssetGitRepositoryError,
-    AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
-    AssetGitWriteJournal, AssetGitWriteLease, AssetGitWriteOperation, AssetGitWriteRecovery,
-    AssetKind, AssetManifestAdmission, AssetRelease, AssetReleaseArtifact,
+    AssetGitBuildInput, AssetGitRepository, AssetGitRepositoryControlError,
+    AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse,
+    AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetGitWriteOperation,
+    AssetGitWriteRecovery, AssetKind, AssetManifestAdmission, AssetRelease, AssetReleaseArtifact,
     AssetReleaseArtifactKind, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseState,
     AssetReleaseVersion, AssetReleaseWrite, AssetReleaseWriteReference, AssetReleaseYanked,
     AssetState, AssetWrite, AssetWriteReference, ClaimAssetGitWriteRecovery,

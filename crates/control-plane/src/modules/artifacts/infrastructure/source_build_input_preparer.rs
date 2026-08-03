@@ -1,11 +1,15 @@
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildInputPreparationError, BuildRun, IBuildInputPreparer, INodeArtifactStore,
-    NodeArtifactDescriptor, NodeArtifactStoreError, PreparedBuildInput,
+    BuildArtifact, BuildInputPreparationError, BuildRun, BuildSource, BuildSourceLocation,
+    BuildSubject, IBuildInputPreparer, INodeArtifactStore, NodeArtifactDescriptor,
+    NodeArtifactStoreError, PreparedBuildInput,
 };
+use crate::modules::assets::domain::{
+    AssetGitBuildInput, AssetGitRepositoryError, IAssetGitRepository, IAssetRepository,
+};
+use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::sources::domain::{
-    CheckedOutSource, ExternalSourceRevision, GithubInstallationTokenRequest,
-    IGithubConnectionRepository, IGithubInstallationTokenService, ISourceCheckout,
-    SourceCheckoutError, SourceCheckoutRequest,
+    CheckedOutSource, GithubInstallationTokenRequest, IGithubConnectionRepository,
+    IGithubInstallationTokenService, ISourceCheckout, SourceCheckoutError, SourceCheckoutRequest,
 };
 use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
 use a3s_runtime::contract::ArtifactRef;
@@ -24,6 +28,8 @@ pub struct SourceBuildInputPreparer {
     checkout: Arc<dyn ISourceCheckout>,
     connections: Arc<dyn IGithubConnectionRepository>,
     installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    assets: Option<Arc<dyn IAssetRepository>>,
+    asset_git: Option<Arc<dyn IAssetGitRepository>>,
     artifacts: Arc<dyn INodeArtifactStore>,
     staging_root: PathBuf,
     max_entries: usize,
@@ -53,6 +59,8 @@ impl SourceBuildInputPreparer {
             checkout,
             connections,
             installation_tokens,
+            assets: None,
+            asset_git: None,
             artifacts,
             staging_root,
             max_entries,
@@ -60,15 +68,28 @@ impl SourceBuildInputPreparer {
         })
     }
 
-    async fn checkout(
+    pub fn with_hosted_assets(
+        mut self,
+        assets: Arc<dyn IAssetRepository>,
+        asset_git: Arc<dyn IAssetGitRepository>,
+    ) -> Self {
+        self.assets = Some(assets);
+        self.asset_git = Some(asset_git);
+        self
+    }
+
+    async fn checkout_external(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
     ) -> Result<(SourceCheckoutRequest, CheckedOutSource), BuildInputPreparationError> {
+        let BuildSourceLocation::ExternalGit { repository } = &source.location else {
+            return Err(BuildInputPreparationError::Conflict);
+        };
         let request = SourceCheckoutRequest::new(
             build.id.as_uuid(),
-            revision.repository.clone(),
-            revision.commit_sha.clone(),
+            repository.clone(),
+            source.commit_sha.clone(),
         )
         .map_err(BuildInputPreparationError::Invalid)?;
         match self.checkout.checkout(&request, None).await {
@@ -98,7 +119,7 @@ impl SourceBuildInputPreparer {
                         organization_id: connection.organization_id,
                         connection_id: connection.id,
                         installation_id: connection.installation_id,
-                        repository: revision.repository.clone(),
+                        repository: repository.clone(),
                         requested_at: chrono::Utc::now(),
                     })
                     .await
@@ -174,6 +195,84 @@ impl SourceBuildInputPreparer {
         )
         .map_err(BuildInputPreparationError::Invalid)
     }
+
+    async fn prepare_hosted(
+        &self,
+        build: &BuildRun,
+        source: &BuildSource,
+    ) -> Result<PreparedBuildInput, BuildInputPreparationError> {
+        let BuildSubject::AssetRelease { asset_id, .. } = build.subject else {
+            return Err(BuildInputPreparationError::Conflict);
+        };
+        if !matches!(
+            source.location,
+            BuildSourceLocation::HostedAssetGit {
+                asset_id: source_asset_id
+            } if source_asset_id == asset_id
+        ) {
+            return Err(BuildInputPreparationError::Conflict);
+        }
+        let assets = self.assets.as_ref().ok_or_else(|| {
+            BuildInputPreparationError::Unavailable(
+                "hosted Asset build input adapter is unavailable".into(),
+            )
+        })?;
+        let asset_git = self.asset_git.as_ref().ok_or_else(|| {
+            BuildInputPreparationError::Unavailable(
+                "hosted Asset Git build input adapter is unavailable".into(),
+            )
+        })?;
+        let asset = assets
+            .find_asset(build.organization_id, asset_id)
+            .await
+            .map_err(map_repository_error)?
+            .ok_or_else(|| {
+                BuildInputPreparationError::Unavailable("hosted Asset is unavailable".into())
+            })?;
+        let input = asset_git
+            .prepare_build_input(&asset, &source.commit_sha, build.id)
+            .await
+            .map_err(map_asset_git_error)?;
+        let artifact = self.store_hosted_archive(&input).await?;
+        Ok(PreparedBuildInput {
+            source_content_digest: input.content_digest.as_str().to_owned(),
+            artifact,
+        })
+    }
+
+    async fn store_hosted_archive(
+        &self,
+        input: &AssetGitBuildInput,
+    ) -> Result<BuildArtifact, BuildInputPreparationError> {
+        input
+            .validate()
+            .map_err(BuildInputPreparationError::Integrity)?;
+        let digest = input.content_digest.as_str().to_owned();
+        let artifact = ArtifactRef {
+            uri: artifact_uri(&digest).map_err(BuildInputPreparationError::Invalid)?,
+            digest,
+            media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+        };
+        let descriptor = NodeArtifactDescriptor::new(artifact, input.size_bytes)
+            .map_err(BuildInputPreparationError::Invalid)?;
+        let file = tokio::fs::File::open(&input.path).await.map_err(|error| {
+            BuildInputPreparationError::Storage(format!(
+                "could not open hosted Asset build input archive: {error}"
+            ))
+        })?;
+        let stored = self
+            .artifacts
+            .put(&descriptor, Box::pin(file))
+            .await
+            .map_err(map_artifact_error)?;
+        BuildArtifact::new(
+            stored.descriptor.artifact.uri,
+            stored.descriptor.artifact.digest,
+            stored.descriptor.artifact.media_type,
+            stored.descriptor.size_bytes,
+        )
+        .map_err(BuildInputPreparationError::Invalid)
+    }
 }
 
 #[async_trait]
@@ -181,11 +280,14 @@ impl IBuildInputPreparer for SourceBuildInputPreparer {
     async fn prepare(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
     ) -> Result<PreparedBuildInput, BuildInputPreparationError> {
-        validate_identity(build, revision)?;
-        let (request, source) = self.checkout(build, revision).await?;
-        let artifact = self.package(build, &source).await?;
+        validate_identity(build, source)?;
+        if matches!(source.location, BuildSourceLocation::HostedAssetGit { .. }) {
+            return self.prepare_hosted(build, source).await;
+        }
+        let (request, checkout) = self.checkout_external(build, source).await?;
+        let artifact = self.package(build, &checkout).await?;
 
         // The second checkout call is an offline receipt replay. It closes the
         // package-time race by rehashing the credential-free worktree after the
@@ -195,37 +297,80 @@ impl IBuildInputPreparer for SourceBuildInputPreparer {
             .checkout(&request, None)
             .await
             .map_err(map_checkout_error)?;
-        if replay != source {
+        if replay != checkout {
             return Err(BuildInputPreparationError::Integrity(
                 "source checkout identity changed while packaging build input".into(),
             ));
         }
         Ok(PreparedBuildInput {
-            source_content_digest: source.content_digest,
+            source_content_digest: checkout.content_digest,
             artifact,
         })
     }
 
     async fn remove(&self, build: &BuildRun) -> Result<(), BuildInputPreparationError> {
-        self.checkout
-            .remove(build.id.as_uuid())
-            .await
-            .map_err(map_checkout_error)
+        match build.subject {
+            BuildSubject::ExternalSourceRevision { .. } => self
+                .checkout
+                .remove(build.id.as_uuid())
+                .await
+                .map_err(map_checkout_error),
+            BuildSubject::AssetRelease { .. } => {
+                let asset_git = self.asset_git.as_ref().ok_or_else(|| {
+                    BuildInputPreparationError::Unavailable(
+                        "hosted Asset Git build input adapter is unavailable".into(),
+                    )
+                })?;
+                asset_git
+                    .remove_build_input(build.id)
+                    .await
+                    .map_err(map_asset_git_error)
+            }
+        }
     }
 }
 
 fn validate_identity(
     build: &BuildRun,
-    revision: &ExternalSourceRevision,
+    source: &BuildSource,
 ) -> Result<(), BuildInputPreparationError> {
-    if build.organization_id != revision.organization_id
-        || build.project_id != revision.project_id
-        || build.environment_id != revision.environment_id
-        || build.source_revision_id != revision.id
-    {
+    source
+        .validate()
+        .map_err(BuildInputPreparationError::Integrity)?;
+    if build.organization_id != source.organization_id || build.subject != source.subject {
         return Err(BuildInputPreparationError::Conflict);
     }
     Ok(())
+}
+
+fn map_repository_error(error: RepositoryError) -> BuildInputPreparationError {
+    match error {
+        RepositoryError::NotFound => {
+            BuildInputPreparationError::Unavailable("hosted Asset is unavailable".into())
+        }
+        RepositoryError::Conflict(message) => BuildInputPreparationError::Integrity(message),
+        RepositoryError::IdempotencyConflict => BuildInputPreparationError::Conflict,
+        RepositoryError::Storage(message) => BuildInputPreparationError::Storage(message),
+    }
+}
+
+fn map_asset_git_error(error: AssetGitRepositoryError) -> BuildInputPreparationError {
+    match error {
+        AssetGitRepositoryError::Invalid(message) => BuildInputPreparationError::Invalid(message),
+        AssetGitRepositoryError::NotFound => {
+            BuildInputPreparationError::Unavailable("hosted Asset source is unavailable".into())
+        }
+        AssetGitRepositoryError::Integrity(message) => {
+            BuildInputPreparationError::Integrity(message)
+        }
+        AssetGitRepositoryError::QuotaExceeded => {
+            BuildInputPreparationError::Invalid("hosted Asset repository quota was exceeded".into())
+        }
+        AssetGitRepositoryError::BackupUnavailable => {
+            BuildInputPreparationError::Unavailable("hosted Asset repository is unavailable".into())
+        }
+        AssetGitRepositoryError::Storage(message) => BuildInputPreparationError::Storage(message),
+    }
 }
 
 fn map_checkout_error(error: SourceCheckoutError) -> BuildInputPreparationError {

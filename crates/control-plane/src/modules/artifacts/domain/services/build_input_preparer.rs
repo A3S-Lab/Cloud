@@ -1,5 +1,4 @@
-use crate::modules::artifacts::domain::{BuildArtifact, BuildRun};
-use crate::modules::sources::domain::ExternalSourceRevision;
+use crate::modules::artifacts::domain::{BuildArtifact, BuildRun, BuildSource};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,7 +26,7 @@ pub trait IBuildInputPreparer: Send + Sync {
     async fn prepare(
         &self,
         build: &BuildRun,
-        revision: &ExternalSourceRevision,
+        source: &BuildSource,
     ) -> Result<PreparedBuildInput, BuildInputPreparationError>;
 
     async fn remove(&self, build: &BuildRun) -> Result<(), BuildInputPreparationError>;

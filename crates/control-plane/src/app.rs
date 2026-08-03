@@ -2,12 +2,13 @@ use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BoxBuildEvidenceGenerator, BuildFlowRuntime, BuildFlowRuntimeDependencies,
-    CancelBuildRunHandler, GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler,
-    IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer,
-    IBuildOutputValidator, IBuildRunRepository, INodeArtifactStore, ListBuildRunsHandler,
-    LocalBuildEvidenceSigner, LocalNodeArtifactStore, OciBuildOutputValidator,
-    OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
-    RetryBuildRunHandler, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
+    CancelBuildRunHandler, CloudBuildSourceResolver, GetBuildEvidenceHandler, GetBuildRunHandler,
+    GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner,
+    IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository, IBuildSourceResolver,
+    INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, LocalNodeArtifactStore,
+    OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    PostgresBuildRunRepository, RetryBuildRunHandler, SourceBuildInputPreparer,
+    VaultBuildEvidenceSigner,
 };
 use crate::modules::assets::{
     AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, AssetGitApplicationService,
@@ -264,8 +265,8 @@ pub async fn build_application_with_source_resolver(
     );
     let asset_git = Arc::new(
         AssetGitApplicationService::new(
-            assets,
-            asset_git_repositories,
+            Arc::clone(&assets),
+            Arc::clone(&asset_git_repositories),
             asset_controls,
             AssetGitApplicationServiceOptions {
                 write_lease: Duration::from_millis(config.assets.write_lease_ms),
@@ -343,6 +344,11 @@ pub async fn build_application_with_source_resolver(
         )
         .map_err(ControlPlaneStartupError::Build)?,
     );
+    let build_sources: Arc<dyn IBuildSourceResolver> = Arc::new(CloudBuildSourceResolver::new(
+        Arc::clone(&sources),
+        Arc::clone(&assets),
+        Arc::clone(&asset_git_repositories),
+    ));
     let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
         SourceBuildInputPreparer::new(
             source_checkout,
@@ -353,6 +359,9 @@ pub async fn build_application_with_source_resolver(
             config.builds.input_max_entries,
             config.builds.input_max_bytes,
         )
+        .map(|preparer| {
+            preparer.with_hosted_assets(Arc::clone(&assets), Arc::clone(&asset_git_repositories))
+        })
         .map_err(ControlPlaneStartupError::Build)?,
     );
     let build_flow_config = config
@@ -547,7 +556,7 @@ pub async fn build_application_with_source_resolver(
     let build_runtime = BuildFlowRuntime::new(
         BuildFlowRuntimeDependencies {
             builds: Arc::clone(&builds),
-            sources: Arc::clone(&sources),
+            sources: build_sources,
             inputs: build_inputs,
             outputs: build_outputs,
             publisher: build_publisher,

@@ -1,5 +1,5 @@
 use crate::modules::assets::{
-    AcquireAssetGitWriteLease, Asset, AssetGitBackup, AssetGitRepository,
+    AcquireAssetGitWriteLease, Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRepository,
     AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRepositoryWrite,
     AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal,
     AssetGitWriteLease, AssetGitWriteRecovery, AssetManifestAdmission, AssetRelease,
@@ -8,7 +8,8 @@ use crate::modules::assets::{
     IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, GitCommitSha, OrganizationId, RepositoryError, Sha256Digest,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
+    Sha256Digest,
 };
 use chrono::{DateTime, Utc};
 
@@ -176,6 +177,22 @@ impl IAssetGitRepository for UnavailableAssetStore {
         _asset: &Asset,
         _commit_sha: &GitCommitSha,
     ) -> UnavailableResult<AssetManifestAdmission, AssetGitRepositoryError> {
+        Err(AssetGitRepositoryError::NotFound)
+    }
+
+    async fn prepare_build_input(
+        &self,
+        _asset: &Asset,
+        _commit_sha: &GitCommitSha,
+        _build_run_id: BuildRunId,
+    ) -> UnavailableResult<AssetGitBuildInput, AssetGitRepositoryError> {
+        Err(AssetGitRepositoryError::NotFound)
+    }
+
+    async fn remove_build_input(
+        &self,
+        _build_run_id: BuildRunId,
+    ) -> UnavailableResult<(), AssetGitRepositoryError> {
         Err(AssetGitRepositoryError::NotFound)
     }
 }

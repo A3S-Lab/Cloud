@@ -5,7 +5,7 @@ use super::super::types::{
     ScheduleStepInput, ScheduleStepOutput,
 };
 use super::super::{flow_error, BuildFlowRuntime};
-use super::common::{bounded_reason, load_build, load_revision, next_poll, project_request};
+use super::common::{bounded_reason, load_build, load_source, next_poll, project_request};
 use crate::modules::artifacts::domain::BuildRunStatus;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId};
@@ -37,8 +37,8 @@ pub(super) async fn schedule(
             reason: reason.clone(),
         });
     }
-    let revision = load_revision(runtime, &build).await?;
-    let request = project_request(runtime, &build, &revision).await?;
+    let source = load_source(runtime, &build).await?;
+    let request = project_request(runtime, &build, &source).await?;
     let request_digest = request
         .binding_digest()
         .map_err(|error| flow_error("could not digest Box build request", error))?;
@@ -437,7 +437,7 @@ fn validate_prepared(
 ) -> a3s_flow::Result<()> {
     if build.id != input.prepared.build_run_id
         || build.organization_id != input.prepared.organization_id
-        || build.source_revision_id != input.prepared.source_revision_id
+        || build.subject != input.prepared.subject
         || build.source_content_digest.as_deref()
             != Some(input.prepared.source_content_digest.as_str())
         || build.input_artifact.as_ref() != Some(&input.prepared.input_artifact)

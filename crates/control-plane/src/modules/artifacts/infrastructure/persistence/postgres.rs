@@ -6,7 +6,7 @@ use crate::modules::artifacts::domain::repositories::{
     validate_build_run_retry, validate_build_run_transition,
 };
 use crate::modules::artifacts::domain::{
-    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, IBuildRunRepository,
+    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, BuildSubject, IBuildRunRepository,
     OciPublicationTarget, PublishedOciArtifact, RequestBuildCancellationBundle,
     RequestBuildRetryBundle, ValidatedOciBuildOutput,
 };
@@ -447,6 +447,19 @@ async fn insert_build(
     transaction: &a3s_orm::PostgresTransaction,
     build: &BuildRun,
 ) -> Result<(), PostgresPersistenceError> {
+    let BuildSubject::ExternalSourceRevision {
+        project_id,
+        environment_id,
+        source_revision_id,
+    } = build.subject
+    else {
+        return Err(PostgresPersistenceError::Repository(
+            RepositoryError::Conflict(
+                "hosted Asset release BuildRun persistence is not admitted by the current schema"
+                    .into(),
+            ),
+        ));
+    };
     let inserted = execute(
         transaction,
         sql_query::<()>(
@@ -454,13 +467,13 @@ async fn insert_build(
         )
         .bind(build.organization_id.as_uuid())
         .append(", ")
-        .bind(build.project_id.as_uuid())
+        .bind(project_id.as_uuid())
         .append(", ")
-        .bind(build.environment_id.as_uuid())
+        .bind(environment_id.as_uuid())
         .append(", ")
         .bind(build.id.as_uuid())
         .append(", ")
-        .bind(build.source_revision_id.as_uuid())
+        .bind(source_revision_id.as_uuid())
         .append(", ")
         .bind(build.attempt)
         .append(", ")
@@ -579,10 +592,12 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         decode_json::<BuildEvidence>(row.evidence, "supply-chain evidence")?.map(Box::new);
     BuildRun::restore(BuildRun {
         organization_id: OrganizationId::from_uuid(row.organization_id),
-        project_id: ProjectId::from_uuid(row.project_id),
-        environment_id: EnvironmentId::from_uuid(row.environment_id),
+        subject: BuildSubject::external_source_revision(
+            ProjectId::from_uuid(row.project_id),
+            EnvironmentId::from_uuid(row.environment_id),
+            SourceRevisionId::from_uuid(row.source_revision_id),
+        ),
         id: BuildRunId::from_uuid(row.id),
-        source_revision_id: SourceRevisionId::from_uuid(row.source_revision_id),
         attempt: row.attempt,
         retry_of_build_run_id: row.retry_of_build_run_id.map(BuildRunId::from_uuid),
         operation_id: OperationId::from_uuid(row.operation_id),

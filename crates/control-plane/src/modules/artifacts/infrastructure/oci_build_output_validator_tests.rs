@@ -1,6 +1,6 @@
 use super::*;
 use crate::modules::artifacts::domain::{
-    canonical_json, dsse_pae, sha256_digest, BuildRun, IBuildEvidenceGenerator,
+    canonical_json, dsse_pae, sha256_digest, BuildRun, BuildSource, IBuildEvidenceGenerator,
     IBuildOutputValidator, INodeArtifactStore, NodeArtifactDescriptor, OciDescriptor,
     OciPublicationTarget, PublishedOciArtifact, DSSE_PAYLOAD_TYPE,
 };
@@ -242,7 +242,8 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
     let signer = Arc::new(LocalBuildEvidenceSigner::load_or_create(&key_path).await?);
     let generator = BoxBuildEvidenceGenerator::new(validator, signer)?;
     let attested_at = requested_at + Duration::milliseconds(10);
-    let evidence = generator.generate(&build, &revision, attested_at).await?;
+    let source = BuildSource::from_external_revision(&revision)?;
+    let evidence = generator.generate(&build, &source, attested_at).await?;
 
     evidence.validate()?;
     assert_eq!(

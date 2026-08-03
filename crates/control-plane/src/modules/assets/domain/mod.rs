@@ -21,7 +21,7 @@ pub use services::{
     AssetGitRepositoryWrite, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
 pub use value_objects::{
-    AssetGitBackup, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
+    AssetGitBackup, AssetGitBuildInput, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
     AssetManifestAdmission, AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseVersion,
     McpServiceProfile, McpServiceProfileSpec, SKILL_BUNDLE_MEDIA_TYPE,
 };

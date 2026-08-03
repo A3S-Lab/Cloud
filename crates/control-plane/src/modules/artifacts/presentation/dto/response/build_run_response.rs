@@ -10,10 +10,17 @@ use uuid::Uuid;
 #[serde(rename_all = "camelCase")]
 pub struct BuildRunResponse {
     pub organization_id: Uuid,
-    pub project_id: Uuid,
-    pub environment_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<Uuid>,
     pub id: Uuid,
-    pub source_revision_id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_release_id: Option<Uuid>,
     pub attempt: u32,
     pub retry_of_build_run_id: Option<Uuid>,
     pub operation_id: Uuid,
@@ -40,10 +47,12 @@ impl From<BuildRun> for BuildRunResponse {
             .map(BuildEvidenceSummaryResponse::from);
         Self {
             organization_id: build_run.organization_id.as_uuid(),
-            project_id: build_run.project_id.as_uuid(),
-            environment_id: build_run.environment_id.as_uuid(),
+            project_id: build_run.project_id().map(|id| id.as_uuid()),
+            environment_id: build_run.environment_id().map(|id| id.as_uuid()),
             id: build_run.id.as_uuid(),
-            source_revision_id: build_run.source_revision_id.as_uuid(),
+            source_revision_id: build_run.source_revision_id().map(|id| id.as_uuid()),
+            asset_id: build_run.asset_id().map(|id| id.as_uuid()),
+            asset_release_id: build_run.asset_release_id().map(|id| id.as_uuid()),
             attempt: build_run.attempt,
             retry_of_build_run_id: build_run.retry_of_build_run_id.map(|id| id.as_uuid()),
             operation_id: build_run.operation_id.as_uuid(),

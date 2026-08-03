@@ -1,6 +1,6 @@
 use super::build_plan::project_build_request;
 use super::{BuildFlowConfig, BuildFlowConfigOptions};
-use crate::modules::artifacts::domain::{BuildArtifact, BuildRun};
+use crate::modules::artifacts::domain::{BuildArtifact, BuildRun, BuildSource};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
 };
@@ -99,7 +99,7 @@ fn retry_reuses_only_the_parent_box_cache_receipt() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn prepared_build() -> Result<(BuildRun, ExternalSourceRevision), Box<dyn std::error::Error>> {
+fn prepared_build() -> Result<(BuildRun, BuildSource), Box<dyn std::error::Error>> {
     let revision_id = SourceRevisionId::new();
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -140,7 +140,8 @@ fn prepared_build() -> Result<(BuildRun, ExternalSourceRevision), Box<dyn std::e
         )?,
         now,
     )?;
-    Ok((build, revision))
+    let source = BuildSource::from_external_revision(&revision)?;
+    Ok((build, source))
 }
 
 fn config() -> Result<BuildFlowConfig, String> {

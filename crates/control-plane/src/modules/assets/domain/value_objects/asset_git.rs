@@ -1,6 +1,8 @@
 use crate::modules::assets::domain::AssetKind;
-use crate::modules::shared_kernel::domain::{GitCommitSha, Sha256Digest};
+use crate::modules::shared_kernel::domain::{BuildRunId, GitCommitSha, Sha256Digest};
+use crate::modules::sources::domain::BuildRecipe;
 use chrono::{DateTime, Utc};
+use std::path::PathBuf;
 use std::path::{Component, Path};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +104,30 @@ pub struct AssetManifestAdmission {
     pub commit_sha: GitCommitSha,
     pub manifest_digest: Sha256Digest,
     pub kind: AssetKind,
+    pub build_recipe: Option<BuildRecipe>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetGitBuildInput {
+    pub build_run_id: BuildRunId,
+    pub commit_sha: GitCommitSha,
+    pub content_digest: Sha256Digest,
+    pub size_bytes: u64,
+    pub path: PathBuf,
+}
+
+impl AssetGitBuildInput {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.build_run_id.as_uuid().is_nil()
+            || self.size_bytes == 0
+            || self.path.as_os_str().is_empty()
+        {
+            return Err("Asset Git build input identity is invalid".into());
+        }
+        GitCommitSha::parse(self.commit_sha.as_str())?;
+        Sha256Digest::parse(self.content_digest.as_str())?;
+        Ok(())
+    }
 }
 
 impl AssetManifestAdmission {
@@ -110,6 +136,11 @@ impl AssetManifestAdmission {
         Sha256Digest::parse(self.manifest_digest.as_str())?;
         if self.kind != kind {
             return Err("Asset manifest kind does not match its Asset".into());
+        }
+        if let Some(recipe) = &self.build_recipe {
+            if self.kind == AssetKind::Skill || recipe.clone().validate()? != *recipe {
+                return Err("Asset manifest build recipe does not match its Asset kind".into());
+            }
         }
         Ok(())
     }

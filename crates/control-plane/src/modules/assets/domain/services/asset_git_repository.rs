@@ -1,8 +1,10 @@
 use crate::modules::assets::domain::{
-    Asset, AssetGitBackup, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
-    AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission, AssetState,
+    Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRpcLimits, AssetGitRpcResponse,
+    AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission, AssetState,
 };
-use crate::modules::shared_kernel::domain::{AssetId, GitCommitSha, OrganizationId, Sha256Digest};
+use crate::modules::shared_kernel::domain::{
+    AssetId, BuildRunId, GitCommitSha, OrganizationId, Sha256Digest,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -137,6 +139,18 @@ pub trait IAssetGitRepository: Send + Sync {
         asset: &Asset,
         commit_sha: &GitCommitSha,
     ) -> Result<AssetManifestAdmission, AssetGitRepositoryError>;
+
+    async fn prepare_build_input(
+        &self,
+        asset: &Asset,
+        commit_sha: &GitCommitSha,
+        build_run_id: BuildRunId,
+    ) -> Result<AssetGitBuildInput, AssetGitRepositoryError>;
+
+    async fn remove_build_input(
+        &self,
+        build_run_id: BuildRunId,
+    ) -> Result<(), AssetGitRepositoryError>;
 }
 
 pub fn validate_asset_repository_mutation(asset: &Asset) -> Result<(), String> {

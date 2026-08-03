@@ -3,7 +3,7 @@ use super::super::types::{
     CleanupObserveStepOutput, DispatchedCleanup,
 };
 use super::super::{flow_error, BuildFlowRuntime};
-use super::common::{bounded_reason, load_build, load_revision, next_poll, project_request};
+use super::common::{bounded_reason, load_build, load_source, next_poll, project_request};
 use crate::modules::artifacts::domain::BuildRunStatus;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId};
@@ -49,8 +49,8 @@ pub(super) async fn dispatch(
         )));
     }
 
-    let revision = load_revision(runtime, &build).await?;
-    let request = project_request(runtime, &build, &revision).await?;
+    let source = load_source(runtime, &build).await?;
+    let request = project_request(runtime, &build, &source).await?;
     let node_id = build
         .node_id
         .ok_or_else(|| FlowError::Runtime("dispatched build omitted its Box node".into()))?;
@@ -152,8 +152,8 @@ pub(super) async fn observe(
             "Box cleanup observation changed its durable identity".into(),
         ));
     }
-    let revision = load_revision(runtime, &build).await?;
-    let request = project_request(runtime, &build, &revision).await?;
+    let source = load_source(runtime, &build).await?;
+    let request = project_request(runtime, &build, &source).await?;
     let command = runtime
         .node_control
         .find_command(input.dispatched.node_id, input.dispatched.command_id)

@@ -1,6 +1,6 @@
 use super::{AssetGitApplicationService, AssetGitApplicationServiceOptions};
 use crate::modules::assets::domain::{
-    AcquireAssetGitWriteLease, Asset, AssetGitBackup, AssetGitRepository,
+    AcquireAssetGitWriteLease, Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRepository,
     AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRepositoryWrite,
     AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal,
     AssetGitWriteLease, AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind,
@@ -11,8 +11,8 @@ use crate::modules::assets::domain::{
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, GitCommitSha, OrganizationId, RepositoryError, ResourceName,
-    Sha256Digest,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
+    ResourceName, Sha256Digest,
 };
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -225,7 +225,26 @@ impl IAssetGitRepository for TestStore {
             commit_sha: commit_sha.clone(),
             manifest_digest: digest('b'),
             kind: asset.kind,
+            build_recipe: None,
         })
+    }
+
+    async fn prepare_build_input(
+        &self,
+        _asset: &Asset,
+        _commit_sha: &GitCommitSha,
+        _build_run_id: BuildRunId,
+    ) -> Result<AssetGitBuildInput, AssetGitRepositoryError> {
+        Err(AssetGitRepositoryError::Storage(
+            "unused test build input".into(),
+        ))
+    }
+
+    async fn remove_build_input(
+        &self,
+        _build_run_id: BuildRunId,
+    ) -> Result<(), AssetGitRepositoryError> {
+        Ok(())
     }
 }
 

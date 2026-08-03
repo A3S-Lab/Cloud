@@ -416,7 +416,7 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
     assert_eq!(failed.retry_of_build_run_id, None);
     assert_eq!(retry.attempt, 2);
     assert_eq!(retry.retry_of_build_run_id, Some(failed.id));
-    assert_eq!(retry.source_revision_id, failed.source_revision_id);
+    assert_eq!(retry.source_revision_id(), failed.source_revision_id());
     assert_eq!(retry.status, BuildRunStatus::Queued);
     assert!(retry.evidence_required);
     assert!(retry.evidence.is_none());
@@ -424,15 +424,21 @@ fn build_run_retry_creates_a_fresh_attempt_and_preserves_lineage() {
     assert_eq!(retry.id.as_uuid(), retry.operation_id.as_uuid());
     assert_eq!(
         retry.id,
-        BuildRun::id_for_attempt(failed.source_revision_id, 2).expect("attempt identity")
+        BuildRun::id_for_attempt(
+            failed
+                .source_revision_id()
+                .expect("external source revision"),
+            2,
+        )
+        .expect("attempt identity")
     );
     assert!(BuildRun::restore(retry).is_ok());
 
     assert!(BuildRun::retry(&failed, now + Duration::milliseconds(1)).is_err());
     let queued = BuildRun::reserve(
         failed.organization_id,
-        failed.project_id,
-        failed.environment_id,
+        failed.project_id().expect("external project"),
+        failed.environment_id().expect("external environment"),
         SourceRevisionId::new(),
         now,
     );
