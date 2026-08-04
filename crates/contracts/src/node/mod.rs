@@ -1,5 +1,6 @@
 mod artifact;
 mod box_build;
+mod code_agent;
 mod command;
 mod enrollment;
 mod error;
@@ -22,6 +23,10 @@ pub use box_build::{
     NodeBoxBuildInspection, NodeBoxBuildOperationCancellation, NodeBoxBuildOperationRemoval,
     NodeBoxBuildOutput, NodeBoxBuildPhase, NodeBoxBuildPlan, NodeBoxBuildPlatform,
     NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, BOX_BUILD_OUTPUT_NAME,
+};
+pub use code_agent::{
+    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCodeAgentRuntimeBindingV1,
+    NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
 };
 pub use command::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure,

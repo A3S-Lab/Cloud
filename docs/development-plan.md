@@ -2317,14 +2317,19 @@ resumable, and approval-governed execution without introducing a second
 scheduler, event log, node-control channel, object store, audit path, or source
 of truth.
 
-Together with the existing Cloud control path, this milestone natively replaces
-AX's Agent server, actor controller, semantic event log, Harness lifecycle, and
-snapshot responsibilities. It does not implement AX wire compatibility or
+Together with the existing Cloud control path and the native A3S Code runtime,
+this milestone replaces AX's Agent server, actor controller, and snapshot
+responsibilities. The sole executable Harness is `a3s code harness`; A3S Code
+Core owns its session/run lifecycle, cancellation, checkpoint recovery, event
+model, and wire contract. Cloud does not implement AX wire compatibility or
 import AX as a required dependency.
 
-The Cloud API is the client control boundary. A Harness executes behind a typed
-port on an existing managed Workload, while A3S Flow, Operations, Fleet node
-control, and A3S Runtime retain their existing responsibilities. Gateway may
+The Cloud API is the client control boundary. `a3s code harness` executes behind
+its Code-owned typed port on an existing managed Workload, while A3S Flow,
+Operations, Fleet node control, and A3S Runtime retain their existing
+responsibilities. Cloud transports the exact Code command, receipt, and event
+page values with authenticated Node/Workload/Runtime identity; it does not add
+another Harness executable, run store, scheduler, or lifecycle. Gateway may
 transport a future native protocol, but it never owns conversations,
 executions, approvals, checkpoints, or replay.
 
@@ -2336,9 +2341,9 @@ Deliver the capability through these ordered sub-gates:
 | --- | --- | --- |
 | `A1.0` | Extract one shared sequence cursor/SSE transport for durable sequence streams and a shared polling transport for Operation snapshots; consolidate filesystem and S3-compatible immutable-object backends behind one infrastructure client with typed domain adapters and namespaces; extract the node-agent log shipper's durable pending-batch/receipt behavior as a reusable outbound-batch primitive | Verified `E0`; independent of `A0` |
 | `A1.1` | Add `AgentConversation` and `AgentExecution` aggregates, commands, queries, projections, and one monotonically sequenced semantic event stream | Published immutable `A0.3` `AssetRelease` identity plus `A1.0` |
-| `A1.2` | Define a versioned Harness command, event-batch, receipt, cancellation, and recovery contract in `contracts`; carry it over existing Fleet long poll, `node_commands`, leases, and the node-agent journal; run the Agent release through its existing Workload and Runtime identity | `A1.1` plus `A0.4` Agent deployment |
+| `A1.2` | Reuse the versioned command, receipt, event-page, cancellation, and recovery contract owned by A3S Code Core; add only Cloud delivery identity and receipts in `contracts`; carry the exact Code values over existing Fleet long poll, `node_commands`, leases, and the node-agent journal to `a3s code harness` running through the existing Workload and Runtime identity | `A1.1` plus `A0.4` Agent deployment |
 | `A1.3` | Resolve and persist immutable Agent, Skill, MCP, workspace, and tool bindings before dispatch; record bounded tool request/result events and correlate audit without copying mutable manifests or secret material | `A1.2` plus `A0.5` immutable bindings |
-| `A1.4` | Add grant-checked approval checkpoints, expiry policy, logical pause/resume, denial/cancellation, and exact resume-command replay through Operations and the Harness lifecycle | `A1.3` plus `C0.3` grants and audit |
+| `A1.4` | Add grant-checked approval checkpoints, expiry policy, logical pause/resume, denial/cancellation, and exact Code-owned resume-command replay through Operations | `A1.3` plus `C0.3` grants and audit |
 | `A1.5` | Persist immutable checkpoint objects and projections, create explicit parent/fork lineage, expose trajectory query/export and telemetry correlation, certify exact Box checkpoint/suspend/resume recovery where provider resume is enabled, and close the real-provider crash and cleanup gates | `A1.4` |
 
 Current `A1.0` implementation:
@@ -2415,6 +2420,22 @@ bindings and tool events; `A1.4` adds approvals; and `A1.5` adds checkpoints,
 forks, and trajectories. Model output, failures, and terminal state already
 use semantic execution events rather than Flow history or Runtime logs.
 
+Current `A1.2` transport foundation (in progress):
+
+- A3S Code Core owns the canonical start/cancel/recover command, exact
+  release/session/run identity, receipt, event-page cursor, and HTTP paths;
+- the Cloud contract adds one exact execution/Workload revision/deployment/
+  replica/Runtime binding around the unmodified Code command or event page;
+- the existing `NodeCommandPayload`, Fleet lease path, and Node Agent command
+  journal carry and replay that envelope without adding another command queue
+  or run lifecycle;
+- the Node Agent inspects the bound running Runtime Service, verifies its exact
+  generation and spec digest, resolves its node-local TCP endpoint, and
+  forwards the command to `a3s code harness`; and
+- control-plane Flow dispatch, durable event-page shipping/receipt settlement,
+  semantic-event projection, and the root CLI Harness HTTP entrypoint remain
+  open before `A1.2` is complete.
+
 Across `A1.1` through `A1.5`, the bounded context may add only these durable
 record families:
 
@@ -2449,6 +2470,7 @@ Use the following single-authority map for every A1 design review:
 | Integration publication | Transactional Outbox plus A3S Event | Agent event bus or transcript publication; Outbox carries only bounded lifecycle IDs, states, and digests |
 | Authorization and audit | Identity grants plus `C0.3` and `audit_records` | Agent-local grants, approval ACL, or audit store |
 | Scheduling and provider lifecycle | Workloads plus A3S Runtime | Harness scheduler, Agent placement engine, or provider-specific lifecycle controller |
+| Agent run lifecycle and protocol | A3S Code Core through the sole `a3s code harness` process | Cloud Harness service/controller, parallel run store, copied Code events, or another Harness executable |
 | Asset identity | Published `A0.3` through `A0.5` `AssetRelease` | Mutable repository refs or copied profile ACL state inside an execution |
 | Immutable content | Shared infrastructure object client with typed domain adapters | Parallel filesystem/S3 clients or an untyped cross-domain object service |
 | Client streaming | Shared sequence cursor, reconnect, gap, and SSE transport | Agent-specific cursor codec or best-effort in-memory stream |
@@ -2460,11 +2482,11 @@ and direct database drivers in A1 production persistence. PostgreSQL remains
 authoritative when Redis, SSE subscribers, the control-plane process, the node
 agent, or the Harness is unavailable.
 
-Google AX may be evaluated only after `A1.5` as an optional implementation of
-the versioned Harness port, and only after its integration contract is stable.
-Do not import AX's controller, event-log authority, scheduler, native
-configuration, or unstable wire protocol into the Cloud domain or transport
-contract.
+Google AX may be evaluated only after `A1.5` as an optional adapter behind the
+Code-owned integration contract, and only after that contract is stable. It
+cannot replace `a3s code harness` or import AX's controller, event-log
+authority, scheduler, native configuration, or unstable wire protocol into the
+Cloud domain or transport contract.
 
 ### Exit gate
 

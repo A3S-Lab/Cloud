@@ -1386,7 +1386,7 @@ partially installed or optimistically active.
 | Artifact bytes | OCI registry or S3-compatible object store |
 | Agent conversation, execution, event-stream head, semantic event metadata, immutable bindings, approval decisions, checkpoint descriptors, and fork lineage | PostgreSQL Agents tables through A3S ORM |
 | Large Agent event content and logical checkpoint bytes | Shared immutable-object infrastructure through typed Agent adapters |
-| Live Harness process, provider checkpoint, and local resume state | A3S Runtime and A3S Box; Cloud retains only exact identities and verified receipts required for recovery |
+| Live Harness process and Code run/checkpoint state | The sole `a3s code harness` process and A3S Code Core, hosted through A3S Runtime and A3S Box; Cloud retains only exact delivery identities, semantic projections, and verified receipts required for orchestration and recovery |
 | Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
 | Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
 | Workload replicas, placement members, and generic hard-resource claims | PostgreSQL Workloads tables |

@@ -1,6 +1,7 @@
 use crate::artifact::CloudBoxArtifactPort;
 #[cfg(target_os = "linux")]
 use crate::box_build::BoxBuildCommandExecutor;
+use crate::code_harness::HttpCodeHarnessTransport;
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
 use crate::log_shipper::LogShipper;
 use crate::resource_inventory::ResourceInventoryManager;
@@ -209,10 +210,15 @@ impl NodeAgentSession {
             state_dir,
             log_config,
         )?;
+        let code_harness = Arc::new(
+            HttpCodeHarnessTransport::new()
+                .map_err(|error| NodeAgentError::Invalid(error.to_string()))?,
+        );
         Ok(Self {
             transport,
             executor: CommandExecutor::new(journal, runtime, gateway)
-                .with_resource_inventory(resource_inventory.clone()),
+                .with_resource_inventory(resource_inventory.clone())
+                .with_code_harness(code_harness),
             log_shipper,
             identity,
             capabilities,
@@ -467,6 +473,7 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. }
             | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
@@ -500,6 +507,7 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::BoxBuildCancelled { .. }
             | NodeCommandResult::BoxBuildRemoved { .. }
             | NodeCommandResult::GatewaySnapshotObserved { .. }
+            | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }

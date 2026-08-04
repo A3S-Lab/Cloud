@@ -618,7 +618,7 @@ pages or project Runtime logs as build logs.
 | AX Server | Cloud API and Agents application context |
 | AX Event Log | Agent semantic events in PostgreSQL through A3S ORM |
 | AX Actor Controller | Flow, Operations, and Workloads |
-| AX Harness Actor | Runtime Service, Box, and the versioned Harness port |
+| AX Harness Actor | A3S Code Core and the sole `a3s code harness` process, hosted by Runtime Service and Box |
 | AX Snapshot Service | Shared immutable-object infrastructure plus Box checkpoint capability |
 | Kubernetes API and CRDs | Cloud domain commands and ACL desired state |
 | Scheduler and ReplicaSet | Workloads placement, replica identities, and Fleet Claims |
@@ -652,8 +652,9 @@ The current `A1.1` context owns:
 
 Later A1 sub-gates extend that same context with:
 
-- the `A1.2` Harness identity, command/event-batch protocol, Fleet delivery,
-  and Workload/Runtime lifecycle;
+- the `A1.2` exact A3S Code release/run identity, Code-owned command/receipt and
+  event-page protocol, Cloud delivery envelope, Fleet delivery, and
+  Workload/Runtime lifecycle for the sole `a3s code harness` process;
 - the `A1.3` immutable Skill, MCP, workspace, and tool bindings plus auditable
   tool request/result events;
 - the `A1.4` grant-checked approval checkpoints and logical pause/resume; and
@@ -661,9 +662,11 @@ Later A1 sub-gates extend that same context with:
   trajectory export, and telemetry correlation.
 
 It reuses the common request-idempotency record, Flow and Operations, Workloads
-placement, Fleet commands, the Node Agent journal, Runtime, Box, Outbox/Event,
-audit chain, sequence transport, and immutable-object infrastructure. It may
-not add an Agent queue, controller, scheduler, direct client-to-Harness path,
+placement, Fleet commands, the Node Agent journal, Runtime, Box, A3S Code Core,
+Outbox/Event, audit chain, sequence transport, and immutable-object
+infrastructure. A3S Code owns the Harness session/run lifecycle, cancellation,
+recovery, and source events. Cloud may not add an Agent queue, Harness
+executable, controller, scheduler, run store, direct client-to-Harness path,
 second event log, or mutable content store.
 
 Flow history controls orchestration recovery; Agent semantic events are the
@@ -677,10 +680,10 @@ once as digest-addressed immutable objects. Provider suspend/resume uses the
 same logical execution and Operation but cannot be advertised until Box
 checkpoint recovery is certified.
 
-Google AX may be evaluated only after native `A1.5` is complete and AX exposes
-a stable integration contract. Any adapter implements the A3S Harness port. It
-cannot import AX's controller, scheduler, event-log authority, native
-configuration, or client control path.
+Google AX may be evaluated only after native `A1.5` is complete and the
+Code-owned integration contract is stable. Any adapter remains behind `a3s
+code harness`; it cannot replace that process or import AX's controller,
+scheduler, event-log authority, native configuration, or client control path.
 
 ### 11.3 Replacement completion gate
 

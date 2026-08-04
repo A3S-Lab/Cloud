@@ -694,6 +694,7 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             | NodeCommandResult::BoxBuildInspected { .. }
             | NodeCommandResult::BoxBuildCancelled { .. }
             | NodeCommandResult::BoxBuildRemoved { .. }
+            | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }

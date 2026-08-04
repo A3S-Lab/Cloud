@@ -1,3 +1,4 @@
+use a3s_code_core::{AgentProtocolCommandReceiptV1, AgentProtocolCommandV1};
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeInspection, RuntimeObservation,
     RuntimeRemoval,
@@ -17,10 +18,11 @@ use uuid::Uuid;
 use super::{
     validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
     GatewaySnapshotObservationRequest, NodeBoxBuildCancelResult, NodeBoxBuildInspection,
-    NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult, NodeGatewayAck,
-    NodeGatewaySnapshotObservation, NodePluginHostCapabilitiesRequest, NodeResourceClaimBinding,
-    NodeResourceClaimPrepare, NodeResourceClaimPrepared, NodeResourceClaimRelease,
-    NodeResourceClaimReleased,
+    NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult,
+    NodeCodeAgentRuntimeBindingV1, NodeGatewayAck, NodeGatewaySnapshotObservation,
+    NodePluginHostCapabilitiesRequest, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
+    NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,6 +45,10 @@ pub enum NodeCommandPayload {
     },
     RuntimeRemove {
         request: RuntimeActionRequest,
+    },
+    CodeAgentCommand {
+        binding: Box<NodeCodeAgentRuntimeBindingV1>,
+        command: Box<AgentProtocolCommandV1>,
     },
     BoxBuildStart {
         request: Box<NodeBoxBuildRequest>,
@@ -102,6 +108,7 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { .. } => "runtime_inspect",
             Self::RuntimeStop { .. } => "runtime_stop",
             Self::RuntimeRemove { .. } => "runtime_remove",
+            Self::CodeAgentCommand { .. } => "code_agent_command",
             Self::BoxBuildStart { .. } => "box_build_start",
             Self::BoxBuildInspect { .. } => "box_build_inspect",
             Self::BoxBuildCancel { .. } => "box_build_cancel",
@@ -131,6 +138,7 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { .. } => "a3s.runtime.inspect-request.v1",
             Self::RuntimeStop { .. } => "a3s.runtime.stop-request.v1",
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
+            Self::CodeAgentCommand { .. } => NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
             Self::BoxBuildStart { .. } => "a3s.cloud.box-build-start.v1",
             Self::BoxBuildInspect { .. } => "a3s.cloud.box-build-inspect.v1",
             Self::BoxBuildCancel { .. } => "a3s.cloud.box-build-cancel.v1",
@@ -152,6 +160,7 @@ impl NodeCommandPayload {
             Self::RuntimeApply { request, .. } => request.spec.generation,
             Self::RuntimeInspect { generation, .. } => *generation,
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
+            Self::CodeAgentCommand { binding, .. } => binding.runtime_generation,
             Self::BoxBuildStart { request }
             | Self::BoxBuildInspect { request }
             | Self::BoxBuildCancel { request }
@@ -191,6 +200,7 @@ impl NodeCommandPayload {
                 Ok(())
             }
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
+            Self::CodeAgentCommand { binding, command } => binding.validate_command(command),
             Self::BoxBuildStart { request }
             | Self::BoxBuildInspect { request }
             | Self::BoxBuildCancel { request }
@@ -333,6 +343,11 @@ impl NodeCommandEnvelope {
                     );
                 }
             }
+            NodeCommandPayload::CodeAgentCommand { binding, .. }
+                if self.aggregate_id != binding.execution_id =>
+            {
+                return Err("Code Agent command aggregate does not match its execution".into());
+            }
             NodeCommandPayload::RuntimeApply {
                 resource_claim: None,
                 ..
@@ -340,6 +355,7 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::CodeAgentCommand { .. }
             | NodeCommandPayload::BoxBuildStart { .. }
             | NodeCommandPayload::BoxBuildInspect { .. }
             | NodeCommandPayload::BoxBuildCancel { .. }
@@ -387,6 +403,9 @@ pub enum NodeCommandResult {
     },
     RuntimeRemoved {
         removal: RuntimeRemoval,
+    },
+    CodeAgentCommandAccepted {
+        receipt: Box<AgentProtocolCommandReceiptV1>,
     },
     BoxBuildStarted {
         started: NodeBoxBuildStartResult,
@@ -439,6 +458,9 @@ impl NodeCommandResult {
                 inspection.validate()
             }
             Self::RuntimeRemoved { removal } => removal.validate(),
+            Self::CodeAgentCommandAccepted { receipt } => receipt
+                .validate()
+                .map_err(|error| format!("invalid A3S Code command receipt ({})", error.code())),
             Self::BoxBuildStarted { started } => started.phase.validate(),
             Self::BoxBuildInspected { .. }
             | Self::BoxBuildCancelled { .. }
@@ -540,6 +562,15 @@ impl NodeCommandResult {
             (NodeCommandPayload::RuntimeRemove { .. }, Self::RuntimeRemoved { .. }) => {
                 Err("node command result identity does not match its payload".into())
             }
+            (
+                NodeCommandPayload::CodeAgentCommand { binding, command },
+                Self::CodeAgentCommandAccepted { receipt },
+            ) => {
+                binding.validate_command(command)?;
+                receipt.validate_for(command).map_err(|error| {
+                    format!("A3S Code command receipt does not match ({})", error.code())
+                })
+            }
             (NodeCommandPayload::BoxBuildStart { request }, Self::BoxBuildStarted { started }) => {
                 started.validate_for(request)
             }
@@ -633,6 +664,13 @@ fn plugin_host_timestamp(label: &str, milliseconds: u64) -> Result<DateTime<Utc>
         .map_err(|_| format!("Plugin Host {label} time exceeds supported bounds"))?;
     DateTime::from_timestamp_millis(milliseconds)
         .ok_or_else(|| format!("Plugin Host {label} time exceeds supported bounds"))
+}
+
+fn code_agent_timestamp(milliseconds: u64) -> Result<DateTime<Utc>, String> {
+    let milliseconds = i64::try_from(milliseconds)
+        .map_err(|_| "A3S Code receipt time exceeds supported bounds".to_string())?;
+    DateTime::from_timestamp_millis(milliseconds)
+        .ok_or_else(|| "A3S Code receipt time exceeds supported bounds".to_string())
 }
 
 fn validate_inspection_identity(
@@ -770,6 +808,10 @@ impl NodeCommandAck {
                     plugin_host_timestamp("observation", observation.observed_at_ms)?,
                     false,
                 )),
+                NodeCommandResult::CodeAgentCommandAccepted { receipt } => Some((
+                    code_agent_timestamp(receipt.observed_at_ms)?,
+                    receipt.replayed,
+                )),
                 NodeCommandResult::RuntimeApplied { .. }
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
@@ -795,6 +837,7 @@ impl NodeCommandAck {
                         resource_claim: Some(_),
                         ..
                     }
+                    | NodeCommandPayload::CodeAgentCommand { .. }
                     | NodeCommandPayload::BoxBuildStart { .. }
                     | NodeCommandPayload::BoxBuildInspect { .. }
                     | NodeCommandPayload::BoxBuildCancel { .. }

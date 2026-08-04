@@ -231,7 +231,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `A0` — Release catalog | Immutable Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern `2026-07-28` MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
-| `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, Linux verification pending) |
+| `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented; `A1.2` Code protocol and Node transport in progress; Linux verification pending) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed serving, OpenAI-compatible traffic, scoped keys, Providers, routing, usage, and governed self-service | Planned |
@@ -441,8 +441,17 @@ transactional contiguous semantic-event sequence, bounded inline JSON content
 with SHA-256 verification, common idempotency and Outbox reuse, typed A3S ORM
 persistence, REST/client/CLI/Web projections, and resumable SSE. It reserves
 the correlated Operation identity but deliberately does not dispatch a
-Harness, Fleet command, or Runtime unit; `A1.2` owns that versioned execution
-protocol and lifecycle. Real Linux PostgreSQL verification still remains.
+Harness, Fleet command, or Runtime unit; `A1.2` integrates the Code-owned
+execution protocol through those existing control paths. Real Linux PostgreSQL
+verification still remains.
+
+`A1.2` uses the sole native Harness process, `a3s code harness`. A3S Code Core
+owns command semantics, exact run identity, cancellation, checkpoint recovery,
+and source events. Cloud adds only authenticated execution/Workload/Runtime
+delivery identity, carries the exact Code-owned protocol through the existing
+Fleet command and Node Agent journal, and projects accepted Code events into
+the existing Agent execution stream. It does not contain another Harness
+executable, scheduler, controller, run store, or event-log authority.
 
 `G0` now routes every new BuildRun through `cloud.build@5`. Flow remains the
 workflow and recovery authority; Fleet's `node_commands` table remains the

@@ -7,6 +7,13 @@ mod node;
 mod registry_credential;
 mod resource;
 
+pub use a3s_code_core::{
+    AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
+    AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1, AgentProtocolEventRecordV1,
+    AgentProtocolRunCancelV1, AgentProtocolRunIdentityV1, AgentProtocolRunRecoverV1,
+    AgentProtocolRunStartV1, AgentProtocolRunStateV1, AGENT_PROTOCOL_COMMAND_HTTP_PATH_V1,
+    AGENT_PROTOCOL_EVENT_PAGE_HTTP_PATH_V1, AGENT_PROTOCOL_MAX_EVENTS_PER_PAGE, AGENT_PROTOCOL_V1,
+};
 pub use a3s_runtime::contract::RuntimeServiceEndpoint;
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use event::DomainEventEnvelope;
@@ -28,6 +35,7 @@ pub use node::{
     NodeBoxBuildOperationRemoval, NodeBoxBuildOutput, NodeBoxBuildPhase, NodeBoxBuildPlan,
     NodeBoxBuildPlatform, NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult,
     NodeCertificate, NodeCertificateRotationRequest, NodeCertificateRotationResponse,
+    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCodeAgentRuntimeBindingV1,
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandOutcome,
     NodeCommandPayload, NodeCommandResult, NodeEnrollmentRequest, NodeEnrollmentResponse,
@@ -39,8 +47,8 @@ pub use node::{
     NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
     NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
     NodeSecretMaterialRequest, NodeSecretMaterialResponse, RuntimeObservationReport,
-    BOX_BUILD_OUTPUT_NAME, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
-    RUNTIME_RESOURCE_CLAIM_ID_KEY, SKILL_BUNDLE_MEDIA_TYPE,
+    BOX_BUILD_OUTPUT_NAME, NODE_CODE_AGENT_COMMAND_SCHEMA_V1, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    RUNTIME_RESOURCE_BINDING_DIGEST_KEY, RUNTIME_RESOURCE_CLAIM_ID_KEY, SKILL_BUNDLE_MEDIA_TYPE,
 };
 pub use registry_credential::RegistryCredentialMaterial;
 pub use resource::{

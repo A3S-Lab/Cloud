@@ -1,16 +1,20 @@
 use super::*;
+use crate::code_harness::CodeHarnessTransport;
 use a3s_cloud_contracts::{
+    AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
+    AgentProtocolRunIdentityV1, AgentProtocolRunStartV1, AgentProtocolRunStateV1,
     AppliedGatewaySnapshot, GatewaySnapshot, GatewaySnapshotObservationRequest,
-    GatewaySnapshotObservationState, NodeCommandMetadata, NodeCommandPayload,
-    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimRelease,
-    NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceSlotBinding,
-    ResourceUnit,
+    GatewaySnapshotObservationState, NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata,
+    NodeCommandPayload, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodeResourceClaimRelease, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
+    ResourceKind, ResourceSlotBinding, ResourceUnit, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
     RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence, RuntimeExecRequest,
     RuntimeExecResult, RuntimeLogChunk, RuntimeLogQuery, RuntimeNetworkSpec, RuntimeObservation,
-    RuntimeProcessSpec, RuntimeRemoval, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState,
+    RuntimeProcessSpec, RuntimeRemoval, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitSpec,
+    RuntimeUnitState,
 };
 use a3s_runtime::RuntimeResult;
 use async_trait::async_trait;
@@ -47,6 +51,16 @@ impl NodeResourceInventoryAuthority for FixedInventoryAuthority {
 struct ClaimRuntime {
     apply_calls: AtomicUsize,
     stop_not_found: AtomicBool,
+}
+
+struct CodeHarnessRuntime {
+    calls: AtomicUsize,
+    observation: RuntimeObservation,
+}
+
+struct RecordingCodeHarness {
+    calls: AtomicUsize,
+    expected_endpoint: RuntimeServiceEndpoint,
 }
 
 #[async_trait]
@@ -100,6 +114,70 @@ impl RuntimeClient for ClaimRuntime {
 
     async fn exec(&self, _request: &RuntimeExecRequest) -> RuntimeResult<RuntimeExecResult> {
         Err(RuntimeError::Protocol("unused exec call".into()))
+    }
+}
+
+#[async_trait]
+impl RuntimeClient for CodeHarnessRuntime {
+    async fn capabilities(&self) -> RuntimeResult<RuntimeCapabilities> {
+        Err(RuntimeError::Protocol("unused capabilities call".into()))
+    }
+
+    async fn apply(&self, _request: &RuntimeApplyRequest) -> RuntimeResult<RuntimeObservation> {
+        Err(RuntimeError::Protocol("unused apply call".into()))
+    }
+
+    async fn inspect(&self, unit_id: &str) -> RuntimeResult<RuntimeInspection> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(unit_id, self.observation.unit_id);
+        Ok(RuntimeInspection::Found {
+            schema: RuntimeInspection::SCHEMA.into(),
+            observation: Box::new(self.observation.clone()),
+        })
+    }
+
+    async fn stop(&self, _request: &RuntimeActionRequest) -> RuntimeResult<RuntimeInspection> {
+        Err(RuntimeError::Protocol("unused stop call".into()))
+    }
+
+    async fn remove(&self, _request: &RuntimeActionRequest) -> RuntimeResult<RuntimeRemoval> {
+        Err(RuntimeError::Protocol("unused remove call".into()))
+    }
+
+    async fn logs(&self, _query: &RuntimeLogQuery) -> RuntimeResult<Vec<RuntimeLogChunk>> {
+        Err(RuntimeError::Protocol("unused logs call".into()))
+    }
+
+    async fn exec(&self, _request: &RuntimeExecRequest) -> RuntimeResult<RuntimeExecResult> {
+        Err(RuntimeError::Protocol("unused exec call".into()))
+    }
+}
+
+#[async_trait]
+impl CodeHarnessTransport for RecordingCodeHarness {
+    async fn send_command(
+        &self,
+        endpoint: &RuntimeServiceEndpoint,
+        command: &AgentProtocolCommandV1,
+        timeout: std::time::Duration,
+    ) -> Result<AgentProtocolCommandReceiptV1, CodeHarnessError> {
+        assert_eq!(endpoint, &self.expected_endpoint);
+        assert!(!timeout.is_zero());
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(AgentProtocolCommandReceiptV1 {
+            schema: AgentProtocolCommandReceiptV1::SCHEMA.into(),
+            action: command.action(),
+            request_id: command.request_id().into(),
+            identity: command.identity().clone(),
+            command_digest: command
+                .digest()
+                .map_err(|error| CodeHarnessError::Protocol(error.code().into()))?,
+            state: AgentProtocolRunStateV1::Created,
+            latest_event_sequence_exclusive: 0,
+            observed_at_ms: u64::try_from(Utc::now().timestamp_millis())
+                .map_err(|error| CodeHarnessError::Protocol(error.to_string()))?,
+            replayed: false,
+        })
     }
 }
 
@@ -917,4 +995,126 @@ async fn gateway_observation_is_read_only_exact_and_journaled_for_replay() {
     assert_eq!(replayed.outcome, acknowledgement.outcome);
     assert_eq!(gateway.calls.load(Ordering::SeqCst), 0);
     assert_eq!(gateway.observation_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn code_commands_are_forwarded_to_the_bound_a3s_code_harness_once() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let execution_id = Uuid::now_v7();
+    let release_identity = format!("sha256:{}", "a".repeat(64));
+    let runtime_spec_digest = format!("sha256:{}", "b".repeat(64));
+    let binding = NodeCodeAgentRuntimeBindingV1 {
+        schema: NodeCodeAgentRuntimeBindingV1::SCHEMA.into(),
+        execution_id,
+        workload_id: Uuid::now_v7(),
+        workload_revision_id: Uuid::now_v7(),
+        deployment_id: Uuid::now_v7(),
+        replica_id: Uuid::now_v7(),
+        runtime_unit_id: "agent-workload:revision:7".into(),
+        runtime_generation: 7,
+        runtime_spec_digest: runtime_spec_digest.clone(),
+        service_port_name: "agent".into(),
+        code_run_identity: AgentProtocolRunIdentityV1 {
+            schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
+            protocol: AGENT_PROTOCOL_V1.into(),
+            agent_release_identity: release_identity,
+            session_id: "conversation-1".into(),
+            run_id: "execution-1-attempt-1".into(),
+        },
+    };
+    let endpoint = RuntimeServiceEndpoint::node_local_tcp("agent", 49_152)
+        .expect("node-local Code Harness endpoint");
+    let mut claims = BTreeMap::new();
+    endpoint
+        .insert_claim(&mut claims)
+        .expect("Runtime endpoint claim");
+    let now_ms = u64::try_from(Utc::now().timestamp_millis()).expect("current timestamp");
+    let observation = RuntimeObservation {
+        schema: RuntimeObservation::SCHEMA.into(),
+        unit_id: binding.runtime_unit_id.clone(),
+        generation: binding.runtime_generation,
+        spec_digest: runtime_spec_digest.clone(),
+        class: RuntimeUnitClass::Service,
+        state: RuntimeUnitState::Running,
+        provider_resource_id: Some("provider-agent-service".into()),
+        provider_build: Some("a3s-box-test".into()),
+        observed_at_ms: now_ms,
+        started_at_ms: Some(now_ms.saturating_sub(1)),
+        finished_at_ms: None,
+        health: None,
+        outputs: Vec::new(),
+        usage: None,
+        evidence: Some(RuntimeEvidence {
+            provider_build: "a3s-box-test".into(),
+            spec_digest: runtime_spec_digest,
+            semantics_profile_digest: None,
+            claims,
+        }),
+        provider_attestation: None,
+        failure: None,
+    };
+    observation.validate().expect("valid Runtime observation");
+    let code_command = AgentProtocolCommandV1::Start {
+        request: AgentProtocolRunStartV1 {
+            schema: AgentProtocolRunStartV1::SCHEMA.into(),
+            request_id: "execution-1:start".into(),
+            identity: binding.code_run_identity.clone(),
+            prompt: "Fix the failing test.".into(),
+        },
+    };
+    assert_eq!(code_command.action(), AgentProtocolCommandActionV1::Start);
+    let envelope = claim_command(
+        node_id,
+        execution_id,
+        1,
+        binding.runtime_generation,
+        NodeCommandPayload::CodeAgentCommand {
+            binding: Box::new(binding),
+            command: Box::new(code_command.clone()),
+        },
+    );
+    let runtime = Arc::new(CodeHarnessRuntime {
+        calls: AtomicUsize::new(0),
+        observation,
+    });
+    let harness = Arc::new(RecordingCodeHarness {
+        calls: AtomicUsize::new(0),
+        expected_endpoint: endpoint,
+    });
+    let harness_transport: Arc<dyn CodeHarnessTransport> = harness.clone();
+    let executor = CommandExecutor::runtime_only(
+        FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+        runtime.clone(),
+    )
+    .with_code_harness(harness_transport);
+
+    let acknowledgement = executor
+        .execute(envelope.clone())
+        .await
+        .expect("forward Code command");
+    acknowledgement
+        .validate_against(&envelope)
+        .expect("exact Code command acknowledgement");
+    let NodeCommandOutcome::Succeeded { result } = &acknowledgement.outcome else {
+        panic!("Code command must succeed");
+    };
+    let NodeCommandResult::CodeAgentCommandAccepted { receipt } = result.as_ref() else {
+        panic!("Code command returned another result kind");
+    };
+    receipt
+        .validate_for(&code_command)
+        .expect("exact Code-owned receipt");
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(harness.calls.load(Ordering::SeqCst), 1);
+
+    let mut redelivered = envelope;
+    redelivered.lease_id = Uuid::now_v7();
+    let replayed = executor
+        .execute(redelivered)
+        .await
+        .expect("replay Code node command");
+    assert_eq!(replayed.outcome, acknowledgement.outcome);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(harness.calls.load(Ordering::SeqCst), 1);
 }

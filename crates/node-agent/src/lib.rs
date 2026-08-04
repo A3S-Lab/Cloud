@@ -5,6 +5,7 @@ mod artifact;
 mod box_build;
 #[cfg(target_os = "linux")]
 mod box_runtime;
+mod code_harness;
 mod config;
 mod control_plane;
 mod executor;

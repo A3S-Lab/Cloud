@@ -1,4 +1,5 @@
 use crate::box_build::{NodeBoxBuildError, NodeBoxBuildExecutor};
+use crate::code_harness::{self, CodeHarnessError, SharedCodeHarnessTransport};
 use crate::plugin_host;
 use crate::resource_claim::{self, ResourceClaimExecutionError};
 use crate::{
@@ -25,6 +26,7 @@ pub struct CommandExecutor {
     box_build: Option<Arc<dyn NodeBoxBuildExecutor>>,
     resource_inventory: Option<Arc<dyn NodeResourceInventoryAuthority>>,
     plugin_host: Option<Arc<dyn PluginHostManager>>,
+    code_harness: Option<SharedCodeHarnessTransport>,
 }
 
 impl CommandExecutor {
@@ -45,6 +47,7 @@ impl CommandExecutor {
             box_build: None,
             resource_inventory: None,
             plugin_host: None,
+            code_harness: None,
         }
     }
 
@@ -69,6 +72,11 @@ impl CommandExecutor {
 
     pub fn with_plugin_host(mut self, plugin_host: Arc<dyn PluginHostManager>) -> Self {
         self.plugin_host = Some(plugin_host);
+        self
+    }
+
+    pub(crate) fn with_code_harness(mut self, code_harness: SharedCodeHarnessTransport) -> Self {
+        self.code_harness = Some(code_harness);
         self
     }
 
@@ -202,6 +210,31 @@ impl CommandExecutor {
             NodeCommandPayload::RuntimeRemove { request } => {
                 let removal = self.runtime.remove(request).await?;
                 Ok(NodeCommandResult::RuntimeRemoved { removal })
+            }
+            NodeCommandPayload::CodeAgentCommand { binding, command } => {
+                binding
+                    .validate_command(command)
+                    .map_err(CodeHarnessError::Invalid)?;
+                let endpoint =
+                    code_harness::resolve_runtime_endpoint(self.runtime.as_ref(), binding).await?;
+                let transport = self.code_harness.as_deref().ok_or_else(|| {
+                    CodeHarnessError::Unavailable(
+                        "the node-local A3S Code Harness transport is not configured".into(),
+                    )
+                })?;
+                let timeout = envelope
+                    .not_after
+                    .signed_duration_since(Utc::now())
+                    .to_std()
+                    .map_err(|_| {
+                        CodeHarnessError::Invalid(
+                            "node command deadline elapsed before Harness dispatch".into(),
+                        )
+                    })?;
+                let receipt = transport.send_command(&endpoint, command, timeout).await?;
+                Ok(NodeCommandResult::CodeAgentCommandAccepted {
+                    receipt: Box::new(receipt),
+                })
             }
             NodeCommandPayload::BoxBuildStart { request } => {
                 let started = self.box_build()?.start(envelope, request).await?;
@@ -367,6 +400,11 @@ fn completion_timestamp(
             NodeCommandResult::GatewaySnapshotObserved { observation } => {
                 Some(observation.observed_at)
             }
+            NodeCommandResult::CodeAgentCommandAccepted { receipt } => {
+                i64::try_from(receipt.observed_at_ms)
+                    .ok()
+                    .and_then(DateTime::from_timestamp_millis)
+            }
             NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
@@ -411,6 +449,7 @@ enum DispatchError {
     BoxBuild(NodeBoxBuildError),
     PluginHost(UseError),
     PluginHostUnavailable,
+    CodeHarness(CodeHarnessError),
 }
 
 impl From<RuntimeError> for DispatchError {
@@ -452,6 +491,12 @@ impl From<CommandJournalError> for DispatchError {
 impl From<UseError> for DispatchError {
     fn from(error: UseError) -> Self {
         Self::PluginHost(error)
+    }
+}
+
+impl From<CodeHarnessError> for DispatchError {
+    fn from(error: CodeHarnessError) -> Self {
+        Self::CodeHarness(error)
     }
 }
 
@@ -561,6 +606,18 @@ fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
             "plugin_host_unavailable",
             "A3S Use Plugin Manager is not configured on this node",
         ),
+        DispatchError::CodeHarness(error) => {
+            let failure = NodeCommandFailure {
+                code: error.code().into(),
+                message: sanitize_error(&error.to_string()),
+                retryable: error.retryable(),
+            };
+            if error.retryable() {
+                NodeCommandOutcome::Failed { failure }
+            } else {
+                NodeCommandOutcome::Rejected { failure }
+            }
+        }
     }
 }
 
