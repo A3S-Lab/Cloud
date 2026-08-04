@@ -172,6 +172,8 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   unavailability explicitly, and request
   stop/rollback/cancel/retry operations with caller-owned idempotency keys;
   create, update, or deploy Workloads from bounded A3S ACL admitted by Cloud;
+  deploy and update exact published Agent releases from artifact-free ACL while
+  Cloud injects their immutable OCI publication;
   create core tenant resources and transition nodes with explicit optimistic
   concurrency; create, verify, and revoke DomainClaims, create multi-member
   logical Gateway scopes with explicit rollout thresholds, and publish routes
@@ -186,7 +188,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stdin-only credentials; and search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.3.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.4.0`, and reject incompatible or invalidly deprecated contract changes
 - **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
   Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
@@ -407,9 +409,16 @@ draft/list/get, yanking, and deterministic new-binding selection. Selection
 uses semantic precedence, defaults to the highest stable published release,
 excludes drafts and yanked releases, and leaves exact yanked identities
 addressable for pinned deployments. `A0.3` remains in progress until its exact
-`G0` external-provider evidence is retained. Agent deployment and immutable
-Skill binding remain `A0.4` and `A0.5`, so the complete `A0` gate remains in
-progress.
+`G0` external-provider evidence is retained. `A0.4` now binds a published Agent
+release and its successful BuildRun immutably to an ordinary Workload revision,
+injects the exact OCI publication server-side, and reuses the existing
+Deployment, Operation, Flow, Fleet, Runtime, health, logs, update, rollback,
+Secret restart, and cleanup paths. Fresh deployment rejects archived Assets and
+draft or yanked releases, while exact replay and rollback retain the pinned
+identity. REST, the typed client, CLI, and Web projections expose the same
+boundary. `A0.4` remains in progress until its real-provider evidence is
+retained. Immutable Skill binding remains `A0.5`, so the complete `A0` gate
+remains in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -718,7 +727,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.3.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.4.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -861,10 +870,13 @@ exit codes. Operational resource and paged-log reads are implemented;
 all mutations require an explicit stable idempotency key. Organization,
 Project, and Environment creation call the existing resource commands. Node
 ready/drain/revoke additionally require the current aggregate version and use
-the existing optimistic-concurrency command. Workload create, update, and
-SourceRevision deployment accept only a bounded UTF-8 A3S ACL file. Cloud
-parses it with `a3s-acl`, enforces the closed version-1 schema, and then
-dispatches the same application commands used by JSON clients. `diagnostics
+the existing optimistic-concurrency command. Workload create, update,
+SourceRevision deployment, and Agent release deployment/update accept only a
+bounded UTF-8 A3S ACL file. Agent release manifests omit `artifact`; Cloud
+derives the exact successful BuildRun publication from the selected immutable
+release. Cloud parses every manifest with `a3s-acl`, enforces the closed
+version-1 schema, and then dispatches the same application commands used by
+JSON clients. `diagnostics
 status` reads the public platform, liveness, and readiness endpoints without
 sending a bearer token. A legitimate unhealthy health report remains visible
 on stdout and returns exit code `8`, while a real API error remains an error.
@@ -906,7 +918,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.3.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.4.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record
@@ -1002,8 +1014,11 @@ hosted BuildRun reservation, restart repair, atomic release finalization,
 verified provenance, failed-draft recovery, yanking, semantic deterministic
 selection, and tenant-authorized API/client/CLI/Web management surfaces are
 implemented. Retained execution of the exact `G0` external-provider gate still
-blocks `A0.3` verification. Agent deployment and immutable Skill binding remain
-`A0.4` and `A0.5`. Hosted modern MCP contract/compiler,
+blocks `A0.3` verification. `A0.4` Agent deployment now immutably binds an exact
+published release and successful BuildRun to an ordinary Workload revision and
+reuses its existing lifecycle through REST, the typed client, CLI, and Web
+projections; real-provider evidence still blocks verification. Immutable Skill
+binding remains `A0.5`. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
 complete version-vector CAS, atomic publication/certificate/scope/Outbox
 staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry

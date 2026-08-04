@@ -371,6 +371,10 @@ fn operation_tag(path: &str) -> &'static str {
         "Fleet"
     } else if path.contains("build-runs") {
         "Artifacts"
+    } else if path.contains("/assets")
+        && (path.ends_with("/workloads") || path.ends_with("/deployments"))
+    {
+        "Workloads"
     } else if path.contains("/assets") {
         "Assets"
     } else if path.contains("source-") || path.starts_with("/webhooks") {
@@ -415,7 +419,8 @@ fn request_has_no_body(path: &str) -> bool {
 }
 
 fn asynchronous_mutation(path: &str) -> bool {
-    path.contains("/deployments")
+    path.ends_with("/workloads")
+        || path.contains("/deployments")
         || path.ends_with("/rollback")
         || path.ends_with("/stop")
         || path.ends_with("/retry")

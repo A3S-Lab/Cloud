@@ -402,7 +402,7 @@ transport.
   Web adds debounced keyboard search and validated contextual navigation; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
   at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.3.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  `1.4.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
   minimum sunset window; and
@@ -681,7 +681,7 @@ bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
-public raw OpenAPI v1 snapshot, shared `1.3.0` client/response versioning,
+public raw OpenAPI v1 snapshot, shared `1.4.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
@@ -723,7 +723,7 @@ gate pass; `C0.2m` is verified.
 | `A0.1` | Verified | Exact Asset and AssetRelease aggregates, immutable identity rules, tenant-scoped A3S ORM persistence, optimistic transitions, shared idempotency and Outbox, and real PostgreSQL behavior evidence |
 | `A0.2` | Verified | Tenant-authorized Git Smart HTTP, tenant/Asset-bound durable bare repositories, A3S ORM-backed PostgreSQL single-writer leases and quotas, same-lease crash recovery, immutable backup/restore, and pinned `.a3s/asset.acl` admission |
 | `A0.3` | In progress | One typed external-or-hosted build path reserves and repairs hosted work through the existing reconciler, builds pinned Git input through `cloud.build@5`, and atomically finalizes a successful Agent or MCP BuildRun with its OCI AssetRelease, immutable BuildRun/provenance binding, and schema-v2 Outbox fact through A3S ORM migrations 063-064. Failed hosted attempts recover through the existing idempotent retry, Operation reconciler, and Flow. Tenant-authorized REST, typed client, CLI, and Web projections expose Asset creation/archive, release draft/list/get/yank, and semantic deterministic new-binding selection; drafts and yanked releases are excluded while exact yanked identities remain addressable. Retained execution of the exact `G0` external-provider gate still blocks verification |
-| `A0.4` | Planned | Agent deployment, health, logs, update, rollback, and cleanup through the existing Workload, Flow, Fleet, and Runtime path; hosted MCP deployment is owned by `MCP0` |
+| `A0.4` | In progress | Exact published Agent releases bind immutably to ordinary Workload revisions through migration 066 and the existing Deployment, Operation, Flow, Fleet, and Runtime path. Server-side OCI publication injection, replay, update, rollback, Secret restart, persistence, REST, client, CLI, and Web projections are implemented; real-provider lifecycle evidence still blocks verification. Hosted MCP deployment is owned by `MCP0` |
 | `A0.5` | Planned | Immutable Skill bundle binding plus tenant-authorized release/catalog API, client, CLI, and Web surfaces without generic forge features |
 
 `A0.1` is a durable prerequisite, not a user-visible catalog. `A0.2` closes
@@ -745,8 +745,14 @@ Artifact, publication, and evidence contracts it consumes are verified. A
 published `A0.3` release is the first identity that `A1.1` may bind.
 
 Agent and MCP remain immutable asset profiles, not separate schedulers.
-`A0.3` publishes their release identities. `A0.4` owns Agent deployment, while
-hosted MCP deployment and traffic conformance proceed only through `MCP0`.
+`A0.3` publishes their release identities. `A0.4` now binds an exact published
+Agent release and successful BuildRun to an ordinary Workload revision, injects
+the immutable OCI publication server-side, and reuses the existing Deployment,
+Operation, Flow, Fleet, Runtime, health, logs, update, rollback, Secret restart,
+and cleanup paths. Fresh bindings reject archived Assets and draft or yanked
+releases; exact replay and rollback preserve a pinned identity. Real-provider
+lifecycle evidence keeps `A0.4` in progress. Hosted MCP deployment and traffic
+conformance proceed only through `MCP0`.
 
 ### 5.5 `A1`: durable Agent execution
 

@@ -595,6 +595,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/065_plugin_host_commands.sql"
             )),
         ),
+        Migration::new(
+            "066",
+            "Agent Workload release bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/066_agent_workload_release_bindings.sql"
+            )),
+        ),
     ]
 }
 

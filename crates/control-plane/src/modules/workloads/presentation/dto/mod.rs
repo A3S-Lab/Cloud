@@ -5,7 +5,7 @@ mod workload_manifest;
 
 pub use request::{
     CreateSourceWorkloadRequest, CreateWorkloadRequest, RollbackWorkloadRequest,
-    UpdateWorkloadRequest,
+    UpdateAgentWorkloadRequest, UpdateWorkloadRequest,
 };
 pub use response::{
     CancelDeploymentResponse, DeploymentResponse, WorkloadDeploymentResponse, WorkloadLogsResponse,

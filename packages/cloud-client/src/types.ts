@@ -429,6 +429,22 @@ export interface WorkloadRevision {
   resolvedAt: string | null;
   externalSourceRevisionId?: string;
   buildRunId?: string;
+  agentBinding?: AgentWorkloadRevisionBinding;
+  mcpBinding?: McpWorkloadRevisionBinding;
+}
+
+export interface AgentWorkloadRevisionBinding {
+  organizationId: string;
+  assetId: string;
+  assetReleaseId: string;
+  buildRunId: string;
+}
+
+export interface McpWorkloadRevisionBinding {
+  organizationId: string;
+  assetId: string;
+  assetReleaseId: string;
+  profileDigest: string;
 }
 
 export interface DeploymentOperation {

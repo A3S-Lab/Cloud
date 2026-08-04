@@ -28,7 +28,7 @@ pub use workload_replica::{
     DeploymentReplicaBinding, WorkloadReplica, WorkloadReplicaMember, CANONICAL_REPLICA_ORDINAL,
 };
 pub use workload_revision::{
-    ExternalBuildReference, HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact,
-    OciArtifactReference, RequestedServiceTemplate, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate, WorkloadRevision,
+    AgentWorkloadRevisionBinding, ExternalBuildReference, HttpHealthCheck,
+    McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
+    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, WorkloadRevision,
 };

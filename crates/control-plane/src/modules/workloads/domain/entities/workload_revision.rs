@@ -1,7 +1,8 @@
 use super::{SecretBinding, Workload};
+use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, McpServiceProfile,
-    McpServiceProfileBinding,
+    Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, AssetState,
+    McpServiceProfile, McpServiceProfileBinding,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId,
@@ -398,6 +399,64 @@ impl ExternalBuildReference {
     }
 }
 
+/// Immutable Agent release identity attached to an ordinary Workload revision.
+///
+/// Runtime consumes the resolved OCI artifact while Cloud retains the exact
+/// AssetRelease and successful BuildRun identities for lifecycle and audit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentWorkloadRevisionBinding {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    build_run_id: BuildRunId,
+}
+
+impl AgentWorkloadRevisionBinding {
+    pub const fn organization_id(&self) -> OrganizationId {
+        self.organization_id
+    }
+
+    pub const fn asset_id(&self) -> AssetId {
+        self.asset_id
+    }
+
+    pub const fn asset_release_id(&self) -> AssetReleaseId {
+        self.asset_release_id
+    }
+
+    pub const fn build_run_id(&self) -> BuildRunId {
+        self.build_run_id
+    }
+
+    pub(crate) fn restore(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        build_run_id: BuildRunId,
+    ) -> Result<Self, String> {
+        let binding = Self {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            build_run_id,
+        };
+        binding.validate_identity()?;
+        Ok(binding)
+    }
+
+    fn validate_identity(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.asset_id.as_uuid().is_nil()
+            || self.asset_release_id.as_uuid().is_nil()
+            || self.build_run_id.as_uuid().is_nil()
+        {
+            return Err("Agent Workload release binding identity is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 /// Immutable product identity attached to an ordinary Workload revision.
 ///
 /// Runtime consumes only `profile_digest`; Cloud retains the exact release
@@ -470,6 +529,8 @@ pub struct WorkloadRevision {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_build: Option<ExternalBuildReference>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_binding: Option<AgentWorkloadRevisionBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     mcp_binding: Option<McpWorkloadRevisionBinding>,
 }
 
@@ -506,6 +567,7 @@ impl WorkloadRevision {
             created_at,
             resolved_at: Some(created_at),
             external_build: None,
+            agent_binding: None,
             mcp_binding: None,
         })
     }
@@ -547,6 +609,7 @@ impl WorkloadRevision {
             created_at,
             resolved_at: None,
             external_build: None,
+            agent_binding: None,
             mcp_binding: None,
         })
     }
@@ -596,6 +659,109 @@ impl WorkloadRevision {
             .ok_or_else(|| "workload revision has not resolved its OCI artifact".into())
     }
 
+    /// Attach one published Agent release without introducing another Runtime
+    /// or deployment specification.
+    pub fn bind_agent_release(
+        &mut self,
+        workload: &Workload,
+        asset: &Asset,
+        release: &AssetRelease,
+        build: &BuildRun,
+    ) -> Result<bool, String> {
+        asset.validate()?;
+        release.validate_for(asset)?;
+        release.validate_build_publication(asset, build)?;
+        if self.workload_id != workload.id
+            || workload.organization_id != asset.organization_id
+            || asset.kind != AssetKind::Agent
+            || asset.state != AssetState::Active
+            || release.organization_id != workload.organization_id
+            || release.asset_id != asset.id
+            || release.state != AssetReleaseState::Published
+            || self.created_at < release.updated_at
+            || self.external_build.is_some()
+            || self.mcp_binding.is_some()
+        {
+            return Err(
+                "Agent Workload revision does not match its tenant or published release".into(),
+            );
+        }
+        let release_artifact = release
+            .artifact
+            .as_ref()
+            .ok_or_else(|| "published Agent release omitted its OCI artifact".to_owned())?;
+        if release_artifact.kind() != AssetReleaseArtifactKind::OciService {
+            return Err("Agent Workload requires an OCI Service release".into());
+        }
+        let published = build
+            .published_artifact
+            .as_ref()
+            .ok_or_else(|| "published Agent release omitted its OCI publication".to_owned())?;
+        let template = self.resolved_template()?;
+        if template.artifact.uri != published.uri
+            || template.artifact.digest != release_artifact.digest().as_str()
+            || template.artifact.media_type != release_artifact.media_type()
+        {
+            return Err("Agent Workload artifact does not match its exact AssetRelease".into());
+        }
+        let binding = AgentWorkloadRevisionBinding::restore(
+            workload.organization_id,
+            asset.id,
+            release.id,
+            build.id,
+        )?;
+        match &self.agent_binding {
+            Some(existing) if existing == &binding => Ok(false),
+            Some(_) => Err("Agent Workload release binding is immutable".into()),
+            None => {
+                self.agent_binding = Some(binding);
+                Ok(true)
+            }
+        }
+    }
+
+    pub const fn agent_binding(&self) -> Option<&AgentWorkloadRevisionBinding> {
+        self.agent_binding.as_ref()
+    }
+
+    pub(crate) fn validate_agent_binding_for_workload(
+        &self,
+        workload: &Workload,
+    ) -> Result<(), String> {
+        let Some(binding) = &self.agent_binding else {
+            return Ok(());
+        };
+        binding.validate_identity()?;
+        if self.workload_id != workload.id
+            || binding.organization_id != workload.organization_id
+            || self.template.is_none()
+            || self.resolved_at.is_none()
+            || self.external_build.is_some()
+            || self.mcp_binding.is_some()
+        {
+            return Err(
+                "Agent Workload release binding does not match its Workload revision".into(),
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) fn restore_agent_binding(
+        &mut self,
+        binding: AgentWorkloadRevisionBinding,
+    ) -> Result<(), String> {
+        binding.validate_identity()?;
+        self.resolved_template()?.validate()?;
+        if self.agent_binding.is_some()
+            || self.external_build.is_some()
+            || self.mcp_binding.is_some()
+        {
+            return Err("Agent Workload release binding was restored more than once".into());
+        }
+        self.agent_binding = Some(binding);
+        Ok(())
+    }
+
     /// Attach one published MCP release and its immutable semantics profile.
     ///
     /// The binding is idempotent for the same identity and otherwise
@@ -622,6 +788,8 @@ impl WorkloadRevision {
             || profile.asset_release_id != release.id
             || self.created_at < release.updated_at
             || self.created_at < profile.created_at
+            || self.agent_binding.is_some()
+            || self.external_build.is_some()
         {
             return Err(
                 "MCP Workload revision does not match its tenant, published release, or profile"
@@ -690,7 +858,10 @@ impl WorkloadRevision {
             return Err("MCP Workload release binding and Service profile digest differ".into());
         }
         validate_mcp_template(self.resolved_template()?, profile)?;
-        if self.mcp_binding.is_some() {
+        if self.mcp_binding.is_some()
+            || self.agent_binding.is_some()
+            || self.external_build.is_some()
+        {
             return Err("MCP Workload release binding was restored more than once".into());
         }
         self.mcp_binding = Some(binding);
@@ -714,6 +885,7 @@ impl WorkloadRevision {
             created_at,
         )?;
         revision.external_build = self.external_build.clone();
+        revision.agent_binding = self.agent_binding.clone();
         revision.mcp_binding = self.mcp_binding.clone();
         Ok(revision)
     }
@@ -753,6 +925,7 @@ impl WorkloadRevision {
         }
         let mut revision = Self::create(id, self.workload_id, generation, template, created_at)?;
         revision.external_build = self.external_build.clone();
+        revision.agent_binding = self.agent_binding.clone();
         revision.mcp_binding = self.mcp_binding.clone();
         Ok(revision)
     }

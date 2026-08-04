@@ -17,6 +17,8 @@ const GATEWAY_SCOPE_ID = '019c0000-0000-7000-8000-000000000012';
 const GATEWAY_NODE_ID = '019c0000-0000-7000-8000-000000000013';
 const SOURCE_REVISION_ID = '019c0000-0000-7000-8000-000000000014';
 const SOURCE_SUBSCRIPTION_ID = '019c0000-0000-7000-8000-000000000015';
+const ASSET_ID = '019c0000-0000-7000-8000-000000000016';
+const ASSET_RELEASE_ID = '019c0000-0000-7000-8000-000000000017';
 
 function envelope(data: unknown, status = 200): Response {
   return new Response(
@@ -861,6 +863,19 @@ describe('a3s-cloud CLI', () => {
       path:
         `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
         `/environments/${ENVIRONMENT_ID}/source-revisions/${REVISION_ID}/workloads`,
+    },
+    {
+      command: ['asset-releases', 'deploy', ASSET_ID, ASSET_RELEASE_ID],
+      path:
+        `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+        `/environments/${ENVIRONMENT_ID}/assets/${ASSET_ID}` +
+        `/releases/${ASSET_RELEASE_ID}/workloads`,
+    },
+    {
+      command: ['asset-releases', 'update', WORKLOAD_ID, ASSET_ID, ASSET_RELEASE_ID],
+      path:
+        `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}` +
+        `/assets/${ASSET_ID}/releases/${ASSET_RELEASE_ID}/deployments`,
     },
   ] as const)('submits one unchanged ACL desired-state mutation %#', async (testCase) => {
     const calls: Array<Parameters<CloudFetch>> = [];

@@ -37,6 +37,7 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
   const ready = isWorkloadReadyForReplacement(workload);
   const rollbackRevisions = eligibleRollbackRevisions(workload);
   const currentRevision = workload.desiredRevision;
+  const releaseBound = Boolean(currentRevision?.agentBinding || currentRevision?.mcpBinding);
   const parsedDraft = updateDialog
     ? parseServiceTemplateDraft(updateDialog.draft)
     : { template: null, error: null };
@@ -51,7 +52,7 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
     : undefined;
 
   const openUpdate = () => {
-    if (!ready || !currentRevision) return;
+    if (!ready || !currentRevision || releaseBound) return;
     setUpdateDialog({
       sourceRevisionId: currentRevision.id,
       sourceGeneration: currentRevision.generation,
@@ -109,8 +110,14 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
         <button
           className='secondary-button compact'
           type='button'
-          disabled={!ready}
-          title={ready ? 'Commit a complete immutable replacement' : replacementUnavailable}
+          disabled={!ready || releaseBound}
+          title={
+            releaseBound
+              ? 'Release-bound workloads update through their Asset release lifecycle'
+              : ready
+                ? 'Commit a complete immutable replacement'
+                : replacementUnavailable
+          }
           onClick={openUpdate}
         >
           <Braces size={14} /> Update

@@ -2,8 +2,14 @@ pub mod commands;
 pub mod queries;
 mod workflow;
 
+#[cfg(test)]
+mod tests;
+
 pub use commands::cancel_deployment::{
     CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult,
+};
+pub use commands::create_agent_workload_deployment::{
+    CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
 };
 pub use commands::create_source_workload_deployment::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
@@ -16,6 +22,9 @@ pub use commands::rollback_workload_deployment::{
     RollbackWorkloadDeployment, RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult,
 };
 pub use commands::stop_workload::{StopWorkload, StopWorkloadHandler, StopWorkloadResult};
+pub use commands::update_agent_workload_deployment::{
+    UpdateAgentWorkloadDeployment, UpdateAgentWorkloadDeploymentHandler,
+};
 pub use commands::update_workload_deployment::{
     UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult,
 };

@@ -241,6 +241,45 @@ export async function executeCommand(
         await api.updateWorkloadFromAcl(organizationId, workloadId, manifest, mutation.idempotencyKey)
       );
     }
+    case 'asset-releases deploy': {
+      const mutation = requireAclMutationCommand(
+        arguments_,
+        4,
+        'asset-releases deploy <asset-id> <release-id>'
+      );
+      const api = cloudApi();
+      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      return workloadDeploymentResult(
+        await api.deployAgentReleaseFromAcl(
+          requireOrganization(context),
+          requireProject(context),
+          requireEnvironment(context),
+          positionalUuid(positionals, 2, 'Asset ID'),
+          positionalUuid(positionals, 3, 'Asset release ID'),
+          manifest,
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'asset-releases update': {
+      const mutation = requireAclMutationCommand(
+        arguments_,
+        5,
+        'asset-releases update <workload-id> <asset-id> <release-id>'
+      );
+      const api = cloudApi();
+      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      return workloadDeploymentResult(
+        await api.updateAgentReleaseFromAcl(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'Workload ID'),
+          positionalUuid(positionals, 3, 'Asset ID'),
+          positionalUuid(positionals, 4, 'Asset release ID'),
+          manifest,
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'workloads stop': {
       const idempotencyKey = requireMutationCommand(arguments_, 3, 'workloads stop <workload-id>');
       const organizationId = requireOrganization(context);

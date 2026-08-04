@@ -1,6 +1,6 @@
 import { Ban, CircleStop } from 'lucide-react';
 import type { DeploymentStatus, Route, ServiceTemplate, Workload } from '../../types/api';
-import { humanize } from './console-format';
+import { humanize, shortId } from './console-format';
 import { WorkloadActions } from './workload-actions';
 import { routeStage } from './workload-view-model';
 
@@ -92,6 +92,10 @@ export function WorkloadOverview({
                 ? `${observedRuntime.state} / ${observedRuntime.healthState ?? 'not reported'}`
                 : 'Not observed'}
             </dd>
+          </div>
+          <div>
+            <dt>Release binding</dt>
+            <dd>{releaseBindingLabel(workload.desiredRevision)}</dd>
           </div>
         </dl>
       ) : (
@@ -239,4 +243,14 @@ function deploymentCancellationNotice(status?: DeploymentStatus): {
 
 function revisionLabel(revision: Workload['desiredRevision']): string {
   return revision ? `Generation ${revision.generation}` : 'None';
+}
+
+function releaseBindingLabel(revision: Workload['desiredRevision']): string {
+  if (revision?.agentBinding) {
+    return `Agent ${shortId(revision.agentBinding.assetReleaseId)}`;
+  }
+  if (revision?.mcpBinding) {
+    return `MCP ${shortId(revision.mcpBinding.assetReleaseId)}`;
+  }
+  return 'Ordinary Workload';
 }

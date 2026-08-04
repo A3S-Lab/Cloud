@@ -111,12 +111,13 @@ use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
-    CancelDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
-    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
-    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler,
-    SecretRotationRestartReconciler, StopWorkloadHandler, UpdateWorkloadDeploymentHandler,
+    CancelDeploymentHandler, CreateAgentWorkloadDeploymentHandler,
+    CreateSourceWorkloadDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
+    DeploymentFlowDependencies, DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler,
+    GetWorkloadLogsHandler, IWorkloadRuntimeControl, ListWorkloadsHandler,
+    OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
+    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
     WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
@@ -725,6 +726,7 @@ pub async fn build_application_with_source_resolver(
             search,
             asset_catalog,
             asset_git,
+            assets,
             workloads,
             builds,
             executions,
@@ -791,6 +793,7 @@ struct ApplicationDependencies {
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     asset_git: Arc<AssetGitApplicationService>,
+    assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     executions: Arc<dyn IExecutionRepository>,
@@ -830,6 +833,7 @@ fn build_application_with_health(
         search,
         asset_catalog,
         asset_git,
+        assets,
         workloads,
         builds,
         executions,
@@ -860,6 +864,7 @@ fn build_application_with_health(
     let environment_projects = Arc::clone(&projects);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
+    let agent_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
     let gateway_scope_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
@@ -871,8 +876,12 @@ fn build_application_with_health(
     let github_connection_organizations = Arc::clone(&organizations);
     let create_workloads = Arc::clone(&workloads);
     let source_create_workloads = Arc::clone(&workloads);
+    let agent_create_workloads = Arc::clone(&workloads);
+    let agent_update_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
     let source_workload_secrets = Arc::clone(&secrets);
+    let agent_create_workload_secrets = Arc::clone(&secrets);
+    let agent_update_workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
     let update_workload_secrets = Arc::clone(&secrets);
     let rollback_workloads = Arc::clone(&workloads);
@@ -900,6 +909,8 @@ fn build_application_with_health(
     let get_assets = Arc::clone(&asset_catalog);
     let list_asset_releases = Arc::clone(&asset_catalog);
     let get_asset_releases = Arc::clone(&asset_catalog);
+    let agent_create_assets = Arc::clone(&assets);
+    let agent_update_assets = assets;
     let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
     let rotation_nodes = Arc::clone(&nodes);
@@ -941,6 +952,8 @@ fn build_application_with_health(
     let get_builds = Arc::clone(&builds);
     let get_build_evidence = Arc::clone(&builds);
     let get_build_logs = Arc::clone(&builds);
+    let agent_create_builds = Arc::clone(&builds);
+    let agent_update_builds = Arc::clone(&builds);
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let create_executions = Arc::clone(&executions);
@@ -1147,6 +1160,23 @@ fn build_application_with_health(
                         source_workload_builds,
                         source_create_workloads,
                         source_workload_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::workloads::CreateAgentWorkloadDeployment, _>(
+                    CreateAgentWorkloadDeploymentHandler::new(
+                        agent_workload_environments,
+                        agent_create_assets,
+                        agent_create_builds,
+                        agent_create_workloads,
+                        agent_create_workload_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::workloads::UpdateAgentWorkloadDeployment, _>(
+                    UpdateAgentWorkloadDeploymentHandler::new(
+                        agent_update_assets,
+                        agent_update_builds,
+                        agent_update_workloads,
+                        agent_update_workload_secrets,
                     ),
                 )
                 .command_handler::<crate::modules::workloads::UpdateWorkloadDeployment, _>(

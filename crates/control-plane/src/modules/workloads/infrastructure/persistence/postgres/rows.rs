@@ -5,8 +5,9 @@ use crate::modules::shared_kernel::domain::{
     SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentStatus, ExternalBuildReference, McpWorkloadRevisionBinding,
-    RequestedServiceTemplate, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
+    AgentWorkloadRevisionBinding, Deployment, DeploymentStatus, ExternalBuildReference,
+    McpWorkloadRevisionBinding, RequestedServiceTemplate, ServiceTemplate, Workload,
+    WorkloadDesiredState, WorkloadRevision,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
@@ -64,6 +65,10 @@ impl Selection for RevisionSelection {
             WorkloadRevisions::external_build_environment_id().expression(),
             WorkloadRevisions::external_source_revision_id().expression(),
             WorkloadRevisions::external_build_run_id().expression(),
+            WorkloadRevisions::agent_organization_id().expression(),
+            WorkloadRevisions::agent_asset_id().expression(),
+            WorkloadRevisions::agent_asset_release_id().expression(),
+            WorkloadRevisions::agent_build_run_id().expression(),
             WorkloadRevisions::mcp_organization_id().expression(),
             WorkloadRevisions::mcp_asset_id().expression(),
             WorkloadRevisions::mcp_asset_release_id().expression(),
@@ -133,6 +138,10 @@ pub(super) struct RevisionRow {
     external_build_environment_id: Option<Uuid>,
     external_source_revision_id: Option<Uuid>,
     external_build_run_id: Option<Uuid>,
+    agent_organization_id: Option<Uuid>,
+    agent_asset_id: Option<Uuid>,
+    agent_asset_release_id: Option<Uuid>,
+    agent_build_run_id: Option<Uuid>,
     mcp_organization_id: Option<Uuid>,
     mcp_asset_id: Option<Uuid>,
     mcp_asset_release_id: Option<Uuid>,
@@ -183,8 +192,9 @@ from_row!(RevisionRow, {
     resolved_at: 14, external_build_organization_id: 15,
     external_build_project_id: 16, external_build_environment_id: 17,
     external_source_revision_id: 18, external_build_run_id: 19,
-    mcp_organization_id: 20, mcp_asset_id: 21, mcp_asset_release_id: 22,
-    mcp_profile_digest: 23, mcp_profile_acl: 24,
+    agent_organization_id: 20, agent_asset_id: 21, agent_asset_release_id: 22,
+    agent_build_run_id: 23, mcp_organization_id: 24, mcp_asset_id: 25,
+    mcp_asset_release_id: 26, mcp_profile_digest: 27, mcp_profile_acl: 28,
 });
 from_row!(DeploymentRow, {
     id: 0, organization_id: 1, workload_id: 2, revision_id: 3, operation_id: 4,
@@ -322,6 +332,37 @@ pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryE
                     "workload revision external build reference is invalid: {error}"
                 ))
             })?;
+    }
+    match (
+        row.agent_organization_id,
+        row.agent_asset_id,
+        row.agent_asset_release_id,
+        row.agent_build_run_id,
+    ) {
+        (None, None, None, None) => {}
+        (Some(organization_id), Some(asset_id), Some(asset_release_id), Some(build_run_id)) => {
+            let binding = AgentWorkloadRevisionBinding::restore(
+                OrganizationId::from_uuid(organization_id),
+                AssetId::from_uuid(asset_id),
+                AssetReleaseId::from_uuid(asset_release_id),
+                BuildRunId::from_uuid(build_run_id),
+            )
+            .map_err(|error| {
+                corrupt(format!(
+                    "Agent Workload release binding is invalid: {error}"
+                ))
+            })?;
+            revision.restore_agent_binding(binding).map_err(|error| {
+                corrupt(format!(
+                    "Agent Workload revision binding is invalid: {error}"
+                ))
+            })?;
+        }
+        _ => {
+            return Err(corrupt(
+                "workload revision Agent release binding is incomplete",
+            ))
+        }
     }
     match (
         row.mcp_organization_id,

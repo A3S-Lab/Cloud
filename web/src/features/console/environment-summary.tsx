@@ -110,8 +110,8 @@ export function AssetCatalogCard({ assets, releases }: { assets: Asset[]; releas
         <AssetKind assets={assets} releases={releases} icon={<Box size={18} />} kind='skill' name='Skill' />
       </div>
       <p className='surface-note'>
-        New bindings select the highest stable published version. Yanked releases remain available to pinned
-        deployments.
+        Published Agent releases deploy through immutable Workload bindings. Yanked releases remain available
+        to pinned deployments.
       </p>
     </article>
   );

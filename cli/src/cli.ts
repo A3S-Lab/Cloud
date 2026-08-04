@@ -35,6 +35,8 @@ Commands:
   asset-releases select ASSET [VERSION] Select one published release for a new binding
   asset-releases create ASSET VERSION COMMIT Create a hosted release draft idempotently
   asset-releases yank ASSET ID Yank one published release idempotently
+  asset-releases deploy ASSET RELEASE Deploy one published Agent release from A3S ACL
+  asset-releases update WORKLOAD ASSET RELEASE Update an Agent workload to one published release
   nodes list            List nodes in the selected organization
   nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready

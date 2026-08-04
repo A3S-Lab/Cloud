@@ -82,7 +82,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.3.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.4.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
@@ -899,6 +899,48 @@ export class CloudApi {
     );
   }
 
+  deployAgentReleaseFromAcl(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    assetId: string,
+    assetReleaseId: string,
+    manifest: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/workloads`,
+      idempotencyKey,
+      manifest,
+      signal
+    );
+  }
+
+  updateAgentReleaseFromAcl(
+    organizationId: string,
+    workloadId: string,
+    assetId: string,
+    assetReleaseId: string,
+    manifest: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workloads/${encodeURIComponent(workloadId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/deployments`,
+      idempotencyKey,
+      manifest,
+      signal
+    );
+  }
+
   updateWorkload(
     organizationId: string,
     workloadId: string,
@@ -931,6 +973,49 @@ export class CloudApi {
         `/source-revisions/${encodeURIComponent(sourceRevisionId)}/workloads`,
       idempotencyKey,
       { name, template },
+      signal
+    );
+  }
+
+  deployAgentRelease(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    assetId: string,
+    assetReleaseId: string,
+    name: string,
+    template: SourceWorkloadTemplate,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/workloads`,
+      idempotencyKey,
+      { name, template },
+      signal
+    );
+  }
+
+  updateAgentRelease(
+    organizationId: string,
+    workloadId: string,
+    assetId: string,
+    assetReleaseId: string,
+    template: SourceWorkloadTemplate,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workloads/${encodeURIComponent(workloadId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/deployments`,
+      idempotencyKey,
+      { template },
       signal
     );
   }

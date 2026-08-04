@@ -125,6 +125,15 @@ impl InMemoryBuildRunRepository {
             .get(&(organization_id, asset_release_id))
             .cloned()
     }
+
+    #[cfg(test)]
+    pub(crate) async fn seed_build(&self, build: BuildRun) {
+        self.state
+            .write()
+            .await
+            .builds
+            .insert((build.organization_id, build.id), build);
+    }
 }
 
 #[async_trait]

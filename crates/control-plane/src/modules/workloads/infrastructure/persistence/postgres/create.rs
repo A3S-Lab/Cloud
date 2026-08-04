@@ -112,6 +112,10 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
         .map_err(RepositoryError::Conflict)?;
     request
         .revision
+        .validate_agent_binding_for_workload(&request.workload)
+        .map_err(RepositoryError::Conflict)?;
+    request
+        .revision
         .validate_mcp_binding_for_workload(&request.workload)
         .map_err(RepositoryError::Conflict)?;
     let workload = &request.workload;
@@ -243,6 +247,7 @@ async fn insert_revision(
         .map(serde_json::to_value)
         .transpose()?;
     let external_build = revision.external_build.as_ref();
+    let agent_binding = revision.agent_binding();
     let mcp_binding = revision.mcp_binding();
     let result = execute(
         transaction,
@@ -315,6 +320,22 @@ async fn insert_revision(
             .value(
                 WorkloadRevisions::external_build_run_id(),
                 external_build.map(|reference| reference.build_run_id.as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::agent_organization_id(),
+                agent_binding.map(|binding| binding.organization_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::agent_asset_id(),
+                agent_binding.map(|binding| binding.asset_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::agent_asset_release_id(),
+                agent_binding.map(|binding| binding.asset_release_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::agent_build_run_id(),
+                agent_binding.map(|binding| binding.build_run_id().as_uuid()),
             )
             .value(
                 WorkloadRevisions::mcp_organization_id(),

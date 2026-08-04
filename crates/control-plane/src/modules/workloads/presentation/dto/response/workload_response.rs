@@ -105,7 +105,18 @@ pub struct WorkloadRevisionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub build_run_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_binding: Option<AgentWorkloadRevisionBindingResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mcp_binding: Option<McpWorkloadRevisionBindingResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentWorkloadRevisionBindingResponse {
+    pub organization_id: Uuid,
+    pub asset_id: Uuid,
+    pub asset_release_id: Uuid,
+    pub build_run_id: Uuid,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -269,6 +280,15 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
             .external_build
             .as_ref()
             .map(|reference| reference.build_run_id.as_uuid());
+        let agent_binding =
+            revision
+                .agent_binding()
+                .map(|binding| AgentWorkloadRevisionBindingResponse {
+                    organization_id: binding.organization_id().as_uuid(),
+                    asset_id: binding.asset_id().as_uuid(),
+                    asset_release_id: binding.asset_release_id().as_uuid(),
+                    build_run_id: binding.build_run_id().as_uuid(),
+                });
         let mcp_binding =
             revision
                 .mcp_binding()
@@ -304,6 +324,7 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
             resolved_at: revision.resolved_at,
             external_source_revision_id,
             build_run_id,
+            agent_binding,
             mcp_binding,
         }
     }

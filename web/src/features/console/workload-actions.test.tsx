@@ -51,6 +51,34 @@ describe('WorkloadActions', () => {
     expect(host.hasAttribute('inert')).toBe(false);
     expect(document.activeElement).toBe(updateButton);
   });
+
+  it('keeps release-bound workloads out of the ordinary template update path', async () => {
+    const host = document.getElementById('root');
+    if (!host) throw new Error('test root is missing');
+    const releaseBound = workload();
+    if (!releaseBound.desiredRevision || !releaseBound.activeRevision) {
+      throw new Error('test workload has no active revision');
+    }
+    const binding = {
+      organizationId: 'organization-1',
+      assetId: 'asset-1',
+      assetReleaseId: 'release-1',
+      buildRunId: 'build-1',
+    };
+    releaseBound.desiredRevision.agentBinding = binding;
+    releaseBound.activeRevision.agentBinding = binding;
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(<WorkloadActions workload={releaseBound} onUpdate={vi.fn()} onRollback={vi.fn()} />);
+    });
+
+    const updateButton = [...host.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Update')
+    );
+    expect(updateButton?.disabled).toBe(true);
+    expect(updateButton?.title).toContain('Asset release lifecycle');
+  });
 });
 
 function workload(): Workload {

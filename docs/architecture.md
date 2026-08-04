@@ -244,7 +244,7 @@ not business ownership or convenience wrappers.
 | Identity | Organizations, principals, tokens, membership, grants, and authorization | Current |
 | Projects | Projects, environments, and tenant boundaries | Current |
 | Sources | External source identities, revisions, webhooks, and subscriptions | Current |
-| Assets | Agent, MCP, and Skill identities, hosted Git, and immutable release lifecycle | `A0.1` and `A0.2` current; later `A0` gates planned |
+| Assets | Agent, MCP, and Skill identities, hosted Git, immutable release lifecycle, and Agent-to-Workload release binding | `A0.1` and `A0.2` verified; `A0.3` and `A0.4` implemented but awaiting retained provider evidence; `A0.5` planned |
 | Artifacts | Immutable admitted bytes, receipts, evidence, and retention | Current |
 | Executions | Generic finite Runtime Task product and cancellation lifecycle | Current |
 | Workloads | Service desired state, placement, replicas, claims, deployment, rollout, and autoscaling policy | Current foundation; later `H0` gates planned |

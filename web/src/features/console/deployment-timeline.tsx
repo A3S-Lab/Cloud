@@ -66,6 +66,18 @@ export function DeploymentTimeline({ workload, operations }: DeploymentTimelineP
                       {shortId(deployment.revision.buildRunId)}
                     </p>
                   ) : null}
+                  {deployment.revision.agentBinding ? (
+                    <p className='timeline-lineage'>
+                      Agent release {shortId(deployment.revision.agentBinding.assetReleaseId)} / build{' '}
+                      {shortId(deployment.revision.agentBinding.buildRunId)}
+                    </p>
+                  ) : null}
+                  {deployment.revision.mcpBinding ? (
+                    <p className='timeline-lineage'>
+                      MCP release {shortId(deployment.revision.mcpBinding.assetReleaseId)} / profile{' '}
+                      {deployment.revision.mcpBinding.profileDigest.slice(0, 15)}
+                    </p>
+                  ) : null}
                   <dl className='timeline-facts'>
                     <div>
                       <dt>Requested</dt>

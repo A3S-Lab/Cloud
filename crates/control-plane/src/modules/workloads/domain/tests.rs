@@ -644,6 +644,123 @@ fn external_build_trace_is_validated_and_preserved_by_derived_revisions() {
 }
 
 #[test]
+fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback() {
+    let organization_id = OrganizationId::new();
+    let created_at = canonical_timestamp(Utc::now());
+    let asset = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("research-agent").expect("asset name"),
+        AssetKind::Agent,
+        created_at,
+    )
+    .expect("asset");
+    let mut release = AssetRelease::draft(
+        &asset,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse("1.0.0").expect("release version"),
+        GitCommitSha::parse("a".repeat(40)).expect("commit"),
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("manifest digest"),
+        created_at,
+    )
+    .expect("release");
+    let build = succeeded_hosted_build(organization_id, asset.id, release.id, created_at);
+    release
+        .publish_from_build(&asset, &build)
+        .expect("publish from hosted BuildRun");
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("research-runtime").expect("workload name"),
+        created_at + Duration::seconds(1),
+    );
+    let mut service = template('e');
+    service.artifact.uri = build
+        .published_artifact
+        .as_ref()
+        .expect("published artifact")
+        .uri
+        .clone();
+    let mut revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        service.clone(),
+        created_at + Duration::seconds(1),
+    )
+    .expect("revision");
+
+    assert!(revision
+        .bind_agent_release(&workload, &asset, &release, &build)
+        .expect("bind"));
+    assert!(!revision
+        .bind_agent_release(&workload, &asset, &release, &build)
+        .expect("idempotent bind"));
+    let binding = revision.agent_binding().expect("Agent binding");
+    assert_eq!(binding.organization_id(), organization_id);
+    assert_eq!(binding.asset_id(), asset.id);
+    assert_eq!(binding.asset_release_id(), release.id);
+    assert_eq!(binding.build_run_id(), build.id);
+
+    let rollback = revision
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            2,
+            created_at + Duration::seconds(2),
+        )
+        .expect("rollback");
+    assert_eq!(rollback.agent_binding(), revision.agent_binding());
+
+    let mut wrong_artifact = service;
+    wrong_artifact.artifact.uri = "oci://registry.example/other@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".into();
+    let mut wrong_artifact = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        3,
+        wrong_artifact,
+        created_at + Duration::seconds(3),
+    )
+    .expect("wrong artifact revision");
+    assert!(wrong_artifact
+        .bind_agent_release(&workload, &asset, &release, &build)
+        .is_err());
+
+    let mut archived_asset = asset.clone();
+    archived_asset
+        .archive(created_at + Duration::seconds(3))
+        .expect("archive Asset");
+    let mut archived_revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        4,
+        revision.resolved_template().expect("template").clone(),
+        created_at + Duration::seconds(4),
+    )
+    .expect("archived Asset revision");
+    assert!(archived_revision
+        .bind_agent_release(&workload, &archived_asset, &release, &build)
+        .is_err());
+
+    let mut yanked = release;
+    yanked
+        .yank(created_at + Duration::seconds(3))
+        .expect("yank release");
+    let mut yanked_revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        5,
+        revision.resolved_template().expect("template").clone(),
+        created_at + Duration::seconds(4),
+    )
+    .expect("yanked revision");
+    assert!(yanked_revision
+        .bind_agent_release(&workload, &asset, &yanked, &build)
+        .is_err());
+}
+
+#[test]
 fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
     let organization_id = OrganizationId::new();
     let created_at = canonical_timestamp(Utc::now());

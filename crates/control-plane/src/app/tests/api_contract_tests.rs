@@ -130,6 +130,24 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .and_then(|body| body.get("content"))
         .and_then(|content| content.get("application/vnd.a3s.acl"))
         .is_some());
+    for path in [
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/assets/{asset_id}/releases/{asset_release_id}/workloads",
+        "/organizations/{organization_id}/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Workloads"]));
+        assert!(operation["requestBody"]["content"]["application/json"].is_object());
+        assert!(operation["requestBody"]["content"]["application/vnd.a3s.acl"].is_object());
+        assert!(operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            })));
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["responses"]["202"].is_object());
+    }
     let executions = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions"];
     assert!(executions["get"].is_object());

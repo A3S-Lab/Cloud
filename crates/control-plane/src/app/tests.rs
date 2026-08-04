@@ -751,7 +751,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         AssetGitApplicationService::new(
             unavailable_assets.clone(),
             unavailable_assets.clone(),
-            unavailable_assets,
+            unavailable_assets.clone(),
             AssetGitApplicationServiceOptions {
                 write_lease: std::time::Duration::from_secs(30),
                 default_repository_quota_bytes: 1024 * 1024 * 1024,
@@ -770,6 +770,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             search,
             asset_catalog,
             asset_git,
+            assets: unavailable_assets,
             workloads: workload_port,
             builds,
             executions: Arc::new(InMemoryExecutionRepository::new()),

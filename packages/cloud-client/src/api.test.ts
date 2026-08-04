@@ -26,7 +26,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.3.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.4.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -794,7 +794,7 @@ describe('CloudApi', () => {
     ]);
   });
 
-  it('sends ACL desired state unchanged through the three workload mutation paths', async () => {
+  it('sends ACL desired state unchanged through every workload mutation path', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
       calls.push(args);
@@ -812,6 +812,23 @@ describe('CloudApi', () => {
       'source-revision',
       manifest,
       'cli:source-1'
+    );
+    await api.deployAgentReleaseFromAcl(
+      'organization',
+      'project',
+      'environment',
+      'asset',
+      'release',
+      manifest,
+      'cli:agent-deploy-1'
+    );
+    await api.updateAgentReleaseFromAcl(
+      'organization',
+      'workload',
+      'asset',
+      'release-2',
+      manifest,
+      'cli:agent-update-1'
     );
 
     expect(
@@ -845,6 +862,74 @@ describe('CloudApi', () => {
         idempotencyKey: 'cli:source-1',
         body: manifest,
       },
+      {
+        input:
+          '/api/v1/organizations/organization/projects/project/environments/environment/assets/asset/releases/release/workloads',
+        method: 'POST',
+        contentType: A3S_ACL_MEDIA_TYPE,
+        idempotencyKey: 'cli:agent-deploy-1',
+        body: manifest,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/workloads/workload/assets/asset/releases/release-2/deployments',
+        method: 'POST',
+        contentType: A3S_ACL_MEDIA_TYPE,
+        idempotencyKey: 'cli:agent-update-1',
+        body: manifest,
+      },
+    ]);
+  });
+
+  it('injects Agent release identity into JSON deployment routes without accepting an artifact', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, 202);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const template = {
+      process: { command: ['/app/agent'], args: [], workingDirectory: null, environment: {} },
+      secrets: [],
+      resources: {
+        cpuMillis: 250,
+        memoryBytes: 134_217_728,
+        pids: 64,
+        ephemeralStorageBytes: null,
+      },
+      ports: [{ name: 'http', containerPort: 8080 }],
+      health: {
+        portName: 'http',
+        path: '/health',
+        intervalMs: 5_000,
+        timeoutMs: 1_000,
+        healthyThreshold: 1,
+        unhealthyThreshold: 3,
+        stabilizationWindowMs: 10_000,
+      },
+    };
+
+    await api.deployAgentRelease(
+      'organization',
+      'project',
+      'environment',
+      'asset',
+      'release-1',
+      'catalog-agent',
+      template,
+      'agent:deploy'
+    );
+    await api.updateAgentRelease('organization', 'workload', 'asset', 'release-2', template, 'agent:update');
+
+    expect(calls.map(([input, init]) => [input, init?.body])).toEqual([
+      [
+        '/api/v1/organizations/organization/projects/project/environments/environment/assets/asset/releases/release-1/workloads',
+        JSON.stringify({ name: 'catalog-agent', template }),
+      ],
+      [
+        '/api/v1/organizations/organization/workloads/workload/assets/asset/releases/release-2/deployments',
+        JSON.stringify({ template }),
+      ],
     ]);
   });
 

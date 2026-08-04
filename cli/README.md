@@ -149,6 +149,8 @@ asset-releases get <asset-id> <release-id>
 asset-releases select <asset-id> [version]
 asset-releases create <asset-id> <version> <commit-sha>
 asset-releases yank <asset-id> <release-id>
+asset-releases deploy <asset-id> <release-id> --file=<path>
+asset-releases update <workload-id> <asset-id> <release-id> --file=<path>
 nodes list
 nodes bootstrap <name> --enrollment-token-stdin --expires-at=<timestamp> --agent-release-url=<https-url> --agent-release-sha256=<digest> --node-config=<absolute-acl-path>
 nodes ready <node-id> --expected-version=<version>
@@ -206,6 +208,15 @@ selected, while `asset-releases get` retains exact access to yanked identities
 for pinned deployments. Skill release publication remains owned by the later
 immutable Skill-binding milestone.
 
+`asset-releases deploy` creates an ordinary Workload from an exact published
+Agent release. `asset-releases update` creates the next revision of an existing
+Workload bound to the same Agent Asset and the selected exact release. Both
+commands require `--file` and a caller-owned idempotency key. The manifest must
+omit `artifact`; Cloud loads the release's successful BuildRun and injects its
+exact OCI URI, digest, and media type. Fresh bindings reject archived Assets
+and draft or yanked releases. Exact replay, rollback, and Secret-triggered
+restart preserve the already pinned identity.
+
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box
 exposes the authoritative durable build-log contract; the CLI does not fall
@@ -214,8 +225,9 @@ back to Runtime or Workload logs.
 Use [`examples/workload.oci.example.acl`](../examples/workload.oci.example.acl)
 for direct OCI create/update requests. Use
 [`examples/workload.source.example.acl`](../examples/workload.source.example.acl)
-for SourceRevision deployment; source manifests must omit `artifact` because
-Cloud derives the verified published artifact from the selected BuildRun.
+for SourceRevision and Agent release deployment; these manifests must omit
+`artifact` because Cloud derives the verified published artifact from the
+selected BuildRun.
 Every manifest declares `version = 1` and exactly one named `workload` block.
 Unknown fields and blocks are rejected. Secret bindings contain only Secret ID
 and version references and exactly one `environment`, `file`, or
