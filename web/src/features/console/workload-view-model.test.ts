@@ -171,6 +171,7 @@ function revision(id: string, generation: number): WorkloadRevision {
     templateDigest: `template-${generation}`,
     createdAt: `2026-07-20T00:00:0${generation}Z`,
     resolvedAt: `2026-07-20T00:00:0${generation}Z`,
+    skillBindings: [],
   };
 }
 

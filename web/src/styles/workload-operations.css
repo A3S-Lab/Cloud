@@ -55,6 +55,73 @@
   opacity: 0.42;
 }
 
+.skill-bindings-card {
+  display: grid;
+  gap: 16px;
+}
+
+.skill-binding-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 9px;
+  list-style: none;
+}
+
+.skill-binding-list li {
+  display: flex;
+  padding: 12px 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(5, 9, 7, 0.45);
+}
+
+.skill-binding-list li > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.skill-binding-list strong {
+  color: #d4ded7;
+  font-size: 12px;
+}
+
+.skill-binding-list span,
+.skill-binding-list code,
+.empty-skill-bindings {
+  overflow-wrap: anywhere;
+  color: var(--faint);
+  font-size: 10px;
+}
+
+.skill-binding-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.skill-binding-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.skill-binding-form select {
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line-bright);
+  border-radius: 9px;
+  color: #d4ded7;
+  background: rgba(8, 13, 10, 0.86);
+}
+
 .primary-action {
   border: 0;
   color: var(--accent-ink);
@@ -672,6 +739,10 @@
   .action-dialog {
     max-height: calc(100vh - 24px);
     padding: 20px;
+  }
+
+  .skill-binding-form {
+    grid-template-columns: 1fr;
   }
 }
 

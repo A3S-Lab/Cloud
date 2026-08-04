@@ -3,7 +3,7 @@ use crate::modules::workloads::application::{
     DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResult,
 };
 use crate::modules::workloads::domain::entities::{
-    PlacementTopology, WorkloadControl, WorkloadRevision,
+    PlacementTopology, SkillWorkloadRevisionBinding, WorkloadControl, WorkloadRevision,
 };
 use crate::modules::workloads::presentation::dto::ServiceTemplateDto;
 use a3s_runtime::contract::{RuntimeHealthState, RuntimeUnitState};
@@ -108,6 +108,7 @@ pub struct WorkloadRevisionResponse {
     pub agent_binding: Option<AgentWorkloadRevisionBindingResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mcp_binding: Option<McpWorkloadRevisionBindingResponse>,
+    pub skill_bindings: Vec<SkillWorkloadRevisionBindingResponse>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -126,6 +127,34 @@ pub struct McpWorkloadRevisionBindingResponse {
     pub asset_id: Uuid,
     pub asset_release_id: Uuid,
     pub profile_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillWorkloadRevisionBindingResponse {
+    pub organization_id: Uuid,
+    pub asset_id: Uuid,
+    pub asset_release_id: Uuid,
+    pub artifact_digest: String,
+    pub artifact_media_type: String,
+    pub artifact_size_bytes: u64,
+    pub mount_name: String,
+    pub mount_target: String,
+}
+
+impl From<&SkillWorkloadRevisionBinding> for SkillWorkloadRevisionBindingResponse {
+    fn from(binding: &SkillWorkloadRevisionBinding) -> Self {
+        Self {
+            organization_id: binding.organization_id().as_uuid(),
+            asset_id: binding.asset_id().as_uuid(),
+            asset_release_id: binding.asset_release_id().as_uuid(),
+            artifact_digest: binding.artifact_digest().to_string(),
+            artifact_media_type: binding.artifact_media_type().into(),
+            artifact_size_bytes: binding.artifact_size_bytes(),
+            mount_name: binding.mount_name(),
+            mount_target: binding.mount_target(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -298,6 +327,11 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
                     asset_release_id: binding.asset_release_id().as_uuid(),
                     profile_digest: binding.profile_digest().to_string(),
                 });
+        let skill_bindings = revision
+            .skill_bindings()
+            .iter()
+            .map(SkillWorkloadRevisionBindingResponse::from)
+            .collect();
         let requested_template = revision.request.clone().into();
         let (artifact_uri, artifact_digest, artifact_media_type) = revision
             .template
@@ -326,6 +360,7 @@ impl From<WorkloadRevision> for WorkloadRevisionResponse {
             build_run_id,
             agent_binding,
             mcp_binding,
+            skill_bindings,
         }
     }
 }

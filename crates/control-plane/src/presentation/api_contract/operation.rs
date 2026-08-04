@@ -310,7 +310,11 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     if method == "get" {
         return vec![200];
     }
-    if method == "delete" && (path.contains("/deployments/") || path.contains("/build-runs/")) {
+    if method == "delete"
+        && (path.contains("/deployments/")
+            || path.contains("/build-runs/")
+            || path.ends_with("/bindings"))
+    {
         return vec![200, 202];
     }
     if method == "post" && asynchronous_mutation(path) {
@@ -414,6 +418,7 @@ fn request_has_no_body(path: &str) -> bool {
         || path.ends_with("/archive")
         || path.ends_with("/yank")
         || path.ends_with("/deactivate")
+        || path.ends_with("/bindings")
         || path.ends_with("/source-connections/github")
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
 }
@@ -422,6 +427,7 @@ fn asynchronous_mutation(path: &str) -> bool {
     path.ends_with("/workloads")
         || path.contains("/deployments")
         || path.ends_with("/rollback")
+        || path.ends_with("/bindings")
         || path.ends_with("/stop")
         || path.ends_with("/retry")
         || path.ends_with("/verify")

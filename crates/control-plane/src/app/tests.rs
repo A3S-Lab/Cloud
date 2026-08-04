@@ -746,6 +746,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         identity.clone(),
         unavailable_assets.clone(),
         unavailable_assets.clone(),
+        unavailable_assets.clone(),
     ));
     let asset_git = Arc::new(
         AssetGitApplicationService::new(

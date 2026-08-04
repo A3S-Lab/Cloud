@@ -5,8 +5,8 @@ import {
   CLOUD_API_MAJOR_VERSION,
   CloudApi,
   CloudApiError,
-  DEFAULT_CLOUD_API_BASE_PATH,
   type CloudFetch,
+  DEFAULT_CLOUD_API_BASE_PATH,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 
@@ -26,7 +26,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.4.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.5.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -749,6 +749,8 @@ describe('CloudApi', () => {
 
     await api.stopWorkload('organization', 'workload', 'cli:stop-1');
     await api.rollbackWorkload('organization', 'workload', 'revision', 'cli:rollback-1');
+    await api.bindSkillRelease('organization', 'workload', 'skill', 'skill-release', 'cli:bind-skill-1');
+    await api.unbindSkillRelease('organization', 'workload', 'skill', 'cli:unbind-skill-1');
     await api.cancelDeployment('organization', 'deployment', 'cli:cancel-deployment-1');
     await api.cancelBuildRun('organization', 'build-run', 'cli:cancel-build-1');
     await api.retryBuildRun('organization', 'build-run', 'cli:retry-build-1');
@@ -772,6 +774,19 @@ describe('CloudApi', () => {
         method: 'POST',
         headers: expect.objectContaining({ 'Idempotency-Key': 'cli:rollback-1' }),
         body: JSON.stringify({ revisionId: 'revision' }),
+      },
+      {
+        input:
+          '/api/v1/organizations/organization/workloads/workload/skills/skill/releases/skill-release/bindings',
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:bind-skill-1' }),
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization/workloads/workload/skills/skill/bindings',
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'cli:unbind-skill-1' }),
+        body: undefined,
       },
       {
         input: '/api/v1/organizations/organization/deployments/deployment',

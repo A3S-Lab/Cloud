@@ -1,14 +1,16 @@
 use super::{
-    CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler, SourceWorkloadTemplate,
-    UpdateAgentWorkloadDeployment, UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
+    BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, CreateAgentWorkloadDeployment,
+    CreateAgentWorkloadDeploymentHandler, SourceWorkloadTemplate, UnbindSkillWorkloadDeployment,
+    UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeployment,
+    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler,
 };
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::artifacts::{BuildRun, InMemoryBuildRunRepository};
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseVersion, AssetReleaseWrite, AssetWrite,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, TransitionAssetReleaseWrite,
-    TransitionAssetWrite,
+    Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, AssetReleaseWrite,
+    AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository,
+    TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -216,6 +218,260 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     ));
 }
 
+#[tokio::test]
+async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_history() {
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let drafted_at = canonical_timestamp(Utc::now() - Duration::minutes(1));
+    let agent = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("skill-host-agent").expect("Agent Asset name"),
+        AssetKind::Agent,
+        drafted_at,
+    )
+    .expect("Agent Asset");
+    let (agent_release, agent_build) = published_release(&agent, "1.0.0", 'a', drafted_at);
+    let skill = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("research-tools").expect("Skill Asset name"),
+        AssetKind::Skill,
+        drafted_at,
+    )
+    .expect("Skill Asset");
+    let skill_release_one = published_skill_release(&skill, "1.0.0", 'b', drafted_at);
+    let skill_release_two = published_skill_release(&skill, "2.0.0", 'c', drafted_at);
+    let requested_at = [
+        agent_release.updated_at,
+        skill_release_one.updated_at,
+        skill_release_two.updated_at,
+    ]
+    .into_iter()
+    .max()
+    .expect("latest release timestamp")
+        + Duration::seconds(1);
+    let agent_assets = Arc::new(AgentAssetStore::new(agent.clone(), [agent_release.clone()]));
+    let skill_assets = Arc::new(AgentAssetStore::new(
+        skill.clone(),
+        [skill_release_one.clone(), skill_release_two.clone()],
+    ));
+    let builds = Arc::new(InMemoryBuildRunRepository::new());
+    builds.seed_build(agent_build).await;
+    let environments = Arc::new(TestEnvironmentRepository {
+        environment: Environment::create(
+            organization_id,
+            project_id,
+            environment_id,
+            EnvironmentName::parse("Production").expect("Environment name"),
+            drafted_at,
+        ),
+    });
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let secrets = Arc::new(InMemorySecretRepository::new());
+    let created = CreateAgentWorkloadDeploymentHandler::new(
+        environments,
+        agent_assets.clone(),
+        builds.clone(),
+        workloads.clone(),
+        secrets.clone(),
+    )
+    .execute(
+        CreateAgentWorkloadDeployment {
+            organization_id,
+            project_id,
+            environment_id,
+            asset_id: agent.id,
+            asset_release_id: agent_release.id,
+            name: "skill-host-runtime".into(),
+            template: source_template(),
+            idempotency_key: "skill-binding:create-agent".into(),
+            request_id: Uuid::now_v7(),
+            requested_at,
+        },
+        context(),
+    )
+    .await
+    .expect("create handler")
+    .expect("create Agent Workload");
+    activate(
+        workloads.as_ref(),
+        organization_id,
+        created.bundle.deployment.id,
+        requested_at + Duration::seconds(1),
+    )
+    .await;
+
+    let bind_handler = BindSkillWorkloadDeploymentHandler::new(
+        skill_assets.clone(),
+        workloads.clone(),
+        secrets.clone(),
+    );
+    let bind_one = BindSkillWorkloadDeployment {
+        organization_id,
+        workload_id: created.bundle.workload.id,
+        skill_asset_id: skill.id,
+        skill_asset_release_id: skill_release_one.id,
+        idempotency_key: "skill-binding:bind-one".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: requested_at + Duration::seconds(2),
+    };
+    let bound = bind_handler
+        .execute(bind_one.clone(), context())
+        .await
+        .expect("bind handler")
+        .expect("bind Skill");
+    assert_eq!(bound.bundle.revision.generation, 2);
+    assert_eq!(
+        bound
+            .bundle
+            .revision
+            .skill_binding(skill.id)
+            .expect("Skill binding")
+            .asset_release_id(),
+        skill_release_one.id
+    );
+    skill_assets
+        .yank(skill_release_one.id, requested_at + Duration::seconds(3))
+        .await;
+    let replayed = bind_handler
+        .execute(bind_one.clone(), context())
+        .await
+        .expect("bind replay handler")
+        .expect("bind replay after yank");
+    assert!(replayed.bundle.replayed);
+    assert_eq!(replayed.bundle.deployment.id, bound.bundle.deployment.id);
+    let mut rejected_bind = bind_one;
+    rejected_bind.idempotency_key = "skill-binding:yanked-fresh".into();
+    rejected_bind.request_id = Uuid::now_v7();
+    let rejected = bind_handler
+        .execute(rejected_bind, context())
+        .await
+        .expect("fresh yanked bind handler");
+    assert!(matches!(rejected, Err(ApplicationError::Conflict(_))));
+
+    activate(
+        workloads.as_ref(),
+        organization_id,
+        bound.bundle.deployment.id,
+        requested_at + Duration::seconds(4),
+    )
+    .await;
+    let rebound = bind_handler
+        .execute(
+            BindSkillWorkloadDeployment {
+                organization_id,
+                workload_id: created.bundle.workload.id,
+                skill_asset_id: skill.id,
+                skill_asset_release_id: skill_release_two.id,
+                idempotency_key: "skill-binding:bind-two".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: requested_at + Duration::seconds(5),
+            },
+            context(),
+        )
+        .await
+        .expect("rebind handler")
+        .expect("rebind Skill");
+    assert_eq!(rebound.bundle.revision.generation, 3);
+    assert_eq!(
+        rebound
+            .bundle
+            .revision
+            .skill_binding(skill.id)
+            .expect("rebound Skill")
+            .asset_release_id(),
+        skill_release_two.id
+    );
+    assert_eq!(
+        workloads
+            .find_revision(organization_id, bound.bundle.revision.id)
+            .await
+            .expect("original bound revision")
+            .skill_binding(skill.id)
+            .expect("original Skill binding")
+            .asset_release_id(),
+        skill_release_one.id
+    );
+
+    activate(
+        workloads.as_ref(),
+        organization_id,
+        rebound.bundle.deployment.id,
+        requested_at + Duration::seconds(6),
+    )
+    .await;
+    let updated_agent = UpdateAgentWorkloadDeploymentHandler::new(
+        agent_assets,
+        builds,
+        workloads.clone(),
+        secrets.clone(),
+    )
+    .execute(
+        UpdateAgentWorkloadDeployment {
+            organization_id,
+            workload_id: created.bundle.workload.id,
+            asset_id: agent.id,
+            asset_release_id: agent_release.id,
+            expected_name: None,
+            template: source_template(),
+            idempotency_key: "skill-binding:update-agent".into(),
+            request_id: Uuid::now_v7(),
+            requested_at: requested_at + Duration::seconds(7),
+        },
+        context(),
+    )
+    .await
+    .expect("Agent update handler")
+    .expect("Agent update");
+    assert_eq!(updated_agent.bundle.revision.generation, 4);
+    assert_eq!(
+        updated_agent
+            .bundle
+            .revision
+            .skill_binding(skill.id)
+            .expect("preserved Skill binding")
+            .asset_release_id(),
+        skill_release_two.id
+    );
+
+    activate(
+        workloads.as_ref(),
+        organization_id,
+        updated_agent.bundle.deployment.id,
+        requested_at + Duration::seconds(8),
+    )
+    .await;
+    let unbind_handler =
+        UnbindSkillWorkloadDeploymentHandler::new(workloads.clone(), secrets.clone());
+    let unbind = UnbindSkillWorkloadDeployment {
+        organization_id,
+        workload_id: created.bundle.workload.id,
+        skill_asset_id: skill.id,
+        idempotency_key: "skill-binding:unbind".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: requested_at + Duration::seconds(9),
+    };
+    let unbound = unbind_handler
+        .execute(unbind.clone(), context())
+        .await
+        .expect("unbind handler")
+        .expect("unbind Skill");
+    assert_eq!(unbound.bundle.revision.generation, 5);
+    assert!(unbound.bundle.revision.skill_bindings().is_empty());
+    let unbind_replay = unbind_handler
+        .execute(unbind, context())
+        .await
+        .expect("unbind replay handler")
+        .expect("unbind replay");
+    assert!(unbind_replay.bundle.replayed);
+    assert_eq!(
+        unbind_replay.bundle.deployment.id,
+        unbound.bundle.deployment.id
+    );
+}
+
 fn published_release(
     asset: &Asset,
     version: &str,
@@ -237,6 +493,37 @@ fn published_release(
         .publish_from_build(asset, &build)
         .expect("publish release");
     (release, build)
+}
+
+fn published_skill_release(
+    asset: &Asset,
+    version: &str,
+    character: char,
+    drafted_at: chrono::DateTime<Utc>,
+) -> AssetRelease {
+    let mut release = AssetRelease::draft(
+        asset,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse(version).expect("Skill release version"),
+        GitCommitSha::parse(character.to_string().repeat(40)).expect("Skill commit SHA"),
+        Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64)))
+            .expect("Skill manifest digest"),
+        drafted_at,
+    )
+    .expect("draft Skill release");
+    release
+        .publish_skill(
+            asset,
+            AssetReleaseArtifact::skill_bundle(
+                Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64)))
+                    .expect("Skill bundle digest"),
+                1024,
+            )
+            .expect("Skill bundle artifact"),
+            drafted_at + Duration::milliseconds(1),
+        )
+        .expect("publish Skill release");
+    release
 }
 
 fn source_template() -> SourceWorkloadTemplate {

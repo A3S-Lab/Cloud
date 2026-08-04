@@ -586,7 +586,9 @@ contexts' tables.
   publication Outbox fact are one A3S ORM transaction. Exact finalization
   replay can repair only the same binding; ordinary BuildRun saves and generic
   Asset transitions cannot publish an Agent or MCP release.
-- Skill releases require a bundle artifact and cannot contain a workload spec.
+- Skill releases require the deterministic Git archive of their exact reachable
+  commit as a content-addressed bundle artifact, cannot contain a workload
+  build recipe, and publish without a BuildRun.
 - A yanked release remains addressable by existing deployments but is hidden
   from new selection.
 
@@ -679,7 +681,11 @@ contexts' tables.
 - At most one revision is active, but previous healthy revisions remain
   available for rollback until retention removes them.
 - Secret and Skill bindings reference immutable versions and are part of the
-  immutable revision template.
+  immutable revision. A Skill binding is legal only on an Agent revision, is
+  unique by Skill Asset, pins one exact published release digest and size, and
+  projects a Cloud-derived read-only Artifact mount under
+  `/a3s/skills/{asset_id}`. Bind, rebind, and unbind always create a new
+  revision; a Skill is never a standalone Runtime unit.
 - Each Secret binding has a unique name and target and selects an environment
   variable, an absolute file path plus mode, or the artifact registry
   credential. It must reference an active version in the workload's

@@ -1,21 +1,19 @@
-use super::UpdateAgentWorkloadDeployment;
-use crate::modules::artifacts::domain::IBuildRunRepository;
+use super::BindSkillWorkloadDeployment;
 use crate::modules::assets::domain::IAssetRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName,
-    WorkloadRevisionId,
+    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::commands::agent_release::load_deployable_agent_release;
+use crate::modules::workloads::application::commands::skill_release::load_deployable_skill_release;
 use crate::modules::workloads::application::{
     commands::validate_secret_bindings, UpdateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME,
     DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, WorkloadDesiredState, WorkloadRevision,
+    Deployment, WorkloadControlSpec, WorkloadDesiredState,
 };
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -24,59 +22,54 @@ use crate::modules::workloads::domain::repositories::{
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
-pub struct UpdateAgentWorkloadDeploymentHandler {
+pub struct BindSkillWorkloadDeploymentHandler {
     assets: Arc<dyn IAssetRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn ISecretRepository>,
 }
 
-impl UpdateAgentWorkloadDeploymentHandler {
+impl BindSkillWorkloadDeploymentHandler {
     pub fn new(
         assets: Arc<dyn IAssetRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn ISecretRepository>,
     ) -> Self {
         Self {
             assets,
-            builds,
             workloads,
             secrets,
         }
     }
 }
 
-impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploymentHandler {
+impl CommandHandler<BindSkillWorkloadDeployment> for BindSkillWorkloadDeploymentHandler {
     fn execute(
         &self,
-        command: UpdateAgentWorkloadDeployment,
+        command: BindSkillWorkloadDeployment,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<
         'static,
         a3s_boot::Result<ApplicationResult<UpdateWorkloadDeploymentResult>>,
     > {
         let assets = Arc::clone(&self.assets);
-        let builds = Arc::clone(&self.builds);
         let workloads = Arc::clone(&self.workloads);
         let secrets = Arc::clone(&self.secrets);
         Box::pin(async move {
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
                 "workloadId": command.workload_id,
-                "assetId": command.asset_id,
-                "assetReleaseId": command.asset_release_id,
-                "expectedName": command.expected_name.as_deref(),
-                "template": &command.template,
+                "skillAssetId": command.skill_asset_id,
+                "skillAssetReleaseId": command.skill_asset_release_id,
+                "action": "bind",
             }))
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
                 format!(
-                    "organizations/{}/workloads/{}/assets/{}/releases/{}/deployments",
+                    "organizations/{}/workloads/{}/skills/{}/releases/{}/bindings",
                     command.organization_id,
                     command.workload_id,
-                    command.asset_id,
-                    command.asset_release_id,
+                    command.skill_asset_id,
+                    command.skill_asset_release_id,
                 ),
                 command.idempotency_key,
                 &canonical,
@@ -88,22 +81,26 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                 Ok(Some(mut bundle))
                     if bundle.workload.organization_id == command.organization_id
                         && bundle.workload.id == command.workload_id
-                        && bundle.revision.agent_binding().is_some_and(|binding| {
-                            binding.asset_id() == command.asset_id
-                                && binding.asset_release_id() == command.asset_release_id
-                        }) =>
+                        && bundle.revision.workload_id == command.workload_id
+                        && bundle
+                            .revision
+                            .skill_binding(command.skill_asset_id)
+                            .is_some_and(|binding| {
+                                binding.asset_release_id() == command.skill_asset_release_id
+                            }) =>
                 {
                     bundle.replayed = true;
                     return Ok(Ok(UpdateWorkloadDeploymentResult { bundle }));
                 }
                 Ok(Some(_)) => {
                     return Err(BootError::Internal(
-                        "Agent Workload update replay changed its identity".into(),
+                        "Skill Workload binding replay changed its identity".into(),
                     ))
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
+
             let workload = match workloads
                 .find_workload(command.organization_id, command.workload_id)
                 .await
@@ -116,30 +113,24 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
             };
             if workload.desired_state != WorkloadDesiredState::Running {
                 return Ok(Err(ApplicationError::Conflict(
-                    "only an active running Agent Workload can be updated".into(),
+                    "only an active running Agent Workload can bind a Skill".into(),
                 )));
             }
             let Some(active_revision_id) = workload.active_revision_id else {
                 return Ok(Err(ApplicationError::Conflict(
-                    "only an active running Agent Workload can be updated".into(),
+                    "only an active running Agent Workload can bind a Skill".into(),
                 )));
             };
-            if let Some(expected_name) = command.expected_name.as_deref() {
-                let expected_name = match ResourceName::parse(expected_name) {
-                    Ok(name) => name,
-                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-                };
-                if expected_name.key() != workload.name.key() {
-                    return Ok(Err(ApplicationError::Conflict(
-                        "workload ACL name does not match the target workload".into(),
-                    )));
-                }
-            }
             let active_revision = match workloads
                 .find_revision(command.organization_id, active_revision_id)
                 .await
             {
-                Ok(revision) if revision.workload_id == workload.id => revision,
+                Ok(revision)
+                    if revision.workload_id == workload.id
+                        && revision.agent_binding().is_some() =>
+                {
+                    revision
+                }
                 Ok(_) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::Conflict(
                         "active Agent Workload revision is unavailable".into(),
@@ -147,73 +138,45 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            if !active_revision
-                .agent_binding()
-                .is_some_and(|binding| binding.asset_id() == command.asset_id)
-            {
-                return Ok(Err(ApplicationError::Conflict(
-                    "Agent Workload updates must retain the same Asset identity".into(),
-                )));
-            }
-            let deployable = match load_deployable_agent_release(
+            let deployable = match load_deployable_skill_release(
                 assets.as_ref(),
-                builds.as_ref(),
                 command.organization_id,
-                command.asset_id,
-                command.asset_release_id,
+                command.skill_asset_id,
+                command.skill_asset_release_id,
             )
             .await
             {
                 Ok(deployable) => deployable,
                 Err(error) => return Ok(Err(error)),
             };
-            let revisions = match workloads
+            let generation = match workloads
                 .list_revisions(command.organization_id, command.workload_id)
                 .await
             {
-                Ok(revisions) => revisions,
+                Ok(revisions) => revisions
+                    .into_iter()
+                    .map(|revision| revision.generation)
+                    .max()
+                    .unwrap_or_default()
+                    .checked_add(1),
                 Err(error) => return Ok(Err(error.into())),
             };
-            let generation = match revisions
-                .iter()
-                .map(|revision| revision.generation)
-                .max()
-                .unwrap_or_default()
-                .checked_add(1)
-            {
-                Some(generation) => generation,
-                None => {
-                    return Ok(Err(ApplicationError::Conflict(
-                        "workload revision generation is exhausted".into(),
-                    )))
-                }
+            let Some(generation) = generation else {
+                return Ok(Err(ApplicationError::Conflict(
+                    "workload revision generation is exhausted".into(),
+                )));
             };
-            let mut revision = match WorkloadRevision::create(
+            let revision = match active_revision.with_skill_release_as(
                 WorkloadRevisionId::new(),
-                workload.id,
                 generation,
-                command.template.resolve(deployable.artifact),
                 command.requested_at,
-            ) {
-                Ok(revision) => revision,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            if let Err(error) = revision.bind_agent_release(
                 &workload,
                 &deployable.asset,
                 &deployable.release,
-                &deployable.build,
             ) {
-                return Ok(Err(ApplicationError::Conflict(error)));
-            }
-            for binding in active_revision.skill_bindings() {
-                if let Err(error) = revision.restore_skill_binding(binding.clone()) {
-                    return Ok(Err(ApplicationError::Internal(error)));
-                }
-            }
-            if let Err(error) = revision.validate_skill_bindings_for_workload(&workload) {
-                return Ok(Err(ApplicationError::Internal(error)));
-            }
+                Ok(revision) => revision,
+                Err(error) => return Ok(Err(ApplicationError::Conflict(error))),
+            };
             if let Err(error) = validate_secret_bindings(
                 secrets.as_ref(),
                 workload.organization_id,
@@ -244,6 +207,9 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                     "deploymentId": deployment.id,
                     "organizationId": workload.organization_id,
                     "revisionId": revision.id,
+                    "skillAssetId": command.skill_asset_id,
+                    "skillAssetReleaseId": command.skill_asset_release_id,
+                    "skillBindingAction": "bind",
                     "workloadId": workload.id,
                 }),
                 command.requested_at,
@@ -253,7 +219,7 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
-                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
+                    control: WorkloadControlSpec::unmanaged_single_replica(),
                     revision,
                     deployment,
                     operation,

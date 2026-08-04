@@ -1,6 +1,6 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
-import { executeAssetCommand } from './asset-commands';
 import type { ParsedArguments } from './arguments';
+import { executeAssetCommand } from './asset-commands';
 import {
   positionalResourceName,
   positionalUuid,
@@ -33,6 +33,7 @@ import {
   buildRunLogsResult,
   buildRunResult,
   buildRunsResult,
+  type CommandResult,
   cancelBuildRunResult,
   cancelDeploymentResult,
   contextResult,
@@ -49,15 +50,14 @@ import {
   routeResult,
   routesResult,
   stopWorkloadResult,
-  type CommandResult,
-  workloadLogsResult,
   workloadDeploymentResult,
+  workloadLogsResult,
   workloadResult,
   workloadsResult,
 } from './results';
 import { executeSearchCommand } from './search-commands';
-import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 import { executeSecretCommand, rejectMisplacedSecretValueOption } from './secret-commands';
+import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 import type { ReadStdin } from './standard-input';
 
 export interface CommandDependencies {
@@ -277,6 +277,37 @@ export async function executeCommand(
           positionalUuid(positionals, 4, 'Asset release ID'),
           manifest,
           mutation.idempotencyKey
+        )
+      );
+    }
+    case 'skill-bindings bind': {
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        5,
+        'skill-bindings bind <workload-id> <skill-asset-id> <skill-release-id>'
+      );
+      return workloadDeploymentResult(
+        await cloudApi().bindSkillRelease(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'Workload ID'),
+          positionalUuid(positionals, 3, 'Skill Asset ID'),
+          positionalUuid(positionals, 4, 'Skill Asset release ID'),
+          idempotencyKey
+        )
+      );
+    }
+    case 'skill-bindings unbind': {
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        4,
+        'skill-bindings unbind <workload-id> <skill-asset-id>'
+      );
+      return workloadDeploymentResult(
+        await cloudApi().unbindSkillRelease(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'Workload ID'),
+          positionalUuid(positionals, 3, 'Skill Asset ID'),
+          idempotencyKey
         )
       );
     }

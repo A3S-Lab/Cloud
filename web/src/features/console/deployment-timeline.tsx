@@ -78,6 +78,14 @@ export function DeploymentTimeline({ workload, operations }: DeploymentTimelineP
                       {deployment.revision.mcpBinding.profileDigest.slice(0, 15)}
                     </p>
                   ) : null}
+                  {deployment.revision.skillBindings.length > 0 ? (
+                    <p className='timeline-lineage'>
+                      Skills{' '}
+                      {deployment.revision.skillBindings
+                        .map((binding) => shortId(binding.assetReleaseId))
+                        .join(', ')}
+                    </p>
+                  ) : null}
                   <dl className='timeline-facts'>
                     <div>
                       <dt>Requested</dt>

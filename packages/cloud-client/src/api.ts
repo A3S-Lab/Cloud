@@ -1,3 +1,8 @@
+import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
+import { CloudApiError } from './error';
+import { type CloudLogQuery, encodeLogQuery } from './log-query';
+import { readHealthResponse, readResponse } from './response';
+import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import type {
   ApiToken,
   ApiTokenMutationResult,
@@ -10,15 +15,16 @@ import type {
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
-  CreateGithubRepositorySubscriptionInput,
+  CreateApiTokenInput,
   CreateAssetInput,
   CreateAssetReleaseInput,
-  CreateApiTokenInput,
-  CreateGatewayScopeInput,
   CreateExecutionInput,
+  CreateGatewayScopeInput,
+  CreateGithubRepositorySubscriptionInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
+  EnrollmentToken,
   Environment,
   EnvironmentMutationResult,
   Execution,
@@ -30,7 +36,6 @@ import type {
   GithubConnectionInstall,
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
-  EnrollmentToken,
   IssueEnrollmentTokenInput,
   Node,
   Operation,
@@ -48,20 +53,15 @@ import type {
   SecretDetails,
   SecretMutationResult,
   ServiceTemplate,
-  SourceWorkloadTemplate,
-  StopWorkloadResult,
   SourceRevision,
   SourceRevisionMutationResult,
+  SourceWorkloadTemplate,
+  StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
-  WorkloadLogsPage,
   WorkloadLogStreamFilter,
+  WorkloadLogsPage,
 } from './types';
-import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
-import { CloudApiError } from './error';
-import { encodeLogQuery, type CloudLogQuery } from './log-query';
-import { readHealthResponse, readResponse } from './response';
-import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
@@ -82,11 +82,11 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.4.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.5.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
-export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
 export type { CloudLogQuery } from './log-query';
+export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
@@ -1031,6 +1031,40 @@ export class CloudApi {
       `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/rollback`,
       idempotencyKey,
       { revisionId },
+      signal
+    );
+  }
+
+  bindSkillRelease(
+    organizationId: string,
+    workloadId: string,
+    skillAssetId: string,
+    skillAssetReleaseId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workloads/${encodeURIComponent(workloadId)}` +
+        `/skills/${encodeURIComponent(skillAssetId)}` +
+        `/releases/${encodeURIComponent(skillAssetReleaseId)}/bindings`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  unbindSkillRelease(
+    organizationId: string,
+    workloadId: string,
+    skillAssetId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkloadDeploymentResult> {
+    return this.delete(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workloads/${encodeURIComponent(workloadId)}` +
+        `/skills/${encodeURIComponent(skillAssetId)}/bindings`,
+      idempotencyKey,
       signal
     );
   }

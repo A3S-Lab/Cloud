@@ -5,7 +5,7 @@ use crate::modules::assets::domain::{
     AssetGitWriteOperation, AssetKind, AssetState, IAssetGitRepository,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, BuildRunId, GitCommitSha, OrganizationId, ResourceName,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, ResourceName,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use std::io::Write;
@@ -522,6 +522,54 @@ async fn pinned_build_manifest_and_git_archive_share_one_immutable_commit() {
         .remove_build_input(build_run_id)
         .await
         .expect("idempotent removal");
+    assert!(!first.path.exists());
+}
+
+#[tokio::test]
+async fn pinned_skill_release_bundle_replays_exact_git_archive_and_cleans_up_idempotently() {
+    let directory = tempfile::tempdir().expect("repository directory");
+    let work = tempfile::tempdir().expect("work tree");
+    let store = store(directory.path());
+    let asset = Asset::create(
+        AssetId::new(),
+        OrganizationId::new(),
+        ResourceName::parse("Release bundle").expect("Asset name"),
+        AssetKind::Skill,
+        Utc::now(),
+    )
+    .expect("Skill Asset");
+    store.provision(&asset).await.expect("repository");
+    initialize_work_tree(work.path(), asset.kind, "skill source");
+    push_main(work.path(), &store.repository_path(&asset));
+    let source_commit = commit(work.path());
+    let admission = store
+        .admit_manifest(&asset, &source_commit)
+        .await
+        .expect("admitted Skill manifest");
+    assert!(admission.build_recipe.is_none());
+
+    let release_id = AssetReleaseId::new();
+    let first = store
+        .prepare_release_bundle(&asset, &source_commit, release_id)
+        .await
+        .expect("prepared Skill release bundle");
+    let replay = store
+        .prepare_release_bundle(&asset, &source_commit, release_id)
+        .await
+        .expect("replayed Skill release bundle");
+    assert_eq!(first, replay);
+    assert_eq!(first.asset_release_id, release_id);
+    assert_eq!(first.commit_sha, admission.commit_sha);
+    assert!(first.path.is_file());
+
+    store
+        .remove_release_bundle(release_id)
+        .await
+        .expect("removed Skill release bundle");
+    store
+        .remove_release_bundle(release_id)
+        .await
+        .expect("idempotent Skill bundle removal");
     assert!(!first.path.exists());
 }
 

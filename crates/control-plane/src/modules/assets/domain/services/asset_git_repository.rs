@@ -1,9 +1,10 @@
 use crate::modules::assets::domain::{
-    Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRpcLimits, AssetGitRpcResponse,
-    AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission, AssetState,
+    Asset, AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRpcLimits,
+    AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal, AssetGitWriteLease,
+    AssetManifestAdmission, AssetState,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, BuildRunId, GitCommitSha, OrganizationId, Sha256Digest,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, Sha256Digest,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -151,6 +152,26 @@ pub trait IAssetGitRepository: Send + Sync {
         &self,
         build_run_id: BuildRunId,
     ) -> Result<(), AssetGitRepositoryError>;
+
+    async fn prepare_release_bundle(
+        &self,
+        _asset: &Asset,
+        _commit_sha: &GitCommitSha,
+        _asset_release_id: AssetReleaseId,
+    ) -> Result<AssetGitReleaseBundle, AssetGitRepositoryError> {
+        Err(AssetGitRepositoryError::Storage(
+            "Skill release bundle preparation is unavailable".into(),
+        ))
+    }
+
+    async fn remove_release_bundle(
+        &self,
+        _asset_release_id: AssetReleaseId,
+    ) -> Result<(), AssetGitRepositoryError> {
+        Err(AssetGitRepositoryError::Storage(
+            "Skill release bundle cleanup is unavailable".into(),
+        ))
+    }
 }
 
 pub fn validate_asset_repository_mutation(asset: &Asset) -> Result<(), String> {

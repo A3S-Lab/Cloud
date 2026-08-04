@@ -1,5 +1,7 @@
 use crate::modules::assets::domain::AssetKind;
-use crate::modules::shared_kernel::domain::{BuildRunId, GitCommitSha, Sha256Digest};
+use crate::modules::shared_kernel::domain::{
+    AssetReleaseId, BuildRunId, GitCommitSha, Sha256Digest,
+};
 use crate::modules::sources::domain::BuildRecipe;
 use chrono::{DateTime, Utc};
 use std::path::PathBuf;
@@ -116,6 +118,15 @@ pub struct AssetGitBuildInput {
     pub path: PathBuf,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AssetGitReleaseBundle {
+    pub asset_release_id: AssetReleaseId,
+    pub commit_sha: GitCommitSha,
+    pub digest: Sha256Digest,
+    pub size_bytes: u64,
+    pub path: PathBuf,
+}
+
 impl AssetGitBuildInput {
     pub fn validate(&self) -> Result<(), String> {
         if self.build_run_id.as_uuid().is_nil()
@@ -126,6 +137,20 @@ impl AssetGitBuildInput {
         }
         GitCommitSha::parse(self.commit_sha.as_str())?;
         Sha256Digest::parse(self.content_digest.as_str())?;
+        Ok(())
+    }
+}
+
+impl AssetGitReleaseBundle {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.asset_release_id.as_uuid().is_nil()
+            || self.size_bytes == 0
+            || self.path.as_os_str().is_empty()
+        {
+            return Err("Asset Git release bundle identity is invalid".into());
+        }
+        GitCommitSha::parse(self.commit_sha.as_str())?;
+        Sha256Digest::parse(self.digest.as_str())?;
         Ok(())
     }
 }

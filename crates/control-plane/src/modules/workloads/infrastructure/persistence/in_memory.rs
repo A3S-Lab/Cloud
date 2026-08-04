@@ -906,6 +906,10 @@ fn validate_bundle(request: &CreateDeploymentBundle) -> Result<(), RepositoryErr
         .revision
         .validate_mcp_binding_for_workload(&request.workload)
         .map_err(RepositoryError::Conflict)?;
+    request
+        .revision
+        .validate_skill_bindings_for_workload(&request.workload)
+        .map_err(RepositoryError::Conflict)?;
     if request.revision.workload_id != request.workload.id
         || request.deployment.organization_id != request.workload.organization_id
         || request.deployment.workload_id != request.workload.id

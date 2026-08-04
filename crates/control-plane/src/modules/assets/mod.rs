@@ -22,7 +22,7 @@ pub use application::{
 
 pub use domain::{
     AcquireAssetGitWriteLease, Asset, AssetArchived, AssetCreated, AssetGitBackup,
-    AssetGitBuildInput, AssetGitRepository, AssetGitRepositoryControlError,
+    AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRepository, AssetGitRepositoryControlError,
     AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse,
     AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetGitWriteOperation,
     AssetGitWriteRecovery, AssetKind, AssetManifestAdmission, AssetRelease, AssetReleaseArtifact,

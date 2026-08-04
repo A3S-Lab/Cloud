@@ -1,19 +1,23 @@
 use super::replicas;
 use super::rows::{self, DeploymentSelection, RevisionSelection, WorkloadSelection};
 use super::schema::{
-    ActiveWorkloads, Deployments, McpServiceProfiles, WorkloadRevisions, Workloads,
+    ActiveWorkloads, Deployments, McpServiceProfiles, WorkloadRevisionSkillBindings,
+    WorkloadRevisions, Workloads,
 };
-use crate::infrastructure::{fetch_optional, PostgresPersistenceError};
+use crate::infrastructure::{fetch_all, fetch_optional, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
-    WorkloadRevisionId,
+    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, OrganizationId, ProjectId,
+    RepositoryError, Sha256Digest, WorkloadId, WorkloadRevisionId,
 };
-use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
+use crate::modules::workloads::domain::entities::{
+    Deployment, SkillWorkloadRevisionBinding, Workload, WorkloadRevision,
+};
 use crate::modules::workloads::domain::repositories::ActiveRuntimeTarget;
 use a3s_orm::{
     select_from, select_from_as, Database, OrderDirection, PostgresDialect, PostgresExecutor,
     PostgresTransaction,
 };
+use uuid::Uuid;
 
 pub(super) async fn find_workload(
     executor: &PostgresExecutor,
@@ -62,7 +66,7 @@ pub(super) async fn find_revision(
     organization_id: OrganizationId,
     revision_id: WorkloadRevisionId,
 ) -> Result<WorkloadRevision, RepositoryError> {
-    Database::new(PostgresDialect, executor.clone())
+    let mut revision = Database::new(PostgresDialect, executor.clone())
         .fetch_optional_as(
             select_from::<WorkloadRevisions>()
                 .select(RevisionSelection)
@@ -76,7 +80,10 @@ pub(super) async fn find_revision(
         .await
         .map_err(storage)?
         .ok_or(RepositoryError::NotFound)
-        .and_then(rows::revision)
+        .and_then(rows::revision)?;
+    let bindings = skill_bindings_executor(executor, organization_id, revision.id).await?;
+    attach_skill_bindings(&mut revision, bindings)?;
+    Ok(revision)
 }
 
 pub(super) async fn list_revisions(
@@ -84,7 +91,7 @@ pub(super) async fn list_revisions(
     organization_id: OrganizationId,
     workload_id: WorkloadId,
 ) -> Result<Vec<WorkloadRevision>, RepositoryError> {
-    Database::new(PostgresDialect, executor.clone())
+    let rows = Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
             select_from::<WorkloadRevisions>()
                 .select(RevisionSelection)
@@ -99,10 +106,15 @@ pub(super) async fn list_revisions(
         )
         .await
         .map_err(storage)?
-        .rows
-        .into_iter()
-        .map(rows::revision)
-        .collect()
+        .rows;
+    let mut revisions = Vec::with_capacity(rows.len());
+    for row in rows {
+        let mut revision = rows::revision(row)?;
+        let bindings = skill_bindings_executor(executor, organization_id, revision.id).await?;
+        attach_skill_bindings(&mut revision, bindings)?;
+        revisions.push(revision);
+    }
+    Ok(revisions)
 }
 
 pub(super) async fn find_deployment(
@@ -279,7 +291,93 @@ pub(super) async fn revision_in_transaction(
         query
     };
     let row = fetch_optional(transaction, query).await?;
-    row.map(rows::revision).transpose().map_err(Into::into)
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let mut revision = rows::revision(row)?;
+    let bindings = skill_bindings_transaction(transaction, organization_id, revision.id).await?;
+    attach_skill_bindings(&mut revision, bindings)?;
+    Ok(Some(revision))
+}
+
+type SkillBindingRow = (Uuid, Uuid, Uuid, String, u64);
+
+async fn skill_bindings_executor(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    revision_id: WorkloadRevisionId,
+) -> Result<Vec<SkillWorkloadRevisionBinding>, RepositoryError> {
+    let rows = Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(skill_bindings_query(organization_id, revision_id))
+        .await
+        .map_err(storage)?
+        .rows;
+    decode_skill_bindings(rows).map_err(storage)
+}
+
+async fn skill_bindings_transaction(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    revision_id: WorkloadRevisionId,
+) -> Result<Vec<SkillWorkloadRevisionBinding>, PostgresPersistenceError> {
+    let rows = fetch_all::<SkillBindingRow, _>(
+        transaction,
+        skill_bindings_query(organization_id, revision_id),
+    )
+    .await?;
+    decode_skill_bindings(rows).map_err(PostgresPersistenceError::Invariant)
+}
+
+fn skill_bindings_query(
+    organization_id: OrganizationId,
+    revision_id: WorkloadRevisionId,
+) -> impl a3s_orm::Query<Output = SkillBindingRow> {
+    select_from::<WorkloadRevisionSkillBindings>()
+        .select((
+            WorkloadRevisionSkillBindings::organization_id(),
+            WorkloadRevisionSkillBindings::asset_id(),
+            WorkloadRevisionSkillBindings::asset_release_id(),
+            WorkloadRevisionSkillBindings::artifact_digest(),
+            WorkloadRevisionSkillBindings::artifact_size_bytes(),
+        ))
+        .filter(WorkloadRevisionSkillBindings::organization_id().eq(organization_id.as_uuid()))
+        .filter(WorkloadRevisionSkillBindings::revision_id().eq(revision_id.as_uuid()))
+        .order_by(
+            WorkloadRevisionSkillBindings::asset_id(),
+            OrderDirection::Asc,
+        )
+}
+
+fn decode_skill_bindings(
+    rows: Vec<SkillBindingRow>,
+) -> Result<Vec<SkillWorkloadRevisionBinding>, String> {
+    rows.into_iter()
+        .map(
+            |(organization_id, asset_id, asset_release_id, artifact_digest, size_bytes)| {
+                SkillWorkloadRevisionBinding::restore(
+                    OrganizationId::from_uuid(organization_id),
+                    AssetId::from_uuid(asset_id),
+                    AssetReleaseId::from_uuid(asset_release_id),
+                    Sha256Digest::parse(artifact_digest)?,
+                    size_bytes,
+                )
+            },
+        )
+        .collect()
+}
+
+fn attach_skill_bindings(
+    revision: &mut WorkloadRevision,
+    bindings: Vec<SkillWorkloadRevisionBinding>,
+) -> Result<(), RepositoryError> {
+    for binding in bindings {
+        revision.restore_skill_binding(binding).map_err(|error| {
+            RepositoryError::Storage(format!(
+                "workload revision Skill binding is invalid: {error}"
+            ))
+        })?;
+    }
+    Ok(())
 }
 
 pub(super) async fn next_revision_generation(

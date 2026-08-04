@@ -151,6 +151,8 @@ asset-releases create <asset-id> <version> <commit-sha>
 asset-releases yank <asset-id> <release-id>
 asset-releases deploy <asset-id> <release-id> --file=<path>
 asset-releases update <workload-id> <asset-id> <release-id> --file=<path>
+skill-bindings bind <workload-id> <skill-asset-id> <skill-release-id>
+skill-bindings unbind <workload-id> <skill-asset-id>
 nodes list
 nodes bootstrap <name> --enrollment-token-stdin --expires-at=<timestamp> --agent-release-url=<https-url> --agent-release-sha256=<digest> --node-config=<absolute-acl-path>
 nodes ready <node-id> --expected-version=<version>
@@ -205,8 +207,8 @@ object ID; Cloud reads the exact hosted commit and derives the admitted
 manifest digest. `asset-releases select` chooses the highest stable published
 version when no version is supplied. Draft and yanked releases are never
 selected, while `asset-releases get` retains exact access to yanked identities
-for pinned deployments. Skill release publication remains owned by the later
-immutable Skill-binding milestone.
+for pinned deployments. Skill releases publish the exact reachable hosted-Git
+commit as an immutable content-addressed bundle without a BuildRun.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing
@@ -216,6 +218,14 @@ omit `artifact`; Cloud loads the release's successful BuildRun and injects its
 exact OCI URI, digest, and media type. Fresh bindings reject archived Assets
 and draft or yanked releases. Exact replay, rollback, and Secret-triggered
 restart preserve the already pinned identity.
+
+`skill-bindings bind` selects one exact published Skill release and creates the
+next immutable revision of an active Agent Workload. Rebinding the same Skill
+Asset replaces only that Asset's release; `skill-bindings unbind` creates a new
+revision without it. Older revisions remain available for rollback. Cloud
+derives read-only Runtime Artifact mount names and targets, and never schedules
+a Skill as a standalone service. Both commands require a caller-owned
+idempotency key.
 
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box

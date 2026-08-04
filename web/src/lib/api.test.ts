@@ -328,6 +328,7 @@ describe('CloudApi', () => {
               templateDigest: null,
               requestedAt: 'now',
               replayed: false,
+              skillBindings: [],
             },
             requestId: '1',
             timestamp: 'now',

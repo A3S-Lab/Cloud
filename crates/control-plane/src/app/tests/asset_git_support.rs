@@ -1,3 +1,7 @@
+use crate::modules::artifacts::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
+    NodeArtifactWrite, OpenNodeArtifact,
+};
 use crate::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRepository,
     AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRepositoryWrite,
@@ -11,6 +15,7 @@ use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
     Sha256Digest,
 };
+use a3s_runtime::contract::ArtifactRef;
 use chrono::{DateTime, Utc};
 
 pub(super) struct UnavailableAssetStore;
@@ -194,6 +199,26 @@ impl IAssetGitRepository for UnavailableAssetStore {
         _build_run_id: BuildRunId,
     ) -> UnavailableResult<(), AssetGitRepositoryError> {
         Err(AssetGitRepositoryError::NotFound)
+    }
+}
+
+#[async_trait::async_trait]
+impl INodeArtifactStore for UnavailableAssetStore {
+    async fn put(
+        &self,
+        _descriptor: &NodeArtifactDescriptor,
+        _reader: NodeArtifactReader,
+    ) -> Result<NodeArtifactWrite, NodeArtifactStoreError> {
+        Err(NodeArtifactStoreError::Storage(
+            "test Artifact store is unavailable".into(),
+        ))
+    }
+
+    async fn open(
+        &self,
+        _artifact: &ArtifactRef,
+    ) -> Result<OpenNodeArtifact, NodeArtifactStoreError> {
+        Err(NodeArtifactStoreError::NotFound)
     }
 }
 

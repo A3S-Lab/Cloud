@@ -25,9 +25,9 @@ pub use domain::entities::{
     ResourceAllocation, ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
     ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotBinding,
     ResourceSlotEvidence, ResourceSlotRequest, ResourceUnit, SecretBinding, SecretBindingTarget,
-    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
-    WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica, WorkloadReplicaMember,
-    WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
+    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
+    Workload, WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadStopRequested,

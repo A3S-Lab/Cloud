@@ -19,6 +19,7 @@ import { BuildRunPanel } from './build-run-panel';
 import { DeploymentTimeline } from './deployment-timeline';
 import { EdgeStatusPanel } from './edge-status-panel';
 import { AssetCatalogCard, InfrastructureCard } from './environment-summary';
+import { SkillBindingsPanel } from './skill-bindings-panel';
 import { WorkloadList } from './workload-list';
 import { WorkloadOverview } from './workload-overview';
 
@@ -120,6 +121,8 @@ interface WorkloadsSectionProps {
   workloads: Workload[];
   workload: Workload | undefined;
   routes: Route[];
+  assets: Asset[];
+  assetReleases: AssetRelease[];
   operations: Operation[];
   selectedWorkloadId: string;
   cancelling: boolean;
@@ -131,6 +134,8 @@ interface WorkloadsSectionProps {
   onStop: () => Promise<void>;
   onUpdate: (template: ServiceTemplate, idempotencyKey: string) => Promise<void>;
   onRollback: (revisionId: string, idempotencyKey: string) => Promise<void>;
+  onBindSkill: (skillAssetId: string, skillAssetReleaseId: string, idempotencyKey: string) => Promise<void>;
+  onUnbindSkill: (skillAssetId: string, idempotencyKey: string) => Promise<void>;
 }
 
 export function WorkloadsSection({
@@ -140,6 +145,8 @@ export function WorkloadsSection({
   workloads,
   workload,
   routes,
+  assets,
+  assetReleases,
   operations,
   selectedWorkloadId,
   cancelling,
@@ -151,6 +158,8 @@ export function WorkloadsSection({
   onStop,
   onUpdate,
   onRollback,
+  onBindSkill,
+  onUnbindSkill,
 }: WorkloadsSectionProps) {
   return (
     <section
@@ -174,6 +183,13 @@ export function WorkloadsSection({
         onStop={onStop}
         onUpdate={onUpdate}
         onRollback={onRollback}
+      />
+      <SkillBindingsPanel
+        workload={workload}
+        assets={assets}
+        releases={assetReleases}
+        onBind={onBindSkill}
+        onUnbind={onUnbindSkill}
       />
       <DeploymentTimeline workload={workload} operations={operations} />
       <LiveLogPanel

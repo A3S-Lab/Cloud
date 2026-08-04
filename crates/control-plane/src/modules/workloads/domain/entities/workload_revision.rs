@@ -2,7 +2,7 @@ use super::{SecretBinding, Workload};
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, AssetState,
-    McpServiceProfile, McpServiceProfileBinding,
+    McpServiceProfile, McpServiceProfileBinding, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId,
@@ -12,6 +12,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+
+use a3s_cloud_contracts::artifact_uri;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -470,6 +472,113 @@ pub struct McpWorkloadRevisionBinding {
     profile_digest: Sha256Digest,
 }
 
+/// One exact published Skill bundle mounted into an Agent Service revision.
+///
+/// Runtime receives only the content-addressed, read-only Artifact mount. Cloud
+/// retains the tenant and release identities for lifecycle, rollback, and
+/// audit without scheduling the Skill as another Runtime unit.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SkillWorkloadRevisionBinding {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    artifact_digest: Sha256Digest,
+    artifact_size_bytes: u64,
+}
+
+impl SkillWorkloadRevisionBinding {
+    pub const fn organization_id(&self) -> OrganizationId {
+        self.organization_id
+    }
+
+    pub const fn asset_id(&self) -> AssetId {
+        self.asset_id
+    }
+
+    pub const fn asset_release_id(&self) -> AssetReleaseId {
+        self.asset_release_id
+    }
+
+    pub const fn artifact_digest(&self) -> &Sha256Digest {
+        &self.artifact_digest
+    }
+
+    pub const fn artifact_size_bytes(&self) -> u64 {
+        self.artifact_size_bytes
+    }
+
+    pub fn artifact_uri(&self) -> Result<String, String> {
+        artifact_uri(self.artifact_digest.as_str())
+    }
+
+    pub const fn artifact_media_type(&self) -> &'static str {
+        SKILL_BUNDLE_MEDIA_TYPE
+    }
+
+    pub fn mount_name(&self) -> String {
+        format!("skill-{}", self.asset_id)
+    }
+
+    pub fn mount_target(&self) -> String {
+        format!("/a3s/skills/{}", self.asset_id)
+    }
+
+    pub(crate) fn restore(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        artifact_digest: Sha256Digest,
+        artifact_size_bytes: u64,
+    ) -> Result<Self, String> {
+        let binding = Self {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            artifact_digest,
+            artifact_size_bytes,
+        };
+        binding.validate_identity()?;
+        Ok(binding)
+    }
+
+    fn from_release(
+        workload: &Workload,
+        asset: &Asset,
+        release: &AssetRelease,
+    ) -> Result<Self, String> {
+        let artifact = release
+            .artifact
+            .as_ref()
+            .ok_or_else(|| "published Skill release omitted its bundle artifact".to_owned())?;
+        if artifact.kind() != AssetReleaseArtifactKind::SkillBundle
+            || artifact.media_type() != SKILL_BUNDLE_MEDIA_TYPE
+        {
+            return Err("Skill Workload input requires a Skill bundle release".into());
+        }
+        Self::restore(
+            workload.organization_id,
+            asset.id,
+            release.id,
+            artifact.digest().clone(),
+            artifact.size_bytes(),
+        )
+    }
+
+    fn validate_identity(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.asset_id.as_uuid().is_nil()
+            || self.asset_release_id.as_uuid().is_nil()
+            || Sha256Digest::parse(self.artifact_digest.as_str())? != self.artifact_digest
+            || self.artifact_size_bytes == 0
+        {
+            return Err("Skill Workload release binding identity is invalid".into());
+        }
+        artifact_uri(self.artifact_digest.as_str())?;
+        Ok(())
+    }
+}
+
 impl McpWorkloadRevisionBinding {
     pub const fn organization_id(&self) -> OrganizationId {
         self.organization_id
@@ -532,6 +641,8 @@ pub struct WorkloadRevision {
     agent_binding: Option<AgentWorkloadRevisionBinding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     mcp_binding: Option<McpWorkloadRevisionBinding>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    skill_bindings: Vec<SkillWorkloadRevisionBinding>,
 }
 
 impl WorkloadRevision {
@@ -569,6 +680,7 @@ impl WorkloadRevision {
             external_build: None,
             agent_binding: None,
             mcp_binding: None,
+            skill_bindings: Vec::new(),
         })
     }
 
@@ -611,6 +723,7 @@ impl WorkloadRevision {
             external_build: None,
             agent_binding: None,
             mcp_binding: None,
+            skill_bindings: Vec::new(),
         })
     }
 
@@ -868,6 +981,160 @@ impl WorkloadRevision {
         Ok(())
     }
 
+    pub fn skill_bindings(&self) -> &[SkillWorkloadRevisionBinding] {
+        &self.skill_bindings
+    }
+
+    pub fn skill_binding(&self, asset_id: AssetId) -> Option<&SkillWorkloadRevisionBinding> {
+        self.skill_bindings
+            .binary_search_by_key(&asset_id, SkillWorkloadRevisionBinding::asset_id)
+            .ok()
+            .map(|index| &self.skill_bindings[index])
+    }
+
+    /// Derive a new immutable Agent revision with one exact Skill release.
+    /// Existing bindings from other Skill Assets are retained. Rebinding the
+    /// same Asset replaces only that Asset's release in the new revision.
+    pub fn with_skill_release_as(
+        &self,
+        id: WorkloadRevisionId,
+        generation: u64,
+        created_at: DateTime<Utc>,
+        workload: &Workload,
+        asset: &Asset,
+        release: &AssetRelease,
+    ) -> Result<Self, String> {
+        self.validate_skill_bindings_for_workload(workload)?;
+        asset.validate()?;
+        release.validate_for(asset)?;
+        if self.workload_id != workload.id
+            || workload.organization_id != asset.organization_id
+            || asset.kind != AssetKind::Skill
+            || asset.state != AssetState::Active
+            || release.organization_id != workload.organization_id
+            || release.asset_id != asset.id
+            || release.state != AssetReleaseState::Published
+            || created_at < release.updated_at
+        {
+            return Err(
+                "Skill Workload input does not match its tenant or published release".into(),
+            );
+        }
+        let binding = SkillWorkloadRevisionBinding::from_release(workload, asset, release)?;
+        if self.skill_binding(asset.id) == Some(&binding) {
+            return Err("Skill release is already bound to the active Workload revision".into());
+        }
+        let mut revision = self.copy_as(id, generation, created_at)?;
+        match revision
+            .skill_bindings
+            .binary_search_by_key(&asset.id, SkillWorkloadRevisionBinding::asset_id)
+        {
+            Ok(index) => revision.skill_bindings[index] = binding,
+            Err(index) => revision.skill_bindings.insert(index, binding),
+        }
+        revision.validate_skill_bindings_for_workload(workload)?;
+        Ok(revision)
+    }
+
+    /// Derive a new immutable Agent revision without one Skill Asset binding.
+    pub fn without_skill_release_as(
+        &self,
+        id: WorkloadRevisionId,
+        generation: u64,
+        created_at: DateTime<Utc>,
+        asset_id: AssetId,
+    ) -> Result<Self, String> {
+        let index = self
+            .skill_bindings
+            .binary_search_by_key(&asset_id, SkillWorkloadRevisionBinding::asset_id)
+            .map_err(|_| "Skill Asset is not bound to the active Workload revision".to_owned())?;
+        let mut revision = self.copy_as(id, generation, created_at)?;
+        revision.skill_bindings.remove(index);
+        Ok(revision)
+    }
+
+    pub(crate) fn validate_skill_bindings_for_workload(
+        &self,
+        workload: &Workload,
+    ) -> Result<(), String> {
+        if self.skill_bindings.is_empty() {
+            return Ok(());
+        }
+        if self.workload_id != workload.id
+            || self.agent_binding.is_none()
+            || self.external_build.is_some()
+            || self.mcp_binding.is_some()
+            || self.skill_bindings.len() > 128
+        {
+            return Err("Skill bindings require one resolved Agent Workload revision".into());
+        }
+        let mut previous = None;
+        for binding in &self.skill_bindings {
+            binding.validate_identity()?;
+            if binding.organization_id != workload.organization_id
+                || previous.is_some_and(|asset_id| asset_id >= binding.asset_id)
+            {
+                return Err("Skill Workload release bindings are not unique and ordered".into());
+            }
+            previous = Some(binding.asset_id);
+        }
+        self.resolved_template()?.validate()
+    }
+
+    pub(crate) fn restore_skill_binding(
+        &mut self,
+        binding: SkillWorkloadRevisionBinding,
+    ) -> Result<(), String> {
+        binding.validate_identity()?;
+        if self
+            .agent_binding
+            .as_ref()
+            .is_none_or(|agent| agent.organization_id() != binding.organization_id())
+            || self.external_build.is_some()
+            || self.mcp_binding.is_some()
+            || self.skill_bindings.len() >= 128
+        {
+            return Err("Skill bindings require one resolved Agent Workload revision".into());
+        }
+        match self
+            .skill_bindings
+            .binary_search_by_key(&binding.asset_id, SkillWorkloadRevisionBinding::asset_id)
+        {
+            Ok(_) => Err("Skill Workload release binding was restored more than once".into()),
+            Err(index) => {
+                self.skill_bindings.insert(index, binding);
+                Ok(())
+            }
+        }
+    }
+
+    fn copy_as(
+        &self,
+        id: WorkloadRevisionId,
+        generation: u64,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        if id == self.id
+            || generation <= self.generation
+            || created_at < self.created_at
+            || self.agent_binding.is_none()
+            || self.external_build.is_some()
+            || self.mcp_binding.is_some()
+        {
+            return Err("Skill binding revision identity or ordering is invalid".into());
+        }
+        let mut revision = Self::create(
+            id,
+            self.workload_id,
+            generation,
+            self.resolved_template()?.clone(),
+            created_at,
+        )?;
+        revision.agent_binding = self.agent_binding.clone();
+        revision.skill_bindings = self.skill_bindings.clone();
+        Ok(revision)
+    }
+
     pub fn rollback_as(
         &self,
         id: WorkloadRevisionId,
@@ -887,6 +1154,7 @@ impl WorkloadRevision {
         revision.external_build = self.external_build.clone();
         revision.agent_binding = self.agent_binding.clone();
         revision.mcp_binding = self.mcp_binding.clone();
+        revision.skill_bindings = self.skill_bindings.clone();
         Ok(revision)
     }
 
@@ -927,6 +1195,7 @@ impl WorkloadRevision {
         revision.external_build = self.external_build.clone();
         revision.agent_binding = self.agent_binding.clone();
         revision.mcp_binding = self.mcp_binding.clone();
+        revision.skill_bindings = self.skill_bindings.clone();
         Ok(revision)
     }
 

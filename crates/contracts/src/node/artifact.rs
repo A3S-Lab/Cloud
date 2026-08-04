@@ -5,6 +5,7 @@ use uuid::Uuid;
 use super::{validate_lower_sha256, validate_single_line, validate_uuid};
 
 pub const NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.a3s.directory.v1+tar";
+pub const SKILL_BUNDLE_MEDIA_TYPE: &str = "application/vnd.a3s.skill.bundle.v1+tar";
 const ARTIFACT_URI_PREFIX: &str = "a3s-cloud-artifact://sha256/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,7 +57,7 @@ impl NodeArtifactDownloadRequest {
         validate_lower_sha256("Runtime specification digest", &self.spec_digest)?;
         validate_single_line("artifact mount name", &self.mount_name, 255)?;
         self.artifact()?.validate()?;
-        validate_directory_artifact(
+        validate_mount_artifact(
             &self.artifact_uri,
             &self.artifact_digest,
             &self.artifact_media_type,
@@ -125,7 +126,7 @@ impl NodeArtifactUploadRequest {
         validate_lower_sha256("Runtime specification digest", &self.spec_digest)?;
         validate_single_line("artifact output name", &self.output_name, 255)?;
         validate_lower_sha256("artifact digest", &self.digest)?;
-        validate_supported_media_type(&self.media_type)?;
+        validate_directory_media_type(&self.media_type)?;
         if self.size_bytes == 0 {
             return Err("artifact upload size must be positive".into());
         }
@@ -186,23 +187,32 @@ pub fn validate_cloud_artifact(artifact: &ArtifactRef) -> Result<(), String> {
     validate_supported_media_type(&artifact.media_type)
 }
 
-fn validate_directory_artifact(uri: &str, digest: &str, media_type: &str) -> Result<(), String> {
+fn validate_mount_artifact(uri: &str, digest: &str, media_type: &str) -> Result<(), String> {
     let artifact = ArtifactRef {
         uri: uri.into(),
         digest: digest.into(),
         media_type: media_type.into(),
     };
-    validate_cloud_artifact(&artifact)?;
-    if media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
-        return Err("artifact mount requires the supported directory archive media type".into());
-    }
-    Ok(())
+    validate_cloud_artifact(&artifact)
 }
 
 fn validate_supported_media_type(value: &str) -> Result<(), String> {
     validate_single_line("artifact media type", value, 255)?;
-    if value != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
+    if !matches!(
+        value,
+        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE | SKILL_BUNDLE_MEDIA_TYPE
+    ) {
         return Err("node artifact transport does not support this media type".into());
+    }
+    Ok(())
+}
+
+fn validate_directory_media_type(value: &str) -> Result<(), String> {
+    validate_single_line("artifact media type", value, 255)?;
+    if value != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
+        return Err(
+            "Runtime Task output requires the supported directory archive media type".into(),
+        );
     }
     Ok(())
 }
@@ -291,6 +301,32 @@ mod tests {
             "output",
             digest('a'),
             "application/octet-stream",
+            1,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn skill_bundles_are_mountable_inputs_but_never_runtime_outputs() {
+        let mut skill = artifact('a');
+        skill.media_type = SKILL_BUNDLE_MEDIA_TYPE.into();
+        let request = NodeArtifactDownloadRequest::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            digest('b'),
+            "skill-input",
+            &skill,
+        )
+        .expect("Skill bundle download");
+        request.validate().expect("mountable Skill bundle");
+
+        assert!(NodeArtifactUploadRequest::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            digest('b'),
+            "skill-output",
+            digest('a'),
+            SKILL_BUNDLE_MEDIA_TYPE,
             1,
         )
         .is_err());

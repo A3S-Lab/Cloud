@@ -2,7 +2,7 @@ import type { CloudFetch } from '@a3s/cloud-client';
 import packageMetadata from '../package.json';
 import { parseArguments } from './arguments';
 import { executeCommand } from './commands';
-import { resolveContext, type ProcessEnvironment } from './context';
+import { type ProcessEnvironment, resolveContext } from './context';
 import { ExitCode, normalizeError } from './errors';
 import { renderError, renderJson } from './output';
 
@@ -37,6 +37,8 @@ Commands:
   asset-releases yank ASSET ID Yank one published release idempotently
   asset-releases deploy ASSET RELEASE Deploy one published Agent release from A3S ACL
   asset-releases update WORKLOAD ASSET RELEASE Update an Agent workload to one published release
+  skill-bindings bind WORKLOAD SKILL RELEASE Bind one exact Skill release to an Agent workload
+  skill-bindings unbind WORKLOAD SKILL Unbind one Skill Asset through a new workload revision
   nodes list            List nodes in the selected organization
   nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready

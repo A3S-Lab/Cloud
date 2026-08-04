@@ -5,9 +5,10 @@ use crate::modules::shared_kernel::domain::{
     SourceRevisionId, WorkloadId,
 };
 use crate::modules::workloads::application::{
-    CancelDeployment, CreateAgentWorkloadDeployment, CreateSourceWorkloadDeployment,
-    CreateWorkloadDeployment, RollbackWorkloadDeployment, StopWorkload,
-    UpdateAgentWorkloadDeployment, UpdateWorkloadDeployment,
+    BindSkillWorkloadDeployment, CancelDeployment, CreateAgentWorkloadDeployment,
+    CreateSourceWorkloadDeployment, CreateWorkloadDeployment, RollbackWorkloadDeployment,
+    StopWorkload, UnbindSkillWorkloadDeployment, UpdateAgentWorkloadDeployment,
+    UpdateWorkloadDeployment,
 };
 use crate::modules::workloads::presentation::dto::{
     parse_source_workload_manifest, parse_workload_manifest, CancelDeploymentResponse,
@@ -32,6 +33,8 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
     let stop_bus = Arc::clone(&bus);
     let update_bus = Arc::clone(&bus);
     let rollback_bus = Arc::clone(&bus);
+    let bind_skill_bus = Arc::clone(&bus);
+    let unbind_skill_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::WORKLOAD_WRITE])?
@@ -248,6 +251,80 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             organization_id,
                             workload_id,
                             source_revision_id: body.source_revision_id(),
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.bundle.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &WorkloadDeploymentResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/workloads/{workload_id}/skills/{skill_asset_id}/releases/{skill_asset_release_id}/bindings",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&bind_skill_bus);
+                async move {
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let workload_id =
+                        WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let skill_asset_id =
+                        AssetId::from_uuid(request.param_as::<Uuid>("skill_asset_id")?);
+                    let skill_asset_release_id = AssetReleaseId::from_uuid(
+                        request.param_as::<Uuid>("skill_asset_release_id")?,
+                    );
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(BindSkillWorkloadDeployment {
+                            organization_id,
+                            workload_id,
+                            skill_asset_id,
+                            skill_asset_release_id,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.bundle.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &WorkloadDeploymentResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .delete(
+            "/{organization_id}/workloads/{workload_id}/skills/{skill_asset_id}/bindings",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&unbind_skill_bus);
+                async move {
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let workload_id =
+                        WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let skill_asset_id =
+                        AssetId::from_uuid(request.param_as::<Uuid>("skill_asset_id")?);
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(UnbindSkillWorkloadDeployment {
+                            organization_id,
+                            workload_id,
+                            skill_asset_id,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),

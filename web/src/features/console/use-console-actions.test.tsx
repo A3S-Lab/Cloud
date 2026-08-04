@@ -46,6 +46,10 @@ describe('useConsoleActions', () => {
     const template = serviceTemplate();
     await act(async () => current().updateSelectedWorkload(template, 'update-key'));
     await act(async () => current().rollbackSelectedWorkload('revision-1', 'rollback-key'));
+    await act(async () =>
+      current().bindSkillToSelectedWorkload('skill-1', 'skill-release-1', 'bind-skill-key')
+    );
+    await act(async () => current().unbindSkillFromSelectedWorkload('skill-1', 'unbind-skill-key'));
     await act(async () => current().cancelLatestDeployment());
     await act(async () => current().stopSelectedWorkload());
     await act(async () => current().cancelBuildRun('build-run-1'));
@@ -57,6 +61,19 @@ describe('useConsoleActions', () => {
       'workload-1',
       'revision-1',
       'rollback-key'
+    );
+    expect(api.bindSkillRelease).toHaveBeenCalledWith(
+      'organization-1',
+      'workload-1',
+      'skill-1',
+      'skill-release-1',
+      'bind-skill-key'
+    );
+    expect(api.unbindSkillRelease).toHaveBeenCalledWith(
+      'organization-1',
+      'workload-1',
+      'skill-1',
+      'unbind-skill-key'
     );
     expect(api.cancelDeployment).toHaveBeenCalledWith(
       'organization-1',
@@ -75,8 +92,8 @@ describe('useConsoleActions', () => {
       'web-retry-build:build-run-1'
     );
     expect(onBuildRunSelected).toHaveBeenCalledWith('build-run-retry');
-    expect(refresh).toHaveBeenCalledTimes(6);
-    expect(onSuccess).toHaveBeenCalledTimes(6);
+    expect(refresh).toHaveBeenCalledTimes(8);
+    expect(onSuccess).toHaveBeenCalledTimes(8);
     expect(onError).not.toHaveBeenCalled();
   });
 
@@ -135,6 +152,8 @@ function mutationApi(): CloudApi {
   return {
     updateWorkload: vi.fn().mockResolvedValue({}),
     rollbackWorkload: vi.fn().mockResolvedValue({}),
+    bindSkillRelease: vi.fn().mockResolvedValue({}),
+    unbindSkillRelease: vi.fn().mockResolvedValue({}),
     cancelDeployment: vi.fn().mockResolvedValue({}),
     stopWorkload: vi.fn().mockResolvedValue({}),
     cancelBuildRun: vi.fn().mockResolvedValue({}),

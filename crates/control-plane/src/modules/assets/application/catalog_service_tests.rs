@@ -1,11 +1,15 @@
 use super::AssetCatalogApplicationService;
+use crate::modules::artifacts::domain::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError,
+    NodeArtifactWrite, OpenNodeArtifact,
+};
 use crate::modules::assets::domain::{
-    Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRepository, AssetGitRepositoryError,
-    AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
-    AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission, AssetRelease,
-    AssetReleaseArtifact, AssetReleaseVersion, AssetReleaseWrite, AssetWrite,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepository, IAssetRepository,
-    TransitionAssetReleaseWrite, TransitionAssetWrite,
+    Asset, AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRepository,
+    AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse,
+    AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission,
+    AssetRelease, AssetReleaseArtifact, AssetReleaseState, AssetReleaseVersion, AssetReleaseWrite,
+    AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepository, IAssetRepository,
+    TransitionAssetReleaseWrite, TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
@@ -17,10 +21,14 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::sources::domain::BuildRecipe;
 use a3s_cloud_contracts::DomainEventEnvelope;
+use a3s_runtime::contract::ArtifactRef;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
+use sha2::Digest;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use tokio::io::AsyncReadExt;
 use uuid::Uuid;
 
 struct TestOrganizations {
@@ -55,6 +63,8 @@ struct CatalogState {
     assets: BTreeMap<(OrganizationId, AssetId), Asset>,
     releases: BTreeMap<(OrganizationId, AssetId, AssetReleaseId), AssetRelease>,
     provisioned: BTreeSet<AssetId>,
+    artifacts: BTreeMap<String, NodeArtifactDescriptor>,
+    bundle_paths: BTreeMap<AssetReleaseId, PathBuf>,
 }
 
 #[derive(Default)]
@@ -317,17 +327,19 @@ impl IAssetGitRepository for CatalogStore {
             commit_sha: commit_sha.clone(),
             manifest_digest: digest('b'),
             kind: asset.kind,
-            build_recipe: Some(
-                BuildRecipe::dockerfile(
-                    BuildRecipe::SCHEMA,
-                    BuildRecipe::DOCKERFILE_KIND,
-                    ".",
-                    "Dockerfile",
-                    None,
-                    vec!["linux/amd64".into()],
-                )
+            build_recipe: (asset.kind != crate::modules::assets::domain::AssetKind::Skill)
+                .then(|| {
+                    BuildRecipe::dockerfile(
+                        BuildRecipe::SCHEMA,
+                        BuildRecipe::DOCKERFILE_KIND,
+                        ".",
+                        "Dockerfile",
+                        None,
+                        vec!["linux/amd64".into()],
+                    )
+                })
+                .transpose()
                 .map_err(AssetGitRepositoryError::Invalid)?,
-            ),
         })
     }
 
@@ -345,6 +357,87 @@ impl IAssetGitRepository for CatalogStore {
         _build_run_id: BuildRunId,
     ) -> Result<(), AssetGitRepositoryError> {
         Err(unused_git())
+    }
+
+    async fn prepare_release_bundle(
+        &self,
+        _asset: &Asset,
+        commit_sha: &GitCommitSha,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<AssetGitReleaseBundle, AssetGitRepositoryError> {
+        let bytes = format!("Skill bundle for {commit_sha}\n").into_bytes();
+        let digest = Sha256Digest::parse(format!("sha256:{:x}", sha2::Sha256::digest(&bytes)))
+            .map_err(AssetGitRepositoryError::Invalid)?;
+        let path = std::env::temp_dir().join(format!(
+            "a3s-cloud-skill-bundle-{asset_release_id}-{}.tar",
+            Uuid::now_v7()
+        ));
+        tokio::fs::write(&path, &bytes)
+            .await
+            .map_err(|error| AssetGitRepositoryError::Storage(error.to_string()))?;
+        self.state()
+            .bundle_paths
+            .insert(asset_release_id, path.clone());
+        Ok(AssetGitReleaseBundle {
+            asset_release_id,
+            commit_sha: commit_sha.clone(),
+            digest,
+            size_bytes: bytes.len() as u64,
+            path,
+        })
+    }
+
+    async fn remove_release_bundle(
+        &self,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<(), AssetGitRepositoryError> {
+        let path = self.state().bundle_paths.remove(&asset_release_id);
+        if let Some(path) = path {
+            tokio::fs::remove_file(path)
+                .await
+                .map_err(|error| AssetGitRepositoryError::Storage(error.to_string()))?;
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl INodeArtifactStore for CatalogStore {
+    async fn put(
+        &self,
+        descriptor: &NodeArtifactDescriptor,
+        mut reader: NodeArtifactReader,
+    ) -> Result<NodeArtifactWrite, NodeArtifactStoreError> {
+        descriptor
+            .validate()
+            .map_err(NodeArtifactStoreError::Invalid)?;
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|error| NodeArtifactStoreError::Storage(error.to_string()))?;
+        let actual = format!("sha256:{:x}", sha2::Sha256::digest(&bytes));
+        if actual != descriptor.artifact.digest || bytes.len() as u64 != descriptor.size_bytes {
+            return Err(NodeArtifactStoreError::Integrity(
+                "test Artifact bytes changed their descriptor".into(),
+            ));
+        }
+        let replayed = self
+            .state()
+            .artifacts
+            .insert(descriptor.artifact.digest.clone(), descriptor.clone())
+            .is_some();
+        Ok(NodeArtifactWrite {
+            descriptor: descriptor.clone(),
+            replayed,
+        })
+    }
+
+    async fn open(
+        &self,
+        _artifact: &ArtifactRef,
+    ) -> Result<OpenNodeArtifact, NodeArtifactStoreError> {
+        Err(NodeArtifactStoreError::NotFound)
     }
 }
 
@@ -370,7 +463,12 @@ fn service() -> (
         ),
     });
     let store = Arc::new(CatalogStore::default());
-    let service = AssetCatalogApplicationService::new(organizations, store.clone(), store.clone());
+    let service = AssetCatalogApplicationService::new(
+        organizations,
+        store.clone(),
+        store.clone(),
+        store.clone(),
+    );
     (organization_id, store, service)
 }
 
@@ -404,6 +502,52 @@ async fn hosted_release_uses_the_admitted_manifest_digest() {
         .release;
     assert_eq!(release.manifest_digest, digest('b'));
     assert_eq!(release.commit_sha.as_str(), "a".repeat(40));
+}
+
+#[tokio::test]
+async fn skill_release_publishes_the_exact_git_bundle_without_a_build_run() {
+    let (organization_id, store, service) = service();
+    let asset = service
+        .create_asset(
+            organization_id,
+            "catalog-skill".into(),
+            "skill".into(),
+            "create-skill".into(),
+            Uuid::now_v7(),
+        )
+        .await
+        .expect("create Skill")
+        .asset;
+
+    let release = service
+        .create_release(
+            organization_id,
+            asset.id,
+            "1.0.0".into(),
+            "c".repeat(40),
+            "publish-skill".into(),
+            Uuid::now_v7(),
+        )
+        .await
+        .expect("publish Skill release")
+        .release;
+
+    assert_eq!(release.state, AssetReleaseState::Published);
+    assert!(release.provenance.is_none());
+    let artifact = release.artifact.expect("Skill artifact");
+    assert_eq!(artifact.media_type(), SKILL_BUNDLE_MEDIA_TYPE);
+    assert_eq!(artifact.kind().as_str(), "skill_bundle");
+    assert_eq!(
+        store
+            .state()
+            .artifacts
+            .get(artifact.digest().as_str())
+            .expect("stored bundle")
+            .artifact
+            .media_type,
+        SKILL_BUNDLE_MEDIA_TYPE
+    );
+    assert!(store.state().bundle_paths.is_empty());
 }
 
 #[tokio::test]

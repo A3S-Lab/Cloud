@@ -15,11 +15,11 @@ import type {
   Workload,
 } from '../../types/api';
 import { useOperationStream } from '../operations/use-operation-stream';
-import { parseCloudLocation, selectionFromSearchResult, type CloudLocation } from '../search/cloud-location';
+import { type CloudLocation, parseCloudLocation, selectionFromSearchResult } from '../search/cloud-location';
 import { ConsoleNavigation, sectionForResourceKind } from './console-navigation';
 import { DeliverySection, EdgeSection, OverviewSection, WorkloadsSection } from './console-sections';
-import { ContextBar } from './context-bar';
 import { ConsoleTopbar } from './console-topbar';
+import { ContextBar } from './context-bar';
 import { EnvironmentHeading } from './environment-summary';
 import { OperationDrawer } from './operation-drawer';
 import { useConsoleActions } from './use-console-actions';
@@ -307,6 +307,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const reportError = useCallback((cause: unknown) => setError(messageFrom(cause)), []);
   const clearError = useCallback(() => setError(null), []);
   const {
+    bindSkillToSelectedWorkload,
     cancelBuildRun,
     cancelLatestDeployment,
     cancellingBuildRunId,
@@ -317,6 +318,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     stopSelectedWorkload,
     stoppingWorkloadId,
     updateSelectedWorkload,
+    unbindSkillFromSelectedWorkload,
   } = useConsoleActions({
     api,
     organizationId,
@@ -430,6 +432,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
             workloads={workloads}
             workload={selectedWorkload}
             routes={selectedRoutes}
+            assets={assets}
+            assetReleases={assetReleases}
             operations={operations}
             selectedWorkloadId={workloadId}
             cancelling={cancellingDeploymentId === latestDeployment?.id}
@@ -441,6 +445,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
             onStop={stopSelectedWorkload}
             onUpdate={updateSelectedWorkload}
             onRollback={rollbackSelectedWorkload}
+            onBindSkill={bindSkillToSelectedWorkload}
+            onUnbindSkill={unbindSkillFromSelectedWorkload}
           />
         ) : null}
 

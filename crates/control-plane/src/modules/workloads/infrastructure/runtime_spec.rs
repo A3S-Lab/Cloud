@@ -2,8 +2,9 @@ use crate::modules::workloads::domain::entities::WorkloadRevision;
 use a3s_cloud_contracts::CloudSecretReference;
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
-    RuntimeHealthCheck, RuntimeNetworkSpec, RuntimePort, RuntimeProcessSpec, RuntimeUnitClass,
-    RuntimeUnitSpec, SecretReference, SecretTarget, TransportProtocol,
+    RuntimeHealthCheck, RuntimeMount, RuntimeMountSource, RuntimeNetworkSpec, RuntimePort,
+    RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec, SecretReference, SecretTarget,
+    TransportProtocol,
 };
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
@@ -38,7 +39,24 @@ fn project_runtime_spec_with_digest(
             working_directory: template.process.working_directory.clone(),
             environment: template.process.environment.clone(),
         },
-        mounts: Vec::new(),
+        mounts: revision
+            .skill_bindings()
+            .iter()
+            .map(|binding| {
+                Ok(RuntimeMount {
+                    name: binding.mount_name(),
+                    source: RuntimeMountSource::Artifact {
+                        artifact: ArtifactRef {
+                            uri: binding.artifact_uri()?,
+                            digest: binding.artifact_digest().as_str().into(),
+                            media_type: binding.artifact_media_type().into(),
+                        },
+                    },
+                    target: binding.mount_target(),
+                    read_only: true,
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?,
         secrets: template
             .secrets
             .iter()
@@ -125,12 +143,14 @@ mod tests {
         McpServiceProfileBinding, McpServiceProfileSpec,
     };
     use crate::modules::shared_kernel::domain::{
-        canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, OrganizationId,
-        ProjectId, ResourceName, SecretId, Sha256Digest, WorkloadId, WorkloadRevisionId,
+        canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha,
+        OrganizationId, ProjectId, ResourceName, SecretId, Sha256Digest, WorkloadId,
+        WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
-        HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceProcess, ServiceResources, ServiceTemplate, Workload,
+        AgentWorkloadRevisionBinding, HttpHealthCheck, OciArtifact, SecretBinding,
+        SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
+        SkillWorkloadRevisionBinding, Workload,
     };
     use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
     use chrono::{Duration, Utc};
@@ -141,7 +161,7 @@ mod tests {
         let digest = format!("sha256:{}", "a".repeat(64));
         let revision_id = WorkloadRevisionId::new();
         let secret_id = SecretId::new();
-        let revision = WorkloadRevision::create(
+        let mut revision = WorkloadRevision::create(
             revision_id,
             WorkloadId::new(),
             3,
@@ -215,6 +235,57 @@ mod tests {
         assert_eq!(spec.secrets[1].target, SecretTarget::RegistryCredential);
         assert!(spec.mounts.is_empty());
         assert!(spec.semantics_profile_digest.is_none());
+
+        let skill_asset_id = AssetId::new();
+        let skill_release_id = AssetReleaseId::new();
+        let organization_id = OrganizationId::new();
+        let skill_digest =
+            Sha256Digest::parse(format!("sha256:{}", "f".repeat(64))).expect("Skill digest");
+        revision
+            .restore_agent_binding(
+                AgentWorkloadRevisionBinding::restore(
+                    organization_id,
+                    AssetId::new(),
+                    AssetReleaseId::new(),
+                    BuildRunId::new(),
+                )
+                .expect("Agent binding"),
+            )
+            .expect("restore Agent binding");
+        revision
+            .restore_skill_binding(
+                SkillWorkloadRevisionBinding::restore(
+                    organization_id,
+                    skill_asset_id,
+                    skill_release_id,
+                    skill_digest.clone(),
+                    4096,
+                )
+                .expect("Skill binding"),
+            )
+            .expect("restore Skill binding");
+        let bound_spec = project_runtime_spec(&revision).expect("Skill-bound Runtime spec");
+        assert_eq!(bound_spec.mounts.len(), 1);
+        let mount = &bound_spec.mounts[0];
+        assert_eq!(mount.name, format!("skill-{skill_asset_id}"));
+        assert_eq!(mount.target, format!("/a3s/skills/{skill_asset_id}"));
+        assert!(mount.read_only);
+        match &mount.source {
+            RuntimeMountSource::Artifact { artifact } => {
+                assert_eq!(artifact.digest, skill_digest.as_str());
+                assert_eq!(
+                    artifact.media_type,
+                    a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE
+                );
+                assert_eq!(
+                    artifact.uri,
+                    a3s_cloud_contracts::artifact_uri(skill_digest.as_str())
+                        .expect("Skill Artifact URI")
+                );
+            }
+            source => panic!("unexpected Skill mount source: {source:?}"),
+        }
+        assert!(bound_spec.outputs.is_empty());
     }
 
     #[test]

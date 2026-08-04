@@ -1,7 +1,7 @@
 use super::entities::*;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseVersion, McpServiceProfile,
+    Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, McpServiceProfile,
     McpServiceProfileBinding, McpServiceProfileSpec,
 };
 use crate::modules::shared_kernel::domain::{
@@ -757,6 +757,202 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
     .expect("yanked revision");
     assert!(yanked_revision
         .bind_agent_release(&workload, &asset, &yanked, &build)
+        .is_err());
+}
+
+#[test]
+fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_state() {
+    let organization_id = OrganizationId::new();
+    let created_at = canonical_timestamp(Utc::now());
+    let agent = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("research-agent").expect("Agent name"),
+        AssetKind::Agent,
+        created_at,
+    )
+    .expect("Agent Asset");
+    let mut agent_release = AssetRelease::draft(
+        &agent,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse("1.0.0").expect("Agent version"),
+        GitCommitSha::parse("a".repeat(40)).expect("Agent commit"),
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Agent manifest"),
+        created_at,
+    )
+    .expect("Agent release");
+    let build = succeeded_hosted_build(organization_id, agent.id, agent_release.id, created_at);
+    agent_release
+        .publish_from_build(&agent, &build)
+        .expect("publish Agent");
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("research-runtime").expect("Workload name"),
+        created_at + Duration::seconds(1),
+    );
+    let mut service = template('e');
+    service.artifact.uri = build
+        .published_artifact
+        .as_ref()
+        .expect("Agent publication")
+        .uri
+        .clone();
+    let mut revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        service,
+        created_at + Duration::seconds(1),
+    )
+    .expect("Agent revision");
+    revision
+        .bind_agent_release(&workload, &agent, &agent_release, &build)
+        .expect("bind Agent");
+
+    let skill = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("literature-review").expect("Skill name"),
+        AssetKind::Skill,
+        created_at,
+    )
+    .expect("Skill Asset");
+    let published_skill = |skill: &Asset, version: &str, fill: char, milliseconds: i64| {
+        let mut release = AssetRelease::draft(
+            skill,
+            AssetReleaseId::new(),
+            AssetReleaseVersion::parse(version).expect("Skill version"),
+            GitCommitSha::parse(fill.to_string().repeat(40)).expect("Skill commit"),
+            Sha256Digest::parse(format!("sha256:{}", fill.to_string().repeat(64)))
+                .expect("Skill manifest"),
+            created_at,
+        )
+        .expect("Skill release");
+        release
+            .publish_skill(
+                skill,
+                AssetReleaseArtifact::skill_bundle(
+                    Sha256Digest::parse(format!("sha256:{}", fill.to_string().repeat(64)))
+                        .expect("bundle digest"),
+                    4096,
+                )
+                .expect("Skill bundle"),
+                created_at + Duration::milliseconds(milliseconds),
+            )
+            .expect("publish Skill");
+        release
+    };
+    let release_one = published_skill(&skill, "1.0.0", 'c', 100);
+    let release_two = published_skill(&skill, "2.0.0", 'd', 200);
+
+    let bound = revision
+        .with_skill_release_as(
+            WorkloadRevisionId::new(),
+            2,
+            created_at + Duration::seconds(2),
+            &workload,
+            &skill,
+            &release_one,
+        )
+        .expect("bind Skill");
+    let binding = bound.skill_binding(skill.id).expect("Skill binding");
+    assert_eq!(binding.asset_release_id(), release_one.id);
+    assert_eq!(binding.mount_name(), format!("skill-{}", skill.id));
+    assert_eq!(binding.mount_target(), format!("/a3s/skills/{}", skill.id));
+
+    let other_skill = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("citation-checker").expect("other Skill name"),
+        AssetKind::Skill,
+        created_at,
+    )
+    .expect("other Skill Asset");
+    let other_release = published_skill(&other_skill, "1.0.0", 'f', 300);
+    let multiply_bound = bound
+        .with_skill_release_as(
+            WorkloadRevisionId::new(),
+            3,
+            created_at + Duration::seconds(3),
+            &workload,
+            &other_skill,
+            &other_release,
+        )
+        .expect("bind other Skill");
+    assert_eq!(multiply_bound.skill_bindings().len(), 2);
+    assert!(multiply_bound
+        .skill_bindings()
+        .windows(2)
+        .all(|bindings| bindings[0].asset_id() < bindings[1].asset_id()));
+
+    let rebound = multiply_bound
+        .with_skill_release_as(
+            WorkloadRevisionId::new(),
+            4,
+            created_at + Duration::seconds(4),
+            &workload,
+            &skill,
+            &release_two,
+        )
+        .expect("replace Skill release");
+    assert_eq!(
+        rebound
+            .skill_binding(skill.id)
+            .expect("replacement binding")
+            .asset_release_id(),
+        release_two.id
+    );
+    assert_eq!(
+        rebound
+            .skill_binding(other_skill.id)
+            .expect("other Skill binding remains")
+            .asset_release_id(),
+        other_release.id
+    );
+    assert_eq!(
+        bound
+            .skill_binding(skill.id)
+            .expect("prior binding remains immutable")
+            .asset_release_id(),
+        release_one.id
+    );
+
+    let rollback = rebound
+        .rollback_as(
+            WorkloadRevisionId::new(),
+            5,
+            created_at + Duration::seconds(5),
+        )
+        .expect("rollback copy");
+    assert_eq!(rollback.skill_bindings(), rebound.skill_bindings());
+    let unbound = rebound
+        .without_skill_release_as(
+            WorkloadRevisionId::new(),
+            6,
+            created_at + Duration::seconds(6),
+            skill.id,
+        )
+        .expect("unbind Skill");
+    assert_eq!(unbound.skill_bindings().len(), 1);
+    assert!(unbound.skill_binding(other_skill.id).is_some());
+    assert!(rebound.skill_binding(skill.id).is_some());
+
+    let mut yanked = release_two;
+    yanked
+        .yank(created_at + Duration::seconds(4))
+        .expect("yank Skill");
+    assert!(revision
+        .with_skill_release_as(
+            WorkloadRevisionId::new(),
+            7,
+            created_at + Duration::seconds(7),
+            &workload,
+            &skill,
+            &yanked,
+        )
         .is_err());
 }
 

@@ -54,6 +54,14 @@ release locally. Cloud admits the exact hosted Git commit, excludes draft and
 yanked releases from new bindings, and keeps exact yanked identities available
 to existing pinned deployments.
 
+`bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
+lifecycle and require caller-owned idempotency keys. A bind names one exact
+published Skill AssetRelease; an unbind names the Skill Asset already present
+on the active Agent revision. The response and Workload projections expose the
+immutable bundle digest, size, media type, and derived read-only mount, while
+Cloud alone creates the next revision and never schedules a Skill as a separate
+Runtime unit.
+
 `searchResources` validates a 1-to-128-character safe query and a result limit
 from 1 through 50 before transport, then calls the organization-scoped public
 search endpoint. It returns contextual, credential-free projections only.

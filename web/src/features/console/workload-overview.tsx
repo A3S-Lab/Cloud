@@ -247,7 +247,10 @@ function revisionLabel(revision: Workload['desiredRevision']): string {
 
 function releaseBindingLabel(revision: Workload['desiredRevision']): string {
   if (revision?.agentBinding) {
-    return `Agent ${shortId(revision.agentBinding.assetReleaseId)}`;
+    const skills = revision.skillBindings.length;
+    return `Agent ${shortId(revision.agentBinding.assetReleaseId)}${
+      skills > 0 ? ` · ${skills} Skill${skills === 1 ? '' : 's'}` : ''
+    }`;
   }
   if (revision?.mcpBinding) {
     return `MCP ${shortId(revision.mcpBinding.assetReleaseId)}`;

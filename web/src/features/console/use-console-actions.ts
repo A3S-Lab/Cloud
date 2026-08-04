@@ -66,6 +66,50 @@ export function useConsoleActions({
     [api, onError, onSuccess, organizationId, refresh, workload]
   );
 
+  const bindSkillToSelectedWorkload = useCallback(
+    async (skillAssetId: string, skillAssetReleaseId: string, idempotencyKey: string) => {
+      if (!organizationId || !workload) {
+        const cause = new Error('Choose an Agent workload before binding a Skill.');
+        onError(cause);
+        throw cause;
+      }
+      try {
+        await api.bindSkillRelease(
+          organizationId,
+          workload.id,
+          skillAssetId,
+          skillAssetReleaseId,
+          idempotencyKey
+        );
+        await refresh();
+        onSuccess();
+      } catch (cause) {
+        onError(cause);
+        throw cause;
+      }
+    },
+    [api, onError, onSuccess, organizationId, refresh, workload]
+  );
+
+  const unbindSkillFromSelectedWorkload = useCallback(
+    async (skillAssetId: string, idempotencyKey: string) => {
+      if (!organizationId || !workload) {
+        const cause = new Error('Choose an Agent workload before unbinding a Skill.');
+        onError(cause);
+        throw cause;
+      }
+      try {
+        await api.unbindSkillRelease(organizationId, workload.id, skillAssetId, idempotencyKey);
+        await refresh();
+        onSuccess();
+      } catch (cause) {
+        onError(cause);
+        throw cause;
+      }
+    },
+    [api, onError, onSuccess, organizationId, refresh, workload]
+  );
+
   const cancelLatestDeployment = useCallback(async () => {
     if (!organizationId || !deployment) return;
     setCancellingDeploymentId(deployment.id);
@@ -130,6 +174,7 @@ export function useConsoleActions({
   );
 
   return {
+    bindSkillToSelectedWorkload,
     cancelBuildRun,
     cancelLatestDeployment,
     cancellingBuildRunId,
@@ -140,5 +185,6 @@ export function useConsoleActions({
     stopSelectedWorkload,
     stoppingWorkloadId,
     updateSelectedWorkload,
+    unbindSkillFromSelectedWorkload,
   };
 }

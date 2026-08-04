@@ -779,7 +779,24 @@ describe('a3s-cloud CLI', () => {
         templateDigest: 'sha256:template',
         requestedAt: '2026-07-26T00:00:00.000Z',
         replayed: false,
+        skillBindings: [],
       },
+    },
+    {
+      command: ['skill-bindings', 'bind', WORKLOAD_ID, ASSET_ID, ASSET_RELEASE_ID],
+      method: 'POST',
+      path:
+        `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}` +
+        `/skills/${ASSET_ID}/releases/${ASSET_RELEASE_ID}/bindings`,
+      body: undefined,
+      response: workloadDeploymentResponse(),
+    },
+    {
+      command: ['skill-bindings', 'unbind', WORKLOAD_ID, ASSET_ID],
+      method: 'DELETE',
+      path: `/organizations/${ORGANIZATION_ID}/workloads/${WORKLOAD_ID}` + `/skills/${ASSET_ID}/bindings`,
+      body: undefined,
+      response: workloadDeploymentResponse(),
     },
     {
       command: ['deployments', 'cancel', DEPLOYMENT_ID],
@@ -1358,6 +1375,7 @@ function workloadDeploymentResponse(): Record<string, unknown> {
     templateDigest: 'sha256:template',
     requestedAt: '2026-07-27T00:00:00.000Z',
     replayed: false,
+    skillBindings: [],
   };
 }
 

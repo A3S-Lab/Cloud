@@ -1,4 +1,4 @@
-use super::schema::{Deployments, WorkloadRevisions, Workloads};
+use super::schema::{Deployments, WorkloadRevisionSkillBindings, WorkloadRevisions, Workloads};
 use super::{operation_requests, queries, replicas};
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
@@ -117,6 +117,10 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
     request
         .revision
         .validate_mcp_binding_for_workload(&request.workload)
+        .map_err(RepositoryError::Conflict)?;
+    request
+        .revision
+        .validate_skill_bindings_for_workload(&request.workload)
         .map_err(RepositoryError::Conflict)?;
     let workload = &request.workload;
     let revision = &request.revision;
@@ -356,13 +360,52 @@ async fn insert_revision(
     )
     .await;
     match result {
-        Ok(rows) => require_one_row("workload revision", rows),
+        Ok(rows) => require_one_row("workload revision", rows)?,
         Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
             "workload revision identity or generation is already in use".into(),
         )
-        .into()),
-        Err(error) => Err(error),
+        .into())?,
+        Err(error) => return Err(error),
     }
+    for binding in revision.skill_bindings() {
+        require_one_row(
+            "workload revision Skill binding",
+            execute(
+                transaction,
+                insert_into::<WorkloadRevisionSkillBindings>()
+                    .value(
+                        WorkloadRevisionSkillBindings::organization_id(),
+                        binding.organization_id().as_uuid(),
+                    )
+                    .value(
+                        WorkloadRevisionSkillBindings::workload_id(),
+                        revision.workload_id.as_uuid(),
+                    )
+                    .value(
+                        WorkloadRevisionSkillBindings::revision_id(),
+                        revision.id.as_uuid(),
+                    )
+                    .value(
+                        WorkloadRevisionSkillBindings::asset_id(),
+                        binding.asset_id().as_uuid(),
+                    )
+                    .value(
+                        WorkloadRevisionSkillBindings::asset_release_id(),
+                        binding.asset_release_id().as_uuid(),
+                    )
+                    .value(
+                        WorkloadRevisionSkillBindings::artifact_digest(),
+                        binding.artifact_digest().as_str(),
+                    )
+                    .value(
+                        WorkloadRevisionSkillBindings::artifact_size_bytes(),
+                        binding.artifact_size_bytes(),
+                    ),
+            )
+            .await?,
+        )?;
+    }
+    Ok(())
 }
 
 async fn insert_operation(

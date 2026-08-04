@@ -3,7 +3,7 @@ use crate::{ArtifactConfig, NodeControlClientError};
 use a3s_cloud_contracts::{
     artifact_uri, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandPayload,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeApplyRequest,
@@ -179,6 +179,48 @@ async fn input_materialization_is_read_only_durable_and_replayed_without_downloa
         .cleanup_spec(&spec.digest().expect("spec digest"))
         .await
         .expect("cleanup materialized input");
+}
+
+#[tokio::test]
+async fn skill_bundle_materialization_preserves_its_typed_identity() {
+    let directory = tempfile::tempdir().expect("artifact state");
+    let archive = directory_archive(&[("SKILL.md", b"# Deterministic Skill\n", 0o444)]);
+    let input = cloud_artifact_with_media(&archive, SKILL_BUNDLE_MEDIA_TYPE);
+    let node_id = Uuid::now_v7();
+    let transport = Arc::new(FakeTransport {
+        archive,
+        downloads: AtomicUsize::new(0),
+        uploads: Mutex::new(Vec::new()),
+    });
+    let spec = task_spec(Some(input.clone()), false);
+    let command = command(node_id, spec.clone());
+    let manager = build_manager(directory.path(), node_id, transport.clone());
+
+    manager
+        .prepare_command(&command)
+        .await
+        .expect("materialize Skill bundle");
+    let mount = spec.mounts.first().expect("Skill Artifact mount");
+    let path = manager
+        .mount_path(&spec, mount)
+        .await
+        .expect("Skill mount path");
+    assert_eq!(
+        tokio::fs::read(path.join("SKILL.md"))
+            .await
+            .expect("materialized Skill file"),
+        b"# Deterministic Skill\n"
+    );
+    assert_eq!(transport.downloads.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        match &mount.source {
+            RuntimeMountSource::Artifact { artifact } => artifact,
+            RuntimeMountSource::Volume { .. } | RuntimeMountSource::Tmpfs { .. } => {
+                panic!("expected Skill Artifact mount")
+            }
+        },
+        &input
+    );
 }
 
 #[tokio::test]
@@ -461,11 +503,15 @@ fn artifact_config() -> ArtifactConfig {
 }
 
 fn cloud_artifact(bytes: &[u8]) -> ArtifactRef {
+    cloud_artifact_with_media(bytes, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE)
+}
+
+fn cloud_artifact_with_media(bytes: &[u8], media_type: &str) -> ArtifactRef {
     let digest = format!("sha256:{:x}", Sha256::digest(bytes));
     ArtifactRef {
         uri: artifact_uri(&digest).expect("artifact URI"),
         digest,
-        media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+        media_type: media_type.into(),
     }
 }
 

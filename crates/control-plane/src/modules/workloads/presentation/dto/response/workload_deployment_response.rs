@@ -3,6 +3,7 @@ use crate::modules::workloads::application::{
     RollbackWorkloadDeploymentResult, UpdateWorkloadDeploymentResult,
 };
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
+use crate::modules::workloads::presentation::dto::response::workload_response::SkillWorkloadRevisionBindingResponse;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -32,6 +33,7 @@ pub struct WorkloadDeploymentResponse {
     pub build_run_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rollback_source_revision_id: Option<Uuid>,
+    pub skill_bindings: Vec<SkillWorkloadRevisionBindingResponse>,
 }
 
 impl From<CreateSourceWorkloadDeploymentResult> for WorkloadDeploymentResponse {
@@ -70,6 +72,12 @@ impl WorkloadDeploymentResponse {
             .external_build
             .as_ref()
             .map(|reference| reference.build_run_id.as_uuid());
+        let skill_bindings = bundle
+            .revision
+            .skill_bindings()
+            .iter()
+            .map(SkillWorkloadRevisionBindingResponse::from)
+            .collect();
         Self {
             organization_id: bundle.workload.organization_id.as_uuid(),
             project_id: bundle.workload.project_id.as_uuid(),
@@ -93,6 +101,7 @@ impl WorkloadDeploymentResponse {
             external_source_revision_id,
             build_run_id,
             rollback_source_revision_id,
+            skill_bindings,
         }
     }
 }

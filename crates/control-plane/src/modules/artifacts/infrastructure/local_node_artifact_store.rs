@@ -274,19 +274,25 @@ fn map_object_error(error: ImmutableObjectError) -> NodeArtifactStoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::{artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE};
+    use a3s_cloud_contracts::{
+        artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
+    };
     use sha2::{Digest, Sha256};
     use std::io::Cursor;
     use std::path::Path;
     use tokio::io::AsyncReadExt;
 
     fn descriptor(bytes: &[u8]) -> NodeArtifactDescriptor {
+        descriptor_with_media_type(bytes, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE)
+    }
+
+    fn descriptor_with_media_type(bytes: &[u8], media_type: &str) -> NodeArtifactDescriptor {
         let digest = format!("sha256:{:x}", Sha256::digest(bytes));
         NodeArtifactDescriptor::new(
             ArtifactRef {
                 uri: artifact_uri(&digest).expect("artifact URI"),
                 digest,
-                media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+                media_type: media_type.into(),
             },
             bytes.len() as u64,
         )
@@ -331,6 +337,38 @@ mod tests {
             .read_to_end(&mut actual)
             .await
             .expect("read artifact");
+        assert_eq!(actual, bytes);
+        assert_eq!(opened.descriptor, descriptor);
+    }
+
+    #[tokio::test]
+    async fn skill_bundle_write_replays_and_streams_exact_bytes() {
+        let directory = tempfile::tempdir().expect("artifact directory");
+        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let bytes = b"deterministic Skill release tar";
+        let descriptor = descriptor_with_media_type(bytes, SKILL_BUNDLE_MEDIA_TYPE);
+
+        let first = store
+            .put(&descriptor, reader(bytes))
+            .await
+            .expect("first Skill bundle write");
+        assert!(!first.replayed);
+        let replay = store
+            .put(&descriptor, reader(bytes))
+            .await
+            .expect("replayed Skill bundle write");
+        assert!(replay.replayed);
+
+        let mut opened = store
+            .open(&descriptor.artifact)
+            .await
+            .expect("open Skill bundle");
+        let mut actual = Vec::new();
+        opened
+            .reader
+            .read_to_end(&mut actual)
+            .await
+            .expect("read Skill bundle");
         assert_eq!(actual, bytes);
         assert_eq!(opened.descriptor, descriptor);
     }

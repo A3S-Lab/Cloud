@@ -74,6 +74,18 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct WorkloadRevisionSkillBindings => "workload_revision_skill_bindings" {
+        organization_id: Uuid => "organization_id",
+        workload_id: Uuid => "workload_id",
+        revision_id: Uuid => "revision_id",
+        asset_id: Uuid => "asset_id",
+        asset_release_id: Uuid => "asset_release_id",
+        artifact_digest: String => "artifact_digest",
+        artifact_size_bytes: u64 => "artifact_size_bytes",
+    }
+}
+
+orm_table! {
     pub(super) struct Deployments => "deployments" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

@@ -1,14 +1,20 @@
+use crate::modules::artifacts::domain::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
+};
 use crate::modules::assets::domain::{
     Asset, AssetArchived, AssetCreated, AssetGitRepositoryError, AssetKind, AssetRelease,
-    AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion, AssetReleaseWrite, AssetState,
-    AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepository, IAssetRepository,
-    TransitionAssetReleaseWrite, TransitionAssetWrite,
+    AssetReleaseArtifact, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseState,
+    AssetReleaseVersion, AssetReleaseWrite, AssetState, AssetWrite, CreateAssetReleaseWrite,
+    CreateAssetWrite, IAssetGitRepository, IAssetRepository, TransitionAssetReleaseWrite,
+    TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, GitCommitSha, IdempotencyRequest, OrganizationId, ResourceName,
 };
+use a3s_cloud_contracts::artifact_uri;
+use a3s_runtime::contract::ArtifactRef;
 use chrono::Utc;
 use serde::Serialize;
 use std::sync::Arc;
@@ -18,6 +24,7 @@ pub struct AssetCatalogApplicationService {
     organizations: Arc<dyn IOrganizationRepository>,
     assets: Arc<dyn IAssetRepository>,
     repositories: Arc<dyn IAssetGitRepository>,
+    artifacts: Arc<dyn INodeArtifactStore>,
 }
 
 impl AssetCatalogApplicationService {
@@ -25,11 +32,13 @@ impl AssetCatalogApplicationService {
         organizations: Arc<dyn IOrganizationRepository>,
         assets: Arc<dyn IAssetRepository>,
         repositories: Arc<dyn IAssetGitRepository>,
+        artifacts: Arc<dyn INodeArtifactStore>,
     ) -> Self {
         Self {
             organizations,
             assets,
             repositories,
+            artifacts,
         }
     }
 
@@ -139,13 +148,9 @@ impl AssetCatalogApplicationService {
                 "archived Asset cannot create a release".into(),
             ));
         }
-        if asset.kind == AssetKind::Skill {
-            return Err(ApplicationError::Unavailable(
-                "Skill release publication is not available yet".into(),
-            ));
-        }
         let version = AssetReleaseVersion::parse(version).map_err(ApplicationError::Invalid)?;
         let commit_sha = GitCommitSha::parse(commit_sha).map_err(ApplicationError::Invalid)?;
+        let publication_key = idempotency_key.clone();
         let idempotency = idempotency(
             format!("organizations/{organization_id}/assets/{asset_id}/releases"),
             idempotency_key,
@@ -169,10 +174,18 @@ impl AssetCatalogApplicationService {
                 "Asset manifest admission changed the requested commit".into(),
             ));
         }
-        if admission.build_recipe.is_none() {
-            return Err(ApplicationError::Conflict(
-                "Agent and MCP releases require a pinned build recipe".into(),
-            ));
+        match (asset.kind, admission.build_recipe.is_some()) {
+            (AssetKind::Skill, false) | (AssetKind::Agent | AssetKind::Mcp, true) => {}
+            (AssetKind::Skill, true) => {
+                return Err(ApplicationError::Conflict(
+                    "Skill releases cannot contain a Workload build recipe".into(),
+                ))
+            }
+            (AssetKind::Agent | AssetKind::Mcp, false) => {
+                return Err(ApplicationError::Conflict(
+                    "Agent and MCP releases require a pinned build recipe".into(),
+                ))
+            }
         }
         let release = AssetRelease::draft(
             &asset,
@@ -185,14 +198,93 @@ impl AssetCatalogApplicationService {
         .map_err(ApplicationError::Conflict)?;
         let event = AssetReleaseDrafted::envelope(&release, request_id)
             .map_err(|error| ApplicationError::Internal(error.to_string()))?;
-        self.assets
+        let drafted = self
+            .assets
             .create_release(CreateAssetReleaseWrite {
                 release,
                 event,
                 idempotency,
             })
             .await
-            .map_err(ApplicationError::from)
+            .map_err(ApplicationError::from)?;
+        if asset.kind != AssetKind::Skill || drafted.release.state != AssetReleaseState::Draft {
+            return Ok(drafted);
+        }
+
+        let bundle = self
+            .repositories
+            .prepare_release_bundle(&asset, &commit_sha, drafted.release.id)
+            .await
+            .map_err(map_catalog_repository_error)?;
+        bundle.validate().map_err(ApplicationError::Conflict)?;
+        if bundle.commit_sha != drafted.release.commit_sha {
+            return Err(ApplicationError::Conflict(
+                "Skill bundle changed the pinned Asset release commit".into(),
+            ));
+        }
+        let artifact = ArtifactRef {
+            uri: artifact_uri(bundle.digest.as_str()).map_err(ApplicationError::Invalid)?,
+            digest: bundle.digest.as_str().into(),
+            media_type: SKILL_BUNDLE_MEDIA_TYPE.into(),
+        };
+        let descriptor = NodeArtifactDescriptor::new(artifact, bundle.size_bytes)
+            .map_err(ApplicationError::Invalid)?;
+        let file = tokio::fs::File::open(&bundle.path).await.map_err(|_| {
+            ApplicationError::Internal("could not open the prepared Skill bundle".into())
+        })?;
+        let stored = self
+            .artifacts
+            .put(&descriptor, Box::pin(file))
+            .await
+            .map_err(map_artifact_store_error)?;
+        if stored.descriptor != descriptor {
+            return Err(ApplicationError::Internal(
+                "Skill bundle storage changed its immutable descriptor".into(),
+            ));
+        }
+        self.repositories
+            .remove_release_bundle(drafted.release.id)
+            .await
+            .map_err(map_catalog_repository_error)?;
+
+        let mut release = drafted.release;
+        let expected_aggregate_version = release.aggregate_version;
+        release
+            .publish_skill(
+                &asset,
+                AssetReleaseArtifact::skill_bundle(bundle.digest, bundle.size_bytes)
+                    .map_err(ApplicationError::Conflict)?,
+                Utc::now(),
+            )
+            .map_err(ApplicationError::Conflict)?;
+        let event = AssetReleasePublished::envelope(&release, request_id)
+            .map_err(ApplicationError::Internal)?;
+        let publication = idempotency(
+            format!(
+                "organizations/{organization_id}/assets/{asset_id}/releases/{}/publish-skill",
+                release.id
+            ),
+            publication_key,
+            &serde_json::json!({
+                "organization_id": organization_id.as_uuid(),
+                "asset_id": asset_id.as_uuid(),
+                "asset_release_id": release.id.as_uuid(),
+                "artifact_digest": release.artifact.as_ref().map(|artifact| artifact.digest().as_str()),
+                "artifact_size_bytes": release.artifact.as_ref().map(|artifact| artifact.size_bytes()),
+            }),
+        )?;
+        let mut published = self
+            .assets
+            .transition_release(TransitionAssetReleaseWrite {
+                release,
+                expected_aggregate_version,
+                event,
+                idempotency: publication,
+            })
+            .await
+            .map_err(ApplicationError::from)?;
+        published.replayed |= drafted.replayed;
+        Ok(published)
     }
 
     pub async fn yank_release(
@@ -349,6 +441,21 @@ fn map_catalog_repository_error(error: AssetGitRepositoryError) -> ApplicationEr
         }
         AssetGitRepositoryError::Storage(_) => {
             ApplicationError::Internal("hosted Git repository operation failed".into())
+        }
+    }
+}
+
+fn map_artifact_store_error(error: NodeArtifactStoreError) -> ApplicationError {
+    match error {
+        NodeArtifactStoreError::Invalid(message) => ApplicationError::Invalid(message),
+        NodeArtifactStoreError::NotFound => {
+            ApplicationError::NotFound("Skill bundle storage was not found".into())
+        }
+        NodeArtifactStoreError::Conflict | NodeArtifactStoreError::Integrity(_) => {
+            ApplicationError::Conflict("Skill bundle failed immutable storage admission".into())
+        }
+        NodeArtifactStoreError::Storage(_) => {
+            ApplicationError::Internal("Skill bundle storage failed".into())
         }
     }
 }

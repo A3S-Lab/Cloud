@@ -431,6 +431,7 @@ export interface WorkloadRevision {
   buildRunId?: string;
   agentBinding?: AgentWorkloadRevisionBinding;
   mcpBinding?: McpWorkloadRevisionBinding;
+  skillBindings: SkillWorkloadRevisionBinding[];
 }
 
 export interface AgentWorkloadRevisionBinding {
@@ -445,6 +446,17 @@ export interface McpWorkloadRevisionBinding {
   assetId: string;
   assetReleaseId: string;
   profileDigest: string;
+}
+
+export interface SkillWorkloadRevisionBinding {
+  organizationId: string;
+  assetId: string;
+  assetReleaseId: string;
+  artifactDigest: string;
+  artifactMediaType: string;
+  artifactSizeBytes: number;
+  mountName: string;
+  mountTarget: string;
 }
 
 export interface DeploymentOperation {
@@ -607,6 +619,7 @@ export interface WorkloadDeploymentResult {
   rollbackSourceRevisionId?: string;
   externalSourceRevisionId?: string;
   buildRunId?: string;
+  skillBindings: SkillWorkloadRevisionBinding[];
 }
 
 export interface Workload {
@@ -640,26 +653,6 @@ export type {
   RoutePublicationResult,
   RouteState,
 } from './edge';
-
-export type {
-  BuildPlatform,
-  CreateGithubRepositorySubscriptionInput,
-  DockerfileBuildRecipe,
-  GitProvider,
-  GitReferenceInput,
-  GitReferenceKind,
-  GithubConnection,
-  GithubConnectionInstall,
-  GithubConnectionStatus,
-  GithubRepositorySubscription,
-  GithubRepositorySubscriptionMutationResult,
-  GitRepository,
-  GitRepositoryInput,
-  ResolveSourceRevisionInput,
-  SourceRevision,
-  SourceRevisionMutationResult,
-} from './source';
-
 export type {
   Secret,
   SecretDetails,
@@ -668,6 +661,24 @@ export type {
   SecretVersion,
   SecretVersionState,
 } from './secret';
+export type {
+  BuildPlatform,
+  CreateGithubRepositorySubscriptionInput,
+  DockerfileBuildRecipe,
+  GithubConnection,
+  GithubConnectionInstall,
+  GithubConnectionStatus,
+  GithubRepositorySubscription,
+  GithubRepositorySubscriptionMutationResult,
+  GitProvider,
+  GitReferenceInput,
+  GitReferenceKind,
+  GitRepository,
+  GitRepositoryInput,
+  ResolveSourceRevisionInput,
+  SourceRevision,
+  SourceRevisionMutationResult,
+} from './source';
 
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
 export type WorkloadLogRecordKind = 'data' | 'gap';

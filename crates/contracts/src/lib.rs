@@ -40,7 +40,7 @@ pub use node::{
     NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
     NodeSecretMaterialRequest, NodeSecretMaterialResponse, RuntimeObservationReport,
     BOX_BUILD_OUTPUT_NAME, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
-    RUNTIME_RESOURCE_CLAIM_ID_KEY,
+    RUNTIME_RESOURCE_CLAIM_ID_KEY, SKILL_BUNDLE_MEDIA_TYPE,
 };
 pub use registry_credential::RegistryCredentialMaterial;
 pub use resource::{

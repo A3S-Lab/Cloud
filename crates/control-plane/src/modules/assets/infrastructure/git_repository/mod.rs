@@ -9,11 +9,13 @@ mod tests;
 use crate::infrastructure::{GitCommandError, GitCommandRunner, ImmutableObjectClient};
 use crate::modules::assets::domain::{
     validate_asset_repository_mutation, Asset, AssetGitBackup, AssetGitBuildInput,
-    AssetGitRepository, AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits,
-    AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal, AssetGitWriteLease,
-    AssetManifestAdmission, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
+    AssetGitReleaseBundle, AssetGitRepository, AssetGitRepositoryError, AssetGitRepositoryWrite,
+    AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal,
+    AssetGitWriteLease, AssetManifestAdmission, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
-use crate::modules::shared_kernel::domain::{BuildRunId, GitCommitSha, Sha256Digest};
+use crate::modules::shared_kernel::domain::{
+    AssetReleaseId, BuildRunId, GitCommitSha, Sha256Digest,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::ffi::OsString;
@@ -384,6 +386,22 @@ impl IAssetGitRepository for LocalAssetGitRepository {
         build_run_id: BuildRunId,
     ) -> Result<(), AssetGitRepositoryError> {
         build_input::remove(self, build_run_id).await
+    }
+
+    async fn prepare_release_bundle(
+        &self,
+        asset: &Asset,
+        commit_sha: &GitCommitSha,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<AssetGitReleaseBundle, AssetGitRepositoryError> {
+        build_input::prepare_release(self, asset, commit_sha, asset_release_id).await
+    }
+
+    async fn remove_release_bundle(
+        &self,
+        asset_release_id: AssetReleaseId,
+    ) -> Result<(), AssetGitRepositoryError> {
+        build_input::remove_release(self, asset_release_id).await
     }
 }
 

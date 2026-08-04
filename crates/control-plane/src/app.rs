@@ -111,12 +111,13 @@ use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use crate::modules::workloads::{
-    CancelDeploymentHandler, CreateAgentWorkloadDeploymentHandler,
-    CreateSourceWorkloadDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
-    DeploymentFlowDependencies, DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler,
-    GetWorkloadLogsHandler, IWorkloadRuntimeControl, ListWorkloadsHandler,
-    OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
-    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
+    BindSkillWorkloadDeploymentHandler, CancelDeploymentHandler,
+    CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
+    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
+    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler,
+    SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
     WorkloadRuntimeReconciler, WorkloadsModule,
 };
@@ -290,6 +291,7 @@ pub async fn build_application_with_source_resolver(
         Arc::clone(&organizations),
         Arc::clone(&assets),
         Arc::clone(&asset_git_repositories),
+        Arc::clone(&node_artifacts),
     ));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
@@ -878,10 +880,14 @@ fn build_application_with_health(
     let source_create_workloads = Arc::clone(&workloads);
     let agent_create_workloads = Arc::clone(&workloads);
     let agent_update_workloads = Arc::clone(&workloads);
+    let bind_skill_workloads = Arc::clone(&workloads);
+    let unbind_skill_workloads = Arc::clone(&workloads);
     let workload_secrets = Arc::clone(&secrets);
     let source_workload_secrets = Arc::clone(&secrets);
     let agent_create_workload_secrets = Arc::clone(&secrets);
     let agent_update_workload_secrets = Arc::clone(&secrets);
+    let bind_skill_workload_secrets = Arc::clone(&secrets);
+    let unbind_skill_workload_secrets = Arc::clone(&secrets);
     let update_workloads = Arc::clone(&workloads);
     let update_workload_secrets = Arc::clone(&secrets);
     let rollback_workloads = Arc::clone(&workloads);
@@ -910,7 +916,8 @@ fn build_application_with_health(
     let list_asset_releases = Arc::clone(&asset_catalog);
     let get_asset_releases = Arc::clone(&asset_catalog);
     let agent_create_assets = Arc::clone(&assets);
-    let agent_update_assets = assets;
+    let agent_update_assets = Arc::clone(&assets);
+    let bind_skill_assets = assets;
     let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
     let rotation_nodes = Arc::clone(&nodes);
@@ -1177,6 +1184,19 @@ fn build_application_with_health(
                         agent_update_builds,
                         agent_update_workloads,
                         agent_update_workload_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::workloads::BindSkillWorkloadDeployment, _>(
+                    BindSkillWorkloadDeploymentHandler::new(
+                        bind_skill_assets,
+                        bind_skill_workloads,
+                        bind_skill_workload_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::workloads::UnbindSkillWorkloadDeployment, _>(
+                    UnbindSkillWorkloadDeploymentHandler::new(
+                        unbind_skill_workloads,
+                        unbind_skill_workload_secrets,
                     ),
                 )
                 .command_handler::<crate::modules::workloads::UpdateWorkloadDeployment, _>(

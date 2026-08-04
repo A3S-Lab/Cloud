@@ -188,7 +188,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stdin-only credentials; and search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.4.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.5.0`, and reject incompatible or invalidly deprecated contract changes
 - **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
   Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
@@ -417,8 +417,11 @@ Secret restart, and cleanup paths. Fresh deployment rejects archived Assets and
 draft or yanked releases, while exact replay and rollback retain the pinned
 identity. REST, the typed client, CLI, and Web projections expose the same
 boundary. `A0.4` remains in progress until its real-provider evidence is
-retained. Immutable Skill binding remains `A0.5`, so the complete `A0` gate
-remains in progress.
+retained. `A0.5` now publishes exact hosted Git archives as immutable Skill
+bundles and binds, rebinds, or unbinds them through new Agent Workload
+revisions, read-only Runtime Artifact mounts, migration 067 persistence, and
+REST/client/CLI/Web surfaces. Real PostgreSQL/Box lifecycle evidence still
+keeps the complete `A0` gate in progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -727,7 +730,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.4.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.5.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -856,6 +859,11 @@ bun run --cwd cli src/main.ts workloads stop "<workload-uuid>" \
   --idempotency-key="release:stop:<request-id>"
 bun run --cwd cli src/main.ts workloads rollback "<workload-uuid>" "<revision-uuid>" \
   --idempotency-key="release:rollback:<request-id>"
+bun run --cwd cli src/main.ts skill-bindings bind "<workload-uuid>" \
+  "<skill-asset-uuid>" "<skill-release-uuid>" \
+  --idempotency-key="skill:bind:<request-id>"
+bun run --cwd cli src/main.ts skill-bindings unbind "<workload-uuid>" \
+  "<skill-asset-uuid>" --idempotency-key="skill:unbind:<request-id>"
 bun run --cwd cli src/main.ts deployments cancel "<deployment-uuid>" \
   --idempotency-key="release:cancel-deployment:<request-id>"
 bun run --cwd cli src/main.ts build-runs retry "<build-run-uuid>" \
@@ -918,7 +926,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.4.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.5.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record
@@ -1017,8 +1025,11 @@ implemented. Retained execution of the exact `G0` external-provider gate still
 blocks `A0.3` verification. `A0.4` Agent deployment now immutably binds an exact
 published release and successful BuildRun to an ordinary Workload revision and
 reuses its existing lifecycle through REST, the typed client, CLI, and Web
-projections; real-provider evidence still blocks verification. Immutable Skill
-binding remains `A0.5`. Hosted modern MCP contract/compiler,
+projections; real-provider evidence still blocks verification. `A0.5` now
+publishes exact Skill Git archives, binds their immutable release identity and
+content digest to Agent Workload revisions, projects read-only Runtime
+Artifact mounts, and exposes REST/client/CLI/Web lifecycle controls; retained
+real PostgreSQL/Box evidence still blocks verification. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
 complete version-vector CAS, atomic publication/certificate/scope/Outbox
 staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry
