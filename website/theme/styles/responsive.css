@@ -15,7 +15,7 @@
   transition-delay: calc(var(--card-index) * 55ms);
 }
 
-.cloud-home[data-effects='ready'] .cloud-future-card[data-reveal] {
+.cloud-home[data-effects='ready'] .cloud-horizon-card[data-reveal] {
   transition-delay: calc(var(--track-index) * 55ms);
 }
 
@@ -50,11 +50,12 @@
 
 @media (max-width: 1020px) {
   .cloud-hero {
+    min-height: auto;
     grid-template-columns: 1fr;
   }
 
   .cloud-hero-copy {
-    padding: 96px 56px 26px;
+    padding: 72px 56px 24px;
   }
 
   .cloud-hero-copy > p {
@@ -62,17 +63,21 @@
   }
 
   .cloud-hero-visual {
-    min-height: 630px;
+    min-height: 540px;
     padding: 0 34px 20px;
+  }
+
+  .cloud-assurance-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-assurance-status {
+    border-right: 0;
+    border-bottom: 1px solid var(--cloud-line);
   }
 
   .cloud-topology {
     width: min(100%, 760px);
-  }
-
-  .cloud-section-heading {
-    grid-template-columns: 1fr;
-    gap: 22px;
   }
 
   .cloud-section-heading > p {
@@ -91,10 +96,6 @@
   .cloud-capability-card:nth-child(3),
   .cloud-capability-card:nth-child(4) {
     grid-column: span 6;
-  }
-
-  .cloud-future-grid {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .cloud-boundary-map {
@@ -164,12 +165,12 @@
   }
 
   .cloud-hero-copy {
-    padding: 76px 22px 22px;
+    padding: 58px 22px 22px;
   }
 
   .cloud-hero h1 {
-    margin-top: 22px;
-    font-size: clamp(43px, 13vw, 60px);
+    margin-bottom: 20px;
+    font-size: clamp(42px, 11.3vw, 54px);
   }
 
   .cloud-hero-copy > p {
@@ -186,8 +187,29 @@
   }
 
   .cloud-hero-visual {
-    min-height: 480px;
+    min-height: 410px;
     padding: 0 2px 12px;
+  }
+
+  .cloud-assurance-bar {
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .cloud-assurance-status {
+    padding: 18px 20px;
+  }
+
+  .cloud-assurance-bar ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-assurance-bar li:nth-child(2) {
+    border-right: 0;
+  }
+
+  .cloud-assurance-bar li:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--cloud-line);
   }
 
   .cloud-topology {
@@ -222,18 +244,6 @@
 
   .cloud-topology figcaption {
     bottom: 0;
-  }
-
-  .cloud-hero-metrics {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .cloud-hero-metrics span:nth-child(2) {
-    border-right: 0;
-  }
-
-  .cloud-hero-metrics span:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--cloud-line);
   }
 
   .cloud-section {
@@ -293,12 +303,10 @@
     grid-column: 1;
   }
 
-  .cloud-future-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .cloud-future-card {
-    min-height: 380px;
+  .cloud-horizon-card,
+  .cloud-horizon-card:nth-child(3n + 1) {
+    min-height: 340px;
+    flex-basis: min(82vw, 380px);
   }
 
   .cloud-boundary-map {
@@ -408,13 +416,8 @@
 }
 
 @media (max-width: 460px) {
-  .cloud-hero-eyebrow {
-    align-items: flex-start;
-    line-height: 1.5;
-  }
-
   .cloud-hero-visual {
-    min-height: 420px;
+    min-height: 360px;
   }
 
   .cloud-topology-node {
@@ -430,30 +433,22 @@
     min-width: 82px;
   }
 
-  .cloud-hero-metrics {
+  .cloud-assurance-bar ul {
     grid-template-columns: 1fr;
   }
 
-  .cloud-hero-metrics span,
-  .cloud-hero-metrics span:nth-child(2) {
+  .cloud-assurance-bar li,
+  .cloud-assurance-bar li:nth-child(2) {
     border-right: 0;
     border-bottom: 1px solid var(--cloud-line);
   }
 
-  .cloud-hero-metrics span:last-child {
+  .cloud-assurance-bar li:last-child {
     border-bottom: 0;
   }
 
   .cloud-capability-card {
     padding: 19px;
-  }
-
-  .cloud-roadmap-cards {
-    grid-template-columns: 1fr;
-  }
-
-  .cloud-roadmap-card {
-    min-height: 88px;
   }
 
   .cloud-architecture-card {
@@ -476,7 +471,7 @@
   }
 
   .cloud-topology-signal,
-  .cloud-future-signal b {
+  .cloud-horizon-signal b {
     display: none;
   }
 

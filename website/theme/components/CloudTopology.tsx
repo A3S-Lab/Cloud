@@ -6,7 +6,7 @@ const nodes = [
   { id: 'agent', label: 'Node Agent', meta: 'outbound mTLS' },
   { id: 'box', label: 'A3S Box', meta: 'sole provider' },
   { id: 'gateway', label: 'Gateway', meta: 'live traffic' },
-  { id: 'evidence', label: 'Evidence', meta: 'health · logs' },
+  { id: 'evidence', label: 'Evidence', meta: 'health / logs' },
 ] as const;
 
 const paths = [
@@ -32,8 +32,8 @@ export function CloudTopology() {
         <defs>
           <linearGradient id="topology-line" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stopColor="#7ff0bc" stopOpacity=".18" />
-            <stop offset=".5" stopColor="#7abaff" stopOpacity=".72" />
-            <stop offset="1" stopColor="#bd8fff" stopOpacity=".14" />
+            <stop offset=".5" stopColor="#a6f6d2" stopOpacity=".72" />
+            <stop offset="1" stopColor="#7ff0bc" stopOpacity=".14" />
           </linearGradient>
         </defs>
         {paths.map((path, index) => (

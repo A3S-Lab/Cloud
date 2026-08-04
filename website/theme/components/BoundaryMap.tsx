@@ -7,28 +7,28 @@ const boundaries = [
     gate: 'F0',
     name: 'A3S Cloud',
     role: 'Desired-state authority',
-    owns: 'Tenancy · policy · placement · rollout · operations',
+    owns: 'Tenancy / policy / placement / rollout / operations',
   },
   {
     id: 'box',
     gate: 'BX0',
     name: 'A3S Box',
     role: 'Sole execution provider',
-    owns: 'Isolation · lifecycle · resources · local evidence',
+    owns: 'Isolation / lifecycle / resources / local evidence',
   },
   {
     id: 'gateway',
     gate: 'H0',
     name: 'A3S Gateway',
     role: 'Traffic data plane',
-    owns: 'TLS · streaming · enforcement · healthy dispatch',
+    owns: 'TLS / streaming / enforcement / healthy dispatch',
   },
   {
     id: 'power',
     gate: 'PW0',
     name: 'A3S Power',
     role: 'Typed inference backend',
-    owns: 'Power Service · MicroVM / TEE execution evidence',
+    owns: 'Power Service / MicroVM / TEE execution evidence',
   },
 ] as const;
 
@@ -48,10 +48,10 @@ export function BoundaryMap() {
           key={boundary.id}
         >
           <header>
-            <span>{boundary.role}</span>
             <GateBadge compact gate={gateByCode(boundary.gate)} />
           </header>
           <h3>{boundary.name}</h3>
+          <p className="cloud-boundary-role">{boundary.role}</p>
           <p>{boundary.owns}</p>
         </article>
       ))}

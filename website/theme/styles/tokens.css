@@ -1,3 +1,29 @@
+@font-face {
+  font-family: 'Geist Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/geist/files/geist-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Geist Mono Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url('@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2')
+    format('woff2-variations');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
+    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
+    U+2215, U+FEFF, U+FFFD;
+}
+
 :root {
   --rp-c-brand: #76e9b5;
   --rp-c-brand-dark: #8df5c6;
@@ -23,15 +49,22 @@
   --cloud-line-strong: #2a4439;
   --cloud-text: #f1f8f4;
   --cloud-muted: #9aada4;
-  --cloud-faint: #65786f;
+  --cloud-faint: #748a80;
   --cloud-green: #7cf0bc;
   --cloud-green-deep: #39a776;
   --cloud-blue: #76b7ff;
   --cloud-violet: #bd8eff;
   --cloud-amber: #efc56c;
   --cloud-max: 1440px;
+  --cloud-radius-card: 16px;
+  --cloud-radius-control: 10px;
+  --cloud-radius-pill: 999px;
+  --cloud-sans:
+    'Geist Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
   --cloud-mono:
-    'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', Consolas, monospace;
+    'Geist Mono Variable', 'SFMono-Regular', 'Cascadia Code', Consolas,
+    monospace;
 }
 
 html {
@@ -43,19 +76,13 @@ body {
   margin: 0;
   background: var(--cloud-bg);
   color: var(--cloud-text);
-  font-family:
-    Inter,
-    ui-sans-serif,
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    sans-serif;
+  font-family: var(--cloud-sans);
   text-rendering: optimizeLegibility;
 }
 
 ::selection {
   background: rgba(118, 233, 181, 0.26);
-  color: #fff;
+  color: var(--cloud-text);
 }
 
 .rp-nav {
@@ -76,7 +103,6 @@ body {
     90deg,
     transparent,
     rgba(124, 240, 188, 0.22),
-    rgba(118, 183, 255, 0.18),
     transparent
   );
   content: '';
@@ -124,11 +150,7 @@ body {
   position: relative;
   overflow: clip;
   width: 100%;
-  background:
-    linear-gradient(rgba(142, 255, 206, 0.018) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(142, 255, 206, 0.018) 1px, transparent 1px),
-    var(--cloud-bg);
-  background-size: 80px 80px;
+  background: var(--cloud-bg);
   color: var(--cloud-text);
 }
 
@@ -160,7 +182,7 @@ body {
   min-height: 28px;
   padding: 4px 10px;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 999px;
+  border-radius: var(--cloud-radius-pill);
   background: rgba(9, 16, 14, 0.76);
   align-items: center;
   gap: 7px;
@@ -176,7 +198,6 @@ body {
   height: 6px;
   border-radius: 50%;
   background: currentcolor;
-  box-shadow: 0 0 14px currentcolor;
 }
 
 .cloud-gate-badge b {

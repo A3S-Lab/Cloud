@@ -17,7 +17,7 @@
   background: radial-gradient(
     circle at 70% 32%,
     rgba(42, 145, 105, 0.15),
-    rgba(48, 86, 133, 0.08) 26%,
+    rgba(42, 145, 105, 0.04) 28%,
     transparent 56%
   );
   content: '';
@@ -33,87 +33,50 @@
   z-index: 1;
   display: grid;
   max-width: var(--cloud-max);
-  min-height: 790px;
+  min-height: min(730px, calc(100dvh - var(--rp-nav-height)));
   margin: 0 auto;
   border-right: 1px solid var(--cloud-line);
   border-bottom: 1px solid var(--cloud-line);
   border-left: 1px solid var(--cloud-line);
-  grid-template-columns: minmax(0, 48%) minmax(0, 52%);
-  grid-template-rows: 1fr auto;
+  grid-template-columns: minmax(0, 53%) minmax(0, 47%);
 }
 
 .cloud-hero-copy {
   z-index: 2;
   display: flex;
   min-width: 0;
-  padding: 108px 34px 72px 68px;
+  padding: 72px 34px 64px 68px;
   flex-direction: column;
   justify-content: center;
 }
 
-.cloud-hero-eyebrow,
-.cloud-section-heading > div > span,
-.cloud-architecture-copy > span,
-.cloud-final-cta > div > span {
-  color: var(--cloud-green);
-  font-family: var(--cloud-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-}
-
-.cloud-hero-eyebrow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.cloud-hero-eyebrow i {
-  position: relative;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--cloud-green);
-  box-shadow:
-    0 0 0 5px rgba(124, 240, 188, 0.08),
-    0 0 24px rgba(124, 240, 188, 0.7);
-}
-
 .cloud-hero h1 {
-  max-width: 730px;
-  margin: 27px 0 24px;
+  max-width: 680px;
+  margin: 0 0 24px;
   color: var(--cloud-text);
-  font-size: clamp(50px, 5.25vw, 82px);
+  font-size: clamp(48px, 4.65vw, 68px);
   font-weight: 670;
-  letter-spacing: -0.068em;
-  line-height: 0.96;
+  letter-spacing: -0.04em;
+  line-height: 0.98;
 }
 
 .cloud-hero h1 span {
   display: block;
-  margin-top: 9px;
-  background: linear-gradient(
-    102deg,
-    var(--cloud-green) 0%,
-    #a8efd0 36%,
-    var(--cloud-blue) 72%,
-    var(--cloud-violet) 104%
-  );
-  background-clip: text;
-  color: transparent;
+  margin-top: 8px;
+  color: var(--cloud-green);
 }
 
 .cloud-hero-copy > p {
-  max-width: 610px;
+  max-width: 560px;
   margin: 0;
   color: var(--cloud-muted);
   font-size: 17px;
-  line-height: 1.72;
+  line-height: 1.62;
 }
 
 .cloud-hero-actions {
   display: flex;
-  margin-top: 34px;
+  margin-top: 30px;
   align-items: center;
   flex-wrap: wrap;
   gap: 11px;
@@ -125,11 +88,11 @@
   min-height: 48px;
   padding: 0 18px;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 10px;
+  border-radius: var(--cloud-radius-control);
   align-items: center;
   justify-content: center;
   gap: 10px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 670;
   transition:
     border-color 180ms ease,
@@ -140,31 +103,33 @@
 .cloud-button svg {
   width: 18px;
   height: 18px;
-  stroke-width: 1.7;
+  stroke-width: 2;
   transition: transform 180ms ease;
 }
 
 .cloud-button.is-primary {
   overflow: hidden;
   border-color: rgba(124, 240, 188, 0.48);
-  background: linear-gradient(135deg, #8cf5c6, #66d9a4);
-  box-shadow: 0 13px 42px rgba(44, 175, 120, 0.16);
+  background: var(--cloud-green);
   color: #06110c;
 }
 
 .cloud-button.is-secondary {
-  background: rgba(9, 16, 14, 0.68);
+  background: var(--cloud-panel);
   color: var(--cloud-text);
-  backdrop-filter: blur(14px);
 }
 
 .cloud-button:hover {
   border-color: rgba(124, 240, 188, 0.68);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
 .cloud-button:hover svg {
   transform: translateX(3px);
+}
+
+.cloud-button:active {
+  transform: scale(0.98);
 }
 
 .cloud-button:focus-visible,
@@ -174,52 +139,67 @@
   outline-offset: 3px;
 }
 
-.cloud-hero-status {
-  display: flex;
-  margin-top: 28px;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .cloud-hero-visual {
   position: relative;
   z-index: 1;
   display: flex;
   min-width: 0;
-  padding: 44px 25px 24px 0;
+  padding: 36px 28px 36px 0;
   align-items: center;
   justify-content: center;
 }
 
-.cloud-hero-metrics {
-  z-index: 2;
+.cloud-assurance-bar {
+  position: relative;
+  z-index: 1;
   display: grid;
-  border-top: 1px solid var(--cloud-line);
-  grid-column: 1 / -1;
-  grid-template-columns: repeat(4, 1fr);
+  max-width: var(--cloud-max);
+  min-height: 84px;
+  margin: 0 auto;
+  border-right: 1px solid var(--cloud-line);
+  border-bottom: 1px solid var(--cloud-line);
+  border-left: 1px solid var(--cloud-line);
+  background: rgba(7, 13, 11, 0.82);
+  grid-template-columns: minmax(310px, 0.8fr) minmax(0, 2fr);
 }
 
-.cloud-hero-metrics span {
+.cloud-assurance-status {
   display: flex;
-  min-height: 72px;
-  padding: 16px 22px;
+  padding: 18px 26px;
   border-right: 1px solid var(--cloud-line);
   align-items: center;
-  gap: 11px;
-  color: var(--cloud-muted);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cloud-assurance-status > span {
+  margin-right: 4px;
+  color: var(--cloud-faint);
   font-family: var(--cloud-mono);
   font-size: 10px;
+}
+
+.cloud-assurance-bar ul {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+}
+
+.cloud-assurance-bar li {
+  display: flex;
+  min-width: 0;
+  padding: 18px;
+  border-right: 1px solid var(--cloud-line);
+  align-items: center;
+  color: var(--cloud-muted);
+  font-size: 11px;
   line-height: 1.45;
 }
 
-.cloud-hero-metrics span:last-child {
+.cloud-assurance-bar li:last-child {
   border-right: 0;
-}
-
-.cloud-hero-metrics b {
-  color: var(--cloud-green);
-  font-size: 10px;
 }
 
 .cloud-section {
@@ -227,36 +207,32 @@
   z-index: 1;
   max-width: var(--cloud-max);
   margin: 0 auto;
-  padding: 112px 68px;
+  padding: 104px 68px;
   border-right: 1px solid var(--cloud-line);
   border-bottom: 1px solid var(--cloud-line);
   border-left: 1px solid var(--cloud-line);
 }
 
 .cloud-section-heading {
-  display: grid;
   margin-bottom: 50px;
-  align-items: end;
-  grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr);
-  gap: 72px;
 }
 
 .cloud-section-heading h2 {
-  max-width: 780px;
-  margin: 14px 0 0;
+  max-width: 860px;
+  margin: 0;
   color: var(--cloud-text);
   font-size: clamp(36px, 4vw, 58px);
   font-weight: 630;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.04em;
   line-height: 1.04;
 }
 
 .cloud-section-heading > p {
-  max-width: 540px;
-  margin: 0;
+  max-width: 720px;
+  margin: 20px 0 0;
   color: var(--cloud-muted);
   font-size: 15px;
-  line-height: 1.72;
+  line-height: 1.66;
 }
 
 .cloud-control-loop {
@@ -284,7 +260,7 @@
   min-height: 420px;
   padding: 24px;
   border: 1px solid var(--cloud-line);
-  border-radius: 15px;
+  border-radius: var(--cloud-radius-card);
   background: linear-gradient(
     145deg,
     rgba(13, 23, 19, 0.94),
@@ -312,26 +288,16 @@
   transform: translateY(-3px);
 }
 
-.cloud-capability-card-topline {
+.cloud-capability-card-status {
   position: relative;
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.cloud-capability-card-topline > span,
-.cloud-future-card header > span {
-  color: var(--cloud-faint);
-  font-family: var(--cloud-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
+  justify-content: flex-end;
 }
 
 .cloud-capability-card h3,
-.cloud-future-card h3 {
+.cloud-horizon-card h3 {
   position: relative;
   z-index: 2;
   margin: 23px 0 12px;
@@ -342,7 +308,7 @@
 }
 
 .cloud-capability-card > p,
-.cloud-future-card > p {
+.cloud-horizon-card > p {
   position: relative;
   z-index: 2;
   margin: 0;
@@ -373,46 +339,58 @@
 .cloud-boundaries {
   background: radial-gradient(
     circle at 50% 56%,
-    rgba(69, 86, 129, 0.11),
+    rgba(47, 109, 82, 0.09),
     transparent 44%
   );
 }
 
-.cloud-future-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 13px;
+.cloud-horizon-track {
+  display: flex;
+  overflow-x: auto;
+  padding: 0 0 18px;
+  gap: 14px;
+  scroll-padding-inline: 1px;
+  scroll-snap-type: x mandatory;
+  scrollbar-color: var(--cloud-line-strong) transparent;
+  scrollbar-width: thin;
 }
 
-.cloud-future-card {
+.cloud-horizon-card {
   position: relative;
+  display: flex;
   overflow: hidden;
-  min-height: 390px;
-  padding: 23px 23px 58px;
+  min-height: 350px;
+  padding: 24px 24px 56px;
   border: 1px solid var(--cloud-line);
-  border-radius: 14px;
+  border-radius: var(--cloud-radius-card);
   background: rgba(7, 13, 11, 0.8);
+  flex: 0 0 min(390px, 72vw);
+  flex-direction: column;
+  scroll-snap-align: start;
   transition:
     border-color 220ms ease,
     transform 220ms ease;
 }
 
-.cloud-future-card:hover {
-  border-color: rgba(189, 142, 255, 0.35);
-  transform: translateY(-3px);
+.cloud-horizon-card:nth-child(3n + 1) {
+  flex-basis: min(470px, 78vw);
 }
 
-.cloud-future-card header {
+.cloud-horizon-card:hover {
+  border-color: rgba(124, 240, 188, 0.34);
+  transform: translateY(-2px);
+}
+
+.cloud-horizon-card header {
   position: relative;
   z-index: 2;
   display: flex;
   min-height: 26px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-end;
 }
 
-.cloud-future-card code {
+.cloud-horizon-card code {
   position: absolute;
   right: 23px;
   bottom: 22px;
@@ -423,7 +401,7 @@
 }
 
 .cloud-roadmap {
-  background: linear-gradient(180deg, rgba(13, 18, 25, 0.5), transparent);
+  background: linear-gradient(180deg, rgba(9, 18, 15, 0.54), transparent);
 }
 
 .cloud-architecture-cta {
@@ -437,8 +415,8 @@
   overflow: hidden;
   min-height: 470px;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 18px;
-  background: linear-gradient(135deg, #0b1712 0%, #09111a 54%, #120f1c 100%);
+  border-radius: var(--cloud-radius-card);
+  background: linear-gradient(135deg, #0b1712 0%, #08110e 100%);
   grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
   transition:
     border-color 220ms ease,
@@ -446,8 +424,8 @@
 }
 
 .cloud-architecture-card:hover {
-  border-color: rgba(118, 183, 255, 0.44);
-  transform: translateY(-3px);
+  border-color: rgba(124, 240, 188, 0.44);
+  transform: translateY(-2px);
 }
 
 .cloud-architecture-copy {
@@ -458,10 +436,10 @@
 
 .cloud-architecture-copy h2 {
   max-width: 520px;
-  margin: 18px 0;
+  margin: 0 0 18px;
   font-size: clamp(39px, 4vw, 60px);
   font-weight: 630;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.04em;
   line-height: 1.02;
 }
 
@@ -508,10 +486,10 @@
 }
 
 .cloud-final-cta h2 {
-  margin: 13px 0 8px;
+  margin: 0 0 8px;
   font-size: clamp(38px, 4vw, 58px);
   font-weight: 630;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.04em;
 }
 
 .cloud-final-cta p {

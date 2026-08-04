@@ -4,19 +4,23 @@ import { GateBadge } from './GateBadge';
 
 export function FutureHorizons() {
   return (
-    <div className="cloud-future-grid">
+    <div
+      aria-label="Product horizons"
+      className="cloud-horizon-track"
+      role="list"
+    >
       {futureTracks.map((track, index) => (
         <article
-          className={`cloud-future-card is-track-${index}`}
+          className={`cloud-horizon-card is-track-${index}`}
           data-reveal
           key={track.gate}
+          role="listitem"
           style={{ '--track-index': index } as React.CSSProperties}
         >
           <header>
-            <span>{track.label}</span>
             <GateBadge compact gate={gateByCode(track.gate)} />
           </header>
-          <div className="cloud-future-signal" aria-hidden="true">
+          <div className="cloud-horizon-signal" aria-hidden="true">
             <i />
             <i />
             <i />
