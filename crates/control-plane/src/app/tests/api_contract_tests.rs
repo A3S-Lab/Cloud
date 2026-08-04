@@ -188,6 +188,37 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         receive_pack["responses"]["415"]["$ref"],
         "#/components/responses/Error415"
     );
+
+    let assets = &document["paths"]["/organizations/{organization_id}/assets"];
+    assert_eq!(assets["get"]["tags"], json!(["Assets"]));
+    assert_eq!(assets["post"]["tags"], json!(["Assets"]));
+    assert!(assets["post"]["responses"]["201"].is_object());
+    assert!(assets["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key" && parameter["in"] == "header"
+        })));
+    let archive =
+        &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/archive"]["post"];
+    assert!(archive.get("requestBody").is_none());
+    let releases =
+        &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/releases"];
+    assert!(releases["get"].is_object());
+    assert!(releases["post"]["responses"]["201"].is_object());
+    let selection = &document["paths"]
+        ["/organizations/{organization_id}/assets/{asset_id}/release-selection"]["get"];
+    assert!(selection["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "version"
+                && parameter["in"] == "query"
+                && parameter["required"] == false
+                && parameter["schema"]["type"] == "string"
+        })));
+    let yank = &document["paths"]
+        ["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/yank"]
+        ["post"];
+    assert!(yank.get("requestBody").is_none());
     Ok(())
 }
 

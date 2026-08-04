@@ -164,6 +164,84 @@ fn publication_profile_matches_the_exact_asset_kind() {
 }
 
 #[test]
+fn new_binding_selection_is_semantic_stable_and_excludes_yanked_releases() {
+    let asset = asset(AssetKind::Skill);
+    let mut releases = [
+        ("1.9.0", '1'),
+        ("1.10.0", '2'),
+        ("2.0.0-alpha.1", '3'),
+        ("2.0.0", '4'),
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(index, (version, marker))| {
+        let mut release = AssetRelease::draft(
+            &asset,
+            AssetReleaseId::new(),
+            AssetReleaseVersion::parse(version).expect("version"),
+            GitCommitSha::parse(marker.to_string().repeat(40)).expect("commit"),
+            Sha256Digest::parse(format!("sha256:{}", marker.to_string().repeat(64)))
+                .expect("manifest"),
+            now() + Duration::seconds(index as i64),
+        )
+        .expect("draft");
+        release
+            .publish_skill(
+                &asset,
+                AssetReleaseArtifact::skill_bundle(
+                    Sha256Digest::parse(format!(
+                        "sha256:{}",
+                        char::from(b'a' + index as u8).to_string().repeat(64)
+                    ))
+                    .expect("artifact digest"),
+                    1024 + index as u64,
+                )
+                .expect("Skill artifact"),
+                now() + Duration::seconds(10 + index as i64),
+            )
+            .expect("publish");
+        release
+    })
+    .collect::<Vec<_>>();
+    let newest = releases
+        .iter_mut()
+        .find(|release| release.version.as_str() == "2.0.0")
+        .expect("newest release");
+    newest
+        .yank(now() + Duration::seconds(20))
+        .expect("yank newest release");
+
+    let selected = AssetRelease::select_for_new_binding(&asset, releases.clone(), None)
+        .expect("selection")
+        .expect("stable release");
+    assert_eq!(selected.version.as_str(), "1.10.0");
+
+    let prerelease = AssetReleaseVersion::parse("2.0.0-alpha.1").expect("prerelease");
+    let selected =
+        AssetRelease::select_for_new_binding(&asset, releases.clone(), Some(&prerelease))
+            .expect("exact prerelease selection")
+            .expect("prerelease");
+    assert_eq!(selected.version, prerelease);
+
+    let yanked = AssetReleaseVersion::parse("2.0.0").expect("yanked version");
+    assert_eq!(
+        AssetRelease::select_for_new_binding(&asset, releases.clone(), Some(&yanked))
+            .expect("yanked selection"),
+        None
+    );
+
+    let mut archived = asset.clone();
+    archived
+        .archive(now() + Duration::seconds(21))
+        .expect("archive");
+    assert_eq!(
+        AssetRelease::select_for_new_binding(&archived, releases, None)
+            .expect("archived selection"),
+        None
+    );
+}
+
+#[test]
 fn archived_asset_cannot_create_or_publish_a_release() {
     let mut asset = asset(AssetKind::Mcp);
     let mut existing = draft(&asset);

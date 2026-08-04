@@ -144,6 +144,16 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, path: &str) {
             }),
         );
     }
+    if path.ends_with("/release-selection") {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "version", "in": "query", "required": false,
+                "description": "Exact canonical semantic version. Omit to select the highest stable published release.",
+                "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }),
+        );
+    }
     if path.ends_with("/logs") || path.ends_with("/logs/stream") {
         let maximum = if path.ends_with("/stream") { 16 } else { 256 };
         upsert_parameter(
@@ -361,7 +371,7 @@ fn operation_tag(path: &str) -> &'static str {
         "Fleet"
     } else if path.contains("build-runs") {
         "Artifacts"
-    } else if path.contains("/assets/") {
+    } else if path.contains("/assets") {
         "Assets"
     } else if path.contains("source-") || path.starts_with("/webhooks") {
         "Sources"
@@ -397,6 +407,8 @@ fn accepts_acl(path: &str) -> bool {
 fn request_has_no_body(path: &str) -> bool {
     path.ends_with("/stop")
         || path.ends_with("/retry")
+        || path.ends_with("/archive")
+        || path.ends_with("/yank")
         || path.ends_with("/deactivate")
         || path.ends_with("/source-connections/github")
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
@@ -427,6 +439,8 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/source-revisions")
         || path.ends_with("/source-subscriptions/github")
         || path.ends_with("/source-connections/github")
+        || path.ends_with("/assets")
+        || path.ends_with("/releases")
 }
 
 fn is_asset_git_path(path: &str) -> bool {

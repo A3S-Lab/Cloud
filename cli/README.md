@@ -140,6 +140,15 @@ projects list
 projects create <name>
 environments list
 environments create <name>
+assets list
+assets get <asset-id>
+assets create <name> <agent|mcp|skill>
+assets archive <asset-id>
+asset-releases list <asset-id>
+asset-releases get <asset-id> <release-id>
+asset-releases select <asset-id> [version]
+asset-releases create <asset-id> <version> <commit-sha>
+asset-releases yank <asset-id> <release-id>
 nodes list
 nodes bootstrap <name> --enrollment-token-stdin --expires-at=<timestamp> --agent-release-url=<https-url> --agent-release-sha256=<digest> --node-config=<absolute-acl-path>
 nodes ready <node-id> --expected-version=<version>
@@ -186,6 +195,16 @@ build-runs logs <build-run-id>
 build-runs cancel <build-run-id>
 build-runs retry <build-run-id>
 ```
+
+Asset and release commands require organization context. Asset create/archive
+and release create/yank require a caller-owned idempotency key. Release create
+accepts only a canonical semantic version and a full 40- or 64-character Git
+object ID; Cloud reads the exact hosted commit and derives the admitted
+manifest digest. `asset-releases select` chooses the highest stable published
+version when no version is supplied. Draft and yanked releases are never
+selected, while `asset-releases get` retains exact access to yanked identities
+for pinned deployments. Skill release publication remains owned by the later
+immutable Skill-binding milestone.
 
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box

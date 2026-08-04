@@ -44,6 +44,16 @@ the existing Fleet controller and returns one credential-free enrollment-token
 projection. It is internal and versioned with Cloud until public package
 compatibility and deprecation policy are completed.
 
+`listAssets`, `getAsset`, `createAsset`, and `archiveAsset` expose the
+organization Asset lifecycle. Release list/get/create/yank methods preserve
+draft and yanked management visibility, while `selectAssetRelease` calls the
+server-owned deterministic new-binding selector. Omitting its version selects
+the highest stable published semantic version; an explicit version may select
+a published prerelease. The client never derives manifest digests or chooses a
+release locally. Cloud admits the exact hosted Git commit, excludes draft and
+yanked releases from new bindings, and keeps exact yanked identities available
+to existing pinned deployments.
+
 `searchResources` validates a 1-to-128-character safe query and a result limit
 from 1 through 50 before transport, then calls the organization-scoped public
 search endpoint. It returns contextual, credential-free projections only.

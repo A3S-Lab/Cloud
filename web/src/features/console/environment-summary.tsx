@@ -1,6 +1,15 @@
 import { Activity, Bot, Box, Braces, Database, Server, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
-import type { Deployment, Environment, Organization, Project, Route } from '../../types/api';
+import type {
+  Asset,
+  AssetKind as AssetKindValue,
+  AssetRelease,
+  Deployment,
+  Environment,
+  Organization,
+  Project,
+  Route,
+} from '../../types/api';
 import { shortId } from './console-format';
 
 export function EnvironmentHeading({
@@ -85,7 +94,7 @@ export function InfrastructureCard({
   );
 }
 
-export function AssetCatalogCard() {
+export function AssetCatalogCard({ assets, releases }: { assets: Asset[]; releases: AssetRelease[] }) {
   return (
     <article className='surface assets-card'>
       <div className='surface-heading'>
@@ -96,21 +105,47 @@ export function AssetCatalogCard() {
         <Sparkles size={20} />
       </div>
       <div className='asset-kinds'>
-        <AssetKind icon={<Bot size={18} />} name='Agent' />
-        <AssetKind icon={<Braces size={18} />} name='MCP' />
-        <AssetKind icon={<Box size={18} />} name='Skill' />
+        <AssetKind assets={assets} releases={releases} icon={<Bot size={18} />} kind='agent' name='Agent' />
+        <AssetKind assets={assets} releases={releases} icon={<Braces size={18} />} kind='mcp' name='MCP' />
+        <AssetKind assets={assets} releases={releases} icon={<Box size={18} />} kind='skill' name='Skill' />
       </div>
-      <p className='surface-note'>Immutable releases will use the common workload and deployment path.</p>
+      <p className='surface-note'>
+        New bindings select the highest stable published version. Yanked releases remain available to pinned
+        deployments.
+      </p>
     </article>
   );
 }
 
-function AssetKind({ icon, name }: { icon: ReactNode; name: string }) {
+function AssetKind({
+  assets,
+  releases,
+  icon,
+  kind,
+  name,
+}: {
+  assets: Asset[];
+  releases: AssetRelease[];
+  icon: ReactNode;
+  kind: AssetKindValue;
+  name: string;
+}) {
+  const matchingAssets = assets.filter((asset) => asset.kind === kind);
+  const assetIds = new Set(matchingAssets.map((asset) => asset.id));
+  const matchingReleases = releases.filter((release) => assetIds.has(release.assetId));
+  const published = matchingReleases.filter((release) => release.state === 'published').length;
+  const draft = matchingReleases.filter((release) => release.state === 'draft').length;
+  const yanked = matchingReleases.filter((release) => release.state === 'yanked').length;
   return (
     <div>
       <span>{icon}</span>
       <strong>{name}</strong>
-      <small>No releases</small>
+      <small>
+        {matchingAssets.length} asset{matchingAssets.length === 1 ? '' : 's'} · {published} published
+      </small>
+      <small>
+        {draft} draft · {yanked} yanked
+      </small>
     </div>
   );
 }

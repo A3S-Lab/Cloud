@@ -26,6 +26,15 @@ Commands:
   projects create NAME Create a project idempotently
   environments list    List environments in the selected project
   environments create NAME Create an environment idempotently
+  assets list           List Assets in the selected organization
+  assets get ID         Get one Asset
+  assets create NAME KIND Create an Agent, MCP, or Skill Asset idempotently
+  assets archive ID     Archive one Asset idempotently
+  asset-releases list ASSET List all releases, including draft and yanked releases
+  asset-releases get ASSET ID Get one exact release, including a yanked release
+  asset-releases select ASSET [VERSION] Select one published release for a new binding
+  asset-releases create ASSET VERSION COMMIT Create a hosted release draft idempotently
+  asset-releases yank ASSET ID Yank one published release idempotently
   nodes list            List nodes in the selected organization
   nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready

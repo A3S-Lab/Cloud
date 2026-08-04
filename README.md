@@ -186,7 +186,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stdin-only credentials; and search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.2.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.3.0`, and reject incompatible or invalidly deprecated contract changes
 - **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
   Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
@@ -401,10 +401,15 @@ publish an Agent or MCP release. A failed hosted attempt leaves that exact
 release draft; the existing idempotent BuildRun retry creates its deterministic
 next attempt with the same subject, reconciler, Operation, and `cloud.build@5`
 Flow. Concurrent retry and finalization replay converge on one attempt, one
-publication binding, and one Outbox fact. Product yanking and deterministic
-selection, and management surfaces remain open `A0.3` work. Agent deployment,
-Skill binding, and catalog surfaces remain `A0.4` and `A0.5`, so the complete
-`A0` gate remains in progress.
+publication binding, and one Outbox fact. Tenant-authorized REST, typed client,
+CLI, and Web catalog projections now expose Asset creation/archive, release
+draft/list/get, yanking, and deterministic new-binding selection. Selection
+uses semantic precedence, defaults to the highest stable published release,
+excludes drafts and yanked releases, and leaves exact yanked identities
+addressable for pinned deployments. `A0.3` remains in progress until its exact
+`G0` external-provider evidence is retained. Agent deployment and immutable
+Skill binding remain `A0.4` and `A0.5`, so the complete `A0` gate remains in
+progress.
 
 The `A1.0` consolidation gate is verified. Workload logs use one sequence/SSE
 implementation, Operation snapshots reuse the same polling transport without
@@ -713,7 +718,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.2.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.3.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -901,7 +906,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.2.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.3.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record
@@ -994,11 +999,11 @@ Applications use this path today. Agent, MCP, and Skill publication has a
 verified `A0.1` identity foundation and `A0.2` hosted Git repository boundary.
 The typed hosted-build and publication foundation is in progress under `A0.3`;
 hosted BuildRun reservation, restart repair, atomic release finalization,
-verified provenance, and failed-draft recovery through the existing retry path
-are implemented, while product yanking, deterministic selection, and
-management surfaces remain open.
-Agent deployment, Skill binding, and catalog surfaces remain `A0.4` and
-`A0.5`. Hosted modern MCP contract/compiler,
+verified provenance, failed-draft recovery, yanking, semantic deterministic
+selection, and tenant-authorized API/client/CLI/Web management surfaces are
+implemented. Retained execution of the exact `G0` external-provider gate still
+blocks `A0.3` verification. Agent deployment and immutable Skill binding remain
+`A0.4` and `A0.5`. Hosted modern MCP contract/compiler,
 scope-complete Cloud planning, ordinary-plus-MCP Gateway snapshot composition,
 complete version-vector CAS, atomic publication/certificate/scope/Outbox
 staging, durable Fleet dispatch/redelivery, exact acknowledgement and expiry

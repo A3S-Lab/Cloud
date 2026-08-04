@@ -1,12 +1,18 @@
 import type {
   ApiToken,
   ApiTokenMutationResult,
+  Asset,
+  AssetMutationResult,
+  AssetRelease,
+  AssetReleaseMutationResult,
   BuildEvidence,
   BuildRun,
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
   CreateGithubRepositorySubscriptionInput,
+  CreateAssetInput,
+  CreateAssetReleaseInput,
   CreateApiTokenInput,
   CreateGatewayScopeInput,
   CreateExecutionInput,
@@ -76,7 +82,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.2.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.3.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
@@ -224,6 +230,112 @@ export class CloudApi {
         `/projects/${encodeURIComponent(projectId)}/environments`,
       idempotencyKey,
       { name },
+      signal
+    );
+  }
+
+  listAssets(organizationId: string, signal?: AbortSignal): Promise<Asset[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/assets`, signal);
+  }
+
+  getAsset(organizationId: string, assetId: string, signal?: AbortSignal): Promise<Asset> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/assets/${encodeURIComponent(assetId)}`,
+      signal
+    );
+  }
+
+  createAsset(
+    organizationId: string,
+    input: CreateAssetInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AssetMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/assets`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  archiveAsset(
+    organizationId: string,
+    assetId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AssetMutationResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}/archive`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  listAssetReleases(organizationId: string, assetId: string, signal?: AbortSignal): Promise<AssetRelease[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}/releases`,
+      signal
+    );
+  }
+
+  getAssetRelease(
+    organizationId: string,
+    assetId: string,
+    assetReleaseId: string,
+    signal?: AbortSignal
+  ): Promise<AssetRelease> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}/releases/${encodeURIComponent(assetReleaseId)}`,
+      signal
+    );
+  }
+
+  selectAssetRelease(
+    organizationId: string,
+    assetId: string,
+    version?: string,
+    signal?: AbortSignal
+  ): Promise<AssetRelease> {
+    const query = version === undefined ? '' : `?${new URLSearchParams({ version }).toString()}`;
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}/release-selection${query}`,
+      signal
+    );
+  }
+
+  createAssetRelease(
+    organizationId: string,
+    assetId: string,
+    input: CreateAssetReleaseInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AssetReleaseMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}/releases`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  yankAssetRelease(
+    organizationId: string,
+    assetId: string,
+    assetReleaseId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AssetReleaseMutationResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/yank`,
+      idempotencyKey,
       signal
     );
   }

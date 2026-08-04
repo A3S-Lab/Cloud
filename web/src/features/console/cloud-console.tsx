@@ -2,6 +2,8 @@ import { CircleDot, RotateCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudApi } from '../../lib/api';
 import type {
+  Asset,
+  AssetRelease,
   BuildRun,
   Environment,
   GatewayCertificate,
@@ -53,6 +55,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     () => initialLocation?.environmentId ?? sessionStorage.getItem(ENVIRONMENT_KEY) ?? ''
   );
   const [operations, setOperations] = useState<Operation[]>([]);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetReleases, setAssetReleases] = useState<AssetRelease[]>([]);
   const [buildRuns, setBuildRuns] = useState<BuildRun[]>([]);
   const [selectedBuildRunId, setSelectedBuildRunId] = useState(() =>
     initialLocation?.resourceKind === 'build_run' ? (initialLocation.resourceId ?? '') : ''
@@ -126,6 +130,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       setCertificates([]);
       setWorkloads([]);
       setRoutes([]);
+      setAssets([]);
+      setAssetReleases([]);
       setWorkloadId('');
       return;
     }
@@ -139,6 +145,30 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
         setProjects(projectItems);
         setProjectId((current) => selectExisting(current, projectItems));
         setOperations(operationItems);
+        setError(null);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted) setError(messageFrom(cause));
+      });
+    return () => controller.abort();
+  }, [api, organizationId]);
+
+  useEffect(() => {
+    if (!organizationId) {
+      setAssets([]);
+      setAssetReleases([]);
+      return;
+    }
+    const controller = new AbortController();
+    api
+      .listAssets(organizationId, controller.signal)
+      .then(async (assetItems) => {
+        const releaseGroups = await Promise.all(
+          assetItems.map((asset) => api.listAssetReleases(organizationId, asset.id, controller.signal))
+        );
+        if (controller.signal.aborted) return;
+        setAssets(assetItems);
+        setAssetReleases(releaseGroups.flat());
         setError(null);
       })
       .catch((cause) => {
@@ -383,6 +413,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
         {activeSection === 'overview' ? (
           <OverviewSection
             activeOperations={activeOperations}
+            assets={assets}
+            assetReleases={assetReleases}
             buildRunCount={buildRuns.length}
             deployment={latestDeployment}
             routes={routes}

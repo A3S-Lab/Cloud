@@ -26,7 +26,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.2.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.3.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -209,6 +209,58 @@ describe('CloudApi', () => {
         contentType: 'application/json',
         body: JSON.stringify({ name: 'Production' }),
       },
+    ]);
+  });
+
+  it('exposes the complete Asset catalog and release lifecycle', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.listAssets('organization / one');
+    await api.getAsset('organization / one', 'asset');
+    await api.createAsset('organization / one', { name: 'catalog-agent', kind: 'agent' }, 'asset:create');
+    await api.archiveAsset('organization / one', 'asset', 'asset:archive');
+    await api.listAssetReleases('organization / one', 'asset');
+    await api.getAssetRelease('organization / one', 'asset', 'release');
+    await api.selectAssetRelease('organization / one', 'asset', '2.0.0-alpha.1');
+    await api.createAssetRelease(
+      'organization / one',
+      'asset',
+      { version: '1.0.0', commitSha: 'a'.repeat(40) },
+      'release:create'
+    );
+    await api.yankAssetRelease('organization / one', 'asset', 'release', 'release:yank');
+
+    expect(calls.map(([request, init]) => [request, init?.method, init?.body])).toEqual([
+      ['/api/v1/organizations/organization%20%2F%20one/assets', 'GET', undefined],
+      ['/api/v1/organizations/organization%20%2F%20one/assets/asset', 'GET', undefined],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/assets',
+        'POST',
+        JSON.stringify({ name: 'catalog-agent', kind: 'agent' }),
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/assets/asset/archive', 'POST', undefined],
+      ['/api/v1/organizations/organization%20%2F%20one/assets/asset/releases', 'GET', undefined],
+      ['/api/v1/organizations/organization%20%2F%20one/assets/asset/releases/release', 'GET', undefined],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/assets/asset/release-selection?version=2.0.0-alpha.1',
+        'GET',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/assets/asset/releases',
+        'POST',
+        JSON.stringify({ version: '1.0.0', commitSha: 'a'.repeat(40) }),
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/assets/asset/releases/release/yank',
+        'POST',
+        undefined,
+      ],
     ]);
   });
 

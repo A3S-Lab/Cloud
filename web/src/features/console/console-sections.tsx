@@ -1,6 +1,8 @@
 import { Activity, Boxes, GitBranch, Route as RouteIcon } from 'lucide-react';
 import type { CloudApi } from '../../lib/api';
 import type {
+  Asset,
+  AssetRelease,
   BuildRun,
   Deployment,
   Environment,
@@ -22,6 +24,8 @@ import { WorkloadOverview } from './workload-overview';
 
 interface OverviewSectionProps {
   activeOperations: number;
+  assets: Asset[];
+  assetReleases: AssetRelease[];
   buildRunCount: number;
   deployment: Deployment | undefined;
   routes: Route[];
@@ -30,6 +34,8 @@ interface OverviewSectionProps {
 
 export function OverviewSection({
   activeOperations,
+  assets,
+  assetReleases,
   buildRunCount,
   deployment,
   routes,
@@ -51,7 +57,7 @@ export function OverviewSection({
           workloadCount={workloadCount}
         />
         <InfrastructureCard deployment={deployment} routes={routes} />
-        <AssetCatalogCard />
+        <AssetCatalogCard assets={assets} releases={assetReleases} />
       </div>
     </section>
   );

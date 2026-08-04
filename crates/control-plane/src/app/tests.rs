@@ -36,6 +36,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 mod api_contract_tests;
+mod asset_catalog_tests;
 mod asset_git_support;
 mod asset_git_tests;
 mod build_tests;
@@ -399,18 +400,8 @@ fn config() -> CloudConfig {
             management_path_prefix: "/api/gateway".into(),
             management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
             domain_verification_timeout_ms: 5_000,
-            certificate_directory: std::env::temp_dir()
-                .join("a3s-cloud-test")
-                .join("gateway")
-                .join("certificates")
-                .to_string_lossy()
-                .into_owned(),
-            managed_state_file: std::env::temp_dir()
-                .join("a3s-cloud-test")
-                .join("gateway")
-                .join("managed-snapshot.json")
-                .to_string_lossy()
-                .into_owned(),
+            certificate_directory: "/tmp/a3s-cloud-test/gateway/certificates".into(),
+            managed_state_file: "/tmp/a3s-cloud-test/gateway/managed-snapshot.json".into(),
             certificate_ttl_ms: 2_592_000_000,
             certificate_renewal_window_ms: 604_800_000,
             snapshot_renewal_window_ms: 21_600_000,
@@ -751,6 +742,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let source_webhooks = sources.clone();
     let source_subscriptions = sources.clone();
     let unavailable_assets = Arc::new(UnavailableAssetStore);
+    let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
+        identity.clone(),
+        unavailable_assets.clone(),
+        unavailable_assets.clone(),
+    ));
     let asset_git = Arc::new(
         AssetGitApplicationService::new(
             unavailable_assets.clone(),
@@ -772,6 +768,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             projects: projects.clone(),
             environments: projects,
             search,
+            asset_catalog,
             asset_git,
             workloads: workload_port,
             builds,

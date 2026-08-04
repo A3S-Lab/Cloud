@@ -11,11 +11,14 @@ use crate::modules::artifacts::{
     VaultBuildEvidenceSigner,
 };
 use crate::modules::assets::{
-    AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, AssetGitApplicationService,
-    AssetGitApplicationServiceOptions, AssetsModule, BackupAssetGitRepositoryHandler,
-    IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
-    IMcpServiceProfileRepository, LocalAssetGitRepository, PostgresAssetRepository,
-    ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, UploadAssetGitPackHandler,
+    AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, ArchiveAssetHandler,
+    AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
+    AssetsModule, BackupAssetGitRepositoryHandler, CreateAssetHandler, CreateAssetReleaseHandler,
+    GetAssetHandler, GetAssetReleaseHandler, IAssetGitRepository, IAssetGitRepositoryControl,
+    IAssetRepository, IMcpServiceProfileRepository, ListAssetReleasesHandler, ListAssetsHandler,
+    LocalAssetGitRepository, PostgresAssetRepository, ReceiveAssetGitPackHandler,
+    RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler, UploadAssetGitPackHandler,
+    YankAssetReleaseHandler,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
@@ -282,6 +285,11 @@ pub async fn build_application_with_source_resolver(
         )
         .map_err(ControlPlaneStartupError::Assets)?,
     );
+    let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
+        Arc::clone(&organizations),
+        Arc::clone(&assets),
+        Arc::clone(&asset_git_repositories),
+    ));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
@@ -715,6 +723,7 @@ pub async fn build_application_with_source_resolver(
             projects: projects.clone(),
             environments: projects,
             search,
+            asset_catalog,
             asset_git,
             workloads,
             builds,
@@ -780,6 +789,7 @@ struct ApplicationDependencies {
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     search: Arc<dyn ISearchRepository>,
+    asset_catalog: Arc<AssetCatalogApplicationService>,
     asset_git: Arc<AssetGitApplicationService>,
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
@@ -818,6 +828,7 @@ fn build_application_with_health(
         projects,
         environments,
         search,
+        asset_catalog,
         asset_git,
         workloads,
         builds,
@@ -881,6 +892,15 @@ fn build_application_with_health(
     let query_projects = Arc::clone(&projects);
     let list_environment_projects = Arc::clone(&projects);
     let query_environments = Arc::clone(&environments);
+    let create_assets = Arc::clone(&asset_catalog);
+    let archive_assets = Arc::clone(&asset_catalog);
+    let create_asset_releases = Arc::clone(&asset_catalog);
+    let yank_asset_releases = Arc::clone(&asset_catalog);
+    let list_assets = Arc::clone(&asset_catalog);
+    let get_assets = Arc::clone(&asset_catalog);
+    let list_asset_releases = Arc::clone(&asset_catalog);
+    let get_asset_releases = Arc::clone(&asset_catalog);
+    let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
     let rotation_nodes = Arc::clone(&nodes);
     let state_nodes = Arc::clone(&nodes);
@@ -1024,6 +1044,18 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
+                )
+                .command_handler::<crate::modules::assets::CreateAsset, _>(
+                    CreateAssetHandler::new(create_assets),
+                )
+                .command_handler::<crate::modules::assets::ArchiveAsset, _>(
+                    ArchiveAssetHandler::new(archive_assets),
+                )
+                .command_handler::<crate::modules::assets::CreateAssetRelease, _>(
+                    CreateAssetReleaseHandler::new(create_asset_releases),
+                )
+                .command_handler::<crate::modules::assets::YankAssetRelease, _>(
+                    YankAssetReleaseHandler::new(yank_asset_releases),
                 )
                 .command_handler::<crate::modules::assets::ReceiveAssetGitPack, _>(
                     ReceiveAssetGitPackHandler::new(Arc::clone(&asset_git)),
@@ -1215,6 +1247,21 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),
+                )
+                .query_handler::<crate::modules::assets::ListAssets, _>(
+                    ListAssetsHandler::new(list_assets),
+                )
+                .query_handler::<crate::modules::assets::GetAsset, _>(GetAssetHandler::new(
+                    get_assets,
+                ))
+                .query_handler::<crate::modules::assets::ListAssetReleases, _>(
+                    ListAssetReleasesHandler::new(list_asset_releases),
+                )
+                .query_handler::<crate::modules::assets::GetAssetRelease, _>(
+                    GetAssetReleaseHandler::new(get_asset_releases),
+                )
+                .query_handler::<crate::modules::assets::SelectAssetRelease, _>(
+                    SelectAssetReleaseHandler::new(select_asset_releases),
                 )
                 .query_handler::<crate::modules::assets::AdvertiseAssetGitRepository, _>(
                     AdvertiseAssetGitRepositoryHandler::new(Arc::clone(&asset_git)),

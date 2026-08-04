@@ -659,6 +659,8 @@ h2,
 .asset-kinds small {
   color: var(--faint);
   font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .surface-note {

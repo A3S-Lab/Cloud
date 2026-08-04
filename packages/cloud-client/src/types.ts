@@ -51,6 +51,71 @@ export interface EnvironmentMutationResult extends Environment {
   replayed: boolean;
 }
 
+export type AssetKind = 'agent' | 'mcp' | 'skill';
+export type AssetState = 'active' | 'archived';
+
+export interface CreateAssetInput {
+  name: string;
+  kind: AssetKind;
+}
+
+export interface Asset {
+  organizationId: string;
+  id: string;
+  name: string;
+  kind: AssetKind;
+  state: AssetState;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+}
+
+export interface AssetMutationResult extends Asset {
+  replayed: boolean;
+}
+
+export type AssetReleaseState = 'draft' | 'published' | 'yanked';
+export type AssetReleaseArtifactKind = 'oci_service' | 'skill_bundle';
+
+export interface CreateAssetReleaseInput {
+  version: string;
+  commitSha: string;
+}
+
+export interface AssetReleaseArtifact {
+  kind: AssetReleaseArtifactKind;
+  digest: string;
+  mediaType: string;
+  sizeBytes: number;
+}
+
+export interface AssetReleaseProvenance {
+  buildRunId: string;
+  provenanceDigest: string;
+}
+
+export interface AssetRelease {
+  organizationId: string;
+  assetId: string;
+  id: string;
+  version: string;
+  state: AssetReleaseState;
+  commitSha: string;
+  manifestDigest: string;
+  artifact: AssetReleaseArtifact | null;
+  provenance: AssetReleaseProvenance | null;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  yankedAt: string | null;
+}
+
+export interface AssetReleaseMutationResult extends AssetRelease {
+  replayed: boolean;
+}
+
 export type { ApiToken, ApiTokenMutationResult, CreateApiTokenInput } from './identity';
 
 export type {

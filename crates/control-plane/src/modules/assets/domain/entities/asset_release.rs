@@ -7,6 +7,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,6 +56,50 @@ pub struct AssetRelease {
 }
 
 impl AssetRelease {
+    pub fn select_for_new_binding(
+        asset: &Asset,
+        releases: impl IntoIterator<Item = Self>,
+        requested_version: Option<&AssetReleaseVersion>,
+    ) -> Result<Option<Self>, String> {
+        asset.validate()?;
+        if let Some(version) = requested_version {
+            if AssetReleaseVersion::parse(version.as_str())? != *version {
+                return Err("requested Asset release version is invalid".into());
+            }
+        }
+
+        let mut seen_versions = BTreeSet::new();
+        let mut selected: Option<Self> = None;
+        for release in releases {
+            release.validate_for(asset)?;
+            if !seen_versions.insert(release.version.clone()) {
+                return Err("Asset release catalog contains a duplicate version".into());
+            }
+            if asset.state != AssetState::Active || release.state != AssetReleaseState::Published {
+                continue;
+            }
+            if let Some(version) = requested_version {
+                if release.version == *version {
+                    selected = Some(release);
+                }
+                continue;
+            }
+            if release.version.is_prerelease()? {
+                continue;
+            }
+            let replace = match &selected {
+                Some(current) => {
+                    release.version.cmp_for_selection(&current.version)? == Ordering::Greater
+                }
+                None => true,
+            };
+            if replace {
+                selected = Some(release);
+            }
+        }
+        Ok(selected)
+    }
+
     pub fn draft(
         asset: &Asset,
         id: AssetReleaseId,

@@ -4,14 +4,21 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::commands::{
-    BackupAssetGitRepository, BackupAssetGitRepositoryHandler, ReceiveAssetGitPack,
-    ReceiveAssetGitPackHandler, RestoreAssetGitRepository, RestoreAssetGitRepositoryHandler,
+    ArchiveAsset, ArchiveAssetHandler, BackupAssetGitRepository, BackupAssetGitRepositoryHandler,
+    CreateAsset, CreateAssetHandler, CreateAssetRelease, CreateAssetReleaseHandler,
+    ReceiveAssetGitPack, ReceiveAssetGitPackHandler, RestoreAssetGitRepository,
+    RestoreAssetGitRepositoryHandler, YankAssetRelease, YankAssetReleaseHandler,
 };
 pub use application::queries::{
     AdmitAssetManifest, AdmitAssetManifestHandler, AdvertiseAssetGitRepository,
-    AdvertiseAssetGitRepositoryHandler, UploadAssetGitPack, UploadAssetGitPackHandler,
+    AdvertiseAssetGitRepositoryHandler, GetAsset, GetAssetHandler, GetAssetRelease,
+    GetAssetReleaseHandler, ListAssetReleases, ListAssetReleasesHandler, ListAssets,
+    ListAssetsHandler, SelectAssetRelease, SelectAssetReleaseHandler, UploadAssetGitPack,
+    UploadAssetGitPackHandler,
 };
-pub use application::{AssetGitApplicationService, AssetGitApplicationServiceOptions};
+pub use application::{
+    AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
+};
 
 pub use domain::{
     AcquireAssetGitWriteLease, Asset, AssetArchived, AssetCreated, AssetGitBackup,

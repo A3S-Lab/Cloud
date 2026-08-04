@@ -1,4 +1,5 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
+import { executeAssetCommand } from './asset-commands';
 import type { ParsedArguments } from './arguments';
 import {
   positionalResourceName,
@@ -139,6 +140,10 @@ export async function executeCommand(
   });
   if (nodeResult !== undefined) {
     return nodeResult;
+  }
+  const assetResult = await executeAssetCommand(command, arguments_, context, cloudApi);
+  if (assetResult !== undefined) {
+    return assetResult;
   }
   switch (command) {
     case 'organizations list':

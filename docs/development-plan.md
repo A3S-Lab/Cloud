@@ -208,7 +208,7 @@ Status as of 2026-08-03:
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
 | G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. The manual external-provider workflow now binds a private GitHub revision and production input to that exact Box output, an operator HTTPS Registry graph, a locally verified Vault Transit signature, a restart-restored PostgreSQL BuildRun, and one `cloud.deployment@3` Workload handoff. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Retained successful executions of both operator gates still block G0 verification |
 | C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance and the clean real PostgreSQL/A3S Box gate pass. `C0.3` and `C0.4` remain planned. |
-| A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` now has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair through the existing reconciler, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, and failed-draft recovery through the existing idempotent BuildRun retry and Flow. Product yanking and deterministic selection, and management surfaces remain before `A0.3`; `A0.4` Agent deployment and `A0.5` Skill/catalog work also remain. |
+| A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI/Web management projections. Retained execution of the exact `G0` external-provider gate still blocks `A0.3`; `A0.4` Agent deployment and `A0.5` immutable Skill binding also remain. |
 | U0 | In progress; unavailable | `U0.1` pins the canonical A3S Use host contract and adds explicit capabilities, plan, apply, enablement, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. Root compatibility locking, production Manager composition, and every Plugins module/schema/API remain open; no user-facing capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Fleet dispatch/redelivery, exact acknowledgement and restart convergence, an executed real PostgreSQL gate for the new path, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
@@ -1410,7 +1410,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.2.0`. Focused tests regenerate the
+  and every API response pin contract `1.3.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -1580,13 +1580,15 @@ publication and Agent execution slices consume. `A0.2` is verified and exposes
 the authorized hosted Git boundary. The current `A0.3` foundation admits and
 packages an exact hosted commit through the existing Git, Artifact, and
 `cloud.build@5` path, then atomically publishes a successful hosted release
-with immutable provenance. It does not yet claim a usable catalog.
+with immutable provenance. Its tenant-authorized management catalog exposes
+Asset and release lifecycle reads and mutations without becoming a generic
+forge.
 
 | Sub-gate | State | Scope |
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset/AssetRelease domain, immutable identities, tenant-scoped PostgreSQL schema and A3S ORM repository, optimistic concurrency, shared idempotency/Outbox, and real PostgreSQL behavior evidence |
 | `A0.2` | Verified | Tenant-authorized Git Smart HTTP, tenant-qualified durable bare repositories, immutable identity checks, atomic concurrent provisioning, shared Git runner, A3S ORM-backed leases/quotas/audit, same-lease recovery, immutable backup/restore, and pinned `.a3s/asset.acl` admission |
-| `A0.3` | In progress | Typed external-or-hosted build admission, deterministic pinned hosted-Git input, the shared Build Flow/OCI/evidence path, migrations 063-064 typed persistence, concurrent reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, and failed-draft recovery through the existing idempotent retry/reconciler path are implemented; product yanking and deterministic selection, and management surfaces remain |
+| `A0.3` | In progress | Typed external-or-hosted build admission, deterministic pinned hosted-Git input, the shared Build Flow/OCI/evidence path, migrations 063-064 typed persistence, concurrent reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized REST/client/CLI/Web management projections are implemented; retained execution of the exact `G0` external-provider gate still blocks verification |
 | `A0.4` | Planned | Agent deployment through the existing Workload path; hosted MCP deployment is owned by `MCP0` |
 | `A0.5` | Planned | Immutable Skill binding and authorized catalog surfaces |
 
@@ -1661,16 +1663,26 @@ locking, attempt uniqueness, shared idempotency, and atomic finalization make
 concurrent retry and successful replay converge on one retry, release binding,
 and Outbox fact. No Asset-specific recovery worker or state machine exists.
 
+The public Asset catalog uses the existing tenant guard and `cloud:read` or
+`asset:write` scopes. Caller-owned idempotency protects Asset create/archive
+and release draft/yank. Release drafting accepts only a semantic version and
+exact Git commit; Cloud derives the manifest digest from pinned hosted-Git
+admission and requires the Agent/MCP build recipe. Exact release reads retain
+draft and yanked visibility for management and pinned deployments. New-binding
+selection accepts an optional exact semantic version or otherwise chooses the
+highest stable published version by semantic precedence; it excludes drafts,
+yanked releases, prereleases by default, and every release of an archived
+Asset. The same contract is exposed by OpenAPI `1.3.0`, the shared TypeScript
+client, the standalone CLI, and the Web catalog summary.
+
 ### Remaining A0 work
 
-- Complete product yanking and deterministic release selection while keeping
-  release visibility and deployment separate.
 - Deploy Agent releases through the existing Workload path. Publish MCP
   releases here, but admit and deploy them only through `MCP0`.
 - Bind Skill releases as immutable Service inputs and never schedule a Skill as
   a standalone Runtime unit.
-- Add asset/release/catalog UI without Issues, pull requests, stars, watches,
-  wikis, or generic repository features.
+- Extend the catalog with immutable Skill binding workflows without Issues,
+  pull requests, stars, watches, wikis, or generic repository features.
 
 ### Exit gate
 
