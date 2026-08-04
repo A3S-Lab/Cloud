@@ -1,4 +1,5 @@
 import { withBase } from '@rspress/core/runtime';
+import { ArrowRight, GithubLogo } from '@phosphor-icons/react';
 import { AmbientGrid } from './AmbientGrid';
 import { BoundaryMap } from './BoundaryMap';
 import { CapabilityGrid } from './CapabilityGrid';
@@ -13,33 +14,13 @@ import { gateByCode, roadmapGates } from '../data/roadmap';
 
 type SectionHeadingProps = {
   body: string;
-  eyebrow: string;
   title: string;
 };
 
-function ArrowIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 20 20">
-      <path d="M4 10h11M10.5 5.5 15 10l-4.5 4.5" />
-    </svg>
-  );
-}
-
-function GitHubIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24">
-      <path d="M12 2.8a9.4 9.4 0 0 0-3 18.3c.5.1.7-.2.7-.5v-1.8c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.6 1 1.6 1 .9 1.6 2.4 1.1 2.9.9.1-.7.4-1.1.6-1.4-2.2-.3-4.6-1.1-4.6-4.7 0-1 .4-1.9 1-2.6-.1-.3-.4-1.3.1-2.6 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 4.9 0c1.8-1.3 2.7-1 2.7-1 .5 1.3.2 2.3.1 2.6.6.7 1 1.6 1 2.6 0 3.6-2.3 4.4-4.5 4.7.4.3.7.9.7 1.8v2.7c0 .4.2.6.7.5A9.4 9.4 0 0 0 12 2.8Z" />
-    </svg>
-  );
-}
-
-function SectionHeading({ body, eyebrow, title }: SectionHeadingProps) {
+function SectionHeading({ body, title }: SectionHeadingProps) {
   return (
     <header className="cloud-section-heading" data-reveal>
-      <div>
-        <span>{eyebrow}</span>
-        <h2>{title}</h2>
-      </div>
+      <h2>{title}</h2>
       <p>{body}</p>
     </header>
   );
@@ -91,7 +72,7 @@ function MarkdownHome() {
       <ul>
         {capabilities.map((capability) => (
           <li key={capability.title}>
-            <strong>{capability.title}</strong> — {capability.body}
+            <strong>{capability.title}</strong>: {capability.body}
           </li>
         ))}
       </ul>
@@ -101,8 +82,8 @@ function MarkdownHome() {
           <li key={track.gate}>
             <strong>
               {track.gate}: {track.title}
-            </strong>{' '}
-            — {track.body}
+            </strong>
+            {`: ${track.body}`}
           </li>
         ))}
       </ul>
@@ -112,8 +93,8 @@ function MarkdownHome() {
           <li key={gate.code}>
             <strong>
               {gate.code}: {gate.name}
-            </strong>{' '}
-            — {gate.status}. {gate.outcome}
+            </strong>
+            {`: ${gate.status}. ${gate.outcome}`}
           </li>
         ))}
       </ul>
@@ -135,63 +116,53 @@ export function HomeLayout() {
 
       <section className="cloud-hero">
         <div className="cloud-hero-copy">
-          <div className="cloud-hero-eyebrow">
-            <i aria-hidden="true" />
-            SELF-HOSTED DESIRED-STATE CONTROL PLANE
-          </div>
           <h1>
-            Declare the state.
-            <span>Cloud converges the system.</span>
+            Declare intent.
+            <span>Cloud converges.</span>
           </h1>
           <p>
-            Persist intent once. Resume every operation. Run immutable A3S
-            workloads through Box, publish exact Gateway policy, and keep the
-            evidence needed to recover.
+            A self-hosted control plane that persists desired state and resumes
+            every operation from durable evidence.
           </p>
           <div className="cloud-hero-actions">
             <a className="cloud-button is-primary" href="#control-loop">
-              <span>Watch the control loop</span>
-              <ArrowIcon />
+              <span>Control loop</span>
+              <ArrowRight aria-hidden="true" weight="bold" />
             </a>
             <a
               className="cloud-button is-secondary"
               href={route('/architecture/')}
             >
-              Explore architecture
-              <ArrowIcon />
+              Architecture
+              <ArrowRight aria-hidden="true" weight="bold" />
             </a>
-          </div>
-          <div
-            className="cloud-hero-status"
-            aria-label="Current delivery status"
-          >
-            <GateBadge gate={gateByCode('F0')} />
-            <GateBadge gate={gateByCode('BX0')} />
           </div>
         </div>
         <div className="cloud-hero-visual">
           <CloudTopology />
         </div>
-        <div className="cloud-hero-metrics" aria-label="Platform principles">
-          <span>
-            <b>01</b> PostgreSQL truth through A3S ORM
-          </span>
-          <span>
-            <b>02</b> Outbound node control
-          </span>
-          <span>
-            <b>03</b> Box-only execution
-          </span>
-          <span>
-            <b>04</b> Gateway stays on the traffic path
-          </span>
-        </div>
       </section>
+
+      <aside
+        aria-label="Current delivery evidence and platform principles"
+        className="cloud-assurance-bar"
+      >
+        <div className="cloud-assurance-status">
+          <span>Delivery gates</span>
+          <GateBadge gate={gateByCode('F0')} />
+          <GateBadge gate={gateByCode('BX0')} />
+        </div>
+        <ul>
+          <li>PostgreSQL truth through A3S ORM</li>
+          <li>Outbound node control</li>
+          <li>Box-only execution</li>
+          <li>Gateway stays on the traffic path</li>
+        </ul>
+      </aside>
 
       <section className="cloud-section cloud-control-loop" id="control-loop">
         <SectionHeading
           body="An API request records intent; it does not impersonate deployment work. Every transition emits durable evidence and can continue after interruption."
-          eyebrow="THE CONVERGENCE LOOP"
           title="From desired state to observed truth"
         />
         <ConvergenceLoop />
@@ -200,7 +171,6 @@ export function HomeLayout() {
       <section className="cloud-section cloud-capabilities" id="capabilities">
         <SectionHeading
           body="Core capabilities reuse one application model, one persistence boundary, and one Runtime path. Each status is read from the repository roadmap at build time."
-          eyebrow="CAPABILITY SYSTEM"
           title="One loop, not a pile of mechanisms"
         />
         <CapabilityGrid />
@@ -209,7 +179,6 @@ export function HomeLayout() {
       <section className="cloud-section cloud-boundaries" id="boundaries">
         <SectionHeading
           body="Cloud decides and records. Box executes. Gateway serves live traffic. Power becomes one typed inference backend; none of them becomes a second control plane."
-          eyebrow="PRODUCT BOUNDARIES"
           title="Clear authority at every hop"
         />
         <BoundaryMap />
@@ -218,8 +187,7 @@ export function HomeLayout() {
       <section className="cloud-section cloud-future" id="horizons">
         <SectionHeading
           body="Planned and in-progress capabilities are visible here by design. Their badges preserve the formal roadmap state instead of presenting them as shipped."
-          eyebrow="NEXT HORIZONS"
-          title="The platform that the same loop unlocks"
+          title="What the control loop unlocks"
         />
         <FutureHorizons />
       </section>
@@ -227,7 +195,6 @@ export function HomeLayout() {
       <section className="cloud-section cloud-roadmap" id="roadmap">
         <SectionHeading
           body="Filter the complete delivery matrix. Historical gates retain useful evidence but still require Box re-certification before they can be presented as verified."
-          eyebrow="LIVE PRODUCT ROADMAP"
           title="Every promise has a gate"
         />
         <RoadmapConstellation />
@@ -236,7 +203,6 @@ export function HomeLayout() {
       <section className="cloud-section cloud-architecture-cta" data-reveal>
         <a className="cloud-architecture-card" href={route('/architecture/')}>
           <div className="cloud-architecture-copy">
-            <span>INTERACTIVE SYSTEM MAP</span>
             <h2>See the whole Cloud in motion.</h2>
             <p>
               Orbit the 3D control plane, inspect exact ownership boundaries,
@@ -244,7 +210,8 @@ export function HomeLayout() {
               planned inference journeys.
             </p>
             <strong>
-              Open interactive architecture <ArrowIcon />
+              Architecture
+              <ArrowRight aria-hidden="true" weight="bold" />
             </strong>
           </div>
           <ArchitecturePreview />
@@ -253,10 +220,9 @@ export function HomeLayout() {
 
       <section className="cloud-final-cta">
         <div>
-          <span>BUILD ON INFRASTRUCTURE YOU OWN</span>
           <h2>Make desired state durable.</h2>
           <p>
-            Start with the current contract, then follow evidence—not claims.
+            Start with the current contract, then follow evidence over claims.
           </p>
         </div>
         <div>
@@ -264,12 +230,12 @@ export function HomeLayout() {
             className="cloud-button is-primary"
             href="https://github.com/A3S-Lab/Cloud"
           >
-            <GitHubIcon />
-            View on GitHub
+            <GithubLogo aria-hidden="true" weight="fill" />
+            GitHub
           </a>
           <a className="cloud-button is-secondary" href={route('/docs/')}>
-            Documentation
-            <ArrowIcon />
+            Docs
+            <ArrowRight aria-hidden="true" weight="bold" />
           </a>
         </div>
       </section>
@@ -283,7 +249,7 @@ export function HomeLayout() {
         <div>
           <a href={route('/architecture/')}>Architecture</a>
           <a href={route('/docs/')}>Docs</a>
-          <a href="https://github.com/A3S-Lab/Cloud">GitHub ↗</a>
+          <a href="https://github.com/A3S-Lab/Cloud">GitHub</a>
         </div>
       </footer>
     </main>

@@ -121,6 +121,23 @@ async function resolvesToBuiltFile(reference, htmlFile) {
 
 for (const file of requiredFiles) await access(path.join(outputRoot, file));
 
+const productHtml = await readFile(path.join(outputRoot, 'index.html'), 'utf8');
+const productFragments = [
+  'Declare intent.',
+  'Cloud converges.',
+  'Current delivery evidence and platform principles',
+  'From desired state to observed truth',
+  'Every promise has a gate',
+];
+for (const fragment of productFragments) {
+  if (!productHtml.includes(fragment)) {
+    throw new Error(`Product home is missing ${fragment}`);
+  }
+}
+if (/[—–]/u.test(productHtml)) {
+  throw new Error('Product home contains a forbidden dash character');
+}
+
 const documentationPages = [];
 for (const version of documentationRegistry.versions) {
   for (const language of documentationLanguages) {

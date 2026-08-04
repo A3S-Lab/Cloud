@@ -13,8 +13,7 @@ export function CapabilityGrid() {
           key={`${capability.gate}-${capability.title}`}
           style={{ '--card-index': index } as React.CSSProperties}
         >
-          <div className="cloud-capability-card-topline">
-            <span>{capability.eyebrow}</span>
+          <div className="cloud-capability-card-status">
             <GateBadge compact gate={gateByCode(capability.gate)} />
           </div>
           <CapabilityVisual kind={capability.visual} />

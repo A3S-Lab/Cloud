@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 
 const SURFACE_SELECTOR = [
   '.cloud-capability-card',
-  '.cloud-future-card',
+  '.cloud-horizon-card',
   '.cloud-roadmap-card',
   '.cloud-boundary-node',
   '.cloud-architecture-card',
