@@ -255,7 +255,7 @@ not business ownership or convenience wrappers.
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Search | Tenant-authorized resource projections and bounded discovery | Current |
 | Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
-| Agents | Conversations, Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | Planned `A1.1` through `A1.5` |
+| Agents | Conversations, Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented, Linux verification pending; `A1.2` through `A1.5` planned |
 | Data | Managed databases, volumes, backup, restore, retention, and writer fencing | Planned `S0` |
 | Inference | Models, backends, deployments, routes, provider egress, and durable usage | Planned `I0` |
 
@@ -638,18 +638,27 @@ Agent actor controller onto a generic cluster controller.
 
 `A1.0` has verified shared sequence/SSE transport, polling transport,
 immutable-object infrastructure, and the reusable Node Agent outbound-batch
-receipt primitive. `A1.1` through `A1.5` remain planned.
+receipt primitive. `A1.1` now implements the durable `Agents` context
+foundation; clean Linux PostgreSQL verification remains. `A1.2` through
+`A1.5` remain planned.
 
-The planned `Agents` context owns:
+The current `A1.1` context owns:
 
 - `AgentConversation`, including the sole monotonic semantic event-stream head;
-- `AgentExecution`, its immutable bindings, lifecycle, Operation, Harness
-  identity, and optional parent;
-- contiguous semantic events for model, tool, approval, checkpoint, failure,
-  and terminal outcomes;
-- grant-checked approval checkpoints and logical pause/resume;
-- immutable checkpoint references, explicit fork lineage, trajectory export,
-  and telemetry correlation.
+- `AgentExecution`, its exact published Agent-release binding, logical
+  lifecycle, and reserved Operation identity; and
+- contiguous bounded semantic events for request, model output, failure, and
+  completion, exposed through the shared cursor/SSE transport.
+
+Later A1 sub-gates extend that same context with:
+
+- the `A1.2` Harness identity, command/event-batch protocol, Fleet delivery,
+  and Workload/Runtime lifecycle;
+- the `A1.3` immutable Skill, MCP, workspace, and tool bindings plus auditable
+  tool request/result events;
+- the `A1.4` grant-checked approval checkpoints and logical pause/resume; and
+- the `A1.5` immutable checkpoint references, explicit fork lineage,
+  trajectory export, and telemetry correlation.
 
 It reuses the common request-idempotency record, Flow and Operations, Workloads
 placement, Fleet commands, the Node Agent journal, Runtime, Box, Outbox/Event,

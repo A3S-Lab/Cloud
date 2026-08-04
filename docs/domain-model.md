@@ -320,22 +320,27 @@ Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
 tables directly. Audit records are append-only and separate from event delivery.
 
-### 3.13 Agent execution (planned A1)
+### 3.13 Agent execution (`A1.1` foundation; later A1 planned)
 
-Owns tenant-scoped conversations, Agent executions, the sole semantic event
-sequence, immutable execution bindings, approval checkpoints, logical execution
-checkpoints, fork lineage, and trajectory projections. The Cloud API is its
-client control boundary.
+Owns tenant-scoped conversations, Agent executions, and the sole semantic event
+sequence. `A1.1` binds one exact published Agent release and reserves the
+correlated Operation identity. Later sub-gates add the remaining immutable
+bindings, approval checkpoints, logical execution checkpoints, fork lineage,
+and trajectory projections. The Cloud API is its client control boundary.
 
 Primary aggregates:
 
 - `AgentConversation`
 - `AgentExecution`
 
-Supporting records:
+Current supporting records:
 
-- immutable execution bindings;
-- `AgentExecutionEvent`;
+- one immutable Agent-release binding embedded in `AgentExecution`; and
+- `AgentExecutionEvent`.
+
+Planned supporting records:
+
+- additional immutable Skill, MCP, workspace, and tool bindings;
 - `AgentApprovalCheckpoint`; and
 - `AgentExecutionCheckpoint`.
 
@@ -938,30 +943,34 @@ contexts' tables.
   Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
-### Agent conversation and execution (planned A1)
+### Agent conversation and execution (`A1.1` foundation; later A1 planned)
 
 - A conversation belongs to one organization, project, and environment and
   owns the sole positive monotonic `last_event_sequence` head.
-- An execution binds one exact published Agent release and immutable Skill,
-  MCP, workspace, and tool identities before dispatch. Mutable manifests or
-  source refs never become execution authority.
+- In `A1.1`, an execution binds one exact published Agent release, its
+  successful BuildRun, and its immutable OCI artifact identity. `A1.3` adds
+  immutable Skill, MCP, workspace, and tool identities before dispatch.
+  Mutable manifests or source refs never become execution authority.
 - Appending one or more semantic events and advancing the conversation head is
   one transaction. A committed sequence is immutable, contiguous, and unique
   within the conversation.
-- `AgentExecution` owns logical state and the correlated Operation and Harness
-  identities. Flow history owns orchestration recovery; Runtime logs own
-  process output; neither can substitute for semantic events.
-- An approval-required action cannot execute until a current Identity grant and
-  explicit approval decision commit. Duplicate decide/resume commands replay;
-  denial, expiry, cancellation, and process death cannot emit a hidden resume.
-- Large event content and checkpoints reference one verified immutable object
-  by namespace, digest, length, and media type. No Agent-specific object backend
-  or mutable execution-head store is permitted.
-- Forking creates a new execution with immutable parent and checkpoint lineage;
-  it never mutates the parent trajectory.
-- Provider suspend/resume remains unavailable until the exact A3S Runtime and
-  Box checkpoint contract passes crash, integrity, compatibility, adoption,
-  and cleanup certification.
+- `AgentExecution` owns logical state and the correlated Operation identity.
+  `A1.2` adds the Harness identity and provider lifecycle. Flow history owns
+  orchestration recovery; Runtime logs own process output; neither can
+  substitute for semantic events.
+- In `A1.4`, an approval-required action cannot execute until a current
+  Identity grant and explicit approval decision commit. Duplicate
+  decide/resume commands replay; denial, expiry, cancellation, and process
+  death cannot emit a hidden resume.
+- `A1.1` stores only canonical inline JSON of at most 64 KiB and verifies its
+  SHA-256 digest. Later large event content and checkpoints reference one
+  verified immutable object by namespace, digest, length, and media type. No
+  Agent-specific object backend or mutable execution-head store is permitted.
+- In `A1.5`, forking creates a new execution with immutable parent and
+  checkpoint lineage; it never mutates the parent trajectory.
+- Provider suspend/resume remains unavailable until `A1.5` and the exact A3S
+  Runtime and Box checkpoint contract pass crash, integrity, compatibility,
+  adoption, and cleanup certification.
 
 ### Managed database, volume, and backup
 

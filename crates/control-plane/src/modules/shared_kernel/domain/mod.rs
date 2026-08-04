@@ -9,12 +9,12 @@ mod timestamp;
 pub use git_commit_sha::GitCommitSha;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
-    ApiTokenId, AssetId, AssetReleaseId, BuildRunId, DeploymentId, DomainClaimId,
-    EnrollmentTokenId, EnvironmentId, ExecutionId, GatewayCertificateId, GatewayRolloutId,
-    GatewayScopeId, McpCredentialId, NodeCertificateId, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, ResourceClaimId, RouteId, SecretId, SourceConnectionId,
-    SourceRevisionId, SourceSubscriptionId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
-    WorkloadRevisionId,
+    AgentConversationId, AgentExecutionId, ApiTokenId, AssetId, AssetReleaseId, BuildRunId,
+    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId,
+    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, McpCredentialId, NodeCertificateId,
+    NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, ResourceClaimId, RouteId,
+    SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

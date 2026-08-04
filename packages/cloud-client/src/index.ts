@@ -11,6 +11,7 @@ export {
   type CloudApiClientOptions,
   type CloudFetch,
   type CloudLogQuery,
+  type CloudSequenceQuery,
 } from './api';
 export * from './diagnostics';
 export * from './search';

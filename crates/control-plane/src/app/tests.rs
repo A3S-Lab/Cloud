@@ -5,6 +5,7 @@ use crate::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
+use crate::modules::agents::InMemoryAgentRepository;
 use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
@@ -35,6 +36,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+mod agent_execution_tests;
 mod api_contract_tests;
 mod asset_catalog_tests;
 mod asset_git_support;
@@ -775,6 +777,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             workloads: workload_port,
             builds,
             executions: Arc::new(InMemoryExecutionRepository::new()),
+            agents: Arc::new(InMemoryAgentRepository::new()),
             routes,
             secrets,
             sources,

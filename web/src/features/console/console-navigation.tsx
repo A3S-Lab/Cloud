@@ -1,11 +1,12 @@
-import { Boxes, Globe2, LayoutDashboard, PackageCheck } from 'lucide-react';
+import { Bot, Boxes, Globe2, LayoutDashboard, PackageCheck } from 'lucide-react';
 import type { KeyboardEvent } from 'react';
 import type { SearchResourceKind } from '../../types/api';
 
-export type ConsoleSection = 'overview' | 'workloads' | 'delivery' | 'edge';
+export type ConsoleSection = 'overview' | 'workloads' | 'agents' | 'delivery' | 'edge';
 
 export interface ConsoleSectionCounts {
   workloads: number;
+  agents: number;
   delivery: number;
   edge: number;
   operations: number;
@@ -33,6 +34,14 @@ const SECTIONS = [
     countKey: 'workloads',
     countLabel: 'workloads',
     icon: Boxes,
+  },
+  {
+    id: 'agents',
+    label: 'Agents',
+    description: 'Conversations and runs',
+    countKey: 'agents',
+    countLabel: 'conversations',
+    icon: Bot,
   },
   {
     id: 'delivery',

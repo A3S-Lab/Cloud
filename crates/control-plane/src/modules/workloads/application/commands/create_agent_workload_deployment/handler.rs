@@ -1,6 +1,6 @@
 use super::CreateAgentWorkloadDeployment;
 use crate::modules::artifacts::domain::IBuildRunRepository;
-use crate::modules::assets::domain::IAssetRepository;
+use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -9,12 +9,13 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::commands::agent_release::load_deployable_agent_release;
 use crate::modules::workloads::application::{
     commands::validate_secret_bindings, CreateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME,
     DEPLOYMENT_WORKFLOW_VERSION,
 };
-use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
+use crate::modules::workloads::domain::entities::{
+    Deployment, OciArtifact, Workload, WorkloadRevision,
+};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
@@ -153,7 +154,11 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
                 WorkloadRevisionId::new(),
                 workload.id,
                 1,
-                command.template.resolve(deployable.artifact),
+                command.template.resolve(OciArtifact {
+                    uri: deployable.artifact_uri.clone(),
+                    digest: deployable.artifact_digest.clone(),
+                    media_type: deployable.artifact_media_type.clone(),
+                }),
                 command.requested_at,
             ) {
                 Ok(revision) => revision,

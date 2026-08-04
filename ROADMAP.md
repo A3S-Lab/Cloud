@@ -115,7 +115,7 @@ training, trajectories, or any Agentic RL policy.
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
-| `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned |
+| `A1` — Agent execution | Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, Linux verification pending) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service | Planned |
@@ -402,7 +402,7 @@ transport.
   Web adds debounced keyboard search and validated contextual navigation; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
   at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.5.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  `1.6.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
   minimum sunset window; and
@@ -681,7 +681,7 @@ bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
-public raw OpenAPI v1 snapshot, shared `1.5.0` client/response versioning,
+public raw OpenAPI v1 snapshot, shared `1.6.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
@@ -770,7 +770,7 @@ owned by the [technical architecture](docs/architecture.md#11-native-agent-platf
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `A1.0` | Verified | One sequence-cursor/SSE implementation, one infrastructure-level immutable object client with typed domain adapters, and one reusable node-agent durable outbound-batch journal/receipt primitive |
-| `A1.1` | Planned | Add `AgentConversation` and `AgentExecution` aggregates plus one durable, monotonically sequenced semantic event stream |
+| `A1.1` | Implemented; Linux verification pending | `AgentConversation` and `AgentExecution` aggregates, exact published Agent-release binding, common idempotency and Outbox reuse, typed A3S ORM persistence, and one durable monotonically sequenced semantic event stream exposed through REST, client, CLI, Web, and shared SSE |
 | `A1.2` | Planned | Add a versioned Harness command/event protocol over the existing Fleet node-control channel and node-agent journal |
 | `A1.3` | Planned | Pin Agent, Skill, MCP, workspace, and tool bindings to immutable identities and record auditable tool request/result events |
 | `A1.4` | Planned | Add grant-checked approval checkpoints and logical pause/resume through the existing Operation and Harness lifecycle |
@@ -817,6 +817,26 @@ cursor advancement and pending-batch removal remain one atomic state write.
 Focused compatibility, restart, receipt-integrity, and source-architecture
 tests prevent a second outbound-batch lifecycle. Together these slices close
 `A1.0` without adding another queue, cursor, or node-control channel.
+
+`A1.1` is implemented as the durable semantic foundation. A conversation owns
+the sole `last_event_sequence` head, while each logical execution reserves one
+Operation ID and binds the exact published Agent AssetRelease, successful
+BuildRun, and OCI artifact identity. Creation, execution start, and internal
+event append reuse the common idempotency record and transactional Outbox.
+PostgreSQL appends bounded inline JSON events and advances the conversation
+head under one typed A3S ORM transaction and row lock; the same authoritative
+history is available through paged REST queries and the shared resumable SSE
+transport. The typed client, CLI, and Web expose conversation creation,
+execution selection, projections, and event history. Focused domain,
+application, controller, client, CLI, Web, OpenAPI, migration-registration,
+concurrency, and architecture tests exist; clean Linux Rust/PostgreSQL
+verification remains before this sub-gate can be marked Verified.
+
+This slice does not claim that the Agent has run. It reserves no parallel
+scheduler or command path and emits no fake Harness outcome. `A1.2` owns the
+versioned Harness command/event-batch protocol, existing Fleet/node-journal
+delivery, and Workload/Runtime lifecycle that will turn the logical execution
+into provider work.
 
 Google AX may be evaluated only as an optional adapter behind the versioned
 Harness port after `A1.5` and after its integration contract is stable. Cloud
@@ -1233,9 +1253,10 @@ The default portfolio priority is:
 7. re-certify the `H0.1` real-provider Claim behavior while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
-8. start `P0` only on verified `G0`; start `A1.1` after immutable published
-   `A0.3` identities exist, add `A1.2` after `A0.4` Agent deployment, add
-   `A1.3` after `A0.5` bindings, gate `A1.4` on `C0.3` grants and audit, and
+8. start `P0` only on verified `G0`; retain `A1.1` Linux verification after
+   immutable published `A0.3` identities exist, add `A1.2` after `A0.4` Agent
+   deployment, add `A1.3` after `A0.5` bindings, gate `A1.4` on `C0.3` grants
+   and audit, and
    close `A1.5` only with exact checkpoint, suspend/resume, fork, and crash
    recovery evidence;
 9. add read-only `U0.2` after the pinned A3S Use catalog/manager contracts

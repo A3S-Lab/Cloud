@@ -1,11 +1,17 @@
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
+import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import type {
   ApiToken,
   ApiTokenMutationResult,
+  AgentConversation,
+  AgentConversationMutationResult,
+  AgentExecution,
+  AgentExecutionEventsPage,
+  AgentExecutionMutationResult,
   Asset,
   AssetMutationResult,
   AssetRelease,
@@ -57,6 +63,7 @@ import type {
   SourceRevisionMutationResult,
   SourceWorkloadTemplate,
   StopWorkloadResult,
+  StartAgentExecutionInput,
   Workload,
   WorkloadDeploymentResult,
   WorkloadLogStreamFilter,
@@ -82,10 +89,11 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.5.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.6.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
+export type { CloudSequenceQuery } from './sequence-query';
 export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
@@ -485,6 +493,103 @@ export class CloudApi {
         `/environments/${encodeURIComponent(environmentId)}/executions`,
       idempotencyKey,
       input,
+      signal
+    );
+  }
+
+  listAgentConversations(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<AgentConversation[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/agent-conversations?limit=100`,
+      signal
+    );
+  }
+
+  getAgentConversation(
+    organizationId: string,
+    conversationId: string,
+    signal?: AbortSignal
+  ): Promise<AgentConversation> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-conversations/${encodeURIComponent(conversationId)}`,
+      signal
+    );
+  }
+
+  createAgentConversation(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AgentConversationMutationResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/agent-conversations`,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  listAgentExecutions(
+    organizationId: string,
+    conversationId: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecution[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-conversations/${encodeURIComponent(conversationId)}/executions?limit=100`,
+      signal
+    );
+  }
+
+  getAgentExecution(
+    organizationId: string,
+    executionId: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecution> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}`,
+      signal
+    );
+  }
+
+  startAgentExecution(
+    organizationId: string,
+    conversationId: string,
+    input: StartAgentExecutionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionMutationResult> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-conversations/${encodeURIComponent(conversationId)}/executions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getAgentExecutionEvents(
+    organizationId: string,
+    conversationId: string,
+    query: CloudSequenceQuery = {},
+    signal?: AbortSignal
+  ): Promise<AgentExecutionEventsPage> {
+    const parameters = encodeSequenceQuery(query, 'Agent event', 200);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-conversations/${encodeURIComponent(conversationId)}/events` +
+        encodeQueryParameters(parameters),
       signal
     );
   }
@@ -1171,6 +1276,13 @@ export class CloudApi {
     return (
       `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}` +
       `/build-runs/${encodeURIComponent(buildRunId)}/logs/stream?${query.toString()}`
+    );
+  }
+
+  agentExecutionEventStreamUrl(organizationId: string, conversationId: string): string {
+    return (
+      `${this.baseUrl}/organizations/${encodeURIComponent(organizationId)}` +
+      `/agent-conversations/${encodeURIComponent(conversationId)}/events/stream?limit=16`
     );
   }
 

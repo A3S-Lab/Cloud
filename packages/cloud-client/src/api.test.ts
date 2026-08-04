@@ -26,7 +26,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.5.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.6.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -314,6 +314,93 @@ describe('CloudApi', () => {
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:create');
     expect(calls[2]?.[1]?.body).toBe(JSON.stringify(input));
     expect((calls[3]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:cancel');
+  });
+
+  it('exposes Agent conversations, executions, and resumable semantic events', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 202 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const input = {
+      agentAssetId: 'agent / one',
+      agentAssetReleaseId: 'release',
+      input: { message: 'hello' },
+    };
+
+    await api.listAgentConversations('organization / one', 'project', 'environment');
+    await api.getAgentConversation('organization / one', 'conversation');
+    await api.createAgentConversation('organization / one', 'project', 'environment', 'conversation:create');
+    await api.listAgentExecutions('organization / one', 'conversation');
+    await api.getAgentExecution('organization / one', 'execution');
+    await api.startAgentExecution('organization / one', 'conversation', input, 'agent-execution:start');
+    await api.getAgentExecutionEvents('organization / one', 'conversation', {
+      cursor: '7',
+      limit: 25,
+    });
+
+    expect(calls.map(([request, init]) => [request, init?.method, init?.body])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/agent-conversations?limit=100',
+        'GET',
+        undefined,
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation', 'GET', undefined],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/agent-conversations',
+        'POST',
+        undefined,
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/executions?limit=100',
+        'GET',
+        undefined,
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution', 'GET', undefined],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/executions',
+        'POST',
+        JSON.stringify(input),
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events?cursor=7&limit=25',
+        'GET',
+        undefined,
+      ],
+    ]);
+    expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('conversation:create');
+    expect((calls[2]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((calls[5]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'agent-execution:start'
+    );
+    expect(api.agentExecutionEventStreamUrl('organization / one', 'conversation')).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events/stream?limit=16'
+    );
+  });
+
+  it('rejects invalid Agent event cursors and limits before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() => api.getAgentExecutionEvents('organization', 'conversation', { cursor: '' })).toThrow(
+      'Agent event cursor is invalid'
+    );
+    expect(() => api.getAgentExecutionEvents('organization', 'conversation', { cursor: '1\n2' })).toThrow(
+      'Agent event cursor is invalid'
+    );
+    expect(() => api.getAgentExecutionEvents('organization', 'conversation', { limit: 0 })).toThrow(
+      'Agent event limit must be between 1 and 200'
+    );
+    expect(() => api.getAgentExecutionEvents('organization', 'conversation', { limit: 201 })).toThrow(
+      'Agent event limit must be between 1 and 200'
+    );
+    expect(called).toBe(false);
   });
 
   it('changes node lifecycle state with explicit optimistic concurrency', async () => {

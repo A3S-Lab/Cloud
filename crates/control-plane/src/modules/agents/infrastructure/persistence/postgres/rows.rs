@@ -1,0 +1,248 @@
+use super::schema::{AgentConversations, AgentExecutionEvents, AgentExecutions};
+use crate::modules::agents::domain::{
+    AgentConversation, AgentConversationStatus, AgentEventContent, AgentExecution,
+    AgentExecutionEvent, AgentExecutionEventKind, AgentExecutionStatus, AgentReleaseBinding,
+};
+use crate::modules::shared_kernel::domain::{
+    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, EnvironmentId,
+    OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+};
+use a3s_orm::expression::Selection;
+use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
+use chrono::{DateTime, Utc};
+use serde_json::Value;
+use uuid::Uuid;
+
+pub(super) struct ConversationSelection;
+pub(super) struct ExecutionSelection;
+pub(super) struct EventSelection;
+
+impl Selection for ConversationSelection {
+    type Output = ConversationRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            AgentConversations::organization_id().expression(),
+            AgentConversations::project_id().expression(),
+            AgentConversations::environment_id().expression(),
+            AgentConversations::id().expression(),
+            AgentConversations::status().expression(),
+            AgentConversations::last_event_sequence().expression(),
+            AgentConversations::aggregate_version().expression(),
+            AgentConversations::created_at().expression(),
+            AgentConversations::updated_at().expression(),
+            AgentConversations::closed_at().expression(),
+        ]
+    }
+}
+
+impl Selection for ExecutionSelection {
+    type Output = ExecutionRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            AgentExecutions::organization_id().expression(),
+            AgentExecutions::conversation_id().expression(),
+            AgentExecutions::id().expression(),
+            AgentExecutions::operation_id().expression(),
+            AgentExecutions::agent_asset_id().expression(),
+            AgentExecutions::agent_asset_release_id().expression(),
+            AgentExecutions::agent_build_run_id().expression(),
+            AgentExecutions::agent_artifact_uri().expression(),
+            AgentExecutions::agent_artifact_digest().expression(),
+            AgentExecutions::agent_artifact_media_type().expression(),
+            AgentExecutions::agent_artifact_size_bytes().expression(),
+            AgentExecutions::status().expression(),
+            AgentExecutions::failure().expression(),
+            AgentExecutions::aggregate_version().expression(),
+            AgentExecutions::requested_at().expression(),
+            AgentExecutions::updated_at().expression(),
+            AgentExecutions::started_at().expression(),
+            AgentExecutions::finished_at().expression(),
+        ]
+    }
+}
+
+impl Selection for EventSelection {
+    type Output = EventRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            AgentExecutionEvents::organization_id().expression(),
+            AgentExecutionEvents::conversation_id().expression(),
+            AgentExecutionEvents::sequence().expression(),
+            AgentExecutionEvents::execution_id().expression(),
+            AgentExecutionEvents::kind().expression(),
+            AgentExecutionEvents::content().expression(),
+            AgentExecutionEvents::content_digest().expression(),
+            AgentExecutionEvents::content_size_bytes().expression(),
+            AgentExecutionEvents::occurred_at().expression(),
+        ]
+    }
+}
+
+pub(super) struct ConversationRow {
+    organization_id: Uuid,
+    project_id: Uuid,
+    environment_id: Uuid,
+    id: Uuid,
+    status: String,
+    last_event_sequence: u64,
+    aggregate_version: u64,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    closed_at: Option<DateTime<Utc>>,
+}
+
+pub(super) struct ExecutionRow {
+    organization_id: Uuid,
+    conversation_id: Uuid,
+    id: Uuid,
+    operation_id: Uuid,
+    agent_asset_id: Uuid,
+    agent_asset_release_id: Uuid,
+    agent_build_run_id: Uuid,
+    agent_artifact_uri: String,
+    agent_artifact_digest: String,
+    agent_artifact_media_type: String,
+    agent_artifact_size_bytes: u64,
+    status: String,
+    failure: Option<String>,
+    aggregate_version: u64,
+    requested_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    finished_at: Option<DateTime<Utc>>,
+}
+
+pub(super) struct EventRow {
+    organization_id: Uuid,
+    conversation_id: Uuid,
+    sequence: u64,
+    execution_id: Uuid,
+    kind: String,
+    content: Value,
+    content_digest: String,
+    content_size_bytes: u64,
+    occurred_at: DateTime<Utc>,
+}
+
+macro_rules! from_row {
+    ($row:ty, { $($field:ident: $index:literal),+ $(,)? }) => {
+        impl FromRow for $row {
+            fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+                Ok(Self { $($field: decode(row, $index)?,)+ })
+            }
+        }
+    };
+}
+
+from_row!(ConversationRow, {
+    organization_id: 0, project_id: 1, environment_id: 2, id: 3, status: 4,
+    last_event_sequence: 5, aggregate_version: 6, created_at: 7, updated_at: 8,
+    closed_at: 9,
+});
+
+from_row!(ExecutionRow, {
+    organization_id: 0, conversation_id: 1, id: 2, operation_id: 3,
+    agent_asset_id: 4, agent_asset_release_id: 5, agent_build_run_id: 6,
+    agent_artifact_uri: 7, agent_artifact_digest: 8, agent_artifact_media_type: 9,
+    agent_artifact_size_bytes: 10, status: 11, failure: 12, aggregate_version: 13,
+    requested_at: 14, updated_at: 15, started_at: 16, finished_at: 17,
+});
+
+from_row!(EventRow, {
+    organization_id: 0, conversation_id: 1, sequence: 2, execution_id: 3,
+    kind: 4, content: 5, content_digest: 6, content_size_bytes: 7, occurred_at: 8,
+});
+
+impl ConversationRow {
+    pub(super) fn aggregate(self) -> Result<AgentConversation, RepositoryError> {
+        AgentConversation {
+            organization_id: OrganizationId::from_uuid(self.organization_id),
+            project_id: ProjectId::from_uuid(self.project_id),
+            environment_id: EnvironmentId::from_uuid(self.environment_id),
+            id: AgentConversationId::from_uuid(self.id),
+            status: AgentConversationStatus::parse(&self.status).map_err(|error| {
+                corrupt(format!("Agent conversation status is invalid: {error}"))
+            })?,
+            last_event_sequence: self.last_event_sequence,
+            aggregate_version: self.aggregate_version,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            closed_at: self.closed_at,
+        }
+        .restore()
+        .map_err(|error| corrupt(format!("Agent conversation is invalid: {error}")))
+    }
+}
+
+impl ExecutionRow {
+    pub(super) fn aggregate(self) -> Result<AgentExecution, RepositoryError> {
+        let digest = Sha256Digest::parse(self.agent_artifact_digest)
+            .map_err(|error| corrupt(format!("Agent artifact digest is invalid: {error}")))?;
+        let agent = AgentReleaseBinding::new(
+            OrganizationId::from_uuid(self.organization_id),
+            AssetId::from_uuid(self.agent_asset_id),
+            AssetReleaseId::from_uuid(self.agent_asset_release_id),
+            BuildRunId::from_uuid(self.agent_build_run_id),
+            self.agent_artifact_uri,
+            digest,
+            self.agent_artifact_media_type,
+            self.agent_artifact_size_bytes,
+        )
+        .map_err(|error| corrupt(format!("Agent release binding is invalid: {error}")))?;
+        AgentExecution {
+            organization_id: OrganizationId::from_uuid(self.organization_id),
+            conversation_id: AgentConversationId::from_uuid(self.conversation_id),
+            id: AgentExecutionId::from_uuid(self.id),
+            operation_id: OperationId::from_uuid(self.operation_id),
+            agent,
+            status: AgentExecutionStatus::parse(&self.status)
+                .map_err(|error| corrupt(format!("Agent execution status is invalid: {error}")))?,
+            failure: self.failure,
+            aggregate_version: self.aggregate_version,
+            requested_at: self.requested_at,
+            updated_at: self.updated_at,
+            started_at: self.started_at,
+            finished_at: self.finished_at,
+        }
+        .restore()
+        .map_err(|error| corrupt(format!("Agent execution is invalid: {error}")))
+    }
+}
+
+impl EventRow {
+    pub(super) fn event(self) -> Result<AgentExecutionEvent, RepositoryError> {
+        let digest = Sha256Digest::parse(self.content_digest)
+            .map_err(|error| corrupt(format!("Agent event content digest is invalid: {error}")))?;
+        let content = AgentEventContent::restore(self.content, digest, self.content_size_bytes)
+            .map_err(|error| corrupt(format!("Agent event content is invalid: {error}")))?;
+        let event = AgentExecutionEvent {
+            organization_id: OrganizationId::from_uuid(self.organization_id),
+            conversation_id: AgentConversationId::from_uuid(self.conversation_id),
+            execution_id: AgentExecutionId::from_uuid(self.execution_id),
+            sequence: self.sequence,
+            kind: AgentExecutionEventKind::parse(&self.kind)
+                .map_err(|error| corrupt(format!("Agent event kind is invalid: {error}")))?,
+            content,
+            occurred_at: self.occurred_at,
+        };
+        event
+            .validate()
+            .map_err(|error| corrupt(format!("Agent execution event is invalid: {error}")))?;
+        Ok(event)
+    }
+}
+
+fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
+    T::from_value(
+        row.value(index)
+            .ok_or(DecodeError::MissingColumn { index })?,
+        index,
+    )
+}
+
+fn corrupt(message: impl Into<String>) -> RepositoryError {
+    RepositoryError::Storage(format!("stored data is corrupt: {}", message.into()))
+}

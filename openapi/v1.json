@@ -20,7 +20,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -45,7 +45,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -70,7 +70,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -94,7 +94,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -118,7 +118,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -142,7 +142,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -166,7 +166,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -190,7 +190,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -214,7 +214,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -238,7 +238,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -262,7 +262,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -286,7 +286,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -310,7 +310,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -334,7 +334,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -359,7 +359,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -384,7 +384,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -408,7 +408,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -432,7 +432,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -456,7 +456,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -480,7 +480,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -504,7 +504,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.5.0",
+              "example": "1.6.0",
               "type": "string"
             }
           },
@@ -597,7 +597,7 @@
   "info": {
     "description": "Stable version 1 REST contract shared by the A3S Cloud web console and CLI.",
     "title": "A3S Cloud REST API",
-    "version": "1.5.0"
+    "version": "1.6.0"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -672,7 +672,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -711,7 +711,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -750,7 +750,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -803,7 +803,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -852,7 +852,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -926,7 +926,500 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/agent-conversations/{conversation_id}": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_agent_conversations_by_conversation_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/agent-conversations/{conversation_id}",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/agent-conversations/{conversation_id}/events": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_agent_conversations_by_conversation_id_events",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/agent-conversations/{conversation_id}/events",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/agent-conversations/{conversation_id}/events/stream": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_agent_conversations_by_conversation_id_events_stream",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 16,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Resume after the last delivered event identifier.",
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SseSuccess200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/agent-conversations/{conversation_id}/events/stream",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/agent-conversations/{conversation_id}/executions": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_agent_conversations_by_conversation_id_executions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/agent-conversations/{conversation_id}/executions",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      },
+      "post": {
+        "operationId": "post_organizations_by_organization_id_agent_conversations_by_conversation_id_executions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "202": {
+            "$ref": "#/components/responses/Success202"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /organizations/{organization_id}/agent-conversations/{conversation_id}/executions",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/agent-executions/{execution_id}": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_agent_executions_by_execution_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/agent-executions/{execution_id}",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -985,7 +1478,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -1068,7 +1561,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1148,7 +1641,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -1214,7 +1707,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1273,7 +1766,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -1356,7 +1849,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1424,7 +1917,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1504,7 +1997,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1589,7 +2082,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1674,7 +2167,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1754,7 +2247,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1833,7 +2326,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1901,7 +2394,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -1993,7 +2486,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2070,7 +2563,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2159,7 +2652,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2242,7 +2735,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -2308,7 +2801,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2376,7 +2869,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2476,7 +2969,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2587,7 +3080,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2670,7 +3163,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2753,7 +3246,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -2819,7 +3312,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2887,7 +3380,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2981,7 +3474,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3075,7 +3568,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3160,7 +3653,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3240,7 +3733,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -3306,7 +3799,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3365,7 +3858,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3424,7 +3917,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3492,7 +3985,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3583,7 +4076,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3674,7 +4167,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3765,7 +4258,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3834,7 +4327,7 @@
         "tags": [
           "Operations"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3904,7 +4397,7 @@
         "tags": [
           "Operations"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3963,7 +4456,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -4046,7 +4539,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4114,7 +4607,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -4206,7 +4699,184 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_agent_conversations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
+        "x-a3s-stability": "stable"
+      },
+      "post": {
+        "operationId": "post_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_agent_conversations",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "environment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Caller-owned replay key for this mutation.",
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._~:/-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "201": {
+            "$ref": "#/components/responses/Success201"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4333,7 +5003,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4420,7 +5090,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4497,7 +5167,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -4598,7 +5268,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4631,6 +5301,16 @@
             "schema": {
               "format": "uuid",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 200,
+              "minimum": 1,
+              "type": "integer"
             }
           }
         ],
@@ -4675,7 +5355,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -4773,7 +5453,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4850,7 +5530,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -4951,7 +5631,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5028,7 +5708,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -5129,7 +5809,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5206,7 +5886,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -5307,7 +5987,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5384,7 +6064,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -5485,7 +6165,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5603,7 +6283,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5680,7 +6360,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -5781,7 +6461,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5879,7 +6559,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5956,7 +6636,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -6063,7 +6743,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6131,7 +6811,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6211,7 +6891,7 @@
         "tags": [
           "Search"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6279,7 +6959,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6373,7 +7053,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6462,7 +7142,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6521,7 +7201,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -6581,7 +7261,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6649,7 +7329,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6767,7 +7447,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6867,7 +7547,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6976,7 +7656,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7096,7 +7776,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7190,7 +7870,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7282,7 +7962,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7383,7 +8063,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7466,7 +8146,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7505,7 +8185,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7569,7 +8249,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7636,7 +8316,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7717,7 +8397,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.5.0",
+        "x-a3s-api-contract-version": "1.6.0",
         "x-a3s-stability": "stable"
       }
     }
@@ -7728,7 +8408,7 @@
       "url": "/api/v1"
     }
   ],
-  "x-a3s-api-contract-version": "1.5.0",
+  "x-a3s-api-contract-version": "1.6.0",
   "x-a3s-api-major-version": 1,
   "x-a3s-minimum-deprecation-days": 180
 }

@@ -357,6 +357,90 @@ export interface ExecutionMutationResult {
   replayed: boolean;
 }
 
+export type AgentConversationStatus = 'active' | 'closed';
+
+export interface AgentConversation {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  id: string;
+  status: AgentConversationStatus;
+  lastEventSequence: number;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+}
+
+export interface AgentConversationMutationResult {
+  conversation: AgentConversation;
+  replayed: boolean;
+}
+
+export interface AgentReleaseBinding {
+  assetId: string;
+  assetReleaseId: string;
+  buildRunId: string;
+  artifactUri: string;
+  artifactDigest: string;
+  artifactMediaType: string;
+  artifactSizeBytes: number;
+}
+
+export type AgentExecutionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface AgentExecution {
+  organizationId: string;
+  conversationId: string;
+  id: string;
+  operationId: string;
+  agent: AgentReleaseBinding;
+  status: AgentExecutionStatus;
+  failure: string | null;
+  aggregateVersion: number;
+  requestedAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface StartAgentExecutionInput {
+  agentAssetId: string;
+  agentAssetReleaseId: string;
+  input?: unknown;
+}
+
+export interface AgentExecutionMutationResult {
+  conversation: AgentConversation;
+  execution: AgentExecution;
+  replayed: boolean;
+}
+
+export type AgentExecutionEventKind =
+  | 'execution_requested'
+  | 'model_output'
+  | 'execution_failed'
+  | 'execution_completed';
+
+export interface AgentExecutionEvent {
+  organizationId: string;
+  conversationId: string;
+  executionId: string;
+  sequence: number;
+  kind: AgentExecutionEventKind;
+  content: unknown;
+  contentDigest: string;
+  contentSizeBytes: number;
+  occurredAt: string;
+}
+
+export interface AgentExecutionEventsPage {
+  conversationId: string;
+  headSequence: number;
+  records: AgentExecutionEvent[];
+  nextCursor: string | null;
+}
+
 export interface ServiceTemplate {
   artifact: OciArtifactReference;
   process: ServiceProcess;

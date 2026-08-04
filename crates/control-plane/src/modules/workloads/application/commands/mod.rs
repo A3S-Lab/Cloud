@@ -1,4 +1,3 @@
-pub(super) mod agent_release;
 pub mod bind_skill_workload_deployment;
 pub mod cancel_deployment;
 pub mod create_agent_workload_deployment;

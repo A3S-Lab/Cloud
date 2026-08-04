@@ -97,7 +97,7 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     }
 
     assert!(
-        operation_count >= 50,
+        operation_count >= 60,
         "unexpectedly small public REST surface"
     );
     assert_eq!(document["paths"]["/platform"]["get"]["security"], json!([]));
@@ -186,6 +186,58 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/executions/{execution_id}"];
     assert!(execution["get"].is_object());
     assert!(execution["delete"].is_object());
+
+    let conversations = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"];
+    assert_eq!(conversations["get"]["tags"], json!(["Agents"]));
+    assert_eq!(conversations["post"]["tags"], json!(["Agents"]));
+    assert!(conversations["post"].get("requestBody").is_none());
+    assert!(conversations["post"]["responses"]["201"].is_object());
+    assert!(conversations["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let agent_executions = &document["paths"]
+        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/executions"];
+    assert!(agent_executions["get"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "limit" && parameter["schema"]["maximum"] == 200
+        })));
+    assert!(agent_executions["post"]["requestBody"]["content"]["application/json"].is_object());
+    assert!(agent_executions["post"]["responses"]["202"].is_object());
+    assert!(
+        document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}"]
+            ["get"]
+            .is_object()
+    );
+    let agent_events = &document["paths"]
+        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]["get"];
+    assert!(agent_events["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters
+            .iter()
+            .any(|parameter| { parameter["name"] == "cursor" && parameter["in"] == "query" })
+            && parameters.iter().any(|parameter| {
+                parameter["name"] == "limit" && parameter["schema"]["maximum"] == 200
+            })));
+    let agent_event_stream = &document["paths"]
+        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events/stream"]
+        ["get"];
+    assert_eq!(
+        agent_event_stream["responses"]["200"]["$ref"],
+        "#/components/responses/SseSuccess200"
+    );
+    assert!(agent_event_stream["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "limit" && parameter["schema"]["maximum"] == 16
+        }) && parameters.iter().any(|parameter| {
+            parameter["name"] == "last-event-id" && parameter["in"] == "header"
+        })));
 
     let asset_git = &document["paths"]
         ["/organizations/{organization_id}/assets/{asset_id}/git/info/refs"]["get"];

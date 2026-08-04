@@ -6,16 +6,19 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
 };
-use crate::modules::workloads::domain::entities::OciArtifact;
 
-pub(super) struct DeployableAgentRelease {
+#[derive(Debug, Clone)]
+pub struct DeployableAgentRelease {
     pub asset: Asset,
     pub release: AssetRelease,
     pub build: BuildRun,
-    pub artifact: OciArtifact,
+    pub artifact_uri: String,
+    pub artifact_digest: String,
+    pub artifact_media_type: String,
+    pub artifact_size_bytes: u64,
 }
 
-pub(super) async fn load_deployable_agent_release(
+pub async fn load_deployable_agent_release(
     assets: &dyn IAssetRepository,
     builds: &dyn IBuildRunRepository,
     organization_id: OrganizationId,
@@ -37,7 +40,7 @@ pub(super) async fn load_deployable_agent_release(
         || release.state != AssetReleaseState::Published
     {
         return Err(ApplicationError::Conflict(
-            "only a published Agent release can create a new Workload binding".into(),
+            "only a published Agent release can create a new binding".into(),
         ));
     }
     let build_run_id = release
@@ -66,16 +69,24 @@ pub(super) async fn load_deployable_agent_release(
             "published Agent release BuildRun omitted its OCI publication".into(),
         )
     })?;
-    let artifact = OciArtifact {
-        uri: published.uri.clone(),
-        digest: published.digest.clone(),
-        media_type: published.media_type.clone(),
-    };
-    artifact.validate().map_err(ApplicationError::Internal)?;
+    let artifact = release.artifact.as_ref().ok_or_else(|| {
+        ApplicationError::Internal("published Agent release omitted its OCI artifact".into())
+    })?;
+    if published.digest != artifact.digest().as_str()
+        || published.media_type != artifact.media_type()
+        || published.size_bytes != artifact.size_bytes()
+    {
+        return Err(ApplicationError::Internal(
+            "published Agent release changed its OCI artifact identity".into(),
+        ));
+    }
     Ok(DeployableAgentRelease {
         asset,
         release,
         build,
-        artifact,
+        artifact_uri: published.uri.clone(),
+        artifact_digest: published.digest.clone(),
+        artifact_media_type: published.media_type.clone(),
+        artifact_size_bytes: published.size_bytes,
     })
 }

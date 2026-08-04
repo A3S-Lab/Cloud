@@ -111,11 +111,11 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             );
         }
     }
-    describe_query_parameters(parameters, path);
+    describe_query_parameters(parameters, method, path);
     Ok(())
 }
 
-fn describe_query_parameters(parameters: &mut Vec<Value>, path: &str) {
+fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
     if is_asset_git_advertisement(path) {
         upsert_parameter(
             parameters,
@@ -178,12 +178,34 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, path: &str) {
             }),
         );
     }
-    if path.ends_with("/operations") || path.ends_with("/build-runs") {
+    if method == "get"
+        && (path.ends_with("/operations")
+            || path.ends_with("/build-runs")
+            || path.ends_with("/agent-conversations")
+            || path.ends_with("/executions"))
+    {
         upsert_parameter(
             parameters,
             json!({
                 "name": "limit", "in": "query", "required": false,
                 "schema": { "type": "integer", "minimum": 1, "maximum": 200 }
+            }),
+        );
+    }
+    if method == "get" && (path.ends_with("/events") || path.ends_with("/events/stream")) {
+        let maximum = if path.ends_with("/stream") { 16 } else { 200 };
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 1024 }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": maximum }
             }),
         );
     }
@@ -375,6 +397,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Fleet"
     } else if path.contains("build-runs") {
         "Artifacts"
+    } else if path.contains("agent-conversations") || path.contains("agent-executions") {
+        "Agents"
     } else if path.contains("/assets")
         && (path.ends_with("/workloads") || path.ends_with("/deployments"))
     {
@@ -419,6 +443,7 @@ fn request_has_no_body(path: &str) -> bool {
         || path.ends_with("/yank")
         || path.ends_with("/deactivate")
         || path.ends_with("/bindings")
+        || path.ends_with("/agent-conversations")
         || path.ends_with("/source-connections/github")
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
 }
@@ -433,6 +458,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || path.ends_with("/verify")
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
+        || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
 }
 
 fn creates_resource(path: &str) -> bool {
@@ -452,6 +478,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/source-connections/github")
         || path.ends_with("/assets")
         || path.ends_with("/releases")
+        || path.ends_with("/agent-conversations")
 }
 
 fn is_asset_git_path(path: &str) -> bool {

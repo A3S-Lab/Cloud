@@ -1,4 +1,10 @@
 use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
+use crate::modules::agents::{
+    AgentsModule, AppendAgentExecutionEventsHandler, CreateAgentConversationHandler,
+    GetAgentConversationHandler, GetAgentExecutionEventsHandler, GetAgentExecutionHandler,
+    IAgentRepository, ListAgentConversationsHandler, ListAgentExecutionsHandler,
+    PostgresAgentRepository, StartAgentExecutionHandler,
+};
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
     ArtifactsModule, BoxBuildEvidenceGenerator, BuildFlowRuntime, BuildFlowRuntimeDependencies,
@@ -238,6 +244,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let executions: Arc<dyn IExecutionRepository> =
         Arc::new(PostgresExecutionRepository::new(executor.clone()));
+    let agents: Arc<dyn IAgentRepository> =
+        Arc::new(PostgresAgentRepository::new(executor.clone()));
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
     let workload_repository = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let resource_claims: Arc<dyn IResourceClaimRepository> =
@@ -732,6 +740,7 @@ pub async fn build_application_with_source_resolver(
             workloads,
             builds,
             executions,
+            agents,
             routes,
             secrets,
             sources,
@@ -799,6 +808,7 @@ struct ApplicationDependencies {
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     executions: Arc<dyn IExecutionRepository>,
+    agents: Arc<dyn IAgentRepository>,
     routes: Arc<dyn IEdgeRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
@@ -839,6 +849,7 @@ fn build_application_with_health(
         workloads,
         builds,
         executions,
+        agents,
         routes,
         secrets,
         sources,
@@ -864,6 +875,7 @@ fn build_application_with_health(
     } = dependencies;
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
+    let agent_conversation_environments = Arc::clone(&environments);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
     let agent_workload_environments = Arc::clone(&environments);
@@ -917,6 +929,7 @@ fn build_application_with_health(
     let get_asset_releases = Arc::clone(&asset_catalog);
     let agent_create_assets = Arc::clone(&assets);
     let agent_update_assets = Arc::clone(&assets);
+    let agent_execution_assets = Arc::clone(&assets);
     let bind_skill_assets = assets;
     let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
@@ -961,12 +974,21 @@ fn build_application_with_health(
     let get_build_logs = Arc::clone(&builds);
     let agent_create_builds = Arc::clone(&builds);
     let agent_update_builds = Arc::clone(&builds);
+    let agent_execution_builds = Arc::clone(&builds);
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let create_executions = Arc::clone(&executions);
     let cancel_executions = Arc::clone(&executions);
     let list_executions = Arc::clone(&executions);
     let get_executions = executions;
+    let create_agent_conversations = Arc::clone(&agents);
+    let start_agent_executions = Arc::clone(&agents);
+    let append_agent_execution_events = Arc::clone(&agents);
+    let get_agent_conversations = Arc::clone(&agents);
+    let list_agent_conversations = Arc::clone(&agents);
+    let get_agent_executions = Arc::clone(&agents);
+    let list_agent_executions = Arc::clone(&agents);
+    let get_agent_execution_events = agents;
     let accept_source_webhooks = source_webhooks;
     let create_source_subscriptions = Arc::clone(&source_subscriptions);
     let deactivate_source_subscriptions = Arc::clone(&source_subscriptions);
@@ -1226,6 +1248,22 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::executions::CancelExecution, _>(
                     CancelExecutionHandler::new(cancel_executions),
                 )
+                .command_handler::<crate::modules::agents::CreateAgentConversation, _>(
+                    CreateAgentConversationHandler::new(
+                        agent_conversation_environments,
+                        create_agent_conversations,
+                    ),
+                )
+                .command_handler::<crate::modules::agents::StartAgentExecution, _>(
+                    StartAgentExecutionHandler::new(
+                        start_agent_executions,
+                        agent_execution_assets,
+                        agent_execution_builds,
+                    ),
+                )
+                .command_handler::<crate::modules::agents::AppendAgentExecutionEvents, _>(
+                    AppendAgentExecutionEventsHandler::new(append_agent_execution_events),
+                )
                 .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
                     CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
                 )
@@ -1361,6 +1399,21 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::executions::GetExecution, _>(
                     GetExecutionHandler::new(get_executions),
                 )
+                .query_handler::<crate::modules::agents::ListAgentConversations, _>(
+                    ListAgentConversationsHandler::new(list_agent_conversations),
+                )
+                .query_handler::<crate::modules::agents::GetAgentConversation, _>(
+                    GetAgentConversationHandler::new(get_agent_conversations),
+                )
+                .query_handler::<crate::modules::agents::ListAgentExecutions, _>(
+                    ListAgentExecutionsHandler::new(list_agent_executions),
+                )
+                .query_handler::<crate::modules::agents::GetAgentExecution, _>(
+                    GetAgentExecutionHandler::new(get_agent_executions),
+                )
+                .query_handler::<crate::modules::agents::GetAgentExecutionEvents, _>(
+                    GetAgentExecutionEventsHandler::new(get_agent_execution_events),
+                )
                 .query_handler::<crate::modules::workloads::ListWorkloads, _>(
                     ListWorkloadsHandler::new(
                         list_workloads,
@@ -1424,6 +1477,7 @@ fn build_application_with_health(
         .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)
         .import(ArtifactsModule)
         .import(ExecutionsModule)
+        .import(AgentsModule)
         .import(OperationsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)

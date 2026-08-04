@@ -209,6 +209,7 @@ Status as of 2026-08-04:
 | G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. The manual external-provider workflow now binds a private GitHub revision and production input to that exact Box output, an operator HTTPS Registry graph, a locally verified Vault Transit signature, a restart-restored PostgreSQL BuildRun, and one `cloud.deployment@3` Workload handoff. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Retained successful executions of both operator gates still block G0 verification |
 | C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance and the clean real PostgreSQL/A3S Box gate pass. `C0.3` and `C0.4` remain planned. |
 | A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI/Web management projections. `A0.4` has immutable exact Agent release-to-Workload binding, server-side OCI injection, lifecycle reuse, migration 066 persistence, and REST/client/CLI/Web projections. `A0.5` now publishes exact hosted Git archives as immutable Skill bundles and binds them to Agent Workload revisions through migration 067, read-only Runtime Artifact mounts, rollback-safe revision history, and REST/client/CLI/Web surfaces. Retained external-provider and real PostgreSQL/Box evidence still blocks `A0.3` through `A0.5` verification. |
+| A1 | In progress | `A1.0` is verified. `A1.1` implements tenant-scoped `AgentConversation` and `AgentExecution` aggregates, exact published Agent-release binding, one common idempotency/Outbox write path, migration 068 plus typed A3S ORM persistence, an atomic contiguous semantic-event sequence, and REST/client/CLI/Web/shared-SSE projections. Focused tests exist; clean Linux Rust/PostgreSQL verification remains. Harness dispatch, immutable Skill/MCP/workspace/tool bindings, approvals, checkpoints, forks, and trajectories remain `A1.2` through `A1.5`. |
 | U0 | In progress; unavailable | `U0.1` pins the canonical A3S Use host contract and adds explicit capabilities, plan, apply, enablement, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. Root compatibility locking, production Manager composition, and every Plugins module/schema/API remain open; no user-facing capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Fleet dispatch/redelivery, exact acknowledgement and restart convergence, an executed real PostgreSQL gate for the new path, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
@@ -1410,7 +1411,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.5.0`. Focused tests regenerate the
+  and every API response pin contract `1.6.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -1672,7 +1673,7 @@ draft and yanked visibility for management and pinned deployments. New-binding
 selection accepts an optional exact semantic version or otherwise chooses the
 highest stable published version by semantic precedence; it excludes drafts,
 yanked releases, prereleases by default, and every release of an archived
-Asset. The same contract is exposed by OpenAPI `1.5.0`, the shared TypeScript
+Asset. The same contract is exposed by OpenAPI `1.6.0`, the shared TypeScript
 client, the standalone CLI, and the Web catalog summary.
 
 Migration 066 stores one optional immutable Agent binding on each Workload
@@ -1703,7 +1704,7 @@ read-only Artifact mount per Skill under `/a3s/skills/{asset_id}`; callers
 cannot inject mount names or paths, and Skills never become standalone Runtime
 units. Replay resolves the committed revision before fresh release admission,
 while rollback, Agent release updates, and Secret restarts preserve the exact
-Skill set. OpenAPI `1.5.0`, the shared client, CLI, and Web expose the same
+Skill set. OpenAPI `1.6.0`, the shared client, CLI, and Web expose the same
 tenant-authorized lifecycle.
 
 ### Remaining A0 work
@@ -2384,14 +2385,38 @@ Current `A1.0` implementation:
 These three consolidation slices close `A1.0`. They add no Agent-specific
 queue, cursor, object backend, or node-control channel.
 
-Implement `AgentConversation` as the aggregate that owns the next event
-sequence and conversation lifecycle. Implement `AgentExecution` as the
-aggregate that owns one run, its immutable bindings, current logical state,
-Operation identity, Harness identity, and optional parent execution. Tool
-calls, approvals, checkpoint creation, model output, failures, and terminal
-state are semantic execution events, not Flow history or Runtime logs.
+Current `A1.1` implementation:
 
-The bounded context may add only these durable record families:
+- `AgentConversation` owns organization/project/environment identity, active or
+  closed lifecycle, optimistic aggregate version, and the sole
+  `last_event_sequence` head;
+- `AgentExecution` owns one logical run, the exact published Agent
+  AssetRelease/BuildRun/OCI identity, current logical state, and a reserved
+  Operation identity;
+- creation and start commands reuse the common caller-scoped idempotency record
+  and transactional Outbox, while event append remains an internal command;
+- migration 068 and the split PostgreSQL repository use typed A3S ORM tables,
+  builders, row locks, and one transaction to append a contiguous event batch
+  and advance the conversation head atomically;
+- event content is canonical bounded inline JSON of at most 64 KiB with a
+  stored SHA-256 digest; immutable-object references begin only when a later
+  gate admits larger content;
+- REST, OpenAPI `1.6.0`, the shared TypeScript client, CLI, and Web expose
+  conversation creation/list/get, execution start/list/get, paged event reads,
+  and the shared resumable SSE stream; and
+- domain, application, concurrency, controller, contract, client, CLI, Web,
+  migration-registration, and source-architecture tests cover the slice.
+
+`A1.1` deliberately reserves rather than runs the Operation. It has no Harness
+identity, parent execution, tool, approval, or checkpoint fields and does not
+dispatch Fleet, Runtime, or Workload work. `A1.2` adds the Harness identity and
+versioned command/event-batch delivery; `A1.3` adds the remaining immutable
+bindings and tool events; `A1.4` adds approvals; and `A1.5` adds checkpoints,
+forks, and trajectories. Model output, failures, and terminal state already
+use semantic execution events rather than Flow history or Runtime logs.
+
+Across `A1.1` through `A1.5`, the bounded context may add only these durable
+record families:
 
 - `agent_conversations`, including the sole `last_event_sequence` head;
 - `agent_executions`;
@@ -2399,6 +2424,10 @@ The bounded context may add only these durable record families:
 - immutable execution-binding child records;
 - `agent_approval_checkpoints`; and
 - `agent_execution_checkpoints`.
+
+`A1.1` creates only the first three families and stores the exact Agent release
+binding on `agent_executions`; later migrations may add only the named binding,
+approval, and checkpoint records when their owning sub-gates are implemented.
 
 Bounded event content may be stored inline. Larger prompt, response, tool, and
 checkpoint content must be written once to the shared immutable object backend

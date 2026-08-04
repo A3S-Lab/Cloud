@@ -7,6 +7,7 @@ import './styles/workloads.css';
 import './styles/workload-operations.css';
 import './styles/search.css';
 import './styles/builds.css';
+import './styles/agents.css';
 
 const root = document.getElementById('root');
 

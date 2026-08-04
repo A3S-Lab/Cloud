@@ -17,7 +17,8 @@ pub use application::queries::{
     UploadAssetGitPackHandler,
 };
 pub use application::{
-    AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
+    load_deployable_agent_release, AssetCatalogApplicationService, AssetGitApplicationService,
+    AssetGitApplicationServiceOptions, DeployableAgentRelease,
 };
 
 pub use domain::{

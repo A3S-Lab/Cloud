@@ -47,7 +47,7 @@ describe('ConsoleNavigation', () => {
       root?.render(
         <ConsoleNavigation
           activeSection='workloads'
-          counts={{ workloads: 3, delivery: 2, edge: 1, operations: 4 }}
+          counts={{ workloads: 3, agents: 5, delivery: 2, edge: 1, operations: 4 }}
           onSelect={onSelect}
         />
       );
@@ -57,17 +57,24 @@ describe('ConsoleNavigation', () => {
     expect(buttons.map((button) => button.querySelector('strong')?.textContent)).toEqual([
       'Overview',
       'Workloads',
+      'Agents',
       'Delivery',
       'Edge',
     ]);
-    expect(buttons.map((button) => button.querySelector('em')?.textContent)).toEqual(['4', '3', '2', '1']);
+    expect(buttons.map((button) => button.querySelector('em')?.textContent)).toEqual([
+      '4',
+      '3',
+      '5',
+      '2',
+      '1',
+    ]);
     expect(buttons[1]?.getAttribute('aria-label')).toBe('Workloads, Runtime convergence, 3 workloads');
     expect(buttons.filter((button) => button.getAttribute('aria-current') === 'page')).toHaveLength(1);
     expect(buttons[1]?.getAttribute('aria-current')).toBe('page');
-    expect(buttons.map((button) => button.tabIndex)).toEqual([-1, 0, -1, -1]);
+    expect(buttons.map((button) => button.tabIndex)).toEqual([-1, 0, -1, -1, -1]);
 
     await act(async () => buttons[2]?.click());
-    expect(onSelect).toHaveBeenCalledWith('delivery');
+    expect(onSelect).toHaveBeenCalledWith('agents');
   });
 
   it('supports automatic keyboard selection with wrapping and boundary keys', async () => {
@@ -79,7 +86,7 @@ describe('ConsoleNavigation', () => {
       root?.render(
         <ConsoleNavigation
           activeSection='overview'
-          counts={{ workloads: 3, delivery: 2, edge: 1, operations: 4 }}
+          counts={{ workloads: 3, agents: 5, delivery: 2, edge: 1, operations: 4 }}
           onSelect={onSelect}
         />
       );
@@ -91,10 +98,10 @@ describe('ConsoleNavigation', () => {
       buttons[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
     );
     expect(onSelect).toHaveBeenLastCalledWith('edge');
-    expect(document.activeElement).toBe(buttons[3]);
+    expect(document.activeElement).toBe(buttons[4]);
 
     await act(async () =>
-      buttons[3]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+      buttons[4]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     );
     expect(onSelect).toHaveBeenLastCalledWith('overview');
     expect(document.activeElement).toBe(buttons[0]);
@@ -103,6 +110,6 @@ describe('ConsoleNavigation', () => {
       buttons[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
     );
     expect(onSelect).toHaveBeenLastCalledWith('edge');
-    expect(document.activeElement).toBe(buttons[3]);
+    expect(document.activeElement).toBe(buttons[4]);
   });
 });

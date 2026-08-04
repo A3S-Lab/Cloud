@@ -38,6 +38,10 @@ Log commands additionally accept an opaque `--cursor`, a `--limit` from 1
 through 256, and an optional `--stream=stdout|stderr` filter. These options are
 rejected for commands that do not read logs.
 
+`agent-conversations events` accepts an opaque `--cursor` up to 1024
+characters and a `--limit` from 1 through 200. It reads semantic execution
+events rather than Runtime logs, so `--stream` is rejected.
+
 `search resources <query>` requires organization context and accepts a
 `--limit` from 1 through 50, defaulting to 20. The query must contain 1 through
 128 safe characters. Validation happens before transport, and Cloud performs
@@ -153,6 +157,13 @@ asset-releases deploy <asset-id> <release-id> --file=<path>
 asset-releases update <workload-id> <asset-id> <release-id> --file=<path>
 skill-bindings bind <workload-id> <skill-asset-id> <skill-release-id>
 skill-bindings unbind <workload-id> <skill-asset-id>
+agent-conversations list
+agent-conversations get <conversation-id>
+agent-conversations create
+agent-conversations events <conversation-id> [--cursor=<cursor>] [--limit=<1..200>]
+agent-executions list <conversation-id>
+agent-executions get <execution-id>
+agent-executions start <conversation-id> <agent-asset-id> <agent-release-id>
 nodes list
 nodes bootstrap <name> --enrollment-token-stdin --expires-at=<timestamp> --agent-release-url=<https-url> --agent-release-sha256=<digest> --node-config=<absolute-acl-path>
 nodes ready <node-id> --expected-version=<version>
@@ -226,6 +237,16 @@ revision without it. Older revisions remain available for rollback. Cloud
 derives read-only Runtime Artifact mount names and targets, and never schedules
 a Skill as a standalone service. Both commands require a caller-owned
 idempotency key.
+
+`agent-conversations create` creates one tenant-scoped durable conversation in
+the selected organization, project, and environment. `agent-executions start`
+starts one logical execution bound to the exact published Agent release and
+requires the conversation ID, Agent Asset ID, Agent AssetRelease ID, and a
+caller-owned idempotency key. List/get commands expose the authoritative
+projections, while `agent-conversations events` reads the contiguous semantic
+history. This `A1.1` surface reserves an Operation identity but does not yet
+dispatch a Harness, Fleet command, Workload, or Runtime unit; `A1.2` owns that
+lifecycle.
 
 `build-runs logs` currently reports the API's explicit `503 Service
 Unavailable` result. A successful log page is unavailable until A3S Box

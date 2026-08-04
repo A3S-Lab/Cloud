@@ -3,6 +3,7 @@ import type { CloudApi } from '../../lib/api';
 import type {
   Asset,
   AssetRelease,
+  AgentConversation,
   BuildRun,
   Deployment,
   Environment,
@@ -12,6 +13,7 @@ import type {
   ServiceTemplate,
   Workload,
 } from '../../types/api';
+import { AgentExecutionPanel } from '../agents/agent-execution-panel';
 import { BuildRunLogPanel } from '../logs/build-run-log-panel';
 import { LiveLogPanel } from '../logs/live-log-panel';
 import { BuildEvidencePanel } from './build-evidence-panel';
@@ -198,6 +200,57 @@ export function WorkloadsSection({
         workloadId={workload?.id ?? null}
         revisionId={logRevisionId}
         generation={logGeneration}
+      />
+    </section>
+  );
+}
+
+interface AgentSectionProps {
+  api: CloudApi;
+  organizationId: string | null;
+  projectId: string | null;
+  environmentId: string | null;
+  conversations: AgentConversation[];
+  selectedConversationId: string;
+  assets: Asset[];
+  assetReleases: AssetRelease[];
+  onSelectConversation: (conversationId: string) => void;
+  onConversationChanged: (conversation: AgentConversation) => void;
+  onError: (cause: unknown) => void;
+}
+
+export function AgentSection({
+  api,
+  organizationId,
+  projectId,
+  environmentId,
+  conversations,
+  selectedConversationId,
+  assets,
+  assetReleases,
+  onSelectConversation,
+  onConversationChanged,
+  onError,
+}: AgentSectionProps) {
+  return (
+    <section
+      id='console-agents-panel'
+      className='console-section agents-section'
+      role='tabpanel'
+      aria-labelledby='console-agents-tab'
+    >
+      <AgentExecutionPanel
+        api={api}
+        organizationId={organizationId}
+        projectId={projectId}
+        environmentId={environmentId}
+        conversations={conversations}
+        selectedConversationId={selectedConversationId}
+        assets={assets}
+        releases={assetReleases}
+        onSelectConversation={onSelectConversation}
+        onConversationChanged={onConversationChanged}
+        onError={onError}
       />
     </section>
   );

@@ -611,6 +611,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/067_skill_workload_revision_bindings.sql"
             )),
         ),
+        Migration::new(
+            "068",
+            "Agent conversations and executions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/068_agent_conversations_and_executions.sql"
+            )),
+        ),
     ]
 }
 

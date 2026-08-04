@@ -304,6 +304,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists deployments cascade;
              drop table if exists workload_revisions cascade;
              drop table if exists workloads cascade;
+             drop table if exists agent_execution_events cascade;
+             drop table if exists agent_executions cascade;
+             drop table if exists agent_conversations cascade;
              drop table if exists executions cascade;
              drop table if exists routes cascade;
              drop table if exists gateway_route_scopes cascade;
@@ -356,7 +359,21 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 65);
+    assert_eq!(applied, 68);
+    for table in [
+        "agent_conversations",
+        "agent_executions",
+        "agent_execution_events",
+    ] {
+        let relation = database
+            .fetch_one_as(
+                sql_query::<Option<String>>("select to_regclass(")
+                    .bind(format!("public.{table}"))
+                    .append(")::text"),
+            )
+            .await?;
+        assert_eq!(relation.as_deref(), Some(table));
+    }
     let node_command_kind_constraint = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'node_commands'::regclass and conname = 'node_commands_command_kind_check'",
@@ -1066,6 +1083,30 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "066",
+                "Agent workload release bindings",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/066_agent_workload_release_bindings.sql"
+                )),
+            ),
+            Migration::new(
+                "067",
+                "Skill workload revision bindings",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/067_skill_workload_revision_bindings.sql"
+                )),
+            ),
+            Migration::new(
+                "068",
+                "Agent conversations and executions",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/068_agent_conversations_and_executions.sql"
+                )),
+            ),
+            Migration::new(
+                "069",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

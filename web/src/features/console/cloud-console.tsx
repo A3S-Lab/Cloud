@@ -4,6 +4,7 @@ import { CloudApi } from '../../lib/api';
 import type {
   Asset,
   AssetRelease,
+  AgentConversation,
   BuildRun,
   Environment,
   GatewayCertificate,
@@ -17,7 +18,13 @@ import type {
 import { useOperationStream } from '../operations/use-operation-stream';
 import { type CloudLocation, parseCloudLocation, selectionFromSearchResult } from '../search/cloud-location';
 import { ConsoleNavigation, sectionForResourceKind } from './console-navigation';
-import { DeliverySection, EdgeSection, OverviewSection, WorkloadsSection } from './console-sections';
+import {
+  AgentSection,
+  DeliverySection,
+  EdgeSection,
+  OverviewSection,
+  WorkloadsSection,
+} from './console-sections';
 import { ConsoleTopbar } from './console-topbar';
 import { ContextBar } from './context-bar';
 import { EnvironmentHeading } from './environment-summary';
@@ -57,6 +64,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
   const [operations, setOperations] = useState<Operation[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetReleases, setAssetReleases] = useState<AssetRelease[]>([]);
+  const [agentConversations, setAgentConversations] = useState<AgentConversation[]>([]);
+  const [selectedConversationId, setSelectedConversationId] = useState('');
   const [buildRuns, setBuildRuns] = useState<BuildRun[]>([]);
   const [selectedBuildRunId, setSelectedBuildRunId] = useState(() =>
     initialLocation?.resourceKind === 'build_run' ? (initialLocation.resourceId ?? '') : ''
@@ -132,6 +141,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       setRoutes([]);
       setAssets([]);
       setAssetReleases([]);
+      setAgentConversations([]);
+      setSelectedConversationId('');
       setWorkloadId('');
       return;
     }
@@ -238,6 +249,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       setBuildRuns([]);
       setSelectedBuildRunId('');
       setWorkloadId('');
+      setAgentConversations([]);
+      setSelectedConversationId('');
       return;
     }
     let stopped = false;
@@ -247,15 +260,18 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       if (refreshing) return;
       refreshing = true;
       try {
-        const [workloadItems, routeItems, buildItems] = await Promise.all([
+        const [workloadItems, routeItems, buildItems, conversationItems] = await Promise.all([
           api.listWorkloads(organizationId, projectId, environmentId, controller.signal),
           api.listRoutes(organizationId, projectId, environmentId, controller.signal),
           api.listBuildRuns(organizationId, projectId, environmentId, controller.signal),
+          api.listAgentConversations(organizationId, projectId, environmentId, controller.signal),
         ]);
         if (stopped) return;
         setWorkloads(workloadItems);
         setRoutes(routeItems);
         setBuildRuns(buildItems);
+        setAgentConversations(conversationItems);
+        setSelectedConversationId((current) => selectExisting(current, conversationItems));
         setSelectedBuildRunId((current) => selectExisting(current, buildItems));
         setWorkloadId((current) => selectExisting(current, workloadItems));
         setError(null);
@@ -278,16 +294,20 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
     if (!organizationId || !projectId || !environmentId) {
       throw new Error('Choose an organization, project, and environment first.');
     }
-    const [workloadItems, routeItems, buildItems, certificateItems, operationItems] = await Promise.all([
-      api.listWorkloads(organizationId, projectId, environmentId),
-      api.listRoutes(organizationId, projectId, environmentId),
-      api.listBuildRuns(organizationId, projectId, environmentId),
-      api.listGatewayCertificates(organizationId),
-      api.listOperations(organizationId),
-    ]);
+    const [workloadItems, routeItems, buildItems, conversationItems, certificateItems, operationItems] =
+      await Promise.all([
+        api.listWorkloads(organizationId, projectId, environmentId),
+        api.listRoutes(organizationId, projectId, environmentId),
+        api.listBuildRuns(organizationId, projectId, environmentId),
+        api.listAgentConversations(organizationId, projectId, environmentId),
+        api.listGatewayCertificates(organizationId),
+        api.listOperations(organizationId),
+      ]);
     setWorkloads(workloadItems);
     setRoutes(routeItems);
     setBuildRuns(buildItems);
+    setAgentConversations(conversationItems);
+    setSelectedConversationId((current) => selectExisting(current, conversationItems));
     setSelectedBuildRunId((current) => selectExisting(current, buildItems));
     setCertificates(certificateItems);
     setOperations(operationItems);
@@ -405,6 +425,7 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           activeSection={activeSection}
           counts={{
             workloads: workloads.length,
+            agents: agentConversations.length,
             delivery: buildRuns.length,
             edge: routes.length,
             operations: activeOperations,
@@ -447,6 +468,27 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
             onRollback={rollbackSelectedWorkload}
             onBindSkill={bindSkillToSelectedWorkload}
             onUnbindSkill={unbindSkillFromSelectedWorkload}
+          />
+        ) : null}
+
+        {activeSection === 'agents' ? (
+          <AgentSection
+            api={api}
+            organizationId={organizationId || null}
+            projectId={projectId || null}
+            environmentId={environmentId || null}
+            conversations={agentConversations}
+            selectedConversationId={selectedConversationId}
+            assets={assets}
+            assetReleases={assetReleases}
+            onSelectConversation={setSelectedConversationId}
+            onConversationChanged={(conversation) => {
+              setAgentConversations((current) => [
+                conversation,
+                ...current.filter((candidate) => candidate.id !== conversation.id),
+              ]);
+            }}
+            onError={reportError}
           />
         ) : null}
 

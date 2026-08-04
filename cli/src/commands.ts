@@ -1,5 +1,6 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
+import { executeAgentCommand } from './agent-commands';
 import { executeAssetCommand } from './asset-commands';
 import {
   positionalResourceName,
@@ -140,6 +141,10 @@ export async function executeCommand(
   });
   if (nodeResult !== undefined) {
     return nodeResult;
+  }
+  const agentResult = await executeAgentCommand(command, arguments_, context, cloudApi);
+  if (agentResult !== undefined) {
+    return agentResult;
   }
   const assetResult = await executeAssetCommand(command, arguments_, context, cloudApi);
   if (assetResult !== undefined) {

@@ -39,6 +39,13 @@ Commands:
   asset-releases update WORKLOAD ASSET RELEASE Update an Agent workload to one published release
   skill-bindings bind WORKLOAD SKILL RELEASE Bind one exact Skill release to an Agent workload
   skill-bindings unbind WORKLOAD SKILL Unbind one Skill Asset through a new workload revision
+  agent-conversations list List Agent conversations in the selected environment
+  agent-conversations get ID Get one Agent conversation
+  agent-conversations create Create one Agent conversation idempotently
+  agent-conversations events ID Read one page of semantic execution events
+  agent-executions list CONVERSATION List executions in one Agent conversation
+  agent-executions get ID Get one Agent execution
+  agent-executions start CONVERSATION AGENT RELEASE Start one exact Agent release idempotently
   nodes list            List nodes in the selected organization
   nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready
@@ -92,8 +99,8 @@ Global options:
   --environment <uuid>    Environment context
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
-  --cursor <cursor>       Opaque cursor for a log command
-  --limit <n>             Search limit (1..50) or log record limit (1..256)
+  --cursor <cursor>       Opaque cursor for a log or Agent event command
+  --limit <n>             Search, log, or Agent event page limit
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation

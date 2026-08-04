@@ -88,6 +88,17 @@ client transports the typed digest-pinned template and authoritative projection
 without inferring placement or provider state; input and process environment
 are persisted desired state and must not contain secret material.
 
+`listAgentConversations`, `getAgentConversation`, and
+`createAgentConversation` expose the `A1.1` conversation lifecycle.
+`listAgentExecutions`, `getAgentExecution`, and `startAgentExecution` bind one
+logical execution to an exact published Agent AssetRelease and its immutable
+BuildRun/OCI identity. `getAgentExecutionEvents` reads the authoritative
+contiguous semantic sequence with a bounded opaque cursor, while
+`agentExecutionEventStreamUrl` builds the credential-free shared SSE URL used
+by Web. Conversation creation and execution start require caller-owned
+idempotency keys. This contract reserves an Operation identity but does not
+claim Harness, Fleet, Workload, or Runtime dispatch; those are `A1.2` work.
+
 `issueEnrollmentToken` validates the fixed `a3sn_` plus 64-lowercase-hex
 credential format and RFC 3339 expiry before transport, then calls the existing
 tenant-scoped Fleet command with a caller-owned idempotency key. Cloud remains

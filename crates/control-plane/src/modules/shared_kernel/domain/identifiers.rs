@@ -67,3 +67,5 @@ identifier!(BuildRunId);
 identifier!(ExecutionId);
 identifier!(AssetId);
 identifier!(AssetReleaseId);
+identifier!(AgentConversationId);
+identifier!(AgentExecutionId);

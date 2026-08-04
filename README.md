@@ -160,6 +160,13 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   idempotent BuildRun retry and `cloud.build@5` Flow; and retain canonical
   SemVer, immutable source identity, optimistic concurrency, replay-safe
   writes, and A3S ORM as the only database boundary
+- **Durable Agent Execution Foundation**: Create tenant-scoped Agent
+  conversations, start logical executions pinned to one exact published Agent
+  release, append bounded digest-verified semantic events under one contiguous
+  conversation sequence, and query or stream the same authoritative history
+  through REST, the typed client, CLI, and Web. This `A1.1` slice reserves the
+  correlated Operation identity but does not yet dispatch a Harness or Runtime
+  unit; that lifecycle begins in `A1.2`
 - **Focused Web Operations**: Navigate responsive Overview, Workloads,
   Delivery, and Edge workspaces; route authorized search and validated deep
   links to the owning section; and inspect deployment history, route and
@@ -188,7 +195,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   stdin-only credentials; and search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.5.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.6.0`, and reject incompatible or invalidly deprecated contract changes
 - **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
   Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
@@ -224,7 +231,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 | `A0` — Release catalog | Immutable Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern `2026-07-28` MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
-| `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | Planned (`A1.0` verified) |
+| `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, Linux verification pending) |
 | `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed serving, OpenAI-compatible traffic, scoped keys, Providers, routing, usage, and governed self-service | Planned |
@@ -428,9 +435,14 @@ implementation, Operation snapshots reuse the same polling transport without
 fabricating a sequence, log chunks and node Artifacts share
 one namespaced immutable-object client behind typed adapters, and the node
 agent uses one typed durable outbound-batch primitive for exact restart replay
-and receipt-gated settlement. These are reusable foundations only; user-visible
-Agent execution begins with `A1.1` only after `A0.3` supplies published,
-immutable release identities.
+and receipt-gated settlement. `A1.1` now adds durable `AgentConversation` and
+`AgentExecution` aggregates, exact published Agent-release binding, one
+transactional contiguous semantic-event sequence, bounded inline JSON content
+with SHA-256 verification, common idempotency and Outbox reuse, typed A3S ORM
+persistence, REST/client/CLI/Web projections, and resumable SSE. It reserves
+the correlated Operation identity but deliberately does not dispatch a
+Harness, Fleet command, or Runtime unit; `A1.2` owns that versioned execution
+protocol and lifecycle. Real Linux PostgreSQL verification still remains.
 
 `G0` now routes every new BuildRun through `cloud.build@5`. Flow remains the
 workflow and recovery authority; Fleet's `node_commands` table remains the
@@ -730,7 +742,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.5.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.6.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -926,7 +938,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.5.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.6.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record

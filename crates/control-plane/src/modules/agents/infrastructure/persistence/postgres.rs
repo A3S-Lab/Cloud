@@ -1,0 +1,223 @@
+mod queries;
+mod rows;
+mod schema;
+mod writes;
+
+use crate::infrastructure::{idempotency_replay, transaction_error};
+use crate::modules::agents::domain::{
+    AgentConversation, AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
+    AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
+    AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, CreateAgentConversationWrite,
+    IAgentRepository, StartAgentExecutionWrite,
+};
+use crate::modules::shared_kernel::domain::{
+    AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
+    ProjectId, RepositoryError,
+};
+use a3s_orm::PostgresExecutor;
+use async_trait::async_trait;
+
+#[derive(Clone)]
+pub struct PostgresAgentRepository {
+    executor: PostgresExecutor,
+}
+
+impl PostgresAgentRepository {
+    pub const fn new(executor: PostgresExecutor) -> Self {
+        Self { executor }
+    }
+}
+
+#[async_trait]
+impl IAgentRepository for PostgresAgentRepository {
+    async fn create_conversation(
+        &self,
+        write: CreateAgentConversationWrite,
+    ) -> Result<AgentConversationWrite, RepositoryError> {
+        writes::create_conversation(&self.executor, write).await
+    }
+
+    async fn start_execution(
+        &self,
+        write: StartAgentExecutionWrite,
+    ) -> Result<AgentExecutionWrite, RepositoryError> {
+        writes::start_execution(&self.executor, write).await
+    }
+
+    async fn append_events(
+        &self,
+        write: AppendAgentExecutionEventsWrite,
+    ) -> Result<AgentExecutionEventsWrite, RepositoryError> {
+        writes::append_events(&self.executor, write).await
+    }
+
+    async fn replay_conversation(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<AgentConversation>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(replay) = idempotency_replay::<AgentConversationWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    queries::load_conversation_by_id(
+                        transaction,
+                        replay.value.organization_id,
+                        replay.value.conversation_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_execution(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<AgentExecution>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(replay) = idempotency_replay::<AgentExecutionWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    queries::load_execution_by_id(
+                        transaction,
+                        replay.value.organization_id,
+                        replay.value.execution_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn find_conversation(
+        &self,
+        organization_id: OrganizationId,
+        conversation_id: AgentConversationId,
+    ) -> Result<Option<AgentConversation>, RepositoryError> {
+        queries::find_conversation(&self.executor, organization_id, conversation_id).await
+    }
+
+    async fn list_conversations(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        limit: usize,
+    ) -> Result<Vec<AgentConversation>, RepositoryError> {
+        queries::list_conversations(
+            &self.executor,
+            organization_id,
+            project_id,
+            environment_id,
+            limit,
+        )
+        .await
+    }
+
+    async fn find_execution(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentExecution>, RepositoryError> {
+        queries::find_execution(&self.executor, organization_id, execution_id).await
+    }
+
+    async fn list_executions(
+        &self,
+        organization_id: OrganizationId,
+        conversation_id: AgentConversationId,
+        limit: usize,
+    ) -> Result<Vec<AgentExecution>, RepositoryError> {
+        queries::list_executions(&self.executor, organization_id, conversation_id, limit).await
+    }
+
+    async fn list_events(
+        &self,
+        organization_id: OrganizationId,
+        conversation_id: AgentConversationId,
+        after_sequence: Option<u64>,
+        limit: usize,
+    ) -> Result<Vec<AgentExecutionEvent>, RepositoryError> {
+        queries::list_events(
+            &self.executor,
+            organization_id,
+            conversation_id,
+            after_sequence,
+            limit,
+        )
+        .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn agent_persistence_uses_only_typed_a3s_orm_queries() {
+        for (name, source) in [
+            ("repository", include_str!("postgres.rs")),
+            ("queries", include_str!("postgres/queries.rs")),
+            ("rows", include_str!("postgres/rows.rs")),
+            ("schema", include_str!("postgres/schema.rs")),
+            ("writes", include_str!("postgres/writes.rs")),
+        ] {
+            let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+            for forbidden in [
+                "sql_query",
+                "tokio_postgres",
+                "sqlx::",
+                "diesel::",
+                "sea_orm::",
+            ] {
+                assert!(
+                    !production.contains(forbidden),
+                    "Agent {name} persistence must use typed A3S ORM builders; found {forbidden}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn migration_keeps_one_conversation_head_and_no_duplicate_authority() {
+        let migration = include_str!(
+            "../../../../../../../migrations/068_agent_conversations_and_executions.sql"
+        );
+        for table in [
+            "create table agent_conversations",
+            "create table agent_executions",
+            "create table agent_execution_events",
+        ] {
+            assert!(migration.contains(table), "missing {table}");
+        }
+        assert_eq!(migration.matches("last_event_sequence").count(), 2);
+        for forbidden in [
+            "agent_execution_heads",
+            "agent_event_contents",
+            "agent_idempotency",
+            "agent_jobs",
+            "agent_queues",
+        ] {
+            assert!(
+                !migration.contains(forbidden),
+                "found forbidden {forbidden}"
+            );
+        }
+    }
+}
