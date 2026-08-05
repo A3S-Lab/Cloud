@@ -105,9 +105,7 @@ function OverviewStatusBand({
           <StatusIcon size={22} />
         </span>
         <div>
-          <strong>
-            {converged ? t('Desired state is converged') : t('Convergence is in progress')}
-          </strong>
+          <strong>{converged ? t('Desired state is converged') : t('Convergence is in progress')}</strong>
           <small>
             {converged
               ? t('No active operation is changing the selected environment.')

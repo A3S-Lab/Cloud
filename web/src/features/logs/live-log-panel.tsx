@@ -32,9 +32,7 @@ export function LiveLogPanel({ api, organizationId, workloadId, revisionId, gene
       eyebrow={t('Bounded live delivery')}
       title={t('Workload logs')}
       available={revisionId !== null}
-      contextLabel={
-        generation ? t('Generation {generation}', { generation }) : t('No active revision')
-      }
+      contextLabel={generation ? t('Generation {generation}', { generation }) : t('No active revision')}
       unavailableMessage={t('Logs become available after a revision is scheduled.')}
       records={stream.records}
       state={stream.state}

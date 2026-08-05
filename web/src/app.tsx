@@ -23,7 +23,9 @@ export function App() {
         <main className='standalone-access'>
           <header>
             <div className='brand-lockup'>
-              <span className='brand-mark' aria-hidden='true'>A3</span>
+              <span className='brand-mark' aria-hidden='true'>
+                A3
+              </span>
               <span>A3S OS · A3S Web</span>
             </div>
             <LanguageSwitcher />

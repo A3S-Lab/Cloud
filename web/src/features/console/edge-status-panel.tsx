@@ -109,7 +109,9 @@ function CertificateProjection({
         <ShieldCheck size={16} />
         <span>
           <strong>{t('Certificate projection unavailable')}</strong>
-          <small>{t('Referenced certificate {id} is absent from this snapshot.', { id: shortId(certificateId) })}</small>
+          <small>
+            {t('Referenced certificate {id} is absent from this snapshot.', { id: shortId(certificateId) })}
+          </small>
         </span>
       </div>
     );

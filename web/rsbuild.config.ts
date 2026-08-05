@@ -18,10 +18,7 @@ const directionContractPlugin = {
       const localizedHtml = html.replace(/<html(?:\s[^>]*)?>/, '<html lang="zh-CN">');
       if (localizedHtml.includes('90c8e585')) return localizedHtml;
 
-      return localizedHtml.replace(
-        /<body([^>]*)>/,
-        (openingTag) => `${openingTag}\n${directionContract}`
-      );
+      return localizedHtml.replace(/<body([^>]*)>/, (openingTag) => `${openingTag}\n${directionContract}`);
     });
   },
 };

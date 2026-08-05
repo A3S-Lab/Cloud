@@ -419,7 +419,6 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
       </div>
 
       <main className='workspace'>
-
         {error ? (
           <div className='error-banner' role='alert'>
             <CircleDot size={16} />

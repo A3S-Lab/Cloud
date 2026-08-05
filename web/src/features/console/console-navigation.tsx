@@ -126,9 +126,7 @@ export function ConsoleNavigation({ activeSection, counts, onSelect }: ConsoleNa
                 <strong>{t(section.label)}</strong>
                 <small>{t(section.description)}</small>
               </span>
-              {count === null ? null : (
-                <em title={`${count} ${t(section.countLabel ?? '')}`}>{count}</em>
-              )}
+              {count === null ? null : <em title={`${count} ${t(section.countLabel ?? '')}`}>{count}</em>}
             </button>
           );
         })}

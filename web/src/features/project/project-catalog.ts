@@ -82,7 +82,10 @@ export const PRODUCT_PILLARS: readonly ProductPillar[] = [
   {
     id: 'workflow',
     title: copy('Workflow 自主工作流编排', 'Workflow autonomous orchestration'),
-    promise: copy('把业务本体变成可执行、可恢复的长期流程', 'Turn business ontology into executable, recoverable long-running workflows'),
+    promise: copy(
+      '把业务本体变成可执行、可恢复的长期流程',
+      'Turn business ontology into executable, recoverable long-running workflows'
+    ),
     description: copy(
       '以业务对象、关系、规则、目标和约束为统一语义，让系统从意图生成计划，协调 Agent、工具与人工节点，并在中断后从持久状态继续。',
       'Use business objects, relationships, rules, goals, and constraints as shared semantics so the system can plan from intent, coordinate Agents, tools, and people, and resume from durable state.'
@@ -100,7 +103,10 @@ export const PRODUCT_PILLARS: readonly ProductPillar[] = [
   {
     id: 'agent-factory',
     title: copy('Agent Factory 异构智能体工厂', 'Heterogeneous Agent Factory'),
-    promise: copy('把一次性 Agent 原型变成可版本化的数字资产', 'Turn one-off Agent prototypes into versioned digital assets'),
+    promise: copy(
+      '把一次性 Agent 原型变成可版本化的数字资产',
+      'Turn one-off Agent prototypes into versioned digital assets'
+    ),
     description: copy(
       '统一适配不同 Agent 框架、模型、Skill、MCP 与安全策略，从评测、发布、装配、部署到运行证据都复用同一资产和执行链路。A3S Code Harness 是唯一运行所有者。',
       'Adapt different Agent frameworks, models, Skills, MCP servers, and security policies through one lifecycle. Evaluation, publishing, assembly, deployment, and run evidence share one asset and execution path, with A3S Code Harness as the sole run owner.'
@@ -118,7 +124,10 @@ export const PRODUCT_PILLARS: readonly ProductPillar[] = [
   {
     id: 'security-operations',
     title: copy('安全监控中台', 'Security operations center'),
-    promise: copy('让每次访问、执行与策略决策都可观测、可约束、可追溯', 'Make every request, execution, and policy decision observable, constrained, and traceable'),
+    promise: copy(
+      '让每次访问、执行与策略决策都可观测、可约束、可追溯',
+      'Make every request, execution, and policy decision observable, constrained, and traceable'
+    ),
     description: copy(
       '关联 Gateway 请求路径、Runtime 与 Box 运行证据、Agent 语义事件及主机安全信号，以统一身份和租户上下文完成检测、策略执行、审计与事件溯源。',
       'Correlate Gateway request paths, Runtime and Box evidence, Agent semantic events, and host security signals under one identity and tenant context for detection, policy enforcement, audit, and investigation.'
@@ -410,7 +419,10 @@ export const DOCUMENTATION_VERSIONS: readonly DocumentationVersion[] = [
       '跟随当前代码与 2026-08-03 路线图快照，包含已验证、实现中、待复认证及计划能力。',
       'Tracks the current code and the 2026-08-03 roadmap snapshot, including verified, active, re-certification, and planned work.'
     ),
-    source: copy('来源：当前分支、README、ROADMAP 与开发计划', 'Source: current branch, README, ROADMAP, and development plan'),
+    source: copy(
+      '来源：当前分支、README、ROADMAP 与开发计划',
+      'Source: current branch, README, ROADMAP, and development plan'
+    ),
   },
   {
     id: '0.1',
@@ -420,7 +432,10 @@ export const DOCUMENTATION_VERSIONS: readonly DocumentationVersion[] = [
       '对应 Cargo 与 Web Package 0.1.0，以及 REST v1 的 1.6.0 合同。版本号不代表全部路线图 Gate 已验证。',
       'Covers Cargo and web package 0.1.0 with REST v1 contract 1.6.0. The version number does not imply that every roadmap gate is verified.'
     ),
-    source: copy('来源：Cargo.toml、package.json 与 openapi/v1.json', 'Source: Cargo.toml, package.json, and openapi/v1.json'),
+    source: copy(
+      '来源：Cargo.toml、package.json 与 openapi/v1.json',
+      'Source: Cargo.toml, package.json, and openapi/v1.json'
+    ),
   },
 ];
 

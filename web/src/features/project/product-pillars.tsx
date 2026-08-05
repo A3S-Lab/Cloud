@@ -1,4 +1,12 @@
-import { Boxes, CheckCircle2, Factory, GitBranch, ShieldCheck, Workflow, type LucideIcon } from 'lucide-react';
+import {
+  Boxes,
+  CheckCircle2,
+  Factory,
+  GitBranch,
+  ShieldCheck,
+  Workflow,
+  type LucideIcon,
+} from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { CAPABILITY_STATES, localize, PRODUCT_PILLARS, type ProductPillar } from './project-catalog';
 
@@ -24,7 +32,9 @@ export function ProductPillars() {
   return (
     <section id='products' className='home-section product-pillars' aria-labelledby='product-pillars-title'>
       <header className='home-section-heading'>
-        <h2 id='product-pillars-title'>{zh ? '三大产品，把 AI 变成可运营系统' : 'Three products turn AI into an operable system'}</h2>
+        <h2 id='product-pillars-title'>
+          {zh ? '三大产品，把 AI 变成可运营系统' : 'Three products turn AI into an operable system'}
+        </h2>
         <p>
           {zh
             ? '自主工作流编排负责业务意图，异构智能体工厂负责规模化交付，安全监控中台负责运行治理。A3S OS 将三者收敛到同一套平台。'
@@ -41,7 +51,9 @@ export function ProductPillars() {
       <section className='product-foundation' aria-labelledby='product-foundation-title'>
         <div>
           <Boxes size={22} aria-hidden='true' />
-          <h3 id='product-foundation-title'>{zh ? '同一套企业级运行底座' : 'One enterprise runtime foundation'}</h3>
+          <h3 id='product-foundation-title'>
+            {zh ? '同一套企业级运行底座' : 'One enterprise runtime foundation'}
+          </h3>
           <p>
             {zh
               ? '三大产品不各建控制器、Runtime 或安全通道，而是共享 A3S OS 权威状态、Runtime 执行与统一证据。'

@@ -14,7 +14,25 @@ describe('project capability catalog', () => {
     expect(codes).toHaveLength(17);
     expect(new Set(codes).size).toBe(17);
     expect([...codes].sort()).toEqual(
-      ['A0', 'A1', 'BX0', 'C0', 'D0', 'E0', 'F0', 'G0', 'H0', 'I0', 'MCP0', 'N0', 'P0', 'PW0', 'R0', 'S0', 'U0'].sort()
+      [
+        'A0',
+        'A1',
+        'BX0',
+        'C0',
+        'D0',
+        'E0',
+        'F0',
+        'G0',
+        'H0',
+        'I0',
+        'MCP0',
+        'N0',
+        'P0',
+        'PW0',
+        'R0',
+        'S0',
+        'U0',
+      ].sort()
     );
     expect(CAPABILITY_GROUPS.flatMap((group) => group.gates)).toEqual(ALL_CAPABILITY_GATES);
   });
@@ -26,10 +44,9 @@ describe('project capability catalog', () => {
       recertification: 4,
       planned: 4,
     });
-    expect(ALL_CAPABILITY_GATES.filter((capability) => capability.unavailable).map((capability) => capability.code)).toEqual([
-      'MCP0',
-      'U0',
-    ]);
+    expect(
+      ALL_CAPABILITY_GATES.filter((capability) => capability.unavailable).map((capability) => capability.code)
+    ).toEqual(['MCP0', 'U0']);
     expect(ALL_CAPABILITY_GATES.every((capability) => capability.features.length >= 3)).toBe(true);
   });
 

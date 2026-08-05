@@ -113,9 +113,7 @@ export function DeploymentTimeline({ workload, operations }: DeploymentTimelineP
                     </div>
                     <div>
                       <dt>{t('Operation')}</dt>
-                      <dd>
-                        {label(operation?.status ?? deployment.operation?.status ?? deployment.status)}
-                      </dd>
+                      <dd>{label(operation?.status ?? deployment.operation?.status ?? deployment.status)}</dd>
                     </div>
                   </dl>
                   {deployment.failure || operation?.error || deployment.operation?.error ? (

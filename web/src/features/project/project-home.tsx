@@ -37,32 +37,50 @@ const WEB_CAPABILITIES: ReadonlyArray<{
 }> = [
   {
     title: { zh: '统一工作空间', en: 'Unified workspace' },
-    detail: { zh: '环境、Operation、Workload 与路由状态集中呈现。', en: 'See environments, Operations, Workloads, and routes together.' },
+    detail: {
+      zh: '环境、Operation、Workload 与路由状态集中呈现。',
+      en: 'See environments, Operations, Workloads, and routes together.',
+    },
     icon: PanelsTopLeft,
   },
   {
     title: { zh: 'Workload 运行', en: 'Workload operations' },
-    detail: { zh: '查看收敛、版本、实时日志、停止、取消与回滚。', en: 'Inspect convergence, versions, live logs, stop, cancel, and rollback.' },
+    detail: {
+      zh: '查看收敛、版本、实时日志、停止、取消与回滚。',
+      en: 'Inspect convergence, versions, live logs, stop, cancel, and rollback.',
+    },
     icon: Boxes,
   },
   {
     title: { zh: 'Agent 工作台', en: 'Agent workspace' },
-    detail: { zh: '管理会话、审批、检查点和唯一 Harness 证据。', en: 'Manage sessions, approvals, checkpoints, and sole-Harness evidence.' },
+    detail: {
+      zh: '管理会话、审批、检查点和唯一 Harness 证据。',
+      en: 'Manage sessions, approvals, checkpoints, and sole-Harness evidence.',
+    },
     icon: Code2,
   },
   {
     title: { zh: '交付与证据', en: 'Delivery and evidence' },
-    detail: { zh: '追踪源码版本、构建、制品、SBOM 与签名证据。', en: 'Trace source revisions, builds, artifacts, SBOMs, and signed evidence.' },
+    detail: {
+      zh: '追踪源码版本、构建、制品、SBOM 与签名证据。',
+      en: 'Trace source revisions, builds, artifacts, SBOMs, and signed evidence.',
+    },
     icon: GitBranch,
   },
   {
     title: { zh: 'Edge 与安全', en: 'Edge and security' },
-    detail: { zh: '统一查看域名、TLS、Gateway 和安全运行信号。', en: 'Inspect domains, TLS, Gateway state, and security signals.' },
+    detail: {
+      zh: '统一查看域名、TLS、Gateway 和安全运行信号。',
+      en: 'Inspect domains, TLS, Gateway state, and security signals.',
+    },
     icon: ShieldCheck,
   },
   {
     title: { zh: '搜索与架构', en: 'Search and architecture' },
-    detail: { zh: '跨模块定位资源，查看并导出完整模块架构。', en: 'Find resources across modules and inspect or export the module map.' },
+    detail: {
+      zh: '跨模块定位资源，查看并导出完整模块架构。',
+      en: 'Find resources across modules and inspect or export the module map.',
+    },
     icon: Search,
   },
 ];
@@ -132,7 +150,11 @@ export function ProjectHome() {
             <div className='signin-authority-heading'>
               <div>
                 <h2 id='authority-path-title'>{zh ? '一套系统运行链路' : 'One system execution path'}</h2>
-                <p>{zh ? 'A3S OS 编排，既有 A3S 模块执行。' : 'A3S OS orchestrates. Existing A3S authorities execute.'}</p>
+                <p>
+                  {zh
+                    ? 'A3S OS 编排，既有 A3S 模块执行。'
+                    : 'A3S OS orchestrates. Existing A3S authorities execute.'}
+                </p>
               </div>
               <span>{zh ? '唯一执行链路' : 'Sole execution path'}</span>
             </div>
@@ -189,7 +211,11 @@ function WebClientOverview({ language }: { language: 'zh' | 'en' }) {
     <section id='web-client' className='home-section web-client-overview' aria-labelledby='web-client-title'>
       <header className='home-section-heading'>
         <span>04 · A3S WEB</span>
-        <h2 id='web-client-title'>{zh ? '一个客户端，贯通三大产品的每一次工作' : 'One client for every action across all three products'}</h2>
+        <h2 id='web-client-title'>
+          {zh
+            ? '一个客户端，贯通三大产品的每一次工作'
+            : 'One client for every action across all three products'}
+        </h2>
         <p>
           {zh
             ? 'A3S Web 是 A3S OS 的统一客户端。它将复杂运行状态翻译为可搜索、可操作、可审计的企业工作空间。'
@@ -200,7 +226,9 @@ function WebClientOverview({ language }: { language: 'zh' | 'en' }) {
         <div className='web-client-capability-grid'>
           {WEB_CAPABILITIES.map(({ detail, icon: Icon, title }) => (
             <article key={title.en}>
-              <span aria-hidden='true'><Icon size={19} /></span>
+              <span aria-hidden='true'>
+                <Icon size={19} />
+              </span>
               <div>
                 <strong>{title[language]}</strong>
                 <small>{detail[language]}</small>
@@ -215,11 +243,21 @@ function WebClientOverview({ language }: { language: 'zh' | 'en' }) {
             <small>{zh ? '统一客户端视图' : 'UNIFIED CLIENT VIEW'}</small>
           </figcaption>
           <ol>
-            {[zh ? '发现资源' : 'Discover', zh ? '执行操作' : 'Operate', zh ? '跟踪状态' : 'Trace', zh ? '验证证据' : 'Verify'].map((label, index) => (
-              <li key={label}><b>0{index + 1}</b><span>{label}</span></li>
+            {[
+              zh ? '发现资源' : 'Discover',
+              zh ? '执行操作' : 'Operate',
+              zh ? '跟踪状态' : 'Trace',
+              zh ? '验证证据' : 'Verify',
+            ].map((label, index) => (
+              <li key={label}>
+                <b>0{index + 1}</b>
+                <span>{label}</span>
+              </li>
             ))}
           </ol>
-          <p>{zh ? '同一身份 · 同一命令 · 同一证据链' : 'ONE IDENTITY · ONE COMMAND PATH · ONE EVIDENCE CHAIN'}</p>
+          <p>
+            {zh ? '同一身份 · 同一命令 · 同一证据链' : 'ONE IDENTITY · ONE COMMAND PATH · ONE EVIDENCE CHAIN'}
+          </p>
         </figure>
       </div>
     </section>

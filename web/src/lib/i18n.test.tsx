@@ -9,8 +9,7 @@ beforeEach(() => {
   document.body.innerHTML = '<div id="root"></div>';
   document.documentElement.lang = 'en';
   localStorage.clear();
-  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
-    true;
+  (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 });
 
 afterEach(async () => {
@@ -39,9 +38,7 @@ describe('LanguageProvider', () => {
     expect(document.documentElement.lang).toBe('zh-CN');
     expect(localStorage.getItem('a3s-cloud.language')).toBe('zh-CN');
 
-    const englishButton = [...host.querySelectorAll('button')].find(
-      (button) => button.textContent === 'EN'
-    );
+    const englishButton = [...host.querySelectorAll('button')].find((button) => button.textContent === 'EN');
     await act(async () => englishButton?.click());
 
     expect(host.querySelector('output')?.textContent).toBe('Overview');

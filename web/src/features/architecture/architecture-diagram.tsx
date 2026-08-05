@@ -49,12 +49,7 @@ const FOUNDATIONS = [
   'mTLS + A3S ACL',
   'Compatibility lock',
 ];
-const LEGEND_STATES: readonly CapabilityState[] = [
-  'verified',
-  'in-progress',
-  'recertification',
-  'planned',
-];
+const LEGEND_STATES: readonly CapabilityState[] = ['verified', 'in-progress', 'recertification', 'planned'];
 
 export function ArchitectureOverview() {
   return (
@@ -138,7 +133,10 @@ export function ArchitecturePanel() {
           </header>
 
           <ModuleBand title='Users and application scenarios' tone='audience' items={AUDIENCES} />
-          <section className='architecture-band architecture-band-products' aria-labelledby='products-band-title'>
+          <section
+            className='architecture-band architecture-band-products'
+            aria-labelledby='products-band-title'
+          >
             <h4 id='products-band-title'>{t('External application products')}</h4>
             <ul className='architecture-product-grid'>
               {PRODUCT_PILLARS.map((product) => (
@@ -154,7 +152,10 @@ export function ArchitecturePanel() {
           <ModuleBand title='Unified access and experience' tone='access' items={ACCESS_SURFACES} />
           <ModuleBand title='Cloud orchestration and control' tone='control' items={ORCHESTRATION} />
 
-          <section className='architecture-band architecture-band-business' aria-labelledby='business-band-title'>
+          <section
+            className='architecture-band architecture-band-business'
+            aria-labelledby='business-band-title'
+          >
             <div className='architecture-band-title-row'>
               <h4 id='business-band-title'>{t('Complete Cloud product portfolio')}</h4>
               <ul className='architecture-legend' aria-label={t('Roadmap state legend')}>
@@ -183,7 +184,10 @@ export function ArchitecturePanel() {
             </div>
           </section>
 
-          <section className='architecture-band architecture-band-runtime' aria-labelledby='runtime-band-title'>
+          <section
+            className='architecture-band architecture-band-runtime'
+            aria-labelledby='runtime-band-title'
+          >
             <h4 id='runtime-band-title'>{t('Node convergence and execution plane')}</h4>
             <ol className='architecture-runtime-path'>
               {NODE_PATH.map((item, index) => (
@@ -195,7 +199,10 @@ export function ArchitecturePanel() {
             </ol>
           </section>
 
-          <section className='architecture-band architecture-band-payload' aria-labelledby='payload-band-title'>
+          <section
+            className='architecture-band architecture-band-payload'
+            aria-labelledby='payload-band-title'
+          >
             <h4 id='payload-band-title'>{t('Runtime services and payload ownership')}</h4>
             <div className='architecture-payload-grid'>
               <article className='architecture-payload-card'>{t('Applications / Hosted MCP')}</article>

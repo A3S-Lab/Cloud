@@ -132,11 +132,7 @@ export function SkillBindingsPanel({
                   className='secondary-button compact'
                   type='button'
                   disabled={!ready || submitting !== null}
-                  title={
-                    ready
-                      ? t('Create a new revision without this Skill')
-                      : t(replacementUnavailable)
-                  }
+                  title={ready ? t('Create a new revision without this Skill') : t(replacementUnavailable)}
                   onClick={() => void unbind(binding.assetId)}
                 >
                   {submitting === `unbind:${binding.assetId}` ? t('Unbinding...') : t('Unbind')}

@@ -49,9 +49,7 @@ export function ConsoleTopbar({
         </span>
         <button className='icon-button' type='button' onClick={onToggleDrawer}>
           {drawerOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-          <span className='sr-only'>
-            {drawerOpen ? t('Close operations') : t('Open operations')}
-          </span>
+          <span className='sr-only'>{drawerOpen ? t('Close operations') : t('Open operations')}</span>
         </button>
         <button className='quiet-button' type='button' onClick={onSignOut}>
           <LogOut size={16} /> {t('Sign out')}

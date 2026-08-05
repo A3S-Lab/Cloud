@@ -163,9 +163,7 @@ export function AgentExecutionPanel({
         </div>
         <div className='agent-conversation-list' role='listbox' aria-label={t('Agent conversations')}>
           {conversations.length === 0 ? (
-            <p className='agent-empty'>
-              {t('Create a conversation to start an immutable Agent release.')}
-            </p>
+            <p className='agent-empty'>{t('Create a conversation to start an immutable Agent release.')}</p>
           ) : (
             conversations.map((conversation) => (
               <button
@@ -226,9 +224,7 @@ export function AgentExecutionPanel({
                   <CircleDot size={12} /> {label(execution.status)}
                 </span>
                 <strong>{shortId(execution.id)}</strong>
-                <small>
-                  {t('release {release}', { release: shortId(execution.agent.assetReleaseId) })}
-                </small>
+                <small>{t('release {release}', { release: shortId(execution.agent.assetReleaseId) })}</small>
                 {['pending', 'running', 'cancelling'].includes(execution.status) ? (
                   <button
                     className='agent-cancel-action'
@@ -261,9 +257,7 @@ export function AgentExecutionPanel({
         {eventStream.error ? <p className='agent-stream-error'>{t(eventStream.error)}</p> : null}
         <ol className='agent-event-list'>
           {eventStream.records.length === 0 ? (
-            <li className='agent-empty'>
-              {t('Select a conversation to follow its semantic event stream.')}
-            </li>
+            <li className='agent-empty'>{t('Select a conversation to follow its semantic event stream.')}</li>
           ) : (
             [...eventStream.records].reverse().map((event) => (
               <li key={event.sequence}>
