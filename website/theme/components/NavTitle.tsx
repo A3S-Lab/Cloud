@@ -38,7 +38,7 @@ export function NavTitle() {
     if (typeof rawLogo === 'string') {
       return (
         <img
-          alt="logo"
+          alt=""
           className="rspress-logo rp-nav__title__logo-image"
           id="logo"
           src={normalizeImagePath(rawLogo)}
@@ -48,13 +48,13 @@ export function NavTitle() {
     return (
       <>
         <img
-          alt="logo"
+          alt=""
           className="rspress-logo rp-nav__title__logo-image rp-nav__title__logo-image--light"
           id="logo"
           src={normalizeImagePath(rawLogo.light)}
         />
         <img
-          alt="logo"
+          alt=""
           className="rspress-logo rp-nav__title__logo-image rp-nav__title__logo-image--dark"
           id="logo"
           src={normalizeImagePath(rawLogo.dark)}

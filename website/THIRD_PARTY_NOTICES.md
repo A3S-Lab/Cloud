@@ -1,8 +1,21 @@
 # Third-party notices
 
+## Geist and Geist Mono
+
+The product site self-hosts Geist and Geist Mono through the
+`@fontsource-variable/geist` and `@fontsource-variable/geist-mono` packages.
+Copyright 2024 The Geist Project Authors. The font software is distributed
+under the [SIL Open Font License 1.1](https://openfontlicense.org/).
+
+## Phosphor Icons
+
+The product site uses `@phosphor-icons/react` for interface icons. Copyright
+(c) 2020 Phosphor Icons. Phosphor Icons is distributed under the
+[MIT License](https://github.com/phosphor-icons/core/blob/main/LICENSE).
+
 ## Canvas UI — Grid
 
-`theme/components/AmbientGrid.tsx` is adapted from the interaction concept in
+`theme/components/AmbientGrid.tsx` is adapted from the visual grid concept in
 the `Grid` component from
 [DavidHDev/canvas-ui](https://github.com/DavidHDev/canvas-ui) at commit
 `6c9cccf`. It uses a conventional Canvas 2D renderer instead of the

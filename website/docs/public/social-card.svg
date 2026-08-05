@@ -25,5 +25,5 @@
   <text x="88" y="150" fill="#89f1c5" font-family="ui-monospace, monospace" font-size="22" letter-spacing="5">SELF-HOSTED CONTROL PLANE</text>
   <text x="84" y="276" fill="#f4faf6" font-family="ui-sans-serif, system-ui" font-size="94" font-weight="700">A3S Cloud</text>
   <text x="90" y="353" fill="#aebbb4" font-family="ui-sans-serif, system-ui" font-size="32">Declare the state. Cloud converges the system.</text>
-  <text x="90" y="500" fill="#6f8077" font-family="ui-monospace, monospace" font-size="21">POSTGRESQL · A3S ORM · A3S FLOW · A3S BOX · A3S GATEWAY</text>
+  <text x="90" y="500" fill="#6f8077" font-family="ui-monospace, monospace" font-size="21">POSTGRESQL / A3S ORM / A3S FLOW / A3S BOX / A3S GATEWAY</text>
 </svg>

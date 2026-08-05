@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { ArrowUpRight } from '@phosphor-icons/react';
 import {
   roadmapGates,
   type RoadmapGate,
@@ -48,6 +49,7 @@ export function RoadmapConstellation() {
             <button
               aria-pressed={filter === item.key}
               className={filter === item.key ? 'is-active' : ''}
+              disabled={count === 0}
               key={item.key}
               onClick={() => {
                 setFilter(item.key);
@@ -76,7 +78,7 @@ export function RoadmapConstellation() {
           <path d="M42 312c178-68 230-256 406-96s262 106 344-18 214-94 364 40" />
         </svg>
         <div className="cloud-roadmap-cards">
-          {visibleGates.map((gate, index) => (
+          {visibleGates.map((gate) => (
             <button
               aria-pressed={activeGate?.code === gate.code}
               className={`cloud-roadmap-card is-${gate.statusKind}${
@@ -84,7 +86,6 @@ export function RoadmapConstellation() {
               }`}
               key={gate.code}
               onClick={() => setActiveCode(gate.code)}
-              style={{ '--gate-index': index } as React.CSSProperties}
               type="button"
             >
               <i aria-hidden="true" />
@@ -99,12 +100,12 @@ export function RoadmapConstellation() {
         <section className="cloud-roadmap-detail" aria-live="polite">
           <div>
             <GateBadge gate={activeGate} />
-            <span>ROADMAP GATE</span>
           </div>
           <h3>{activeGate.name}</h3>
           <p>{activeGate.outcome}</p>
           <a href="https://github.com/A3S-Lab/Cloud/blob/main/ROADMAP.md">
-            Read evidence and dependencies <span aria-hidden="true">↗</span>
+            Read evidence and dependencies
+            <ArrowUpRight aria-hidden="true" weight="bold" />
           </a>
         </section>
       )}

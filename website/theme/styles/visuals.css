@@ -61,21 +61,6 @@
   }
 }
 
-@keyframes cloud-future-scan {
-  0% {
-    left: -24%;
-    opacity: 0;
-  }
-  18%,
-  72% {
-    opacity: 1;
-  }
-  100% {
-    left: 106%;
-    opacity: 0;
-  }
-}
-
 .cloud-topology {
   position: relative;
   width: min(100%, 720px);
@@ -171,7 +156,7 @@
   width: 27%;
   aspect-ratio: 1;
   animation: cloud-orbit-spin 15s linear infinite reverse;
-  border-color: rgba(118, 183, 255, 0.16);
+  border-color: rgba(124, 240, 188, 0.12);
 }
 
 .cloud-topology-node {
@@ -272,13 +257,13 @@
 
 .cloud-topology-node.is-gateway > i,
 .cloud-topology-node.is-flow > i {
-  background: var(--cloud-blue);
-  box-shadow: 0 0 13px rgba(118, 183, 255, 0.8);
+  background: var(--cloud-green);
+  box-shadow: 0 0 13px rgba(124, 240, 188, 0.72);
 }
 
 .cloud-topology-node.is-box > i {
-  background: var(--cloud-violet);
-  box-shadow: 0 0 13px rgba(189, 142, 255, 0.8);
+  background: var(--cloud-green);
+  box-shadow: 0 0 13px rgba(124, 240, 188, 0.72);
 }
 
 .cloud-topology figcaption {
@@ -298,7 +283,6 @@
   border: 1px solid var(--cloud-line-strong);
   border-radius: 16px;
   background: rgba(6, 12, 10, 0.86);
-  box-shadow: 0 35px 90px rgba(0, 0, 0, 0.22);
 }
 
 .cloud-convergence-rail {
@@ -358,8 +342,7 @@
 }
 
 .cloud-convergence-rail button.is-active > i {
-  background: linear-gradient(90deg, var(--cloud-green), var(--cloud-blue));
-  box-shadow: 0 0 16px rgba(124, 240, 188, 0.42);
+  background: var(--cloud-green);
 }
 
 .cloud-convergence-stage {
@@ -371,19 +354,11 @@
   gap: 66px;
 }
 
-.cloud-convergence-stage-copy > span {
-  color: var(--cloud-green);
-  font-family: var(--cloud-mono);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
 .cloud-convergence-stage-copy h3 {
-  margin: 15px 0;
+  margin: 0 0 15px;
   font-size: clamp(29px, 3vw, 43px);
   font-weight: 620;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.04em;
 }
 
 .cloud-convergence-stage-copy p {
@@ -400,7 +375,6 @@
   border: 1px solid rgba(66, 99, 85, 0.75);
   border-radius: 12px;
   background: #050806;
-  box-shadow: 0 26px 60px rgba(0, 0, 0, 0.28);
 }
 
 .cloud-convergence-console header {
@@ -416,15 +390,7 @@
 }
 
 .cloud-convergence-console header > span {
-  display: flex;
-  gap: 4px;
-}
-
-.cloud-convergence-console header > span i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #2d3933;
+  color: var(--cloud-muted);
 }
 
 .cloud-convergence-console header button {
@@ -461,9 +427,22 @@
 }
 
 .cloud-convergence-console-body > small {
+  display: flex;
   margin-top: 8px;
   color: var(--cloud-muted);
   font-size: 9px;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.cloud-convergence-console-body > small span {
+  padding-right: 7px;
+  border-right: 1px solid var(--cloud-line-strong);
+}
+
+.cloud-convergence-console-body > small span:last-child {
+  padding-right: 0;
+  border-right: 0;
 }
 
 .cloud-convergence-meter {
@@ -480,12 +459,11 @@
 }
 
 .cloud-convergence-meter i.is-complete {
-  background: linear-gradient(90deg, var(--cloud-green), var(--cloud-blue));
-  box-shadow: 0 0 10px rgba(124, 240, 188, 0.32);
+  background: var(--cloud-green);
 }
 
 .cloud-capability-card::before,
-.cloud-future-card::before,
+.cloud-horizon-card::before,
 .cloud-roadmap-card::before,
 .cloud-boundary-node::before,
 .cloud-architecture-card::before {
@@ -497,7 +475,7 @@
   background: radial-gradient(
     circle,
     rgba(124, 240, 188, 0.12),
-    rgba(118, 183, 255, 0.035) 48%,
+    rgba(124, 240, 188, 0.025) 48%,
     transparent 70%
   );
   content: '';
@@ -521,11 +499,7 @@
   margin-top: 22px;
   border: 1px solid rgba(40, 61, 52, 0.62);
   border-radius: 10px;
-  background:
-    linear-gradient(rgba(124, 240, 188, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 240, 188, 0.025) 1px, transparent 1px),
-    rgba(3, 8, 6, 0.7);
-  background-size: 24px 24px;
+  background: rgba(3, 8, 6, 0.7);
 }
 
 .cloud-mini-ledger {
@@ -586,9 +560,9 @@
   display: flex;
   width: 55%;
   height: 42px;
-  border: 1px solid rgba(118, 183, 255, 0.24);
+  border: 1px solid rgba(124, 240, 188, 0.2);
   border-radius: 7px;
-  background: rgba(9, 18, 25, 0.92);
+  background: rgba(8, 20, 15, 0.92);
   align-items: center;
   justify-content: center;
   color: var(--cloud-muted);
@@ -604,9 +578,9 @@
 .cloud-mini-box .cloud-mini-box-core {
   z-index: 2;
   margin-top: 0;
-  border-color: rgba(189, 142, 255, 0.46);
-  background: rgba(25, 15, 39, 0.94);
-  color: #dac2ff;
+  border-color: rgba(124, 240, 188, 0.42);
+  background: rgba(12, 32, 23, 0.94);
+  color: var(--cloud-green);
   font-size: 10px;
 }
 
@@ -615,8 +589,8 @@
   height: 5px;
   margin-right: 8px;
   border-radius: 50%;
-  background: var(--cloud-violet);
-  box-shadow: 0 0 12px var(--cloud-violet);
+  background: var(--cloud-green);
+  box-shadow: 0 0 12px rgba(124, 240, 188, 0.54);
 }
 
 .cloud-mini-box .cloud-mini-box-unit {
@@ -637,7 +611,7 @@
   right: 18%;
   left: 18%;
   height: 1px;
-  background: linear-gradient(90deg, var(--cloud-green), var(--cloud-blue));
+  background: var(--cloud-green);
   content: '';
   opacity: 0.35;
 }
@@ -711,8 +685,8 @@
 
 .cloud-mini-gateway-core {
   left: 37%;
-  border-color: rgba(118, 183, 255, 0.44);
-  color: var(--cloud-blue);
+  border-color: rgba(124, 240, 188, 0.4);
+  color: var(--cloud-green);
 }
 
 .cloud-mini-gateway div {
@@ -736,7 +710,7 @@
   left: 19%;
   width: 34%;
   height: 1px;
-  background: linear-gradient(90deg, var(--cloud-green), var(--cloud-blue));
+  background: var(--cloud-green);
 }
 
 .cloud-mini-gateway-route::after {
@@ -814,7 +788,7 @@
   left: 50%;
   width: 102px;
   height: 102px;
-  border: 1px dashed rgba(118, 183, 255, 0.2);
+  border: 1px dashed rgba(124, 240, 188, 0.18);
   border-radius: 50%;
   animation: cloud-surface-orbit 16s linear infinite;
   content: '';
@@ -874,7 +848,7 @@
   transform: translateY(-50%);
 }
 
-.cloud-future-signal {
+.cloud-horizon-signal {
   position: relative;
   z-index: 2;
   display: flex;
@@ -888,42 +862,35 @@
   justify-content: space-around;
 }
 
-.cloud-future-signal::before {
+.cloud-horizon-signal::before {
   position: absolute;
   right: 10%;
   left: 10%;
   height: 1px;
   background: linear-gradient(
     90deg,
-    rgba(189, 142, 255, 0.12),
-    rgba(118, 183, 255, 0.55),
+    rgba(124, 240, 188, 0.12),
+    rgba(124, 240, 188, 0.55),
     rgba(124, 240, 188, 0.12)
   );
   content: '';
 }
 
-.cloud-future-signal i {
+.cloud-horizon-signal i {
   z-index: 2;
   width: 8px;
   height: 8px;
-  border: 1px solid rgba(189, 142, 255, 0.62);
+  border: 1px solid rgba(124, 240, 188, 0.62);
   border-radius: 50%;
   background: #0b1012;
-  box-shadow: 0 0 12px rgba(189, 142, 255, 0.28);
+  box-shadow: 0 0 12px rgba(124, 240, 188, 0.2);
 }
 
-.cloud-future-signal b {
+.cloud-horizon-signal b {
   position: absolute;
   top: 12px;
   bottom: 12px;
-  left: -24%;
-  width: 18%;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(118, 183, 255, 0.16),
-    transparent
-  );
-  animation: cloud-future-scan 4.4s ease-in-out infinite;
-  transform: skewX(-16deg);
+  left: 50%;
+  width: 1px;
+  background: rgba(124, 240, 188, 0.18);
 }

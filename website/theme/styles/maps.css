@@ -4,18 +4,6 @@
   }
 }
 
-@keyframes cloud-roadmap-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 currentcolor;
-    opacity: 0.6;
-  }
-  50% {
-    box-shadow: 0 0 0 7px transparent;
-    opacity: 1;
-  }
-}
-
 @keyframes cloud-plane-float {
   0%,
   100% {
@@ -31,21 +19,10 @@
   min-height: 610px;
   overflow: hidden;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 17px;
+  border-radius: var(--cloud-radius-card);
   background:
-    radial-gradient(
-      circle at 50% 50%,
-      rgba(55, 91, 123, 0.12),
-      transparent 38%
-    ),
-    linear-gradient(rgba(124, 240, 188, 0.02) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 240, 188, 0.02) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgba(47, 109, 82, 0.1), transparent 38%),
     rgba(5, 10, 8, 0.88);
-  background-size:
-    auto,
-    28px 28px,
-    28px 28px,
-    auto;
 }
 
 .cloud-boundary-map > svg {
@@ -66,12 +43,14 @@
 }
 
 .cloud-boundary-map > svg path.is-traffic {
-  stroke: var(--cloud-blue);
+  stroke: var(--cloud-green);
+  opacity: 0.32;
 }
 
 .cloud-boundary-map > svg path.is-backend {
-  stroke: var(--cloud-violet);
+  stroke: var(--cloud-green);
   animation-direction: reverse;
+  opacity: 0.32;
 }
 
 .cloud-boundary-node {
@@ -82,10 +61,8 @@
   min-height: 150px;
   padding: 20px;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 12px;
+  border-radius: var(--cloud-radius-card);
   background: rgba(7, 14, 11, 0.9);
-  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(12px);
   transition:
     border-color 220ms ease,
     transform 220ms ease;
@@ -93,7 +70,7 @@
 
 .cloud-boundary-node:hover {
   border-color: rgba(124, 240, 188, 0.38);
-  transform: translateY(-3px);
+  transform: translateY(-2px);
 }
 
 .cloud-boundary-node header {
@@ -101,16 +78,7 @@
   z-index: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.cloud-boundary-node header > span {
-  color: var(--cloud-faint);
-  font-family: var(--cloud-mono);
-  font-size: 8px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  justify-content: flex-end;
 }
 
 .cloud-boundary-node h3,
@@ -120,7 +88,7 @@
 }
 
 .cloud-boundary-node h3 {
-  margin: 22px 0 8px;
+  margin: 18px 0 7px;
   font-size: 23px;
   font-weight: 630;
   letter-spacing: -0.035em;
@@ -131,6 +99,13 @@
   color: var(--cloud-muted);
   font-size: 11px;
   line-height: 1.6;
+}
+
+.cloud-boundary-node .cloud-boundary-role {
+  margin-bottom: 6px;
+  color: var(--cloud-text);
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .cloud-boundary-node.is-cloud {
@@ -147,19 +122,19 @@
 .cloud-boundary-node.is-gateway {
   top: 10%;
   left: 37%;
-  border-color: rgba(118, 183, 255, 0.3);
+  border-color: rgba(124, 240, 188, 0.22);
 }
 
 .cloud-boundary-node.is-box {
   bottom: 10%;
   left: 37%;
-  border-color: rgba(189, 142, 255, 0.3);
+  border-color: rgba(124, 240, 188, 0.22);
 }
 
 .cloud-boundary-node.is-power {
   top: 31%;
   right: 4%;
-  border-color: rgba(189, 142, 255, 0.25);
+  border-color: rgba(124, 240, 188, 0.18);
 }
 
 .cloud-boundary-rule {
@@ -171,7 +146,7 @@
   width: 24%;
   min-height: 78px;
   padding: 12px 16px;
-  border: 1px dashed rgba(118, 183, 255, 0.25);
+  border: 1px dashed rgba(124, 240, 188, 0.22);
   border-radius: 50%;
   background: rgba(6, 11, 9, 0.8);
   align-items: center;
@@ -195,7 +170,7 @@
 .cloud-roadmap-shell {
   overflow: hidden;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 17px;
+  border-radius: var(--cloud-radius-card);
   background: rgba(5, 9, 8, 0.82);
 }
 
@@ -233,6 +208,15 @@
   color: var(--cloud-text);
 }
 
+.cloud-roadmap-toolbar button:active {
+  transform: scale(0.98);
+}
+
+.cloud-roadmap-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
 .cloud-roadmap-toolbar button b {
   color: var(--cloud-faint);
   font-family: var(--cloud-mono);
@@ -247,7 +231,7 @@
   padding: 38px;
   background: radial-gradient(
     circle at 48% 50%,
-    rgba(50, 68, 100, 0.14),
+    rgba(47, 109, 82, 0.11),
     transparent 58%
   );
 }
@@ -262,7 +246,7 @@
 
 .cloud-roadmap-map > svg path {
   fill: none;
-  stroke: rgba(118, 183, 255, 0.7);
+  stroke: rgba(124, 240, 188, 0.56);
   stroke-dasharray: 2 9;
   stroke-width: 1;
 }
@@ -311,8 +295,6 @@
   margin-top: 3px;
   border-radius: 50%;
   background: currentcolor;
-  animation: cloud-roadmap-pulse 3.2s ease-in-out infinite;
-  animation-delay: calc(var(--gate-index) * -0.21s);
 }
 
 .cloud-roadmap-card > b,
@@ -369,13 +351,6 @@
   gap: 11px;
 }
 
-.cloud-roadmap-detail > div > span {
-  color: var(--cloud-faint);
-  font-family: var(--cloud-mono);
-  font-size: 8px;
-  letter-spacing: 0.12em;
-}
-
 .cloud-roadmap-detail h3 {
   margin: 0;
   font-size: 24px;
@@ -403,6 +378,11 @@
   white-space: nowrap;
 }
 
+.cloud-roadmap-detail > a svg {
+  width: 15px;
+  height: 15px;
+}
+
 .cloud-architecture-preview {
   position: relative;
   min-height: 470px;
@@ -419,8 +399,8 @@
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    rgba(75, 120, 171, 0.15),
-    rgba(189, 142, 255, 0.06) 40%,
+    rgba(47, 109, 82, 0.14),
+    rgba(47, 109, 82, 0.04) 40%,
     transparent 68%
   );
   content: '';
@@ -433,11 +413,11 @@
   display: flex;
   width: 56%;
   height: 170px;
-  border: 1px solid rgba(118, 183, 255, 0.26);
+  border: 1px solid rgba(124, 240, 188, 0.24);
   background:
-    linear-gradient(rgba(118, 183, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(118, 183, 255, 0.05) 1px, transparent 1px),
-    rgba(8, 15, 21, 0.62);
+    linear-gradient(rgba(124, 240, 188, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 240, 188, 0.045) 1px, transparent 1px),
+    rgba(8, 18, 14, 0.62);
   background-size: 24px 24px;
   align-items: center;
   justify-content: space-around;
@@ -459,7 +439,7 @@
 
 .cloud-architecture-plane.is-plane-1 {
   top: 55%;
-  border-color: rgba(189, 142, 255, 0.28);
+  border-color: rgba(124, 240, 188, 0.2);
   animation-delay: -4s;
 }
 
@@ -484,13 +464,13 @@
 }
 
 .cloud-architecture-plane.is-plane-3 i {
-  border-color: rgba(118, 183, 255, 0.5);
-  background: rgba(10, 20, 31, 0.92);
+  border-color: rgba(124, 240, 188, 0.36);
+  background: rgba(10, 27, 20, 0.92);
 }
 
 .cloud-architecture-plane.is-plane-1 i {
-  border-color: rgba(189, 142, 255, 0.46);
-  background: rgba(22, 14, 34, 0.92);
+  border-color: rgba(124, 240, 188, 0.3);
+  background: rgba(10, 24, 18, 0.92);
 }
 
 .cloud-architecture-beam {
@@ -502,9 +482,8 @@
   background: linear-gradient(
     transparent,
     var(--cloud-green),
-    var(--cloud-blue),
+    var(--cloud-green),
     transparent
   );
-  box-shadow: 0 0 18px rgba(118, 183, 255, 0.54);
   transform: rotate(-16deg);
 }
