@@ -1,0 +1,1273 @@
+.cloud-factory-story {
+  background: #f4f7f7;
+}
+
+.cloud-factory-console {
+  display: grid;
+  min-height: 502px;
+  margin-top: 18px;
+  overflow: hidden;
+  grid-template-rows: 43px minmax(0, 1fr);
+  border-radius: 13px;
+  background: #ffffff;
+  box-shadow: 0 15px 38px rgba(29, 67, 73, 0.13);
+}
+
+.cloud-factory-consolebar {
+  display: grid;
+  min-width: 0;
+  padding: 0 12px;
+  grid-template-columns: minmax(150px, 1fr) auto auto;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid #dce5e7;
+  background: #fbfcfc;
+}
+
+.cloud-factory-consolebar > span:first-child {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  color: #0c9b70;
+}
+
+.cloud-factory-consolebar strong {
+  color: #1e2d35;
+  font-size: 9px;
+}
+
+.cloud-factory-consolebar small {
+  color: #839096;
+  font-family: var(--cloud-mono);
+  font-size: 6px;
+  font-weight: 690;
+}
+
+.cloud-factory-order {
+  color: #69787f;
+  font-family: var(--cloud-mono);
+  font-size: 6.5px;
+}
+
+.cloud-factory-line-state {
+  display: inline-flex;
+  min-height: 23px;
+  padding: 0 7px;
+  align-items: center;
+  gap: 5px;
+  border-radius: 6px;
+  color: #087354;
+  background: #eaf7f2;
+  font-family: var(--cloud-mono);
+  font-size: 6px;
+  font-weight: 740;
+}
+
+.cloud-factory-line-state i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #0c9b70;
+}
+
+.cloud-factory-console-body {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  grid-template-columns: 108px minmax(260px, 1fr) 124px;
+}
+
+.cloud-factory-parts-bin {
+  display: grid;
+  min-width: 0;
+  padding: 0 8px 9px;
+  grid-template-rows: 38px minmax(0, 1fr) 29px;
+  border-right: 1px solid #dfe7e9;
+  background: #f8fafb;
+}
+
+.cloud-factory-parts-bin > header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid #e2e8ea;
+  color: #0c9b70;
+}
+
+.cloud-factory-parts-bin > header strong {
+  color: #3b4b52;
+  font-size: 7px;
+}
+
+.cloud-factory-parts-bin > div {
+  display: grid;
+  padding: 9px 0;
+  align-content: start;
+  gap: 7px;
+}
+
+.cloud-factory-parts-bin article {
+  display: grid;
+  min-width: 0;
+  min-height: 47px;
+  padding: 6px;
+  grid-template-columns: 25px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 5px 12px rgba(35, 72, 77, 0.07);
+}
+
+.cloud-factory-parts-bin article > span {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 6px;
+  color: #1264ff;
+  background: #eaf2ff;
+}
+
+.cloud-factory-parts-bin article.is-part-2 > span {
+  color: #7057c8;
+  background: #f0edfb;
+}
+
+.cloud-factory-parts-bin article.is-part-3 > span {
+  color: #b97708;
+  background: #fff4da;
+}
+
+.cloud-factory-parts-bin article.is-part-4 > span {
+  color: #1a91ad;
+  background: #e9f7fa;
+}
+
+.cloud-factory-parts-bin article.is-part-5 > span {
+  color: #0c9b70;
+  background: #eaf7f2;
+}
+
+.cloud-factory-parts-bin article strong,
+.cloud-factory-parts-bin article small {
+  display: block;
+}
+
+.cloud-factory-parts-bin article strong {
+  color: #35454c;
+  font-size: 6.2px;
+}
+
+.cloud-factory-parts-bin article small {
+  margin-top: 2px;
+  overflow: hidden;
+  color: #7f8b91;
+  font-family: var(--cloud-mono);
+  font-size: 5.2px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-factory-parts-bin article > i {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #0c9b70;
+}
+
+.cloud-factory-parts-bin > footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-top: 1px solid #e2e8ea;
+  color: #0c7f5e;
+  font-size: 5.6px;
+  font-weight: 680;
+}
+
+.cloud-factory-bay {
+  position: relative;
+  min-width: 0;
+  min-height: 459px;
+  overflow: hidden;
+  background-color: #f2f6f6;
+  background-image: radial-gradient(circle, #d0dcdd 0.75px, transparent 0.85px);
+  background-size: 16px 16px;
+}
+
+.cloud-factory-bay::before,
+.cloud-factory-bay::after {
+  position: absolute;
+  top: 45px;
+  bottom: 58px;
+  width: 1px;
+  background: #d6e0e1;
+  content: '';
+}
+
+.cloud-factory-bay::before {
+  left: 24px;
+}
+
+.cloud-factory-bay::after {
+  right: 24px;
+}
+
+.cloud-factory-bay-heading {
+  position: absolute;
+  z-index: 5;
+  top: 9px;
+  right: 10px;
+  left: 10px;
+  display: flex;
+  min-width: 0;
+  min-height: 26px;
+  padding: 0 7px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.cloud-factory-bay-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #45666b;
+  font-family: var(--cloud-mono);
+  font-size: 5.8px;
+  font-weight: 740;
+}
+
+.cloud-factory-bay-heading > span i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #0c9b70;
+}
+
+.cloud-factory-bay-heading code {
+  overflow: hidden;
+  color: #738387;
+  font-family: var(--cloud-mono);
+  font-size: 5.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-factory-overhead {
+  position: absolute;
+  z-index: 4;
+  top: 46px;
+  right: 22px;
+  left: 22px;
+  height: 9px;
+  border-radius: 4px;
+  background: #5b6b70;
+  box-shadow: 0 5px 12px rgba(30, 52, 56, 0.15);
+}
+
+.cloud-factory-overhead::before,
+.cloud-factory-overhead::after {
+  position: absolute;
+  top: 8px;
+  width: 7px;
+  height: 24px;
+  border-radius: 0 0 4px 4px;
+  background: #8a999d;
+  content: '';
+}
+
+.cloud-factory-overhead::before {
+  left: 4px;
+}
+
+.cloud-factory-overhead::after {
+  right: 4px;
+}
+
+.cloud-factory-trolley {
+  position: absolute;
+  top: -4px;
+  left: 18px;
+  display: block;
+  width: 28px;
+  height: 18px;
+  border-radius: 5px;
+  background: #1264ff;
+  box-shadow: 0 5px 12px rgba(18, 75, 174, 0.2);
+}
+
+.cloud-factory-arm-segment {
+  position: absolute;
+  top: 16px;
+  left: 12px;
+  width: 4px;
+  height: 64px;
+  border-radius: 2px;
+  background: #728288;
+  transform-origin: top;
+}
+
+.cloud-factory-gripper {
+  position: absolute;
+  top: 75px;
+  left: 7px;
+  width: 14px;
+  height: 11px;
+  border: 3px solid #526268;
+  border-top: 0;
+  border-radius: 0 0 5px 5px;
+}
+
+.cloud-factory-gripper b {
+  position: absolute;
+  bottom: -8px;
+  width: 3px;
+  height: 8px;
+  border-radius: 2px;
+  background: #526268;
+}
+
+.cloud-factory-gripper b:first-child {
+  left: -3px;
+  transform: rotate(18deg);
+}
+
+.cloud-factory-gripper b:last-child {
+  right: -3px;
+  transform: rotate(-18deg);
+}
+
+.cloud-agent-robot {
+  position: absolute;
+  z-index: 3;
+  top: 102px;
+  left: 50%;
+  width: 148px;
+  height: 242px;
+  transform: translateX(-50%);
+}
+
+.cloud-robot-antenna {
+  position: absolute;
+  top: -15px;
+  left: 70px;
+  width: 8px;
+  height: 20px;
+  border-radius: 4px 4px 0 0;
+  background: #53666c;
+}
+
+.cloud-robot-antenna i {
+  position: absolute;
+  top: -5px;
+  left: -1px;
+  width: 10px;
+  height: 10px;
+  border: 3px solid #c9e7dc;
+  border-radius: 50%;
+  background: #0c9b70;
+}
+
+.cloud-robot-head {
+  position: absolute;
+  top: 0;
+  left: 40px;
+  display: grid;
+  width: 68px;
+  height: 58px;
+  place-items: center;
+  border: 2px solid #6a7b81;
+  border-radius: 14px 14px 10px 10px;
+  color: #7057c8;
+  background: #ffffff;
+  box-shadow: 0 9px 18px rgba(41, 64, 69, 0.12);
+}
+
+.cloud-robot-head::before,
+.cloud-robot-head::after {
+  position: absolute;
+  top: 22px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1264ff;
+  content: '';
+}
+
+.cloud-robot-head::before {
+  left: 12px;
+}
+
+.cloud-robot-head::after {
+  right: 12px;
+}
+
+.cloud-robot-head > svg {
+  position: absolute;
+  top: 8px;
+}
+
+.cloud-robot-head > i {
+  position: absolute;
+  bottom: 12px;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background: #91a1a6;
+}
+
+.cloud-robot-head > i:nth-of-type(1) {
+  left: 27px;
+}
+
+.cloud-robot-head > i:nth-of-type(2) {
+  right: 27px;
+}
+
+.cloud-robot-head small {
+  position: absolute;
+  bottom: 4px;
+  color: #7d8990;
+  font-family: var(--cloud-mono);
+  font-size: 4.5px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+
+.cloud-robot-core {
+  position: absolute;
+  top: 69px;
+  left: 31px;
+  display: grid;
+  width: 86px;
+  height: 91px;
+  place-items: center;
+  border: 2px solid #5d7076;
+  border-radius: 12px 12px 16px 16px;
+  color: #1264ff;
+  background: #ffffff;
+  box-shadow: 0 12px 22px rgba(41, 64, 69, 0.14);
+}
+
+.cloud-robot-core::before {
+  position: absolute;
+  inset: 9px;
+  border: 1px solid #d4dcdf;
+  border-radius: 8px;
+  content: '';
+}
+
+.cloud-robot-core > svg,
+.cloud-robot-core > strong,
+.cloud-robot-core-light {
+  position: relative;
+  z-index: 1;
+}
+
+.cloud-robot-core > strong {
+  margin-top: -16px;
+  color: #42545a;
+  font-family: var(--cloud-mono);
+  font-size: 6px;
+  letter-spacing: 0.08em;
+}
+
+.cloud-robot-core-light {
+  position: absolute;
+  right: 13px;
+  bottom: 13px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #0c9b70;
+}
+
+.cloud-robot-arm {
+  position: absolute;
+  top: 76px;
+  width: 26px;
+  height: 92px;
+}
+
+.cloud-robot-arm.is-left {
+  left: 0;
+}
+
+.cloud-robot-arm.is-right {
+  right: 0;
+}
+
+.cloud-robot-arm > i {
+  position: absolute;
+  top: 0;
+  left: 10px;
+  width: 7px;
+  height: 62px;
+  border: 2px solid #65777d;
+  border-radius: 5px;
+  background: #dfe8e9;
+}
+
+.cloud-robot-arm > b {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  width: 26px;
+  height: 30px;
+  place-items: center;
+  border: 2px solid #65777d;
+  border-radius: 8px;
+  color: #1a91ad;
+  background: #ffffff;
+}
+
+.cloud-robot-arm.is-right > b {
+  color: #b97708;
+}
+
+.cloud-robot-leg {
+  position: absolute;
+  top: 157px;
+  width: 28px;
+  height: 80px;
+  border: 2px solid #5f7177;
+  border-radius: 6px 6px 10px 10px;
+  background: #e5ebec;
+}
+
+.cloud-robot-leg.is-left {
+  left: 38px;
+}
+
+.cloud-robot-leg.is-right {
+  right: 38px;
+}
+
+.cloud-robot-leg i {
+  position: absolute;
+  right: -6px;
+  bottom: -5px;
+  left: -6px;
+  height: 15px;
+  border: 2px solid #5f7177;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.cloud-robot-security,
+.cloud-robot-identity {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(38, 70, 75, 0.15);
+}
+
+.cloud-robot-security {
+  top: 103px;
+  left: 58px;
+  width: 32px;
+  height: 32px;
+  color: #0c9b70;
+}
+
+.cloud-robot-identity {
+  top: 145px;
+  left: 64px;
+  width: 20px;
+  height: 20px;
+  color: #7057c8;
+}
+
+.cloud-factory-part-flight {
+  position: absolute;
+  z-index: 6;
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 7px;
+  box-shadow: 0 7px 16px rgba(34, 67, 73, 0.16);
+}
+
+.cloud-factory-part-flight.is-model {
+  top: 92px;
+  left: 26px;
+  color: #7057c8;
+  background: #f0edfb;
+}
+
+.cloud-factory-part-flight.is-harness {
+  top: 158px;
+  left: 24px;
+  color: #1264ff;
+  background: #eaf2ff;
+}
+
+.cloud-factory-part-flight.is-mcp {
+  top: 228px;
+  left: 26px;
+  color: #1a91ad;
+  background: #e9f7fa;
+}
+
+.cloud-factory-part-flight.is-skills {
+  top: 228px;
+  right: 26px;
+  color: #b97708;
+  background: #fff4da;
+}
+
+.cloud-factory-part-flight.is-security {
+  top: 158px;
+  right: 24px;
+  color: #0c9b70;
+  background: #eaf7f2;
+}
+
+.cloud-factory-scanner {
+  position: absolute;
+  z-index: 5;
+  top: 69px;
+  right: 12px;
+  bottom: 61px;
+  width: 54px;
+  border: 1px solid #b8cdce;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.cloud-factory-scanner > span {
+  position: absolute;
+  top: 8px;
+  right: 4px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #477175;
+  font-family: var(--cloud-mono);
+  font-size: 4.6px;
+  font-weight: 740;
+  text-align: center;
+}
+
+.cloud-factory-scanner > i {
+  position: absolute;
+  top: 36px;
+  right: 5px;
+  left: 5px;
+  height: 2px;
+  border-radius: 1px;
+  background: #1a91ad;
+  box-shadow: 0 5px 12px rgba(26, 145, 173, 0.2);
+}
+
+.cloud-factory-conveyor {
+  position: absolute;
+  z-index: 7;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  height: 60px;
+  padding: 0 9px;
+  align-items: center;
+  justify-content: space-around;
+  overflow: hidden;
+  border-top: 7px solid #62747a;
+  border-bottom: 7px solid #62747a;
+  background: #dbe4e5;
+}
+
+.cloud-factory-conveyor > i {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border: 4px solid #9aabad;
+  border-radius: 50%;
+  background: #f5f8f8;
+}
+
+.cloud-factory-release-box {
+  position: absolute;
+  right: 12px;
+  display: grid;
+  min-width: 138px;
+  min-height: 44px;
+  padding: 5px 7px;
+  grid-template-columns: 24px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 0 5px;
+  border: 1px solid #9db8ad;
+  border-radius: 7px;
+  color: #0c9b70;
+  background: #ffffff;
+  box-shadow: 0 7px 16px rgba(36, 75, 67, 0.15);
+}
+
+.cloud-factory-release-box > svg {
+  grid-row: 1 / -1;
+}
+
+.cloud-factory-release-box b {
+  color: #29433c;
+  font-family: var(--cloud-mono);
+  font-size: 5.8px;
+}
+
+.cloud-factory-release-box small {
+  color: #748780;
+  font-family: var(--cloud-mono);
+  font-size: 4.8px;
+}
+
+.cloud-factory-release-panel {
+  display: grid;
+  min-width: 0;
+  padding: 0 9px 9px;
+  grid-template-rows: 44px minmax(0, 1fr) auto auto 29px;
+  gap: 7px;
+  border-left: 1px solid #dfe7e9;
+  background: #ffffff;
+}
+
+.cloud-factory-release-panel > header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid #e2e8ea;
+  color: #0c9b70;
+}
+
+.cloud-factory-release-panel > header strong,
+.cloud-factory-release-panel > header small {
+  display: block;
+}
+
+.cloud-factory-release-panel > header strong {
+  color: #33444b;
+  font-size: 6.5px;
+}
+
+.cloud-factory-release-panel > header small {
+  margin-top: 2px;
+  color: #849096;
+  font-family: var(--cloud-mono);
+  font-size: 5.2px;
+}
+
+.cloud-factory-release-panel ol {
+  position: relative;
+  display: grid;
+  margin: 0;
+  padding: 8px 0;
+  align-content: center;
+  gap: 12px;
+  list-style: none;
+}
+
+.cloud-factory-release-panel ol::before {
+  position: absolute;
+  top: 35px;
+  bottom: 35px;
+  left: 8px;
+  width: 1px;
+  background: #c5d6d1;
+  content: '';
+}
+
+.cloud-factory-release-panel li {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+.cloud-factory-release-panel li > i {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  color: #ffffff;
+  background: #0c9b70;
+  box-shadow: 0 0 0 1px #9fc4b7;
+}
+
+.cloud-factory-release-panel li b,
+.cloud-factory-release-panel li small {
+  display: block;
+}
+
+.cloud-factory-release-panel li b {
+  color: #3a494f;
+  font-size: 6px;
+}
+
+.cloud-factory-release-panel li small {
+  margin-top: 2px;
+  color: #7f8c91;
+  font-family: var(--cloud-mono);
+  font-size: 5.1px;
+}
+
+.cloud-factory-release-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  padding: 9px;
+  grid-template-columns: 29px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-items: center;
+  gap: 0 6px;
+  border-radius: 9px;
+  background: #eef8f4;
+}
+
+.cloud-factory-release-card > span {
+  display: grid;
+  width: 29px;
+  height: 29px;
+  grid-row: 1 / 3;
+  place-items: center;
+  border-radius: 7px;
+  color: #0c9b70;
+  background: #ffffff;
+}
+
+.cloud-factory-release-card strong {
+  color: #27483f;
+  font-size: 6.5px;
+}
+
+.cloud-factory-release-card small {
+  color: #678078;
+  font-size: 5.3px;
+}
+
+.cloud-factory-release-card em {
+  display: inline-flex;
+  min-height: 18px;
+  margin-top: 5px;
+  padding: 0 5px;
+  grid-column: 1 / -1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 5px;
+  color: #087354;
+  background: #ffffff;
+  font-family: var(--cloud-mono);
+  font-size: 5.2px;
+  font-style: normal;
+  font-weight: 740;
+}
+
+.cloud-factory-release-card em i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #0c9b70;
+}
+
+.cloud-factory-deploy-target {
+  display: grid;
+  min-width: 0;
+  min-height: 46px;
+  padding: 7px;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #dbe3e5;
+  border-radius: 8px;
+  color: #1264ff;
+}
+
+.cloud-factory-deploy-target strong,
+.cloud-factory-deploy-target small {
+  display: block;
+}
+
+.cloud-factory-deploy-target strong {
+  overflow: hidden;
+  color: #394950;
+  font-size: 5.8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-factory-deploy-target small {
+  margin-top: 2px;
+  color: #7f8c91;
+  font-family: var(--cloud-mono);
+  font-size: 5px;
+}
+
+.cloud-factory-release-panel > footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-top: 1px solid #e2e8ea;
+  color: #7057c8;
+  font-size: 5.2px;
+  font-weight: 680;
+  text-align: center;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-trolley {
+  animation: cloud-factory-trolley-run 16.4s cubic-bezier(0.45, 0, 0.25, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-arm-segment,
+.cloud-factory-story.is-motion-active .cloud-factory-gripper {
+  animation: cloud-factory-arm-work 16.4s ease infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-robot-head {
+  animation: cloud-factory-attach-model 16.4s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-robot-core {
+  animation: cloud-factory-attach-core 16.4s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-robot-arm.is-left {
+  animation: cloud-factory-attach-left 16.4s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-robot-arm.is-right {
+  animation: cloud-factory-attach-right 16.4s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-robot-security,
+.cloud-factory-story.is-motion-active .cloud-robot-identity {
+  animation: cloud-factory-attach-security 16.4s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-part-flight {
+  animation: cloud-factory-part-flight 16.4s ease infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-part-flight.is-harness {
+  animation-delay: 1.35s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-part-flight.is-mcp {
+  animation-delay: 2.7s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-part-flight.is-skills {
+  animation-delay: 4.05s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-part-flight.is-security {
+  animation-delay: 5.4s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-scanner > i {
+  animation: cloud-factory-scan 16.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-release-box {
+  animation: cloud-factory-conveyor-release 16.4s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-parts-bin article,
+.cloud-factory-story.is-motion-active .cloud-factory-release-panel li {
+  animation: cloud-factory-check-step 16.4s ease infinite;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-parts-bin .is-part-2,
+.cloud-factory-story.is-motion-active .cloud-factory-release-panel .is-gate-2 {
+  animation-delay: 0.9s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-parts-bin .is-part-3,
+.cloud-factory-story.is-motion-active .cloud-factory-release-panel .is-gate-3 {
+  animation-delay: 1.8s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-parts-bin .is-part-4,
+.cloud-factory-story.is-motion-active .cloud-factory-release-panel .is-gate-4 {
+  animation-delay: 2.7s;
+}
+
+.cloud-factory-story.is-motion-active .cloud-factory-parts-bin .is-part-5 {
+  animation-delay: 3.6s;
+}
+
+@keyframes cloud-factory-trolley-run {
+  0%,
+  7% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(34%);
+  }
+  34% {
+    transform: translateX(76%);
+  }
+  48% {
+    transform: translateX(125%);
+  }
+  62% {
+    transform: translateX(170%);
+  }
+  74%,
+  92% {
+    transform: translateX(210%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes cloud-factory-arm-work {
+  0%,
+  9%,
+  20%,
+  24%,
+  35%,
+  39%,
+  50%,
+  54%,
+  65%,
+  69%,
+  100% {
+    transform: scaleY(0.72);
+  }
+  13%,
+  28%,
+  43%,
+  58%,
+  73% {
+    transform: scaleY(1.08);
+  }
+}
+
+@keyframes cloud-factory-attach-model {
+  0%,
+  8% {
+    opacity: 0.2;
+    transform: translate(-94px, -24px) rotate(-6deg);
+  }
+  17%,
+  96% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0.2;
+    transform: translate(-94px, -24px) rotate(-6deg);
+  }
+}
+
+@keyframes cloud-factory-attach-core {
+  0%,
+  18% {
+    opacity: 0.2;
+    transform: translate(-108px, 8px) rotate(-5deg);
+  }
+  29%,
+  96% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0.2;
+    transform: translate(-108px, 8px) rotate(-5deg);
+  }
+}
+
+@keyframes cloud-factory-attach-left {
+  0%,
+  31% {
+    opacity: 0.2;
+    transform: translate(-82px, 0) rotate(8deg);
+  }
+  42%,
+  96% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0.2;
+    transform: translate(-82px, 0) rotate(8deg);
+  }
+}
+
+@keyframes cloud-factory-attach-right {
+  0%,
+  44% {
+    opacity: 0.2;
+    transform: translate(82px, 0) rotate(-8deg);
+  }
+  55%,
+  96% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0);
+  }
+  100% {
+    opacity: 0.2;
+    transform: translate(82px, 0) rotate(-8deg);
+  }
+}
+
+@keyframes cloud-factory-attach-security {
+  0%,
+  57% {
+    opacity: 0;
+    transform: scale(0.35) rotate(-12deg);
+  }
+  68%,
+  96% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.35) rotate(-12deg);
+  }
+}
+
+@keyframes cloud-factory-part-flight {
+  0%,
+  7% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  13% {
+    opacity: 0.85;
+    transform: translateX(calc(50% + 58px)) scale(0.86);
+  }
+  18%,
+  92% {
+    opacity: 0;
+    transform: translateX(calc(50% + 58px)) scale(0.45);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes cloud-factory-scan {
+  0%,
+  68% {
+    opacity: 0;
+    transform: translateY(0);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  84% {
+    opacity: 1;
+    transform: translateY(248px);
+  }
+  88%,
+  100% {
+    opacity: 0;
+    transform: translateY(248px);
+  }
+}
+
+@keyframes cloud-factory-conveyor-release {
+  0%,
+  77% {
+    opacity: 0;
+    transform: translateX(-190px) scale(0.9);
+  }
+  84% {
+    opacity: 1;
+  }
+  94% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(30px) scale(1);
+  }
+}
+
+@keyframes cloud-factory-check-step {
+  0%,
+  13% {
+    opacity: 0.48;
+    transform: translateX(3px);
+  }
+  18%,
+  92% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0.48;
+    transform: translateX(3px);
+  }
+}
+
+@media (max-width: 1180px) {
+  .cloud-factory-console-body {
+    grid-template-columns: minmax(320px, 1fr) 124px;
+  }
+
+  .cloud-factory-parts-bin {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .cloud-factory-consolebar {
+    grid-template-columns: minmax(150px, 1fr) auto;
+  }
+
+  .cloud-factory-order {
+    display: none;
+  }
+
+  .cloud-factory-console-body {
+    grid-template-columns: minmax(320px, 1fr);
+  }
+
+  .cloud-factory-release-panel {
+    display: none;
+  }
+
+  .cloud-factory-console {
+    overflow-x: auto;
+  }
+}

@@ -1,18 +1,24 @@
-import { withBase } from '@rspress/core/runtime';
 import {
   ArrowLeft,
   ArrowRight,
   ArrowsLeftRight,
+  Brain,
+  Broadcast,
+  Browser,
   ChartLineUp,
+  Check,
   Code,
   Cube,
   Database,
+  DesktopTower,
   FlowArrow,
   Key,
   Lightning,
   Network,
+  Pulse,
   ShieldCheck,
   Stack,
+  TerminalWindow,
   type IconProps,
 } from '@phosphor-icons/react';
 import type { ComponentType } from 'react';
@@ -108,7 +114,6 @@ export function EdgeCloudFoundationChapter({
   language: HomeLanguage;
 }) {
   const zh = language === 'zh';
-  const illustration = withBase('/a3s-edge-cloud-foundation-color.png');
 
   return (
     <section className="cloud-edge-foundation" id="edge-cloud-foundation">
@@ -138,7 +143,6 @@ export function EdgeCloudFoundationChapter({
               ? '员工终端 / 开发机 / 边缘节点'
               : 'DESKTOPS / DEVICES / EDGE NODES'
           }
-          illustration={illustration}
           language={language}
           subtitle={
             zh
@@ -158,13 +162,16 @@ export function EdgeCloudFoundationChapter({
             <span className="cloud-edge-decision-ring is-middle" />
             <span className="cloud-edge-decision-ring is-inner" />
             <span className="cloud-edge-decision-mark">
-              <ShieldCheck size={27} weight="bold" />
+              <Brain size={28} weight="bold" />
             </span>
             <strong>{zh ? '智能决策' : 'POLICY DECISION'}</strong>
             <small>
-              {zh
-                ? '按场景、风险与负载选择路径'
-                : 'Route by context, risk, and load'}
+              <b>{zh ? '按场景 · 按风险 · 按负载' : 'CONTEXT · RISK · LOAD'}</b>
+              <span>
+                {zh
+                  ? '自动选择执行路径'
+                  : 'Choose the execution path automatically'}
+              </span>
             </small>
           </div>
           <span className="cloud-edge-arrow is-right">
@@ -184,7 +191,6 @@ export function EdgeCloudFoundationChapter({
               ? '企业数据中心 / 私有云 / 云边集群'
               : 'DATA CENTER / PRIVATE CLOUD / CLOUD-EDGE FLEET'
           }
-          illustration={illustration}
           language={language}
           subtitle={
             zh
@@ -216,7 +222,6 @@ export function EdgeCloudFoundationChapter({
 function ExecutionSide({
   capabilities,
   footer,
-  illustration,
   language,
   subtitle,
   title,
@@ -224,7 +229,6 @@ function ExecutionSide({
 }: {
   capabilities: FoundationCapability[];
   footer: string;
-  illustration: string;
   language: HomeLanguage;
   subtitle: string;
   title: string;
@@ -244,19 +248,151 @@ function ExecutionSide({
           </li>
         ))}
       </ul>
-      <figure className="cloud-execution-asset" aria-hidden="true">
-        <img
-          alt=""
-          height="941"
-          loading="lazy"
-          src={illustration}
-          width="1672"
-        />
-      </figure>
+      <ExecutionPreview language={language} tone={tone} />
       <footer>
         <Network aria-hidden="true" size={18} weight="duotone" />
         {footer}
       </footer>
     </article>
+  );
+}
+
+function ExecutionPreview({
+  language,
+  tone,
+}: {
+  language: HomeLanguage;
+  tone: 'cloud' | 'edge';
+}) {
+  const zh = language === 'zh';
+
+  if (tone === 'edge') {
+    return (
+      <figure
+        className="cloud-execution-asset cloud-execution-ui is-edge"
+        aria-hidden="true"
+      >
+        <header>
+          <span>
+            <Browser size={15} weight="duotone" />
+            <strong>A3S Work</strong>
+          </span>
+          <small>{zh ? '本地安全会话' : 'LOCAL SECURE SESSION'}</small>
+          <em>
+            <i /> LIVE
+          </em>
+        </header>
+        <div className="cloud-edge-mini-stage">
+          <article className="cloud-edge-mini-task">
+            <span>
+              <Database size={17} weight="duotone" />
+            </span>
+            <div>
+              <small>{zh ? '任务' : 'TASK'}</small>
+              <strong>{zh ? '核验客户资料' : 'Verify customer profile'}</strong>
+            </div>
+            <em>{zh ? '敏感' : 'SENSITIVE'}</em>
+          </article>
+          <span className="cloud-edge-mini-tunnel">
+            <ShieldCheck size={14} weight="duotone" />
+            <b>mTLS</b>
+            <i />
+          </span>
+          <article className="cloud-edge-mini-box">
+            <span>
+              <Cube size={18} weight="duotone" />
+            </span>
+            <div>
+              <strong>A3S Box bx-07</strong>
+              <small>{zh ? '本地隔离运行' : 'Local isolated run'}</small>
+            </div>
+            <Check size={14} weight="bold" />
+          </article>
+          <section className="cloud-edge-mini-residency">
+            <DesktopTower size={15} weight="duotone" />
+            <span>
+              <strong>
+                {zh ? '数据保留在设备内' : 'Data remains on device'}
+              </strong>
+              <small>customer.db · local only</small>
+            </span>
+            <em>12 ms</em>
+          </section>
+          <i className="cloud-edge-mini-packet" />
+        </div>
+        <footer>
+          <Pulse size={14} weight="duotone" />
+          <span>{zh ? '仅回流脱敏证据' : 'Redacted evidence only'}</span>
+          <code>trace edge_01J8</code>
+        </footer>
+      </figure>
+    );
+  }
+
+  return (
+    <figure
+      className="cloud-execution-asset cloud-execution-ui is-cloud"
+      aria-hidden="true"
+    >
+      <header>
+        <span>
+          <Broadcast size={15} weight="duotone" />
+          <strong>A3S Gateway</strong>
+        </span>
+        <small>{zh ? '云侧弹性执行' : 'CLOUD ELASTIC RUN'}</small>
+        <em>
+          <i /> LIVE
+        </em>
+      </header>
+      <div className="cloud-cloud-mini-stage">
+        <article className="cloud-cloud-mini-ingress">
+          <TerminalWindow size={17} weight="duotone" />
+          <span>
+            <small>{zh ? '批量任务' : 'BATCH JOB'}</small>
+            <strong>evaluation × 128</strong>
+          </span>
+        </article>
+        <section className="cloud-cloud-mini-policy">
+          <Key size={15} weight="duotone" />
+          <span>
+            <b>{zh ? '身份与配额通过' : 'Identity & quota passed'}</b>
+            <small>tenant_acme · allow</small>
+          </span>
+          <Check size={13} weight="bold" />
+        </section>
+        <div className="cloud-cloud-mini-runtime">
+          <header>
+            <Stack size={16} weight="duotone" />
+            <strong>A3S Runtime</strong>
+            <small>3 / 3</small>
+          </header>
+          <div>
+            <span>
+              <i /> run-01
+            </span>
+            <span>
+              <i /> run-02
+            </span>
+            <span>
+              <i /> run-03
+            </span>
+          </div>
+        </div>
+        <section className="cloud-cloud-mini-evidence">
+          <Pulse size={15} weight="duotone" />
+          <span>
+            <strong>AnySentry</strong>
+            <small>{zh ? '全链路证据回流' : 'Full-path evidence return'}</small>
+          </span>
+          <em>100%</em>
+        </section>
+        <i className="cloud-cloud-mini-packet" />
+      </div>
+      <footer>
+        <ShieldCheck size={14} weight="duotone" />
+        <span>{zh ? '云侧工作负载已隔离' : 'Cloud workload isolated'}</span>
+        <code>trace cloud_01J9</code>
+      </footer>
+    </figure>
   );
 }
