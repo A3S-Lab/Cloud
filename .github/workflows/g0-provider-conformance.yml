@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 90
     services:
       postgres:
-        image: postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413
+        image: postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4
         env:
           POSTGRES_DB: postgres
           POSTGRES_PASSWORD: a3s-cloud-conformance
@@ -31,9 +31,9 @@ jobs:
           --health-retries 12
     env:
       A3S_HOME: /tmp/g0-provider-${{ github.run_id }}-${{ github.run_attempt }}
-      EVIDENCE_DIR: ${{ runner.temp }}/a3s-cloud-g0-provider-evidence
-      PRIVATE_HANDOFF_DIR: ${{ runner.temp }}/a3s-cloud-g0-private-handoff
-      BOX_HANDOFF_DIR: ${{ runner.temp }}/a3s-cloud-g0-private-handoff/box-release
+      EVIDENCE_DIR: /tmp/a3s-cloud-g0-provider-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+      PRIVATE_HANDOFF_DIR: /tmp/a3s-cloud-g0-private-handoff-${{ github.run_id }}-${{ github.run_attempt }}
+      BOX_HANDOFF_DIR: /tmp/a3s-cloud-g0-private-handoff-${{ github.run_id }}-${{ github.run_attempt }}/box-release
     defaults:
       run:
         shell: bash

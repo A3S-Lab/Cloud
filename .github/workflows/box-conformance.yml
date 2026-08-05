@@ -39,7 +39,7 @@ jobs:
     timeout-minutes: 60
     services:
       postgres:
-        image: postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413
+        image: postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4
         env:
           POSTGRES_DB: postgres
           POSTGRES_PASSWORD: a3s-cloud-conformance
@@ -485,7 +485,7 @@ jobs:
               cloudRevision: $cloud,
               boxRevision: $box,
               postgresqlMajor: 17,
-              postgresImage: "postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413",
+              postgresImage: "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4",
               boundaryCount: 9,
               sigkillCount: 9,
               fleetCommandCount: 5,
@@ -510,7 +510,7 @@ jobs:
              and .cloudRevision == $cloud
              and .boxRevision == $box
              and .postgresqlMajor == 17
-             and .postgresImage == "postgres:17.5-bookworm@sha256:88fb80477ce798745d9dd3e47f53efac6c312359bc3224454d68f8e7fd01c413"
+             and .postgresImage == "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4"
              and .boundaryCount == 9
              and .sigkillCount == 9
              and .fleetCommandCount == 5
