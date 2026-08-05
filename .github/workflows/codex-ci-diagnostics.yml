@@ -49,7 +49,7 @@ jobs:
           status=$?
           set -e
           if (( status != 0 )); then
-            diagnostic=$(tail -n 140 "$RUNNER_TEMP/cargo-test.log")
+            diagnostic=$(tail -n 30 "$RUNNER_TEMP/cargo-test.log")
             diagnostic=${diagnostic//'%'/'%25'}
             diagnostic=${diagnostic//$'\r'/'%0D'}
             diagnostic=${diagnostic//$'\n'/'%0A'}
@@ -99,7 +99,7 @@ jobs:
           status=$?
           set -e
           if (( status != 0 )); then
-            diagnostic=$(tail -n 140 "$RUNNER_TEMP/github-source.log")
+            diagnostic=$(tail -n 30 "$RUNNER_TEMP/github-source.log")
             diagnostic=${diagnostic//'%'/'%25'}
             diagnostic=${diagnostic//$'\r'/'%0D'}
             diagnostic=${diagnostic//$'\n'/'%0A'}
