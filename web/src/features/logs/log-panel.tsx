@@ -1,5 +1,6 @@
 import { CircleAlert, Radio, SquareTerminal } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { useI18n } from '../../lib/i18n';
 import type { StreamState } from '../../lib/sse';
 import type { WorkloadLogRecord, WorkloadLogStreamFilter } from '../../types/api';
 import { MAX_VISIBLE_LOG_RECORDS } from './use-log-stream';
@@ -33,6 +34,7 @@ export function LogPanel({
   filter,
   onFilterChange,
 }: LogPanelProps) {
+  const { label, t } = useI18n();
   const viewport = useRef<HTMLDivElement>(null);
   const recordCount = records.length;
 
@@ -58,10 +60,10 @@ export function LogPanel({
         <div className='live-log-toolbar'>
           <span className={`log-stream-state ${state}`}>
             <Radio size={13} />
-            {streamLabel(state)}
+            {label(state)}
           </span>
           <fieldset className='log-filter'>
-            <legend className='sr-only'>Log stream filter</legend>
+            <legend className='sr-only'>{t('Log stream filter')}</legend>
             {(['all', 'stdout', 'stderr'] as const).map((value) => (
               <button
                 className={filter === value ? 'selected' : ''}
@@ -70,7 +72,7 @@ export function LogPanel({
                 disabled={!available}
                 onClick={() => onFilterChange(value)}
               >
-                {value}
+                {value === 'stdout' || value === 'stderr' ? value : label(value)}
               </button>
             ))}
           </fieldset>
@@ -78,7 +80,11 @@ export function LogPanel({
       </div>
       <div className='live-log-meta'>
         <span>{contextLabel}</span>
-        <span>Showing the latest {MAX_VISIBLE_LOG_RECORDS} ordered records at most</span>
+        <span>
+          {t('Showing the latest {count} ordered records at most', {
+            count: MAX_VISIBLE_LOG_RECORDS,
+          })}
+        </span>
       </div>
       <div className='live-log-viewport' ref={viewport} role='log' aria-live='polite'>
         {!available ? (
@@ -91,8 +97,8 @@ export function LogPanel({
             <Radio size={22} />
             <span>
               {state === 'live'
-                ? 'Connected. Waiting for ordered log records.'
-                : 'Connecting to the authoritative log stream.'}
+                ? t('Connected. Waiting for ordered log records.')
+                : t('Connecting to the authoritative log stream.')}
             </span>
           </div>
         ) : (
@@ -102,7 +108,7 @@ export function LogPanel({
       {error ? (
         <output className='live-log-error'>
           <CircleAlert size={14} />
-          {error}
+          {t(error)}
         </output>
       ) : null}
     </section>
@@ -110,18 +116,19 @@ export function LogPanel({
 }
 
 function LogRecord({ record }: { record: WorkloadLogRecord }) {
+  const { language, label, t } = useI18n();
   if (record.kind === 'gap') {
     return (
       <div className='live-log-gap'>
         <span>{sequenceLabel(record)}</span>
-        <strong>{gapLabel(record)}</strong>
+        <strong>{gapLabel(record, label, t)}</strong>
       </div>
     );
   }
   return (
     <div className={`live-log-record ${record.stream ?? 'unknown'}`}>
       <span className='live-log-sequence'>#{record.sequence}</span>
-      <time>{timestampLabel(record.observedAtMs)}</time>
+      <time>{timestampLabel(record.observedAtMs, language, t)}</time>
       <span className='live-log-stream'>{record.stream ?? 'unknown'}</span>
       <pre>{record.data ?? ''}</pre>
     </div>
@@ -130,38 +137,39 @@ function LogRecord({ record }: { record: WorkloadLogRecord }) {
 
 function sequenceLabel(record: WorkloadLogRecord): string {
   if (record.fromSequence !== null && record.throughSequence !== null) {
-    return `#${record.fromSequence}–${record.throughSequence}`;
+    return `#${record.fromSequence} to #${record.throughSequence}`;
   }
   return `#${record.sequence}`;
 }
 
-function gapLabel(record: WorkloadLogRecord): string {
-  const reason = (record.gapReason ?? 'unknown').replaceAll('_', ' ');
+function gapLabel(
+  record: WorkloadLogRecord,
+  label: (value: string) => string,
+  t: (message: string, values?: Record<string, string | number>) => string
+): string {
+  const reason = label(record.gapReason ?? 'unknown');
   if (record.compactedChunks !== null) {
-    return `${reason} · ${record.compactedChunks} records`;
+    return t('{reason} · {count} records', { reason, count: record.compactedChunks });
   }
   return reason;
 }
 
-function timestampLabel(value: number | null): string {
+function timestampLabel(
+  value: number | null,
+  language: 'zh-CN' | 'en',
+  t: (message: string) => string
+): string {
   if (value === null) {
-    return 'unknown time';
+    return t('unknown time');
   }
   const observedAt = new Date(value);
   if (Number.isNaN(observedAt.getTime())) {
     return `${value} ms`;
   }
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(language, {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
     fractionalSecondDigits: 3,
   }).format(observedAt);
-}
-
-function streamLabel(state: StreamState): string {
-  if (state === 'live') return 'Live';
-  if (state === 'retrying') return 'Reconnecting';
-  if (state === 'connecting') return 'Connecting';
-  return 'Idle';
 }

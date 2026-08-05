@@ -1,4 +1,5 @@
 import { Box } from 'lucide-react';
+import { useI18n } from '../../lib/i18n';
 import type { Environment, Workload } from '../../types/api';
 
 export function WorkloadList({
@@ -12,20 +13,21 @@ export function WorkloadList({
   environment: Environment | undefined;
   onSelect: (workloadId: string) => void;
 }) {
+  const { label, t } = useI18n();
   return (
-    <section className='workload-section' aria-label='Workloads'>
+    <section className='workload-section' aria-label={t('Workloads')}>
       <div className='section-heading'>
         <div>
-          <p className='eyebrow'>Desired and observed state</p>
-          <h2>Workloads</h2>
+          <p className='eyebrow'>{t('Desired and observed state')}</p>
+          <h2>{t('Workloads')}</h2>
         </div>
-        <span>{environment ? environment.name : 'Select an environment'}</span>
+        <span>{environment ? environment.name : t('Select an environment')}</span>
       </div>
       {workloads.length === 0 ? (
         <div className='surface workload-empty'>
           <Box size={22} />
-          <strong>No workloads in this environment</strong>
-          <p>Create a digest-bound Service deployment to start convergence.</p>
+          <strong>{t('No workloads in this environment')}</strong>
+          <p>{t('Create a digest-bound Service deployment to start convergence.')}</p>
         </div>
       ) : (
         <div className='workload-list'>
@@ -44,24 +46,32 @@ export function WorkloadList({
                   <small>
                     {workload.desiredRevision?.artifactUri ??
                       workload.desiredRevision?.artifactSourceUri ??
-                      'No desired revision'}
+                      t('No desired revision')}
                   </small>
                 </span>
                 <span>
-                  <small>Desired</small>
-                  <strong>{revisionLabel(workload.desiredRevision)}</strong>
-                </span>
-                <span>
-                  <small>Observed</small>
+                  <small>{t('Desired')}</small>
                   <strong>
-                    {deployment?.observedRuntime
-                      ? `${deployment.observedRuntime.state} · ${deployment.observedRuntime.healthState ?? 'no health'}`
-                      : 'No evidence'}
+                    {workload.desiredRevision
+                      ? t('Generation {generation}', { generation: workload.desiredRevision.generation })
+                      : t('None')}
                   </strong>
                 </span>
                 <span>
-                  <small>Operation</small>
-                  <strong>{deployment?.operation?.status ?? deployment?.status ?? 'queued'}</strong>
+                  <small>{t('Observed')}</small>
+                  <strong>
+                    {deployment?.observedRuntime
+                      ? `${label(deployment.observedRuntime.state)} · ${
+                          deployment.observedRuntime.healthState
+                            ? label(deployment.observedRuntime.healthState)
+                            : t('No health')
+                        }`
+                      : t('No evidence')}
+                  </strong>
+                </span>
+                <span>
+                  <small>{t('Operation')}</small>
+                  <strong>{label(deployment?.operation?.status ?? deployment?.status ?? 'queued')}</strong>
                 </span>
               </button>
             );
@@ -70,8 +80,4 @@ export function WorkloadList({
       )}
     </section>
   );
-}
-
-function revisionLabel(revision: Workload['desiredRevision']): string {
-  return revision ? `Generation ${revision.generation}` : 'None';
 }

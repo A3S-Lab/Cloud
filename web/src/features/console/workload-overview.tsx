@@ -1,6 +1,7 @@
 import { Ban, CircleStop } from 'lucide-react';
+import { useI18n } from '../../lib/i18n';
 import type { DeploymentStatus, Route, ServiceTemplate, Workload } from '../../types/api';
-import { humanize, shortId } from './console-format';
+import { shortId } from './console-format';
 import { WorkloadActions } from './workload-actions';
 import { routeStage } from './workload-view-model';
 
@@ -25,6 +26,7 @@ export function WorkloadOverview({
   onUpdate,
   onRollback,
 }: WorkloadOverviewProps) {
+  const { label, t } = useI18n();
   const latestDeployment = workload?.deployments[0];
   const observedRuntime = latestDeployment?.observedRuntime;
   const cancellationNotice = deploymentCancellationNotice(latestDeployment?.status);
@@ -34,12 +36,12 @@ export function WorkloadOverview({
     <article className='surface convergence-card'>
       <div className='surface-heading'>
         <div>
-          <p className='eyebrow'>Convergence</p>
-          <h2>{workload?.name ?? 'Deployment state'}</h2>
+          <p className='eyebrow'>{t('Convergence')}</p>
+          <h2>{workload?.name ?? t('Deployment state')}</h2>
         </div>
         <div className='surface-actions'>
           <span className={`state-badge ${latestDeployment?.status ?? 'neutral'}`}>
-            {latestDeployment ? humanize(latestDeployment.status) : 'Awaiting workload'}
+            {latestDeployment ? label(latestDeployment.status) : t('Awaiting workload')}
           </span>
           {workload ? (
             <WorkloadActions workload={workload} onUpdate={onUpdate} onRollback={onRollback} />
@@ -47,25 +49,25 @@ export function WorkloadOverview({
           {latestDeployment && canCancel(latestDeployment.status) ? (
             <button className='danger-button compact' type='button' disabled={cancelling} onClick={onCancel}>
               <Ban size={14} />
-              {cancelling ? 'Requesting…' : 'Cancel'}
+              {cancelling ? t('Requesting...') : t('Cancel')}
             </button>
           ) : null}
           {workload && canStop(workload) ? (
             <button className='danger-button compact' type='button' disabled={stopping} onClick={onStop}>
               <CircleStop size={14} />
-              {stopping ? 'Stopping…' : 'Stop'}
+              {stopping ? t('Stopping...') : t('Stop')}
             </button>
           ) : null}
         </div>
       </div>
-      <ol className='convergence-track' aria-label='Deployment convergence stages'>
+      <ol className='convergence-track' aria-label={t('Deployment convergence stages')}>
         {deploymentStages(latestDeployment?.status, latestDeployment?.revision.id, routes).map(
           (stage, index) => (
             <li className={`convergence-step ${stage.state}`} key={stage.name}>
               <span>{index + 1}</span>
               <div>
-                <strong>{stage.name}</strong>
-                <small>{stage.label}</small>
+                <strong>{t(stage.name)}</strong>
+                <small>{localizedStageLabel(stage.label, label, t)}</small>
               </div>
             </li>
           )
@@ -74,45 +76,59 @@ export function WorkloadOverview({
       {workload ? (
         <dl className='deployment-facts'>
           <div>
-            <dt>Desired revision</dt>
-            <dd>{revisionLabel(workload.desiredRevision)}</dd>
-          </div>
-          <div>
-            <dt>Active revision</dt>
-            <dd>{revisionLabel(workload.activeRevision)}</dd>
-          </div>
-          <div>
-            <dt>Observed generation</dt>
-            <dd>{observedRuntime ? `Generation ${observedRuntime.generation}` : 'No evidence'}</dd>
-          </div>
-          <div>
-            <dt>Runtime / health</dt>
+            <dt>{t('Desired revision')}</dt>
             <dd>
-              {observedRuntime
-                ? `${observedRuntime.state} / ${observedRuntime.healthState ?? 'not reported'}`
-                : 'Not observed'}
+              {workload.desiredRevision
+                ? t('Generation {generation}', { generation: workload.desiredRevision.generation })
+                : t('None')}
             </dd>
           </div>
           <div>
-            <dt>Release binding</dt>
-            <dd>{releaseBindingLabel(workload.desiredRevision)}</dd>
+            <dt>{t('Active revision')}</dt>
+            <dd>
+              {workload.activeRevision
+                ? t('Generation {generation}', { generation: workload.activeRevision.generation })
+                : t('None')}
+            </dd>
+          </div>
+          <div>
+            <dt>{t('Observed generation')}</dt>
+            <dd>
+              {observedRuntime
+                ? t('Generation {generation}', { generation: observedRuntime.generation })
+                : t('No evidence')}
+            </dd>
+          </div>
+          <div>
+            <dt>{t('Runtime / health')}</dt>
+            <dd>
+              {observedRuntime
+                ? `${label(observedRuntime.state)} / ${
+                    observedRuntime.healthState ? label(observedRuntime.healthState) : t('Not reported')
+                  }`
+                : t('Not observed')}
+            </dd>
+          </div>
+          <div>
+            <dt>{t('Release binding')}</dt>
+            <dd>{releaseBindingLabel(workload.desiredRevision, t)}</dd>
           </div>
         </dl>
       ) : (
         <p className='surface-note'>
-          A deployment appears here only after its committed operation is observable.
+          {t('A deployment appears here only after its committed operation is observable.')}
         </p>
       )}
       {cancellationNotice ? (
         <output className={`deployment-notice ${cancellationNotice.tone}`}>
-          <strong>{cancellationNotice.title}</strong>
-          <span>{cancellationNotice.detail}</span>
+          <strong>{t(cancellationNotice.title)}</strong>
+          <span>{t(cancellationNotice.detail)}</span>
         </output>
       ) : null}
       {stopNotice ? (
         <output className={`deployment-notice ${stopNotice.tone}`}>
-          <strong>{stopNotice.title}</strong>
-          <span>{stopNotice.detail}</span>
+          <strong>{t(stopNotice.title)}</strong>
+          <span>{t(stopNotice.detail)}</span>
         </output>
       ) : null}
     </article>
@@ -241,19 +257,28 @@ function deploymentCancellationNotice(status?: DeploymentStatus): {
   return null;
 }
 
-function revisionLabel(revision: Workload['desiredRevision']): string {
-  return revision ? `Generation ${revision.generation}` : 'None';
-}
-
-function releaseBindingLabel(revision: Workload['desiredRevision']): string {
+function releaseBindingLabel(
+  revision: Workload['desiredRevision'],
+  t: (message: string, values?: Record<string, string | number>) => string
+): string {
   if (revision?.agentBinding) {
     const skills = revision.skillBindings.length;
     return `Agent ${shortId(revision.agentBinding.assetReleaseId)}${
-      skills > 0 ? ` · ${skills} Skill${skills === 1 ? '' : 's'}` : ''
+      skills > 0 ? ` · ${t('Skills {skills}', { skills })}` : ''
     }`;
   }
   if (revision?.mcpBinding) {
     return `MCP ${shortId(revision.mcpBinding.assetReleaseId)}`;
   }
-  return 'Ordinary Workload';
+  return t('Ordinary Workload');
+}
+
+function localizedStageLabel(
+  value: string,
+  label: (input: string) => string,
+  t: (message: string, values?: Record<string, string | number>) => string
+): string {
+  const acknowledged = /^(\d+) acknowledged$/.exec(value);
+  if (acknowledged) return t('{count} acknowledged', { count: acknowledged[1] });
+  return t(label(value));
 }

@@ -238,7 +238,7 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 function formatValue(value: unknown): string {
-  if (value === undefined) return '—';
+  if (value === undefined) return 'Not set';
   if (typeof value === 'string') return value;
   if (value === null || typeof value === 'number' || typeof value === 'boolean') {
     return String(value);

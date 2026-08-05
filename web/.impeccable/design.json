@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-05T06:46:34.359Z",
+  "title": "Design System: A3S Cloud",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Control Blue",
+        "canonical": "#1264ff",
+        "tonalRamp": ["#061b46", "#07327e", "#0758ec", "#1264ff", "#4b8cff", "#85b2ff", "#c3d9ff", "#edf4ff"]
+      },
+      "primary-strong": {
+        "role": "primary",
+        "displayName": "Control Blue Strong",
+        "canonical": "#0758ec",
+        "tonalRamp": ["#05183f", "#062d75", "#0747bd", "#0758ec", "#397af4", "#77a7fb", "#b7d0ff", "#edf4ff"]
+      },
+      "primary-soft": {
+        "role": "primary",
+        "displayName": "Control Blue Wash",
+        "canonical": "#edf4ff",
+        "tonalRamp": ["#101d33", "#233757", "#3e5f91", "#6d91c9", "#9db9e5", "#c4d5ee", "#dce8f8", "#edf4ff"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Operator Canvas",
+        "canonical": "#f7f9fd",
+        "tonalRamp": ["#171c25", "#303846", "#536174", "#7e8b9d", "#aab5c4", "#d0d7e1", "#e8ecf3", "#f7f9fd"]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Control Panel",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#171a20", "#343944", "#5c6472", "#89919d", "#b4bac3", "#d7dbe1", "#eff1f4", "#ffffff"]
+      },
+      "panel-raised": {
+        "role": "neutral",
+        "displayName": "Raised Panel",
+        "canonical": "#f3f7ff",
+        "tonalRamp": ["#151c29", "#2d3d55", "#4e6688", "#778eae", "#a3b5cd", "#cbd6e5", "#e4ebf4", "#f3f7ff"]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Cool Hairline",
+        "canonical": "#dce6f6",
+        "tonalRamp": ["#152238", "#2d4567", "#4e6e99", "#7896bd", "#a4b9d5", "#c5d3e7", "#dce6f6", "#f5f8fd"]
+      },
+      "line-bright": {
+        "role": "neutral",
+        "displayName": "Bright Hairline",
+        "canonical": "#c8d8f2",
+        "tonalRamp": ["#13233e", "#2a4770", "#4d73a7", "#789ccf", "#a1b9df", "#c8d8f2", "#e2ebf9", "#f7faff"]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#101828",
+        "tonalRamp": ["#101828", "#273348", "#46546b", "#6d7a8f", "#99a4b4", "#c4ccd6", "#e3e7ec", "#f7f8fa"]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Slate",
+        "canonical": "#5d6b82",
+        "tonalRamp": ["#151c28", "#2f3a4c", "#5d6b82", "#7d899b", "#a2abb8", "#c7cdd6", "#e3e6eb", "#f6f7f9"]
+      },
+      "success": {
+        "role": "secondary",
+        "displayName": "Evidence Green",
+        "canonical": "#0c9b68",
+        "tonalRamp": ["#06261c", "#075039", "#087c55", "#0c9b68", "#42b98a", "#7bd4ad", "#bae6d2", "#e9f8f1"]
+      },
+      "success-soft": {
+        "role": "secondary",
+        "displayName": "Evidence Green Wash",
+        "canonical": "#e9f8f1",
+        "tonalRamp": ["#10281f", "#28503f", "#4a7a64", "#74a48a", "#a0c9b4", "#c3e0d2", "#d9eee4", "#e9f8f1"]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Attention Amber",
+        "canonical": "#b96e00",
+        "tonalRamp": ["#301d00", "#633b00", "#975900", "#b96e00", "#d7942f", "#eab96e", "#f5d9a8", "#fff5df"]
+      },
+      "warning-soft": {
+        "role": "tertiary",
+        "displayName": "Attention Amber Wash",
+        "canonical": "#fff5df",
+        "tonalRamp": ["#2e2516", "#5f4c2b", "#947549", "#b99a6c", "#d9bd94", "#ead7b8", "#f6e9d0", "#fff5df"]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Failure Red",
+        "canonical": "#c93f50",
+        "tonalRamp": ["#351117", "#6a202b", "#9e3040", "#c93f50", "#df7180", "#eca5af", "#f5cbd0", "#fff0f2"]
+      },
+      "danger-soft": {
+        "role": "tertiary",
+        "displayName": "Failure Red Wash",
+        "canonical": "#fff0f2",
+        "tonalRamp": ["#321b1f", "#64383f", "#955760", "#bd7a82", "#dca2a8", "#ecc2c7", "#f7dde0", "#fff0f2"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Promise Display", "purpose": "The short sign-in promise only." },
+      "headline": { "displayName": "Workspace Headline", "purpose": "Workspace and primary page titles." },
+      "title": { "displayName": "Surface Title", "purpose": "Cards, panels, and architecture bands." },
+      "body": { "displayName": "Operator Body", "purpose": "Descriptions and task guidance." },
+      "label": { "displayName": "Operational Label", "purpose": "Context, metadata, counts, and controls." }
+    },
+    "shadows": [
+      { "name": "ambient-soft", "value": "0 16px 44px rgba(39, 92, 180, 0.08)", "purpose": "Low lift under a grouped shell." },
+      { "name": "ambient-float", "value": "0 24px 70px rgba(39, 92, 180, 0.14)", "purpose": "Search popovers and temporary floating surfaces." },
+      { "name": "drawer-separation", "value": "-18px 0 48px rgba(39, 92, 180, 0.08)", "purpose": "Separates the operations drawer from the workspace." }
+    ],
+    "motion": [
+      { "name": "tab-feedback", "value": "140ms ease", "purpose": "Tab color and underline state changes." },
+      { "name": "control-feedback", "value": "150ms ease", "purpose": "Button transform and background feedback." },
+      { "name": "section-enter", "value": "160ms ease-out", "purpose": "A short content-state reveal, disabled for reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "wide-compact", "value": "1180px" },
+      { "name": "stack", "value": "960px" },
+      { "name": "mobile", "value": "780px" },
+      { "name": "compact", "value": "560px" }
+    ],
+    "localization": {
+      "defaultLanguage": "zh-CN",
+      "supportedLanguages": ["zh-CN", "en"],
+      "storageKey": "a3s-cloud.language",
+      "documentLanguageSynchronized": true,
+      "productTermsPreserved": [
+        "A3S Cloud",
+        "A3S Code Harness",
+        "A3S Flow",
+        "A3S Runtime",
+        "A3S Box",
+        "A3S Gateway",
+        "Agent",
+        "MCP",
+        "Skill",
+        "OCI",
+        "SBOM"
+      ]
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single highest-priority action in a local task.",
+      "html": "<button class=\"ds-button-primary\" type=\"button\">Open control plane</button>",
+      "css": ".ds-button-primary { height: 44px; padding: 0 18px; border: 1px solid var(--accent, #1264ff); border-radius: 8px; color: #fff; background: var(--accent, #1264ff); font: 700 14px/1 'Segoe UI Variable', 'Segoe UI', sans-serif; transition: background 150ms ease, transform 150ms ease; } .ds-button-primary:hover { background: var(--accent-strong, #0758ec); } .ds-button-primary:focus-visible { outline: 3px solid rgba(18,100,255,.3); outline-offset: 2px; } .ds-button-primary:active { transform: translateY(1px); } .ds-button-primary:disabled { cursor: not-allowed; opacity: .48; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A familiar bordered action that stays below the primary command.",
+      "html": "<button class=\"ds-button-secondary\" type=\"button\">View evidence</button>",
+      "css": ".ds-button-secondary { height: 36px; padding: 0 12px; border: 1px solid var(--line-bright, #c8d8f2); border-radius: 8px; color: var(--text, #101828); background: #fff; font: 650 13px/1 'Segoe UI Variable', 'Segoe UI', sans-serif; transition: border-color 150ms ease, background 150ms ease; } .ds-button-secondary:hover { border-color: #a9c3ed; background: var(--accent-soft, #edf4ff); } .ds-button-secondary:focus-visible { outline: 3px solid rgba(18,100,255,.3); outline-offset: 2px; } .ds-button-secondary:active { transform: translateY(1px); } .ds-button-secondary:disabled { cursor: not-allowed; opacity: .48; }"
+    },
+    {
+      "name": "Search Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A wide, quiet resource search field for the current organization.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"m20 20-3.5-3.5\"/></svg><input type=\"search\" placeholder=\"Search authorized resources\"></label>",
+      "css": ".ds-search { display: flex; width: 360px; height: 40px; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid var(--line-bright, #c8d8f2); border-radius: 9px; color: var(--muted, #5d6b82); background: #fff; } .ds-search svg { width: 16px; fill: none; stroke: currentColor; stroke-width: 2; } .ds-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: var(--text, #101828); background: transparent; font: 400 13px/1.4 'Segoe UI Variable', 'Segoe UI', sans-serif; } .ds-search:focus-within { border-color: var(--accent, #1264ff); box-shadow: 0 0 0 3px rgba(18,100,255,.09); } .ds-search input::placeholder { color: #7a879c; } .ds-search input:disabled { cursor: not-allowed; opacity: .55; }"
+    },
+    {
+      "name": "Language Switcher",
+      "kind": "custom",
+      "refersTo": "language-switcher",
+      "description": "The synchronized Chinese and English product-version selector used on sign-in and authenticated surfaces.",
+      "html": "<fieldset class=\"ds-language\"><legend class=\"sr-only\">Language</legend><button type=\"button\" aria-pressed=\"true\">中文</button><button type=\"button\" aria-pressed=\"false\">EN</button></fieldset>",
+      "css": ".ds-language { display: inline-flex; height: 34px; margin: 0; padding: 3px; gap: 2px; border: 1px solid var(--line-bright, #c8d8f2); border-radius: 8px; background: var(--panel-raised, #f3f7ff); } .ds-language button { min-width: 38px; padding: 0 8px; border: 0; border-radius: 5px; color: var(--muted, #5d6b82); background: transparent; font: 700 12px/1 'Segoe UI Variable', 'Segoe UI', sans-serif; } .ds-language button[aria-pressed='true'] { color: var(--accent, #1264ff); background: #fff; box-shadow: 0 1px 5px rgba(39,92,180,.14); }"
+    },
+    {
+      "name": "Navigation Tab",
+      "kind": "nav",
+      "refersTo": "nav-tab",
+      "description": "One workspace destination with an underline that carries current selection.",
+      "html": "<button class=\"ds-nav-tab is-active\" type=\"button\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/></svg>Overview</button>",
+      "css": ".ds-nav-tab { position: relative; display: inline-flex; height: 57px; padding: 0; align-items: center; gap: 8px; border: 0; color: #41516b; background: #fff; font: 700 13px/1 'Segoe UI Variable', 'Segoe UI', sans-serif; } .ds-nav-tab svg { width: 17px; fill: none; stroke: currentColor; stroke-width: 2; } .ds-nav-tab:hover { color: var(--accent, #1264ff); } .ds-nav-tab:focus-visible { outline: 3px solid rgba(18,100,255,.3); outline-offset: -3px; } .ds-nav-tab.is-active { color: var(--accent, #1264ff); } .ds-nav-tab.is-active::after { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; border-radius: 3px 3px 0 0; background: currentColor; content: ''; }"
+    },
+    {
+      "name": "Surface Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The standard factual container for operational modules.",
+      "html": "<article class=\"ds-card\"><h3>Current operations</h3><p>Latest durable workflow state for this organization.</p></article>",
+      "css": ".ds-card { padding: 22px; border: 1px solid var(--line, #dce6f6); border-radius: 12px; color: var(--text, #101828); background: #fff; font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; } .ds-card h3 { margin: 0; font-size: 18px; letter-spacing: -.025em; } .ds-card p { max-width: 65ch; margin: 6px 0 0; color: var(--muted, #5d6b82); font-size: 12px; line-height: 1.5; }"
+    },
+    {
+      "name": "State Badge",
+      "kind": "chip",
+      "refersTo": "state-badge",
+      "description": "A compact semantic status label that always includes text.",
+      "html": "<span class=\"ds-state-badge\">Succeeded</span>",
+      "css": ".ds-state-badge { display: inline-flex; min-height: 26px; padding: 5px 9px; align-items: center; border: 1px solid #bae6d2; border-radius: 999px; color: var(--success, #0c9b68); background: var(--success-soft, #e9f8f1); font: 650 11px/1 'Segoe UI Variable', 'Segoe UI', sans-serif; }"
+    },
+    {
+      "name": "Convergence Field",
+      "kind": "custom",
+      "refersTo": "status-field",
+      "description": "The dominant per-viewport state field for desired-state convergence.",
+      "html": "<section class=\"ds-convergence\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M3 12h4l2-7 4 14 2-7h6\"/></svg><div><strong>Desired state is converged</strong><small>No active operation is changing this environment.</small></div></section>",
+      "css": ".ds-convergence { display: flex; min-height: 76px; padding: 12px 18px; align-items: center; gap: 14px; border-radius: 12px; color: #fff; background: var(--accent, #1264ff); font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; } .ds-convergence svg { width: 42px; height: 42px; padding: 9px; border-radius: 50%; fill: none; stroke: var(--accent, #1264ff); stroke-width: 2; background: #fff; } .ds-convergence strong, .ds-convergence small { display: block; } .ds-convergence strong { font-size: 17px; } .ds-convergence small { margin-top: 4px; color: #dce8ff; font-size: 11px; }"
+    },
+    {
+      "name": "Authority Row",
+      "kind": "custom",
+      "refersTo": "authority-row",
+      "description": "A compact step in the control and runtime ownership chain.",
+      "html": "<div class=\"ds-authority-row\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><rect x=\"3\" y=\"3\" width=\"6\" height=\"6\"/><rect x=\"15\" y=\"15\" width=\"6\" height=\"6\"/><path d=\"M9 6h6v9\"/></svg><div><strong>A3S Code Harness</strong><small>Sole Agent execution owner</small></div></div>",
+      "css": ".ds-authority-row { display: flex; min-height: 57px; padding: 8px 13px; align-items: center; gap: 11px; border: 1px solid var(--line, #dce6f6); border-radius: 10px; color: var(--text, #101828); background: var(--canvas, #f7f9fd); font-family: 'Segoe UI Variable', 'Segoe UI', sans-serif; } .ds-authority-row svg { width: 34px; height: 34px; padding: 8px; border-radius: 8px; fill: none; stroke: var(--accent, #1264ff); stroke-width: 2; background: #fff; } .ds-authority-row strong, .ds-authority-row small { display: block; } .ds-authority-row strong { font-size: 12px; } .ds-authority-row small { margin-top: 4px; color: var(--muted, #5d6b82); font-size: 10px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Visible Control Path",
+    "overview": "A3S Cloud is a bright, operations-first enterprise workspace. A pure white canvas, cool blue hairlines, compact typography, and one electric-blue field expose current state without turning the product into a generic infrastructure dashboard.\n\nThe interface places operational truth beside the A3S authority that owns it. Familiar controls, restrained motion, and semantic state color keep the tool trustworthy while the convergence field and authority chain make the product recognizably A3S.",
+    "keyCharacteristics": [
+      "White and pale-blue operating surfaces with one dominant electric-blue field.",
+      "Compact, factual hierarchy designed for repeated use by platform operators.",
+      "Explicit control and execution ownership, ending at the sole A3S Code Harness.",
+      "Near-flat surfaces, cool hairlines, and sparse blue-tinted elevation.",
+      "Structural responsive reflow with preserved labels and touch targets."
+      ,"Simplified Chinese by default with a complete, persistent English product version."
+    ],
+    "rules": [
+      { "name": "The One Blue Field Rule", "body": "Give each viewport one dominant blue field; use all other blue as action, selection, or wayfinding.", "section": "colors" },
+      { "name": "The Semantic Color Rule", "body": "Green, amber, and red must communicate real state and never decorate neutral content.", "section": "colors" },
+      { "name": "The Scan First Rule", "body": "Establish hierarchy with size and weight; do not add visible eyebrow labels above headings.", "section": "typography" },
+      { "name": "The Data Voice Rule", "body": "Monospace belongs to code, commands, identifiers, and measured output, not to product personality.", "section": "typography" },
+      { "name": "The Authority Beside Action Rule", "body": "When width permits, place current operational truth next to the A3S component that owns the next transition.", "section": "layout" },
+      { "name": "The Hairline Before Shadow Rule", "body": "Use a cool boundary for structural surfaces and reserve visible shadow for shells or overlays that genuinely sit above them.", "section": "elevation" }
+      ,{ "name": "The Language Parity Rule", "body": "A visible feature is complete only when its Chinese and English copy, state labels, dates, and accessible names describe the same behavior.", "section": "language" }
+    ],
+    "dos": [
+      "Do show the selected organization, project, and environment before operational detail.",
+      "Do pair state with text or an icon instead of relying on color alone.",
+      "Do keep standard controls familiar, keyboard reachable, and at least 40px to 44px on touch layouts.",
+      "Do use real API projections and label planned architecture modules explicitly.",
+      "Do preserve the A3S authority path and the sole A3S Code Harness boundary."
+      ,"Do keep default Chinese and selectable English at feature parity, including dynamic states and accessible names."
+    ],
+    "donts": [
+      "Don't create a second Harness, execution owner, or parallel orchestration story.",
+      "Don't scatter full-saturation blue across inactive surfaces.",
+      "Don't use visible eyebrow labels, gradient text, decorative glass, or technical monospace as costume.",
+      "Don't invent customer names, scale metrics, availability claims, or completed roadmap capabilities.",
+      "Don't compress desktop layouts onto mobile; reflow modules and allow purposeful horizontal scrolling for tab or tenant rails."
+      ,"Don't infer the default language from the browser or create per-page language state."
+    ]
+  }
+}

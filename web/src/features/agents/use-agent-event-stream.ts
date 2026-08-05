@@ -135,7 +135,8 @@ function isAgentEventKind(value: unknown): boolean {
     value === 'execution_requested' ||
     value === 'model_output' ||
     value === 'execution_failed' ||
-    value === 'execution_completed'
+    value === 'execution_completed' ||
+    value === 'execution_cancelled'
   );
 }
 

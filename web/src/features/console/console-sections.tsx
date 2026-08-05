@@ -1,5 +1,17 @@
-import { Activity, Boxes, GitBranch, Route as RouteIcon } from 'lucide-react';
+import {
+  Activity,
+  Box,
+  Boxes,
+  CheckCircle2,
+  CloudCog,
+  Code2,
+  Network,
+  Route as RouteIcon,
+  Server,
+  Workflow,
+} from 'lucide-react';
 import type { CloudApi } from '../../lib/api';
+import { useI18n } from '../../lib/i18n';
 import type {
   Asset,
   AssetRelease,
@@ -24,9 +36,10 @@ import { AssetCatalogCard, InfrastructureCard } from './environment-summary';
 import { SkillBindingsPanel } from './skill-bindings-panel';
 import { WorkloadList } from './workload-list';
 import { WorkloadOverview } from './workload-overview';
+import { isTerminalOperation } from './workload-view-model';
 
 interface OverviewSectionProps {
-  activeOperations: number;
+  operations: Operation[];
   assets: Asset[];
   assetReleases: AssetRelease[];
   buildRunCount: number;
@@ -36,7 +49,7 @@ interface OverviewSectionProps {
 }
 
 export function OverviewSection({
-  activeOperations,
+  operations,
   assets,
   assetReleases,
   buildRunCount,
@@ -44,6 +57,7 @@ export function OverviewSection({
   routes,
   workloadCount,
 }: OverviewSectionProps) {
+  const activeOperations = operations.filter((operation) => !isTerminalOperation(operation)).length;
   const activeRoutes = routes.filter((route) => route.state === 'active').length;
   return (
     <section
@@ -52,21 +66,25 @@ export function OverviewSection({
       role='tabpanel'
       aria-labelledby='console-overview-tab'
     >
+      <OverviewStatusBand
+        activeOperations={activeOperations}
+        activeRoutes={activeRoutes}
+        buildRunCount={buildRunCount}
+        workloadCount={workloadCount}
+      />
       <div className='overview-grid'>
-        <EnvironmentActivityCard
-          activeOperations={activeOperations}
-          activeRoutes={activeRoutes}
-          buildRunCount={buildRunCount}
-          workloadCount={workloadCount}
-        />
-        <InfrastructureCard deployment={deployment} routes={routes} />
+        <CurrentOperationsCard operations={operations} />
+        <AuthorityChain />
+      </div>
+      <div className='overview-support-grid'>
         <AssetCatalogCard assets={assets} releases={assetReleases} />
+        <InfrastructureCard deployment={deployment} routes={routes} />
       </div>
     </section>
   );
 }
 
-function EnvironmentActivityCard({
+function OverviewStatusBand({
   activeOperations,
   activeRoutes,
   buildRunCount,
@@ -77,41 +95,128 @@ function EnvironmentActivityCard({
   buildRunCount: number;
   workloadCount: number;
 }) {
+  const { t } = useI18n();
+  const converged = activeOperations === 0;
+  const StatusIcon = converged ? CheckCircle2 : Activity;
   return (
-    <article className='surface activity-card'>
-      <div className='surface-heading'>
+    <article className='overview-status-band'>
+      <div className='overview-status-copy'>
+        <span aria-hidden='true'>
+          <StatusIcon size={22} />
+        </span>
         <div>
-          <p className='eyebrow'>Current projection</p>
-          <h2>Environment activity</h2>
+          <strong>
+            {converged ? t('Desired state is converged') : t('Convergence is in progress')}
+          </strong>
+          <small>
+            {converged
+              ? t('No active operation is changing the selected environment.')
+              : t(
+                  activeOperations === 1
+                    ? '{count} durable operation currently active.'
+                    : '{count} durable operations currently active.',
+                  { count: activeOperations }
+                )}
+          </small>
         </div>
-        <Activity size={20} />
       </div>
-      <dl className='activity-facts'>
+      <dl className='overview-status-facts'>
         <div>
-          <dt>
-            <Boxes size={15} /> Workloads
-          </dt>
+          <dt>{t('Workloads')}</dt>
           <dd>{workloadCount}</dd>
         </div>
         <div>
-          <dt>
-            <Activity size={15} /> Active operations
-          </dt>
+          <dt>{t('Active operations')}</dt>
           <dd>{activeOperations}</dd>
         </div>
         <div>
-          <dt>
-            <GitBranch size={15} /> Build runs
-          </dt>
+          <dt>{t('Build runs')}</dt>
           <dd>{buildRunCount}</dd>
         </div>
         <div>
-          <dt>
-            <RouteIcon size={15} /> Active routes
-          </dt>
+          <dt>{t('Active routes')}</dt>
           <dd>{activeRoutes}</dd>
         </div>
       </dl>
+    </article>
+  );
+}
+
+function CurrentOperationsCard({ operations }: { operations: Operation[] }) {
+  const { formatRelative, label, t } = useI18n();
+  const recent = operations.slice(0, 5);
+  return (
+    <article className='surface current-operations-card'>
+      <div className='surface-heading'>
+        <div>
+          <h2>{t('Current operations')}</h2>
+          <p>{t('Latest durable workflow state for this organization')}</p>
+        </div>
+        <span>{t('{count} total', { count: operations.length })}</span>
+      </div>
+      {recent.length === 0 ? (
+        <div className='overview-empty-state'>
+          <CheckCircle2 size={22} />
+          <div>
+            <strong>{t('No operations recorded')}</strong>
+            <p>{t('Accepted mutations and their terminal evidence will appear here.')}</p>
+          </div>
+        </div>
+      ) : (
+        <ol className='overview-operation-list'>
+          {recent.map((operation) => (
+            <li key={operation.id}>
+              <span className={`operation-status ${operation.status}`} aria-hidden='true' />
+              <span className='overview-operation-name'>
+                <strong>{label(operation.subjectKind)}</strong>
+                <small>
+                  {operation.workflowName}@{operation.workflowVersion}
+                </small>
+              </span>
+              <span className={`state-badge ${operation.status}`}>{label(operation.status)}</span>
+              <time dateTime={operation.updatedAt}>{formatRelative(operation.updatedAt)}</time>
+            </li>
+          ))}
+        </ol>
+      )}
+    </article>
+  );
+}
+
+const AUTHORITY_LAYERS = [
+  { label: 'A3S Cloud control', detail: 'Intent, identity, and policy', icon: CloudCog },
+  { label: 'Operations + A3S Flow', detail: 'Durable orchestration and recovery', icon: Workflow },
+  { label: 'Workloads', detail: 'Placement, revisions, and convergence', icon: Boxes },
+  { label: 'Outbound-only Node Agent', detail: 'Leases, Claims, commands, and receipts', icon: Network },
+  { label: 'A3S Runtime + Box', detail: 'Task, Service, build, and isolation', icon: Server },
+  { label: 'A3S Gateway', detail: 'Applied request-path policy', icon: RouteIcon },
+  { label: 'A3S Code Harness', detail: 'Sole Agent execution owner', icon: Code2 },
+] as const;
+
+function AuthorityChain() {
+  const { t } = useI18n();
+  return (
+    <article className='surface authority-chain-card'>
+      <div className='surface-heading'>
+        <div>
+          <h2>{t('Authority and runtime path')}</h2>
+          <p>{t('One control route from accepted intent to execution evidence')}</p>
+        </div>
+        <Box size={20} />
+      </div>
+      <ol className='authority-chain'>
+        {AUTHORITY_LAYERS.map(({ label, detail, icon: Icon }) => (
+          <li className={label === 'A3S Code Harness' ? 'authority-harness' : undefined} key={label}>
+            <span aria-hidden='true'>
+              <Icon size={18} />
+            </span>
+            <div>
+              <strong>{t(label)}</strong>
+              <small>{t(detail)}</small>
+            </div>
+          </li>
+        ))}
+      </ol>
     </article>
   );
 }

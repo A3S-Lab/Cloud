@@ -1,0 +1,556 @@
+/* Workloads and operations */
+
+.section-heading {
+  align-items: center;
+}
+
+.workload-empty,
+.detail-empty,
+.empty-skill-bindings,
+.agent-empty,
+.empty-operations {
+  color: var(--muted);
+  background: #ffffff;
+}
+
+.workload-empty {
+  min-height: 140px;
+}
+
+.convergence-card {
+  min-height: 260px;
+}
+
+.detail-empty {
+  min-height: 160px;
+  padding-block: 30px;
+}
+
+.workload-empty strong,
+.detail-empty strong,
+.empty-skill-bindings strong,
+.agent-empty strong,
+.empty-operations strong {
+  color: var(--text);
+}
+
+.workload-list {
+  border-color: var(--line);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.workload-row {
+  border-color: var(--line);
+  color: var(--text);
+  background: #ffffff;
+}
+
+.workload-row:hover,
+.workload-row.selected {
+  background: #f5f9ff;
+}
+
+.workload-row.selected {
+  box-shadow: inset 3px 0 var(--accent);
+}
+
+.workload-row strong {
+  color: var(--text);
+}
+
+.workload-row small {
+  color: var(--muted);
+}
+
+.workload-state {
+  background: #9aa7b9;
+}
+
+.workload-state.active,
+.workload-state.verifying,
+.operation-status.succeeded {
+  background: var(--success);
+  box-shadow: none;
+}
+
+.workload-state.applying,
+.workload-state.scheduled,
+.workload-state.resolving,
+.operation-status.running,
+.operation-status.queued {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.workload-state.cancelling,
+.workload-state.cleanup_pending,
+.operation-status.suspended {
+  background: var(--warning);
+  box-shadow: none;
+}
+
+.workload-state.failed,
+.workload-state.cancelled,
+.workload-state.orphaned,
+.operation-status.failed,
+.operation-status.cancelled {
+  background: var(--danger);
+  box-shadow: none;
+}
+
+.convergence-step div {
+  background: #ffffff;
+}
+
+.convergence-step strong,
+.timeline-title strong,
+.edge-route strong,
+.certificate-title strong {
+  color: var(--text);
+}
+
+.convergence-step > span {
+  border-color: var(--line-bright);
+  color: var(--muted);
+  background: #ffffff;
+}
+
+.convergence-step.complete > span {
+  border-color: var(--success);
+  color: #ffffff;
+  background: var(--success);
+}
+
+.convergence-step.current > span {
+  border-color: var(--accent);
+  color: #ffffff;
+  background: var(--accent);
+  box-shadow: 0 0 0 5px rgba(18, 100, 255, 0.08);
+}
+
+.deployment-facts,
+.timeline-facts,
+.edge-facts,
+.build-run-facts,
+.build-evidence-facts {
+  border-color: var(--line);
+  background: var(--line);
+}
+
+.operation-drawer {
+  top: 122px;
+  height: calc(100dvh - 122px);
+  border-color: var(--line);
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: -18px 0 48px rgba(39, 92, 180, 0.08);
+}
+
+.drawer-heading {
+  border-color: var(--line);
+}
+
+.drawer-cleanup {
+  color: var(--muted);
+  background: #f8faff;
+}
+
+.operation-item {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.operation-title strong,
+.operation-item p {
+  color: var(--text);
+}
+
+.operation-title span,
+.operation-item small {
+  color: var(--muted);
+}
+
+.operation-item em {
+  color: var(--danger);
+}
+
+.stream-dot {
+  background: #9aa7b9;
+  box-shadow: none;
+}
+
+.stream-dot.live {
+  background: var(--success);
+  box-shadow: none;
+}
+
+.stream-dot.retrying {
+  background: var(--warning);
+  box-shadow: none;
+}
+
+/* Feature panels */
+
+.workload-actions,
+.skill-bindings-card,
+.deployment-timeline,
+.edge-status-panel,
+.build-run-panel,
+.build-evidence-panel,
+.agent-conversation-panel,
+.agent-execution-panel,
+.agent-event-panel {
+  border-color: var(--line);
+  color: var(--text);
+  background: #ffffff;
+}
+
+.skill-binding-form,
+.agent-start-controls,
+.template-editor,
+.template-diff,
+.build-evidence-document,
+.build-run-evidence-summary,
+.certificate-projection,
+.edge-route,
+.timeline-lineage,
+.timeline-artifact {
+  border-color: var(--line);
+  color: var(--text);
+  background: #f8faff;
+}
+
+.skill-binding-form select,
+.skill-binding-form input,
+.agent-start-controls select,
+.agent-start-controls input,
+.template-editor textarea,
+.action-dialog input,
+.action-dialog textarea,
+.action-dialog select {
+  border-color: var(--line-bright);
+  color: var(--text);
+  background: #ffffff;
+}
+
+.skill-binding-form label,
+.agent-start-controls label,
+.template-editor label,
+.action-dialog label,
+.build-run-heading span,
+.build-run-facts dt,
+.build-evidence-facts dt,
+.timeline-facts dt,
+.edge-facts dt {
+  color: var(--muted);
+}
+
+.skill-binding-list li,
+.agent-conversation-list button,
+.agent-execution-list button,
+.agent-event-list li,
+.build-run-list button,
+.deployment-timeline-list article,
+.edge-route-list article {
+  border-color: var(--line);
+  color: var(--text);
+  background: #ffffff;
+}
+
+.skill-binding-list li:hover,
+.agent-conversation-list button:hover,
+.agent-conversation-list button.selected,
+.agent-execution-list button:hover,
+.agent-execution-list button.selected,
+.build-run-list button:hover,
+.build-run-list button.selected {
+  border-color: #c2d6f7;
+  color: var(--text);
+  background: #f3f7ff;
+}
+
+.agent-event-list li.agent-empty {
+  display: block;
+  min-height: 88px;
+  padding: 28px 24px;
+  border: 1px dashed var(--line-bright);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.skill-binding-list strong,
+.agent-conversation-list strong,
+.agent-execution-list strong,
+.agent-event-list strong,
+.build-run-list strong,
+.build-run-heading h2,
+.build-evidence-content h2,
+.timeline-title strong,
+.edge-route-heading strong {
+  color: var(--text);
+}
+
+.skill-binding-list small,
+.agent-conversation-list small,
+.agent-execution-list small,
+.agent-event-list small,
+.build-run-list small,
+.build-run-facts dd,
+.build-evidence-facts dd,
+.timeline-facts dd,
+.edge-facts dd,
+.timeline-title span,
+.edge-route-heading span {
+  color: var(--muted);
+}
+
+.build-run-failure,
+.build-evidence-error,
+.timeline-failure,
+.edge-failure,
+.certificate-failure,
+.agent-stream-error,
+.dialog-validation {
+  border-color: #efb6bf;
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.evidence-verified {
+  border-color: #bae6d2;
+  color: #087c55;
+  background: var(--success-soft);
+}
+
+.build-artifact-uri,
+.template-diff pre,
+.build-evidence-document pre {
+  color: #dbe9ff;
+  background: #111a2d;
+}
+
+.action-dialog-backdrop {
+  background: rgba(19, 35, 62, 0.36);
+  backdrop-filter: blur(8px);
+}
+
+.action-dialog {
+  border-color: var(--line);
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: 0 30px 90px rgba(23, 56, 111, 0.2);
+}
+
+.action-dialog-heading,
+.action-dialog-footer {
+  border-color: var(--line);
+}
+
+.action-dialog-intro,
+.action-dialog p {
+  color: var(--muted);
+}
+
+/* Logs remain a purposeful dark code surface */
+
+.live-log-panel {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.live-log-heading,
+.live-log-meta {
+  border-color: var(--line);
+  color: var(--muted);
+  background: #ffffff;
+}
+
+.log-filter {
+  border-color: var(--line);
+  background: #f2f6fc;
+}
+
+.log-filter button {
+  color: var(--muted);
+}
+
+.log-filter button:hover:not(:disabled),
+.log-filter button.selected {
+  color: var(--accent);
+  background: #ffffff;
+}
+
+.live-log-viewport {
+  color: #d9e6fb;
+  background: #10192b;
+}
+
+.live-log-record {
+  border-color: rgba(179, 203, 242, 0.12);
+}
+
+.live-log-sequence,
+.live-log-record time {
+  color: #8294b2;
+}
+
+.live-log-stream {
+  color: #78a7ff;
+}
+
+.live-log-gap {
+  color: #ffd58a;
+  background: rgba(255, 190, 76, 0.08);
+}
+
+.live-log-error {
+  color: #ffadb8;
+  background: rgba(255, 98, 120, 0.08);
+}
+
+/* Architecture */
+
+.architecture-surface {
+  padding: 0;
+  overflow: hidden;
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+.architecture-toolbar {
+  padding: 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.architecture-toolbar h2 {
+  color: var(--text);
+  font-size: 23px;
+}
+
+.architecture-toolbar > div > p:last-child {
+  color: var(--muted);
+}
+
+.architecture-export-controls button {
+  border-color: var(--accent);
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.architecture-export-controls button:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.architecture-export-controls p {
+  color: var(--muted);
+}
+
+.architecture-scroll {
+  padding: 22px;
+  background: #f5f8fe;
+}
+
+.architecture-diagram {
+  border: 1px solid #ccdcf5;
+  border-radius: 12px;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: 0 18px 46px rgba(39, 92, 180, 0.09);
+}
+
+.architecture-diagram-heading {
+  color: var(--text);
+  background: #ffffff;
+}
+
+.architecture-title-mark {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.architecture-diagram-heading p,
+.architecture-version {
+  color: var(--muted);
+}
+
+.architecture-band {
+  border-color: #d8e5f7;
+  color: var(--text);
+  background: #f8faff;
+}
+
+.architecture-band h4 {
+  color: #385071;
+}
+
+.architecture-module-grid li,
+.architecture-business-group,
+.architecture-payload-card {
+  border-color: #d5e2f5;
+  color: var(--text);
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.architecture-band-control {
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.architecture-band-control h4 {
+  color: #ffffff;
+}
+
+.architecture-band-control .architecture-module-grid li {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.architecture-business-group h5 {
+  color: var(--accent);
+}
+
+.architecture-business-group li {
+  border-color: var(--line);
+  color: #34435b;
+  background: #f8faff;
+}
+
+.architecture-band-runtime {
+  color: var(--text);
+  background: #edf4ff;
+}
+
+.architecture-runtime-path li span {
+  border-color: #c8d9f4;
+  color: var(--text);
+  background: #ffffff;
+}
+
+.architecture-runtime-path li b {
+  color: var(--accent);
+}
+
+.architecture-harness-card {
+  border-color: var(--accent);
+  color: #ffffff;
+  background: var(--accent);
+}
+
+.architecture-harness-card span,
+.architecture-harness-card strong {
+  color: #ffffff;
+}
+
+.architecture-harness-card code {
+  color: #e7efff;
+  background: rgba(7, 40, 112, 0.34);
+}
+
+.architecture-module-planned {
+  border-style: dashed !important;
+  color: #687890 !important;
+  background: #f2f5fa !important;
+}

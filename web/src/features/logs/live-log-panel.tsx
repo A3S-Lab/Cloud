@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { CloudApi } from '../../lib/api';
+import { useI18n } from '../../lib/i18n';
 import type { WorkloadLogStreamFilter } from '../../types/api';
 import { LogPanel } from './log-panel';
 import { useWorkloadLogStream } from './use-workload-log-stream';
@@ -15,6 +16,7 @@ interface LiveLogPanelProps {
 }
 
 export function LiveLogPanel({ api, organizationId, workloadId, revisionId, generation }: LiveLogPanelProps) {
+  const { t } = useI18n();
   const [filter, setFilter] = useState<LogFilter>('all');
   const stream = useWorkloadLogStream(
     api,
@@ -26,12 +28,14 @@ export function LiveLogPanel({ api, organizationId, workloadId, revisionId, gene
 
   return (
     <LogPanel
-      ariaLabel='Live workload logs'
-      eyebrow='Bounded live delivery'
-      title='Workload logs'
+      ariaLabel={t('Live workload logs')}
+      eyebrow={t('Bounded live delivery')}
+      title={t('Workload logs')}
       available={revisionId !== null}
-      contextLabel={generation ? `Generation ${generation}` : 'No active revision'}
-      unavailableMessage='Logs become available after a revision is scheduled.'
+      contextLabel={
+        generation ? t('Generation {generation}', { generation }) : t('No active revision')
+      }
+      unavailableMessage={t('Logs become available after a revision is scheduled.')}
       records={stream.records}
       state={stream.state}
       error={stream.error}

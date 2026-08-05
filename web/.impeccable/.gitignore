@@ -1,0 +1,6 @@
+# Local browser verification artifacts.
+chrome-*-profile*/
+mobile-profile-*/
+verify-*-profile*/
+screenshots/
+verify-*.png

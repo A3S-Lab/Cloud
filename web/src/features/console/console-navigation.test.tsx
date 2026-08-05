@@ -60,6 +60,7 @@ describe('ConsoleNavigation', () => {
       'Agents',
       'Delivery',
       'Edge',
+      'Architecture',
     ]);
     expect(buttons.map((button) => button.querySelector('em')?.textContent)).toEqual([
       '4',
@@ -67,11 +68,13 @@ describe('ConsoleNavigation', () => {
       '5',
       '2',
       '1',
+      undefined,
     ]);
     expect(buttons[1]?.getAttribute('aria-label')).toBe('Workloads, Runtime convergence, 3 workloads');
     expect(buttons.filter((button) => button.getAttribute('aria-current') === 'page')).toHaveLength(1);
     expect(buttons[1]?.getAttribute('aria-current')).toBe('page');
-    expect(buttons.map((button) => button.tabIndex)).toEqual([-1, 0, -1, -1, -1]);
+    expect(buttons[5]?.getAttribute('aria-label')).toBe('Architecture, Platform module map');
+    expect(buttons.map((button) => button.tabIndex)).toEqual([-1, 0, -1, -1, -1, -1]);
 
     await act(async () => buttons[2]?.click());
     expect(onSelect).toHaveBeenCalledWith('agents');
@@ -97,11 +100,11 @@ describe('ConsoleNavigation', () => {
     await act(async () =>
       buttons[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
     );
-    expect(onSelect).toHaveBeenLastCalledWith('edge');
-    expect(document.activeElement).toBe(buttons[4]);
+    expect(onSelect).toHaveBeenLastCalledWith('architecture');
+    expect(document.activeElement).toBe(buttons[5]);
 
     await act(async () =>
-      buttons[4]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+      buttons[5]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
     );
     expect(onSelect).toHaveBeenLastCalledWith('overview');
     expect(document.activeElement).toBe(buttons[0]);
@@ -109,7 +112,7 @@ describe('ConsoleNavigation', () => {
     await act(async () =>
       buttons[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
     );
-    expect(onSelect).toHaveBeenLastCalledWith('edge');
-    expect(document.activeElement).toBe(buttons[4]);
+    expect(onSelect).toHaveBeenLastCalledWith('architecture');
+    expect(document.activeElement).toBe(buttons[5]);
   });
 });

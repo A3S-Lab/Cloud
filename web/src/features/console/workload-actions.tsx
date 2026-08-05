@@ -2,8 +2,8 @@ import { Braces, RotateCcw, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { useI18n } from '../../lib/i18n';
 import type { ServiceTemplate, Workload } from '../../types/api';
-import { formatTimestamp } from './console-format';
 import {
   diffTemplates,
   eligibleRollbackRevisions,
@@ -31,6 +31,7 @@ interface RollbackDialogState {
 }
 
 export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActionsProps) {
+  const { formatTimestamp, t } = useI18n();
   const [updateDialog, setUpdateDialog] = useState<UpdateDialogState | null>(null);
   const [rollbackDialog, setRollbackDialog] = useState<RollbackDialogState | null>(null);
   const [submitting, setSubmitting] = useState<'update' | 'rollback' | null>(null);
@@ -113,14 +114,14 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
           disabled={!ready || releaseBound}
           title={
             releaseBound
-              ? 'Release-bound workloads update through their Asset release lifecycle'
+              ? t('Release-bound workloads update through their Asset release lifecycle')
               : ready
-                ? 'Commit a complete immutable replacement'
-                : replacementUnavailable
+                ? t('Commit a complete immutable replacement')
+                : t(replacementUnavailable)
           }
           onClick={openUpdate}
         >
-          <Braces size={14} /> Update
+          <Braces size={14} /> {t('Update')}
         </button>
         <button
           className='secondary-button compact'
@@ -128,14 +129,14 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
           disabled={!ready || rollbackRevisions.length === 0}
           title={
             rollbackRevisions.length === 0
-              ? 'No older successfully activated revision is eligible'
+              ? t('No older successfully activated revision is eligible')
               : ready
-                ? 'Clone an older activated revision into a new generation'
-                : replacementUnavailable
+                ? t('Clone an older activated revision into a new generation')
+                : t(replacementUnavailable)
           }
           onClick={openRollback}
         >
-          <RotateCcw size={14} /> Roll back
+          <RotateCcw size={14} /> {t('Roll back')}
         </button>
       </div>
 
@@ -147,17 +148,19 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
         >
           <div className='action-dialog-heading'>
             <div>
-              <p className='eyebrow'>Immutable replacement</p>
-              <h2 id='update-workload-title'>Update {workload.name}</h2>
+              <p className='eyebrow'>{t('Immutable replacement')}</p>
+              <h2 id='update-workload-title'>{t('Update {name}', { name: workload.name })}</h2>
             </div>
             <CloseButton disabled={submitting === 'update'} onClick={() => setUpdateDialog(null)} />
           </div>
           <p className='action-dialog-intro'>
-            Edit the complete requested template for generation {updateDialog.sourceGeneration}. Secret values
-            are never projected here; bindings contain references only.
+            {t(
+              'Edit the complete requested template for generation {generation}. Secret values are never projected here; bindings contain references only.',
+              { generation: updateDialog.sourceGeneration }
+            )}
           </p>
           <label className='template-editor'>
-            <span>Complete Service template</span>
+            <span>{t('Complete Service template')}</span>
             <textarea
               value={updateDialog.draft}
               spellCheck={false}
@@ -166,20 +169,21 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
               }
             />
           </label>
-          {parsedDraft.error ? <p className='dialog-validation'>{parsedDraft.error}</p> : null}
+          {parsedDraft.error ? <p className='dialog-validation'>{t(parsedDraft.error)}</p> : null}
           {updateProjectionChanged ? (
             <p className='dialog-validation'>
-              The authoritative desired revision changed while this editor was open. Close and reopen it
-              before submitting.
+              {t(
+                'The authoritative desired revision changed while this editor was open. Close and reopen it before submitting.'
+              )}
             </p>
           ) : null}
           <div className='template-diff'>
             <div className='template-diff-heading'>
-              <strong>Field-level changes</strong>
+              <strong>{t('Field-level changes')}</strong>
               <span>{changes.length}</span>
             </div>
             {changes.length === 0 ? (
-              <p>No template fields have changed.</p>
+              <p>{t('No template fields have changed.')}</p>
             ) : (
               <ol>
                 {changes.map((change) => (
@@ -195,7 +199,7 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
             )}
           </div>
           <div className='action-dialog-footer'>
-            <span>A single idempotency key is retained while this dialog stays open.</span>
+            <span>{t('A single idempotency key is retained while this dialog stays open.')}</span>
             <button
               className='primary-action'
               type='button'
@@ -207,7 +211,7 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
               }
               onClick={submitUpdate}
             >
-              {submitting === 'update' ? 'Committing…' : 'Commit replacement'}
+              {submitting === 'update' ? t('Committing...') : t('Commit replacement')}
             </button>
           </div>
         </DialogFrame>
@@ -221,16 +225,17 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
         >
           <div className='action-dialog-heading'>
             <div>
-              <p className='eyebrow'>Manual rollback</p>
-              <h2 id='rollback-workload-title'>Roll back {workload.name}</h2>
+              <p className='eyebrow'>{t('Manual rollback')}</p>
+              <h2 id='rollback-workload-title'>{t('Roll back {name}', { name: workload.name })}</h2>
             </div>
             <CloseButton disabled={submitting === 'rollback'} onClick={() => setRollbackDialog(null)} />
           </div>
           <p className='action-dialog-intro'>
-            Select an older successfully activated revision. Cloud clones its exact resolved template into a
-            new generation and uses the normal health, cutover, and retirement path.
+            {t(
+              'Select an older successfully activated revision. Cloud clones its exact resolved template into a new generation and uses the normal health, cutover, and retirement path.'
+            )}
           </p>
-          <div className='rollback-options' role='radiogroup' aria-label='Rollback source revision'>
+          <div className='rollback-options' role='radiogroup' aria-label={t('Rollback source revision')}>
             {rollbackRevisions.map((revision) => {
               const deployment = workload.deployments.find(
                 (item) => item.revision.id === revision.id && item.activatedAt
@@ -249,16 +254,18 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
                     }
                   />
                   <span>
-                    <strong>Generation {revision.generation}</strong>
+                    <strong>{t('Generation {generation}', { generation: revision.generation })}</strong>
                     <small>{revision.artifactUri ?? revision.artifactSourceUri}</small>
-                    <small>Activated {formatTimestamp(deployment?.activatedAt ?? null)}</small>
+                    <small>
+                      {t('Activated {time}', { time: formatTimestamp(deployment?.activatedAt ?? null) })}
+                    </small>
                   </span>
                 </label>
               );
             })}
           </div>
           <div className='action-dialog-footer'>
-            <span>The source revision ID is recorded on the durable operation.</span>
+            <span>{t('The source revision ID is recorded on the durable operation.')}</span>
             <button
               className='primary-action'
               type='button'
@@ -266,8 +273,10 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
               onClick={submitRollback}
             >
               {submitting === 'rollback'
-                ? 'Committing…'
-                : `Roll back to generation ${selectedRollback?.generation ?? ''}`}
+                ? t('Committing...')
+                : t('Roll back to generation {generation}', {
+                    generation: selectedRollback?.generation ?? '',
+                  })}
             </button>
           </div>
         </DialogFrame>
@@ -358,12 +367,13 @@ function DialogFrame({
 }
 
 function CloseButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  const { t } = useI18n();
   return (
     <button
       className='icon-button'
       type='button'
       disabled={disabled}
-      aria-label='Close dialog'
+      aria-label={t('Close dialog')}
       onClick={onClick}
     >
       <X size={17} />

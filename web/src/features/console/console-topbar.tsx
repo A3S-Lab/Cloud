@@ -1,9 +1,9 @@
 import { LogOut, PanelRightClose, PanelRightOpen, Radio } from 'lucide-react';
 import type { CloudApi } from '../../lib/api';
+import { LanguageSwitcher, useI18n } from '../../lib/i18n';
 import type { SearchResult } from '../../types/api';
 import type { StreamState } from '../operations/use-operation-stream';
 import { ResourceSearch } from '../search/resource-search';
-import { streamLabel } from './console-format';
 
 interface ConsoleTopbarProps {
   api: CloudApi;
@@ -24,6 +24,7 @@ export function ConsoleTopbar({
   onToggleDrawer,
   onSignOut,
 }: ConsoleTopbarProps) {
+  const { label, t } = useI18n();
   return (
     <header className='topbar'>
       <div className='brand-lockup compact'>
@@ -32,7 +33,7 @@ export function ConsoleTopbar({
         </span>
         <div>
           <strong>A3S Cloud</strong>
-          <span>Control plane</span>
+          <span>{t('Control plane')}</span>
         </div>
       </div>
       <ResourceSearch
@@ -42,15 +43,18 @@ export function ConsoleTopbar({
         onSelect={onSelectSearchResult}
       />
       <div className='topbar-actions'>
+        <LanguageSwitcher compact />
         <span className={`connection-pill ${streamState}`}>
-          <Radio size={14} /> {streamLabel(streamState)}
+          <Radio size={14} /> {label(streamState)}
         </span>
         <button className='icon-button' type='button' onClick={onToggleDrawer}>
           {drawerOpen ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-          <span className='sr-only'>{drawerOpen ? 'Close operations' : 'Open operations'}</span>
+          <span className='sr-only'>
+            {drawerOpen ? t('Close operations') : t('Open operations')}
+          </span>
         </button>
         <button className='quiet-button' type='button' onClick={onSignOut}>
-          <LogOut size={16} /> Sign out
+          <LogOut size={16} /> {t('Sign out')}
         </button>
       </div>
     </header>

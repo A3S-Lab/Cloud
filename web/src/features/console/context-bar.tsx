@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react';
+import { useI18n } from '../../lib/i18n';
 
 interface NamedItem {
   id: string;
@@ -30,20 +31,21 @@ export function ContextBar({
   onProjectChange,
   onEnvironmentChange,
 }: ContextBarProps) {
+  const { t } = useI18n();
   return (
-    <nav className='context-bar' aria-label='Cloud context'>
+    <nav className='context-bar' aria-label={t('Cloud context')}>
       <ContextSelect
-        label='Organization'
+        label={t('Organization')}
         value={organizationId}
         items={organizations}
         disabled={organizationLoading}
         onChange={onOrganizationChange}
       />
       <ChevronRight size={15} aria-hidden='true' />
-      <ContextSelect label='Project' value={projectId} items={projects} onChange={onProjectChange} />
+      <ContextSelect label={t('Project')} value={projectId} items={projects} onChange={onProjectChange} />
       <ChevronRight size={15} aria-hidden='true' />
       <ContextSelect
-        label='Environment'
+        label={t('Environment')}
         value={environmentId}
         items={environments}
         onChange={onEnvironmentChange}
@@ -65,6 +67,7 @@ function ContextSelect({
   disabled?: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useI18n();
   return (
     <label className='context-select'>
       <span>{label}</span>
@@ -73,7 +76,7 @@ function ContextSelect({
         disabled={disabled || items.length === 0}
         onChange={(event) => onChange(event.target.value)}
       >
-        {items.length === 0 ? <option value=''>None yet</option> : null}
+        {items.length === 0 ? <option value=''>{t('None yet')}</option> : null}
         {items.map((item) => (
           <option value={item.id} key={item.id}>
             {item.name}

@@ -164,11 +164,18 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   conversations, start logical executions pinned to one exact published Agent
   release, append bounded digest-verified semantic events under one contiguous
   conversation sequence, and query or stream the same authoritative history
-  through REST, the typed client, CLI, and Web. This `A1.1` slice reserves the
-  correlated Operation identity but does not yet dispatch a Harness or Runtime
-  unit; that lifecycle begins in `A1.2`
+  through REST, the typed client, CLI, and Web. The in-progress `A1.2` slice
+  now reconciles the reserved identity through the existing Operations/Flow
+  path, binds one already active Agent Workload/Runtime Service, forwards the
+  exact Code command through Fleet, and projects only model-output and terminal
+  semantics from receipt-gated Code pages. The sole run owner remains
+  `a3s code harness`
 - **Focused Web Operations**: Navigate responsive Overview, Workloads,
-  Delivery, and Edge workspaces; route authorized search and validated deep
+  Agents, Delivery, Edge, and Architecture workspaces; render the platform
+  authority map as responsive semantic HTML and export its live DOM as PNG;
+  use Simplified Chinese by default with one persistent English product-version
+  switch shared by sign-in and authenticated surfaces;
+  route authorized search and validated deep
   links to the owning section; and inspect deployment history, route and
   certificate state, Runtime health, logs, BuildRuns, updates, rollback,
   cancellation, and retry through the shared typed client
@@ -449,9 +456,13 @@ verification still remains.
 owns command semantics, exact run identity, cancellation, checkpoint recovery,
 and source events. Cloud adds only authenticated execution/Workload/Runtime
 delivery identity, carries the exact Code-owned protocol through the existing
-Fleet command and Node Agent journal, and projects accepted Code events into
-the existing Agent execution stream. It does not contain another Harness
-executable, scheduler, controller, run store, or event-log authority.
+Fleet command and Node Agent journal, and derives bounded model-output and
+terminal semantic facts in the existing Agent execution stream. Raw Code event
+records remain in Code. Cloud does not contain another Harness executable,
+scheduler, controller, run store, or event-log authority. The sole root CLI
+Harness HTTP entrypoint is implemented locally; dependency publication,
+cancel/recover orchestration, and Linux PostgreSQL/Runtime recovery evidence
+remain open.
 
 `G0` now routes every new BuildRun through `cloud.build@5`. Flow remains the
 workflow and recovery authority; Fleet's `node_commands` table remains the

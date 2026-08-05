@@ -1,6 +1,7 @@
 import { ArrowUpRight, LoaderCircle, Search } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { DEFAULT_SEARCH_LIMIT, type CloudApi, validateSearchRequest } from '../../lib/api';
+import { useI18n } from '../../lib/i18n';
 import type { SearchResult } from '../../types/api';
 
 interface ResourceSearchProps {
@@ -12,6 +13,7 @@ interface ResourceSearchProps {
 const SEARCH_DEBOUNCE_MS = 250;
 
 export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearchProps) {
+  const { label, t } = useI18n();
   const listboxId = useId();
   const [query, setQuery] = useState('');
   const [settledQuery, setSettledQuery] = useState('');
@@ -125,8 +127,10 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
         type='search'
         value={query}
         disabled={!organizationId}
-        placeholder={organizationId ? 'Search authorized resources' : 'Choose an organization to search'}
-        aria-label='Search authorized Cloud resources'
+        placeholder={
+          organizationId ? t('Search authorized resources') : t('Choose an organization to search')
+        }
+        aria-label={t('Search authorized Cloud resources')}
         aria-autocomplete='list'
         aria-controls={listboxId}
         aria-expanded={open}
@@ -138,17 +142,19 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
         }}
         onKeyDown={onKeyDown}
       />
-      {loading ? <LoaderCircle className='resource-search-spinner' size={15} aria-label='Searching' /> : null}
+      {loading ? (
+        <LoaderCircle className='resource-search-spinner' size={15} aria-label={t('Searching')} />
+      ) : null}
 
       {open ? (
         <div className='resource-search-popover'>
           {error ? (
             <p className='resource-search-message error' role='alert'>
-              {error}
+              {t(error)}
             </p>
           ) : null}
           {!error && !loading && settledQuery === normalizedQuery && results.length === 0 ? (
-            <output className='resource-search-message'>No authorized resources found.</output>
+            <output className='resource-search-message'>{t('No authorized resources found.')}</output>
           ) : null}
           {results.length > 0 ? (
             <div className='resource-search-results' id={listboxId} role='listbox'>
@@ -165,12 +171,12 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
                   onMouseEnter={() => setActiveIndex(index)}
                   onClick={() => selectResult(result)}
                 >
-                  <span className='resource-search-kind'>{humanizeKind(result.kind)}</span>
+                  <span className='resource-search-kind'>{label(result.kind)}</span>
                   <span className='resource-search-copy'>
                     <strong>{result.title}</strong>
                     <small>{result.description}</small>
                   </span>
-                  {result.state ? <span className='resource-search-state'>{result.state}</span> : null}
+                  {result.state ? <span className='resource-search-state'>{label(result.state)}</span> : null}
                   <ArrowUpRight size={15} aria-hidden='true' />
                 </button>
               ))}
@@ -180,10 +186,6 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
       ) : null}
     </form>
   );
-}
-
-function humanizeKind(value: string): string {
-  return value.replaceAll('_', ' ');
 }
 
 function messageFrom(cause: unknown): string {

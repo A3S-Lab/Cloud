@@ -1,10 +1,11 @@
 import { CircleDot, RotateCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CloudApi } from '../../lib/api';
+import { useI18n } from '../../lib/i18n';
 import type {
+  AgentConversation,
   Asset,
   AssetRelease,
-  AgentConversation,
   BuildRun,
   Environment,
   GatewayCertificate,
@@ -15,6 +16,7 @@ import type {
   SearchResult,
   Workload,
 } from '../../types/api';
+import { ArchitectureSection } from '../architecture/architecture-diagram';
 import { useOperationStream } from '../operations/use-operation-stream';
 import { type CloudLocation, parseCloudLocation, selectionFromSearchResult } from '../search/cloud-location';
 import { ConsoleNavigation, sectionForResourceKind } from './console-navigation';
@@ -44,6 +46,7 @@ const ENVIRONMENT_KEY = 'a3s-cloud.environment';
 const PROJECTION_REFRESH_MS = 5_000;
 
 export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudConsoleProps) {
+  const { t } = useI18n();
   const api = useMemo(() => new CloudApi(token), [token]);
   const initialLocation = useMemo(() => parseCloudLocation(window.location.hash), []);
   const [activeSection, setActiveSection] = useState(() =>
@@ -382,7 +385,18 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
         onSignOut={onSignOut}
       />
 
-      <main className='workspace'>
+      <div className='console-command-bar'>
+        <ConsoleNavigation
+          activeSection={activeSection}
+          counts={{
+            workloads: workloads.length,
+            agents: agentConversations.length,
+            delivery: buildRuns.length,
+            edge: routes.length,
+            operations: activeOperations,
+          }}
+          onSelect={setActiveSection}
+        />
         <ContextBar
           organizationId={organizationId}
           organizations={organizations}
@@ -402,13 +416,16 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           }}
           onEnvironmentChange={setEnvironmentId}
         />
+      </div>
+
+      <main className='workspace'>
 
         {error ? (
           <div className='error-banner' role='alert'>
             <CircleDot size={16} />
-            <span>{error}</span>
+            <span>{t(error)}</span>
             <button type='button' onClick={() => window.location.reload()}>
-              <RotateCw size={15} /> Retry
+              <RotateCw size={15} /> {t('Retry')}
             </button>
           </div>
         ) : null}
@@ -421,21 +438,9 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
           workloadCount={workloads.length}
         />
 
-        <ConsoleNavigation
-          activeSection={activeSection}
-          counts={{
-            workloads: workloads.length,
-            agents: agentConversations.length,
-            delivery: buildRuns.length,
-            edge: routes.length,
-            operations: activeOperations,
-          }}
-          onSelect={setActiveSection}
-        />
-
         {activeSection === 'overview' ? (
           <OverviewSection
-            activeOperations={activeOperations}
+            operations={operations}
             assets={assets}
             assetReleases={assetReleases}
             buildRunCount={buildRuns.length}
@@ -518,6 +523,8 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
             onSelectWorkload={setWorkloadId}
           />
         ) : null}
+
+        {activeSection === 'architecture' ? <ArchitectureSection /> : null}
       </main>
 
       {drawerOpen ? (

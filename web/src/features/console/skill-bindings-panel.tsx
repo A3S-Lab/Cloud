@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useI18n } from '../../lib/i18n';
 import type { Asset, AssetRelease, Workload } from '../../types/api';
 import { shortId } from './console-format';
 import { isWorkloadReadyForReplacement } from './workload-view-model';
@@ -23,6 +24,7 @@ export function SkillBindingsPanel({
   onBind,
   onUnbind,
 }: SkillBindingsPanelProps) {
+  const { t } = useI18n();
   const [selectedAssetId, setSelectedAssetId] = useState('');
   const [selectedReleaseId, setSelectedReleaseId] = useState('');
   const [bindAttempt, setBindAttempt] = useState<MutationAttempt | null>(null);
@@ -101,14 +103,15 @@ export function SkillBindingsPanel({
     <article className='surface skill-bindings-card'>
       <div className='surface-heading'>
         <div>
-          <p className='eyebrow'>Agent inputs</p>
-          <h2>Skill bindings</h2>
+          <p className='eyebrow'>{t('Agent inputs')}</p>
+          <h2>{t('Skill bindings')}</h2>
         </div>
         <span className='panel-count'>{revision.skillBindings.length}</span>
       </div>
       <p className='surface-note'>
-        Each change creates a new immutable Agent workload revision. Skill bundles are mounted read-only and
-        are never scheduled as separate services.
+        {t(
+          'Each change creates a new immutable Agent workload revision. Skill bundles are mounted read-only and are never scheduled as separate services.'
+        )}
       </p>
 
       {revision.skillBindings.length > 0 ? (
@@ -129,22 +132,26 @@ export function SkillBindingsPanel({
                   className='secondary-button compact'
                   type='button'
                   disabled={!ready || submitting !== null}
-                  title={ready ? 'Create a new revision without this Skill' : replacementUnavailable}
+                  title={
+                    ready
+                      ? t('Create a new revision without this Skill')
+                      : t(replacementUnavailable)
+                  }
                   onClick={() => void unbind(binding.assetId)}
                 >
-                  {submitting === `unbind:${binding.assetId}` ? 'Unbinding…' : 'Unbind'}
+                  {submitting === `unbind:${binding.assetId}` ? t('Unbinding...') : t('Unbind')}
                 </button>
               </li>
             );
           })}
         </ul>
       ) : (
-        <p className='empty-skill-bindings'>No Skill release is bound to this revision.</p>
+        <p className='empty-skill-bindings'>{t('No Skill release is bound to this revision.')}</p>
       )}
 
       <div className='skill-binding-form'>
         <label>
-          <span>Skill Asset</span>
+          <span>{t('Skill Asset')}</span>
           <select
             value={effectiveAssetId}
             disabled={!ready || submitting !== null || skillAssets.length === 0}
@@ -154,7 +161,7 @@ export function SkillBindingsPanel({
               setBindAttempt(null);
             }}
           >
-            {skillAssets.length === 0 ? <option value=''>No active Skill Assets</option> : null}
+            {skillAssets.length === 0 ? <option value=''>{t('No active Skill Assets')}</option> : null}
             {skillAssets.map((asset) => (
               <option key={asset.id} value={asset.id}>
                 {asset.name}
@@ -163,7 +170,7 @@ export function SkillBindingsPanel({
           </select>
         </label>
         <label>
-          <span>Published release</span>
+          <span>{t('Published release')}</span>
           <select
             value={effectiveReleaseId}
             disabled={!ready || submitting !== null || publishedReleases.length === 0}
@@ -172,7 +179,7 @@ export function SkillBindingsPanel({
               setBindAttempt(null);
             }}
           >
-            {publishedReleases.length === 0 ? <option value=''>No published releases</option> : null}
+            {publishedReleases.length === 0 ? <option value=''>{t('No published releases')}</option> : null}
             {publishedReleases.map((release) => (
               <option key={release.id} value={release.id}>
                 {release.version} · {shortId(release.id)}
@@ -186,14 +193,14 @@ export function SkillBindingsPanel({
           disabled={
             !ready || submitting !== null || !effectiveAssetId || !effectiveReleaseId || exactBindingExists
           }
-          title={!ready ? replacementUnavailable : undefined}
+          title={!ready ? t(replacementUnavailable) : undefined}
           onClick={() => void bind()}
         >
           {submitting?.startsWith('bind:')
-            ? 'Binding…'
+            ? t('Binding...')
             : exactBindingExists
-              ? 'Already bound'
-              : 'Bind release'}
+              ? t('Already bound')
+              : t('Bind release')}
         </button>
       </div>
     </article>

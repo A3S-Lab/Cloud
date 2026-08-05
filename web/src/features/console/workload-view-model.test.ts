@@ -68,7 +68,7 @@ describe('workload view model', () => {
       },
       {
         path: 'process.args[0]',
-        before: '—',
+        before: 'Not set',
         after: 'serve',
       },
       {

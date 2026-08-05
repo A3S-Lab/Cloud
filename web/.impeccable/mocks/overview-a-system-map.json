@@ -1,0 +1,9 @@
+{
+  "approved": false,
+  "useCase": "ui-mockup",
+  "direction": "Finogeeks-inspired high-trust enterprise control plane",
+  "seedKey": "90c8e585",
+  "variant": "A - environment summary plus system authority map",
+  "reference": "User-provided Finogeeks homepage screenshot used for visual language only",
+  "prompt": "Create a high-fidelity 16:9 desktop composition for the authenticated A3S Cloud console. Use a white canvas, electric-blue single accent, strong humanist sans typography, generous whitespace, crisp bordered system blocks, a one-line top navigation, context selectors, a 44/56 split between Production workspace facts and a readable authority map, plus a lower operations and delivery strip. Preserve actual A3S Flow, Workloads, outbound-only Node Agent, Runtime, Box, Gateway, and sole A3S Code Harness facts. Do not copy Finogeeks identity, content, logos, or claims."
+}

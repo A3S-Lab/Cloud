@@ -1,6 +1,7 @@
 import { Ban, Boxes, Hammer, RotateCcw, ShieldCheck, SquareTerminal } from 'lucide-react';
+import { useI18n } from '../../lib/i18n';
 import type { BuildRun, BuildRunStatus } from '../../types/api';
-import { compactDigest, formatRelative, humanize, shortId } from './console-format';
+import { compactDigest, shortId } from './console-format';
 
 interface BuildRunPanelProps {
   buildRuns: BuildRun[];
@@ -23,14 +24,15 @@ export function BuildRunPanel({
   onCancel,
   onRetry,
 }: BuildRunPanelProps) {
+  const { formatRelative, label, t } = useI18n();
   const ordered = [...buildRuns].sort((left, right) => right.requestedAt.localeCompare(left.requestedAt));
 
   return (
-    <section className='surface build-run-panel' aria-label='Build runs'>
+    <section className='surface build-run-panel' aria-label={t('Build runs')}>
       <div className='surface-heading'>
         <div>
-          <p className='eyebrow'>Immutable source to OCI</p>
-          <h2>Build runs</h2>
+          <p className='eyebrow'>{t('Immutable source to OCI')}</p>
+          <h2>{t('Build runs')}</h2>
         </div>
         <span className='panel-count'>
           <Hammer size={14} /> {buildRuns.length}
@@ -39,8 +41,8 @@ export function BuildRunPanel({
       {ordered.length === 0 ? (
         <div className='detail-empty'>
           <Boxes size={22} />
-          <strong>No build runs</strong>
-          <p>Accepted source revisions and their authoritative build state will appear here.</p>
+          <strong>{t('No build runs')}</strong>
+          <p>{t('Accepted source revisions and their authoritative build state will appear here.')}</p>
         </div>
       ) : (
         <div className='build-run-list'>
@@ -55,37 +57,43 @@ export function BuildRunPanel({
                 <div className='build-run-heading'>
                   <div>
                     <strong>
-                      Build {shortId(buildRun.id)} · Attempt {buildRun.attempt}
+                      {t('Build {id} · Attempt {attempt}', {
+                        id: shortId(buildRun.id),
+                        attempt: buildRun.attempt,
+                      })}
                     </strong>
                     <small>
-                      source {shortId(buildRun.sourceRevisionId)} · {formatRelative(buildRun.updatedAt)}
+                      {t('source {source} · {time}', {
+                        source: shortId(buildRun.sourceRevisionId),
+                        time: formatRelative(buildRun.updatedAt),
+                      })}
                     </small>
                   </div>
-                  <span className={`state-badge ${buildRun.status}`}>{humanize(buildRun.status)}</span>
+                  <span className={`state-badge ${buildRun.status}`}>{label(buildRun.status)}</span>
                 </div>
                 <dl className='build-run-facts'>
                   <div>
-                    <dt>Operation</dt>
+                    <dt>{t('Operation')}</dt>
                     <dd>{shortId(buildRun.operationId)}</dd>
                   </div>
                   <div>
-                    <dt>Source digest</dt>
+                    <dt>{t('Source digest')}</dt>
                     <dd>
                       {buildRun.sourceContentDigest
                         ? compactDigest(buildRun.sourceContentDigest)
-                        : 'Preparing input'}
+                        : t('Preparing input')}
                     </dd>
                   </div>
                   <div>
-                    <dt>Platform</dt>
-                    <dd>{buildRun.output?.platforms.join(', ') ?? 'Pending'}</dd>
+                    <dt>{t('Platform')}</dt>
+                    <dd>{buildRun.output?.platforms.join(', ') ?? t('Pending')}</dd>
                   </div>
                   <div>
-                    <dt>Artifact</dt>
+                    <dt>{t('Artifact')}</dt>
                     <dd>
                       {buildRun.publishedArtifact
                         ? compactDigest(buildRun.publishedArtifact.digest)
-                        : 'Not published'}
+                        : t('Not published')}
                     </dd>
                   </div>
                 </dl>
@@ -95,7 +103,7 @@ export function BuildRunPanel({
                 {buildRun.evidenceSummary ? (
                   <div className='build-run-evidence-summary'>
                     <span>
-                      <ShieldCheck size={13} /> Verified evidence
+                      <ShieldCheck size={13} /> {t('Verified evidence')}
                     </span>
                     <dl>
                       <div>
@@ -105,13 +113,13 @@ export function BuildRunPanel({
                         </dd>
                       </div>
                       <div>
-                        <dt>Provenance</dt>
+                        <dt>{t('Provenance')}</dt>
                         <dd title={buildRun.evidenceSummary.provenanceDigest}>
                           {compactDigest(buildRun.evidenceSummary.provenanceDigest)}
                         </dd>
                       </div>
                       <div>
-                        <dt>Signing key</dt>
+                        <dt>{t('Signing key')}</dt>
                         <dd title={buildRun.evidenceSummary.signingKeyId}>
                           {compactDigest(buildRun.evidenceSummary.signingKeyId)}
                           {buildRun.evidenceSummary.signingKeyVersion === null
@@ -130,7 +138,8 @@ export function BuildRunPanel({
                     aria-pressed={selected}
                     onClick={() => onSelect(buildRun.id)}
                   >
-                    <SquareTerminal size={13} /> {selected ? 'Inspecting run' : 'Inspect run'}
+                    <SquareTerminal size={13} />
+                    {selected ? t('Inspecting run') : t('Inspect run')}
                   </button>
                   {!terminal ? (
                     <button
@@ -139,7 +148,7 @@ export function BuildRunPanel({
                       disabled={cancelling}
                       onClick={() => onCancel(buildRun.id)}
                     >
-                      <Ban size={13} /> {cancelling ? 'Cancelling' : 'Cancel build'}
+                      <Ban size={13} /> {cancelling ? t('Cancelling') : t('Cancel build')}
                     </button>
                   ) : null}
                   {retryable ? (
@@ -149,7 +158,7 @@ export function BuildRunPanel({
                       disabled={retrying}
                       onClick={() => onRetry(buildRun.id)}
                     >
-                      <RotateCcw size={13} /> {retrying ? 'Retrying' : 'Retry build'}
+                      <RotateCcw size={13} /> {retrying ? t('Retrying') : t('Retry build')}
                     </button>
                   ) : null}
                 </div>

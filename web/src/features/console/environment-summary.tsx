@@ -1,5 +1,6 @@
 import { Activity, Bot, Box, Braces, Database, Server, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { useI18n } from '../../lib/i18n';
 import type {
   Asset,
   AssetKind as AssetKindValue,
@@ -25,29 +26,38 @@ export function EnvironmentHeading({
   activeOperations: number;
   workloadCount: number;
 }) {
+  const { t } = useI18n();
+  const workspaceName = environment?.name ?? project?.name ?? organization?.name ?? 'Cloud';
   return (
     <section className='environment-heading'>
-      <div>
-        <p className='eyebrow'>Observed workspace</p>
-        <h1>{environment?.name ?? project?.name ?? organization?.name ?? 'Cloud'}</h1>
+      <div className='environment-title'>
+        <h1>{t('{name} workspace', { name: workspaceName })}</h1>
         <p>
           {environment
             ? `${organization?.name} / ${project?.name} / ${environment.name}`
-            : 'Choose a project and environment to inspect its desired state.'}
+            : t('Choose a project and environment to inspect its desired state.')}
         </p>
       </div>
-      <div className='heading-facts'>
-        <span>
-          <Activity size={15} /> {activeOperations} active operation
-          {activeOperations === 1 ? '' : 's'}
-        </span>
-        <span>
-          <Box size={15} /> {workloadCount} workload{workloadCount === 1 ? '' : 's'}
-        </span>
-        <span>
-          <Database size={15} /> desired state authoritative
-        </span>
-      </div>
+      <dl className='heading-facts'>
+        <div>
+          <dt>
+            <Activity size={16} /> {t('Operations')}
+          </dt>
+          <dd>{t('{count} active', { count: activeOperations })}</dd>
+        </div>
+        <div>
+          <dt>
+            <Box size={16} /> {t('Workloads')}
+          </dt>
+          <dd>{t('{count} observed', { count: workloadCount })}</dd>
+        </div>
+        <div>
+          <dt>
+            <Database size={16} /> {t('Desired state')}
+          </dt>
+          <dd>{t('Authoritative')}</dd>
+        </div>
+      </dl>
     </section>
   );
 }
@@ -59,34 +69,38 @@ export function InfrastructureCard({
   deployment: Deployment | undefined;
   routes: Route[];
 }) {
+  const { t } = useI18n();
   return (
     <article className='surface infrastructure-card'>
       <div className='surface-heading'>
         <div>
-          <p className='eyebrow'>Execution boundary</p>
-          <h2>Infrastructure</h2>
+          <h2>{t('Infrastructure')}</h2>
+          <p>{t('Current control and execution ownership')}</p>
         </div>
         <Server size={20} />
       </div>
       <dl className='fact-list'>
         <div>
-          <dt>Runtime</dt>
+          <dt>{t('Runtime')}</dt>
           <dd>Task + Service</dd>
         </div>
         <div>
-          <dt>Operation authority</dt>
+          <dt>{t('Operation authority')}</dt>
           <dd>A3S Flow</dd>
         </div>
         <div>
-          <dt>Node</dt>
-          <dd>{deployment?.nodeId ? shortId(deployment.nodeId) : 'Not scheduled'}</dd>
+          <dt>{t('Node')}</dt>
+          <dd>{deployment?.nodeId ? shortId(deployment.nodeId) : t('Not scheduled')}</dd>
         </div>
         <div>
-          <dt>Edge</dt>
+          <dt>{t('Edge')}</dt>
           <dd>
             {routes.length === 0
-              ? 'No route projection'
-              : `${routes.filter((route) => route.state === 'active').length}/${routes.length} active`}
+              ? t('No route projection')
+              : t('{active}/{total} active', {
+                  active: routes.filter((route) => route.state === 'active').length,
+                  total: routes.length,
+                })}
           </dd>
         </div>
       </dl>
@@ -95,12 +109,13 @@ export function InfrastructureCard({
 }
 
 export function AssetCatalogCard({ assets, releases }: { assets: Asset[]; releases: AssetRelease[] }) {
+  const { t } = useI18n();
   return (
     <article className='surface assets-card'>
       <div className='surface-heading'>
         <div>
-          <p className='eyebrow'>Release catalog</p>
-          <h2>A3S assets</h2>
+          <h2>{t('A3S assets')}</h2>
+          <p>{t('Immutable Agent, MCP, and Skill releases')}</p>
         </div>
         <Sparkles size={20} />
       </div>
@@ -110,8 +125,9 @@ export function AssetCatalogCard({ assets, releases }: { assets: Asset[]; releas
         <AssetKind assets={assets} releases={releases} icon={<Box size={18} />} kind='skill' name='Skill' />
       </div>
       <p className='surface-note'>
-        Published Agent releases deploy through immutable Workload bindings. Yanked releases remain available
-        to pinned deployments.
+        {t(
+          'Published Agent releases deploy through immutable Workload bindings. Yanked releases remain available to pinned deployments.'
+        )}
       </p>
     </article>
   );
@@ -130,6 +146,7 @@ function AssetKind({
   kind: AssetKindValue;
   name: string;
 }) {
+  const { t } = useI18n();
   const matchingAssets = assets.filter((asset) => asset.kind === kind);
   const assetIds = new Set(matchingAssets.map((asset) => asset.id));
   const matchingReleases = releases.filter((release) => assetIds.has(release.assetId));
@@ -141,10 +158,13 @@ function AssetKind({
       <span>{icon}</span>
       <strong>{name}</strong>
       <small>
-        {matchingAssets.length} asset{matchingAssets.length === 1 ? '' : 's'} · {published} published
+        {t(matchingAssets.length === 1 ? '{count} asset' : '{count} assets', {
+          count: matchingAssets.length,
+        })}{' '}
+        · {t('{count} published', { count: published })}
       </small>
       <small>
-        {draft} draft · {yanked} yanked
+        {t('{count} draft', { count: draft })} · {t('{count} yanked', { count: yanked })}
       </small>
     </div>
   );

@@ -1,0 +1,9 @@
+{
+  "approved": false,
+  "useCase": "ui-mockup",
+  "direction": "Finogeeks-inspired high-trust enterprise control plane",
+  "seedKey": "90c8e585",
+  "variant": "C - architecture-led console home",
+  "reference": "User-provided Finogeeks homepage screenshot used for visual language only",
+  "prompt": "Create a high-fidelity 16:9 desktop composition for the authenticated A3S Cloud console. Make the A3S authority architecture the home-screen organizer: one-line top navigation, context selectors, a compact Production workspace header, a central stack of Cloud control, A3S Flow, Workloads and Agent executions, outbound-only Node Agent, Runtime, Box, Gateway, and a sole A3S Code Harness band. Add useful current operations and delivery evidence rails without turning the page into marketing. Do not copy Finogeeks identity, content, logos, or claims."
+}

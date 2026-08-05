@@ -1,8 +1,9 @@
-import { Bot, Boxes, Globe2, LayoutDashboard, PackageCheck } from 'lucide-react';
+import { Bot, Boxes, Globe2, LayoutDashboard, Network, PackageCheck } from 'lucide-react';
 import type { KeyboardEvent } from 'react';
+import { useI18n } from '../../lib/i18n';
 import type { SearchResourceKind } from '../../types/api';
 
-export type ConsoleSection = 'overview' | 'workloads' | 'agents' | 'delivery' | 'edge';
+export type ConsoleSection = 'overview' | 'workloads' | 'agents' | 'delivery' | 'edge' | 'architecture';
 
 export interface ConsoleSectionCounts {
   workloads: number;
@@ -59,16 +60,25 @@ const SECTIONS = [
     countLabel: 'routes',
     icon: Globe2,
   },
+  {
+    id: 'architecture',
+    label: 'Architecture',
+    description: 'Platform module map',
+    countKey: undefined,
+    countLabel: undefined,
+    icon: Network,
+  },
 ] as const satisfies ReadonlyArray<{
   id: ConsoleSection;
   label: string;
   description: string;
-  countKey: keyof ConsoleSectionCounts;
-  countLabel: string;
+  countKey?: keyof ConsoleSectionCounts;
+  countLabel?: string;
   icon: typeof LayoutDashboard;
 }>;
 
 export function ConsoleNavigation({ activeSection, counts, onSelect }: ConsoleNavigationProps) {
+  const { t } = useI18n();
   const selectFromKeyboard = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
     if (event.key === 'ArrowRight') nextIndex = (index + 1) % SECTIONS.length;
@@ -86,19 +96,23 @@ export function ConsoleNavigation({ activeSection, counts, onSelect }: ConsoleNa
   };
 
   return (
-    <nav className='console-navigation' aria-label='Environment sections'>
-      <div role='tablist' aria-label='Environment workspace'>
+    <nav className='console-navigation' aria-label={t('Environment sections')}>
+      <div role='tablist' aria-label={t('Environment workspace')}>
         {SECTIONS.map((section, index) => {
           const Icon = section.icon;
           const active = section.id === activeSection;
-          const count = counts[section.countKey];
+          const count = section.countKey ? counts[section.countKey] : null;
+          const ariaLabel =
+            count === null
+              ? `${t(section.label)}, ${t(section.description)}`
+              : `${t(section.label)}, ${t(section.description)}, ${count} ${t(section.countLabel ?? '')}`;
           return (
             <button
               id={`console-${section.id}-tab`}
               className={active ? 'active' : undefined}
               type='button'
               role='tab'
-              aria-label={`${section.label}, ${section.description}, ${count} ${section.countLabel}`}
+              aria-label={ariaLabel}
               aria-controls={`console-${section.id}-panel`}
               aria-current={active ? 'page' : undefined}
               aria-selected={active}
@@ -109,10 +123,12 @@ export function ConsoleNavigation({ activeSection, counts, onSelect }: ConsoleNa
             >
               <Icon size={17} aria-hidden='true' />
               <span>
-                <strong>{section.label}</strong>
-                <small>{section.description}</small>
+                <strong>{t(section.label)}</strong>
+                <small>{t(section.description)}</small>
               </span>
-              <em title={`${count} ${section.countLabel}`}>{count}</em>
+              {count === null ? null : (
+                <em title={`${count} ${t(section.countLabel ?? '')}`}>{count}</em>
+              )}
             </button>
           );
         })}

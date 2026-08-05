@@ -1,8 +1,8 @@
 import { Download, FileJson2, ShieldCheck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CloudApi } from '../../lib/api';
+import { useI18n } from '../../lib/i18n';
 import type { BuildEvidence, BuildRun } from '../../types/api';
-import { formatTimestamp } from './console-format';
 
 interface BuildEvidencePanelProps {
   api: CloudApi;
@@ -13,6 +13,7 @@ interface BuildEvidencePanelProps {
 const MAX_PREVIEW_CHARACTERS = 200_000;
 
 export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvidencePanelProps) {
+  const { formatTimestamp, t } = useI18n();
   const [evidence, setEvidence] = useState<BuildEvidence | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +38,13 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
     return {
       text:
         document.length > MAX_PREVIEW_CHARACTERS
-          ? `${document.slice(0, MAX_PREVIEW_CHARACTERS)}\n… preview truncated; download the complete document.`
+          ? `${document.slice(0, MAX_PREVIEW_CHARACTERS)}\n… ${t(
+              'preview truncated; download the complete document.'
+            )}`
           : document,
       truncated: document.length > MAX_PREVIEW_CHARACTERS,
     };
-  }, [evidence]);
+  }, [evidence, t]);
 
   const loadEvidence = async (): Promise<BuildEvidence | null> => {
     if (evidence) return evidence;
@@ -85,15 +88,15 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
   };
 
   return (
-    <section className='surface build-evidence-panel' aria-label='Build evidence'>
+    <section className='surface build-evidence-panel' aria-label={t('Build evidence')}>
       <div className='surface-heading'>
         <div>
-          <p className='eyebrow'>Supply-chain integrity</p>
-          <h2>Build evidence</h2>
+          <p className='eyebrow'>{t('Supply-chain integrity')}</p>
+          <h2>{t('Build evidence')}</h2>
         </div>
         {summary ? (
           <span className='evidence-verified'>
-            <ShieldCheck size={14} /> Verified
+            <ShieldCheck size={14} /> {t('Verified')}
           </span>
         ) : null}
       </div>
@@ -101,19 +104,19 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
       {!buildRun ? (
         <div className='detail-empty'>
           <FileJson2 size={22} />
-          <strong>Select a build run</strong>
-          <p>Choose a BuildRun to inspect its signed SBOM and provenance state.</p>
+          <strong>{t('Select a build run')}</strong>
+          <p>{t('Choose a BuildRun to inspect its signed SBOM and provenance state.')}</p>
         </div>
       ) : !summary ? (
         <div className='detail-empty'>
           <FileJson2 size={22} />
           <strong>
-            {buildRun.status === 'attesting' ? 'Attestation in progress' : 'No evidence available'}
+            {buildRun.status === 'attesting' ? t('Attestation in progress') : t('No evidence available')}
           </strong>
           <p>
             {buildRun.status === 'attesting'
-              ? 'Cloud is generating and signing the immutable evidence document.'
-              : 'This BuildRun has not produced verified supply-chain evidence.'}
+              ? t('Cloud is generating and signing the immutable evidence document.')
+              : t('This BuildRun has not produced verified supply-chain evidence.')}
           </p>
         </div>
       ) : (
@@ -121,10 +124,12 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
           <div className='build-evidence-status'>
             <ShieldCheck size={20} />
             <div>
-              <strong>Verified evidence</strong>
+              <strong>{t('Verified evidence')}</strong>
               <span>
                 {summary.signingKeyAlgorithm}
-                {summary.signingKeyVersion === null ? '' : ` · key version ${summary.signingKeyVersion}`}
+                {summary.signingKeyVersion === null
+                  ? ''
+                  : ` · ${t('key version {version}', { version: summary.signingKeyVersion })}`}
                 {' · '}
                 {formatTimestamp(summary.attestedAt)}
               </span>
@@ -132,19 +137,19 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
           </div>
           <dl className='build-evidence-facts'>
             <div>
-              <dt>SBOM digest</dt>
+              <dt>{t('SBOM digest')}</dt>
               <dd>{summary.sbomDigest}</dd>
             </div>
             <div>
-              <dt>Provenance digest</dt>
+              <dt>{t('Provenance digest')}</dt>
               <dd>{summary.provenanceDigest}</dd>
             </div>
             <div>
-              <dt>Signing key ID</dt>
+              <dt>{t('Signing key ID')}</dt>
               <dd>{summary.signingKeyId}</dd>
             </div>
             <div>
-              <dt>Evidence schema</dt>
+              <dt>{t('Evidence schema')}</dt>
               <dd>{summary.schema}</dd>
             </div>
           </dl>
@@ -155,7 +160,7 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
               disabled={loading}
               onClick={() => void loadEvidence()}
             >
-              <FileJson2 size={13} /> {loading ? 'Loading evidence' : 'View evidence JSON'}
+              <FileJson2 size={13} /> {loading ? t('Loading evidence') : t('View evidence JSON')}
             </button>
             <button
               className='secondary-button compact'
@@ -163,19 +168,19 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
               disabled={loading}
               onClick={() => void download()}
             >
-              <Download size={13} /> {loading ? 'Loading evidence' : 'Download JSON'}
+              <Download size={13} /> {loading ? t('Loading evidence') : t('Download JSON')}
             </button>
           </div>
           {error ? (
             <output className='build-evidence-error' role='alert'>
-              {error}
+              {t(error)}
             </output>
           ) : null}
           {preview ? (
             <div className='build-evidence-document'>
               <div>
-                <strong>Evidence JSON</strong>
-                <span>{preview.truncated ? 'Bounded preview' : 'Complete document'}</span>
+                <strong>{t('Evidence JSON')}</strong>
+                <span>{preview.truncated ? t('Bounded preview') : t('Complete document')}</span>
               </div>
               <pre>{preview.text}</pre>
             </div>

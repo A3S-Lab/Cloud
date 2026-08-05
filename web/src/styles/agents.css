@@ -113,6 +113,27 @@
   border-radius: 9px;
 }
 
+.agent-cancel-action {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 26px;
+  padding: 0 8px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255, 117, 117, 0.35);
+  border-radius: 7px;
+  color: var(--danger);
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+}
+
+.agent-cancel-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .agent-status {
   position: absolute;
   top: 11px;
