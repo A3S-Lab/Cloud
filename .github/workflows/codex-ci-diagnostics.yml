@@ -1,0 +1,108 @@
+name: Codex Cloud CI diagnostics
+
+on:
+  push:
+    branches:
+      - codex/cloud-ci-diagnostic-20260805
+
+permissions:
+  contents: read
+
+jobs:
+  rust-tests:
+    name: Rust test diagnostic
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Capture workspace test failure
+        run: |
+          set +e
+          cargo test --workspace --all-targets --locked --no-fail-fast \
+            >"$RUNNER_TEMP/cargo-test.log" 2>&1
+          status=$?
+          set -e
+          if (( status != 0 )); then
+            diagnostic=$(tail -n 140 "$RUNNER_TEMP/cargo-test.log")
+            diagnostic=${diagnostic//'%'/'%25'}
+            diagnostic=${diagnostic//$'\r'/'%0D'}
+            diagnostic=${diagnostic//$'\n'/'%0A'}
+            echo "::error title=Workspace cargo test diagnostic::$diagnostic"
+          fi
+          exit "$status"
+
+  github-source:
+    name: GitHub source diagnostic
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Read pinned Runtime revision
+        id: runtime_revision
+        run: |
+          revision=$(<tools/runtime-conformance/runtime-revision)
+          [[ $revision =~ ^[0-9a-f]{40}$ ]]
+          echo "revision=$revision" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout Runtime
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Runtime
+          ref: ${{ steps.runtime_revision.outputs.revision }}
+          path: crates/runtime
+
+      - name: Install Rust 1.85.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.85.0
+
+      - name: Capture public GitHub resolution failure
+        run: |
+          set +e
+          cargo test -p a3s-cloud-control-plane --lib --locked \
+            modules::sources::infrastructure::github_source_resolver::tests::real_github_resolves_a_public_branch_then_confirms_the_pinned_commit \
+            -- --ignored --exact --nocapture --test-threads=1 \
+            >"$RUNNER_TEMP/github-source.log" 2>&1
+          status=$?
+          set -e
+          if (( status != 0 )); then
+            diagnostic=$(tail -n 140 "$RUNNER_TEMP/github-source.log")
+            diagnostic=${diagnostic//'%'/'%25'}
+            diagnostic=${diagnostic//$'\r'/'%0D'}
+            diagnostic=${diagnostic//$'\n'/'%0A'}
+            echo "::error title=GitHub source diagnostic::$diagnostic"
+          fi
+          exit "$status"
