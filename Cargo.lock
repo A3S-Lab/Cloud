@@ -261,8 +261,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-code-core"
-version = "6.7.0"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=e8657c3e05125d7ef5a25e5e8d025a65f678e6dd#e8657c3e05125d7ef5a25e5e8d025a65f678e6dd"
+version = "6.8.0"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=1caabb9a07573d43f85c4da8d099e149ed267516#1caabb9a07573d43f85c4da8d099e149ed267516"
 dependencies = [
  "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-common",
