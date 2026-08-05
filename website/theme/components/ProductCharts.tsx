@@ -1,4 +1,11 @@
-import { Code, Factory, FlowArrow, ShieldCheck } from '@phosphor-icons/react';
+import {
+  Code,
+  Factory,
+  FlowArrow,
+  Pulse,
+  ShieldCheck,
+  Stack,
+} from '@phosphor-icons/react';
 import type { HomeLanguage, ProductId } from '../data/product';
 
 type ChartProps = {
@@ -52,6 +59,24 @@ const pick = (copy: { zh: string; en: string }, language: HomeLanguage) =>
   copy[language];
 
 export function ProductSystemChart({ language }: ChartProps) {
+  const entryPoints = [
+    {
+      icon: Pulse,
+      label: language === 'zh' ? '全局概览' : 'Overview',
+    },
+    {
+      icon: FlowArrow,
+      label: language === 'zh' ? '工作流画布' : 'Workflow canvas',
+    },
+    {
+      icon: Factory,
+      label: language === 'zh' ? 'Agent 工作台' : 'Agent workspace',
+    },
+    {
+      icon: ShieldCheck,
+      label: language === 'zh' ? '安全监控' : 'Security console',
+    },
+  ];
   const products = [
     {
       icon: FlowArrow,
@@ -76,38 +101,71 @@ export function ProductSystemChart({ language }: ChartProps) {
       aria-labelledby="system-chart-title"
     >
       <figcaption>
-        <strong id="system-chart-title">
-          {pick(chartCopy.hero.title, language)}
-        </strong>
-        <span>{pick(chartCopy.hero.subtitle, language)}</span>
+        <strong id="system-chart-title">A3S OS</strong>
+        <span>
+          {language === 'zh'
+            ? '企业级 AI 操作系统'
+            : 'ENTERPRISE AI OPERATING SYSTEM'}
+        </span>
       </figcaption>
-      <div className="cloud-system-products" aria-hidden="true">
-        {products.map(({ icon: Icon, label, meta }) => (
-          <div key={label}>
-            <Icon size={21} weight="duotone" />
-            <strong>{label}</strong>
-            <small>{meta}</small>
-          </div>
+      <div className="cloud-system-entry" aria-hidden="true">
+        {entryPoints.map(({ icon: Icon, label }) => (
+          <span key={label}>
+            <Icon size={18} weight="duotone" />
+            <b>{label}</b>
+          </span>
         ))}
       </div>
-      <div className="cloud-system-spine" aria-hidden="true">
-        <i />
-        <span>A3S OS</span>
-        <i />
+      <div className="cloud-system-body" aria-hidden="true">
+        <div className="cloud-system-layers">
+          <div className="cloud-system-products">
+            {products.map(({ icon: Icon, label, meta }) => (
+              <div key={label}>
+                <Icon size={21} weight="duotone" />
+                <strong>{label}</strong>
+                <small>{meta}</small>
+              </div>
+            ))}
+          </div>
+          <div className="cloud-system-runtime">
+            <div className="is-harness">
+              <Code size={21} weight="duotone" />
+              <span>
+                <strong>A3S Code Harness</strong>
+                <small>
+                  {language === 'zh'
+                    ? '唯一 Agent 运行所有者'
+                    : 'Sole Agent run owner'}
+                </small>
+              </span>
+            </div>
+            <div>
+              <Stack size={21} weight="duotone" />
+              <span>
+                <strong>A3S Flow + Operations</strong>
+                <small>
+                  {language === 'zh'
+                    ? '持久任务与状态收敛'
+                    : 'Durable work and state convergence'}
+                </small>
+              </span>
+            </div>
+          </div>
+          <div className="cloud-system-foundation">
+            <span>A3S Gateway</span>
+            <span>A3S Runtime</span>
+            <span>A3S Box</span>
+            <span>A3S Power</span>
+            <span>Code Hosting</span>
+            <span>Hardware Scheduling</span>
+          </div>
+        </div>
+        <aside className="cloud-system-observability">
+          <Pulse size={20} weight="duotone" />
+          <strong>AnySentry</strong>
+          <small>{language === 'zh' ? '全栈可观测' : 'OBSERVABILITY'}</small>
+        </aside>
       </div>
-      <div className="cloud-system-foundation" aria-hidden="true">
-        <span>A3S Gateway</span>
-        <span>A3S Runtime</span>
-        <span>A3S Box</span>
-        <span>A3S Power</span>
-        <span>Code Hosting</span>
-        <span>Hardware Scheduling</span>
-      </div>
-      <p>
-        {language === 'zh'
-          ? '产品关系图 · 共享运行底座 · 仓库架构'
-          : 'PRODUCT MAP · SHARED RUNTIME · REPOSITORY ARCHITECTURE'}
-      </p>
     </figure>
   );
 }
@@ -304,14 +362,14 @@ function SecurityChart({ language }: ChartProps) {
           'Runtime / Box',
           'Fleet 命令',
           '租户身份',
-          'AnySentry 告警',
+          'AnySentry 可观测信号',
         ]
       : [
           'Gateway traffic',
           'Runtime / Box',
           'Fleet commands',
           'Tenant identity',
-          'AnySentry alerts',
+          'AnySentry telemetry',
         ];
   const outcomes =
     language === 'zh'
@@ -358,7 +416,7 @@ function SecurityChart({ language }: ChartProps) {
         <div className="cloud-security-core">
           <ShieldCheck size={28} weight="duotone" />
           <strong>{language === 'zh' ? '安全监控中台' : 'Security Ops'}</strong>
-          <small>Gateway · Sentry · AnySentry</small>
+          <small>Gateway / Sentry / AnySentry</small>
         </div>
         <div className="cloud-security-outcomes">
           {outcomes.map((outcome) => (

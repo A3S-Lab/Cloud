@@ -1,5 +1,6 @@
 import { withBase } from '@rspress/core/runtime';
 import {
+  ArrowDown,
   ArrowRight,
   Browser,
   Broadcast,
@@ -12,6 +13,9 @@ import {
   GitBranch,
   Key,
   Lightning,
+  Package,
+  Pulse,
+  Robot,
   ShieldCheck,
   Stack,
   UsersThree,
@@ -22,50 +26,84 @@ import type { HomeLanguage, LocalizedText } from '../data/product';
 
 type ArchitectureItem = {
   title: string;
+  titleZh?: string;
   description: LocalizedText;
   icon: ComponentType<IconProps>;
   emphasis?: boolean;
+  meta?: string;
 };
 
 const products: ArchitectureItem[] = [
   {
     title: 'Workflow',
+    titleZh: '自主工作流编排',
     description: {
       zh: '认知与本体工程驱动的自主编排',
       en: 'Cognitive, ontology-driven orchestration',
     },
     icon: FlowArrow,
     emphasis: true,
+    meta: 'A3S Workflow',
   },
   {
     title: 'Agent Factory',
+    titleZh: '异构智能体工厂',
     description: {
       zh: '异构智能体资产生产与交付',
       en: 'Heterogeneous Agent production and delivery',
     },
     icon: Factory,
     emphasis: true,
+    meta: 'A3S Code',
   },
   {
     title: 'Security Operations',
+    titleZh: '安全监控中台',
     description: {
       zh: '统一安全监控与响应',
       en: 'Unified security monitoring and response',
     },
     icon: ShieldCheck,
     emphasis: true,
+    meta: 'A3S Gateway / AnySentry',
   },
 ];
 
-const client: ArchitectureItem[] = [
+const clientSurfaces: ArchitectureItem[] = [
   {
-    title: 'A3S Web',
+    title: 'Overview',
+    titleZh: '全局概览',
     description: {
-      zh: '面向三大产品的统一可视化客户端、工作空间与证据入口',
-      en: 'Unified visual client, workspace, and evidence surface for all three products',
+      zh: '环境健康与运行态势',
+      en: 'Environment health and live state',
     },
-    icon: Browser,
-    emphasis: true,
+    icon: Pulse,
+  },
+  {
+    title: 'Workloads',
+    description: {
+      zh: '部署、日志、回滚与资源状态',
+      en: 'Deployments, logs, rollbacks, and resource state',
+    },
+    icon: Cube,
+  },
+  {
+    title: 'Agent Workspace',
+    titleZh: 'Agent 工作台',
+    description: {
+      zh: '会话、审批与运行证据',
+      en: 'Sessions, approvals, and run evidence',
+    },
+    icon: Robot,
+  },
+  {
+    title: 'Delivery Evidence',
+    titleZh: '交付与证据',
+    description: {
+      zh: '构建、制品与审计链',
+      en: 'Builds, artifacts, and audit lineage',
+    },
+    icon: Package,
   },
 ];
 
@@ -96,10 +134,10 @@ const platformServices: ArchitectureItem[] = [
     emphasis: true,
   },
   {
-    title: 'A3S Sentry + AnySentry',
+    title: 'A3S Sentry',
     description: {
-      zh: '安全信号、策略判断与响应处置',
-      en: 'Security signals, policy decisions, and response actions',
+      zh: '消费可观测信号，完成策略判断与响应处置',
+      en: 'Consumes observability signals for policy decisions and response actions',
     },
     icon: ShieldCheck,
   },
@@ -140,6 +178,7 @@ const infrastructure: ArchitectureItem[] = [
   },
   {
     title: 'Code Hosting',
+    titleZh: '代码托管',
     description: {
       zh: '租户隔离的 Git 仓库与不可变源码版本',
       en: 'Tenant-scoped Git repositories and immutable source revisions',
@@ -148,6 +187,7 @@ const infrastructure: ArchitectureItem[] = [
   },
   {
     title: 'Hardware Scheduling',
+    titleZh: '硬件资源调度',
     description: {
       zh: 'Workloads 与 Fleet 统一管理 CPU、GPU、放置和资源声明',
       en: 'Workloads and Fleet own CPU, GPU, placement, and resource claims',
@@ -156,6 +196,7 @@ const infrastructure: ArchitectureItem[] = [
   },
   {
     title: 'Data + Artifacts',
+    titleZh: '数据与制品',
     description: {
       zh: 'PostgreSQL、A3S ORM、对象存储与 OCI 制品',
       en: 'PostgreSQL, A3S ORM, object storage, and OCI artifacts',
@@ -164,6 +205,7 @@ const infrastructure: ArchitectureItem[] = [
   },
   {
     title: 'Identity + Evidence',
+    titleZh: '身份与证据',
     description: {
       zh: 'A3S ACL、mTLS、日志、回执与审计证据',
       en: 'A3S ACL, mTLS, logs, receipts, and audit evidence',
@@ -190,8 +232,8 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
           </h2>
           <p>
             {zh
-              ? 'A3S Web 承载统一交互，三大产品共享平台服务与基础设施。每个模块只保留一个明确职责，不重复建设调度器、Runtime 或第二套 Agent Harness。'
-              : 'A3S Web provides one interaction surface while the three products share platform services and infrastructure. Every module keeps one clear responsibility without duplicate schedulers, runtimes, or Agent harnesses.'}
+              ? 'A3S Web 承载统一交互，三大产品共享平台服务与基础设施，AnySentry 纵向贯穿全栈可观测性。每个模块只保留一个明确职责，不重复建设调度器、Runtime 或第二套 Agent Harness。'
+              : 'A3S Web provides one interaction surface while the three products share platform services and infrastructure. AnySentry provides observability across the stack. Every module keeps one clear responsibility without duplicate schedulers, runtimes, or Agent harnesses.'}
           </p>
         </div>
         <a href={withBase('/architecture/')}>
@@ -201,6 +243,7 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
       </header>
 
       <div className="cloud-platform-map" data-reveal>
+        <ClientLayer items={clientSurfaces} language={language} />
         <header>
           <div>
             <span className="cloud-platform-mark">A3</span>
@@ -218,56 +261,134 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
           </span>
         </header>
 
-        <ArchitectureLayer
-          items={client}
-          language={language}
-          label={zh ? '客户端层' : 'CLIENT'}
-          tone="client"
-        />
-        <LayerConnector
-          label={zh ? '统一交互与证据视图' : 'UNIFIED INTERACTION AND EVIDENCE'}
-        />
-        <ArchitectureLayer
-          items={products}
-          language={language}
-          label={zh ? '三大产品层' : 'THREE PRODUCTS'}
-          tone="products"
-        />
-        <LayerConnector
-          label={
-            zh
-              ? '产品意图与统一运行合约'
-              : 'PRODUCT INTENT AND UNIFIED RUNTIME CONTRACT'
-          }
-        />
-        <ArchitectureLayer
-          items={platformServices}
-          language={language}
-          label={zh ? '平台服务层' : 'PLATFORM SERVICES'}
-          tone="control"
-        />
-        <LayerConnector
-          label={
-            zh
-              ? '状态、命令、资源与安全信号'
-              : 'STATE, COMMANDS, RESOURCES, AND SECURITY SIGNALS'
-          }
-        />
-        <ArchitectureLayer
-          items={infrastructure}
-          language={language}
-          label={zh ? '基础设施层' : 'INFRASTRUCTURE'}
-          tone="foundation"
-        />
+        <div className="cloud-platform-shell">
+          <div className="cloud-platform-body">
+            <div className="cloud-platform-layers">
+              <LayerConnector
+                label={
+                  zh
+                    ? '统一交互、操作与证据投影'
+                    : 'UNIFIED INTERACTION, OPERATIONS, AND EVIDENCE'
+                }
+              />
+              <ArchitectureLayer
+                items={products}
+                language={language}
+                label={zh ? '产品应用层' : 'PRODUCT APPLICATIONS'}
+                tone="products"
+              />
+              <LayerConnector
+                label={
+                  zh
+                    ? '产品意图进入唯一运行合约'
+                    : 'PRODUCT INTENT ENTERS ONE RUNTIME CONTRACT'
+                }
+              />
+              <ArchitectureLayer
+                items={platformServices}
+                language={language}
+                label={zh ? '统一平台服务' : 'SHARED PLATFORM SERVICES'}
+                tone="control"
+              />
+              <LayerConnector
+                label={
+                  zh
+                    ? '状态、命令、资源与安全信号'
+                    : 'STATE, COMMANDS, RESOURCES, AND SECURITY SIGNALS'
+                }
+              />
+              <ArchitectureLayer
+                items={infrastructure}
+                language={language}
+                label={zh ? '基础设施底座' : 'INFRASTRUCTURE FOUNDATION'}
+                tone="foundation"
+              />
+            </div>
+            <ObservabilityRail language={language} />
+          </div>
+        </div>
 
         <footer>
-          <UsersThree aria-hidden="true" size={20} weight="duotone" />
+          <div>
+            <UsersThree aria-hidden="true" size={22} weight="duotone" />
+            <strong>{zh ? '唯一职责边界' : 'ONE OWNER PER BOUNDARY'}</strong>
+          </div>
           <p>
             {zh
               ? 'A3S OS 负责产品意图、权限与收敛；A3S Flow 负责持久任务；A3S Runtime 与 Box 负责执行；Workloads 与 Fleet 负责硬件资源调度；A3S Code Harness 只负责 Agent 运行。'
               : 'A3S OS owns product intent, authorization, and convergence. A3S Flow owns durable work. A3S Runtime and Box own execution. Workloads and Fleet own hardware scheduling. A3S Code Harness owns Agent runs only.'}
           </p>
         </footer>
+      </div>
+    </section>
+  );
+}
+
+function ObservabilityRail({ language }: { language: HomeLanguage }) {
+  const zh = language === 'zh';
+  const signals = zh
+    ? ['指标', '日志', '链路', '事件']
+    : ['Metrics', 'Logs', 'Traces', 'Events'];
+
+  return (
+    <aside
+      className="cloud-observability-rail"
+      aria-label={
+        zh ? 'AnySentry 可观测性平台' : 'AnySentry observability platform'
+      }
+    >
+      <Pulse aria-hidden="true" size={26} weight="duotone" />
+      <div>
+        <strong>AnySentry</strong>
+        <small>{zh ? '全栈可观测性平台' : 'FULL-STACK OBSERVABILITY'}</small>
+      </div>
+      <p>
+        {zh
+          ? '纵向贯穿产品、平台服务与基础设施'
+          : 'Spans products, platform services, and infrastructure'}
+      </p>
+      <ul>
+        {signals.map((signal) => (
+          <li key={signal}>{signal}</li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
+function ClientLayer({
+  items,
+  language,
+}: {
+  items: ArchitectureItem[];
+  language: HomeLanguage;
+}) {
+  const zh = language === 'zh';
+
+  return (
+    <section className="cloud-architecture-client">
+      <div className="cloud-client-bar">
+        <Browser aria-hidden="true" size={28} weight="duotone" />
+        <span>
+          <strong>A3S Web</strong>
+          <small>
+            {zh
+              ? '三大产品统一可视化客户端'
+              : 'Unified visual client for all three products'}
+          </small>
+        </span>
+        <b>{zh ? '客户端层' : 'CLIENT LAYER'}</b>
+      </div>
+      <div className="cloud-client-surfaces">
+        {items.map(({ description, icon: Icon, title, titleZh }) => (
+          <article key={title}>
+            <Icon aria-hidden="true" size={21} weight="duotone" />
+            <span>
+              <strong>{zh && titleZh ? titleZh : title}</strong>
+              <small>{localize(description, language)}</small>
+            </span>
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -288,17 +409,25 @@ function ArchitectureLayer({
     <section className={`cloud-architecture-layer is-${tone}`}>
       <h3>{label}</h3>
       <div>
-        {items.map(({ description, emphasis, icon: Icon, title }) => (
-          <article className={emphasis ? 'is-emphasis' : undefined} key={title}>
-            <span>
-              <Icon aria-hidden="true" size={23} weight="duotone" />
-            </span>
-            <div>
-              <strong>{title}</strong>
-              <small>{localize(description, language)}</small>
-            </div>
-          </article>
-        ))}
+        {items.map(
+          ({ description, emphasis, icon: Icon, meta, title, titleZh }) => (
+            <article
+              className={emphasis ? 'is-emphasis' : undefined}
+              key={title}
+            >
+              <span>
+                <Icon aria-hidden="true" size={23} weight="duotone" />
+              </span>
+              <div>
+                <strong>
+                  {language === 'zh' && titleZh ? titleZh : title}
+                </strong>
+                {meta && <em>{meta}</em>}
+                <small>{localize(description, language)}</small>
+              </div>
+            </article>
+          ),
+        )}
       </div>
     </section>
   );
@@ -308,7 +437,10 @@ function LayerConnector({ label }: { label: string }) {
   return (
     <div className="cloud-layer-connector" aria-hidden="true">
       <i />
-      <span>{label}</span>
+      <span>
+        <ArrowDown size={14} weight="bold" />
+        {label}
+      </span>
       <i />
     </div>
   );

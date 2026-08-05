@@ -7,6 +7,8 @@ import {
   GithubLogo,
 } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
+import { EdgeCloudFoundationChapter } from './EdgeCloudFoundationChapter';
+import { IndustrySolutionsChapter } from './IndustrySolutionsChapter';
 import { InteractionLayer } from './InteractionLayer';
 import { PlatformArchitecture } from './PlatformArchitecture';
 import { ProductChapter } from './ProductChapter';
@@ -20,7 +22,10 @@ function MarkdownHome() {
   return (
     <main>
       <h1>A3S OS 企业级 AI 操作系统</h1>
-      <p>认知驱动的本体工程、自主进化与大规模高可用服务平台。</p>
+      <p>
+        A3S OS 基于云原生微服务架构，打造「可管、可控、可协作、可审计」的企业级
+        AI Native 操作系统，提供全栈国产化的端云一体智能体和工作流安全执行平台。
+      </p>
       <h2>Workflow 自主工作流编排</h2>
       <p>
         用本体工程描述业务世界，再把对象、关系、规则、目标和约束编译为可恢复的长期流程。
@@ -98,13 +103,17 @@ export function HomeLayout() {
             </div>
           </div>
           <h1>
-            {zh ? '企业级 AI，' : 'Enterprise AI,'}
-            <span>{zh ? '需要一套操作系统。' : 'operated as one system.'}</span>
+            <span className="cloud-hero-brand">A3S OS</span>
+            <span>
+              {zh
+                ? '企业级 AI 操作系统'
+                : 'The operating system for enterprise AI'}
+            </span>
           </h1>
           <p>
             {zh
-              ? 'A3S OS 将认知驱动的本体工程、自主进化机制与大规模高可用服务底座收敛到同一平台，让业务意图、智能体资产和安全治理真正进入生产系统。'
-              : 'A3S OS brings cognitive ontology engineering, autonomous evolution, and a large-scale highly available service foundation into one platform, moving business intent, Agent assets, and security governance into production.'}
+              ? '基于云原生微服务架构，打造「可管、可控、可协作、可审计」的企业级 AI Native 操作系统，提供全栈国产化的端云一体智能体和工作流安全执行平台。'
+              : 'Built on cloud-native microservices, A3S OS is a manageable, controllable, collaborative, and auditable AI-native operating system for secure cloud-to-edge Agent and workflow execution.'}
           </p>
           <div className="cloud-hero-actions">
             <a className="cloud-button is-primary" href="#workflow">
@@ -178,6 +187,8 @@ export function HomeLayout() {
         </ul>
       </aside>
 
+      <EdgeCloudFoundationChapter language={language} />
+
       <section className="cloud-product-intro" data-reveal>
         <span>{zh ? '产品体系' : 'PRODUCT SYSTEM'}</span>
         <h2>
@@ -201,6 +212,7 @@ export function HomeLayout() {
       ))}
 
       <WebClientChapter language={language} />
+      <IndustrySolutionsChapter language={language} />
       <PlatformArchitecture language={language} />
 
       <section className="cloud-final-cta">
@@ -244,8 +256,8 @@ export function HomeLayout() {
           {zh ? '企业级 AI 操作系统' : 'Enterprise AI operating system'}
         </span>
         <div>
-          <a href="#workflow">Workflow</a>
-          <a href="#agent-factory">Agent Factory</a>
+          <a href="#workflow">{zh ? '工作流编排' : 'Workflow'}</a>
+          <a href="#agent-factory">{zh ? '智能体工厂' : 'Agent Factory'}</a>
           <a href="#security-operations">{zh ? '安全监控' : 'Security'}</a>
           <a href={route('/docs/')}>{zh ? '版本文档' : 'Versioned docs'}</a>
           <a href="https://github.com/A3S-Lab/Cloud">GitHub</a>

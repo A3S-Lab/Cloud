@@ -24,7 +24,7 @@ export default defineConfig({
   siteOrigin,
   title: 'A3S OS',
   description:
-    'A3S OS 企业级 AI 操作系统，提供自主工作流编排、异构智能体工厂、安全监控中台与 A3S Web 客户端。',
+    'A3S OS 基于云原生微服务架构，打造可管、可控、可协作、可审计的企业级 AI Native 操作系统，提供全栈国产化的端云一体智能体和工作流安全执行平台。',
   lang: 'zh-CN',
   i18nSource: includeSimplifiedChinese,
   icon: '/favicon.svg',
@@ -55,10 +55,17 @@ export default defineConfig({
     darkMode: 'force-light',
     enableContentAnimation: true,
     nav: [
-      { text: 'Workflow', link: '/#workflow' },
-      { text: 'Agent Factory', link: '/#agent-factory' },
-      { text: '安全监控', link: '/#security-operations' },
-      { text: 'A3S Web', link: '/#web-client' },
+      { text: '端云底座', link: '/#edge-cloud-foundation' },
+      {
+        text: '产品',
+        items: [
+          { text: '工作流编排', link: '/#workflow' },
+          { text: '智能体工厂', link: '/#agent-factory' },
+          { text: '安全监控', link: '/#security-operations' },
+        ],
+      },
+      { text: '端侧智能体', link: '/#edge-agent' },
+      { text: '行业方案', link: '/#solutions' },
       { text: '模块架构', link: '/#architecture' },
     ],
     socialLinks: [

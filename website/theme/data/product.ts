@@ -132,8 +132,8 @@ export const productChapters: ProductChapter[] = [
       en: 'Security monitoring and operations center',
     },
     body: {
-      zh: '汇聚 A3S Gateway 流量、A3S Runtime 与 Box 运行状态、Fleet 命令、租户身份、A3S Sentry 与 AnySentry 告警，把分散信号收敛为统一事件、策略判断、处置动作与审计证据。',
-      en: 'Unify A3S Gateway traffic, A3S Runtime and Box state, Fleet commands, tenant identity, A3S Sentry, and AnySentry alerts into one stream of events, policy decisions, response actions, and audit evidence.',
+      zh: 'AnySentry 纵向贯穿产品与基础设施，统一汇聚指标、日志、链路和事件。安全监控中台结合 A3S Gateway 流量、Runtime 与 Box 状态、Fleet 命令、租户身份和 A3S Sentry 策略，把可观测信号收敛为处置动作与审计证据。',
+      en: 'AnySentry spans products and infrastructure to unify metrics, logs, traces, and events. Security Operations combines that observability stream with A3S Gateway traffic, Runtime and Box state, Fleet commands, tenant identity, and A3S Sentry policy to produce response actions and audit evidence.',
     },
     capabilities: [
       {

@@ -1,7 +1,7 @@
 @media (max-width: 1180px) {
   .cloud-hero {
-    grid-template-columns: minmax(350px, 0.8fr) minmax(520px, 1.2fr);
-    gap: 52px;
+    grid-template-columns: minmax(390px, 0.92fr) minmax(520px, 1.08fr);
+    gap: 44px;
   }
 
   .cloud-product-chapter {
@@ -84,8 +84,16 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .cloud-architecture-layer.is-client > div {
-    grid-template-columns: minmax(0, 1fr);
+  .cloud-architecture-layer.is-products article:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .cloud-client-surfaces {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-platform-body {
+    grid-template-columns: minmax(0, 1fr) 140px;
   }
 
   .cloud-final-cta {
@@ -131,7 +139,7 @@
   }
 
   .cloud-hero h1 {
-    font-size: clamp(44px, 12vw, 58px);
+    font-size: clamp(42px, 11vw, 50px);
   }
 
   .cloud-hero-copy > p {
@@ -149,12 +157,12 @@
   }
 
   .cloud-system-chart {
-    min-height: 560px;
-    padding: 24px;
+    min-height: 0;
+    padding: 16px;
   }
 
-  .cloud-system-products {
-    margin-top: 34px;
+  .cloud-system-entry {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cloud-system-products > div {
@@ -270,7 +278,7 @@
   .cloud-platform-map {
     margin-right: -6px;
     margin-left: -6px;
-    padding: 16px;
+    padding: 12px;
   }
 
   .cloud-platform-map > header {
@@ -283,8 +291,60 @@
     grid-template-columns: 1fr;
   }
 
+  .cloud-architecture-layer.is-products article:last-child {
+    grid-column: auto;
+  }
+
   .cloud-architecture-layer article {
     min-height: 76px;
+  }
+
+  .cloud-platform-shell {
+    padding: 0 10px 10px;
+  }
+
+  .cloud-platform-body {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-observability-rail {
+    min-height: 118px;
+    margin-top: 12px;
+    padding: 14px;
+    align-items: center;
+    display: grid;
+    grid-template-columns: 46px minmax(90px, 0.7fr) minmax(110px, 1fr);
+    gap: 12px;
+    text-align: left;
+  }
+
+  .cloud-observability-rail::before {
+    display: none;
+  }
+
+  .cloud-observability-rail > svg {
+    width: 42px;
+    height: 42px;
+  }
+
+  .cloud-observability-rail strong {
+    margin-top: 0;
+  }
+
+  .cloud-observability-rail > p {
+    max-width: none;
+    margin: 0;
+  }
+
+  .cloud-observability-rail ul {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+  }
+
+  .cloud-platform-map > footer {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .cloud-final-cta {
@@ -312,7 +372,7 @@
 
 @media (max-width: 500px) {
   .cloud-system-chart {
-    min-height: 720px;
+    min-height: 0;
   }
 
   .cloud-system-products {
@@ -329,6 +389,51 @@
 
   .cloud-system-products strong {
     margin-top: 7px;
+  }
+
+  .cloud-system-runtime {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-system-foundation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-system-body {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-system-observability {
+    min-height: 58px;
+    padding: 10px 12px;
+    flex-direction: row;
+    gap: 9px;
+  }
+
+  .cloud-system-observability strong,
+  .cloud-system-observability small {
+    margin-top: 0;
+    writing-mode: horizontal-tb;
+  }
+
+  .cloud-client-surfaces {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-client-bar {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .cloud-client-bar b {
+    display: none;
+  }
+
+  .cloud-observability-rail {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .cloud-observability-rail > p {
+    grid-column: 1 / -1;
   }
 
   .cloud-assurance-bar ul {

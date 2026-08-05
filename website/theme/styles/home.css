@@ -14,12 +14,12 @@
 .cloud-hero {
   display: grid;
   width: min(100%, var(--cloud-max));
-  min-height: calc(100vh - var(--rp-nav-height));
+  min-height: calc(100dvh - var(--rp-nav-height));
   margin: 0 auto;
-  padding: clamp(66px, 7vw, 104px) clamp(28px, 5vw, 72px) 72px;
+  padding: clamp(58px, 6vw, 88px) clamp(28px, 5vw, 72px) 64px;
   align-items: center;
-  grid-template-columns: minmax(390px, 0.86fr) minmax(560px, 1.14fr);
-  gap: clamp(50px, 7vw, 110px);
+  grid-template-columns: minmax(440px, 0.96fr) minmax(590px, 1.04fr);
+  gap: clamp(44px, 5vw, 72px);
   border-right: 1px solid var(--cloud-line);
   border-left: 1px solid var(--cloud-line);
   background:
@@ -56,6 +56,16 @@
   text-transform: uppercase;
 }
 
+.cloud-hero-meta > span {
+  display: inline-flex;
+  min-height: 38px;
+  padding: 0 14px;
+  align-items: center;
+  border: 1px solid #c9dafb;
+  border-radius: var(--cloud-radius-pill);
+  background: rgba(255, 255, 255, 0.86);
+}
+
 .cloud-language-switch {
   display: inline-flex;
   padding: 3px;
@@ -84,27 +94,37 @@
 }
 
 .cloud-hero h1 {
-  max-width: 780px;
+  max-width: 650px;
   margin: 0;
   color: var(--cloud-text);
-  font-size: clamp(52px, 5.9vw, 84px);
-  font-weight: 720;
-  letter-spacing: -0.057em;
-  line-height: 0.98;
+  font-size: clamp(50px, 4.4vw, 68px);
+  font-weight: 740;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
 }
 
 .cloud-hero h1 span {
   display: block;
-  margin-top: 8px;
+}
+
+.cloud-hero h1 .cloud-hero-brand {
+  margin-bottom: 12px;
   color: var(--cloud-blue);
+  font-size: 0.72em;
+  letter-spacing: -0.025em;
+  line-height: 1;
+}
+
+.cloud-hero h1 span:last-child {
+  color: var(--cloud-text);
 }
 
 .cloud-hero-copy > p {
-  max-width: 650px;
-  margin: 30px 0 0;
+  max-width: 620px;
+  margin: 28px 0 0;
   color: var(--cloud-muted);
-  font-size: 17px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.72;
 }
 
 .cloud-hero-actions,

@@ -317,16 +317,27 @@
 
 .cloud-architecture-heading > a {
   display: inline-flex;
-  min-height: 44px;
-  padding: 0 15px;
+  min-height: 46px;
+  padding: 0 17px;
   align-items: center;
   gap: 9px;
   border: 1px solid var(--cloud-line-strong);
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--cloud-blue);
+  background: #ffffff;
   font-size: 12px;
   font-weight: 720;
   white-space: nowrap;
+  transition:
+    border-color 180ms ease,
+    color 180ms ease,
+    transform 180ms ease;
+}
+
+.cloud-architecture-heading > a:hover {
+  border-color: #8babdf;
+  color: var(--cloud-blue-deep);
+  transform: translateY(-2px);
 }
 
 .cloud-architecture-heading > a svg {
@@ -335,21 +346,116 @@
 
 .cloud-platform-map {
   margin-top: 58px;
-  padding: 26px;
+  padding: 20px;
   overflow: hidden;
-  border: 1px solid #c9d5e6;
-  border-radius: 18px;
-  background: #f4f7fb;
-  box-shadow: var(--cloud-shadow);
+  border: 1px solid #c4d7f7;
+  border-radius: 24px;
+  background:
+    radial-gradient(
+      circle at 88% 4%,
+      rgba(12, 155, 112, 0.08),
+      transparent 22%
+    ),
+    linear-gradient(145deg, #fbfdff, #eef5ff);
+  box-shadow: 0 34px 84px rgba(38, 82, 145, 0.16);
+}
+
+.cloud-architecture-client {
+  padding: 4px 4px 14px;
+}
+
+.cloud-client-bar {
+  display: grid;
+  min-height: 54px;
+  padding: 7px 10px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--cloud-text);
+}
+
+.cloud-client-bar > svg {
+  color: var(--cloud-blue);
+}
+
+.cloud-client-bar strong,
+.cloud-client-bar small {
+  display: block;
+}
+
+.cloud-client-bar strong {
+  font-size: 14px;
+}
+
+.cloud-client-bar small {
+  margin-top: 3px;
+  color: var(--cloud-muted);
+  font-size: 9px;
+}
+
+.cloud-client-bar b {
+  color: var(--cloud-blue);
+  font-family: var(--cloud-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.cloud-client-surfaces {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cloud-client-surfaces article {
+  display: flex;
+  min-height: 78px;
+  padding: 13px 14px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #c4d7f7;
+  border-radius: 13px;
+  color: var(--cloud-blue);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.cloud-client-surfaces article:last-child {
+  border-color: #b4dfd1;
+  color: #087353;
+  background: #effaf6;
+}
+
+.cloud-client-surfaces article > svg {
+  flex: 0 0 auto;
+}
+
+.cloud-client-surfaces strong,
+.cloud-client-surfaces small {
+  display: block;
+}
+
+.cloud-client-surfaces strong {
+  color: var(--cloud-text);
+  font-size: 11px;
+}
+
+.cloud-client-surfaces small {
+  margin-top: 5px;
+  color: var(--cloud-muted);
+  font-size: 8.5px;
+  line-height: 1.35;
 }
 
 .cloud-platform-map > header {
   display: flex;
-  min-height: 72px;
-  padding: 8px 5px 24px;
+  min-height: 88px;
+  padding: 16px 20px;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
+  border-radius: 15px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #2471ff, #0d58e6);
+  box-shadow: 0 18px 38px rgba(18, 100, 255, 0.2);
 }
 
 .cloud-platform-map > header > div {
@@ -360,12 +466,13 @@
 
 .cloud-platform-mark {
   display: grid;
-  width: 43px;
-  height: 43px;
+  width: 46px;
+  height: 46px;
   place-items: center;
-  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 11px;
   color: #ffffff;
-  background: var(--cloud-blue);
+  background: rgba(255, 255, 255, 0.12);
   font-size: 13px;
   font-weight: 800;
 }
@@ -376,101 +483,241 @@
 }
 
 .cloud-platform-map > header strong {
-  color: var(--cloud-text);
-  font-size: 17px;
+  color: #ffffff;
+  font-size: 20px;
+  letter-spacing: -0.025em;
 }
 
 .cloud-platform-map > header small,
 .cloud-platform-map > header > span {
   margin-top: 4px;
-  color: var(--cloud-faint);
+  color: #d9e7ff;
   font-family: var(--cloud-mono);
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.1em;
 }
 
-.cloud-architecture-layer {
-  padding: 14px;
-  border: 1px solid var(--cloud-line);
+.cloud-platform-map > header > span {
+  text-align: right;
+}
+
+.cloud-platform-shell {
+  margin-top: 12px;
+  padding: 0 16px 16px;
+  border: 1px solid #d2def0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.76);
+}
+
+.cloud-platform-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 154px;
+  align-items: stretch;
+  gap: 12px;
+}
+
+.cloud-platform-layers {
+  min-width: 0;
+}
+
+.cloud-observability-rail {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  margin-top: 46px;
+  padding: 20px 15px;
+  overflow: hidden;
+  align-items: center;
+  border: 1px solid #a9c9f6;
+  border-radius: 14px;
+  color: var(--cloud-blue);
+  background: linear-gradient(180deg, #f4f8ff, #e5f1ff);
+  flex-direction: column;
+  text-align: center;
+}
+
+.cloud-observability-rail::before {
+  position: absolute;
+  top: 82px;
+  bottom: 86px;
+  left: 50%;
+  width: 1px;
+  content: '';
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(18, 100, 255, 0.38) 14%,
+    rgba(18, 100, 255, 0.38) 86%,
+    transparent
+  );
+}
+
+.cloud-observability-rail > svg,
+.cloud-observability-rail > div,
+.cloud-observability-rail > p,
+.cloud-observability-rail > ul {
+  position: relative;
+  z-index: 1;
+}
+
+.cloud-observability-rail > svg {
+  width: 44px;
+  height: 44px;
+  padding: 9px;
+  border: 1px solid #b6cef4;
   border-radius: 12px;
   background: #ffffff;
 }
 
-.cloud-architecture-layer h3 {
-  margin: 0 0 11px;
-  color: var(--cloud-faint);
+.cloud-observability-rail strong,
+.cloud-observability-rail small {
+  display: block;
+}
+
+.cloud-observability-rail strong {
+  margin-top: 14px;
+  color: var(--cloud-text);
+  font-size: 13px;
+}
+
+.cloud-observability-rail small {
+  margin-top: 5px;
+  color: var(--cloud-blue);
   font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.cloud-observability-rail > p {
+  max-width: 116px;
+  margin: auto 0;
+  padding: 14px 9px;
+  color: var(--cloud-muted);
+  background: #edf5ff;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.cloud-observability-rail ul {
+  display: grid;
+  width: 100%;
+  margin: auto 0 0;
+  padding: 0;
+  gap: 6px;
+  list-style: none;
+}
+
+.cloud-observability-rail li {
+  padding: 7px 5px;
+  border: 1px solid #c5d8f7;
+  border-radius: 8px;
+  color: var(--cloud-muted);
+  background: rgba(255, 255, 255, 0.88);
   font-size: 8px;
+  font-weight: 650;
+}
+
+.cloud-architecture-layer {
+  padding: 16px;
+  border: 1px solid #d4e0f1;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.cloud-architecture-layer.is-products {
+  border-color: #bfd3f6;
+  background: #edf4ff;
+}
+
+.cloud-architecture-layer.is-foundation {
+  border-color: #c5d8f7;
+  background: #eaf2ff;
+}
+
+.cloud-architecture-layer h3 {
+  margin: 0 0 13px;
+  color: var(--cloud-text);
+  font-size: 12px;
   font-weight: 750;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.015em;
+}
+
+.cloud-architecture-layer.is-products h3,
+.cloud-architecture-layer.is-foundation h3 {
+  color: var(--cloud-blue);
 }
 
 .cloud-architecture-layer > div {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 9px;
+  gap: 10px;
 }
 
 .cloud-architecture-layer.is-products > div {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.cloud-architecture-layer.is-client > div {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.cloud-architecture-layer.is-client article {
-  min-height: 72px;
-}
-
 .cloud-architecture-layer article {
   display: grid;
-  min-height: 84px;
-  padding: 13px;
-  grid-template-columns: 38px minmax(0, 1fr);
+  min-height: 98px;
+  padding: 14px;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  border: 1px solid var(--cloud-line);
-  border-radius: 9px;
-  background: #fbfcfe;
+  gap: 11px;
+  border: 1px solid #d2def0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .cloud-architecture-layer article.is-emphasis {
-  border-color: #b9cff6;
-  background: var(--cloud-blue-soft);
+  border-color: #a9c5f6;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(45, 90, 157, 0.09);
 }
 
 .cloud-architecture-layer article > span {
   display: grid;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   place-items: center;
-  border-radius: 8px;
+  border-radius: 10px;
   color: var(--cloud-blue);
-  background: #ffffff;
+  background: var(--cloud-blue-soft);
 }
 
 .cloud-architecture-layer strong,
+.cloud-architecture-layer em,
 .cloud-architecture-layer small {
   display: block;
 }
 
 .cloud-architecture-layer strong {
   color: var(--cloud-text);
-  font-size: 10px;
+  font-size: 11.5px;
+  line-height: 1.3;
+}
+
+.cloud-architecture-layer em {
+  margin-top: 4px;
+  color: var(--cloud-blue);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 650;
 }
 
 .cloud-architecture-layer small {
   margin-top: 5px;
   color: var(--cloud-muted);
-  font-size: 8px;
-  line-height: 1.4;
+  font-size: 9px;
+  line-height: 1.45;
 }
 
 .cloud-layer-connector {
   display: grid;
-  min-height: 38px;
+  min-height: 46px;
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 10px;
@@ -478,32 +725,54 @@
 
 .cloud-layer-connector i {
   height: 1px;
-  background: #cad6e7;
+  background: linear-gradient(90deg, transparent, #bfd0e8);
+}
+
+.cloud-layer-connector i:last-child {
+  background: linear-gradient(90deg, #bfd0e8, transparent);
 }
 
 .cloud-layer-connector span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--cloud-faint);
   font-family: var(--cloud-mono);
-  font-size: 7px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.08em;
 }
 
+.cloud-layer-connector svg {
+  color: var(--cloud-blue);
+}
+
 .cloud-platform-map > footer {
-  display: flex;
-  min-height: 64px;
+  display: grid;
+  min-height: 76px;
   margin-top: 14px;
-  padding: 14px 17px;
+  padding: 16px 18px;
   align-items: center;
-  gap: 12px;
-  border-radius: 10px;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 18px;
+  border-radius: 14px;
   color: #c9dbff;
   background: #0e1b35;
 }
 
-.cloud-platform-map > footer > svg {
-  flex: 0 0 auto;
+.cloud-platform-map > footer > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cloud-platform-map > footer svg {
   color: #ffffff;
+}
+
+.cloud-platform-map > footer strong {
+  color: #ffffff;
+  font-size: 11px;
 }
 
 .cloud-platform-map > footer p {

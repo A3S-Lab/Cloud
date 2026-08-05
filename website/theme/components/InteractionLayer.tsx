@@ -5,6 +5,8 @@ const SURFACE_SELECTOR = [
   '.cloud-product-capabilities li',
   '.cloud-web-client-capabilities article',
   '.cloud-web-window',
+  '.cloud-edge-web-capabilities article',
+  '.cloud-industry-grid article',
   '.cloud-architecture-layer article',
 ].join(',');
 
