@@ -52,7 +52,10 @@ const cloudCapabilities: FoundationCapability[] = [
     icon: Stack,
   },
   {
-    title: { zh: '统一审批、调度与配额', en: 'Approval, scheduling, and quota' },
+    title: {
+      zh: '统一审批、调度与配额',
+      en: 'Approval, scheduling, and quota',
+    },
     icon: FlowArrow,
   },
   {
@@ -105,7 +108,7 @@ export function EdgeCloudFoundationChapter({
   language: HomeLanguage;
 }) {
   const zh = language === 'zh';
-  const illustration = withBase('/a3s-edge-cloud-foundation.png');
+  const illustration = withBase('/a3s-edge-cloud-foundation-color.png');
 
   return (
     <section className="cloud-edge-foundation" id="edge-cloud-foundation">
@@ -127,15 +130,21 @@ export function EdgeCloudFoundationChapter({
         </p>
       </header>
 
-      <div className="cloud-edge-foundation-map" data-reveal>
+      <div className="cloud-edge-foundation-map cloud-motion-scene" data-reveal>
         <ExecutionSide
           capabilities={edgeCapabilities}
           footer={
-            zh ? '员工终端 / 开发机 / 边缘节点' : 'DESKTOPS / DEVICES / EDGE NODES'
+            zh
+              ? '员工终端 / 开发机 / 边缘节点'
+              : 'DESKTOPS / DEVICES / EDGE NODES'
           }
           illustration={illustration}
           language={language}
-          subtitle={zh ? '贴近业务现场，数据驻留本地' : 'Close to work, with local data residency'}
+          subtitle={
+            zh
+              ? '贴近业务现场，数据驻留本地'
+              : 'Close to work, with local data residency'
+          }
           title={zh ? '端侧执行' : 'EDGE EXECUTION'}
           tone="edge"
         />
@@ -145,10 +154,17 @@ export function EdgeCloudFoundationChapter({
             <ArrowLeft size={19} weight="bold" />
           </span>
           <div className="cloud-edge-decision-orbit">
-            <ShieldCheck size={30} weight="duotone" />
+            <span className="cloud-edge-decision-ring is-outer" />
+            <span className="cloud-edge-decision-ring is-middle" />
+            <span className="cloud-edge-decision-ring is-inner" />
+            <span className="cloud-edge-decision-mark">
+              <ShieldCheck size={27} weight="bold" />
+            </span>
             <strong>{zh ? '智能决策' : 'POLICY DECISION'}</strong>
             <small>
-              {zh ? '按场景、风险与负载选择路径' : 'Route by context, risk, and load'}
+              {zh
+                ? '按场景、风险与负载选择路径'
+                : 'Route by context, risk, and load'}
             </small>
           </div>
           <span className="cloud-edge-arrow is-right">
@@ -170,7 +186,11 @@ export function EdgeCloudFoundationChapter({
           }
           illustration={illustration}
           language={language}
-          subtitle={zh ? '弹性承载任务，全链路审计追踪' : 'Elastic workloads with end-to-end auditability'}
+          subtitle={
+            zh
+              ? '弹性承载任务，全链路审计追踪'
+              : 'Elastic workloads with end-to-end auditability'
+          }
           title={zh ? '云侧执行' : 'CLOUD EXECUTION'}
           tone="cloud"
         />

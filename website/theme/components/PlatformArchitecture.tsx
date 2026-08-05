@@ -2,23 +2,30 @@ import { withBase } from '@rspress/core/runtime';
 import {
   ArrowDown,
   ArrowRight,
+  ArrowsClockwise,
+  Brain,
+  BracketsAngle,
   Browser,
   Broadcast,
-  Code,
   Cpu,
   Cube,
   Database,
-  Factory,
-  FlowArrow,
-  GitBranch,
-  Key,
+  DownloadSimple,
+  Engine,
+  Fingerprint,
+  Graph,
+  GraphicsCard,
+  Kanban,
   Lightning,
-  Package,
-  Pulse,
+  Path,
+  PlugsConnected,
+  Queue,
   Robot,
-  ShieldCheck,
-  Stack,
+  TerminalWindow,
+  TreeStructure,
   UsersThree,
+  Vault,
+  Waveform,
   type IconProps,
 } from '@phosphor-icons/react';
 import type { ComponentType } from 'react';
@@ -33,133 +40,98 @@ type ArchitectureItem = {
   meta?: string;
 };
 
-const products: ArchitectureItem[] = [
+const unifiedServices: ArchitectureItem[] = [
   {
-    title: 'Workflow',
-    titleZh: '自主工作流编排',
+    title: 'Workflow Service',
+    titleZh: '工作流服务',
     description: {
-      zh: '认知与本体工程驱动的自主编排',
-      en: 'Cognitive, ontology-driven orchestration',
-    },
-    icon: FlowArrow,
-    emphasis: true,
-    meta: 'A3S Workflow',
-  },
-  {
-    title: 'Agent Factory',
-    titleZh: '异构智能体工厂',
-    description: {
-      zh: '异构智能体资产生产与交付',
-      en: 'Heterogeneous Agent production and delivery',
-    },
-    icon: Factory,
-    emphasis: true,
-    meta: 'A3S Code',
-  },
-  {
-    title: 'Security Operations',
-    titleZh: '安全监控中台',
-    description: {
-      zh: '统一安全监控与响应',
-      en: 'Unified security monitoring and response',
-    },
-    icon: ShieldCheck,
-    emphasis: true,
-    meta: 'A3S Gateway / AnySentry',
-  },
-];
-
-const clientSurfaces: ArchitectureItem[] = [
-  {
-    title: 'Overview',
-    titleZh: '全局概览',
-    description: {
-      zh: '环境健康与运行态势',
-      en: 'Environment health and live state',
-    },
-    icon: Pulse,
-  },
-  {
-    title: 'Workloads',
-    description: {
-      zh: '部署、日志、回滚与资源状态',
-      en: 'Deployments, logs, rollbacks, and resource state',
-    },
-    icon: Cube,
-  },
-  {
-    title: 'Agent Workspace',
-    titleZh: 'Agent 工作台',
-    description: {
-      zh: '会话、审批与运行证据',
-      en: 'Sessions, approvals, and run evidence',
-    },
-    icon: Robot,
-  },
-  {
-    title: 'Delivery Evidence',
-    titleZh: '交付与证据',
-    description: {
-      zh: '构建、制品与审计链',
-      en: 'Builds, artifacts, and audit lineage',
-    },
-    icon: Package,
-  },
-];
-
-const platformServices: ArchitectureItem[] = [
-  {
-    title: 'A3S Workflow Engine',
-    description: {
-      zh: '本体语义、目标分解与自主编排',
+      zh: '本体语义、目标分解与自主编排服务',
       en: 'Ontology semantics, goal decomposition, and autonomous orchestration',
     },
-    icon: FlowArrow,
-  },
-  {
-    title: 'Operations + A3S Flow',
-    description: {
-      zh: '统一操作状态、重试与生命周期收敛',
-      en: 'Unified operation state, retries, and lifecycle convergence',
-    },
-    icon: Stack,
-  },
-  {
-    title: 'A3S Code Harness',
-    description: {
-      zh: '唯一 Agent 运行所有者与会话证据边界',
-      en: 'Sole Agent run owner and session evidence boundary',
-    },
-    icon: Code,
+    icon: TreeStructure,
     emphasis: true,
+    meta: 'Workflow as a Service',
   },
   {
-    title: 'A3S Sentry',
+    title: 'Agent Service',
+    titleZh: '智能体服务',
     description: {
-      zh: '消费可观测信号，完成策略判断与响应处置',
-      en: 'Consumes observability signals for policy decisions and response actions',
+      zh: '托管任意异构 Agent 与 Harness',
+      en: 'Hosts any heterogeneous Agent and harness',
     },
-    icon: ShieldCheck,
+    icon: Robot,
+    emphasis: true,
+    meta: 'Agent as a Service',
+  },
+  {
+    title: 'MCP Service',
+    titleZh: 'MCP 服务',
+    description: {
+      zh: '统一发现、连接与治理 MCP 服务端',
+      en: 'Discovers, connects, and governs MCP servers',
+    },
+    icon: PlugsConnected,
+    meta: 'MCP Registry + Gateway',
+  },
+  {
+    title: 'Model Service',
+    titleZh: '模型服务',
+    description: {
+      zh: '模型路由、推理服务与能力治理',
+      en: 'Model routing, inference services, and capability governance',
+    },
+    icon: Brain,
+    meta: 'Model API + Inference',
   },
 ];
 
-const infrastructure: ArchitectureItem[] = [
+const coreCapabilities: ArchitectureItem[] = [
   {
-    title: 'A3S Gateway',
+    title: 'Intelligent Orchestration Algorithms',
+    titleZh: '智能编排算法',
     description: {
-      zh: '安全接入、实时流量与路由治理',
-      en: 'Secure ingress, live traffic, and route governance',
+      zh: '将业务目标、规则与约束编译为可恢复的执行计划',
+      en: 'Compiles business goals, rules, and constraints into recoverable execution plans',
     },
-    icon: Broadcast,
+    icon: Path,
+    emphasis: true,
+    meta: 'Goal · Plan · Run',
+  },
+  {
+    title: 'Ontology Knowledge Graph',
+    titleZh: '本体知识图谱',
+    description: {
+      zh: '统一表达业务对象、关系、规则、目标与约束',
+      en: 'Represents business objects, relations, rules, goals, and constraints',
+    },
+    icon: Graph,
+    emphasis: true,
+    meta: 'Object · Relation · Rule',
   },
   {
     title: 'A3S Runtime',
     description: {
-      zh: 'Task 与 Service 的统一生命周期',
-      en: 'Unified Task and Service lifecycle',
+      zh: '承载工作流、智能体与无状态函数的标准运行合约',
+      en: 'Provides standard runtime contracts for workflows, Agents, and stateless functions',
     },
-    icon: Cpu,
+    icon: Engine,
+    emphasis: true,
+    meta: 'WaaS · AaaS · FaaS',
   },
+  {
+    title: 'Asset Hosting',
+    titleZh: '资产托管',
+    description: {
+      zh: '托管、版本固定、发布和分发企业 AI 资产包',
+      en: 'Hosts, pins, publishes, and distributes enterprise AI Asset Packages',
+    },
+    icon: Vault,
+    emphasis: true,
+    meta: 'Workflow · Agent · Model · MCP · Skill · OKF · Tool',
+  },
+];
+
+const infrastructure: ArchitectureItem[] = [
   {
     title: 'A3S Box',
     description: {
@@ -177,29 +149,11 @@ const infrastructure: ArchitectureItem[] = [
     icon: Lightning,
   },
   {
-    title: 'Code Hosting',
-    titleZh: '代码托管',
+    title: 'Distributed File Storage',
+    titleZh: '分布式文件存储',
     description: {
-      zh: '租户隔离的 Git 仓库与不可变源码版本',
-      en: 'Tenant-scoped Git repositories and immutable source revisions',
-    },
-    icon: GitBranch,
-  },
-  {
-    title: 'Hardware Scheduling',
-    titleZh: '硬件资源调度',
-    description: {
-      zh: 'Workloads 与 Fleet 统一管理 CPU、GPU、放置和资源声明',
-      en: 'Workloads and Fleet own CPU, GPU, placement, and resource claims',
-    },
-    icon: Stack,
-  },
-  {
-    title: 'Data + Artifacts',
-    titleZh: '数据与制品',
-    description: {
-      zh: 'PostgreSQL、A3S ORM、对象存储与 OCI 制品',
-      en: 'PostgreSQL, A3S ORM, object storage, and OCI artifacts',
+      zh: '统一持久化代码、数据与制品，并提供分布式访问能力',
+      en: 'Persists code, data, and artifacts with distributed access',
     },
     icon: Database,
   },
@@ -210,7 +164,28 @@ const infrastructure: ArchitectureItem[] = [
       zh: 'A3S ACL、mTLS、日志、回执与审计证据',
       en: 'A3S ACL, mTLS, logs, receipts, and audit evidence',
     },
-    icon: Key,
+    icon: Fingerprint,
+  },
+];
+
+const hardwareClusters: ArchitectureItem[] = [
+  {
+    title: 'CPU Clusters',
+    titleZh: 'CPU 集群',
+    description: {
+      zh: '承载控制任务、通用计算与大规模并发 Workload',
+      en: 'Runs control tasks, general compute, and concurrent workloads',
+    },
+    icon: Cpu,
+  },
+  {
+    title: 'GPU Clusters',
+    titleZh: 'GPU 集群',
+    description: {
+      zh: '承载模型推理、Agentic RL 与加速计算',
+      en: 'Runs model inference, Agentic RL, and accelerated compute',
+    },
+    icon: GraphicsCard,
   },
 ];
 
@@ -223,85 +198,100 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
   return (
     <section className="cloud-platform-architecture" id="architecture">
       <header className="cloud-architecture-heading" data-reveal>
-        <div>
+        <div className="cloud-architecture-copy">
           <span>{zh ? '模块架构' : 'MODULE ARCHITECTURE'}</span>
           <h2>
-            {zh
-              ? '一张图看清 A3S OS 如何运行'
-              : 'See how A3S OS operates in one map'}
+            {zh ? 'A3S OS 分层产品架构' : 'A3S OS layered product architecture'}
           </h2>
           <p>
             {zh
-              ? 'A3S Web 承载统一交互，三大产品共享平台服务与基础设施，AnySentry 纵向贯穿全栈可观测性。每个模块只保留一个明确职责，不重复建设调度器、Runtime 或第二套 Agent Harness。'
-              : 'A3S Web provides one interaction surface while the three products share platform services and infrastructure. AnySentry provides observability across the stack. Every module keeps one clear responsibility without duplicate schedulers, runtimes, or Agent harnesses.'}
+              ? 'A3S Gateway 统一治理 A3S Work、A3S CLI、端侧节点与外部系统的智能流量。工作流、智能体、MCP 与模型组成统一服务平台；核心层提供智能编排算法、本体知识图谱、A3S Runtime 与资产托管。'
+              : 'A3S Gateway governs intelligent traffic from A3S Work, A3S CLI, edge nodes, and external systems. Workflow, Agent, MCP, and model services form the unified service platform; the core layer provides intelligent orchestration algorithms, an ontology knowledge graph, A3S Runtime, and asset hosting.'}
           </p>
         </div>
-        <a href={withBase('/architecture/')}>
-          {zh ? '打开交互式架构' : 'Open interactive architecture'}
-          <ArrowRight aria-hidden="true" weight="bold" />
-        </a>
+        <div className="cloud-architecture-actions">
+          <a href={withBase('/architecture/')}>
+            {zh ? '交互式架构' : 'Interactive architecture'}
+            <ArrowRight aria-hidden="true" weight="bold" />
+          </a>
+        </div>
       </header>
 
       <div className="cloud-platform-map" data-reveal>
-        <ClientLayer items={clientSurfaces} language={language} />
-        <header>
-          <div>
-            <span className="cloud-platform-mark">A3</span>
-            <div>
-              <strong>A3S OS</strong>
-              <small>
-                {zh ? '企业级 AI 操作系统' : 'ENTERPRISE AI OPERATING SYSTEM'}
-              </small>
-            </div>
-          </div>
-          <span>
-            {zh
-              ? '从产品意图到可验证执行'
-              : 'FROM PRODUCT INTENT TO VERIFIED EXECUTION'}
-          </span>
-        </header>
+        <ClientLayer language={language} />
+        <GatewayProductRail language={language} />
 
         <div className="cloud-platform-shell">
           <div className="cloud-platform-body">
+            <EvolutionRail language={language} />
             <div className="cloud-platform-layers">
               <LayerConnector
                 label={
                   zh
-                    ? '统一交互、操作与证据投影'
-                    : 'UNIFIED INTERACTION, OPERATIONS, AND EVIDENCE'
+                    ? '身份 · 协议 · 策略 · 路由'
+                    : 'IDENTITY · PROTOCOLS · POLICY · ROUTING'
                 }
               />
               <ArchitectureLayer
-                items={products}
+                items={unifiedServices}
                 language={language}
-                label={zh ? '产品应用层' : 'PRODUCT APPLICATIONS'}
-                tone="products"
+                label={zh ? '统一服务平台' : 'UNIFIED SERVICE PLATFORM'}
+                tone="services"
               />
               <LayerConnector
                 label={
                   zh
-                    ? '产品意图进入唯一运行合约'
-                    : 'PRODUCT INTENT ENTERS ONE RUNTIME CONTRACT'
+                    ? '服务调用 · 编排语义 · 本体上下文'
+                    : 'SERVICE INVOCATION · ORCHESTRATION · ONTOLOGY CONTEXT'
                 }
               />
               <ArchitectureLayer
-                items={platformServices}
+                items={coreCapabilities}
                 language={language}
-                label={zh ? '统一平台服务' : 'SHARED PLATFORM SERVICES'}
-                tone="control"
+                label={zh ? '核心层' : 'CORE LAYER'}
+                tone="core"
               />
               <LayerConnector
                 label={
                   zh
-                    ? '状态、命令、资源与安全信号'
-                    : 'STATE, COMMANDS, RESOURCES, AND SECURITY SIGNALS'
+                    ? '隔离 · 推理 · 数据 · 信任'
+                    : 'ISOLATION · INFERENCE · DATA · TRUST'
                 }
               />
               <ArchitectureLayer
                 items={infrastructure}
                 language={language}
-                label={zh ? '基础设施底座' : 'INFRASTRUCTURE FOUNDATION'}
+                label={zh ? '基础设施服务层' : 'INFRASTRUCTURE SERVICES'}
                 tone="foundation"
+              />
+              <LayerConnector
+                label={
+                  zh
+                    ? '事件、命令、回执与数据轨迹'
+                    : 'EVENTS, COMMANDS, RECEIPTS, AND DATA TRAJECTORIES'
+                }
+              />
+              <EventBusRail language={language} />
+              <LayerConnector
+                label={
+                  zh
+                    ? '资源需求 · 调度事件 · 执行回执'
+                    : 'RESOURCE DEMAND · SCHEDULING EVENTS · RECEIPTS'
+                }
+              />
+              <SchedulingRail language={language} />
+              <LayerConnector
+                label={
+                  zh
+                    ? '容量 · 放置 · 资源声明'
+                    : 'CAPACITY · PLACEMENT · RESOURCE CLAIMS'
+                }
+              />
+              <ArchitectureLayer
+                items={hardwareClusters}
+                language={language}
+                label={zh ? '硬件基础设施' : 'HARDWARE INFRASTRUCTURE'}
+                tone="hardware"
               />
             </div>
             <ObservabilityRail language={language} />
@@ -311,15 +301,168 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
         <footer>
           <div>
             <UsersThree aria-hidden="true" size={22} weight="duotone" />
-            <strong>{zh ? '唯一职责边界' : 'ONE OWNER PER BOUNDARY'}</strong>
+            <strong>{zh ? '清晰职责边界' : 'CLEAR LAYER BOUNDARIES'}</strong>
           </div>
           <p>
             {zh
-              ? 'A3S OS 负责产品意图、权限与收敛；A3S Flow 负责持久任务；A3S Runtime 与 Box 负责执行；Workloads 与 Fleet 负责硬件资源调度；A3S Code Harness 只负责 Agent 运行。'
-              : 'A3S OS owns product intent, authorization, and convergence. A3S Flow owns durable work. A3S Runtime and Box own execution. Workloads and Fleet own hardware scheduling. A3S Code Harness owns Agent runs only.'}
+              ? 'A3S Gateway 负责统一流量治理；核心层提供智能编排算法、本体知识图谱、A3S Runtime 与资产托管；统一服务平台提供 Workflow、Agent、MCP 与模型服务；A3S Event 传递事件、命令与回执。'
+              : 'A3S Gateway governs traffic. The core layer provides intelligent orchestration algorithms, an ontology knowledge graph, A3S Runtime, and asset hosting. The service platform exposes Workflow, Agent, MCP, and model services; A3S Event carries events, commands, and receipts.'}
           </p>
         </footer>
       </div>
+    </section>
+  );
+}
+
+function EventBusRail({ language }: { language: HomeLanguage }) {
+  const zh = language === 'zh';
+  const channels = zh
+    ? ['领域事件', '控制命令', '执行回执', '轨迹回流', '审计事实']
+    : ['Domain events', 'Commands', 'Receipts', 'Trajectories', 'Audit facts'];
+
+  return (
+    <section className="cloud-event-bus-rail">
+      <span>
+        <Queue aria-hidden="true" size={24} weight="duotone" />
+      </span>
+      <div>
+        <small>{zh ? '事件与命令总线' : 'EVENT AND COMMAND BUS'}</small>
+        <strong>A3S Event</strong>
+      </div>
+      <p>
+        {zh
+          ? '传递领域事件、控制命令、执行回执与审计事实'
+          : 'Carries domain events, control commands, execution receipts, and audit facts'}
+      </p>
+      <ul>
+        {channels.map((channel) => (
+          <li key={channel}>{channel}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function SchedulingRail({ language }: { language: HomeLanguage }) {
+  const zh = language === 'zh';
+
+  return (
+    <section className="cloud-scheduling-rail">
+      <span>
+        <Kanban aria-hidden="true" size={24} weight="duotone" />
+      </span>
+      <div>
+        <small>{zh ? '硬件资源调度' : 'HARDWARE RESOURCE SCHEDULING'}</small>
+        <strong>
+          {zh ? 'Workloads + Fleet 统一调度' : 'Workloads + Fleet scheduling'}
+        </strong>
+      </div>
+      <p>
+        {zh
+          ? '统一管理容量、放置、资源声明与 CPU/GPU 集群分配'
+          : 'Manages capacity, placement, resource claims, and CPU/GPU allocation'}
+      </p>
+      <ul>
+        <li>{zh ? '容量管理' : 'Capacity'}</li>
+        <li>{zh ? '工作负载放置' : 'Placement'}</li>
+        <li>{zh ? '集群资源声明' : 'Resource claims'}</li>
+      </ul>
+    </section>
+  );
+}
+
+function EvolutionRail({ language }: { language: HomeLanguage }) {
+  const zh = language === 'zh';
+  const feedback = zh
+    ? ['数据轨迹', '评测奖励', '运行证据', '安全约束']
+    : ['Trajectories', 'Rewards', 'Run evidence', 'Safety'];
+
+  return (
+    <aside
+      className="cloud-evolution-rail"
+      aria-label={zh ? '自进化系统' : 'Self-evolution system'}
+    >
+      <ArrowsClockwise aria-hidden="true" size={26} weight="duotone" />
+      <div>
+        <strong>{zh ? '自进化系统' : 'Self-Evolution'}</strong>
+        <small>{zh ? '双螺旋自进化机制' : 'DUAL-HELIX EVOLUTION'}</small>
+      </div>
+      <p>
+        {zh
+          ? '消费 AnySentry 回流轨迹，在安全约束下协同演进'
+          : 'Consumes AnySentry trajectories and co-evolves under safety constraints'}
+      </p>
+      <div className="cloud-evolution-helix" aria-hidden="true">
+        <span className="is-model">
+          <b>MODEL</b>
+          <strong>Agentic RL</strong>
+        </span>
+        <svg viewBox="0 0 96 164">
+          <path
+            className="is-model"
+            d="M22 2 C82 22 82 58 22 82 C-7 94 2 132 74 162"
+          />
+          <path
+            className="is-harness"
+            d="M74 2 C14 22 14 58 74 82 C103 94 94 132 22 162"
+          />
+          <g>
+            <line x1="30" x2="66" y1="12" y2="12" />
+            <line x1="20" x2="76" y1="40" y2="40" />
+            <line x1="31" x2="65" y1="68" y2="68" />
+            <line x1="31" x2="65" y1="96" y2="96" />
+            <line x1="20" x2="76" y1="124" y2="124" />
+            <line x1="30" x2="66" y1="152" y2="152" />
+          </g>
+        </svg>
+        <span className="is-harness">
+          <b>HARNESS</b>
+          <strong>{zh ? '自学习' : 'Self-Learning'}</strong>
+        </span>
+      </div>
+      <ul>
+        {feedback.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </aside>
+  );
+}
+
+function GatewayProductRail({ language }: { language: HomeLanguage }) {
+  const zh = language === 'zh';
+  const capabilities = zh
+    ? ['统一接入', '身份策略', '协议适配', '智能路由', '实时流量', '端云治理']
+    : [
+        'Ingress',
+        'Identity',
+        'Protocols',
+        'Routing',
+        'Live traffic',
+        'Cloud-edge',
+      ];
+
+  return (
+    <section className="cloud-gateway-product-rail">
+      <span>
+        <Broadcast aria-hidden="true" size={25} weight="duotone" />
+      </span>
+      <div>
+        <small>{zh ? '统一流量治理' : 'UNIFIED TRAFFIC GOVERNANCE'}</small>
+        <strong>
+          {zh ? 'A3S Gateway 统一网关' : 'A3S Gateway unified gateway'}
+        </strong>
+      </div>
+      <p>
+        {zh
+          ? '统一接入 Workflow、Agent、MCP、模型 API 与业务服务'
+          : 'Provides unified ingress for Workflow, Agents, MCP, model APIs, and business services'}
+      </p>
+      <ul>
+        {capabilities.map((capability) => (
+          <li key={capability}>{capability}</li>
+        ))}
+      </ul>
     </section>
   );
 }
@@ -337,16 +480,40 @@ function ObservabilityRail({ language }: { language: HomeLanguage }) {
         zh ? 'AnySentry 可观测性平台' : 'AnySentry observability platform'
       }
     >
-      <Pulse aria-hidden="true" size={26} weight="duotone" />
+      <Waveform aria-hidden="true" size={26} weight="duotone" />
       <div>
         <strong>AnySentry</strong>
         <small>{zh ? '全栈可观测性平台' : 'FULL-STACK OBSERVABILITY'}</small>
       </div>
       <p>
         {zh
-          ? '纵向贯穿产品、平台服务与基础设施'
-          : 'Spans products, platform services, and infrastructure'}
+          ? '从基础设施贯穿上层应用，并回流数据轨迹'
+          : 'Observes infrastructure through applications and returns data trajectories'}
       </p>
+      <div className="cloud-observability-loop" aria-hidden="true">
+        <span>
+          <b>APPLICATION</b>
+          <strong>
+            {zh ? '指标 · 日志 · 链路' : 'Metrics · Logs · Traces'}
+          </strong>
+        </span>
+        <svg viewBox="0 0 96 164">
+          <path className="is-forward" d="M48 8 V156" />
+          <path
+            className="is-return"
+            d="M48 150 C84 134 84 102 48 86 C12 70 12 38 48 20"
+          />
+          <circle cx="48" cy="22" r="6" />
+          <circle cx="48" cy="82" r="6" />
+          <circle cx="48" cy="142" r="6" />
+          <line x1="25" x2="71" y1="52" y2="52" />
+          <line x1="25" x2="71" y1="112" y2="112" />
+        </svg>
+        <span>
+          <b>INFRASTRUCTURE</b>
+          <strong>{zh ? '数据轨迹回流' : 'Trajectory Return'}</strong>
+        </span>
+      </div>
       <ul>
         {signals.map((signal) => (
           <li key={signal}>{signal}</li>
@@ -356,39 +523,62 @@ function ObservabilityRail({ language }: { language: HomeLanguage }) {
   );
 }
 
-function ClientLayer({
-  items,
-  language,
-}: {
-  items: ArchitectureItem[];
-  language: HomeLanguage;
-}) {
+function ClientLayer({ language }: { language: HomeLanguage }) {
   const zh = language === 'zh';
 
   return (
     <section className="cloud-architecture-client">
-      <div className="cloud-client-bar">
-        <Browser aria-hidden="true" size={28} weight="duotone" />
-        <span>
-          <strong>A3S Web</strong>
-          <small>
-            {zh
-              ? '三大产品统一可视化客户端'
-              : 'Unified visual client for all three products'}
-          </small>
-        </span>
-        <b>{zh ? '客户端层' : 'CLIENT LAYER'}</b>
+      <div className="cloud-entry-heading">
+        <strong>{zh ? '平级调用入口' : 'PEER INVOCATION ENTRY'}</strong>
+        <small>
+          {zh
+            ? '可视化交互与命令行自动化共同进入统一网关'
+            : 'Visual interaction and command-line automation share one gateway'}
+        </small>
       </div>
-      <div className="cloud-client-surfaces">
-        {items.map(({ description, icon: Icon, title, titleZh }) => (
-          <article key={title}>
-            <Icon aria-hidden="true" size={21} weight="duotone" />
+      <div className="cloud-entry-channels">
+        <article className="is-work">
+          <span>
+            <Browser aria-hidden="true" size={27} weight="duotone" />
+          </span>
+          <div>
+            <strong>A3S Work</strong>
+            <small>
+              {zh
+                ? '可视化工作台、审批、运行态势与证据'
+                : 'Visual workspace, approvals, live state, and evidence'}
+            </small>
+          </div>
+          <em>
+            <DownloadSimple aria-hidden="true" size={17} weight="duotone" />
             <span>
-              <strong>{zh && titleZh ? titleZh : title}</strong>
-              <small>{localize(description, language)}</small>
+              <b>A3S Use</b>
+              {zh ? '按需热插拔资产包' : 'On-demand Asset Packages'}
             </span>
-          </article>
-        ))}
+          </em>
+        </article>
+        <article className="is-cli">
+          <span>
+            <TerminalWindow aria-hidden="true" size={27} weight="duotone" />
+          </span>
+          <div>
+            <strong>A3S CLI</strong>
+            <small>
+              {zh
+                ? '命令行调用、脚本自动化与 CI/CD 集成'
+                : 'Command invocation, scripting, and CI/CD integration'}
+            </small>
+          </div>
+          <em>
+            <BracketsAngle aria-hidden="true" size={17} weight="duotone" />
+            <span>
+              <b>CLI / API</b>
+              {zh
+                ? '批处理 · 自动化 · 集成'
+                : 'Batch · Automation · Integration'}
+            </span>
+          </em>
+        </article>
       </div>
     </section>
   );

@@ -24,6 +24,6 @@
   <circle cx="884" cy="255" r="9" fill="#77a8ff"/>
   <text x="88" y="150" fill="#91b7ff" font-family="ui-monospace, monospace" font-size="22" letter-spacing="5">ENTERPRISE AI OPERATING SYSTEM</text>
   <text x="84" y="276" fill="#f4faf6" font-family="ui-sans-serif, system-ui" font-size="94" font-weight="700">A3S OS</text>
-  <text x="90" y="353" fill="#b7c5dc" font-family="ui-sans-serif, system-ui" font-size="32">Workflow / Agent Factory / Security Operations</text>
-  <text x="90" y="500" fill="#7486a3" font-family="ui-monospace, monospace" font-size="21">A3S WEB / A3S CODE / A3S RUNTIME / A3S BOX / A3S GATEWAY</text>
+  <text x="90" y="353" fill="#b7c5dc" font-family="ui-sans-serif, system-ui" font-size="32">Workflow / Agent Factory / A3S Gateway</text>
+  <text x="90" y="500" fill="#7486a3" font-family="ui-monospace, monospace" font-size="21">A3S WORK / AGENT FACTORY / A3S RUNTIME / A3S BOX / A3S GATEWAY</text>
 </svg>

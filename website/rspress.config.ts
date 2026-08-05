@@ -27,8 +27,8 @@ export default defineConfig({
     'A3S OS 基于云原生微服务架构，打造可管、可控、可协作、可审计的企业级 AI Native 操作系统，提供全栈国产化的端云一体智能体和工作流安全执行平台。',
   lang: 'zh-CN',
   i18nSource: includeSimplifiedChinese,
-  icon: '/favicon.svg',
-  logo: '/a3s-cloud-mark.svg',
+  icon: '/a3s-os-logo.png',
+  logo: '/a3s-os-logo.png',
   logoText: 'A3S OS',
   outDir: 'doc_build',
   head: [
@@ -61,7 +61,7 @@ export default defineConfig({
         items: [
           { text: '工作流编排', link: '/#workflow' },
           { text: '智能体工厂', link: '/#agent-factory' },
-          { text: '安全监控', link: '/#security-operations' },
+          { text: '统一网关', link: '/#unified-gateway' },
         ],
       },
       { text: '端侧智能体', link: '/#edge-agent' },

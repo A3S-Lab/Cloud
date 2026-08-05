@@ -3,7 +3,7 @@
 The public site contains two independent Rspress builds in one package:
 
 - the product application at `/Cloud/`, which explains the desired-state
-  A3S OS product system through three product chapters, the A3S Web client,
+  A3S OS product system through three product chapters, the A3S Work edge Agent,
   the shared infrastructure map, and honest delivery gates;
 - the versioned documentation application at `/Cloud/docs/`, where Simplified
   Chinese is the default language and English is available from the native

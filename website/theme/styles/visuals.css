@@ -1,14 +1,376 @@
+.cloud-motion-scene {
+  --cloud-motion-state: paused;
+}
+
+.cloud-motion-scene.is-motion-active {
+  --cloud-motion-state: running;
+}
+
+.cloud-hero-scene {
+  position: relative;
+  min-height: 620px;
+  margin: 0;
+  padding: 18px;
+  overflow: hidden;
+  border: 1px solid #c5d8f3;
+  border-radius: 18px;
+  background: #f2f6fb;
+  box-shadow: var(--cloud-shadow-raised);
+}
+
+.cloud-hero-scene::before {
+  position: absolute;
+  top: 48px;
+  right: -32px;
+  color: rgba(18, 100, 255, 0.045);
+  content: 'INTENT > PLAN > RUN\A          |\A       EVIDENCE';
+  font-family: var(--cloud-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.cloud-hero-console {
+  position: relative;
+  display: grid;
+  min-height: 582px;
+  padding: 18px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border: 1px solid #d1deef;
+  border-radius: 15px;
+  background: #ffffff;
+  box-shadow: 0 20px 50px rgba(36, 76, 137, 0.11);
+}
+
+.cloud-hero-console > header {
+  display: flex;
+  min-height: 54px;
+  padding-bottom: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid #d9e3f0;
+}
+
+.cloud-hero-console > header > span,
+.cloud-hero-console > header > span > span,
+.cloud-hero-console > header strong,
+.cloud-hero-console > header small {
+  display: block;
+}
+
+.cloud-hero-console > header > span {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cloud-hero-console > header img {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  object-fit: contain;
+  box-shadow: 0 8px 18px rgba(46, 62, 184, 0.18);
+}
+
+.cloud-hero-console > header strong {
+  color: var(--cloud-text);
+  font-size: 13px;
+}
+
+.cloud-hero-console > header small {
+  margin-top: 3px;
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 6.5px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.cloud-hero-console > header em {
+  display: inline-flex;
+  min-height: 28px;
+  padding: 0 9px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #cfe0dc;
+  border-radius: 7px;
+  color: #087353;
+  background: #f4faf8;
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.cloud-hero-console > header em i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cloud-green);
+  animation: cloud-live-state 2.4s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-hero-field {
+  position: relative;
+  display: grid;
+  min-height: 412px;
+  padding: 16px 4px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 13px;
+}
+
+.cloud-hero-ingress {
+  display: grid;
+  gap: 8px;
+}
+
+.cloud-hero-ingress > small {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-weight: 750;
+  letter-spacing: 0.11em;
+}
+
+.cloud-hero-ingress > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-hero-ingress span {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #d2deef;
+  border-radius: 9px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+  box-shadow: 0 8px 20px rgba(36, 76, 137, 0.07);
+  animation: cloud-hero-ingress-cycle 9.6s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-hero-ingress span:nth-child(2) {
+  color: var(--cloud-violet);
+  animation-delay: 180ms;
+}
+
+.cloud-hero-ingress span:nth-child(3) {
+  color: var(--cloud-cyan);
+  animation-delay: 360ms;
+}
+
+.cloud-hero-ingress b {
+  overflow: hidden;
+  color: var(--cloud-text);
+  font-size: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-hero-capability-pipeline {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  padding: 4px 0 4px 34px;
+  align-content: stretch;
+  gap: 8px;
+}
+
+.cloud-hero-capability-pipeline::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 15px;
+  width: 1px;
+  background: #c5d5eb;
+  content: '';
+}
+
+.cloud-hero-capability-signal {
+  position: absolute;
+  z-index: 1;
+  top: 14px;
+  bottom: 14px;
+  left: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      var(--cloud-blue),
+      transparent
+    )
+    0 -24% / 100% 22% no-repeat;
+  animation: cloud-hero-capability-signal 9.6s linear infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-hero-capability-pipeline article {
+  position: relative;
+  display: grid;
+  min-height: 60px;
+  padding: 8px 11px;
+  align-items: center;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  gap: 9px;
+  border: 1px solid #d5dfed;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(36, 76, 137, 0.07);
+  animation: cloud-hero-capability-cycle 9.6s cubic-bezier(0.16, 1, 0.3, 1)
+    infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-hero-capability-pipeline article::before {
+  position: absolute;
+  top: 50%;
+  left: -23px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--cloud-blue);
+  box-shadow: 0 0 0 1px #9ab9e8;
+  content: '';
+  transform: translateY(-50%);
+}
+
+.cloud-hero-capability-pipeline article.is-step-1 {
+  animation-delay: 1s;
+}
+
+.cloud-hero-capability-pipeline article.is-step-2 {
+  animation-delay: 2.5s;
+}
+
+.cloud-hero-capability-pipeline article.is-step-3 {
+  animation-delay: 4s;
+}
+
+.cloud-hero-capability-pipeline article.is-step-4 {
+  animation-delay: 5.5s;
+}
+
+.cloud-hero-capability-pipeline article > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--cloud-blue);
+  background: var(--cloud-blue-soft);
+}
+
+.cloud-hero-capability-pipeline article.is-step-2 > span {
+  color: var(--cloud-violet);
+  background: var(--cloud-violet-soft);
+}
+
+.cloud-hero-capability-pipeline article.is-step-3 > span {
+  color: var(--cloud-cyan);
+  background: var(--cloud-cyan-soft);
+}
+
+.cloud-hero-capability-pipeline article.is-step-4 > span {
+  color: var(--cloud-green);
+  background: var(--cloud-green-soft);
+}
+
+.cloud-hero-capability-pipeline strong,
+.cloud-hero-capability-pipeline small {
+  display: block;
+}
+
+.cloud-hero-capability-pipeline strong {
+  color: var(--cloud-text);
+  font-size: 9.5px;
+}
+
+.cloud-hero-capability-pipeline small {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--cloud-muted);
+  font-size: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-hero-capability-pipeline em {
+  color: #75859b;
+  font-family: var(--cloud-mono);
+  font-size: 6.5px;
+  font-style: normal;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+}
+
+.cloud-hero-console > footer {
+  display: grid;
+  padding-top: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid #d9e3f0;
+}
+
+.cloud-hero-console > footer > span {
+  display: flex;
+  min-height: 54px;
+  padding: 10px 12px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #d5e0ee;
+  border-radius: 10px;
+  color: var(--cloud-green);
+  background: #f9fbfd;
+  animation: cloud-hero-feedback-cycle 9.6s ease-in-out infinite;
+  animation-delay: 7s;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-hero-console > footer > span:last-child {
+  color: var(--cloud-violet);
+  animation-delay: 8.2s;
+}
+
+.cloud-hero-console > footer strong,
+.cloud-hero-console > footer small {
+  display: block;
+}
+
+.cloud-hero-console > footer strong {
+  color: var(--cloud-text);
+  font-size: 9px;
+}
+
+.cloud-hero-console > footer small {
+  margin-top: 3px;
+  color: var(--cloud-muted);
+  font-size: 7px;
+  line-height: 1.3;
+}
+
 .cloud-editorial-chart {
   position: relative;
   min-height: 620px;
   margin: 0;
   padding: 30px 30px 22px;
   overflow: hidden;
-  border: 1px solid #d7dce3;
-  border-radius: var(--cloud-radius-card);
-  color: #171a1f;
-  background: #f1f1ee;
-  box-shadow: var(--cloud-shadow);
+  border: 1px solid #cddbf0;
+  border-radius: 16px;
+  color: var(--cloud-text);
+  background: #f8fafc;
+  box-shadow: var(--cloud-shadow-raised);
   transition:
     border-color 200ms ease,
     transform 200ms ease,
@@ -16,8 +378,8 @@
 }
 
 .cloud-editorial-chart:hover {
-  border-color: #aab9d0;
-  box-shadow: 0 34px 82px rgba(36, 76, 137, 0.16);
+  border-color: #9fb9df;
+  box-shadow: 0 38px 92px rgba(36, 76, 137, 0.2);
   transform: translateY(-3px);
 }
 
@@ -27,7 +389,7 @@
 }
 
 .cloud-editorial-chart figcaption strong {
-  color: #171a1f;
+  color: var(--cloud-text);
   font-size: 18px;
   font-weight: 720;
   letter-spacing: -0.025em;
@@ -35,7 +397,7 @@
 
 .cloud-editorial-chart figcaption span {
   margin-top: 5px;
-  color: #777b82;
+  color: var(--cloud-muted);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -46,7 +408,7 @@
   bottom: 22px;
   left: 30px;
   margin: 0;
-  color: #a3a5a8;
+  color: #6e7d92;
   font-family: var(--cloud-mono);
   font-size: 8px;
   font-weight: 650;
@@ -68,227 +430,878 @@
 }
 
 .cloud-chart-canvas svg text {
-  fill: #5f6369;
+  fill: #445269;
   stroke: none;
   font-family: var(--cloud-sans);
-  font-size: 11px;
-  font-weight: 630;
+  font-size: 14px;
+  font-weight: 680;
 }
 
 .cloud-chart-column-labels text {
-  fill: #a1a4a9 !important;
+  fill: #718198 !important;
   font-family: var(--cloud-mono) !important;
-  font-size: 8px !important;
+  font-size: 9.5px !important;
   font-weight: 700 !important;
   letter-spacing: 0.12em;
   text-anchor: middle;
 }
 
 .cloud-chart-guides line {
-  stroke: #d8d9d6;
-  stroke-width: 1;
+  stroke: #cbd8eb;
+  stroke-width: 1.5;
 }
 
-.cloud-chart-threads path,
-.cloud-security-rays path {
+.cloud-chart-threads path {
   fill: none;
-  stroke: #a9adb3;
-  stroke-width: 1;
-  opacity: 0.48;
+  stroke: #a9bcd8;
+  stroke-width: 1.6;
+  opacity: 0.38;
 }
 
-.cloud-chart-threads path:nth-child(2n),
-.cloud-security-rays path:nth-child(2n) {
+.cloud-chart-arrow {
+  fill: #8fa8cd;
+  stroke: none;
+}
+
+.cloud-chart-flows path {
+  fill: none;
   stroke: var(--cloud-blue);
-  opacity: 0.26;
+  stroke-dasharray: 7 24;
+  stroke-width: 2.4;
+  opacity: 0.86;
+  animation: cloud-workflow-flow 4.8s linear infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-chart-flows path:nth-child(2) {
+  animation-delay: -0.8s;
+}
+
+.cloud-chart-flows path:nth-child(3) {
+  stroke: var(--cloud-cyan);
+  animation-delay: -1.6s;
+}
+
+.cloud-chart-flows path:nth-child(4) {
+  animation-delay: -2.4s;
+}
+
+.cloud-chart-flows path:nth-child(5) {
+  stroke: var(--cloud-violet);
+  animation-delay: -3.2s;
+}
+
+.cloud-chart-flows path:nth-child(6) {
+  stroke: var(--cloud-cyan);
+  animation-delay: -4s;
 }
 
 .cloud-chart-node circle {
-  fill: #52565c;
-  stroke: #f1f1ee;
+  fill: var(--cloud-blue);
+  stroke: #ffffff;
   stroke-width: 3;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cloud-workflow-node 5.4s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-chart-node.is-ontology circle {
+  fill: var(--cloud-violet);
+}
+
+.cloud-chart-node.is-ontology text {
+  fill: #59429f;
+}
+
+.cloud-chart-node.is-ontology circle {
+  animation-delay: -5.1s;
 }
 
 .cloud-chart-node.is-core circle {
   fill: var(--cloud-blue);
 }
 
+.cloud-chart-node.is-core text {
+  fill: #0955d6;
+}
+
+.cloud-chart-node.is-core circle {
+  animation-delay: -3.6s;
+}
+
+.cloud-chart-node.is-actor circle {
+  fill: var(--cloud-green);
+}
+
+.cloud-chart-node.is-actor text {
+  fill: #087353;
+}
+
+.cloud-chart-node.is-actor circle {
+  animation-delay: -2.1s;
+}
+
+.cloud-chart-node.is-step-2 circle {
+  animation-delay: calc(var(--node-phase, -3.6s) - 0.14s);
+}
+
+.cloud-chart-node.is-step-3 circle {
+  animation-delay: calc(var(--node-phase, -3.6s) - 0.28s);
+}
+
+.cloud-chart-node.is-step-4 circle {
+  animation-delay: calc(var(--node-phase, -3.6s) - 0.42s);
+}
+
+.cloud-chart-node.is-ontology {
+  --node-phase: -5.1s;
+}
+
+.cloud-chart-node.is-core {
+  --node-phase: -3.6s;
+}
+
+.cloud-chart-node.is-actor {
+  --node-phase: -2.1s;
+}
+
 .cloud-workflow-chart .cloud-chart-canvas {
-  min-height: 450px;
+  min-height: 462px;
 }
 
-.cloud-factory-inputs circle {
-  fill: #65696f;
-  stroke: none;
+.cloud-workflow-chart {
+  background: #fbf9ff;
 }
 
-.cloud-factory-inputs path {
-  fill: none;
-  stroke: #b9bcc0;
-  stroke-width: 1;
+.cloud-factory-chart {
+  background: #f2fafc;
 }
 
-.cloud-factory-lineage > line {
-  stroke: #d1d2d0;
-  stroke-dasharray: 3 8;
-}
-
-.cloud-factory-lineage > path {
-  fill: none;
-  stroke: #555a62;
-  stroke-width: 1.4;
-}
-
-.cloud-factory-lineage circle {
-  fill: #555a62;
-  stroke: #f1f1ee;
-  stroke-width: 4;
-}
-
-.cloud-factory-lineage circle.is-release {
-  fill: var(--cloud-blue);
-}
-
-.cloud-factory-harness rect {
-  fill: #ffffff;
-  stroke: var(--cloud-blue);
-  stroke-width: 1.5;
-}
-
-.cloud-factory-harness text:first-of-type {
-  fill: var(--cloud-blue);
-  font-family: var(--cloud-mono);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.cloud-factory-harness text:last-of-type {
-  fill: #7a7e84;
-  font-family: var(--cloud-mono);
-  font-size: 7px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-}
-
-.cloud-factory-harness path {
-  fill: none;
-  stroke: var(--cloud-blue);
-  stroke-dasharray: 2 5;
-}
-
-.cloud-security-map {
-  position: relative;
-  min-height: 480px;
-  margin-top: 18px;
-}
-
-.cloud-security-map > svg {
-  position: absolute;
-  inset: 50% 0 auto;
-  transform: translateY(-50%);
-}
-
-.cloud-security-orbit {
-  fill: none;
-  stroke: #c7c9c7;
-  stroke-dasharray: 2 7;
-}
-
-.cloud-security-orbit.is-inner {
-  stroke: rgba(18, 100, 255, 0.4);
-  stroke-dasharray: 1 5;
-}
-
-.cloud-security-sources,
-.cloud-security-outcomes {
-  position: absolute;
-  top: 50%;
-  display: flex;
-  width: 150px;
-  flex-direction: column;
-  transform: translateY(-50%);
-}
-
-.cloud-security-sources {
-  left: 0;
-  gap: 19px;
-}
-
-.cloud-security-outcomes {
-  right: 0;
-  gap: 48px;
-}
-
-.cloud-security-sources span,
-.cloud-security-outcomes span {
-  display: flex;
-  min-height: 32px;
+.cloud-factory-scene {
+  display: grid;
+  min-height: 458px;
+  margin-top: 20px;
+  grid-template-columns: minmax(140px, 0.56fr) minmax(0, 1.44fr);
   align-items: center;
-  color: #60646b;
+  gap: 30px;
+}
+
+.cloud-factory-input-stack {
+  display: grid;
+  padding: 18px;
+  gap: 9px;
+  border: 1px solid #c9dbe8;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(36, 76, 137, 0.09);
+}
+
+.cloud-factory-input-stack > small {
+  margin-bottom: 5px;
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+}
+
+.cloud-factory-input-stack > span {
+  display: flex;
+  min-height: 42px;
+  padding: 0 10px;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid #e0e7f0;
+  color: var(--cloud-text);
   font-size: 10px;
-  font-weight: 650;
+  font-weight: 700;
+  animation: cloud-factory-input 6.4s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
 }
 
-.cloud-security-sources span {
-  justify-content: flex-end;
-  padding-right: 30px;
-  text-align: right;
+.cloud-factory-input-stack > span:nth-of-type(2) {
+  animation-delay: 180ms;
 }
 
-.cloud-security-outcomes span {
-  padding-left: 30px;
+.cloud-factory-input-stack > span:nth-of-type(3) {
+  animation-delay: 360ms;
 }
 
-.cloud-security-sources span::after,
-.cloud-security-outcomes span::before {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  border: 2px solid #f1f1ee;
+.cloud-factory-input-stack > span:nth-of-type(4) {
+  animation-delay: 540ms;
+}
+
+.cloud-factory-input-stack > span:last-child {
+  border-bottom: 0;
+}
+
+.cloud-factory-input-stack i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
   border-radius: 50%;
-  background: #61656b;
+  background: var(--cloud-blue);
+  box-shadow: 0 0 0 4px #edf4ff;
+}
+
+.cloud-factory-input-stack .is-tone-2 i {
+  background: var(--cloud-violet);
+  box-shadow: 0 0 0 4px #f3efff;
+}
+
+.cloud-factory-input-stack .is-tone-3 i {
+  background: var(--cloud-cyan);
+  box-shadow: 0 0 0 4px #ecf9fc;
+}
+
+.cloud-factory-input-stack .is-tone-4 i {
+  background: var(--cloud-amber);
+  box-shadow: 0 0 0 4px #fff8e7;
+}
+
+.cloud-factory-assembly {
+  display: grid;
+  min-width: 0;
+  gap: 28px;
+}
+
+.cloud-factory-stage-line {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cloud-factory-stage-line::before {
+  position: absolute;
+  top: 29px;
+  right: 11%;
+  left: 11%;
+  height: 2px;
+  background: #9fc6e8;
   content: '';
 }
 
-.cloud-security-sources span::after {
-  right: 17px;
-}
-
-.cloud-security-outcomes span::before {
-  left: 17px;
-  background: var(--cloud-blue);
-}
-
-.cloud-security-core {
+.cloud-factory-stage-line::after {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  z-index: 0;
+  top: 29px;
+  right: 11%;
+  left: 11%;
+  height: 2px;
+  background: var(--cloud-blue);
+  content: '';
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: cloud-factory-progress 6.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-factory-stage-line article {
+  position: relative;
+  z-index: 1;
   display: flex;
-  width: 154px;
-  height: 154px;
+  min-width: 0;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+}
+
+.cloud-factory-stage-line article > span {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 2px solid #b9cff5;
+  border-radius: 15px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(36, 76, 137, 0.12);
+  animation: cloud-factory-stage 6.4s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-factory-stage-line article.is-stage-2 > span {
+  animation-delay: 1.05s;
+}
+
+.cloud-factory-stage-line article.is-stage-3 > span {
+  animation-delay: 2.1s;
+}
+
+.cloud-factory-stage-line article.is-stage-4 > span {
+  animation-delay: 3.15s;
+}
+
+.cloud-factory-stage-line article:nth-child(2) > span {
+  color: var(--cloud-violet);
+}
+
+.cloud-factory-stage-line article:nth-child(3) > span {
+  color: var(--cloud-cyan);
+}
+
+.cloud-factory-stage-line article:nth-child(4) > span {
+  color: var(--cloud-green);
+}
+
+.cloud-factory-stage-line strong {
+  margin-top: 13px;
+  color: var(--cloud-text);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.cloud-factory-stage-line small {
+  margin-top: 5px;
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+}
+
+.cloud-factory-contract {
+  display: flex;
+  min-height: 82px;
+  padding: 16px 18px;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid #9bcfe0;
+  border-radius: 14px;
+  color: var(--cloud-cyan);
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(25, 123, 151, 0.1);
+  animation: cloud-factory-contract 6.4s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-factory-contract > span,
+.cloud-factory-contract strong,
+.cloud-factory-contract small {
+  display: block;
+}
+
+.cloud-factory-contract strong {
+  color: var(--cloud-text);
+  font-size: 12px;
+}
+
+.cloud-factory-contract small {
+  margin-top: 5px;
+  color: var(--cloud-muted);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.cloud-factory-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cloud-factory-state > span {
+  display: inline-flex;
+  min-height: 34px;
+  padding: 7px 10px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #d2dfec;
+  border-radius: 9px;
+  color: var(--cloud-muted);
+  background: #ffffff;
+  font-size: 8.5px;
+  font-weight: 700;
+  animation: cloud-factory-state 6.4s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-factory-state > span:nth-child(2) {
+  animation-delay: 180ms;
+}
+
+.cloud-factory-state > span:nth-child(3) {
+  animation-delay: 360ms;
+}
+
+.cloud-gateway-chart {
+  background: #f4f9ff;
+}
+
+.cloud-gateway-map {
+  display: grid;
+  min-height: 468px;
+  margin-top: 20px;
+  align-content: center;
+  gap: 16px;
+}
+
+.cloud-gateway-endpoints {
+  display: grid;
+  gap: 8px;
+}
+
+.cloud-gateway-endpoints > small {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 8px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+
+.cloud-gateway-endpoints > div {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cloud-gateway-endpoints > div::after {
+  position: absolute;
+  z-index: 0;
+  right: 8%;
+  bottom: -8px;
+  left: 8%;
+  height: 1px;
+  background: #bed0e9;
+  content: '';
+}
+
+.cloud-gateway-endpoints span {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  min-height: 48px;
+  padding: 10px;
+  place-items: center;
+  border: 1px solid #c7d8ef;
+  border-radius: 10px;
+  color: #33445c;
+  background: #ffffff;
+  box-shadow: 0 7px 18px rgba(36, 76, 137, 0.07);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  gap: 5px;
+  animation: cloud-gateway-endpoint 7.2s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-gateway-endpoints span svg {
+  color: var(--cloud-blue);
+}
+
+.cloud-gateway-endpoints span:nth-child(2) svg {
+  color: var(--cloud-violet);
+}
+
+.cloud-gateway-endpoints span:nth-child(3) svg {
+  color: var(--cloud-cyan);
+}
+
+.cloud-gateway-endpoints span:nth-child(4) svg {
+  color: var(--cloud-green);
+}
+
+.cloud-gateway-endpoints span.is-endpoint-2 {
+  animation-delay: 260ms;
+}
+
+.cloud-gateway-endpoints span.is-endpoint-3 {
+  animation-delay: 520ms;
+}
+
+.cloud-gateway-endpoints span.is-endpoint-4 {
+  animation-delay: 780ms;
+}
+
+.cloud-gateway-endpoints.is-destination span {
+  animation-delay: 3.7s;
+}
+
+.cloud-gateway-endpoints.is-destination span.is-endpoint-2 {
+  animation-delay: 3.96s;
+}
+
+.cloud-gateway-endpoints.is-destination span.is-endpoint-3 {
+  animation-delay: 4.22s;
+}
+
+.cloud-gateway-endpoints.is-destination span.is-endpoint-4 {
+  animation-delay: 4.48s;
+}
+
+.cloud-gateway-flow {
+  display: flex;
+  align-items: center;
+  color: var(--cloud-blue);
+  flex-direction: column;
+  gap: 0;
+}
+
+.cloud-gateway-flow > div {
+  position: relative;
+  display: flex;
+  width: min(100%, 520px);
+  min-height: 86px;
+  padding: 18px 24px;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(18, 100, 255, 0.34);
-  border-radius: 50%;
+  gap: 16px;
+  border-radius: 14px;
+  color: #ffffff;
+  background: var(--cloud-blue);
+  box-shadow: 0 20px 46px rgba(18, 100, 255, 0.22);
+  overflow: hidden;
+  animation: cloud-gateway-core 7.2s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-gateway-core::after {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.92),
+      transparent
+    )
+    no-repeat;
+  background-position: -24% 50%;
+  background-size: 18% 100%;
+  content: '';
+  animation: cloud-gateway-scan 7.2s ease-in-out infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-gateway-route {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: end center;
   color: var(--cloud-blue);
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 20px 48px rgba(34, 75, 136, 0.14);
-  flex-direction: column;
-  transform: translate(-50%, -50%);
 }
 
-.cloud-security-core strong {
-  margin-top: 9px;
-  color: #1b2535;
-  font-size: 13px;
+.cloud-gateway-route::before {
+  position: absolute;
+  top: 0;
+  bottom: 7px;
+  left: 50%;
+  width: 1px;
+  background: #9dbbea;
+  content: '';
+  transform: translateX(-50%);
 }
 
-.cloud-security-core small {
+.cloud-gateway-route::after {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--cloud-blue);
+  box-shadow: 0 0 0 1px #90afe2;
+  content: '';
+  transform: translate(-50%, -4px);
+  animation: cloud-gateway-packet 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  animation-play-state: var(--cloud-motion-state);
+}
+
+.cloud-gateway-route.is-outbound::after {
+  animation-delay: -0.9s;
+}
+
+.cloud-gateway-flow > div > span,
+.cloud-gateway-flow strong,
+.cloud-gateway-flow small {
+  display: block;
+}
+
+.cloud-gateway-flow strong {
+  color: #ffffff;
+  font-size: 16px;
+}
+
+.cloud-gateway-flow small {
   margin-top: 5px;
-  color: #858990;
-  font-family: var(--cloud-mono);
-  font-size: 6.5px;
+  color: #d9e7ff;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.cloud-gateway-policies {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-gateway-policies span {
+  display: grid;
+  min-height: 44px;
+  place-items: center;
+  border: 1px solid #c5d7ef;
+  border-radius: 9px;
+  color: #0955d6;
+  background: #ffffff;
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.cloud-gateway-policies span.is-tone-2 {
+  border-color: #c5d7ef;
+  color: #0955d6;
+  background: #ffffff;
+}
+
+.cloud-gateway-policies span.is-tone-3 {
+  border-color: #c5d7ef;
+  color: #0955d6;
+  background: #ffffff;
+}
+
+@keyframes cloud-live-state {
+  0%,
+  100% {
+    opacity: 0.58;
+    box-shadow: none;
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(12, 155, 112, 0.12);
+  }
+}
+
+@keyframes cloud-hero-ingress-cycle {
+  0%,
+  9% {
+    border-color: #8eb2eb;
+    box-shadow: 0 11px 25px rgba(18, 100, 255, 0.14);
+    transform: translateY(-2px);
+  }
+
+  18%,
+  100% {
+    border-color: #d2deef;
+    box-shadow: 0 8px 20px rgba(36, 76, 137, 0.07);
+    transform: translateY(0);
+  }
+}
+
+@keyframes cloud-hero-capability-signal {
+  0%,
+  8% {
+    background-position: 0 -24%;
+  }
+
+  74%,
+  100% {
+    background-position: 0 124%;
+  }
+}
+
+@keyframes cloud-hero-capability-cycle {
+  0%,
+  11% {
+    border-color: #87ade7;
+    background: #f5f9ff;
+    box-shadow: 0 13px 28px rgba(18, 100, 255, 0.14);
+    transform: translateX(3px);
+  }
+
+  20%,
+  100% {
+    border-color: #d5dfed;
+    background: #ffffff;
+    box-shadow: 0 8px 22px rgba(36, 76, 137, 0.07);
+    transform: translateX(0);
+  }
+}
+
+@keyframes cloud-hero-feedback-cycle {
+  0%,
+  11% {
+    border-color: color-mix(in srgb, currentcolor 34%, #d5e0ee);
+    background: color-mix(in srgb, currentcolor 6%, #ffffff);
+    box-shadow: 0 11px 25px color-mix(in srgb, currentcolor 12%, transparent);
+    transform: translateY(-2px);
+  }
+
+  20%,
+  100% {
+    border-color: #d5e0ee;
+    background: #f9fbfd;
+    box-shadow: none;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cloud-workflow-flow {
+  to {
+    stroke-dashoffset: -124;
+  }
+}
+
+@keyframes cloud-workflow-node {
+  0%,
+  15%,
+  40%,
+  100% {
+    opacity: 0.82;
+    transform: scale(1);
+  }
+
+  24% {
+    opacity: 1;
+    transform: scale(1.28);
+  }
+}
+
+@keyframes cloud-factory-input {
+  0%,
+  10% {
+    color: var(--cloud-blue-deep);
+    background: #f3f7ff;
+  }
+
+  22%,
+  100% {
+    color: var(--cloud-text);
+    background: #ffffff;
+  }
+}
+
+@keyframes cloud-factory-progress {
+  0%,
+  8% {
+    transform: scaleX(0);
+  }
+
+  66%,
+  90% {
+    transform: scaleX(1);
+  }
+
+  100% {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes cloud-factory-stage {
+  0%,
+  5%,
+  31%,
+  100% {
+    border-color: #b9cff5;
+    box-shadow: 0 12px 28px rgba(36, 76, 137, 0.12);
+    transform: translateY(0) scale(1);
+  }
+
+  14% {
+    border-color: #6b9dec;
+    box-shadow: 0 16px 34px rgba(18, 100, 255, 0.2);
+    transform: translateY(-3px) scale(1.04);
+  }
+}
+
+@keyframes cloud-factory-contract {
+  0%,
+  62%,
+  90%,
+  100% {
+    border-color: #9bcfe0;
+    box-shadow: 0 14px 34px rgba(25, 123, 151, 0.1);
+  }
+
+  72%,
+  82% {
+    border-color: #4ea9c2;
+    box-shadow: 0 18px 40px rgba(25, 123, 151, 0.17);
+  }
+}
+
+@keyframes cloud-factory-state {
+  0%,
+  75%,
+  100% {
+    border-color: #d2dfec;
+    color: var(--cloud-muted);
+    background: #ffffff;
+  }
+
+  83%,
+  93% {
+    border-color: #aad8c9;
+    color: #087353;
+    background: #f2faf7;
+  }
+}
+
+@keyframes cloud-gateway-endpoint {
+  0%,
+  9% {
+    border-color: #88ace6;
+    box-shadow: 0 11px 24px rgba(18, 100, 255, 0.14);
+    transform: translateY(-2px);
+  }
+
+  19%,
+  100% {
+    border-color: #c7d8ef;
+    box-shadow: 0 7px 18px rgba(36, 76, 137, 0.07);
+    transform: translateY(0);
+  }
+}
+
+@keyframes cloud-gateway-core {
+  0%,
+  24%,
+  58%,
+  100% {
+    box-shadow: 0 20px 46px rgba(18, 100, 255, 0.22);
+  }
+
+  34%,
+  48% {
+    box-shadow: 0 24px 54px rgba(18, 100, 255, 0.3);
+  }
+}
+
+@keyframes cloud-gateway-scan {
+  0%,
+  22% {
+    background-position: -24% 50%;
+  }
+
+  62%,
+  100% {
+    background-position: 124% 50%;
+  }
+}
+
+@keyframes cloud-gateway-packet {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+
+  18% {
+    opacity: 1;
+  }
+
+  82% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 20px);
+  }
 }
 
 .cloud-system-chart {
@@ -298,14 +1311,8 @@
   gap: 12px;
   color: var(--cloud-text);
   border-color: #c5d8f7;
-  background:
-    radial-gradient(
-      circle at 88% 8%,
-      rgba(12, 155, 112, 0.08),
-      transparent 28%
-    ),
-    linear-gradient(145deg, #fbfdff, #eef5ff);
-  box-shadow: 0 30px 74px rgba(43, 85, 148, 0.16);
+  background: #f3f7fc;
+  box-shadow: var(--cloud-shadow-raised);
   flex-direction: column;
 }
 
@@ -318,7 +1325,7 @@
   justify-content: space-between;
   gap: 18px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #2471ff, #0e58e6);
+  background: var(--cloud-blue);
   box-shadow: 0 16px 34px rgba(18, 100, 255, 0.2);
 }
 
@@ -362,9 +1369,9 @@
 }
 
 .cloud-system-entry > span:last-child {
-  border-color: #b5dfd2;
-  color: #087353;
-  background: #effaf6;
+  border-color: #c9d9f3;
+  color: var(--cloud-violet);
+  background: #ffffff;
 }
 
 .cloud-system-entry svg {
@@ -372,8 +1379,16 @@
   color: var(--cloud-blue);
 }
 
-.cloud-system-entry > span:last-child svg {
-  color: currentcolor;
+.cloud-system-entry > span:nth-child(2) svg {
+  color: var(--cloud-violet);
+}
+
+.cloud-system-entry > span:nth-child(3) svg {
+  color: var(--cloud-cyan);
+}
+
+.cloud-system-entry > span:nth-child(4) svg {
+  color: var(--cloud-green);
 }
 
 .cloud-system-entry b {
@@ -418,6 +1433,33 @@
   flex-direction: column;
 }
 
+.cloud-system-products > div:nth-child(1) {
+  border-color: #b9cff5;
+  background: #ffffff;
+}
+
+.cloud-system-products > div:nth-child(1) svg {
+  color: var(--cloud-blue);
+}
+
+.cloud-system-products > div:nth-child(2) {
+  border-color: #d4c9ef;
+  background: #ffffff;
+}
+
+.cloud-system-products > div:nth-child(2) svg {
+  color: var(--cloud-violet);
+}
+
+.cloud-system-products > div:nth-child(3) {
+  border-color: #bde1ea;
+  background: #ffffff;
+}
+
+.cloud-system-products > div:nth-child(3) svg {
+  color: var(--cloud-cyan);
+}
+
 .cloud-system-products svg {
   margin-bottom: auto;
   color: var(--cloud-blue);
@@ -454,9 +1496,18 @@
   background: rgba(255, 255, 255, 0.84);
 }
 
-.cloud-system-runtime > div.is-harness {
-  border-color: #abc6f6;
-  background: #eaf2ff;
+.cloud-system-runtime > div.is-service-platform {
+  border-color: #d4c9ef;
+  background: #ffffff;
+}
+
+.cloud-system-runtime > div.is-service-platform svg {
+  color: var(--cloud-violet);
+}
+
+.cloud-system-runtime > div.is-runtime {
+  border-color: #bdd2fb;
+  background: #edf4ff;
 }
 
 .cloud-system-runtime svg {
@@ -482,7 +1533,7 @@
 
 .cloud-system-foundation {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -501,16 +1552,62 @@
   text-align: center;
 }
 
+.cloud-system-scheduling {
+  display: grid;
+  min-height: 42px;
+  padding: 8px 12px;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #c8d9f7;
+  border-radius: 10px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+}
+
+.cloud-system-scheduling span {
+  color: var(--cloud-text);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.cloud-system-scheduling small {
+  color: var(--cloud-blue);
+  font-family: var(--cloud-mono);
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.cloud-system-hardware {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-system-hardware span {
+  display: grid;
+  min-height: 38px;
+  place-items: center;
+  border: 1px solid #d2def0;
+  border-radius: 10px;
+  color: var(--cloud-muted);
+  background: #ffffff;
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-weight: 650;
+}
+
 .cloud-system-observability {
   display: flex;
   min-width: 0;
   padding: 14px 8px;
   align-items: center;
   justify-content: center;
-  border: 1px solid #a9c9f6;
+  border: 1px solid #9dd8c7;
   border-radius: 12px;
-  color: var(--cloud-blue);
-  background: linear-gradient(180deg, #f2f7ff, #e2efff);
+  color: var(--cloud-green);
+  background: #effaf6;
   flex-direction: column;
   text-align: center;
 }
@@ -524,10 +1621,327 @@
 
 .cloud-system-observability small {
   margin-top: 10px;
-  color: var(--cloud-blue);
+  color: var(--cloud-green);
   font-family: var(--cloud-mono);
   font-size: 6px;
   font-weight: 700;
   letter-spacing: 0.04em;
   writing-mode: vertical-rl;
+}
+
+/* The hero diagram mirrors the full architecture in a compact form. */
+.cloud-system-chart {
+  min-height: 660px;
+  padding: 18px;
+  gap: 9px;
+  background: #f3f7fc;
+}
+
+.cloud-system-chart figcaption {
+  min-height: 46px;
+  padding: 4px 2px 10px;
+  order: initial;
+  border-bottom: 1px solid #d2deee;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cloud-system-chart figcaption strong {
+  color: var(--cloud-text);
+  font-size: 16px;
+}
+
+.cloud-system-chart figcaption span {
+  color: var(--cloud-faint);
+  font-size: 7px;
+}
+
+.cloud-system-entry {
+  order: initial;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-system-entry article {
+  display: grid;
+  min-height: 58px;
+  padding: 9px 10px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #c8d9f1;
+  border-radius: 10px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+}
+
+.cloud-system-entry article > span,
+.cloud-system-entry article strong,
+.cloud-system-entry article small {
+  display: block;
+}
+
+.cloud-system-entry article strong {
+  color: var(--cloud-text);
+  font-size: 9px;
+}
+
+.cloud-system-entry article small {
+  margin-top: 2px;
+  color: var(--cloud-muted);
+  font-size: 7px;
+}
+
+.cloud-system-entry article em {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--cloud-blue);
+  font-family: var(--cloud-mono);
+  font-size: 6px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.cloud-system-gateway {
+  display: flex;
+  min-height: 58px;
+  padding: 10px 15px;
+  align-items: center;
+  gap: 11px;
+  border-radius: 11px;
+  color: #ffffff;
+  background: var(--cloud-blue);
+  box-shadow: 0 12px 28px rgba(18, 100, 255, 0.2);
+}
+
+.cloud-system-gateway > span,
+.cloud-system-gateway strong,
+.cloud-system-gateway small {
+  display: block;
+}
+
+.cloud-system-gateway strong {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.cloud-system-gateway small {
+  margin-top: 3px;
+  color: #dbe8ff;
+  font-size: 7px;
+}
+
+.cloud-system-body {
+  order: initial;
+  grid-template-columns: 62px minmax(0, 1fr) 62px;
+  gap: 7px;
+}
+
+.cloud-system-layers {
+  gap: 7px;
+}
+
+.cloud-system-evolution,
+.cloud-system-observability {
+  display: flex;
+  min-width: 0;
+  padding: 12px 6px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  flex-direction: column;
+  text-align: center;
+}
+
+.cloud-system-evolution {
+  border: 1px solid #cbbff0;
+  color: var(--cloud-violet);
+  background: #f7f3ff;
+}
+
+.cloud-system-observability {
+  border: 1px solid #9dd8c7;
+  color: var(--cloud-green);
+  background: #effaf6;
+}
+
+.cloud-system-evolution strong,
+.cloud-system-observability strong {
+  margin-top: 9px;
+  color: var(--cloud-text);
+  font-size: 8px;
+  writing-mode: vertical-rl;
+}
+
+.cloud-system-evolution small,
+.cloud-system-observability small {
+  margin-top: 8px;
+  color: currentcolor;
+  font-family: var(--cloud-mono);
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  writing-mode: vertical-rl;
+}
+
+.cloud-system-evolution i,
+.cloud-system-observability i {
+  width: 1px;
+  min-height: 40px;
+  margin-top: 8px;
+  background: currentcolor;
+  opacity: 0.38;
+}
+
+.cloud-system-service-platform,
+.cloud-system-core,
+.cloud-system-foundation {
+  padding: 10px;
+  border: 1px solid #d1deef;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.cloud-system-service-platform header,
+.cloud-system-core header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--cloud-blue);
+}
+
+.cloud-system-service-platform header strong,
+.cloud-system-core header strong,
+.cloud-system-foundation > strong {
+  color: var(--cloud-text);
+  font-size: 9px;
+}
+
+.cloud-system-service-platform > div {
+  display: grid;
+  margin-top: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.cloud-system-service-platform > div span {
+  display: grid;
+  min-height: 31px;
+  place-items: center;
+  border: 1px solid #d2dff0;
+  border-radius: 7px;
+  color: var(--cloud-blue);
+  background: #f7f9fc;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.cloud-system-core {
+  border-color: #bdd2f3;
+  background: #f8fbff;
+}
+
+.cloud-system-core > div {
+  display: grid;
+  margin-top: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cloud-system-core > div > span {
+  display: grid;
+  min-height: 48px;
+  padding: 7px;
+  grid-template-columns: 19px minmax(0, 1fr);
+  align-items: center;
+  gap: 5px;
+  border: 1px solid #d1deef;
+  border-radius: 8px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+}
+
+.cloud-system-core b,
+.cloud-system-core small {
+  display: block;
+}
+
+.cloud-system-core b {
+  color: var(--cloud-text);
+  font-size: 7px;
+  line-height: 1.25;
+}
+
+.cloud-system-core small {
+  grid-column: 2;
+  margin-top: -5px;
+  color: var(--cloud-faint);
+  font-size: 5.5px;
+  line-height: 1.2;
+}
+
+.cloud-system-foundation {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+}
+
+.cloud-system-foundation > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cloud-system-foundation > div span {
+  display: grid;
+  min-height: 28px;
+  padding: 4px;
+  place-items: center;
+  border: 1px solid #d8e2ef;
+  border-radius: 6px;
+  color: var(--cloud-muted);
+  background: #f8fafc;
+  font-family: var(--cloud-mono);
+  font-size: 5.5px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.cloud-system-event,
+.cloud-system-scheduling {
+  display: grid;
+  min-height: 38px;
+  padding: 7px 10px;
+  grid-template-columns: 19px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #c8d9f1;
+  border-radius: 8px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+}
+
+.cloud-system-event strong,
+.cloud-system-scheduling span {
+  color: var(--cloud-text);
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.cloud-system-event small,
+.cloud-system-scheduling small {
+  color: var(--cloud-muted);
+  font-size: 5.5px;
+}
+
+.cloud-system-hardware {
+  gap: 6px;
+}
+
+.cloud-system-hardware span {
+  min-height: 32px;
+  border-radius: 8px;
+  font-size: 6px;
 }

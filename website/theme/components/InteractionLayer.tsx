@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 const SURFACE_SELECTOR = [
+  '.cloud-hero-scene',
   '.cloud-editorial-chart',
   '.cloud-product-capabilities li',
   '.cloud-web-client-capabilities article',
@@ -9,6 +10,8 @@ const SURFACE_SELECTOR = [
   '.cloud-industry-grid article',
   '.cloud-architecture-layer article',
 ].join(',');
+
+const MOTION_SELECTOR = '.cloud-motion-scene';
 
 export function InteractionLayer() {
   const anchorRef = useRef<HTMLSpanElement>(null);
@@ -22,6 +25,7 @@ export function InteractionLayer() {
     let activeSurface: HTMLElement | undefined;
     let frame = 0;
     let latestEvent: PointerEvent | undefined;
+    const visibleMotionItems = new Set<HTMLElement>();
 
     function clearSurface() {
       activeSurface?.classList.remove('is-pointer-active');
@@ -64,6 +68,45 @@ export function InteractionLayer() {
       clearSurface();
     }
 
+    const motionItems = [
+      ...pageHost.querySelectorAll<HTMLElement>(MOTION_SELECTOR),
+    ];
+
+    function syncMotionState() {
+      const shouldRun = !motion.matches && !document.hidden;
+      for (const item of motionItems) {
+        item.classList.toggle(
+          'is-motion-active',
+          shouldRun && visibleMotionItems.has(item),
+        );
+      }
+    }
+
+    const motionObserver =
+      'IntersectionObserver' in window
+        ? new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                const item = entry.target as HTMLElement;
+                if (entry.isIntersecting) visibleMotionItems.add(item);
+                else visibleMotionItems.delete(item);
+              }
+              syncMotionState();
+            },
+            { rootMargin: '120px 0px', threshold: 0.05 },
+          )
+        : undefined;
+
+    for (const item of motionItems) {
+      if (motionObserver) motionObserver.observe(item);
+      else visibleMotionItems.add(item);
+    }
+
+    function handleMotionPreference() {
+      if (motion.matches) clearSurface();
+      syncMotionState();
+    }
+
     const revealItems = [
       ...pageHost.querySelectorAll<HTMLElement>('[data-reveal]'),
     ];
@@ -88,14 +131,21 @@ export function InteractionLayer() {
     }
     pageHost.addEventListener('pointermove', handlePointerMove);
     pageHost.addEventListener('pointerleave', handlePointerLeave);
+    document.addEventListener('visibilitychange', syncMotionState);
+    motion.addEventListener('change', handleMotionPreference);
+    syncMotionState();
 
     return () => {
       window.cancelAnimationFrame(frame);
       revealObserver?.disconnect();
+      motionObserver?.disconnect();
       clearSurface();
+      for (const item of motionItems) item.classList.remove('is-motion-active');
       delete pageHost.dataset.effects;
       pageHost.removeEventListener('pointermove', handlePointerMove);
       pageHost.removeEventListener('pointerleave', handlePointerLeave);
+      document.removeEventListener('visibilitychange', syncMotionState);
+      motion.removeEventListener('change', handleMotionPreference);
     };
   }, []);
 

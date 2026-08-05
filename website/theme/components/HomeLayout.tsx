@@ -12,7 +12,7 @@ import { IndustrySolutionsChapter } from './IndustrySolutionsChapter';
 import { InteractionLayer } from './InteractionLayer';
 import { PlatformArchitecture } from './PlatformArchitecture';
 import { ProductChapter } from './ProductChapter';
-import { ProductSystemChart } from './ProductCharts';
+import { HeroVisual } from './ProductCharts';
 import { WebClientChapter } from './WebClientChapter';
 import { productChapters, type HomeLanguage } from '../data/product';
 
@@ -26,6 +26,11 @@ function MarkdownHome() {
         A3S OS 基于云原生微服务架构，打造「可管、可控、可协作、可审计」的企业级
         AI Native 操作系统，提供全栈国产化的端云一体智能体和工作流安全执行平台。
       </p>
+      <h2>A3S Gateway 统一网关</h2>
+      <p>
+        统一治理 Workflow、Agent、MCP、模型 API
+        与业务服务的接入、身份、策略、路由和端云流量。
+      </p>
       <h2>Workflow 自主工作流编排</h2>
       <p>
         用本体工程描述业务世界，再把对象、关系、规则、目标和约束编译为可恢复的长期流程。
@@ -35,18 +40,14 @@ function MarkdownHome() {
         把
         Agent、Skill、MCP、模型固定版本和安全策略装配成可版本、可部署、可审计的数字资产。
       </p>
-      <h2>安全监控中台</h2>
-      <p>
-        把 Gateway、Runtime、Box、Fleet、身份和 AnySentry
-        信号收敛成统一安全响应闭环。
-      </p>
-      <h2>A3S Web 客户端</h2>
+      <h2>A3S Work 端侧智能体</h2>
       <p>
         通过一个可搜索、可操作、可审计的工作空间管理三大产品和完整运行证据。
       </p>
       <h2>模块架构</h2>
       <p>
-        三大产品共享同一控制面、节点通道、运行时、Agent Harness 和信任边界。
+        三大产品共享同一控制面、节点通道、运行时与信任边界，并通过统一托管契约接入异构
+        Agent 与 Harness。
       </p>
     </main>
   );
@@ -66,6 +67,76 @@ export function HomeLayout() {
     window.localStorage.setItem(LANGUAGE_KEY, language);
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
   }, [language]);
+
+  useEffect(() => {
+    const normalizedPath = (path: string) =>
+      path.replace(/index\.html$/, '').replace(/\/+$/, '/');
+
+    const scrollToHash = (behavior: ScrollBehavior) => {
+      const hash = window.location.hash.slice(1);
+      if (!hash) return;
+
+      const target = document.getElementById(decodeURIComponent(hash));
+      target?.scrollIntoView({ behavior, block: 'start' });
+    };
+
+    const onAnchorClick = (event: MouseEvent) => {
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const source = event.target;
+      if (!(source instanceof Element)) return;
+
+      const anchor = source.closest<HTMLAnchorElement>('a[href*="#"]');
+      if (!anchor || anchor.target || anchor.hasAttribute('download')) return;
+
+      const destination = new URL(anchor.href, window.location.href);
+      if (
+        destination.origin !== window.location.origin ||
+        !destination.hash ||
+        normalizedPath(destination.pathname) !==
+          normalizedPath(window.location.pathname)
+      ) {
+        return;
+      }
+
+      const target = document.getElementById(
+        decodeURIComponent(destination.hash.slice(1)),
+      );
+      if (!target) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const currentPath = window.location.pathname.replace(/index\.html$/, '');
+      window.history.pushState(
+        null,
+        '',
+        `${currentPath}${window.location.search}${destination.hash}`,
+      );
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+
+    const onHistoryChange = () => scrollToHash('auto');
+    const frame = window.requestAnimationFrame(onHistoryChange);
+
+    document.addEventListener('click', onAnchorClick, true);
+    window.addEventListener('hashchange', onHistoryChange);
+    window.addEventListener('popstate', onHistoryChange);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('click', onAnchorClick, true);
+      window.removeEventListener('hashchange', onHistoryChange);
+      window.removeEventListener('popstate', onHistoryChange);
+    };
+  }, []);
 
   if (import.meta.env.SSG_MD) return <MarkdownHome />;
 
@@ -116,7 +187,7 @@ export function HomeLayout() {
               : 'Built on cloud-native microservices, A3S OS is a manageable, controllable, collaborative, and auditable AI-native operating system for secure cloud-to-edge Agent and workflow execution.'}
           </p>
           <div className="cloud-hero-actions">
-            <a className="cloud-button is-primary" href="#workflow">
+            <a className="cloud-button is-primary" href="#unified-gateway">
               {zh ? '了解三大产品' : 'Explore the products'}
               <ArrowRight aria-hidden="true" weight="bold" />
             </a>
@@ -127,7 +198,7 @@ export function HomeLayout() {
           </div>
         </div>
         <div className="cloud-hero-visual" data-reveal>
-          <ProductSystemChart language={language} />
+          <HeroVisual language={language} />
         </div>
       </section>
 
@@ -162,8 +233,8 @@ export function HomeLayout() {
               </strong>
               <small>
                 {zh
-                  ? '用运行证据持续优化策略与版本'
-                  : 'Improve policies and versions with evidence'}
+                  ? '模型 Agentic RL 与 Harness 自学习双螺旋'
+                  : 'Model Agentic RL and harness self-learning'}
               </small>
             </div>
           </li>
@@ -190,6 +261,15 @@ export function HomeLayout() {
       <EdgeCloudFoundationChapter language={language} />
 
       <section className="cloud-product-intro" data-reveal>
+        <pre className="cloud-ascii-scene is-product-system" aria-hidden="true">
+          {`A3S GATEWAY
+     |
+WORKFLOW -- AGENT -- MCP -- MODEL
+     |
+ A3S RUNTIME
+     |
+ CPU / GPU`}
+        </pre>
         <span>{zh ? '产品体系' : 'PRODUCT SYSTEM'}</span>
         <h2>
           {zh
@@ -198,8 +278,8 @@ export function HomeLayout() {
         </h2>
         <p>
           {zh
-            ? '自主工作流编排把本体认知转化为持续运行的计划；异构智能体工厂把不同技术栈的能力转化为可交付资产；安全监控中台让每次执行保持可见、可控、可追溯。三者共享同一套状态、执行与证据底座。'
-            : 'Autonomous workflow orchestration turns ontology-based cognition into durable plans. The heterogeneous Agent Factory turns different technology stacks into deliverable assets. Security Operations keeps every execution visible, controlled, and traceable. All three share one state, execution, and evidence foundation.'}
+            ? 'A3S Gateway 统一治理所有智能流量；自主工作流编排把本体认知转化为持续运行的计划；异构智能体工厂把不同技术栈的能力转化为可交付资产。AnySentry 从基础设施到上层应用提供全链路可观测性和数据轨迹回流。'
+            : 'A3S Gateway governs every intelligent workload through one gateway. Autonomous workflow orchestration turns ontology-based cognition into durable plans, and the heterogeneous Agent Factory turns different technology stacks into deliverable assets. AnySentry provides full-path observability and data-trajectory return from infrastructure to applications.'}
         </p>
       </section>
 
@@ -249,16 +329,16 @@ export function HomeLayout() {
 
       <footer className="cloud-footer">
         <a href={route('/')}>
-          <img alt="" src={route('/a3s-cloud-mark.svg')} />
+          <img alt="" height="28" src={route('/a3s-os-logo.png')} width="28" />
           A3S OS
         </a>
         <span>
           {zh ? '企业级 AI 操作系统' : 'Enterprise AI operating system'}
         </span>
         <div>
+          <a href="#unified-gateway">{zh ? '统一网关' : 'Gateway'}</a>
           <a href="#workflow">{zh ? '工作流编排' : 'Workflow'}</a>
           <a href="#agent-factory">{zh ? '智能体工厂' : 'Agent Factory'}</a>
-          <a href="#security-operations">{zh ? '安全监控' : 'Security'}</a>
           <a href={route('/docs/')}>{zh ? '版本文档' : 'Versioned docs'}</a>
           <a href="https://github.com/A3S-Lab/Cloud">GitHub</a>
         </div>

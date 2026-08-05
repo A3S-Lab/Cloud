@@ -33,7 +33,10 @@ const solutions: IndustrySolution[] = [
     icon: Bank,
   },
   {
-    eyebrow: { zh: '城市治理 · 政务服务 · 决策', en: 'GOVERNANCE · SERVICE · DECISIONS' },
+    eyebrow: {
+      zh: '城市治理 · 政务服务 · 决策',
+      en: 'GOVERNANCE · SERVICE · DECISIONS',
+    },
     title: { zh: '政务与公共服务', en: 'Government and public service' },
     body: {
       zh: '通过本体模型统一业务口径，支持跨部门流程协作和权责管理。',
@@ -42,7 +45,10 @@ const solutions: IndustrySolution[] = [
     icon: Buildings,
   },
   {
-    eyebrow: { zh: '质检 · 运维 · 供应链', en: 'QUALITY · OPERATIONS · SUPPLY CHAIN' },
+    eyebrow: {
+      zh: '质检 · 运维 · 供应链',
+      en: 'QUALITY · OPERATIONS · SUPPLY CHAIN',
+    },
     title: { zh: '智能制造', en: 'Intelligent manufacturing' },
     body: {
       zh: '连接现场端侧智能体与云端调度，统一管理设备任务和异常处置。',
@@ -51,7 +57,10 @@ const solutions: IndustrySolution[] = [
     icon: Factory,
   },
   {
-    eyebrow: { zh: '巡检 · 调度 · 合规', en: 'INSPECTION · SCHEDULING · COMPLIANCE' },
+    eyebrow: {
+      zh: '巡检 · 调度 · 合规',
+      en: 'INSPECTION · SCHEDULING · COMPLIANCE',
+    },
     title: { zh: '能源与基础设施', en: 'Energy and infrastructure' },
     body: {
       zh: '面向弱网和分布式现场保障任务连续性，支持端云调度和集中审计。',
@@ -60,7 +69,10 @@ const solutions: IndustrySolution[] = [
     icon: Lightning,
   },
   {
-    eyebrow: { zh: '办公 · 知识 · 服务运营', en: 'WORK · KNOWLEDGE · SERVICE OPS' },
+    eyebrow: {
+      zh: '办公 · 知识 · 服务运营',
+      en: 'WORK · KNOWLEDGE · SERVICE OPS',
+    },
     title: { zh: '企业智能办公', en: 'Enterprise AI workplace' },
     body: {
       zh: '将审批、知识、客服和日常运营流程沉淀为可复用的 Workflow、Agent 与 Skill。',
@@ -109,8 +121,8 @@ export function IndustrySolutionsChapter({
       <div className="cloud-industry-grid" data-reveal>
         {solutions.map(({ body, eyebrow, icon: Icon, title }) => (
           <article key={title.en}>
-            <span aria-hidden="true">
-              <Icon size={30} weight="duotone" />
+            <span className="cloud-industry-icon" aria-hidden="true">
+              <Icon size={38} weight="regular" />
             </span>
             <small>{localize(eyebrow, language)}</small>
             <h4>{localize(title, language)}</h4>
@@ -125,7 +137,9 @@ export function IndustrySolutionsChapter({
             <Network aria-hidden="true" size={25} weight="duotone" />
           </span>
           <div>
-            <strong>{zh ? '一套底座，多行业复用' : 'One foundation, many industries'}</strong>
+            <strong>
+              {zh ? '一套底座，多行业复用' : 'One foundation, many industries'}
+            </strong>
             <small>
               {zh
                 ? '场景变化，核心运行与治理合约保持一致'

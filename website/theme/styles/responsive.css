@@ -80,20 +80,40 @@
     flex-direction: column;
   }
 
-  .cloud-architecture-layer > div {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .cloud-architecture-actions {
+    justify-content: flex-start;
   }
 
-  .cloud-architecture-layer.is-products article:last-child {
-    grid-column: 1 / -1;
-  }
-
-  .cloud-client-surfaces {
+  .cloud-architecture-layer > div,
+  .cloud-architecture-layer.is-services > div,
+  .cloud-architecture-layer.is-foundation > div,
+  .cloud-architecture-layer.is-hardware > div {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cloud-platform-body {
-    grid-template-columns: minmax(0, 1fr) 140px;
+    grid-template-columns: 132px minmax(0, 1fr) 132px;
+  }
+
+  .cloud-asset-hosting-rail,
+  .cloud-runtime-rail,
+  .cloud-event-bus-rail,
+  .cloud-scheduling-rail {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+
+  .cloud-asset-hosting-rail > p,
+  .cloud-runtime-rail > p,
+  .cloud-event-bus-rail > p,
+  .cloud-scheduling-rail > p {
+    grid-column: 2;
+  }
+
+  .cloud-asset-hosting-rail > ul,
+  .cloud-runtime-rail > ul,
+  .cloud-event-bus-rail > ul,
+  .cloud-scheduling-rail > ul {
+    grid-column: 1 / -1;
   }
 
   .cloud-final-cta {
@@ -161,6 +181,20 @@
     padding: 16px;
   }
 
+  .cloud-hero-scene {
+    min-height: 560px;
+    padding: 14px;
+  }
+
+  .cloud-hero-console {
+    min-height: 530px;
+    padding: 14px;
+  }
+
+  .cloud-hero-field {
+    min-height: 360px;
+  }
+
   .cloud-system-entry {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -225,27 +259,6 @@
     margin-left: -12px;
   }
 
-  .cloud-security-map {
-    min-height: 390px;
-    margin-right: -12px;
-    margin-left: -12px;
-  }
-
-  .cloud-security-sources,
-  .cloud-security-outcomes {
-    width: 120px;
-  }
-
-  .cloud-security-sources span,
-  .cloud-security-outcomes span {
-    font-size: 8px;
-  }
-
-  .cloud-security-core {
-    width: 128px;
-    height: 128px;
-  }
-
   .cloud-web-client-heading {
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 10px;
@@ -281,18 +294,24 @@
     padding: 12px;
   }
 
-  .cloud-platform-map > header {
+  .cloud-entry-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .cloud-architecture-layer > div,
-  .cloud-architecture-layer.is-products > div {
+  .cloud-entry-heading small {
+    text-align: left;
+  }
+
+  .cloud-entry-channels {
     grid-template-columns: 1fr;
   }
 
-  .cloud-architecture-layer.is-products article:last-child {
-    grid-column: auto;
+  .cloud-architecture-layer > div,
+  .cloud-architecture-layer.is-services > div,
+  .cloud-architecture-layer.is-foundation > div,
+  .cloud-architecture-layer.is-hardware > div {
+    grid-template-columns: 1fr;
   }
 
   .cloud-architecture-layer article {
@@ -307,6 +326,79 @@
     grid-template-columns: 1fr;
   }
 
+  .cloud-gateway-product-rail,
+  .cloud-asset-hosting-rail,
+  .cloud-runtime-rail,
+  .cloud-event-bus-rail,
+  .cloud-scheduling-rail {
+    min-height: 0;
+    padding: 14px;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 11px;
+  }
+
+  .cloud-gateway-product-rail > p,
+  .cloud-asset-hosting-rail > p,
+  .cloud-runtime-rail > p,
+  .cloud-event-bus-rail > p,
+  .cloud-scheduling-rail > p {
+    grid-column: 1 / -1;
+  }
+
+  .cloud-gateway-product-rail > ul,
+  .cloud-asset-hosting-rail > ul,
+  .cloud-runtime-rail > ul,
+  .cloud-event-bus-rail > ul,
+  .cloud-scheduling-rail > ul {
+    grid-column: 1 / -1;
+  }
+
+  .cloud-evolution-rail {
+    display: grid;
+    min-height: 0;
+    margin-top: 12px;
+    padding: 14px;
+    grid-template-columns: 46px minmax(90px, 0.72fr) minmax(120px, 1fr);
+    grid-template-rows: auto;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+  }
+
+  .cloud-evolution-rail::before {
+    display: none;
+  }
+
+  .cloud-evolution-rail > svg {
+    width: 42px;
+    height: 42px;
+  }
+
+  .cloud-evolution-rail > div > strong,
+  .cloud-evolution-rail > p {
+    max-width: none;
+    margin: 0;
+  }
+
+  .cloud-evolution-helix,
+  .cloud-observability-loop {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) 86px minmax(0, 1fr);
+    margin: 8px 0 0;
+  }
+
+  .cloud-evolution-helix > svg,
+  .cloud-observability-loop > svg {
+    width: 64px;
+    height: 96px;
+  }
+
+  .cloud-evolution-rail > ul {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-top: 8px;
+  }
+
   .cloud-observability-rail {
     min-height: 118px;
     margin-top: 12px;
@@ -314,6 +406,7 @@
     align-items: center;
     display: grid;
     grid-template-columns: 46px minmax(90px, 0.7fr) minmax(110px, 1fr);
+    grid-template-rows: auto;
     gap: 12px;
     text-align: left;
   }
@@ -371,38 +464,59 @@
 }
 
 @media (max-width: 500px) {
+  .cloud-hero-scene {
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .cloud-hero-console {
+    min-height: 0;
+    padding: 12px;
+  }
+
+  .cloud-hero-console > header em {
+    display: none;
+  }
+
+  .cloud-hero-field {
+    min-height: 440px;
+  }
+
+  .cloud-hero-ingress span {
+    padding: 7px;
+  }
+
+  .cloud-hero-ingress b {
+    font-size: 7px;
+  }
+
+  .cloud-hero-capability-pipeline article {
+    min-height: 68px;
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .cloud-hero-capability-pipeline small {
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .cloud-hero-capability-pipeline em {
+    display: none;
+  }
+
+  .cloud-hero-console > footer {
+    grid-template-columns: 1fr;
+  }
+
   .cloud-system-chart {
     min-height: 0;
-  }
-
-  .cloud-system-products {
-    grid-template-columns: 1fr;
-  }
-
-  .cloud-system-products > div {
-    min-height: 102px;
-  }
-
-  .cloud-system-products svg {
-    margin-bottom: 4px;
-  }
-
-  .cloud-system-products strong {
-    margin-top: 7px;
-  }
-
-  .cloud-system-runtime {
-    grid-template-columns: 1fr;
-  }
-
-  .cloud-system-foundation {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .cloud-system-body {
     grid-template-columns: 1fr;
   }
 
+  .cloud-system-evolution,
   .cloud-system-observability {
     min-height: 58px;
     padding: 10px 12px;
@@ -410,30 +524,105 @@
     gap: 9px;
   }
 
+  .cloud-system-evolution strong,
+  .cloud-system-evolution small,
   .cloud-system-observability strong,
   .cloud-system-observability small {
     margin-top: 0;
     writing-mode: horizontal-tb;
   }
 
-  .cloud-client-surfaces {
+  .cloud-system-evolution i,
+  .cloud-system-observability i {
+    width: 36px;
+    min-height: 1px;
+    margin-top: 0;
+  }
+
+  .cloud-system-service-platform > div,
+  .cloud-system-foundation > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-system-core > div {
     grid-template-columns: 1fr;
   }
 
-  .cloud-client-bar {
-    grid-template-columns: 38px minmax(0, 1fr);
+  .cloud-system-event,
+  .cloud-system-scheduling {
+    grid-template-columns: 19px minmax(0, 1fr);
   }
 
-  .cloud-client-bar b {
+  .cloud-system-event small,
+  .cloud-system-scheduling small {
+    grid-column: 2;
+  }
+
+  .cloud-factory-scene {
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-factory-stage-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 24px;
+  }
+
+  .cloud-factory-stage-line::before {
     display: none;
   }
 
+  .cloud-gateway-endpoints > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-gateway-policies {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cloud-entry-channels article {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .cloud-entry-channels em {
+    grid-column: 1 / -1;
+  }
+
+  .cloud-evolution-rail,
   .cloud-observability-rail {
     grid-template-columns: 44px minmax(0, 1fr);
   }
 
+  .cloud-evolution-rail > p,
   .cloud-observability-rail > p {
     grid-column: 1 / -1;
+  }
+
+  .cloud-evolution-helix,
+  .cloud-observability-loop {
+    grid-template-columns: 1fr 72px 1fr;
+  }
+
+  .cloud-evolution-rail > ul,
+  .cloud-observability-rail ul,
+  .cloud-gateway-product-rail > ul,
+  .cloud-asset-hosting-rail > ul,
+  .cloud-event-bus-rail > ul,
+  .cloud-scheduling-rail > ul {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cloud-runtime-rail > ul {
+    grid-template-columns: 1fr;
+  }
+
+  .cloud-architecture-actions {
+    width: 100%;
+  }
+
+  .cloud-architecture-actions > a,
+  .cloud-architecture-actions > button {
+    flex: 1;
   }
 
   .cloud-assurance-bar ul {
@@ -459,25 +648,8 @@
     grid-template-columns: 26px minmax(0, 1fr);
   }
 
-  .cloud-security-sources,
-  .cloud-security-outcomes {
-    width: 92px;
-  }
-
-  .cloud-security-sources span {
-    padding-right: 20px;
-  }
-
-  .cloud-security-outcomes span {
-    padding-left: 20px;
-  }
-
-  .cloud-security-sources span::after {
-    right: 9px;
-  }
-
-  .cloud-security-outcomes span::before {
-    left: 9px;
+  .cloud-ascii-scene {
+    display: none;
   }
 }
 

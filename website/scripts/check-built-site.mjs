@@ -43,8 +43,8 @@ const requiredFiles = [
   '.nojekyll',
   'index.html',
   ...documentationRequiredFiles,
-  'a3s-cloud-mark.svg',
-  'favicon.svg',
+  'a3s-os-logo.png',
+  'a3s-edge-cloud-foundation-color.png',
   'social-card.svg',
   ...(expectArchitecture
     ? [
@@ -125,10 +125,10 @@ const productHtml = await readFile(path.join(outputRoot, 'index.html'), 'utf8');
 const productFragments = [
   'A3S OS',
   '企业级 AI 操作系统',
-  'Workflow 自主工作流编排',
-  'Agent Factory 异构智能体工厂',
-  '安全监控中台',
-  'A3S Web',
+  '自主工作流编排',
+  '异构智能体工厂',
+  '统一网关',
+  'A3S Work',
   '模块架构',
 ];
 for (const fragment of productFragments) {

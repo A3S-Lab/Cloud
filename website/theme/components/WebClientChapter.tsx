@@ -24,11 +24,11 @@ type EdgeWebCapability = {
 
 const capabilities: EdgeWebCapability[] = [
   {
-    component: 'A3S Code',
+    component: 'Agent Hosting',
     title: { zh: 'Agent 安全执行', en: 'Secure Agent execution' },
     body: {
-      zh: 'Agent 任务经 Code Harness 执行，对本地工具、文件与网络访问实施统一授权和审计。',
-      en: 'Every Agent run enters Code Harness, with local tools, files, and network access governed by one security boundary.',
+      zh: '任意异构 Agent 通过自己的 Harness 执行，本地工具、文件与网络访问由统一策略授权和审计。',
+      en: 'Each heterogeneous Agent runs through its own harness while local tools, files, and network access share one policy and audit boundary.',
     },
     icon: ShieldCheck,
   },
@@ -42,11 +42,11 @@ const capabilities: EdgeWebCapability[] = [
     icon: DesktopTower,
   },
   {
-    component: 'A3S Web',
+    component: 'A3S Work',
     title: { zh: '统一智能工作台', en: 'Unified AI workspace' },
     body: {
-      zh: '工作流编排、智能体运营、安全审批和运行状态集中呈现，减少跨系统切换。',
-      en: 'Orchestrate workflows, operate Agents, handle approvals, and inspect security state in one Web workspace.',
+      zh: '工作流编排、智能体运营、统一网关与 AnySentry 运行视图集中呈现，减少跨系统切换。',
+      en: 'Orchestrate workflows, operate Agents, and inspect A3S Gateway and AnySentry state in one A3S Work workspace.',
     },
     icon: Browser,
   },
@@ -54,27 +54,30 @@ const capabilities: EdgeWebCapability[] = [
     component: 'Runtime + Box',
     title: { zh: '端侧运行与隔离', en: 'Edge runtime and isolation' },
     body: {
-      zh: '任务与服务由 Runtime 管理生命周期，并按安全要求进入 Box 隔离环境。',
-      en: 'Tasks and Services reuse Runtime and Box with explicit isolation and no second execution mechanism.',
+      zh: 'Runtime 以 WaaS、AaaS、FaaS 承载工作流、智能体与无状态服务，并按安全要求进入 Box 隔离环境。',
+      en: 'Runtime hosts workflows, Agents, and stateless services through WaaS, AaaS, and FaaS, then executes them inside explicit Box isolation.',
     },
     icon: Cube,
   },
   {
-    component: 'Agent Assets',
-    title: { zh: 'Skill 与证据治理', en: 'Skill and evidence governance' },
+    component: 'A3S Use',
+    title: { zh: '资产包热插拔', en: 'Hot-pluggable Asset Packages' },
     body: {
-      zh: '集中管理 Skill、MCP、版本、权限、运行回执与审计记录，支持审核和追溯。',
-      en: 'Govern Skills, MCP, versions, permissions, receipts, and audit evidence as managed enterprise assets.',
+      zh: '通过 A3S Use 包管理器按需安装资产托管平台中的 Workflow、Agent、Model、MCP、Skill、OKF 与 Tool 资产包。',
+      en: 'Use A3S Use Package Manager to install hosted Workflow, Agent, Model, MCP, Skill, OKF, and Tool Packages on demand.',
     },
     icon: Package,
   },
 ];
 
 const foundationItems = [
-  { title: { zh: '唯一 Harness', en: 'One Harness' }, icon: Code },
+  { title: { zh: '异构 Harness', en: 'Heterogeneous harnesses' }, icon: Code },
   { title: { zh: '出站 mTLS', en: 'Outbound mTLS' }, icon: Key },
   { title: { zh: '数据本地驻留', en: 'Local data' }, icon: Database },
-  { title: { zh: '显式安全隔离', en: 'Explicit isolation' }, icon: ShieldCheck },
+  {
+    title: { zh: '显式安全隔离', en: 'Explicit isolation' },
+    icon: ShieldCheck,
+  },
   { title: { zh: '私有网络部署', en: 'Private network' }, icon: Network },
   { title: { zh: '全链路可审计', en: 'End-to-end audit' }, icon: Stack },
 ] as const;
@@ -89,8 +92,8 @@ export function WebClientChapter({ language }: { language: HomeLanguage }) {
     <section className="cloud-edge-web" id="edge-agent">
       <span className="cloud-section-anchor" id="web-client" />
       <header className="cloud-edge-web-heading" data-reveal>
-        <span>A3S WEB · EDGE AGENT</span>
-        <h2>{zh ? 'A3S Web 端侧智能体' : 'A3S Web Edge Agent'}</h2>
+        <span>A3S WORK · EDGE AGENT</span>
+        <h2>{zh ? 'A3S Work 端侧智能体' : 'A3S Work Edge Agent'}</h2>
         <h3>
           {zh
             ? '把企业 AI 安全带到每一个业务终端'
@@ -98,8 +101,8 @@ export function WebClientChapter({ language }: { language: HomeLanguage }) {
         </h3>
         <p>
           {zh
-            ? 'A3S Web 将工作流、智能体、安全监控与端侧执行汇入一个工作空间。员工在终端侧处理业务，敏感数据就近留存；平台通过统一身份、策略和证据完成治理。'
-            : 'A3S Web is the edge Agent workspace of A3S OS, not a separate client or second control plane. It unifies access to all three products, secure local execution, and enterprise asset governance under one identity, policy, and evidence contract.'}
+            ? 'A3S Work 将工作流、异构智能体、统一网关、AnySentry 观测与端侧执行汇入一个工作空间，并通过 A3S Use 包管理器按需热插拔安装资产托管平台的资产包。敏感数据就近留存，平台通过统一身份、策略和证据完成治理。'
+            : 'A3S Work unifies all three products, heterogeneous Agent execution, and AnySentry insight in one edge workspace. A3S Use Package Manager hot-plugs hosted Asset Packages on demand, while identity, policy, and evidence remain governed by one platform contract.'}
         </p>
       </header>
 
@@ -107,6 +110,9 @@ export function WebClientChapter({ language }: { language: HomeLanguage }) {
         {capabilities.map(({ body, component, icon: Icon, title }, index) => (
           <article key={component}>
             <figure className={`is-tone-${index + 1}`} aria-hidden="true">
+              <i className="is-signal-a" />
+              <i className="is-signal-b" />
+              <i className="is-signal-c" />
               <span>
                 <Icon size={56} weight="duotone" />
               </span>
@@ -124,11 +130,13 @@ export function WebClientChapter({ language }: { language: HomeLanguage }) {
             <FlowArrow aria-hidden="true" size={25} weight="duotone" />
           </span>
           <div>
-            <strong>{zh ? '端侧能力，统一治理' : 'One governed edge runtime'}</strong>
+            <strong>
+              {zh ? '端侧能力，统一治理' : 'One governed edge runtime'}
+            </strong>
             <small>
               {zh
-                ? 'A3S Web、Node Agent 与执行组件共用身份、策略和证据'
-                : 'A3S Web, Node Agent, and the runtime share identity, policy, and evidence'}
+                ? 'A3S Work、Node Agent 与异构执行组件共用身份、策略和证据'
+                : 'A3S Work, Node Agent, and heterogeneous runtimes share identity, policy, and evidence'}
             </small>
           </div>
         </header>

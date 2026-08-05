@@ -47,15 +47,39 @@
   --cloud-blue-deep: #084ed0;
   --cloud-blue-soft: #eaf2ff;
   --cloud-cyan: #1aa4c8;
+  --cloud-cyan-soft: #e8f8fc;
   --cloud-green: #0c9b70;
+  --cloud-green-soft: #eaf8f3;
   --cloud-amber: #b97708;
+  --cloud-amber-soft: #fff6df;
   --cloud-violet: #7157c9;
+  --cloud-violet-soft: #f2eeff;
   --cloud-danger: #b73d50;
+  --cloud-gradient-brand: linear-gradient(
+    135deg,
+    #1264ff 0%,
+    #4f67f6 55%,
+    #7157c9 100%
+  );
+  --cloud-gradient-cool: linear-gradient(
+    145deg,
+    #ffffff 0%,
+    #eef6ff 56%,
+    #edf9f7 100%
+  );
+  --cloud-gradient-night: linear-gradient(
+    135deg,
+    #0e1b35 0%,
+    #122c57 58%,
+    #173b4c 100%
+  );
   --cloud-max: 1440px;
   --cloud-radius-card: 18px;
   --cloud-radius-control: 9px;
   --cloud-radius-pill: 999px;
-  --cloud-shadow: 0 28px 72px rgba(36, 76, 137, 0.12);
+  --cloud-shadow-sm: 0 10px 28px rgba(36, 76, 137, 0.1);
+  --cloud-shadow: 0 24px 64px rgba(36, 76, 137, 0.14);
+  --cloud-shadow-raised: 0 34px 84px rgba(36, 76, 137, 0.18);
   --cloud-sans:
     'Geist Variable', 'PingFang SC', 'Microsoft YaHei', ui-sans-serif,
     -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -87,6 +111,7 @@ body {
   padding-left: max(24px, calc((100vw - var(--cloud-max)) / 2 + 28px));
   border-bottom-color: rgba(203, 215, 233, 0.82);
   background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 34px rgba(31, 65, 116, 0.07);
   backdrop-filter: blur(20px) saturate(150%);
 }
 
@@ -97,10 +122,25 @@ body {
 
 .rp-nav__title__logo,
 .rspress-logo {
+  display: grid;
   width: 31px;
   min-width: 31px;
   height: 31px;
   margin-right: 0;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 9px;
+  box-shadow: 0 6px 16px rgba(46, 62, 184, 0.2);
+  object-fit: contain;
+}
+
+.rp-nav__title__logo img,
+img.rspress-logo {
+  display: block;
+  width: 31px !important;
+  height: 31px !important;
+  max-height: none !important;
+  object-fit: contain !important;
 }
 
 .rp-nav__title__link > span {
@@ -148,9 +188,13 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+.cloud-home :where(a, button):focus-visible,
+.rp-nav :where(a, button):focus-visible {
+  outline: 3px solid rgba(18, 100, 255, 0.28);
+  outline-offset: 3px;
+}
+
 .cloud-home svg {
-  fill: none;
-  stroke: currentcolor;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
