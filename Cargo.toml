@@ -25,8 +25,8 @@ a3s-boot = { version = "=0.1.3", default-features = false, features = [
     "openapi-schemas",
     "security",
 ] }
-a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "85826a48ea70aaa6dcb76614b5bcaac5592dfd65" }
-a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "85826a48ea70aaa6dcb76614b5bcaac5592dfd65", default-features = false, features = ["build", "vm"] }
+a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "5fdf07d134cb2bfe6fb844b600c9c1e82916af63" }
+a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "5fdf07d134cb2bfe6fb844b600c9c1e82916af63", default-features = false, features = ["build", "vm"] }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
 a3s-flow = { git = "https://github.com/A3S-Lab/Flow.git", rev = "1675376dbced0a65afce2141e799dcdceb8e475d", default-features = false, features = ["postgres"] }
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "a09b4db0f55c29cff3cb7963f2d45125ed7b3936", default-features = false, features = ["postgres"] }
