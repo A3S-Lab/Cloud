@@ -387,7 +387,13 @@ export interface AgentReleaseBinding {
   artifactSizeBytes: number;
 }
 
-export type AgentExecutionStatus = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type AgentExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'cancelling'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
 
 export interface AgentExecution {
   organizationId: string;
@@ -401,6 +407,7 @@ export interface AgentExecution {
   requestedAt: string;
   updatedAt: string;
   startedAt: string | null;
+  cancellationRequestedAt: string | null;
   finishedAt: string | null;
 }
 
@@ -420,7 +427,8 @@ export type AgentExecutionEventKind =
   | 'execution_requested'
   | 'model_output'
   | 'execution_failed'
-  | 'execution_completed';
+  | 'execution_completed'
+  | 'execution_cancelled';
 
 export interface AgentExecutionEvent {
   organizationId: string;

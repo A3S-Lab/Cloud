@@ -46,6 +46,38 @@ pub struct AgentExecutionStarted {
     pub agent_artifact_digest: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionCancellationRequested {
+    pub conversation_id: Uuid,
+    pub execution_id: Uuid,
+    pub operation_id: Uuid,
+}
+
+impl AgentExecutionCancellationRequested {
+    pub fn envelope(
+        execution: &AgentExecution,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: "agent.execution.cancellation-requested".into(),
+            schema_version: 1,
+            organization_id: execution.organization_id.as_uuid(),
+            aggregate_id: execution.id.as_uuid(),
+            aggregate_version: execution.aggregate_version,
+            occurred_at: execution.updated_at,
+            correlation_id,
+            causation_id: None,
+            payload: serde_json::to_value(Self {
+                conversation_id: execution.conversation_id.as_uuid(),
+                execution_id: execution.id.as_uuid(),
+                operation_id: execution.operation_id.as_uuid(),
+            })?,
+        })
+    }
+}
+
 impl AgentExecutionStarted {
     pub fn envelope(
         execution: &AgentExecution,

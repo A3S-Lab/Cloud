@@ -444,6 +444,7 @@ fn request_has_no_body(path: &str) -> bool {
         || path.ends_with("/deactivate")
         || path.ends_with("/bindings")
         || path.ends_with("/agent-conversations")
+        || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || path.ends_with("/source-connections/github")
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
 }
@@ -456,6 +457,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || path.ends_with("/stop")
         || path.ends_with("/retry")
         || path.ends_with("/verify")
+        || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))

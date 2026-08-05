@@ -1,5 +1,6 @@
 use crate::modules::agents::application::{
-    AgentExecutionEventPage, CreateAgentConversationResult, StartAgentExecutionResult,
+    AgentExecutionEventPage, CancelAgentExecutionResult, CreateAgentConversationResult,
+    StartAgentExecutionResult,
 };
 use crate::modules::agents::domain::{
     AgentConversation, AgentConversationStatus, AgentExecution, AgentExecutionEvent,
@@ -36,6 +37,16 @@ pub struct AgentExecutionMutationResponse {
 
 impl From<StartAgentExecutionResult> for AgentExecutionMutationResponse {
     fn from(result: StartAgentExecutionResult) -> Self {
+        Self {
+            conversation: result.conversation.into(),
+            execution: result.execution.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+impl From<CancelAgentExecutionResult> for AgentExecutionMutationResponse {
+    fn from(result: CancelAgentExecutionResult) -> Self {
         Self {
             conversation: result.conversation.into(),
             execution: result.execution.into(),
@@ -90,6 +101,7 @@ pub struct AgentExecutionResponse {
     pub requested_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
+    pub cancellation_requested_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
 }
 
@@ -115,6 +127,7 @@ impl From<AgentExecution> for AgentExecutionResponse {
             requested_at: execution.requested_at,
             updated_at: execution.updated_at,
             started_at: execution.started_at,
+            cancellation_requested_at: execution.cancellation_requested_at,
             finished_at: execution.finished_at,
         }
     }

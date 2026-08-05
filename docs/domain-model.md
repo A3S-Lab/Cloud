@@ -320,7 +320,7 @@ Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
 tables directly. Audit records are append-only and separate from event delivery.
 
-### 3.13 Agent execution (`A1.1` foundation; later A1 planned)
+### 3.13 Agent execution (`A1.1` foundation; `A1.2` integration in progress)
 
 Owns tenant-scoped conversations, Agent executions, and the sole semantic event
 sequence. `A1.1` binds one exact published Agent release and reserves the
@@ -955,9 +955,10 @@ contexts' tables.
   one transaction. A committed sequence is immutable, contiguous, and unique
   within the conversation.
 - `AgentExecution` owns logical state and the correlated Operation identity.
-  `A1.2` adds the Harness identity and provider lifecycle. Flow history owns
-  orchestration recovery; Runtime logs own process output; neither can
-  substitute for semantic events.
+  `A1.2` binds exact Code run and existing Workload/Runtime delivery identity,
+  then reuses Operations/Flow and Fleet to reach the sole `a3s code harness`.
+  Flow history owns orchestration recovery; Runtime logs own process output;
+  neither can substitute for semantic events or Code's source event log.
 - In `A1.4`, an approval-required action cannot execute until a current
   Identity grant and explicit approval decision commit. Duplicate
   decide/resume commands replay; denial, expiry, cancellation, and process

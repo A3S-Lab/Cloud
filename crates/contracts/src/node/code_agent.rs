@@ -170,7 +170,6 @@ impl NodeCodeAgentEventReceiptV1 {
             || self.accepted_after_event_sequence != batch.page.next_after_event_sequence
             || self.accepted_state != batch.page.state
             || self.accepted_events != accepted_events
-            || self.accepted_at_ms < batch.sent_at_ms
         {
             return Err("Code Agent event receipt changed its pending batch identity".into());
         }

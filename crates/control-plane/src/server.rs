@@ -1,4 +1,5 @@
 use crate::infrastructure::FlowOperationCoordinator;
+use crate::modules::agents::AgentExecutionReconciler;
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::edge::{
     GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
@@ -21,6 +22,7 @@ pub struct ControlPlane {
 pub(crate) struct ControlPlaneWorkers {
     build_run_reconciler: Option<BuildRunReconciler>,
     execution_reconciler: Option<ExecutionReconciler>,
+    agent_execution_reconciler: Option<AgentExecutionReconciler>,
     github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
@@ -42,6 +44,7 @@ impl ControlPlaneWorkers {
     pub(crate) fn new(
         build_run_reconciler: Option<BuildRunReconciler>,
         execution_reconciler: Option<ExecutionReconciler>,
+        agent_execution_reconciler: Option<AgentExecutionReconciler>,
         github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
@@ -60,6 +63,7 @@ impl ControlPlaneWorkers {
         Self {
             build_run_reconciler,
             execution_reconciler,
+            agent_execution_reconciler,
             github_authority_reconciler,
             operation_coordinator,
             gateway_certificate_reconciler,
@@ -107,6 +111,9 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.execution_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.agent_execution_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.github_authority_reconciler {

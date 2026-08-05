@@ -214,6 +214,18 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             ["get"]
             .is_object()
     );
+    let agent_cancellation = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/cancel"]["post"];
+    assert_eq!(agent_cancellation["tags"], json!(["Agents"]));
+    assert!(agent_cancellation.get("requestBody").is_none());
+    assert!(agent_cancellation["responses"]["202"].is_object());
+    assert!(agent_cancellation["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
     let agent_events = &document["paths"]
         ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]["get"];
     assert!(agent_events["parameters"]

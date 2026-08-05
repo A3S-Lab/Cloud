@@ -5,6 +5,7 @@ mod artifact;
 mod box_build;
 #[cfg(target_os = "linux")]
 mod box_runtime;
+mod code_event_shipper;
 mod code_harness;
 mod config;
 mod control_plane;
@@ -27,6 +28,7 @@ pub use artifact::{
 };
 #[cfg(target_os = "linux")]
 pub use box_runtime::build_box_runtime_provider;
+pub use code_event_shipper::CodeEventShippingError;
 pub use config::{
     ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation, BoxRuntimeSevSnpConfig,
     BoxRuntimeSevSnpGeneration, ConfigError, ControlPlaneConfig, GatewayControlConfig,

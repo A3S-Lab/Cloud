@@ -1,10 +1,11 @@
 use super::*;
 use crate::GatewaySnapshotInstallOutcome;
 use a3s_cloud_contracts::{
-    GatewaySnapshot, NodeCertificate, NodeCommandEnvelope, NodeCommandLeaseResponse,
-    NodeCommandMetadata, NodeCommandPayload, NodeGatewayAck, NodeGatewayAckReceipt,
-    NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatchV2, NodeObservationReceipt,
-    NodeResourceInventory, NodeResourceInventoryReceipt,
+    GatewaySnapshot, NodeCertificate, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1,
+    NodeCommandEnvelope, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandPayload,
+    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt,
+    NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
+    NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{
     HealthCheckKind, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeActionRequest,
@@ -220,6 +221,15 @@ impl NodeControlTransport for FakeTransport {
         ))
     }
 
+    async fn record_code_agent_events(
+        &self,
+        _batch: &NodeCodeAgentEventBatchV1,
+    ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "unexpected Code event upload".into(),
+        ))
+    }
+
     async fn record_gateway_acknowledgement(
         &self,
         acknowledgement: &NodeGatewayAck,
@@ -418,6 +428,7 @@ async fn session(
             max_batch_chunks: 16,
             max_batch_bytes: 1024 * 1024,
         },
+        Duration::from_millis(10),
         Duration::from_millis(1),
         Duration::from_millis(4),
     )
@@ -452,6 +463,7 @@ async fn restarted_session(
             max_batch_chunks: 16,
             max_batch_bytes: 1024 * 1024,
         },
+        Duration::from_millis(10),
         Duration::from_millis(1),
         Duration::from_millis(4),
     )

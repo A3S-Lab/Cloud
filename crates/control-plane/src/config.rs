@@ -820,6 +820,19 @@ impl CloudConfig {
         )
     }
 
+    pub(crate) fn agent_execution_flow_config(
+        &self,
+    ) -> Result<crate::modules::agents::AgentExecutionFlowConfig, String> {
+        crate::modules::agents::AgentExecutionFlowConfig::new(
+            crate::modules::agents::AgentExecutionFlowConfigOptions {
+                heartbeat_timeout_ms: self.fleet.heartbeat_timeout_ms,
+                command_ttl_ms: self.executions.command_ttl_ms,
+                observation_poll_ms: self.executions.observation_poll_ms,
+                convergence_timeout_ms: self.executions.convergence_timeout_ms,
+            },
+        )
+    }
+
     pub fn validate(&self) -> Result<(), ConfigError> {
         if self.server.host.trim().is_empty() || self.server.host.len() > 255 {
             return Err(ConfigError::Invalid(
@@ -980,6 +993,9 @@ impl CloudConfig {
         }
         self.execution_flow_config()
             .map_err(|error| ConfigError::Invalid(format!("executions is invalid: {error}")))?;
+        self.agent_execution_flow_config().map_err(|error| {
+            ConfigError::Invalid(format!("Agent executions are invalid: {error}"))
+        })?;
         if self.builds.reconcile_interval_ms == 0
             || self.builds.reconcile_interval_ms > 3_600_000
             || !valid_data_path(&self.builds.input_staging_dir)

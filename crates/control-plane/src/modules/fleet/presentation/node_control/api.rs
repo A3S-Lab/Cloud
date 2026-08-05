@@ -1,4 +1,8 @@
 use super::error::NodeControlHttpError;
+use crate::modules::agents::application::{
+    AcceptAgentCodeEventBatch, AcceptAgentCodeEventBatchHandler,
+};
+use crate::modules::agents::domain::IAgentRepository;
 use crate::modules::artifacts::domain::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
 };
@@ -71,6 +75,7 @@ struct NodeControlApiInner {
     lease: LeaseNodeCommandsHandler,
     acknowledge: AcknowledgeNodeCommandHandler,
     observations: RecordNodeObservationsHandler,
+    code_agent_events: AcceptAgentCodeEventBatchHandler,
     resource_inventory: RecordNodeResourceInventoryHandler,
     logs: RecordNodeLogChunksHandler,
     gateway: RecordGatewayAcknowledgementHandler,
@@ -91,6 +96,7 @@ impl NodeControlApi {
     pub(crate) fn new(
         nodes: Arc<dyn INodeRepository>,
         commands: Arc<dyn INodeControlRepository>,
+        agents: Arc<dyn IAgentRepository>,
         artifacts: Arc<dyn INodeArtifactStore>,
         gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
         gateway_certificates: Arc<dyn IEdgeRepository>,
@@ -135,6 +141,7 @@ impl NodeControlApi {
                 )?,
                 acknowledge: AcknowledgeNodeCommandHandler::new(Arc::clone(&commands)),
                 observations: RecordNodeObservationsHandler::new(Arc::clone(&commands)),
+                code_agent_events: AcceptAgentCodeEventBatchHandler::new(agents),
                 resource_inventory: RecordNodeResourceInventoryHandler::new(Arc::clone(&commands)),
                 logs: RecordNodeLogChunksHandler::new(Arc::clone(&commands), logs),
                 gateway: RecordGatewayAcknowledgementHandler::new(commands, gateway_projector),
@@ -180,6 +187,10 @@ impl NodeControlApi {
                 post(acknowledge_command),
             )
             .route("/v1/node-control/observations", post(record_observations))
+            .route(
+                "/v1/node-control/code-agent-events",
+                post(record_code_agent_events),
+            )
             .route(
                 "/v1/node-control/inventories",
                 post(record_resource_inventory),
@@ -611,6 +622,33 @@ async fn record_observations(
         .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
         .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
     json_response(request_id, StatusCode::OK, &result)
+}
+
+async fn record_code_agent_events(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node = api.authenticate_node(request_id, &peer).await?;
+    let batch: a3s_cloud_contracts::NodeCodeAgentEventBatchV1 =
+        api.body(request_id, request).await?;
+    let receipt = api
+        .inner
+        .code_agent_events
+        .execute(
+            AcceptAgentCodeEventBatch {
+                authenticated_organization_id: node.organization_id,
+                authenticated_node_id: node.id,
+                batch,
+                received_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    json_response(request_id, StatusCode::OK, &receipt)
 }
 
 async fn record_resource_inventory(

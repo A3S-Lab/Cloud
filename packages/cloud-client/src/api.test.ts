@@ -335,6 +335,7 @@ describe('CloudApi', () => {
     await api.listAgentExecutions('organization / one', 'conversation');
     await api.getAgentExecution('organization / one', 'execution');
     await api.startAgentExecution('organization / one', 'conversation', input, 'agent-execution:start');
+    await api.cancelAgentExecution('organization / one', 'execution', 'agent-execution:cancel');
     await api.getAgentExecutionEvents('organization / one', 'conversation', {
       cursor: '7',
       limit: 25,
@@ -363,6 +364,7 @@ describe('CloudApi', () => {
         'POST',
         JSON.stringify(input),
       ],
+      ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/cancel', 'POST', undefined],
       [
         '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events?cursor=7&limit=25',
         'GET',
@@ -374,6 +376,10 @@ describe('CloudApi', () => {
     expect((calls[5]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       'agent-execution:start'
     );
+    expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'agent-execution:cancel'
+    );
+    expect((calls[6]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
     expect(api.agentExecutionEventStreamUrl('organization / one', 'conversation')).toBe(
       '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events/stream?limit=16'
     );

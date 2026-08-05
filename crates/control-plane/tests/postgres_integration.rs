@@ -1107,6 +1107,22 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             ),
             Migration::new(
                 "069",
+                "Agent A3S Code run bindings",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/069_agent_code_run_bindings.sql"
+                )),
+            ),
+            Migration::new(
+                "070",
+                "Agent execution cancellation",
+                include_str!(concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../migrations/070_agent_execution_cancellation.sql"
+                )),
+            ),
+            Migration::new(
+                "071",
                 "broken migration",
                 "create table a3s_orm_rollback_probe (id bigint); invalid sql",
             ),

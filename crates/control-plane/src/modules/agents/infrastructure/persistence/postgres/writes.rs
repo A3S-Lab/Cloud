@@ -8,12 +8,15 @@ use crate::infrastructure::{
     store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::agents::domain::{
-    AgentConversationStatus, AgentConversationWrite, AgentConversationWriteReference,
-    AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
+    AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversationStatus,
+    AgentConversationWrite, AgentConversationWriteReference, AgentExecutionEvent,
+    AgentExecutionEventDraft, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
     AgentExecutionWrite, AgentExecutionWriteReference, AppendAgentExecutionEventsWrite,
-    CreateAgentConversationWrite, StartAgentExecutionWrite,
+    BindAgentCodeRunWrite, CreateAgentConversationWrite, RequestAgentExecutionCancellationWrite,
+    StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
+use a3s_cloud_contracts::NodeCodeAgentEventReceiptV1;
 use a3s_orm::{insert_into, update_table, PostgresExecutor, PostgresTransaction};
 
 pub(super) async fn create_conversation(
@@ -152,6 +155,68 @@ pub(super) async fn start_execution(
         .map_err(transaction_error)
 }
 
+pub(super) async fn request_cancellation(
+    executor: &PostgresExecutor,
+    write: RequestAgentExecutionCancellationWrite,
+) -> Result<AgentExecutionWrite, RepositoryError> {
+    write.validate().map_err(invalid_repository_write)?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                if let Some(replay) = replay_cancellation(transaction, &write).await? {
+                    return Ok(replay);
+                }
+                let existing = lock_execution(
+                    transaction,
+                    write.execution.organization_id,
+                    write.execution.id,
+                )
+                .await?;
+                let mut expected = existing.clone();
+                if existing.aggregate_version != write.expected_version
+                    || expected
+                        .request_cancellation(write.execution.updated_at)
+                        .is_err()
+                    || expected != write.execution
+                {
+                    return Err(RepositoryError::Conflict(
+                        "Agent execution changed while requesting cancellation".into(),
+                    )
+                    .into());
+                }
+                let conversation = load_conversation_by_id(
+                    transaction,
+                    write.execution.organization_id,
+                    write.execution.conversation_id,
+                )
+                .await?
+                .ok_or_else(|| {
+                    PostgresPersistenceError::Invariant(
+                        "Agent execution conversation is missing".into(),
+                    )
+                })?;
+                persist_execution(transaction, &write.execution, write.expected_version).await?;
+                store_outbox(transaction, &write.event).await?;
+                store_idempotency(
+                    transaction,
+                    &write.idempotency,
+                    &AgentExecutionWriteReference {
+                        organization_id: write.execution.organization_id,
+                        execution_id: write.execution.id,
+                    },
+                )
+                .await?;
+                Ok(AgentExecutionWrite {
+                    conversation,
+                    execution: write.execution,
+                    replayed: false,
+                })
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
 pub(super) async fn append_events(
     executor: &PostgresExecutor,
     write: AppendAgentExecutionEventsWrite,
@@ -222,14 +287,165 @@ pub(super) async fn append_events(
         .map_err(transaction_error)
 }
 
+pub(super) async fn bind_code_run(
+    executor: &PostgresExecutor,
+    write: BindAgentCodeRunWrite,
+) -> Result<AgentCodeRunWrite, RepositoryError> {
+    write.validate().map_err(invalid_repository_write)?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                let mut execution =
+                    lock_execution(transaction, write.organization_id, write.execution_id).await?;
+                let previous_version = execution.aggregate_version;
+                let changed = execution
+                    .bind_code_run(write.binding)
+                    .map_err(RepositoryError::Conflict)?;
+                if changed {
+                    persist_execution(transaction, &execution, previous_version).await?;
+                }
+                Ok(AgentCodeRunWrite {
+                    execution,
+                    replayed: !changed,
+                })
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
+pub(super) async fn accept_code_event_batch(
+    executor: &PostgresExecutor,
+    write: AcceptAgentCodeEventBatchWrite,
+) -> Result<NodeCodeAgentEventReceiptV1, RepositoryError> {
+    write.validate().map_err(invalid_repository_write)?;
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                if let Some(receipt) = replay_code_event_batch(transaction, &write).await? {
+                    return Ok(receipt);
+                }
+                let execution_id =
+                    crate::modules::shared_kernel::domain::AgentExecutionId::from_uuid(
+                        write.batch.binding.execution_id,
+                    );
+                let probe = load_execution_by_id(transaction, write.organization_id, execution_id)
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?;
+                let mut conversation =
+                    lock_conversation(transaction, write.organization_id, probe.conversation_id)
+                        .await?;
+                let previous_conversation_version = conversation.aggregate_version;
+                let mut execution =
+                    lock_execution(transaction, write.organization_id, execution_id).await?;
+                let previous_execution_version = execution.aggregate_version;
+                let binding = execution.code.as_ref().ok_or(RepositoryError::NotFound)?;
+                if binding.node_id() != write.authenticated_node_id {
+                    return Err(RepositoryError::NotFound.into());
+                }
+                if binding.node_runtime_binding(execution.id.as_uuid()) != write.batch.binding {
+                    return Err(RepositoryError::Conflict(
+                        "Code Agent event batch changed its bound Runtime or run identity".into(),
+                    )
+                    .into());
+                }
+
+                let projected_at = write.accepted_at.max(execution.updated_at);
+                let drafts = AgentExecutionEventDraft::semantic_from_code_page(
+                    &write.batch.page,
+                    projected_at,
+                )
+                .map_err(invalid_repository_write)?;
+                execution
+                    .accept_code_event_page(&write.batch.page, projected_at, &drafts)
+                    .map_err(RepositoryError::Conflict)?;
+
+                let events = if drafts.is_empty() {
+                    Vec::new()
+                } else {
+                    let last_occurred_at = drafts
+                        .last()
+                        .expect("non-empty Code event page")
+                        .occurred_at;
+                    let first_sequence = conversation
+                        .allocate_event_sequences(drafts.len(), last_occurred_at)
+                        .map_err(RepositoryError::Conflict)?;
+                    materialize_event_drafts(
+                        write.organization_id,
+                        conversation.id,
+                        execution.id,
+                        drafts,
+                        first_sequence,
+                    )?
+                };
+
+                if !events.is_empty() {
+                    persist_conversation(transaction, &conversation, previous_conversation_version)
+                        .await?;
+                }
+                persist_execution(transaction, &execution, previous_execution_version).await?;
+                for event in &events {
+                    insert_event(transaction, event).await?;
+                }
+
+                let receipt = NodeCodeAgentEventReceiptV1 {
+                    schema: NodeCodeAgentEventReceiptV1::SCHEMA.into(),
+                    batch_id: write.batch.batch_id,
+                    node_id: write.batch.node_id,
+                    execution_id: write.batch.binding.execution_id,
+                    identity: write.batch.page.identity.clone(),
+                    page_digest: write
+                        .batch
+                        .page
+                        .digest()
+                        .map_err(|error| invalid_repository_write(error.to_string()))?,
+                    accepted_after_event_sequence: write.batch.page.next_after_event_sequence,
+                    accepted_state: write.batch.page.state,
+                    accepted_events: u16::try_from(write.batch.page.events.len()).map_err(
+                        |_| {
+                            PostgresPersistenceError::Invariant(
+                                "Code Agent event count exceeds receipt bounds".into(),
+                            )
+                        },
+                    )?,
+                    accepted_at_ms: write.accepted_at_ms().map_err(invalid_repository_write)?,
+                    replayed: false,
+                };
+                receipt.validate_for(&write.batch).map_err(|error| {
+                    PostgresPersistenceError::Invariant(format!(
+                        "Code Agent event receipt is invalid: {error}"
+                    ))
+                })?;
+                store_idempotency(transaction, &write.idempotency, &receipt).await?;
+                Ok(receipt)
+            })
+        })
+        .await
+        .map_err(transaction_error)
+}
+
 fn materialize_events(
     write: &AppendAgentExecutionEventsWrite,
     first_sequence: u64,
 ) -> Result<Vec<AgentExecutionEvent>, PostgresPersistenceError> {
-    write
-        .events
-        .iter()
-        .cloned()
+    materialize_event_drafts(
+        write.organization_id,
+        write.conversation_id,
+        write.execution_id,
+        write.events.clone(),
+        first_sequence,
+    )
+}
+
+fn materialize_event_drafts(
+    organization_id: crate::modules::shared_kernel::domain::OrganizationId,
+    conversation_id: crate::modules::shared_kernel::domain::AgentConversationId,
+    execution_id: crate::modules::shared_kernel::domain::AgentExecutionId,
+    drafts: Vec<AgentExecutionEventDraft>,
+    first_sequence: u64,
+) -> Result<Vec<AgentExecutionEvent>, PostgresPersistenceError> {
+    drafts
+        .into_iter()
         .enumerate()
         .map(|(offset, draft)| {
             let offset = u64::try_from(offset).map_err(|_| {
@@ -239,9 +455,9 @@ fn materialize_events(
                 PostgresPersistenceError::Invariant("Agent event sequence overflowed".into())
             })?;
             AgentExecutionEvent::from_draft(
-                write.organization_id,
-                write.conversation_id,
-                write.execution_id,
+                organization_id,
+                conversation_id,
+                execution_id,
                 sequence,
                 draft,
             )
@@ -308,6 +524,10 @@ async fn insert_execution(
             .value(AgentExecutions::requested_at(), execution.requested_at)
             .value(AgentExecutions::updated_at(), execution.updated_at)
             .value(AgentExecutions::started_at(), execution.started_at)
+            .value(
+                AgentExecutions::cancellation_requested_at(),
+                execution.cancellation_requested_at,
+            )
             .value(AgentExecutions::finished_at(), execution.finished_at),
     )
     .await;
@@ -402,6 +622,7 @@ async fn persist_execution(
     execution: &crate::modules::agents::domain::AgentExecution,
     expected_version: u64,
 ) -> Result<(), PostgresPersistenceError> {
+    let code = execution.code.as_ref();
     let rows = execute(
         transaction,
         update_table::<AgentExecutions>()
@@ -413,13 +634,89 @@ async fn persist_execution(
             )
             .set(AgentExecutions::updated_at(), execution.updated_at)
             .set(AgentExecutions::started_at(), execution.started_at)
+            .set(
+                AgentExecutions::cancellation_requested_at(),
+                execution.cancellation_requested_at,
+            )
             .set(AgentExecutions::finished_at(), execution.finished_at)
+            .set(
+                AgentExecutions::code_node_id(),
+                code.map(|binding| binding.node_id().as_uuid()),
+            )
+            .set(
+                AgentExecutions::code_workload_id(),
+                code.map(|binding| binding.workload_id().as_uuid()),
+            )
+            .set(
+                AgentExecutions::code_workload_revision_id(),
+                code.map(|binding| binding.workload_revision_id().as_uuid()),
+            )
+            .set(
+                AgentExecutions::code_deployment_id(),
+                code.map(|binding| binding.deployment_id().as_uuid()),
+            )
+            .set(
+                AgentExecutions::code_replica_id(),
+                code.map(|binding| binding.replica_id().as_uuid()),
+            )
+            .set(
+                AgentExecutions::code_runtime_unit_id(),
+                code.map(|binding| binding.runtime_unit_id().to_owned()),
+            )
+            .set(
+                AgentExecutions::code_runtime_generation(),
+                code.map(|binding| binding.runtime_generation()),
+            )
+            .set(
+                AgentExecutions::code_runtime_spec_digest(),
+                code.map(|binding| binding.runtime_spec_digest().as_str().to_owned()),
+            )
+            .set(
+                AgentExecutions::code_service_port_name(),
+                code.map(|binding| binding.service_port_name().to_owned()),
+            )
+            .set(
+                AgentExecutions::code_protocol(),
+                code.map(|binding| binding.identity().protocol.clone()),
+            )
+            .set(
+                AgentExecutions::code_release_identity(),
+                code.map(|binding| binding.identity().agent_release_identity.clone()),
+            )
+            .set(
+                AgentExecutions::code_session_id(),
+                code.map(|binding| binding.identity().session_id.clone()),
+            )
+            .set(
+                AgentExecutions::code_run_id(),
+                code.map(|binding| binding.identity().run_id.clone()),
+            )
+            .set(
+                AgentExecutions::code_event_cursor(),
+                code.and_then(|binding| binding.accepted_after_event_sequence()),
+            )
+            .set(
+                AgentExecutions::code_state(),
+                code.map(|binding| binding.observed_state().as_str().to_owned()),
+            )
+            .set(
+                AgentExecutions::code_bound_at(),
+                code.map(|binding| binding.bound_at()),
+            )
+            .set(
+                AgentExecutions::code_observed_at(),
+                code.and_then(|binding| binding.observed_at()),
+            )
             .filter(AgentExecutions::organization_id().eq(execution.organization_id.as_uuid()))
             .filter(AgentExecutions::id().eq(execution.id.as_uuid()))
             .filter(AgentExecutions::aggregate_version().eq(expected_version)),
     )
-    .await?;
-    require_one_row("Agent execution transition", rows)
+    .await;
+    match rows {
+        Ok(rows) => require_one_row("Agent execution transition", rows),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
+    }
 }
 
 async fn replay_conversation(
@@ -474,6 +771,47 @@ async fn replay_execution(
     .await?
     .ok_or_else(|| {
         PostgresPersistenceError::Invariant("Agent execution replay target is missing".into())
+    })?;
+    let conversation = load_conversation_by_id(
+        transaction,
+        execution.organization_id,
+        execution.conversation_id,
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("Agent execution conversation is missing".into())
+    })?;
+    Ok(Some(AgentExecutionWrite {
+        conversation,
+        execution,
+        replayed: true,
+    }))
+}
+
+async fn replay_cancellation(
+    transaction: &PostgresTransaction,
+    write: &RequestAgentExecutionCancellationWrite,
+) -> Result<Option<AgentExecutionWrite>, PostgresPersistenceError> {
+    let Some(replay) =
+        idempotency_replay::<AgentExecutionWriteReference>(transaction, &write.idempotency).await?
+    else {
+        return Ok(None);
+    };
+    if replay.value.organization_id != write.execution.organization_id
+        || replay.value.execution_id != write.execution.id
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "Agent cancellation replay changed its immutable identity".into(),
+        ));
+    }
+    let execution = load_execution_by_id(
+        transaction,
+        replay.value.organization_id,
+        replay.value.execution_id,
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant("Agent cancellation replay target is missing".into())
     })?;
     let conversation = load_conversation_by_id(
         transaction,
@@ -565,6 +903,25 @@ async fn replay_events(
         events,
         replayed: true,
     }))
+}
+
+async fn replay_code_event_batch(
+    transaction: &PostgresTransaction,
+    write: &AcceptAgentCodeEventBatchWrite,
+) -> Result<Option<NodeCodeAgentEventReceiptV1>, PostgresPersistenceError> {
+    let Some(replay) =
+        idempotency_replay::<NodeCodeAgentEventReceiptV1>(transaction, &write.idempotency).await?
+    else {
+        return Ok(None);
+    };
+    let mut receipt = replay.value;
+    receipt.replayed = true;
+    receipt.validate_for(&write.batch).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "Code Agent event replay changed its immutable receipt: {error}"
+        ))
+    })?;
+    Ok(Some(receipt))
 }
 
 fn invalid_repository_write(error: String) -> RepositoryError {

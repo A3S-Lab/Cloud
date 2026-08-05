@@ -1,11 +1,14 @@
-use crate::modules::agents::application::{CreateAgentConversation, StartAgentExecution};
+use crate::modules::agents::application::{
+    CancelAgentExecution, CreateAgentConversation, StartAgentExecution,
+};
 use crate::modules::agents::presentation::dto::{
     AgentConversationMutationResponse, AgentExecutionMutationResponse, StartAgentExecutionRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AssetId, AssetReleaseId, EnvironmentId, OrganizationId, ProjectId,
+    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, EnvironmentId, OrganizationId,
+    ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -18,6 +21,7 @@ use uuid::Uuid;
 
 pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let start_bus = Arc::clone(&bus);
+    let cancel_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::EXECUTION_WRITE])?
@@ -76,6 +80,38 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 body.agent_asset_release_id,
                             ),
                             input: body.input,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &AgentExecutionMutationResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/agent-executions/{execution_id}/cancel",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&cancel_bus);
+                async move {
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CancelAgentExecution {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            execution_id: AgentExecutionId::from_uuid(
+                                request.param_as::<Uuid>("execution_id")?,
+                            ),
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),

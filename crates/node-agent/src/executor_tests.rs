@@ -2,12 +2,13 @@ use super::*;
 use crate::code_harness::CodeHarnessTransport;
 use a3s_cloud_contracts::{
     AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
-    AgentProtocolRunIdentityV1, AgentProtocolRunStartV1, AgentProtocolRunStateV1,
-    AppliedGatewaySnapshot, GatewaySnapshot, GatewaySnapshotObservationRequest,
-    GatewaySnapshotObservationState, NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata,
-    NodeCommandPayload, NodeResourceClaimBinding, NodeResourceClaimPrepare,
-    NodeResourceClaimRelease, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
-    ResourceKind, ResourceSlotBinding, ResourceUnit, AGENT_PROTOCOL_V1,
+    AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1, AgentProtocolRunIdentityV1,
+    AgentProtocolRunStartV1, AgentProtocolRunStateV1, AppliedGatewaySnapshot, GatewaySnapshot,
+    GatewaySnapshotObservationRequest, GatewaySnapshotObservationState,
+    NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata, NodeCommandPayload,
+    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimRelease,
+    NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceSlotBinding,
+    ResourceUnit, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -178,6 +179,17 @@ impl CodeHarnessTransport for RecordingCodeHarness {
                 .map_err(|error| CodeHarnessError::Protocol(error.to_string()))?,
             replayed: false,
         })
+    }
+
+    async fn event_page(
+        &self,
+        _endpoint: &RuntimeServiceEndpoint,
+        _request: &AgentProtocolEventPageRequestV1,
+        _timeout: std::time::Duration,
+    ) -> Result<AgentProtocolEventPageV1, CodeHarnessError> {
+        Err(CodeHarnessError::Invalid(
+            "unexpected Code event page request".into(),
+        ))
     }
 }
 

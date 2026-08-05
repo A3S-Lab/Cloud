@@ -255,7 +255,7 @@ not business ownership or convenience wrappers.
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Search | Tenant-authorized resource projections and bounded discovery | Current |
 | Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
-| Agents | Conversations, Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented, Linux verification pending; `A1.2` through `A1.5` planned |
+| Agents | Conversations, Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented; the `A1.2` Code delivery integration and root Harness entrypoint are implemented locally, with publication and Linux recovery verification pending; `A1.3` through `A1.5` planned |
 | Data | Managed databases, volumes, backup, restore, retention, and writer fencing | Planned `S0` |
 | Inference | Models, backends, deployments, routes, provider egress, and durable usage | Planned `I0` |
 
@@ -638,23 +638,31 @@ Agent actor controller onto a generic cluster controller.
 
 `A1.0` has verified shared sequence/SSE transport, polling transport,
 immutable-object infrastructure, and the reusable Node Agent outbound-batch
-receipt primitive. `A1.1` now implements the durable `Agents` context
-foundation; clean Linux PostgreSQL verification remains. `A1.2` through
-`A1.5` remain planned.
+receipt primitive. `A1.1` implements the durable `Agents` context foundation.
+The local `A1.2` integration now binds exact Code/Workload/Runtime delivery,
+reuses Operations/Flow and Fleet, and derives semantic output/terminal facts
+from receipt-gated Code pages without copying Code's source event log. The root
+Harness entrypoint is implemented locally; dependency publication,
+cancel/recover orchestration, and clean Linux PostgreSQL/Runtime recovery
+verification remain; `A1.3` through `A1.5` remain planned.
 
 The current `A1.1` context owns:
 
 - `AgentConversation`, including the sole monotonic semantic event-stream head;
 - `AgentExecution`, its exact published Agent-release binding, logical
   lifecycle, and reserved Operation identity; and
-- contiguous bounded semantic events for request, model output, failure, and
-  completion, exposed through the shared cursor/SSE transport.
+- contiguous bounded semantic events for request, model output, failure,
+  completion, and cancellation, exposed through the shared cursor/SSE
+  transport.
 
-Later A1 sub-gates extend that same context with:
+The current `A1.2` integration adds:
 
 - the `A1.2` exact A3S Code release/run identity, Code-owned command/receipt and
   event-page protocol, Cloud delivery envelope, Fleet delivery, and
-  Workload/Runtime lifecycle for the sole `a3s code harness` process;
+  existing Workload/Runtime binding for the sole `a3s code harness` process.
+
+Later A1 sub-gates extend that same context with:
+
 - the `A1.3` immutable Skill, MCP, workspace, and tool bindings plus auditable
   tool request/result events;
 - the `A1.4` grant-checked approval checkpoints and logical pause/resume; and

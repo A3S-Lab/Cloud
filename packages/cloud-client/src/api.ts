@@ -579,6 +579,20 @@ export class CloudApi {
     );
   }
 
+  cancelAgentExecution(
+    organizationId: string,
+    executionId: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionMutationResult> {
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}/cancel`,
+      idempotencyKey,
+      signal
+    );
+  }
+
   getAgentExecutionEvents(
     organizationId: string,
     conversationId: string,

@@ -1,5 +1,6 @@
 use super::{NodeControlApi, NodeControlServer};
 use crate::config::NodeControlConfig;
+use crate::modules::agents::infrastructure::InMemoryAgentRepository;
 use crate::modules::artifacts::LocalNodeArtifactStore;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCertificateAuthority};
@@ -44,6 +45,7 @@ use tower::ServiceExt;
 use uuid::Uuid;
 
 mod artifacts;
+mod code_agent;
 
 #[tokio::test]
 async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
@@ -63,6 +65,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .expect("server identity");
 
     let nodes = Arc::new(InMemoryNodeRepository::new());
+    let agents = Arc::new(InMemoryAgentRepository::new());
     let identity_store = FileNodeIdentityStore::new(directory.path().join("node-identity"));
     let (organization_id, enrolled_identity) =
         enroll_node(Arc::clone(&nodes), Arc::clone(&authority), &identity_store).await;
@@ -80,6 +83,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        agents,
         Arc::new(
             LocalNodeArtifactStore::new(directory.path().join("artifacts"), 1024 * 1024)
                 .expect("artifact store"),

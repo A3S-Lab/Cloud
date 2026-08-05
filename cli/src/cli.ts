@@ -46,6 +46,7 @@ Commands:
   agent-executions list CONVERSATION List executions in one Agent conversation
   agent-executions get ID Get one Agent execution
   agent-executions start CONVERSATION AGENT RELEASE Start one exact Agent release idempotently
+  agent-executions cancel ID Cancel one Agent execution through its Code-owned run
   nodes list            List nodes in the selected organization
   nodes bootstrap NAME  Issue one enrollment credential and print a verified install invocation
   nodes ready ID        Mark one current node ready

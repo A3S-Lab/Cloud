@@ -5,15 +5,17 @@ mod writes;
 
 use crate::infrastructure::{idempotency_replay, transaction_error};
 use crate::modules::agents::domain::{
-    AgentConversation, AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
-    AgentExecutionEvent, AgentExecutionEventsWrite, AgentExecutionWrite,
-    AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, CreateAgentConversationWrite,
-    IAgentRepository, StartAgentExecutionWrite,
+    AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversation, AgentConversationWrite,
+    AgentConversationWriteReference, AgentExecution, AgentExecutionEvent,
+    AgentExecutionEventsWrite, AgentExecutionWrite, AgentExecutionWriteReference,
+    AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
+    IAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
     ProjectId, RepositoryError,
 };
+use a3s_cloud_contracts::NodeCodeAgentEventReceiptV1;
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
 
@@ -44,11 +46,32 @@ impl IAgentRepository for PostgresAgentRepository {
         writes::start_execution(&self.executor, write).await
     }
 
+    async fn request_cancellation(
+        &self,
+        write: RequestAgentExecutionCancellationWrite,
+    ) -> Result<AgentExecutionWrite, RepositoryError> {
+        writes::request_cancellation(&self.executor, write).await
+    }
+
     async fn append_events(
         &self,
         write: AppendAgentExecutionEventsWrite,
     ) -> Result<AgentExecutionEventsWrite, RepositoryError> {
         writes::append_events(&self.executor, write).await
+    }
+
+    async fn bind_code_run(
+        &self,
+        write: BindAgentCodeRunWrite,
+    ) -> Result<AgentCodeRunWrite, RepositoryError> {
+        writes::bind_code_run(&self.executor, write).await
+    }
+
+    async fn accept_code_event_batch(
+        &self,
+        write: AcceptAgentCodeEventBatchWrite,
+    ) -> Result<NodeCodeAgentEventReceiptV1, RepositoryError> {
+        writes::accept_code_event_batch(&self.executor, write).await
     }
 
     async fn replay_conversation(
@@ -140,6 +163,21 @@ impl IAgentRepository for PostgresAgentRepository {
         queries::find_execution(&self.executor, organization_id, execution_id).await
     }
 
+    async fn pending_operation_starts(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<AgentExecution>, RepositoryError> {
+        queries::pending_operation_starts(&self.executor, limit).await
+    }
+
+    async fn find_execution_request(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentExecutionEvent>, RepositoryError> {
+        queries::find_execution_request(&self.executor, organization_id, execution_id).await
+    }
+
     async fn list_executions(
         &self,
         organization_id: OrganizationId,
@@ -217,6 +255,25 @@ mod tests {
             assert!(
                 !migration.contains(forbidden),
                 "found forbidden {forbidden}"
+            );
+        }
+    }
+
+    #[test]
+    fn cancellation_migration_extends_the_existing_execution_row_only() {
+        let migration =
+            include_str!("../../../../../../../migrations/070_agent_execution_cancellation.sql");
+        assert!(migration.contains("add column cancellation_requested_at timestamptz"));
+        assert!(migration.contains("'cancelling'"));
+        for forbidden in [
+            "create table",
+            "agent_cancellation",
+            "agent_commands",
+            "agent_runs",
+        ] {
+            assert!(
+                !migration.contains(forbidden),
+                "cancellation migration introduced duplicate authority {forbidden}"
             );
         }
     }

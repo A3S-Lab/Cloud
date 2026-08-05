@@ -119,6 +119,54 @@ describe('a3s-cloud Agent commands', () => {
     );
   });
 
+  it('cancels one execution through the Agent cancellation endpoint', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+
+    const exitCode = await runCli(
+      [
+        'agent-executions',
+        'cancel',
+        EXECUTION_ID,
+        '--idempotency-key=cli:agent-execution-cancel-1',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope(
+            {
+              conversation: conversation(),
+              execution: {
+                ...execution(),
+                status: 'cancelling',
+                cancellationRequestedAt: '2026-08-04T00:02:00.000Z',
+              },
+              replayed: false,
+            },
+            202
+          );
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/agent-executions/${EXECUTION_ID}/cancel`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'cli:agent-execution-cancel-1',
+        }),
+        body: undefined,
+      })
+    );
+  });
+
   it('reads a bounded semantic event page with one opaque cursor', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();
@@ -209,6 +257,7 @@ function execution() {
     requestedAt: '2026-08-04T00:01:00.000Z',
     updatedAt: '2026-08-04T00:01:00.000Z',
     startedAt: null,
+    cancellationRequestedAt: null,
     finishedAt: null,
   };
 }

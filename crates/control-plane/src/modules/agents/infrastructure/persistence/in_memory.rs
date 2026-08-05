@@ -1,14 +1,16 @@
 use crate::modules::agents::domain::{
-    AgentConversation, AgentConversationStatus, AgentConversationWrite,
-    AgentConversationWriteReference, AgentExecution, AgentExecutionEvent,
-    AgentExecutionEventsWrite, AgentExecutionEventsWriteReference, AgentExecutionWrite,
-    AgentExecutionWriteReference, AppendAgentExecutionEventsWrite, CreateAgentConversationWrite,
-    IAgentRepository, StartAgentExecutionWrite,
+    AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversation, AgentConversationStatus,
+    AgentConversationWrite, AgentConversationWriteReference, AgentExecution, AgentExecutionEvent,
+    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionEventsWrite,
+    AgentExecutionEventsWriteReference, AgentExecutionWrite, AgentExecutionWriteReference,
+    AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
+    IAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
     ProjectId, RepositoryError,
 };
+use a3s_cloud_contracts::NodeCodeAgentEventReceiptV1;
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
@@ -33,11 +35,12 @@ struct IdempotencyEntry {
     response: IdempotencyResponse,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum IdempotencyResponse {
     Conversation(AgentConversationWriteReference),
     Execution(AgentExecutionWriteReference),
     Events(AgentExecutionEventsWriteReference),
+    CodeEvents(NodeCodeAgentEventReceiptV1),
 }
 
 impl InMemoryAgentRepository {
@@ -196,6 +199,77 @@ impl IAgentRepository for InMemoryAgentRepository {
         })
     }
 
+    async fn request_cancellation(
+        &self,
+        write: RequestAgentExecutionCancellationWrite,
+    ) -> Result<AgentExecutionWrite, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+
+        let mut state = self.state.write().await;
+        if let Some(response) = replay(&state, &write.idempotency)? {
+            let IdempotencyResponse::Execution(reference) = response else {
+                return Err(corrupt("Agent cancellation replay type changed"));
+            };
+            let execution = state
+                .executions
+                .get(&(reference.organization_id, reference.execution_id))
+                .cloned()
+                .ok_or_else(|| corrupt("Agent cancellation replay target is missing"))?;
+            let conversation = state
+                .conversations
+                .get(&(execution.organization_id, execution.conversation_id))
+                .cloned()
+                .ok_or_else(|| corrupt("Agent execution conversation is missing"))?;
+            return Ok(AgentExecutionWrite {
+                conversation,
+                execution,
+                replayed: true,
+            });
+        }
+
+        let key = (write.execution.organization_id, write.execution.id);
+        let existing = state
+            .executions
+            .get(&key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let mut expected = existing.clone();
+        if existing.aggregate_version != write.expected_version
+            || expected
+                .request_cancellation(write.execution.updated_at)
+                .is_err()
+            || expected != write.execution
+        {
+            return Err(RepositoryError::Conflict(
+                "Agent execution changed while requesting cancellation".into(),
+            ));
+        }
+        let conversation = state
+            .conversations
+            .get(&(
+                write.execution.organization_id,
+                write.execution.conversation_id,
+            ))
+            .cloned()
+            .ok_or_else(|| corrupt("Agent execution conversation is missing"))?;
+        let reference = AgentExecutionWriteReference {
+            organization_id: write.execution.organization_id,
+            execution_id: write.execution.id,
+        };
+        state.executions.insert(key, write.execution.clone());
+        store_replay(
+            &mut state,
+            write.idempotency,
+            IdempotencyResponse::Execution(reference),
+        );
+        state.outbox.push(write.event);
+        Ok(AgentExecutionWrite {
+            conversation,
+            execution: write.execution,
+            replayed: false,
+        })
+    }
+
     async fn append_events(
         &self,
         write: AppendAgentExecutionEventsWrite,
@@ -298,6 +372,157 @@ impl IAgentRepository for InMemoryAgentRepository {
         })
     }
 
+    async fn bind_code_run(
+        &self,
+        write: BindAgentCodeRunWrite,
+    ) -> Result<AgentCodeRunWrite, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        let key = (write.organization_id, write.execution_id);
+        let mut execution = state
+            .executions
+            .get(&key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let changed = execution
+            .bind_code_run(write.binding)
+            .map_err(RepositoryError::Conflict)?;
+        if changed {
+            state.executions.insert(key, execution.clone());
+        }
+        Ok(AgentCodeRunWrite {
+            execution,
+            replayed: !changed,
+        })
+    }
+
+    async fn accept_code_event_batch(
+        &self,
+        write: AcceptAgentCodeEventBatchWrite,
+    ) -> Result<NodeCodeAgentEventReceiptV1, RepositoryError> {
+        write.validate().map_err(invalid_repository_write)?;
+        let mut state = self.state.write().await;
+        if let Some(response) = replay(&state, &write.idempotency)? {
+            let IdempotencyResponse::CodeEvents(mut receipt) = response else {
+                return Err(corrupt("Code Agent event replay type changed"));
+            };
+            receipt.replayed = true;
+            receipt.validate_for(&write.batch).map_err(|error| {
+                corrupt(format!(
+                    "Code Agent event replay changed its immutable receipt: {error}"
+                ))
+            })?;
+            return Ok(receipt);
+        }
+
+        let execution_id = AgentExecutionId::from_uuid(write.batch.binding.execution_id);
+        let execution_key = (write.organization_id, execution_id);
+        let mut execution = state
+            .executions
+            .get(&execution_key)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let conversation_key = (write.organization_id, execution.conversation_id);
+        let mut conversation = state
+            .conversations
+            .get(&conversation_key)
+            .cloned()
+            .ok_or_else(|| corrupt("Agent execution conversation is missing"))?;
+        let binding = execution.code.as_ref().ok_or(RepositoryError::NotFound)?;
+        if binding.node_id() != write.authenticated_node_id {
+            return Err(RepositoryError::NotFound);
+        }
+        if binding.node_runtime_binding(execution.id.as_uuid()) != write.batch.binding {
+            return Err(RepositoryError::Conflict(
+                "Code Agent event batch changed its bound Runtime or run identity".into(),
+            ));
+        }
+
+        let projected_at = write.accepted_at.max(execution.updated_at);
+        let drafts =
+            AgentExecutionEventDraft::semantic_from_code_page(&write.batch.page, projected_at)
+                .map_err(invalid_repository_write)?;
+        execution
+            .accept_code_event_page(&write.batch.page, projected_at, &drafts)
+            .map_err(RepositoryError::Conflict)?;
+
+        let events = if drafts.is_empty() {
+            Vec::new()
+        } else {
+            let last_occurred_at = drafts
+                .last()
+                .expect("non-empty Code event page")
+                .occurred_at;
+            let first_sequence = conversation
+                .allocate_event_sequences(drafts.len(), last_occurred_at)
+                .map_err(RepositoryError::Conflict)?;
+            drafts
+                .into_iter()
+                .enumerate()
+                .map(|(offset, draft)| {
+                    let offset = u64::try_from(offset)
+                        .map_err(|_| corrupt("Agent event sequence offset overflowed"))?;
+                    let sequence = first_sequence
+                        .checked_add(offset)
+                        .ok_or_else(|| corrupt("Agent event sequence overflowed"))?;
+                    AgentExecutionEvent::from_draft(
+                        write.organization_id,
+                        conversation.id,
+                        execution.id,
+                        sequence,
+                        draft,
+                    )
+                    .map_err(invalid_repository_write)
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        for event in &events {
+            let key = (event.organization_id, event.conversation_id, event.sequence);
+            if state.events.contains_key(&key) {
+                return Err(corrupt("Agent event sequence is already committed"));
+            }
+        }
+
+        let receipt = NodeCodeAgentEventReceiptV1 {
+            schema: NodeCodeAgentEventReceiptV1::SCHEMA.into(),
+            batch_id: write.batch.batch_id,
+            node_id: write.batch.node_id,
+            execution_id: write.batch.binding.execution_id,
+            identity: write.batch.page.identity.clone(),
+            page_digest: write
+                .batch
+                .page
+                .digest()
+                .map_err(|error| invalid_repository_write(error.to_string()))?,
+            accepted_after_event_sequence: write.batch.page.next_after_event_sequence,
+            accepted_state: write.batch.page.state,
+            accepted_events: u16::try_from(write.batch.page.events.len())
+                .map_err(|_| corrupt("Code Agent event count exceeds receipt bounds"))?,
+            accepted_at_ms: write.accepted_at_ms().map_err(invalid_repository_write)?,
+            replayed: false,
+        };
+        receipt
+            .validate_for(&write.batch)
+            .map_err(|error| corrupt(format!("Code Agent event receipt is invalid: {error}")))?;
+
+        if !events.is_empty() {
+            state.conversations.insert(conversation_key, conversation);
+        }
+        state.executions.insert(execution_key, execution);
+        for event in events {
+            state.events.insert(
+                (event.organization_id, event.conversation_id, event.sequence),
+                event,
+            );
+        }
+        store_replay(
+            &mut state,
+            write.idempotency,
+            IdempotencyResponse::CodeEvents(receipt.clone()),
+        );
+        Ok(receipt)
+    }
+
     async fn replay_conversation(
         &self,
         idempotency: &IdempotencyRequest,
@@ -391,6 +616,53 @@ impl IAgentRepository for InMemoryAgentRepository {
             .cloned())
     }
 
+    async fn pending_operation_starts(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<AgentExecution>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let mut executions = self
+            .state
+            .read()
+            .await
+            .executions
+            .values()
+            .filter(|execution| {
+                matches!(
+                    execution.status,
+                    crate::modules::agents::domain::AgentExecutionStatus::Pending
+                        | crate::modules::agents::domain::AgentExecutionStatus::Cancelling
+                ) && execution.code.is_none()
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        executions.sort_by_key(|execution| (execution.requested_at, execution.id));
+        executions.truncate(limit);
+        Ok(executions)
+    }
+
+    async fn find_execution_request(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentExecutionEvent>, RepositoryError> {
+        let state = self.state.read().await;
+        let mut requests = state.events.values().filter(|event| {
+            event.organization_id == organization_id
+                && event.execution_id == execution_id
+                && event.kind == AgentExecutionEventKind::ExecutionRequested
+        });
+        let request = requests.next().cloned();
+        if requests.next().is_some() {
+            return Err(corrupt(
+                "Agent execution has more than one execution_requested event",
+            ));
+        }
+        Ok(request)
+    }
+
     async fn list_executions(
         &self,
         organization_id: OrganizationId,
@@ -455,7 +727,7 @@ fn replay(
     if entry.request_digest != idempotency.request_digest {
         return Err(RepositoryError::IdempotencyConflict);
     }
-    Ok(Some(entry.response))
+    Ok(Some(entry.response.clone()))
 }
 
 fn store_replay(state: &mut State, idempotency: IdempotencyRequest, response: IdempotencyResponse) {

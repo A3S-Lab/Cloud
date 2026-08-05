@@ -1,8 +1,8 @@
 use super::*;
 use a3s_cloud_contracts::{
-    NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseResponse, NodeGatewayAck,
-    NodeGatewayAckReceipt, NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
-    NodeResourceInventoryReceipt,
+    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCommandAck, NodeCommandAckReceipt,
+    NodeCommandLeaseResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeObservationBatchV2,
+    NodeObservationReceipt, NodeResourceInventory, NodeResourceInventoryReceipt,
 };
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeExecRequest,
@@ -144,6 +144,15 @@ impl NodeControlTransport for LogTransport {
             accepted_gaps: u16::try_from(batch.gaps.len()).expect("bounded gap batch"),
             replayed: self.batches.lock().await.len() > 1,
         })
+    }
+
+    async fn record_code_agent_events(
+        &self,
+        _batch: &NodeCodeAgentEventBatchV1,
+    ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "unexpected Code event upload".into(),
+        ))
     }
 
     async fn record_gateway_acknowledgement(

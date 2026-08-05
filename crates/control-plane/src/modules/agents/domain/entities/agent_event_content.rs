@@ -5,6 +5,10 @@ use sha2::{Digest, Sha256};
 
 pub const MAX_INLINE_AGENT_EVENT_BYTES: usize = 64 * 1024;
 
+const _: () = assert!(
+    MAX_INLINE_AGENT_EVENT_BYTES == a3s_cloud_contracts::AGENT_PROTOCOL_MAX_EVENT_RECORD_BYTES
+);
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentEventContent {
     value: Value,

@@ -1,9 +1,10 @@
 use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
 use crate::modules::agents::{
-    AgentsModule, AppendAgentExecutionEventsHandler, CreateAgentConversationHandler,
-    GetAgentConversationHandler, GetAgentExecutionEventsHandler, GetAgentExecutionHandler,
-    IAgentRepository, ListAgentConversationsHandler, ListAgentExecutionsHandler,
-    PostgresAgentRepository, StartAgentExecutionHandler,
+    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionReconciler,
+    AgentsModule, AppendAgentExecutionEventsHandler, CancelAgentExecutionHandler,
+    CreateAgentConversationHandler, GetAgentConversationHandler, GetAgentExecutionEventsHandler,
+    GetAgentExecutionHandler, IAgentRepository, ListAgentConversationsHandler,
+    ListAgentExecutionsHandler, PostgresAgentRepository, StartAgentExecutionHandler,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
@@ -185,6 +186,8 @@ pub enum ControlPlaneStartupError {
     Assets(String),
     #[error("could not initialize finite execution: {0}")]
     Execution(String),
+    #[error("could not initialize Agent execution: {0}")]
+    AgentExecution(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -595,10 +598,21 @@ pub async fn build_application_with_source_resolver(
             .execution_flow_config()
             .map_err(ControlPlaneStartupError::Execution)?,
     );
+    let agent_execution_runtime = AgentExecutionFlowRuntime::new(
+        AgentExecutionFlowRuntimeDependencies {
+            agents: Arc::clone(&agents),
+            workload_targets: Arc::clone(&workload_targets),
+            node_control: Arc::clone(&node_control),
+        },
+        config
+            .agent_execution_flow_config()
+            .map_err(ControlPlaneStartupError::AgentExecution)?,
+    );
     let flow_runtime = FlowRuntimeRouter::new(
         Arc::new(deployment_runtime),
         Arc::new(build_runtime),
         Arc::new(execution_runtime),
+        Arc::new(agent_execution_runtime),
     );
     let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
@@ -606,6 +620,7 @@ pub async fn build_application_with_source_resolver(
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
+            Arc::clone(&agents),
             Arc::clone(&node_artifacts),
             Arc::clone(&gateway_projector),
             Arc::clone(&routes),
@@ -663,6 +678,13 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Execution)?;
+    let agent_execution_reconciler = AgentExecutionReconciler::with_schedule(
+        Arc::clone(&agents),
+        Arc::clone(&operation_repository),
+        Duration::from_millis(config.executions.reconcile_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::AgentExecution)?;
     let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
     let operation_reconciler = OperationReconciler::new(
         Arc::new(ReconcileOperationsHandler::new(
@@ -778,6 +800,7 @@ pub async fn build_application_with_source_resolver(
         ControlPlaneWorkers::new(
             run_operations.then_some(build_run_reconciler),
             run_operations.then_some(execution_reconciler),
+            run_operations.then_some(agent_execution_reconciler),
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
@@ -983,6 +1006,7 @@ fn build_application_with_health(
     let get_executions = executions;
     let create_agent_conversations = Arc::clone(&agents);
     let start_agent_executions = Arc::clone(&agents);
+    let cancel_agent_executions = Arc::clone(&agents);
     let append_agent_execution_events = Arc::clone(&agents);
     let get_agent_conversations = Arc::clone(&agents);
     let list_agent_conversations = Arc::clone(&agents);
@@ -1260,6 +1284,9 @@ fn build_application_with_health(
                         agent_execution_assets,
                         agent_execution_builds,
                     ),
+                )
+                .command_handler::<crate::modules::agents::CancelAgentExecution, _>(
+                    CancelAgentExecutionHandler::new(cancel_agent_executions),
                 )
                 .command_handler::<crate::modules::agents::AppendAgentExecutionEvents, _>(
                     AppendAgentExecutionEventsHandler::new(append_agent_execution_events),

@@ -68,6 +68,59 @@ pub(super) async fn find_execution(
     row.map(|row| row.aggregate()).transpose()
 }
 
+pub(super) async fn pending_operation_starts(
+    executor: &PostgresExecutor,
+    limit: usize,
+) -> Result<Vec<AgentExecution>, RepositoryError> {
+    if limit == 0 {
+        return Ok(Vec::new());
+    }
+    let rows = Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(
+            select_from::<AgentExecutions>()
+                .select(ExecutionSelection)
+                .filter(
+                    AgentExecutions::status()
+                        .eq("pending")
+                        .or(AgentExecutions::status().eq("cancelling")),
+                )
+                .filter(AgentExecutions::code_run_id().is_null())
+                .order_by(AgentExecutions::requested_at(), OrderDirection::Asc)
+                .order_by(AgentExecutions::id(), OrderDirection::Asc)
+                .limit(limit_u64(limit)?),
+        )
+        .await
+        .map_err(storage)?
+        .rows;
+    rows.into_iter().map(|row| row.aggregate()).collect()
+}
+
+pub(super) async fn find_execution_request(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    execution_id: AgentExecutionId,
+) -> Result<Option<AgentExecutionEvent>, RepositoryError> {
+    let rows = Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(
+            select_from::<AgentExecutionEvents>()
+                .select(EventSelection)
+                .filter(AgentExecutionEvents::organization_id().eq(organization_id.as_uuid()))
+                .filter(AgentExecutionEvents::execution_id().eq(execution_id.as_uuid()))
+                .filter(AgentExecutionEvents::kind().eq("execution_requested"))
+                .order_by(AgentExecutionEvents::sequence(), OrderDirection::Asc)
+                .limit(2),
+        )
+        .await
+        .map_err(storage)?
+        .rows;
+    if rows.len() > 1 {
+        return Err(RepositoryError::Storage(
+            "Agent execution has more than one execution_requested event".into(),
+        ));
+    }
+    rows.into_iter().next().map(|row| row.event()).transpose()
+}
+
 pub(super) async fn list_executions(
     executor: &PostgresExecutor,
     organization_id: OrganizationId,

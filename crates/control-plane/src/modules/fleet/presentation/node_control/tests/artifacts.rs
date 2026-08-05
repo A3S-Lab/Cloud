@@ -31,6 +31,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
         .expect("server identity");
 
     let nodes = Arc::new(InMemoryNodeRepository::new());
+    let agents = Arc::new(InMemoryAgentRepository::new());
     let identity_store = FileNodeIdentityStore::new(directory.path().join("node-identity"));
     let (_, enrolled_identity) =
         enroll_node(Arc::clone(&nodes), Arc::clone(&authority), &identity_store).await;
@@ -46,6 +47,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
     let api = NodeControlApi::new(
         node_repository,
         commands,
+        agents,
         artifact_binding,
         Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),
         edge,

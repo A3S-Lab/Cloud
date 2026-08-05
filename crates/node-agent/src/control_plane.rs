@@ -7,11 +7,11 @@ use a3s_cloud_contracts::{
     ApiErrorResponse, CloudSecretReference, GatewayCertificateSigningRequest,
     GatewayCertificateSigningResponse, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, NodeCertificateRotationRequest, NodeCertificateRotationResponse,
-    NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseRequest, NodeCommandLeaseResponse,
-    NodeEnrollmentResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeObservationBatchV2, NodeObservationReceipt, NodeProtocolError,
-    NodeResourceInventory, NodeResourceInventoryReceipt, NodeSecretMaterialRequest,
-    NodeSecretMaterialResponse,
+    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCommandAck, NodeCommandAckReceipt,
+    NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeEnrollmentResponse, NodeGatewayAck,
+    NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt, NodeObservationBatchV2,
+    NodeObservationReceipt, NodeProtocolError, NodeResourceInventory, NodeResourceInventoryReceipt,
+    NodeSecretMaterialRequest, NodeSecretMaterialResponse,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -68,6 +68,11 @@ pub trait NodeControlTransport: Send + Sync {
         &self,
         batch: &NodeLogChunkBatch,
     ) -> Result<NodeLogChunkReceipt, NodeControlClientError>;
+
+    async fn record_code_agent_events(
+        &self,
+        batch: &NodeCodeAgentEventBatchV1,
+    ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError>;
 
     async fn record_gateway_acknowledgement(
         &self,
@@ -353,6 +358,30 @@ impl NodeControlClient {
                 "node log receipt changed the batch identity or count".into(),
             ));
         }
+        Ok(receipt)
+    }
+
+    pub async fn record_code_agent_events(
+        &self,
+        batch: &NodeCodeAgentEventBatchV1,
+    ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
+        batch.validate().map_err(NodeControlClientError::Invalid)?;
+        if batch.node_id != self.node_id {
+            return Err(NodeControlClientError::Invalid(
+                "Code Agent event batch changed the authenticated node identity".into(),
+            ));
+        }
+        let receipt: NodeCodeAgentEventReceiptV1 = self
+            .send(
+                self.client
+                    .post(self.endpoint("v1/node-control/code-agent-events")?)
+                    .timeout(self.request_timeout)
+                    .json(batch),
+            )
+            .await?;
+        receipt
+            .validate_for(batch)
+            .map_err(NodeControlClientError::Invalid)?;
         Ok(receipt)
     }
 
@@ -690,6 +719,13 @@ impl NodeControlTransport for NodeControlClient {
         NodeControlClient::record_log_chunks(self, batch).await
     }
 
+    async fn record_code_agent_events(
+        &self,
+        batch: &NodeCodeAgentEventBatchV1,
+    ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
+        NodeControlClient::record_code_agent_events(self, batch).await
+    }
+
     async fn record_gateway_acknowledgement(
         &self,
         acknowledgement: &NodeGatewayAck,
@@ -783,6 +819,17 @@ impl NodeControlTransport for ReloadableNodeControlClient {
         batch: &NodeLogChunkBatch,
     ) -> Result<NodeLogChunkReceipt, NodeControlClientError> {
         self.inner.read().await.record_log_chunks(batch).await
+    }
+
+    async fn record_code_agent_events(
+        &self,
+        batch: &NodeCodeAgentEventBatchV1,
+    ) -> Result<NodeCodeAgentEventReceiptV1, NodeControlClientError> {
+        self.inner
+            .read()
+            .await
+            .record_code_agent_events(batch)
+            .await
     }
 
     async fn record_gateway_acknowledgement(

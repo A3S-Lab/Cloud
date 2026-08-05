@@ -106,6 +106,16 @@ export async function executeAgentCommand(
         )
       );
     }
+    case 'agent-executions cancel': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'agent-executions cancel <execution-id>');
+      return agentExecutionMutationResult(
+        await cloudApi().cancelAgentExecution(
+          organizationId(),
+          positionalUuid(positionals, 2, 'Agent execution ID'),
+          idempotencyKey
+        )
+      );
+    }
     default:
       return undefined;
   }

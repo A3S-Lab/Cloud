@@ -1,7 +1,9 @@
 use super::{
-    AppendAgentExecutionEvents, AppendAgentExecutionEventsHandler, CreateAgentConversation,
+    AgentExecutionReconciler, AppendAgentExecutionEvents, AppendAgentExecutionEventsHandler,
+    CancelAgentExecution, CancelAgentExecutionHandler, CreateAgentConversation,
     CreateAgentConversationHandler, GetAgentExecutionEvents, GetAgentExecutionEventsHandler,
-    StartAgentExecution, StartAgentExecutionHandler,
+    StartAgentExecution, StartAgentExecutionHandler, AGENT_EXECUTION_WORKFLOW_NAME,
+    AGENT_EXECUTION_WORKFLOW_VERSION,
 };
 use crate::modules::agents::domain::{
     AgentEventContent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
@@ -14,6 +16,7 @@ use crate::modules::assets::domain::{
     CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, TransitionAssetReleaseWrite,
     TransitionAssetWrite,
 };
+use crate::modules::operations::{IOperationRepository, InMemoryOperationRepository};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
@@ -111,6 +114,70 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
         .expect("replay execution");
     assert!(replayed_execution.replayed);
     assert_eq!(replayed_execution.execution.id, started.execution.id);
+
+    let cancel_handler = CancelAgentExecutionHandler::new(agents.clone());
+    let cancel = CancelAgentExecution {
+        organization_id,
+        execution_id: started.execution.id,
+        idempotency_key: "agent-execution:cancel".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: requested_at + Duration::milliseconds(1),
+    };
+    let cancelled = cancel_handler
+        .execute(cancel.clone(), context())
+        .await
+        .expect("cancel handler")
+        .expect("cancel execution");
+    assert_eq!(cancelled.execution.status, AgentExecutionStatus::Cancelling);
+    assert_eq!(
+        cancelled.execution.cancellation_requested_at,
+        Some(cancel.requested_at)
+    );
+    let replayed_cancellation = cancel_handler
+        .execute(cancel, context())
+        .await
+        .expect("cancel replay handler")
+        .expect("replay cancellation");
+    assert!(replayed_cancellation.replayed);
+    assert_eq!(replayed_cancellation.execution, cancelled.execution);
+    let outbox = agents.outbox_events().await;
+    assert_eq!(outbox.len(), 3);
+    assert_eq!(
+        outbox[2].event_key,
+        "agent.execution.cancellation-requested"
+    );
+
+    let operations = Arc::new(InMemoryOperationRepository::new());
+    let reconciler = AgentExecutionReconciler::new(agents.clone(), operations.clone());
+    let first_reconcile = reconciler.run_once(100).await.expect("reconcile Agent run");
+    assert_eq!(first_reconcile.started, 1);
+    assert_eq!(first_reconcile.replayed, 0);
+    assert!(first_reconcile.failures.is_empty());
+    let operation = operations
+        .find_request(started.execution.operation_id)
+        .await
+        .expect("find Agent operation")
+        .expect("Agent operation");
+    assert_eq!(operation.workflow.name(), AGENT_EXECUTION_WORKFLOW_NAME);
+    assert_eq!(
+        operation.workflow.version(),
+        AGENT_EXECUTION_WORKFLOW_VERSION
+    );
+    assert_eq!(operation.subject.kind(), "agent_execution");
+    assert_eq!(operation.subject.id(), started.execution.id.as_uuid());
+    assert_eq!(
+        operation.input,
+        serde_json::json!({
+            "organizationId": organization_id,
+            "executionId": started.execution.id,
+        })
+    );
+    let replay_reconcile = reconciler
+        .run_once(100)
+        .await
+        .expect("reconcile Agent replay");
+    assert_eq!(replay_reconcile.started, 0);
+    assert_eq!(replay_reconcile.replayed, 1);
 
     let event_at = requested_at + Duration::seconds(1);
     let append_handler = AppendAgentExecutionEventsHandler::new(agents.clone());

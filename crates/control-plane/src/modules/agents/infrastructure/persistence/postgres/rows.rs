@@ -1,12 +1,15 @@
 use super::schema::{AgentConversations, AgentExecutionEvents, AgentExecutions};
 use crate::modules::agents::domain::{
-    AgentConversation, AgentConversationStatus, AgentEventContent, AgentExecution,
-    AgentExecutionEvent, AgentExecutionEventKind, AgentExecutionStatus, AgentReleaseBinding,
+    AgentCodeRunBinding, AgentConversation, AgentConversationStatus, AgentEventContent,
+    AgentExecution, AgentExecutionEvent, AgentExecutionEventKind, AgentExecutionStatus,
+    AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
-    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, EnvironmentId,
-    OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, DeploymentId,
+    EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
+use a3s_cloud_contracts::{AgentProtocolRunIdentityV1, AgentProtocolRunStateV1};
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
 use chrono::{DateTime, Utc};
@@ -58,7 +61,25 @@ impl Selection for ExecutionSelection {
             AgentExecutions::requested_at().expression(),
             AgentExecutions::updated_at().expression(),
             AgentExecutions::started_at().expression(),
+            AgentExecutions::cancellation_requested_at().expression(),
             AgentExecutions::finished_at().expression(),
+            AgentExecutions::code_node_id().expression(),
+            AgentExecutions::code_workload_id().expression(),
+            AgentExecutions::code_workload_revision_id().expression(),
+            AgentExecutions::code_deployment_id().expression(),
+            AgentExecutions::code_replica_id().expression(),
+            AgentExecutions::code_runtime_unit_id().expression(),
+            AgentExecutions::code_runtime_generation().expression(),
+            AgentExecutions::code_runtime_spec_digest().expression(),
+            AgentExecutions::code_service_port_name().expression(),
+            AgentExecutions::code_protocol().expression(),
+            AgentExecutions::code_release_identity().expression(),
+            AgentExecutions::code_session_id().expression(),
+            AgentExecutions::code_run_id().expression(),
+            AgentExecutions::code_event_cursor().expression(),
+            AgentExecutions::code_state().expression(),
+            AgentExecutions::code_bound_at().expression(),
+            AgentExecutions::code_observed_at().expression(),
         ]
     }
 }
@@ -112,7 +133,25 @@ pub(super) struct ExecutionRow {
     requested_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
+    cancellation_requested_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
+    code_node_id: Option<Uuid>,
+    code_workload_id: Option<Uuid>,
+    code_workload_revision_id: Option<Uuid>,
+    code_deployment_id: Option<Uuid>,
+    code_replica_id: Option<Uuid>,
+    code_runtime_unit_id: Option<String>,
+    code_runtime_generation: Option<u64>,
+    code_runtime_spec_digest: Option<String>,
+    code_service_port_name: Option<String>,
+    code_protocol: Option<String>,
+    code_release_identity: Option<String>,
+    code_session_id: Option<String>,
+    code_run_id: Option<String>,
+    code_event_cursor: Option<u64>,
+    code_state: Option<String>,
+    code_bound_at: Option<DateTime<Utc>>,
+    code_observed_at: Option<DateTime<Utc>>,
 }
 
 pub(super) struct EventRow {
@@ -148,7 +187,13 @@ from_row!(ExecutionRow, {
     agent_asset_id: 4, agent_asset_release_id: 5, agent_build_run_id: 6,
     agent_artifact_uri: 7, agent_artifact_digest: 8, agent_artifact_media_type: 9,
     agent_artifact_size_bytes: 10, status: 11, failure: 12, aggregate_version: 13,
-    requested_at: 14, updated_at: 15, started_at: 16, finished_at: 17,
+    requested_at: 14, updated_at: 15, started_at: 16,
+    cancellation_requested_at: 17, finished_at: 18, code_node_id: 19,
+    code_workload_id: 20, code_workload_revision_id: 21, code_deployment_id: 22,
+    code_replica_id: 23, code_runtime_unit_id: 24, code_runtime_generation: 25,
+    code_runtime_spec_digest: 26, code_service_port_name: 27, code_protocol: 28,
+    code_release_identity: 29, code_session_id: 30, code_run_id: 31,
+    code_event_cursor: 32, code_state: 33, code_bound_at: 34, code_observed_at: 35,
 });
 
 from_row!(EventRow, {
@@ -179,6 +224,7 @@ impl ConversationRow {
 
 impl ExecutionRow {
     pub(super) fn aggregate(self) -> Result<AgentExecution, RepositoryError> {
+        let code = self.code_binding()?;
         let digest = Sha256Digest::parse(self.agent_artifact_digest)
             .map_err(|error| corrupt(format!("Agent artifact digest is invalid: {error}")))?;
         let agent = AgentReleaseBinding::new(
@@ -198,6 +244,7 @@ impl ExecutionRow {
             id: AgentExecutionId::from_uuid(self.id),
             operation_id: OperationId::from_uuid(self.operation_id),
             agent,
+            code,
             status: AgentExecutionStatus::parse(&self.status)
                 .map_err(|error| corrupt(format!("Agent execution status is invalid: {error}")))?,
             failure: self.failure,
@@ -205,11 +252,104 @@ impl ExecutionRow {
             requested_at: self.requested_at,
             updated_at: self.updated_at,
             started_at: self.started_at,
+            cancellation_requested_at: self.cancellation_requested_at,
             finished_at: self.finished_at,
         }
         .restore()
         .map_err(|error| corrupt(format!("Agent execution is invalid: {error}")))
     }
+
+    fn code_binding(&self) -> Result<Option<AgentCodeRunBinding>, RepositoryError> {
+        let all_absent = self.code_node_id.is_none()
+            && self.code_workload_id.is_none()
+            && self.code_workload_revision_id.is_none()
+            && self.code_deployment_id.is_none()
+            && self.code_replica_id.is_none()
+            && self.code_runtime_unit_id.is_none()
+            && self.code_runtime_generation.is_none()
+            && self.code_runtime_spec_digest.is_none()
+            && self.code_service_port_name.is_none()
+            && self.code_protocol.is_none()
+            && self.code_release_identity.is_none()
+            && self.code_session_id.is_none()
+            && self.code_run_id.is_none()
+            && self.code_event_cursor.is_none()
+            && self.code_state.is_none()
+            && self.code_bound_at.is_none()
+            && self.code_observed_at.is_none();
+        let required = (
+            self.code_node_id,
+            self.code_workload_id,
+            self.code_workload_revision_id,
+            self.code_deployment_id,
+            self.code_replica_id,
+            self.code_runtime_unit_id.as_deref(),
+            self.code_runtime_generation,
+            self.code_runtime_spec_digest.as_deref(),
+            self.code_service_port_name.as_deref(),
+            self.code_protocol.as_deref(),
+            self.code_release_identity.as_deref(),
+            self.code_session_id.as_deref(),
+            self.code_run_id.as_deref(),
+            self.code_state.as_deref(),
+            self.code_bound_at,
+        );
+        let (
+            Some(node_id),
+            Some(workload_id),
+            Some(workload_revision_id),
+            Some(deployment_id),
+            Some(replica_id),
+            Some(runtime_unit_id),
+            Some(runtime_generation),
+            Some(runtime_spec_digest),
+            Some(service_port_name),
+            Some(protocol),
+            Some(release_identity),
+            Some(session_id),
+            Some(run_id),
+            Some(state),
+            Some(bound_at),
+        ) = required
+        else {
+            if all_absent {
+                return Ok(None);
+            }
+            return Err(corrupt("Agent Code run binding is incomplete"));
+        };
+        let digest = Sha256Digest::parse(runtime_spec_digest)
+            .map_err(|error| corrupt(format!("Code Runtime spec digest is invalid: {error}")))?;
+        let state = parse_code_state(state)?;
+        AgentCodeRunBinding::restore(
+            NodeId::from_uuid(node_id),
+            WorkloadId::from_uuid(workload_id),
+            WorkloadRevisionId::from_uuid(workload_revision_id),
+            DeploymentId::from_uuid(deployment_id),
+            WorkloadReplicaId::from_uuid(replica_id),
+            runtime_unit_id,
+            runtime_generation,
+            digest,
+            service_port_name,
+            AgentProtocolRunIdentityV1 {
+                schema: AgentProtocolRunIdentityV1::SCHEMA.into(),
+                protocol: protocol.into(),
+                agent_release_identity: release_identity.into(),
+                session_id: session_id.into(),
+                run_id: run_id.into(),
+            },
+            self.code_event_cursor,
+            state,
+            bound_at,
+            self.code_observed_at,
+        )
+        .map(Some)
+        .map_err(|error| corrupt(format!("Agent Code run binding is invalid: {error}")))
+    }
+}
+
+fn parse_code_state(value: &str) -> Result<AgentProtocolRunStateV1, RepositoryError> {
+    serde_json::from_value(serde_json::Value::String(value.to_owned()))
+        .map_err(|error| corrupt(format!("A3S Code run state is invalid: {error}")))
 }
 
 impl EventRow {

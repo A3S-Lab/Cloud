@@ -191,4 +191,20 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn code_event_shipper_reuses_the_same_outbound_batch_lifecycle() {
+        let source = include_str!("code_event_shipper.rs");
+        assert!(source.contains("DurableOutboundBatch<NodeCodeAgentEventBatchV1>"));
+        for forbidden in [
+            "pending: Option<NodeCodeAgentEventBatchV1>",
+            "state.pending = Some(",
+            "state.pending = None",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "Code event shipping must reuse DurableOutboundBatch; found {forbidden}"
+            );
+        }
+    }
 }

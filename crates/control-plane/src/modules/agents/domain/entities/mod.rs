@@ -1,9 +1,13 @@
+mod agent_code_run_binding;
 mod agent_conversation;
 mod agent_event_content;
 mod agent_execution;
 mod agent_execution_event;
 mod agent_release_binding;
 
+const MAX_AGENT_EXECUTION_FAILURE_BYTES: usize = 16 * 1024;
+
+pub use agent_code_run_binding::AgentCodeRunBinding;
 pub use agent_conversation::{AgentConversation, AgentConversationStatus};
 pub use agent_event_content::{AgentEventContent, MAX_INLINE_AGENT_EVENT_BYTES};
 pub use agent_execution::{AgentExecution, AgentExecutionStatus};
