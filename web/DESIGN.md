@@ -1,5 +1,5 @@
 ---
-name: A3S Cloud
+name: A3S OS
 description: A visible, high-trust control path for operating Agents and applications on owned infrastructure.
 colors:
   primary: "#1264ff"
@@ -117,19 +117,21 @@ components:
     height: "34px"
 ---
 
-# Design System: A3S Cloud
+# Design System: A3S OS
 
 ## Overview
 
 **Creative North Star: "The Visible Control Path"**
 
-A3S Cloud is a bright, operations-first enterprise workspace. A pure white canvas, cool blue hairlines, compact typography, and one electric-blue field expose current state without turning the product into a generic infrastructure dashboard.
+A3S OS is a bright enterprise AI product portal with A3S Web as its operations workspace. A pure white canvas, cool blue hairlines, compact typography, and one electric-blue field explain product value and expose current state without turning the product into a generic infrastructure dashboard.
 
-The interface places operational truth beside the A3S authority that owns it. Familiar controls, restrained motion, and semantic state color keep the tool trustworthy while the convergence field and authority chain make the product recognizably A3S.
+The public homepage leads with three outward-facing products: Workflow, Agent Factory, and the security operations center. It then reveals the shared A3S foundation, the complete gate-driven portfolio, and the authority that owns each outcome. Familiar controls, restrained motion, and semantic state color keep both the product story and authenticated tool trustworthy.
 
 **Key Characteristics:**
 
 - White and pale-blue operating surfaces with one dominant electric-blue field.
+- A three-product application layer over one Cloud, Runtime, Box, Gateway, Code, and trust foundation.
+- All 17 product gates shown with authoritative delivery states and no invented completion percentage.
 - Compact, factual hierarchy designed for repeated use by platform operators.
 - Explicit control and execution ownership, ending at the sole A3S Code Harness.
 - Near-flat surfaces, cool hairlines, and sparse blue-tinted elevation.
@@ -190,15 +192,19 @@ The palette uses one action blue, cool neutral surfaces, and state colors reserv
 
 ## Language Versions
 
-Simplified Chinese is the default product version on first visit. English is a complete alternate version, selected through the same compact segmented control on the sign-in header and authenticated top bar. An explicit selection persists in local storage and updates the document `lang` attribute; it never changes authentication, tenancy, API behavior, or execution ownership.
+Simplified Chinese is the default product version on first visit. English is a complete alternate version, selected through the same compact segmented control on the public header and authenticated top bar. An explicit selection persists in local storage and updates the document `lang` attribute; it never changes authentication, tenancy, API behavior, or execution ownership.
 
-Keep product and protocol names such as A3S Cloud, A3S Code Harness, A3S Flow, A3S Runtime, A3S Box, A3S Gateway, Agent, MCP, Skill, OCI, and SBOM unchanged. Translate surrounding operational language, status labels, relative time, timestamps, accessibility labels, loading states, empty states, and error summaries together.
+Documentation adds an independent `main` / `v0.1.x` selector. `main` follows the current branch and roadmap snapshot. `v0.1.x` describes package `0.1.0` and REST contract `1.6.0`; it does not imply that every roadmap gate is verified. The selected documentation line persists separately from language.
+
+Keep product and protocol names such as A3S OS, A3S Web, A3S Code Harness, A3S Flow, A3S Runtime, A3S Box, A3S Gateway, Agent, MCP, Skill, OCI, and SBOM unchanged. Translate surrounding operational language, status labels, relative time, timestamps, accessibility labels, loading states, empty states, and error summaries together.
 
 **The Language Parity Rule.** A visible feature is complete only when its Chinese and English copy, state labels, dates, and accessible names describe the same product behavior.
 
 ## Layout
 
-The authenticated shell uses a 64px top bar, a 58px navigation and tenant-context rail, and a workspace container with responsive horizontal padding. Overview pairs an operational column with a narrower authority column; supporting surfaces follow below. The sign-in surface uses an asymmetric story and authority composition, followed by a four-part capability strip.
+The authenticated shell uses a 64px top bar, a 58px navigation and tenant-context rail, and a workspace container with responsive horizontal padding. Overview pairs an operational column with a narrower authority column; supporting surfaces follow below.
+
+The public homepage uses a 72px single-line desktop header, an asymmetric product promise and real control-plane access composition, a factual project strip, a three-cell asymmetric product layer, the complete gate portfolio, the live architecture diagram, and a versioned documentation workspace. Product value precedes implementation evidence: three products first, shared foundation second, roadmap gates third.
 
 At 1180px, wide authority and status layouts compact. At 960px, major two-column compositions stack. At 780px, the operations drawer becomes an overlay and workspace modules become single-column. At 560px, navigation and tenant context scroll horizontally while cards, authority rows, and architecture modules use the full available width.
 
@@ -267,6 +273,22 @@ The signature status field combines an icon and plain-language convergence state
 
 Authority rows use a consistent icon well, label, and one-line detail. The chain ends in a solid-blue A3S Code Harness row to make the sole Agent execution owner unmistakable.
 
+### Product Pillars
+
+Workflow occupies the dominant electric-blue field because autonomous orchestration is the broadest product story. Agent Factory and the security operations center use smaller white and pale-blue fields. The three cells are intentionally asymmetric and each names its technical foundation, current delivery state, customer outcome, core capabilities, and contributing roadmap gates.
+
+### Capability Portfolio
+
+The portfolio is an evidence surface, not a marketing checklist. It shows the exact 17 gates in four product groups with Verified, In progress, Box re-certification, Planned, and explicit unavailable labels. A factual count field replaces completion bars or subjective percentages. Gate outcomes and key features remain visible without opening drawers.
+
+### Architecture Map
+
+The exported HTML map adds the three outward-facing products above unified access and control, then includes all 17 gates, Fleet convergence, Runtime and Box execution, Gateway and Power payload boundaries, and infrastructure trust. State styling and a text legend travel into the PNG export. The A3S Code Harness command remains unique and exact.
+
+### Documentation Workspace
+
+Documentation uses a stable index, one reading pane, an authoritative source link, and a separate version selector. The responsive layout turns the index into a horizontal rail before the reading pane stacks. Code samples use the one approved dark code surface; the page itself remains light.
+
 ## Do's and Don'ts
 
 ### Do:
@@ -275,6 +297,8 @@ Authority rows use a consistent icon well, label, and one-line detail. The chain
 - **Do** pair state with text or an icon instead of relying on color alone.
 - **Do** keep standard controls familiar, keyboard reachable, and at least 40px to 44px on touch layouts.
 - **Do** use real API projections and label planned architecture modules explicitly.
+- **Do** lead the public story with Workflow, Agent Factory, and security operations before exposing gate evidence.
+- **Do** keep the homepage, architecture map, and capability documentation on one shared 17-gate catalog.
 - **Do** preserve the A3S authority path and the sole A3S Code Harness boundary.
 - **Do** keep default Chinese and selectable English at feature parity, including dynamic states and accessible names.
 
@@ -284,5 +308,7 @@ Authority rows use a consistent icon well, label, and one-line detail. The chain
 - **Don't** scatter full-saturation blue across inactive surfaces.
 - **Don't** use visible eyebrow labels, gradient text, decorative glass, or technical monospace as costume.
 - **Don't** invent customer names, scale metrics, availability claims, or completed roadmap capabilities.
+- **Don't** reduce delivery progress to a made-up percentage or hide Box re-certification behind an Implemented label.
+- **Don't** describe Workflow, Agent Factory, or the security operations center as separate control planes or runtimes.
 - **Don't** compress desktop layouts onto mobile; reflow modules and allow purposeful horizontal scrolling for tab or tenant rails.
 - **Don't** infer the default language from the browser or create per-page language state.

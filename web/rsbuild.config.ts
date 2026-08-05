@@ -3,11 +3,11 @@ import { pluginReact } from '@rsbuild/plugin-react';
 
 const apiOrigin = process.env.A3S_CLOUD_API_ORIGIN ?? 'http://127.0.0.1:8080';
 const directionContract = `<!--
-  THESIS: A3S Cloud makes control authority and convergence readable in one scan; it refuses the generic dark DevOps dashboard.
+  THESIS: A3S OS presents autonomous workflow orchestration, the heterogeneous Agent Factory, security operations, and A3S Web as one governed enterprise AI system.
   OWN-WORLD: Pure white canvas, cool blue hairlines, one electric-blue brand field, compact humanist type, and semantic status color.
-  STORY: Select tenant context, understand current state, enter the owning workspace, act, and inspect durable evidence.
-  FIRST VIEWPORT: One-line navigation, context controls, a concise workspace heading, a blue convergence field, operational truth, and the A3S authority chain.
-  FORM: Operations-first enterprise control plane, approved composition B with Architecture from C and Sign In from A; seed 90c8e585.
+  STORY: Understand the three products, see how A3S Web unifies their operation, then inspect the shared architecture.
+  FIRST VIEWPORT: One-line navigation, enterprise AI promise, and the sole A3S authority path.
+  FORM: Enterprise product portal and a separately addressed operations client, preserving the approved Finogeeks-informed visual world; seed 90c8e585.
   FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
 -->`;
 
@@ -34,10 +34,10 @@ export default defineConfig({
     },
   },
   html: {
-    title: 'A3S Cloud',
+    title: 'A3S OS',
     favicon: './src/assets/favicon.svg',
     meta: {
-      description: '在自有基础设施上运行应用、Agent 与 A3S 资产',
+      description: 'A3S OS 企业级 AI 操作系统：自主工作流编排、异构智能体工厂、安全监控中台与 A3S Web',
       'theme-color': '#ffffff',
     },
   },

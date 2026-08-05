@@ -32,7 +32,7 @@ export function ConsoleTopbar({
           A3
         </span>
         <div>
-          <strong>A3S Cloud</strong>
+          <strong>A3S OS</strong>
           <span>{t('Control plane')}</span>
         </div>
       </div>

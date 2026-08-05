@@ -31,7 +31,7 @@ export function NavTitle() {
   const locale = site.themeConfig.locales?.find(
     (candidate) => candidate.lang === language,
   );
-  const title = (locale?.title ?? site.title) || 'Home';
+  const title = (locale?.title ?? site.title) || 'A3S OS';
   const { logo: rawLogo, logoHref, logoText } = site;
   const logo = useMemo(() => {
     if (!rawLogo) return null;

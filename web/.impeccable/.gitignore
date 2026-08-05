@@ -2,5 +2,6 @@
 chrome-*-profile*/
 mobile-profile-*/
 verify-*-profile*/
+verify-*/
 screenshots/
 verify-*.png

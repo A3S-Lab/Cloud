@@ -34,18 +34,25 @@ describe('ArchitectureSection', () => {
     const diagram = host.querySelector<HTMLElement>('.architecture-diagram');
     expect(diagram).not.toBeNull();
     expect(diagram?.querySelector('img')).toBeNull();
-    expect(diagram?.querySelectorAll('section')).toHaveLength(7);
+    expect(diagram?.querySelectorAll('section')).toHaveLength(8);
+    expect(diagram?.querySelectorAll('.architecture-product-grid li')).toHaveLength(3);
+    expect(diagram?.textContent).toContain('Workflow autonomous orchestration');
+    expect(diagram?.textContent).toContain('Agent Factory');
+    expect(diagram?.textContent).toContain('Security operations center');
+    expect(diagram?.querySelectorAll('.architecture-business-group li')).toHaveLength(17);
     expect(diagram?.textContent).toContain('Operations + A3S Flow');
     expect(diagram?.textContent).toContain('Fleet node_commands');
     expect(diagram?.textContent).toContain('Outbound-only Node Agent');
     expect(diagram?.textContent).toContain('A3S Runtime Task / Service');
     expect(diagram?.textContent).toContain('A3S Box');
-    expect(diagram?.textContent).toContain('Plugins (planned)');
-    expect(diagram?.textContent).toContain('Data / Inference (planned)');
-    expect(diagram?.querySelector('code')?.textContent).toBe(
+    expect(diagram?.textContent).toContain('Foundation');
+    expect(diagram?.textContent).toContain('Durable Agent execution');
+    expect(diagram?.textContent).toContain('A3S Use plugin assignments');
+    expect(diagram?.textContent).toContain('Inference profile');
+    expect(diagram?.querySelector('.architecture-harness-card code')?.textContent).toBe(
       '/usr/bin/a3s code harness --manifest /app/.a3s/asset.acl'
     );
-    expect(diagram?.textContent).toContain('Cloud only orchestrates and transports');
+    expect(diagram?.textContent).toContain('A3S OS only orchestrates and transports');
   });
 
   it('exports the same live diagram as a PNG', async () => {

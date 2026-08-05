@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 
 const SURFACE_SELECTOR = [
-  '.cloud-capability-card',
-  '.cloud-horizon-card',
-  '.cloud-roadmap-card',
-  '.cloud-boundary-node',
-  '.cloud-architecture-card',
+  '.cloud-editorial-chart',
+  '.cloud-product-capabilities li',
+  '.cloud-web-client-capabilities article',
+  '.cloud-web-window',
+  '.cloud-architecture-layer article',
 ].join(',');
 
 export function InteractionLayer() {

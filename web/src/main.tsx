@@ -15,11 +15,14 @@ import './styles/redesign-session.css';
 import './styles/redesign-console.css';
 import './styles/redesign-features.css';
 import './styles/redesign-responsive.css';
+import './styles/project-home.css';
+import './styles/product-pillars.css';
+import './styles/a3s-web-overview.css';
 
 const root = document.getElementById('root');
 
 if (!root) {
-  throw new Error('A3S Cloud root element is missing');
+  throw new Error('A3S OS root element is missing');
 }
 
 createRoot(root).render(

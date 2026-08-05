@@ -184,7 +184,7 @@ function CurrentOperationsCard({ operations }: { operations: Operation[] }) {
 }
 
 const AUTHORITY_LAYERS = [
-  { label: 'A3S Cloud control', detail: 'Intent, identity, and policy', icon: CloudCog },
+  { label: 'A3S OS control', detail: 'Intent, identity, and policy', icon: CloudCog },
   { label: 'Operations + A3S Flow', detail: 'Durable orchestration and recovery', icon: Workflow },
   { label: 'Workloads', detail: 'Placement, revisions, and convergence', icon: Boxes },
   { label: 'Outbound-only Node Agent', detail: 'Leases, Claims, commands, and receipts', icon: Network },

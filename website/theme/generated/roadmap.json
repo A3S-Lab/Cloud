@@ -96,8 +96,8 @@
       "code": "A1",
       "name": "Agent execution",
       "outcome": "Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths",
-      "status": "Planned",
-      "statusKind": "planned"
+      "status": "In progress (`A1.0` verified; `A1.1` implemented, Linux verification pending)",
+      "statusKind": "in-progress"
     },
     {
       "code": "S0",

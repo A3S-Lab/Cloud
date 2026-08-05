@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="#overview">Overview</a> •
+  <a href="#product-layer">Product Layer</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#platform-model">Platform Model</a> •
@@ -73,6 +74,25 @@ under `BX0` and is not part of the Box-only release contract.
 curl http://127.0.0.1:8080/api/v1/health/live
 curl http://127.0.0.1:8080/api/v1/health/ready
 ```
+
+## Product Layer
+
+A3S Cloud presents three outward-facing enterprise AI products over one shared
+control and runtime foundation. This product framing describes customer
+outcomes; delivery claims remain governed by the exact gates in the
+[product roadmap](ROADMAP.md).
+
+| Product | First-principles outcome | Foundation | Current delivery boundary |
+| --- | --- | --- | --- |
+| Workflow autonomous orchestrator | Turn business objects, relationships, rules, goals, and constraints into executable, recoverable long-running workflows that coordinate Agents, tools, and people | A3S Workflow integrated through Cloud Operations and the existing A3S Flow durability boundary | Product integration in progress through `F0`, `C0`, and planned `P0`; this does not create a second Cloud workflow authority |
+| Agent Factory | Turn one-off Agent prototypes into versioned assets with publishing, Skill and MCP assembly, immutable deployment, sole-Harness execution, and semantic evidence | A3S Code, with `a3s code harness` as the sole Agent run owner | In progress through `A0`, `A1`, `MCP0`, and planned `I0`; unavailable sub-gates remain labeled explicitly |
+| Security operations center | Correlate Gateway request policy, Runtime and Box evidence, Agent semantic events, and host security signals under one tenant and identity model for detection, policy enforcement, audit, and investigation | A3S Gateway, A3S Sentry, AnySentry, and existing Cloud logs, operations, and audit projections | Product integration in progress through `C0`, Box re-certification of `E0`, and `H0`; no separate security control plane or node channel is introduced |
+
+All three products share PostgreSQL desired-state authority, Operations,
+Workloads, Fleet node control, A3S Runtime, A3S Box, immutable object storage,
+OCI, A3S ACL, and mTLS. Product specialization never creates a second
+scheduler, Runtime, node channel, queue, Harness, routing authority, or evidence
+store.
 
 ## Features
 
@@ -170,11 +190,15 @@ curl http://127.0.0.1:8080/api/v1/health/ready
   exact Code command through Fleet, and projects only model-output and terminal
   semantics from receipt-gated Code pages. The sole run owner remains
   `a3s code harness`
-- **Focused Web Operations**: Navigate responsive Overview, Workloads,
-  Agents, Delivery, Edge, and Architecture workspaces; render the platform
-  authority map as responsive semantic HTML and export its live DOM as PNG;
-  use Simplified Chinese by default with one persistent English product-version
-  switch shared by sign-in and authenticated surfaces;
+- **Focused Web Operations**: Start from a public project portal that presents
+  Workflow, Agent Factory, the security operations center, all 17 roadmap gates,
+  the shared runtime foundation, and versioned documentation before sign-in;
+  navigate responsive Overview, Workloads, Agents, Delivery, Edge, and
+  Architecture workspaces; render the complete product and platform authority
+  map as responsive semantic HTML and export its live DOM as PNG; use Simplified
+  Chinese by default with one persistent English product-version switch shared
+  by public and authenticated surfaces, plus a separate `main` / `v0.1.x`
+  documentation-line selector;
   route authorized search and validated deep
   links to the owning section; and inspect deployment history, route and
   certificate state, Runtime health, logs, BuildRuns, updates, rollback,

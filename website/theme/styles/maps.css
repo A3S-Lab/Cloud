@@ -1,489 +1,513 @@
-@keyframes cloud-boundary-dash {
-  to {
-    stroke-dashoffset: -40;
-  }
+.cloud-web-client,
+.cloud-platform-architecture {
+  padding: clamp(86px, 9vw, 132px) clamp(28px, 5.5vw, 80px);
+  scroll-margin-top: var(--rp-nav-height);
+  background: #f8faff;
 }
 
-@keyframes cloud-plane-float {
-  0%,
-  100% {
-    transform: rotateX(61deg) rotateZ(-27deg) translateZ(0);
-  }
-  50% {
-    transform: rotateX(61deg) rotateZ(-27deg) translateZ(13px);
-  }
-}
-
-.cloud-boundary-map {
-  position: relative;
-  min-height: 610px;
-  overflow: hidden;
-  border: 1px solid var(--cloud-line-strong);
-  border-radius: var(--cloud-radius-card);
-  background:
-    radial-gradient(circle at 50% 50%, rgba(47, 109, 82, 0.1), transparent 38%),
-    rgba(5, 10, 8, 0.88);
-}
-
-.cloud-boundary-map > svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.cloud-boundary-map > svg path {
-  fill: none;
-  stroke: var(--cloud-green);
-  stroke-dasharray: 4 8;
-  stroke-width: 1.4;
-  animation: cloud-boundary-dash 2.6s linear infinite;
-  opacity: 0.48;
-  vector-effect: non-scaling-stroke;
-}
-
-.cloud-boundary-map > svg path.is-traffic {
-  stroke: var(--cloud-green);
-  opacity: 0.32;
-}
-
-.cloud-boundary-map > svg path.is-backend {
-  stroke: var(--cloud-green);
-  animation-direction: reverse;
-  opacity: 0.32;
-}
-
-.cloud-boundary-node {
-  position: absolute;
-  z-index: 2;
-  overflow: hidden;
-  width: 27%;
-  min-height: 150px;
-  padding: 20px;
-  border: 1px solid var(--cloud-line-strong);
-  border-radius: var(--cloud-radius-card);
-  background: rgba(7, 14, 11, 0.9);
-  transition:
-    border-color 220ms ease,
-    transform 220ms ease;
-}
-
-.cloud-boundary-node:hover {
-  border-color: rgba(124, 240, 188, 0.38);
-  transform: translateY(-2px);
-}
-
-.cloud-boundary-node header {
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-.cloud-boundary-node h3,
-.cloud-boundary-node p {
-  position: relative;
-  z-index: 2;
-}
-
-.cloud-boundary-node h3 {
-  margin: 18px 0 7px;
-  font-size: 23px;
-  font-weight: 630;
-  letter-spacing: -0.035em;
-}
-
-.cloud-boundary-node p {
-  margin: 0;
-  color: var(--cloud-muted);
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.cloud-boundary-node .cloud-boundary-role {
-  margin-bottom: 6px;
-  color: var(--cloud-text);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.cloud-boundary-node.is-cloud {
-  top: 31%;
-  left: 4%;
-  border-color: rgba(124, 240, 188, 0.34);
-  background: linear-gradient(
-    145deg,
-    rgba(14, 40, 30, 0.94),
-    rgba(7, 14, 11, 0.94)
-  );
-}
-
-.cloud-boundary-node.is-gateway {
-  top: 10%;
-  left: 37%;
-  border-color: rgba(124, 240, 188, 0.22);
-}
-
-.cloud-boundary-node.is-box {
-  bottom: 10%;
-  left: 37%;
-  border-color: rgba(124, 240, 188, 0.22);
-}
-
-.cloud-boundary-node.is-power {
-  top: 31%;
-  right: 4%;
-  border-color: rgba(124, 240, 188, 0.18);
-}
-
-.cloud-boundary-rule {
-  position: absolute;
-  z-index: 1;
-  top: 50%;
-  left: 50%;
-  display: flex;
-  width: 24%;
-  min-height: 78px;
-  padding: 12px 16px;
-  border: 1px dashed rgba(124, 240, 188, 0.22);
-  border-radius: 50%;
-  background: rgba(6, 11, 9, 0.8);
-  align-items: center;
-  justify-content: center;
-  color: var(--cloud-faint);
-  flex-direction: column;
-  font-family: var(--cloud-mono);
-  font-size: 7px;
-  text-align: center;
-  transform: translate(-50%, -50%);
-}
-
-.cloud-boundary-rule strong {
-  margin: 5px 0;
-  color: var(--cloud-text);
-  font-family: inherit;
-  font-size: 9px;
-  font-weight: 600;
-}
-
-.cloud-roadmap-shell {
-  overflow: hidden;
-  border: 1px solid var(--cloud-line-strong);
-  border-radius: var(--cloud-radius-card);
-  background: rgba(5, 9, 8, 0.82);
-}
-
-.cloud-roadmap-toolbar {
-  display: flex;
-  min-height: 68px;
-  padding: 10px;
-  border-bottom: 1px solid var(--cloud-line);
-  align-items: stretch;
-  gap: 6px;
-}
-
-.cloud-roadmap-toolbar button {
-  display: flex;
-  min-height: 46px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  align-items: center;
-  gap: 18px;
-  color: var(--cloud-faint);
-  cursor: pointer;
-  font-size: 10px;
-  transition:
-    border-color 180ms ease,
-    background 180ms ease,
-    color 180ms ease;
-}
-
-.cloud-roadmap-toolbar button:hover,
-.cloud-roadmap-toolbar button.is-active {
-  border-color: var(--cloud-line-strong);
-  background: rgba(124, 240, 188, 0.045);
-  color: var(--cloud-text);
-}
-
-.cloud-roadmap-toolbar button:active {
-  transform: scale(0.98);
-}
-
-.cloud-roadmap-toolbar button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
-.cloud-roadmap-toolbar button b {
-  color: var(--cloud-faint);
-  font-family: var(--cloud-mono);
-  font-size: 8px;
-  font-weight: 500;
-}
-
-.cloud-roadmap-map {
-  position: relative;
-  min-height: 430px;
-  overflow: hidden;
-  padding: 38px;
-  background: radial-gradient(
-    circle at 48% 50%,
-    rgba(47, 109, 82, 0.11),
-    transparent 58%
-  );
-}
-
-.cloud-roadmap-map > svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.2;
-}
-
-.cloud-roadmap-map > svg path {
-  fill: none;
-  stroke: rgba(124, 240, 188, 0.56);
-  stroke-dasharray: 2 9;
-  stroke-width: 1;
-}
-
-.cloud-roadmap-cards {
-  position: relative;
-  z-index: 2;
+.cloud-web-client-heading {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  max-width: 1040px;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 20px;
+}
+
+.cloud-web-client-heading small {
+  color: var(--cloud-blue);
+  font-family: var(--cloud-mono);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+}
+
+.cloud-web-client-heading h2,
+.cloud-architecture-heading h2 {
+  margin: 16px 0 0;
+  color: var(--cloud-text);
+  font-size: clamp(42px, 4.8vw, 66px);
+  font-weight: 680;
+  letter-spacing: -0.05em;
+  line-height: 1.04;
+}
+
+.cloud-web-client-heading p,
+.cloud-architecture-heading p {
+  max-width: 820px;
+  margin: 24px 0 0;
+  color: var(--cloud-muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.cloud-web-client-layout {
+  display: grid;
+  margin-top: 62px;
+  align-items: center;
+  grid-template-columns: minmax(390px, 0.78fr) minmax(650px, 1.22fr);
+  gap: clamp(46px, 6vw, 84px);
+}
+
+.cloud-web-client-capabilities {
+  border-top: 1px solid var(--cloud-line);
+}
+
+.cloud-web-client-capabilities article {
+  display: grid;
+  min-height: 100px;
+  padding: 20px 0;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
   gap: 12px;
+  border-bottom: 1px solid var(--cloud-line);
 }
 
-.cloud-roadmap-card {
-  position: relative;
+.cloud-web-client-capabilities article > span {
   display: grid;
-  overflow: hidden;
-  min-width: 0;
-  min-height: 104px;
-  padding: 15px;
-  border: 1px solid var(--cloud-line);
-  border-radius: 10px;
-  background: rgba(7, 13, 11, 0.86);
-  color: var(--cloud-muted);
-  cursor: pointer;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto 1fr;
-  column-gap: 9px;
-  text-align: left;
-  transition:
-    border-color 180ms ease,
-    background 180ms ease,
-    transform 180ms ease;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--cloud-blue);
+  background: var(--cloud-blue-soft);
 }
 
-.cloud-roadmap-card:hover,
-.cloud-roadmap-card.is-active {
-  border-color: rgba(124, 240, 188, 0.38);
-  background: rgba(12, 23, 19, 0.96);
-  transform: translateY(-2px);
-}
-
-.cloud-roadmap-card > i {
-  z-index: 2;
-  width: 6px;
-  height: 6px;
-  margin-top: 3px;
-  border-radius: 50%;
-  background: currentcolor;
-}
-
-.cloud-roadmap-card > b,
-.cloud-roadmap-card > span {
-  position: relative;
-  z-index: 2;
-}
-
-.cloud-roadmap-card > b {
+.cloud-web-client-capabilities strong {
   color: var(--cloud-text);
-  font-family: var(--cloud-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: 13px;
 }
 
-.cloud-roadmap-card > span {
-  margin-top: 14px;
-  color: var(--cloud-faint);
-  font-size: 10px;
-  line-height: 1.4;
-  grid-column: 1 / -1;
+.cloud-web-client-capabilities p {
+  margin: 6px 0 0;
+  color: var(--cloud-muted);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
-.cloud-roadmap-card.is-verified {
-  color: var(--cloud-green);
+.cloud-web-window {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #c6d5e9;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: var(--cloud-shadow);
 }
 
-.cloud-roadmap-card.is-in-progress {
+.cloud-web-window > figcaption {
+  display: flex;
+  min-height: 62px;
+  padding: 0 20px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--cloud-line);
+}
+
+.cloud-web-window > figcaption > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--cloud-blue);
 }
 
-.cloud-roadmap-card.is-planned {
-  color: var(--cloud-violet);
+.cloud-web-window > figcaption strong {
+  color: var(--cloud-text);
+  font-size: 13px;
 }
 
-.cloud-roadmap-card.is-historical {
-  color: var(--cloud-amber);
+.cloud-web-window > figcaption > span,
+.cloud-web-window > p {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
 }
 
-.cloud-roadmap-detail {
-  display: grid;
-  min-height: 190px;
-  padding: 28px 34px;
-  border-top: 1px solid var(--cloud-line);
-  align-items: center;
-  grid-template-columns: 170px minmax(190px, 0.6fr) minmax(300px, 1.4fr) auto;
-  gap: 28px;
-}
-
-.cloud-roadmap-detail > div {
+.cloud-web-window-toolbar {
   display: flex;
-  align-items: flex-start;
+  min-height: 48px;
+  padding: 8px 14px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  border-bottom: 1px solid var(--cloud-line);
+  background: #f8faff;
+}
+
+.cloud-web-window-toolbar > span {
+  display: flex;
+  width: min(100%, 330px);
+  height: 31px;
+  margin-right: auto;
+  padding: 0 10px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--cloud-line);
+  border-radius: 6px;
+  color: var(--cloud-faint);
+  background: #ffffff;
+  font-size: 8px;
+}
+
+.cloud-web-window-toolbar > i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b9c5d6;
+}
+
+.cloud-web-window-body {
+  display: grid;
+  min-height: 480px;
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+.cloud-web-window-body > nav {
+  display: flex;
+  padding: 14px 10px;
+  border-right: 1px solid var(--cloud-line);
+  background: #f5f8fc;
   flex-direction: column;
-  gap: 11px;
+  gap: 5px;
 }
 
-.cloud-roadmap-detail h3 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 620;
-  letter-spacing: -0.035em;
-}
-
-.cloud-roadmap-detail p {
-  margin: 0;
-  color: var(--cloud-muted);
-  font-size: 12px;
-  line-height: 1.65;
-}
-
-.cloud-roadmap-detail > a {
-  display: inline-flex;
+.cloud-web-window-body > nav span {
+  display: flex;
   min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--cloud-line-strong);
-  border-radius: 7px;
+  padding: 0 10px;
   align-items: center;
   gap: 8px;
+  border-radius: 6px;
+  color: var(--cloud-muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.cloud-web-window-body > nav span.is-active {
+  color: var(--cloud-blue);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(31, 65, 116, 0.08);
+}
+
+.cloud-web-dashboard {
+  min-width: 0;
+  padding: 24px;
+}
+
+.cloud-web-dashboard > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.cloud-web-dashboard > header small,
+.cloud-web-dashboard > header strong {
+  display: block;
+}
+
+.cloud-web-dashboard > header small {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+}
+
+.cloud-web-dashboard > header strong {
+  margin-top: 4px;
+  font-size: 15px;
+}
+
+.cloud-web-dashboard > header > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   color: var(--cloud-green);
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.cloud-web-metrics {
+  display: grid;
+  margin-top: 24px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--cloud-line);
+  border-radius: 9px;
+}
+
+.cloud-web-metrics > div {
+  display: flex;
+  min-height: 78px;
+  padding: 14px;
+  justify-content: space-between;
+  flex-direction: column;
+  border-right: 1px solid var(--cloud-line);
+  border-bottom: 1px solid var(--cloud-line);
+}
+
+.cloud-web-metrics > div:nth-child(2n) {
+  border-right: 0;
+}
+
+.cloud-web-metrics > div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.cloud-web-metrics small {
+  color: var(--cloud-faint);
+  font-size: 8px;
+}
+
+.cloud-web-metrics strong {
+  color: var(--cloud-blue);
+  font-family: var(--cloud-mono);
+  font-size: 24px;
+}
+
+.cloud-web-timeline {
+  margin-top: 22px;
+}
+
+.cloud-web-timeline > strong {
   font-size: 10px;
+}
+
+.cloud-web-timeline > span {
+  display: grid;
+  min-height: 32px;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--cloud-line);
+}
+
+.cloud-web-timeline i {
+  height: 3px;
+  border-radius: 99px;
+  background: var(--cloud-blue);
+  opacity: 0.65;
+}
+
+.cloud-web-timeline b {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+}
+
+.cloud-web-window > p {
+  margin: 0;
+  padding: 15px 20px;
+  border-top: 1px solid var(--cloud-line);
+}
+
+.cloud-platform-architecture {
+  background: #ffffff;
+}
+
+.cloud-architecture-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 44px;
+}
+
+.cloud-architecture-heading > div {
+  max-width: 960px;
+}
+
+.cloud-architecture-heading > a {
+  display: inline-flex;
+  min-height: 44px;
+  padding: 0 15px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--cloud-line-strong);
+  border-radius: 8px;
+  color: var(--cloud-blue);
+  font-size: 12px;
+  font-weight: 720;
   white-space: nowrap;
 }
 
-.cloud-roadmap-detail > a svg {
-  width: 15px;
-  height: 15px;
+.cloud-architecture-heading > a svg {
+  width: 17px;
 }
 
-.cloud-architecture-preview {
-  position: relative;
-  min-height: 470px;
+.cloud-platform-map {
+  margin-top: 58px;
+  padding: 26px;
   overflow: hidden;
-  perspective: 900px;
+  border: 1px solid #c9d5e6;
+  border-radius: 18px;
+  background: #f4f7fb;
+  box-shadow: var(--cloud-shadow);
 }
 
-.cloud-architecture-preview::before {
-  position: absolute;
-  top: 8%;
-  left: 16%;
-  width: 74%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(47, 109, 82, 0.14),
-    rgba(47, 109, 82, 0.04) 40%,
-    transparent 68%
-  );
-  content: '';
-  filter: blur(8px);
-}
-
-.cloud-architecture-plane {
-  position: absolute;
-  left: 25%;
+.cloud-platform-map > header {
   display: flex;
-  width: 56%;
-  height: 170px;
-  border: 1px solid rgba(124, 240, 188, 0.24);
-  background:
-    linear-gradient(rgba(124, 240, 188, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124, 240, 188, 0.045) 1px, transparent 1px),
-    rgba(8, 18, 14, 0.62);
-  background-size: 24px 24px;
+  min-height: 72px;
+  padding: 8px 5px 24px;
   align-items: center;
-  justify-content: space-around;
-  animation: cloud-plane-float 6s ease-in-out infinite;
-  transform: rotateX(61deg) rotateZ(-27deg);
-  transform-style: preserve-3d;
+  justify-content: space-between;
+  gap: 20px;
 }
 
-.cloud-architecture-plane.is-plane-3 {
-  top: 7%;
-  animation-delay: -1s;
+.cloud-platform-map > header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
-.cloud-architecture-plane.is-plane-2 {
-  top: 31%;
-  border-color: rgba(124, 240, 188, 0.34);
-  animation-delay: -2.5s;
+.cloud-platform-mark {
+  display: grid;
+  width: 43px;
+  height: 43px;
+  place-items: center;
+  border-radius: 9px;
+  color: #ffffff;
+  background: var(--cloud-blue);
+  font-size: 13px;
+  font-weight: 800;
 }
 
-.cloud-architecture-plane.is-plane-1 {
-  top: 55%;
-  border-color: rgba(124, 240, 188, 0.2);
-  animation-delay: -4s;
+.cloud-platform-map > header strong,
+.cloud-platform-map > header small {
+  display: block;
 }
 
-.cloud-architecture-plane span {
-  position: absolute;
-  top: -19px;
-  left: 0;
+.cloud-platform-map > header strong {
+  color: var(--cloud-text);
+  font-size: 17px;
+}
+
+.cloud-platform-map > header small,
+.cloud-platform-map > header > span {
+  margin-top: 4px;
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.cloud-architecture-layer {
+  padding: 14px;
+  border: 1px solid var(--cloud-line);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.cloud-architecture-layer h3 {
+  margin: 0 0 11px;
   color: var(--cloud-faint);
   font-family: var(--cloud-mono);
   font-size: 8px;
-  transform: translateZ(2px);
+  font-weight: 750;
+  letter-spacing: 0.12em;
 }
 
-.cloud-architecture-plane i {
-  width: 34px;
-  height: 34px;
-  border: 1px solid rgba(124, 240, 188, 0.46);
-  border-radius: 7px;
-  background: rgba(10, 27, 20, 0.92);
-  box-shadow: 0 0 24px rgba(124, 240, 188, 0.1);
-  transform: translateZ(24px);
+.cloud-architecture-layer > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
 }
 
-.cloud-architecture-plane.is-plane-3 i {
-  border-color: rgba(124, 240, 188, 0.36);
-  background: rgba(10, 27, 20, 0.92);
+.cloud-architecture-layer.is-products > div {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.cloud-architecture-plane.is-plane-1 i {
-  border-color: rgba(124, 240, 188, 0.3);
-  background: rgba(10, 24, 18, 0.92);
+.cloud-architecture-layer.is-client > div {
+  grid-template-columns: minmax(0, 1fr);
 }
 
-.cloud-architecture-beam {
-  position: absolute;
-  top: 19%;
-  left: 48%;
-  width: 2px;
-  height: 59%;
-  background: linear-gradient(
-    transparent,
-    var(--cloud-green),
-    var(--cloud-green),
-    transparent
-  );
-  transform: rotate(-16deg);
+.cloud-architecture-layer.is-client article {
+  min-height: 72px;
+}
+
+.cloud-architecture-layer article {
+  display: grid;
+  min-height: 84px;
+  padding: 13px;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--cloud-line);
+  border-radius: 9px;
+  background: #fbfcfe;
+}
+
+.cloud-architecture-layer article.is-emphasis {
+  border-color: #b9cff6;
+  background: var(--cloud-blue-soft);
+}
+
+.cloud-architecture-layer article > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--cloud-blue);
+  background: #ffffff;
+}
+
+.cloud-architecture-layer strong,
+.cloud-architecture-layer small {
+  display: block;
+}
+
+.cloud-architecture-layer strong {
+  color: var(--cloud-text);
+  font-size: 10px;
+}
+
+.cloud-architecture-layer small {
+  margin-top: 5px;
+  color: var(--cloud-muted);
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.cloud-layer-connector {
+  display: grid;
+  min-height: 38px;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.cloud-layer-connector i {
+  height: 1px;
+  background: #cad6e7;
+}
+
+.cloud-layer-connector span {
+  color: var(--cloud-faint);
+  font-family: var(--cloud-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.cloud-platform-map > footer {
+  display: flex;
+  min-height: 64px;
+  margin-top: 14px;
+  padding: 14px 17px;
+  align-items: center;
+  gap: 12px;
+  border-radius: 10px;
+  color: #c9dbff;
+  background: #0e1b35;
+}
+
+.cloud-platform-map > footer > svg {
+  flex: 0 0 auto;
+  color: #ffffff;
+}
+
+.cloud-platform-map > footer p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.55;
 }

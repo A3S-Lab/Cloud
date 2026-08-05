@@ -1,9 +1,10 @@
-# A3S Cloud Website and Documentation
+# A3S OS Website and Documentation
 
 The public site contains two independent Rspress builds in one package:
 
 - the product application at `/Cloud/`, which explains the desired-state
-  control loop, capability boundaries, and delivery gates;
+  A3S OS product system through three product chapters, the A3S Web client,
+  the shared infrastructure map, and honest delivery gates;
 - the versioned documentation application at `/Cloud/docs/`, where Simplified
   Chinese is the default language and English is available from the native
   language switcher.
@@ -30,8 +31,8 @@ npm run dev:docs
 `npm run dev` starts the product site. `npm run dev:docs` starts the
 documentation application.
 
-The roadmap constellation is generated from `../ROADMAP.md`; it is not an
-independent status model. Regenerate and validate it with:
+Roadmap gate metadata is generated from `../ROADMAP.md`; the website does not
+maintain an independent status model. Regenerate and validate it with:
 
 ```bash
 npm run generate:roadmap

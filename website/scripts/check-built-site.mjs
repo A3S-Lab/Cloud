@@ -123,11 +123,13 @@ for (const file of requiredFiles) await access(path.join(outputRoot, file));
 
 const productHtml = await readFile(path.join(outputRoot, 'index.html'), 'utf8');
 const productFragments = [
-  'Declare intent.',
-  'Cloud converges.',
-  'Current delivery evidence and platform principles',
-  'From desired state to observed truth',
-  'Every promise has a gate',
+  'A3S OS',
+  '企业级 AI 操作系统',
+  'Workflow 自主工作流编排',
+  'Agent Factory 异构智能体工厂',
+  '安全监控中台',
+  'A3S Web',
+  '模块架构',
 ];
 for (const fragment of productFragments) {
   if (!productHtml.includes(fragment)) {
@@ -136,6 +138,9 @@ for (const fragment of productFragments) {
 }
 if (/[—–]/u.test(productHtml)) {
   throw new Error('Product home contains a forbidden dash character');
+}
+if (productHtml.includes('A3S Cloud')) {
+  throw new Error('Product home contains retired A3S Cloud branding');
 }
 
 const documentationPages = [];
@@ -163,7 +168,7 @@ for (const page of documentationPages) {
   const html = await readFile(path.join(outputRoot, page.file), 'utf8');
   const expectedFragments = [
     `<html lang="${page.language}">`,
-    `<title>${page.title} - A3S Cloud Docs</title>`,
+    `<title>${page.title} - A3S OS Docs</title>`,
     `href="${page.logoHome}" class="rp-nav__title__link`,
     ...documentationRegistry.languages.map(({ label }) => `>${label}<`),
     ...documentationRegistry.versions.map((version) => `>${version}<`),

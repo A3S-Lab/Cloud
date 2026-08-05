@@ -1,7 +1,7 @@
 {
   "name": "@a3s/cloud-website",
   "version": "0.1.0",
-  "description": "A3S Cloud product website and versioned documentation.",
+  "description": "A3S OS product website and versioned documentation.",
   "private": true,
   "type": "module",
   "scripts": {

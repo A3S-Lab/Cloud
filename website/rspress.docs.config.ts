@@ -22,21 +22,20 @@ const defaultLanguage = registry.defaultLanguage;
 
 const copy = {
   zh: {
-    description:
-      'A3S Cloud 的版本化产品文档，涵盖控制循环、产品边界和运维契约。',
+    description: 'A3S OS 的版本化产品文档，涵盖控制循环、产品边界和运维契约。',
     docs: '文档',
     home: '产品首页',
     overview: '概览',
-    title: 'A3S Cloud 文档',
+    title: 'A3S OS 文档',
     versioning: '版本管理',
   },
   en: {
     description:
-      'Versioned A3S Cloud product documentation covering the control loop, product boundaries, and operating contracts.',
+      'Versioned A3S OS product documentation covering the control loop, product boundaries, and operating contracts.',
     docs: 'Docs',
     home: 'Product home',
     overview: 'Overview',
-    title: 'A3S Cloud Docs',
+    title: 'A3S OS Docs',
     versioning: 'Versioning',
   },
 } as const;
@@ -156,21 +155,21 @@ export default defineConfig({
   root: path.join(__dirname, 'documentation'),
   base: docsBase,
   siteOrigin,
-  title: 'A3S Cloud Docs',
+  title: 'A3S OS Docs',
   description: copy.zh.description,
   lang: defaultLanguage,
   icon: new URL('./docs/public/favicon.svg', import.meta.url),
   logo: '/a3s-cloud-mark.svg',
-  logoText: 'A3S Cloud Docs',
+  logoText: 'A3S OS Docs',
   outDir: 'docs_build',
   multiVersion: registry,
   route: {
     cleanUrls: true,
   },
   head: [
-    ['meta', { name: 'theme-color', content: '#050807' }],
+    ['meta', { name: 'theme-color', content: '#ffffff' }],
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: 'A3S Cloud Docs' }],
+    ['meta', { property: 'og:site_name', content: 'A3S OS Docs' }],
     (route) => [
       'link',
       {
@@ -191,7 +190,7 @@ export default defineConfig({
     },
   },
   themeConfig: {
-    darkMode: 'force-dark',
+    darkMode: 'force-light',
     enableContentAnimation: true,
     lastUpdated: true,
     localeRedirect: 'never',

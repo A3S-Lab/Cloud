@@ -5,10 +5,6 @@
   font-weight: 100 900;
   src: url('@fontsource-variable/geist/files/geist-latin-wght-normal.woff2')
     format('woff2-variations');
-  unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
-    U+2215, U+FEFF, U+FFFD;
 }
 
 @font-face {
@@ -18,50 +14,51 @@
   font-weight: 100 900;
   src: url('@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2')
     format('woff2-variations');
-  unicode-range:
-    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC,
-    U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212,
-    U+2215, U+FEFF, U+FFFD;
 }
 
 :root {
-  --rp-c-brand: #76e9b5;
-  --rp-c-brand-dark: #8df5c6;
-  --rp-c-brand-darker: #a7fbd5;
-  --rp-c-brand-light: #4fbd8d;
-  --rp-c-brand-lighter: #327b5e;
-  --rp-c-brand-tint: rgba(118, 233, 181, 0.12);
-  --rp-c-bg: #050807;
-  --rp-c-bg-soft: #09100e;
-  --rp-c-bg-mute: #0d1613;
-  --rp-c-divider: #1d2b26;
-  --rp-c-divider-light: #15201c;
-  --rp-c-text-1: #f1f8f4;
-  --rp-c-text-2: #a4b5ad;
-  --rp-c-text-3: #6d7f76;
+  --rp-c-brand: #1264ff;
+  --rp-c-brand-dark: #0954df;
+  --rp-c-brand-darker: #0647c2;
+  --rp-c-brand-light: #3f7fff;
+  --rp-c-brand-lighter: #dce9ff;
+  --rp-c-brand-tint: rgba(18, 100, 255, 0.1);
+  --rp-c-bg: #ffffff;
+  --rp-c-bg-soft: #f6f8fc;
+  --rp-c-bg-mute: #eef3fb;
+  --rp-c-divider: #dce4f0;
+  --rp-c-divider-light: #e8edf5;
+  --rp-c-text-1: #111827;
+  --rp-c-text-2: #536176;
+  --rp-c-text-3: #7d899b;
   --rp-nav-height: 72px;
   --rp-content-max-width: 920px;
-  --cloud-bg: #050807;
-  --cloud-panel: #08100d;
-  --cloud-panel-raised: #0c1512;
-  --cloud-panel-blue: #0a1118;
-  --cloud-line: #1a2923;
-  --cloud-line-strong: #2a4439;
-  --cloud-text: #f1f8f4;
-  --cloud-muted: #9aada4;
-  --cloud-faint: #748a80;
-  --cloud-green: #7cf0bc;
-  --cloud-green-deep: #39a776;
-  --cloud-blue: #76b7ff;
-  --cloud-violet: #bd8eff;
-  --cloud-amber: #efc56c;
+  --cloud-bg: #ffffff;
+  --cloud-paper: #f3f5f8;
+  --cloud-paper-blue: #f1f6ff;
+  --cloud-panel: #ffffff;
+  --cloud-panel-strong: #0e1b35;
+  --cloud-line: #dce4f0;
+  --cloud-line-strong: #bfd0e8;
+  --cloud-text: #101827;
+  --cloud-muted: #56657b;
+  --cloud-faint: #8490a3;
+  --cloud-blue: #1264ff;
+  --cloud-blue-deep: #084ed0;
+  --cloud-blue-soft: #eaf2ff;
+  --cloud-cyan: #1aa4c8;
+  --cloud-green: #0c9b70;
+  --cloud-amber: #b97708;
+  --cloud-violet: #7157c9;
+  --cloud-danger: #b73d50;
   --cloud-max: 1440px;
-  --cloud-radius-card: 16px;
-  --cloud-radius-control: 10px;
+  --cloud-radius-card: 18px;
+  --cloud-radius-control: 9px;
   --cloud-radius-pill: 999px;
+  --cloud-shadow: 0 28px 72px rgba(36, 76, 137, 0.12);
   --cloud-sans:
-    'Geist Variable', ui-sans-serif, -apple-system, BlinkMacSystemFont,
-    'Segoe UI', sans-serif;
+    'Geist Variable', 'PingFang SC', 'Microsoft YaHei', ui-sans-serif,
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --cloud-mono:
     'Geist Mono Variable', 'SFMono-Regular', 'Cascadia Code', Consolas,
     monospace;
@@ -69,7 +66,7 @@
 
 html {
   scroll-behavior: smooth;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
@@ -81,54 +78,41 @@ body {
 }
 
 ::selection {
-  background: rgba(118, 233, 181, 0.26);
   color: var(--cloud-text);
+  background: rgba(18, 100, 255, 0.18);
 }
 
 .rp-nav {
-  border-bottom-color: rgba(42, 68, 57, 0.72);
-  background: rgba(5, 8, 7, 0.78);
-  padding-right: max(24px, calc((100vw - var(--cloud-max)) / 2 + 24px));
-  padding-left: max(24px, calc((100vw - var(--cloud-max)) / 2 + 24px));
-  backdrop-filter: blur(22px) saturate(145%);
-}
-
-.rp-nav::after {
-  position: absolute;
-  right: 0;
-  bottom: -1px;
-  left: 0;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(124, 240, 188, 0.22),
-    transparent
-  );
-  content: '';
-  pointer-events: none;
+  padding-right: max(24px, calc((100vw - var(--cloud-max)) / 2 + 28px));
+  padding-left: max(24px, calc((100vw - var(--cloud-max)) / 2 + 28px));
+  border-bottom-color: rgba(203, 215, 233, 0.82);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px) saturate(150%);
 }
 
 .rp-nav__title__link {
-  gap: 9px;
+  gap: 10px;
   letter-spacing: -0.025em;
 }
 
 .rp-nav__title__logo,
 .rspress-logo {
-  width: 30px;
-  min-width: 30px;
-  height: 30px;
+  width: 31px;
+  min-width: 31px;
+  height: 31px;
   margin-right: 0;
 }
 
 .rp-nav__title__link > span {
+  color: var(--cloud-text);
   font-size: 17px;
-  font-weight: 720;
+  font-weight: 760;
 }
 
 .rp-nav-menu__item {
+  color: var(--cloud-muted);
   font-size: 13px;
+  font-weight: 620;
 }
 
 .rp-doc-layout {
@@ -148,10 +132,10 @@ body {
 
 .cloud-home {
   position: relative;
-  overflow: clip;
   width: 100%;
-  background: var(--cloud-bg);
+  overflow: clip;
   color: var(--cloud-text);
+  background: var(--cloud-bg);
 }
 
 .cloud-home a {
@@ -181,12 +165,12 @@ body {
   display: inline-flex;
   min-height: 28px;
   padding: 4px 10px;
-  border: 1px solid var(--cloud-line-strong);
-  border-radius: var(--cloud-radius-pill);
-  background: rgba(9, 16, 14, 0.76);
   align-items: center;
   gap: 7px;
+  border: 1px solid var(--cloud-line-strong);
+  border-radius: var(--cloud-radius-pill);
   color: var(--cloud-muted);
+  background: #ffffff;
   font-family: var(--cloud-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
@@ -201,7 +185,7 @@ body {
 }
 
 .cloud-gate-badge b {
-  color: var(--cloud-text);
+  color: currentcolor;
   font-size: 10px;
   letter-spacing: 0.08em;
 }
@@ -213,21 +197,27 @@ body {
 }
 
 .cloud-gate-badge.is-verified {
-  border-color: rgba(124, 240, 188, 0.28);
-  color: var(--cloud-green);
+  border-color: #b7dfd1;
+  color: #087353;
+  background: #effaf6;
 }
 
 .cloud-gate-badge.is-in-progress {
-  border-color: rgba(118, 183, 255, 0.3);
-  color: var(--cloud-blue);
+  border-color: #bdd2fb;
+  color: #0955d6;
+  background: #edf4ff;
 }
 
 .cloud-gate-badge.is-planned {
-  border-color: rgba(189, 142, 255, 0.28);
-  color: var(--cloud-violet);
+  border-style: dashed;
+  border-color: #d5c9ef;
+  color: #654cac;
+  background: #f7f3ff;
 }
 
 .cloud-gate-badge.is-historical {
-  border-color: rgba(239, 197, 108, 0.28);
-  color: var(--cloud-amber);
+  border-style: dashed;
+  border-color: #e4d2aa;
+  color: #996408;
+  background: #fff9ec;
 }

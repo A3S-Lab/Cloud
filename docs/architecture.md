@@ -33,6 +33,19 @@ resumable Agent and application execution on operator-owned Linux systems. Its
 target is to replace the operational roles commonly assembled from Google AX
 and Kubernetes without requiring either system.
 
+The outward-facing application layer groups that platform into three products:
+
+| Product | Customer outcome | Reused authorities |
+| --- | --- | --- |
+| Workflow autonomous orchestrator | Turn ontology-defined business objects, relationships, rules, goals, and constraints into executable, recoverable workflows across Agents, tools, and people | A3S Workflow product service, Cloud Operations, A3S Flow, Workloads, and the shared evidence model |
+| Agent Factory | Turn Agent prototypes into versioned Agent, Skill, and MCP assets with immutable deployment, sole-Harness execution, and semantic evidence | Assets, Workloads, Fleet, Runtime, Box, and A3S Code; `a3s code harness` remains the sole Agent run owner |
+| Security operations center | Correlate request policy, runtime evidence, Agent semantics, and host security signals for detection, enforcement, audit, and investigation | A3S Gateway, A3S Sentry, AnySentry, Logs, Audit, Operations, Runtime, and Box observations |
+
+These are product compositions, not new control planes or bounded-context
+authorities. Each product reuses the single-authority map below. Their public
+availability and completion claims remain governed by the exact gates in
+[`ROADMAP.md`](../ROADMAP.md).
+
 Replacement means that the A3S stack owns the complete product outcome:
 
 - Cloud owns tenant intent, durable business state, orchestration policy, and
