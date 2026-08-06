@@ -464,8 +464,7 @@ mod tests {
         .expect("execution");
         let output = AgentExecutionEventDraft::new(
             AgentExecutionEventKind::ModelOutput,
-            AgentEventContent::inline_json(serde_json::json!({"text": "hello"}))
-                .expect("content"),
+            AgentEventContent::inline_json(serde_json::json!({"text": "hello"})).expect("content"),
             at,
         )
         .expect("output");
@@ -534,8 +533,7 @@ mod tests {
 
         let output = AgentExecutionEventDraft::new(
             AgentExecutionEventKind::ModelOutput,
-            AgentEventContent::inline_json(serde_json::json!({"text": "late"}))
-                .expect("content"),
+            AgentEventContent::inline_json(serde_json::json!({"text": "late"})).expect("content"),
             cancelled_at,
         )
         .expect("output");
