@@ -3,7 +3,7 @@ import { pluginReact } from '@rsbuild/plugin-react';
 
 const apiOrigin = process.env.A3S_CLOUD_API_ORIGIN ?? 'http://127.0.0.1:8080';
 const directionContract = `<!--
-  THESIS: A3S OS presents autonomous workflow orchestration, the heterogeneous Agent Factory, security operations, and A3S Web as one governed enterprise AI system.
+  THESIS: A3S OS presents Unified Gateway, autonomous workflow orchestration, the heterogeneous Agent Factory, and A3S Web as one governed enterprise AI system; security operations remain inside Unified Gateway.
   OWN-WORLD: Pure white canvas, cool blue hairlines, one electric-blue brand field, compact humanist type, and semantic status color.
   STORY: Understand the three products, see how A3S Web unifies their operation, then inspect the shared architecture.
   FIRST VIEWPORT: One-line navigation, enterprise AI promise, and the sole A3S authority path.
@@ -34,7 +34,7 @@ export default defineConfig({
     title: 'A3S OS',
     favicon: './src/assets/favicon.svg',
     meta: {
-      description: 'A3S OS 企业级 AI 操作系统：自主工作流编排、异构智能体工厂、安全监控中台与 A3S Web',
+      description: 'A3S OS 企业级 AI 操作系统：统一网关、自主工作流编排、异构智能体工厂、安全治理与 A3S Web',
       'theme-color': '#ffffff',
     },
   },

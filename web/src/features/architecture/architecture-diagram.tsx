@@ -44,7 +44,7 @@ const NODE_PATH = [
 ];
 const FOUNDATIONS = [
   'PostgreSQL + A3S ORM',
-  'Immutable object storage',
+  'Immutable objects + fenced mutable volumes',
   'OCI Registry',
   'mTLS + A3S ACL',
   'Compatibility lock',
@@ -102,7 +102,7 @@ export function ArchitecturePanel() {
           <h2>{t('A3S OS architecture')}</h2>
           <p>
             {t(
-              'The complete 17-gate portfolio shares one control path from A3S OS intent to Runtime, Gateway, and the sole A3S Code Harness.'
+              'The complete 19-gate portfolio shares one control path from A3S OS intent to Runtime, Gateway, and one provider-neutral Agent execution contract.'
             )}
           </p>
         </div>
@@ -207,9 +207,9 @@ export function ArchitecturePanel() {
             <div className='architecture-payload-grid'>
               <article className='architecture-payload-card'>{t('Applications / Hosted MCP')}</article>
               <article className='architecture-payload-card architecture-harness-card'>
-                <span>{t('A3S Code Core / Sole Agent execution Harness')}</span>
+                <span>{t('A3S Code Core / Native Agent execution provider')}</span>
                 <code>{HARNESS_COMMAND}</code>
-                <strong>{t('A3S OS only orchestrates and transports')}</strong>
+                <strong>{t('One Cloud lifecycle and provider conformance contract')}</strong>
               </article>
               <article className='architecture-payload-card architecture-module-planned'>
                 {t('A3S Power / Inference planned')}

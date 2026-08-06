@@ -12,9 +12,23 @@ that compiles into the same Workloads path; it does not broaden the Asset kind
 set or create a second deployment engine.
 
 Planned A1 adds durable Agent conversations, executions, semantic events,
-approvals, checkpoints, forks, and trajectories. It binds published Asset
-releases to Flow, Workloads, Fleet, Runtime, and Box; it does not add another
-execution engine, scheduler, node channel, or event-log authority.
+approvals, checkpoints, forks, trajectories, and one provider-neutral Harness
+contract. It binds published Asset releases and immutable provider profiles to
+Flow, Workloads, Fleet, Runtime, and Box; it does not add another execution
+engine, scheduler, node channel, provider-specific controller, or event-log
+authority. A3S Code is the native provider rather than the only admissible
+Harness.
+
+Planned W0 adds versioned ontologies, Workflow definitions, goals,
+deterministic plan revisions, Workflow runs, and human decisions. It compiles
+semantic intent to the existing Operations and A3S Flow path; it does not add
+another workflow engine, scheduler, graph database authority, or task queue.
+
+Planned EV0 adds authorized evidence-dataset manifests, evaluation suites,
+experiments, candidate revisions, promotion decisions, and rollback evidence.
+It uses the existing execution, storage, release, rollout, and audit paths; it
+does not make telemetry authoritative or add a training scheduler, model/Agent
+registry, or deployment controller.
 
 Planned U0 adds tenant desired assignments for signed A3S Use plugin packages.
 It does not add a fourth Asset kind or a Cloud package manager. A3S Use remains
@@ -31,6 +45,7 @@ distributes committed facts after the corresponding database transaction.
 | Term | Meaning |
 | --- | --- |
 | Organization | Tenant and security boundary. Commercial billing remains externally owned. |
+| External identity link | Exact trusted OIDC issuer and subject bound to one Cloud principal under `C0.3`; provider email, session, or group claims never become Cloud authority by themselves. |
 | Project | Product grouping owned by one organization. |
 | Project attribution profile | Immutable project showback metadata containing a business-owner reference, optional external cost-attribution code, and validated labels; it is not a price or billing account. |
 | Environment | Isolated desired-state namespace such as production or staging. |
@@ -42,11 +57,24 @@ distributes committed facts after the corresponding database transaction.
 | Plugin assignment | Environment-scoped Cloud desired state selecting one exact signed package record, named surfaces, one Use workspace scope, one target Plugin Host, and present/enabled intent. |
 | Plugin operation plan | Immutable canonical A3S Use plan for install, upgrade, or uninstall. Cloud projects its digest and bounded review evidence but never becomes its apply authority. |
 | Plugin host observation | Exact command-bound A3S Use receipt, installed generation, capability generation, and enabled state observed for one assignment generation on one host. |
+| Ontology revision | Immutable Workflow-owned schema and semantic graph of object types, relationship types, rules, goals, and constraints. PostgreSQL is authoritative; indexes are projections. |
+| Workflow revision | Immutable executable definition bound to one exact ontology revision and closed ACL digest. |
+| Workflow goal | Tenant-scoped intent and constraints compiled against one exact Workflow and ontology revision. |
+| Plan revision | Deterministic immutable compilation of a goal, policies, inputs, and exact capability references. |
+| Workflow run | One semantic execution of an exact plan revision with one correlated Operation and Flow run. |
 | Agent conversation | Tenant-scoped logical interaction that owns one monotonic semantic event sequence across executions and forks. |
-| Agent execution | One durable run of an immutable Agent release and its exact Skill, MCP, workspace, and tool bindings. |
+| Agent execution | One durable run of an immutable Agent release and one exact Harness invocation profile. |
+| Harness provider profile | Immutable provider kind, revision, protocol version, capability digest, and Runtime delivery profile selected for one Agent execution. |
+| Harness invocation profile | Closed immutable `A1.4` binding of provider, instructions digest, environment/security policy, Agent, Skill, MCP, model, workspace, Secret references, Tools, and capability expectations for one execution. |
 | Agent semantic event | Immutable ordered conversation fact such as model output, tool request/result, approval, checkpoint, failure, or terminal outcome; it is not Flow history or a Runtime log. |
 | Agent approval checkpoint | Grant-checked durable decision boundary that prevents Harness progress until an explicit allow, deny, expiry, or cancellation outcome commits. |
 | Agent execution checkpoint | Digest-addressed immutable logical execution state used for verified resume or fork lineage. |
+| Evidence dataset | Immutable manifest of tenant-authorized, redacted, retention-bound evidence references with complete provenance and explicit gaps. |
+| Evaluation suite | Immutable evaluator, reward-policy, baseline, integrity, and acceptance-policy revision. |
+| Evolution experiment | One Flow-coordinated evaluation or candidate-generation intent bound to exact dataset, suite, inputs, and compute policy. |
+| Candidate revision | Immutable proposed model, Agent, Harness-policy, or Workflow artifact that is not production desired state. |
+| Promotion decision | Audited approval, rejection, halt, or rollback decision bound to exact candidate, evidence, policy, and target revision. |
+| Security incident projection | Tenant- and grant-scoped `C0.3` investigation timeline derived from shared audit and authorized evidence references; it is not desired state or enforcement authority. |
 | Source | Origin used to produce a workload revision: hosted asset release, external Git commit, or OCI digest. |
 | Source webhook delivery | An authenticated provider-level branch-push fact keyed by provider and delivery ID; first acceptance may atomically derive tenant revisions through exact active subscriptions. |
 | Artifact | Content-addressed build output or bundle. OCI artifacts use a manifest digest. |
@@ -79,15 +107,18 @@ are different facts.
 
 ### 3.1 Identity and access
 
-Owns users, organizations, memberships, roles, API tokens, and tenant context.
-It answers who may issue a command. It does not decide runtime placement or
-store asset collaborator data in an unvalidated metadata document.
+Owns users, organizations, memberships, roles, API tokens, optional external
+OIDC subject links under `C0.3`, and tenant context. It answers who may issue a
+command. It does not decide runtime placement, treat an identity-provider
+session as Cloud authority, or store asset collaborator data in an unvalidated
+metadata document.
 
 Primary aggregates:
 
 - `Organization`
 - `Membership`
 - `ApiToken`
+- `ExternalIdentityLink` (planned `C0.3`)
 
 ### 3.2 Projects
 
@@ -319,8 +350,11 @@ planned boundary is defined in [`inference-plan.md`](inference-plan.md).
 Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
 tables directly. Audit records are append-only and separate from event delivery.
+Planned `C0.3` security incident timelines correlate authorized audit and
+AnySentry/OpenTelemetry evidence references for investigation and notification;
+they cannot enforce policy or mutate an owning aggregate.
 
-### 3.13 Agent execution (`A1.1` foundation; `A1.2` integration in progress)
+### 3.13 Agent execution (`A1.1` foundation; native `A1.2` integration in progress)
 
 Owns tenant-scoped conversations, Agent executions, and the sole semantic event
 sequence. `A1.1` binds one exact published Agent release and reserves the
@@ -340,7 +374,9 @@ Current supporting records:
 
 Planned supporting records:
 
-- additional immutable Skill, MCP, workspace, and tool bindings;
+- immutable Harness invocation profiles and execution-provider bindings;
+- exact instructions, environment/security policy, Skill, MCP, model,
+  workspace, Secret-reference, and Tool bindings;
 - `AgentApprovalCheckpoint`; and
 - `AgentExecutionCheckpoint`.
 
@@ -351,7 +387,69 @@ authorization and audit to their shared contexts, and large immutable content
 to typed adapters over the shared object infrastructure. It never writes those
 contexts' tables or exposes a direct client-to-Harness control path.
 
-### 3.14 Plugin assignments (planned U0)
+One versioned `AgentExecutionProvider` port is the only Cloud Harness
+admission path. The native `A1.2` A3S Code adapter and later conforming
+providers reuse the same logical AgentExecution, semantic sequence, Operation,
+Workload, Fleet command, Runtime/Box lifecycle, and recovery rules. A provider
+may retain private in-process state and source events but cannot add a
+Cloud-visible run store, scheduler, command queue, approval authority, or
+second semantic history.
+
+### 3.14 Workflow and ontology (planned W0)
+
+Owns ontology revisions, Workflow definitions and revisions, goals,
+deterministic plan revisions, Workflow runs, human decisions, and semantic step
+projections. It answers what the business intent means and which exact plan is
+being executed. It delegates replay, retries, timers, cancellation, and
+compensation coordination to Operations and A3S Flow.
+
+Primary aggregates:
+
+- `Ontology`
+- `WorkflowDefinition`
+- `WorkflowGoal`
+- `WorkflowRun`
+
+Supporting immutable records:
+
+- `OntologyRevision`
+- `WorkflowRevision`
+- `PlanRevision`
+- `WorkflowStepProjection`
+- `WorkflowDecision`
+
+Ontology and Workflow definitions use closed A3S ACL parsed only through
+`a3s-acl`. PostgreSQL through A3S ORM owns objects, relationships, rules,
+constraints, lineage, and current revision. Search and vector indexes are
+rebuildable projections. The context calls typed Agents, MCP, Inference, Use,
+Identity, Executions, and connector ports; it writes none of their tables and
+never starts Runtime work directly.
+
+### 3.15 Governed evolution (planned EV0)
+
+Owns authorized evidence-dataset manifests, evaluation suites, experiments,
+evaluation results, candidate revisions, promotion decisions, and rollback
+evidence. It answers whether one exact candidate has sufficient reproducible
+evidence to request a canary, promotion, halt, or rollback from the owning
+context.
+
+Primary aggregates:
+
+- `EvidenceDataset`
+- `EvaluationSuite`
+- `EvolutionExperiment`
+- `CandidateRevision`
+- `PromotionDecision`
+
+Evolution delegates raw telemetry to its source systems, immutable bytes to
+the shared object infrastructure, durable work to Operations and A3S Flow,
+compute to Workloads/Fleet/Runtime/Box, model and Agent identity to their
+owning contexts, and production rollout to the selected owning context. It
+cannot accept an AnySentry signal as a command, write production desired state,
+or add a training scheduler, model/Agent registry, dataset store, or deployment
+controller.
+
+### 3.16 Plugin assignments (planned U0)
 
 Owns organization-scoped plugin registry enrollment and environment-scoped
 desired package assignments. It answers which exact signed package and named
@@ -943,23 +1041,28 @@ contexts' tables.
   Runtime log boundary.
   Failure to authorize or materialize every binding fails the log read closed.
 
-### Agent conversation and execution (`A1.1` foundation; later A1 planned)
+### Agent conversation and execution (`A1.1` foundation; native `A1.2` integration in progress)
 
 - A conversation belongs to one organization, project, and environment and
   owns the sole positive monotonic `last_event_sequence` head.
 - In `A1.1`, an execution binds one exact published Agent release, its
   successful BuildRun, and its immutable OCI artifact identity. `A1.3` adds
-  immutable Skill, MCP, workspace, and tool identities before dispatch.
-  Mutable manifests or source refs never become execution authority.
+  the immutable Harness provider profile and conformance identity. `A1.4` adds
+  one closed immutable invocation profile containing exact instructions,
+  environment/security policy, Skill, MCP, model, workspace, Secret-reference,
+  and Tool identities before dispatch. Mutable manifests, process environment,
+  provider JSON, or source refs never become execution authority.
 - Appending one or more semantic events and advancing the conversation head is
   one transaction. A committed sequence is immutable, contiguous, and unique
   within the conversation.
 - `AgentExecution` owns logical state and the correlated Operation identity.
   `A1.2` binds exact Code run and existing Workload/Runtime delivery identity,
-  then reuses Operations/Flow and Fleet to reach the sole `a3s code harness`.
-  Flow history owns orchestration recovery; Runtime logs own process output;
-  neither can substitute for semantic events or Code's source event log.
-- In `A1.4`, an approval-required action cannot execute until a current
+  then reuses Operations/Flow and Fleet to reach the native `a3s code harness`.
+  `A1.3` generalizes that path behind one provider contract without replacing
+  the logical execution or semantic sequence. Flow history owns orchestration
+  recovery; Runtime logs own process output; neither can substitute for
+  semantic events or a provider's private source event log.
+- In `A1.5`, an approval-required action cannot execute until a current
   Identity grant and explicit approval decision commit. Duplicate
   decide/resume commands replay; denial, expiry, cancellation, and process
   death cannot emit a hidden resume.
@@ -967,11 +1070,49 @@ contexts' tables.
   SHA-256 digest. Later large event content and checkpoints reference one
   verified immutable object by namespace, digest, length, and media type. No
   Agent-specific object backend or mutable execution-head store is permitted.
-- In `A1.5`, forking creates a new execution with immutable parent and
+- In `A1.6`, forking creates a new execution with immutable parent and
   checkpoint lineage; it never mutates the parent trajectory.
-- Provider suspend/resume remains unavailable until `A1.5` and the exact A3S
-  Runtime and Box checkpoint contract pass crash, integrity, compatibility,
-  adoption, and cleanup certification.
+- Provider suspend/resume remains unavailable until `A1.6` and the selected
+  Harness plus exact A3S Runtime and Box checkpoint contracts pass crash,
+  integrity, compatibility, adoption, and cleanup certification.
+
+### Workflow, ontology, and plan execution (planned W0)
+
+- An OntologyRevision is immutable and binds one closed ACL digest, compiler
+  schema version, parent revision, migration policy, and canonical semantic
+  content digest.
+- Search, vector, and materialized graph projections may lag or rebuild; they
+  cannot accept writes or become current-revision authority.
+- A PlanRevision binds exact OntologyRevision, WorkflowRevision, policy,
+  capability, compiler, and input digests. Identical inputs must compile to the
+  same plan digest.
+- A WorkflowRun binds one PlanRevision and one Operation/Flow identity. Retry,
+  pause, cancellation, compensation, and process death resume the same run;
+  they never create a planner-specific execution history.
+- Each child Agent, MCP, model, Tool, human, service, or finite-task step stores
+  one exact owning-context identity. Ambiguous dispatch is adopted by that
+  identity and cannot create a second child.
+- Dynamic planning is an explicit policy step with a recorded candidate set,
+  decision, and evidence. It cannot hide non-deterministic mutation inside
+  Flow replay.
+
+### Evidence, evaluation, candidate, and promotion (planned EV0)
+
+- An EvidenceDataset contains only authorized immutable references, exact
+  provenance, redaction/consent policy, retention, and explicit gaps. Raw
+  telemetry or mutable query results never become a dataset implicitly.
+- An EvaluationSuite binds exact evaluator, reward-policy, baseline,
+  integrity, and acceptance revisions. A score without those digests cannot
+  support promotion.
+- Candidate generation and Agentic RL run as ordinary Flow-coordinated Runtime
+  Tasks with existing quotas, Claims, receipts, interruption, and cleanup.
+- A CandidateRevision is inert. It cannot receive production traffic until an
+  exact PromotionDecision and owning-context canary command commit.
+- A PromotionDecision binds dataset, suite, candidate, policy, approval,
+  target, halt conditions, and rollback target. Duplicate decisions replay and
+  cannot start another rollout.
+- AnySentry, metrics, traces, logs, rewards, and evaluation output are evidence,
+  never promotion or deployment authority.
 
 ### Managed database, volume, and backup
 
@@ -1364,11 +1505,47 @@ exact `PluginHostObservation` matches the desired assignment generation, the
 computed assignment status is `pending`, `blocked`, or `unavailable`, never
 partially installed or optimistically active.
 
+### Workflow run state (planned W0)
+
+```text
+draft -> compiled -> queued -> running -> succeeded
+                   \-> blocked -> running
+                   \-> paused -> running
+                   \-> compensating -> compensated
+                   \-> cancelling -> cancelled
+                   \-> failed
+```
+
+`compiled` binds one immutable PlanRevision before any child work starts.
+`blocked` names an unavailable capability, approval, policy, or external
+dependency and never hides it as retry. `running`, compensation, cancellation,
+and recovery are projections of the same Operation/Flow identity; a replan
+creates a new PlanRevision and explicit transition rather than mutating the
+running plan.
+
+### Evolution experiment and promotion state (planned EV0)
+
+```text
+draft -> admitted -> queued -> evaluating -> candidate_ready
+                                   \-> rejected
+                                   \-> failed
+candidate_ready -> awaiting_approval -> canary -> promoted
+                                    \-> rejected
+                                    \-> halted -> rolled_back
+```
+
+`admitted` binds the exact dataset, suite, policy, inputs, and compute limits.
+`candidate_ready` is inert. Only an exact approved PromotionDecision can request
+`canary` from the owning context, and only that context's acknowledged rollout
+can project `promoted` or `rolled_back`. AnySentry signals may cause an
+operator-visible halt recommendation but cannot advance these states directly.
+
 ## 7. Data ownership
 
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
+| External OIDC issuer/subject link, link status, and last verified identity metadata | PostgreSQL Identity tables through A3S ORM; provider sessions/tokens remain transient or Secret-owned and are never a user database |
 | Tenant plugin registry enrollment, trust-root object reference/digest, desired assignment, requested surface set, target host/workspace, and desired assignment generation | PostgreSQL Plugins tables through A3S ORM |
 | Signed plugin catalog record, permission ceiling, immutable operation plan, confirmation, and contract validation semantics | Canonical A3S Use contracts; Cloud retains only exact validated review evidence and digests |
 | Installed plugin generation, package files, receipts, Workspace Grants, Runtime Bindings, Route Leases, capability generation, dependency closure, and receipt-owned cleanup | Shared A3S Use Plugin Manager and its host-local stores/journals |
@@ -1387,7 +1564,12 @@ partially installed or optimistically active.
 | Artifact bytes | OCI registry or S3-compatible object store |
 | Agent conversation, execution, event-stream head, semantic event metadata, immutable bindings, approval decisions, checkpoint descriptors, and fork lineage | PostgreSQL Agents tables through A3S ORM |
 | Large Agent event content and logical checkpoint bytes | Shared immutable-object infrastructure through typed Agent adapters |
-| Live Harness process and Code run/checkpoint state | The sole `a3s code harness` process and A3S Code Core, hosted through A3S Runtime and A3S Box; Cloud retains only exact delivery identities, semantic projections, and verified receipts required for orchestration and recovery |
+| Harness invocation profiles, provider/capability digests, exact instructions/environment/security policy and release/Secret references, conformance identity, and selected execution binding | PostgreSQL Agents tables through A3S ORM |
+| Live Harness process and provider-private run/checkpoint state | The selected immutable Harness provider, hosted through A3S Runtime and A3S Box; native A3S Code uses `a3s code harness`, while Cloud retains only exact delivery identities, semantic projections, and verified receipts required for orchestration and recovery |
+| Ontology, Workflow, goal, plan, WorkflowRun, human decision, and semantic step state | PostgreSQL Workflow tables through A3S ORM |
+| Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
+| Evidence-dataset manifests, evaluation suites/results, experiments, candidates, promotion decisions, and rollback evidence | PostgreSQL Evolution tables through A3S ORM |
+| Dataset, evaluation, candidate, and trajectory bytes | Shared immutable-object infrastructure through typed Workflow/Evolution/Agent adapters |
 | Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
 | Inference-key environment, audience, prefix, verifier hash/algorithm parameters, generation, expiry/revocation and encrypted idempotency receipt | PostgreSQL Identity tables |
 | Workload replicas, placement members, and generic hard-resource claims | PostgreSQL Workloads tables |
@@ -1395,6 +1577,7 @@ partially installed or optimistically active.
 | Accelerator topology/health and node Artifact-cache observations | Planned node-agent extensions plus PostgreSQL Fleet projection |
 | Raw accelerator and inference time-series metrics | Configured metrics backend |
 | Inference request, attempt and token usage facts, including the request-time project/environment and immutable attribution reference | Durable Gateway spool until contiguous acknowledgement, then append-only PostgreSQL Inference usage ledger |
+| Security detection and investigation timeline | Rebuildable `C0.3` projection over shared audit records and authorized AnySentry/OpenTelemetry evidence references; the source audit/evidence systems retain fact authority |
 | Operation history | A3S Flow PostgreSQL event store |
 | Operation summary | Rebuildable PostgreSQL projection |
 | Provider resource and live health | Node agent plus Runtime provider |
@@ -1414,7 +1597,7 @@ partially installed or optimistically active.
 | Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation, with the pending upload governed by the shared typed outbound-batch/receipt primitive |
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
-| Database intent, volume identity, and backup descriptors | PostgreSQL domain tables |
+| Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration notifications | A3S Event; never the sole source of truth |
@@ -1437,10 +1620,19 @@ asset.release.published
 plugin.registry.enrolled
 plugin.assignment.changed
 plugin.assignment.converged
+workflow.ontology-revision.published
+workflow.definition-revision.published
+workflow.plan.compiled
+workflow.run.started
+workflow.run.completed
 agent.conversation.created
 agent.execution.started
 agent.execution.checkpointed
 agent.execution.completed
+evolution.dataset.sealed
+evolution.evaluation.completed
+evolution.candidate.registered
+evolution.promotion.decided
 artifact.artifact.registered
 fleet.node.enrolled
 fleet.node.observed
@@ -1499,11 +1691,19 @@ The first architecture does not implement:
 - a second deployment engine for Agent or MCP workloads;
 - an Agent-specific workflow engine, scheduler, command queue, node channel,
   idempotency table, audit store, low-level object client, or integration bus;
+- a provider-specific Cloud Agent run aggregate, scheduler, event log, approval
+  store, or direct command channel;
+- a Workflow-specific Flow engine, task scheduler, graph-database authority,
+  connector queue, object client, or direct provider launcher;
+- an Evolution training scheduler, model/Agent registry, dataset store,
+  deployment controller, or direct telemetry-to-production path;
 - Flow history or Runtime logs as an Agent semantic event stream; and
 - a direct client-to-Agent, client-to-Harness, or client-to-Gateway execution
   control path.
 
-Planned I0 also excludes model training/fine-tuning orchestration, unisolated
-soft GPU overcommit, price catalogs, monetary credits/balances, checkout,
-invoices, settlement, tax and commercial-entitlement authority, and vendor
-support based only on unverified capability advertisement.
+Planned I0 also excludes model training/fine-tuning orchestration; governed
+candidate and Agentic RL jobs belong only to `EV0` and still use the common
+execution path. I0 also excludes unisolated soft GPU overcommit, price
+catalogs, monetary credits/balances, checkout, invoices, settlement, tax and
+commercial-entitlement authority, and vendor support based only on unverified
+capability advertisement.

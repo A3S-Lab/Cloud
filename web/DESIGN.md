@@ -125,15 +125,15 @@ components:
 
 A3S OS is a bright enterprise AI product portal with A3S Web as its operations workspace. A pure white canvas, cool blue hairlines, compact typography, and one electric-blue field explain product value and expose current state without turning the product into a generic infrastructure dashboard.
 
-The public homepage leads with three outward-facing products: Workflow, Agent Factory, and the security operations center. It then reveals the shared A3S foundation, the complete gate-driven portfolio, and the authority that owns each outcome. Familiar controls, restrained motion, and semantic state color keep both the product story and authenticated tool trustworthy.
+The public homepage leads with three outward-facing products: Unified Gateway, Workflow, and Agent Factory. Security operations remain visible inside Unified Gateway. The page then reveals the shared A3S foundation, the complete gate-driven portfolio, and the authority that owns each outcome. Familiar controls, restrained motion, and semantic state color keep both the product story and authenticated tool trustworthy.
 
 **Key Characteristics:**
 
 - White and pale-blue operating surfaces with one dominant electric-blue field.
 - A three-product application layer over one Cloud, Runtime, Box, Gateway, Code, and trust foundation.
-- All 17 product gates shown with authoritative delivery states and no invented completion percentage.
+- All 19 product gates shown with authoritative delivery states and no invented completion percentage.
 - Compact, factual hierarchy designed for repeated use by platform operators.
-- Explicit control and execution ownership, ending at the sole A3S Code Harness.
+- Explicit control and execution ownership, ending at one provider-neutral Agent execution contract with A3S Code shown as the native provider.
 - Near-flat surfaces, cool hairlines, and sparse blue-tinted elevation.
 - Structural responsive reflow with preserved labels and touch targets.
 - Simplified Chinese by default with a complete, persistent English product version.
@@ -271,19 +271,19 @@ The signature status field combines an icon and plain-language convergence state
 
 ### Authority Chain
 
-Authority rows use a consistent icon well, label, and one-line detail. The chain ends in a solid-blue A3S Code Harness row to make the sole Agent execution owner unmistakable.
+Authority rows use a consistent icon well, label, and one-line detail. The chain ends in a solid-blue Agent provider-contract row, with A3S Code identified as the native provider rather than a separate Cloud lifecycle.
 
 ### Product Pillars
 
-Workflow occupies the dominant electric-blue field because autonomous orchestration is the broadest product story. Agent Factory and the security operations center use smaller white and pale-blue fields. The three cells are intentionally asymmetric and each names its technical foundation, current delivery state, customer outcome, core capabilities, and contributing roadmap gates.
+Workflow occupies the dominant electric-blue field because autonomous orchestration is the broadest product story. Agent Factory and Unified Gateway use white and pale-blue fields. Security operations are named inside Unified Gateway instead of becoming a separate product mechanism. The three cells are intentionally asymmetric and each names its technical foundation, current delivery state, customer outcome, core capabilities, and contributing roadmap gates.
 
 ### Capability Portfolio
 
-The portfolio is an evidence surface, not a marketing checklist. It shows the exact 17 gates in four product groups with Verified, In progress, Box re-certification, Planned, and explicit unavailable labels. A factual count field replaces completion bars or subjective percentages. Gate outcomes and key features remain visible without opening drawers.
+The portfolio is an evidence surface, not a marketing checklist. It shows the exact 19 gates in four product groups with Verified, In progress, Box re-certification, Planned, and explicit unavailable labels. A factual count field replaces completion bars or subjective percentages. Gate outcomes and key features remain visible without opening drawers.
 
 ### Architecture Map
 
-The exported HTML map adds the three outward-facing products above unified access and control, then includes all 17 gates, Fleet convergence, Runtime and Box execution, Gateway and Power payload boundaries, and infrastructure trust. State styling and a text legend travel into the PNG export. The A3S Code Harness command remains unique and exact.
+The exported HTML map adds the three outward-facing products above unified access and control, then includes all 19 gates, Fleet convergence, Runtime and Box execution, Gateway and Power payload boundaries, and infrastructure trust. State styling and a text legend travel into the PNG export. The native A3S Code Harness command remains exact while the surrounding label exposes the shared provider contract.
 
 ### Documentation Workspace
 
@@ -297,18 +297,19 @@ Documentation uses a stable index, one reading pane, an authoritative source lin
 - **Do** pair state with text or an icon instead of relying on color alone.
 - **Do** keep standard controls familiar, keyboard reachable, and at least 40px to 44px on touch layouts.
 - **Do** use real API projections and label planned architecture modules explicitly.
-- **Do** lead the public story with Workflow, Agent Factory, and security operations before exposing gate evidence.
-- **Do** keep the homepage, architecture map, and capability documentation on one shared 17-gate catalog.
-- **Do** preserve the A3S authority path and the sole A3S Code Harness boundary.
+- **Do** lead the public story with Unified Gateway, Workflow, and Agent Factory while keeping security operations visible inside Unified Gateway.
+- **Do** keep the homepage, architecture map, and capability documentation on one shared 19-gate catalog.
+- **Do** preserve the A3S authority path, one Agent provider contract, and A3S Code as the native provider.
+- **Do** retain established Cloud capabilities even when the outward product cards do not name them.
 - **Do** keep default Chinese and selectable English at feature parity, including dynamic states and accessible names.
 
 ### Don't:
 
-- **Don't** create a second Harness, execution owner, or parallel orchestration story.
+- **Don't** create a provider-specific Cloud controller, execution owner, scheduler, run store, or parallel orchestration story.
 - **Don't** scatter full-saturation blue across inactive surfaces.
 - **Don't** use visible eyebrow labels, gradient text, decorative glass, or technical monospace as costume.
 - **Don't** invent customer names, scale metrics, availability claims, or completed roadmap capabilities.
 - **Don't** reduce delivery progress to a made-up percentage or hide Box re-certification behind an Implemented label.
-- **Don't** describe Workflow, Agent Factory, or the security operations center as separate control planes or runtimes.
+- **Don't** describe Unified Gateway, Workflow, Agent Factory, or security operations as separate control planes or runtimes.
 - **Don't** compress desktop layouts onto mobile; reflow modules and allow purposeful horizontal scrolling for tab or tenant rails.
 - **Don't** infer the default language from the browser or create per-page language state.

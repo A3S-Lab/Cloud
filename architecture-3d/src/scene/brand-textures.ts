@@ -52,6 +52,24 @@ const BRAND_SPECS: Readonly<Record<ArchitectureLogoId, BrandSpec>> = {
     glyph: 'neural',
     accent: '#d7b6ff',
   },
+  workflow: {
+    label: 'Workflow',
+    eyebrow: 'W0 SEMANTIC AUTHORITY',
+    glyph: 'flow',
+    accent: '#72b7ff',
+  },
+  agents: {
+    label: 'Cloud Agents',
+    eyebrow: 'ONE PROVIDER CONTRACT',
+    glyph: 'containers',
+    accent: '#71d5c3',
+  },
+  evolution: {
+    label: 'Evolution',
+    eyebrow: 'EV0 GOVERNANCE',
+    glyph: 'neural',
+    accent: '#ef9cff',
+  },
   'a3s-power': {
     label: 'A3S Power',
     eyebrow: 'TEE INFERENCE BACKEND',

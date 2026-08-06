@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "A3S Cloud Layered Architecture",
-    "subtitle": "Experience → Gateway → Cloud domains → middleware → managed nodes → providers → infrastructure",
+    "subtitle": "Experience → Unified Gateway → Cloud product semantics → one durable control path → providers → infrastructure",
     "output": "public/archify/a3s-cloud.architecture.html",
     "animation": "trace",
     "visual_preset": "blueprint",
@@ -27,6 +27,21 @@
         "note": "Web and Code both cross the public Gateway before the private Boot API."
       },
       {
+        "id": "product-semantics",
+        "label": "Workflow, Agents, and Evolution",
+        "focus": [
+          "api",
+          "workflow",
+          "agents",
+          "evolution",
+          "operations",
+          "postgres",
+          "flow",
+          "workloads"
+        ],
+        "note": "New product semantics retain PostgreSQL authority and reuse Operations, Flow, and Workloads."
+      },
+      {
         "id": "deploy-converge",
         "label": "Deploy and converge",
         "focus": [
@@ -40,17 +55,6 @@
           "workload-unit"
         ],
         "note": "Follow desired state through durable coordination into one provider-backed unit."
-      },
-      {
-        "id": "middleware-layer",
-        "label": "Middleware and durable truth",
-        "focus": [
-          "postgres",
-          "flow",
-          "event",
-          "object-storage"
-        ],
-        "note": "SQL truth, workflow history, committed facts, and immutable bytes stay distinct."
       },
       {
         "id": "power-gpu",
@@ -164,6 +168,51 @@
       "pos": [
         841,
         395
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "workflow",
+      "type": "backend",
+      "label": "Workflow & Ontology",
+      "sublabel": "Planned semantic authority",
+      "tag": "W0 · Planned",
+      "pos": [
+        301,
+        246
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "agents",
+      "type": "backend",
+      "label": "Agent Execution",
+      "sublabel": "Provider-neutral Cloud lifecycle",
+      "tag": "A0 · A1 · In progress",
+      "pos": [
+        1111,
+        246
+      ],
+      "size": [
+        132,
+        62
+      ]
+    },
+    {
+      "id": "evolution",
+      "type": "backend",
+      "label": "Governed Evolution",
+      "sublabel": "Planned evidence authority",
+      "tag": "EV0 · Planned",
+      "pos": [
+        1435,
+        246
       ],
       "size": [
         132,
@@ -353,9 +402,9 @@
     {
       "id": "object-storage",
       "type": "database",
-      "label": "Artifact & Log Store",
-      "sublabel": "Content-addressed bytes",
-      "tag": "G0 · In progress",
+      "label": "Cloud Storage Plane",
+      "sublabel": "Immutable live · mutable planned",
+      "tag": "G0 + planned S0 · In progress",
       "pos": [
         1489,
         573
@@ -527,6 +576,9 @@
       "label": "03 · Control plane · Cloud Control Domains",
       "wraps": [
         "inference",
+        "workflow",
+        "agents",
+        "evolution",
         "api",
         "identity",
         "projects",
@@ -642,6 +694,40 @@
       "variant": "default"
     },
     {
+      "id": "api-workflow",
+      "from": "api",
+      "to": "workflow",
+      "variant": "security"
+    },
+    {
+      "id": "api-agents",
+      "from": "api",
+      "to": "agents",
+      "variant": "dashed"
+    },
+    {
+      "id": "api-evolution",
+      "from": "api",
+      "to": "evolution",
+      "variant": "security",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1050,
+          360
+        ],
+        [
+          1600,
+          360
+        ],
+        [
+          1600,
+          246
+        ]
+      ]
+    },
+    {
       "id": "inference-power",
       "from": "inference",
       "to": "power",
@@ -692,6 +778,78 @@
           540
         ]
       ]
+    },
+    {
+      "id": "workflow-operations",
+      "from": "workflow",
+      "to": "operations",
+      "variant": "default",
+      "fromSide": "left",
+      "toSide": "bottom",
+      "via": [
+        [
+          60,
+          246
+        ],
+        [
+          60,
+          638
+        ],
+        [
+          1327,
+          638
+        ]
+      ]
+    },
+    {
+      "id": "workflow-agents",
+      "from": "workflow",
+      "to": "agents",
+      "variant": "default",
+      "fromSide": "top",
+      "toSide": "top",
+      "via": [
+        [
+          301,
+          140
+        ],
+        [
+          1111,
+          140
+        ]
+      ]
+    },
+    {
+      "id": "agents-workloads",
+      "from": "agents",
+      "to": "workloads",
+      "variant": "default",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [
+        [
+          1111,
+          360
+        ],
+        [
+          1680,
+          360
+        ],
+        [
+          1680,
+          638
+        ],
+        [
+          355,
+          638
+        ]
+      ]
+    },
+    {
+      "id": "evolution-operations",
+      "from": "evolution",
+      "to": "operations",
+      "variant": "default"
     },
     {
       "id": "operations-flow",
@@ -966,6 +1124,40 @@
       "variant": "dashed"
     },
     {
+      "id": "struct-boot-hosts-contexts-api-workflow",
+      "from": "api",
+      "to": "workflow",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-agents",
+      "from": "api",
+      "to": "agents",
+      "variant": "dashed"
+    },
+    {
+      "id": "struct-boot-hosts-contexts-api-evolution",
+      "from": "api",
+      "to": "evolution",
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1046,
+          364
+        ],
+        [
+          1604,
+          364
+        ],
+        [
+          1604,
+          246
+        ]
+      ]
+    },
+    {
       "id": "struct-boot-hosts-contexts-api-sources",
       "from": "api",
       "to": "sources",
@@ -1065,10 +1257,10 @@
   "cards": [
     {
       "dot": "violet",
-      "title": "Control and middleware stay separate",
+      "title": "One mechanism for each concern",
       "items": [
-        "Cloud bounded contexts own business intent and policy.",
-        "PostgreSQL, Flow, Event, and object storage provide distinct durable capabilities."
+        "PostgreSQL owns business truth; Operations plus Flow own durable orchestration.",
+        "Outbox plus Event publish facts; Fleet alone retains node commands and receipts."
       ]
     },
     {
@@ -1081,10 +1273,10 @@
     },
     {
       "dot": "emerald",
-      "title": "Inference ownership",
+      "title": "Additive product projection",
       "items": [
-        "Cloud Inference owns models, backend profiles, routes, and usage.",
-        "A3S Power is one optional backend carried by a generic Cloud workload."
+        "Workflow, heterogeneous Agents, and Evolution add semantics, not new engines.",
+        "Existing tenancy, delivery, execution, edge, security, storage, and recovery capabilities remain."
       ]
     }
   ]

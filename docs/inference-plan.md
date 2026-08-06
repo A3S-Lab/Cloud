@@ -28,7 +28,10 @@ UI, or implementation compatibility with GPUStack. The finished profile will:
   commercial billing;
 - expose grant-derived consumer, project-steward, and platform-operator
   workspaces for model discovery, key lifecycle, route diagnostics, API
-  exploration, and usage showback; and
+  exploration, and usage showback;
+- preserve valuable multi-protocol and subscription-backed Provider outcomes as
+  separately gated optional profiles after the production core is complete;
+  and
 - recover truthfully from process, node, device, network, and control-plane
   failure.
 
@@ -53,7 +56,9 @@ The capability boundary is explicit:
 | Role-focused model discovery, project key lifecycle, provider/route diagnostics, API exploration, and usage showback | Included after the underlying data-plane, usage, external-provider, and C0 principal gates | `C0.3` + `I0.2e` |
 | Production Gateway/control-plane HA and autoscaling | Reuse the generic platform implementation | `H0.4`/`H0.5` + `I0.5` gates |
 | Hardware partitions and additional accelerator vendors | Deferred until conformance passes | `I0.5` |
-| Responses API and Jina-compatible rerank | Deferred beyond the initial data-plane gate | `I0.5` candidate |
+| Responses API and Jina-compatible rerank | Preserved as separately versioned optional protocol profiles after the production core | `I0.6` |
+| Anthropic Messages/count-tokens, image generation/editing, speech, and transcription | Preserved as independent optional protocol profiles; no generic compatibility claim | `I0.6` |
+| Approved subscription-backed and custom Provider channels | Preserved only behind explicit terms, credential-isolation, revocation, usage, and recovery conformance | `I0.6` |
 | Soft fractional GPU/VRAM sharing | Not a production capability in I0 | Future hardware-enforced or isolated design only |
 | GPU cloud-instance provisioning and SSH credential custody | Outside Inference | Future Fleet/Compute provider, if justified |
 | Training, fine-tuning and notebook lifecycle | Outside I0 | Separate owning profile required |
@@ -813,9 +818,9 @@ The first protocol matrix is closed:
 | `POST /v1/chat/completions` | I0.2b | Non-streaming and SSE streaming with terminal `[DONE]` |
 | `POST /v1/completions` | I0.2b | Non-streaming and SSE streaming with terminal `[DONE]` |
 | `POST /v1/embeddings` | I0.2b | Non-streaming OpenAI-compatible response |
-| `POST /v1/responses` | Deferred to I0.5 | Enabled only after backend and SDK conformance |
-| `POST /v1/rerank` | Deferred to I0.5 | Jina-compatible, not described as an OpenAI endpoint |
-| Images, image edits, speech, transcription, and Anthropic Messages | Outside I0 | Require separate typed protocol profiles |
+| `POST /v1/responses` | Deferred to I0.6 | Separate profile enabled only after backend, SDK, streaming, usage, and recovery conformance |
+| `POST /v1/rerank` | Deferred to I0.6 | Separate Jina-compatible profile, never described as an OpenAI endpoint |
+| Images, image edits, speech, transcription, and Anthropic Messages/count-tokens | Deferred to I0.6 | Each requires its own typed protocol profile, limits, retention, error, usage, and conformance contract |
 
 Management APIs retain the standard A3S response wrapper. These data-plane
 endpoints retain their protocol-specific success and error shapes. I0.2b fixes
@@ -947,6 +952,23 @@ workspaces. It takes product inspiration from TokenHub without adopting its API,
 UI, storage topology, or billing model. The workspace selected by the console
 changes navigation and default queries only; C0 effective grants remain the
 sole authority for every result and action.
+
+The TokenHub reference inventory is preserved by outcome rather than by
+surface compatibility:
+
+| Valuable reference outcome | A3S delivery boundary |
+| --- | --- |
+| Consumer, team/project steward, and platform-administrator workspaces | `C0.3` authorized personas plus `I0.2e`; navigation never grants access |
+| Enterprise sign-in, RBAC, project keys, quota, and concurrency policy | Identity-owned external OIDC links, memberships, grants, and inference credentials; Gateway only enforces compiled policy |
+| Model/provider catalog, priority and weighted routing, fallback, and health diagnostics | Inference revisions plus Edge target policy and Gateway observations under `I0.2b`/`I0.2d`/`I0.2e` |
+| Request logs, user/project/model/provider attribution, and cost-center showback | Prompt-free `I0.2c` usage facts, immutable project attribution references, and authorized `I0.2e` views |
+| OpenAI-compatible core APIs and broad Provider support | Closed `I0.2b` protocol matrix, generic credential-isolated `I0.2d` Provider, and real-conformance Provider breadth in `I0.5` |
+| Responses, Anthropic Messages, media APIs, custom upstreams, and approved subscription-backed channels | Optional `I0.6` profiles; each remains unavailable until separately certified |
+| Release update, rollback, multi-instance operation, language parity, and API documentation | Existing `E0`/`H0` lifecycle plus `C0` Web/documentation contracts; no inference-specific updater or UI authority |
+
+Commercial prices, balances, invoices, settlement, tax, and entitlement remain
+an external service/profile, but Cloud retains immutable attribution and usage
+exports so that integration does not require a second usage ledger.
 
 | Persona | Workspace outcomes |
 | --- | --- |
@@ -1161,6 +1183,40 @@ Fleet/Compute provider that produces an ordinarily enrolled Node and passes the
 same fencing, drain, cleanup, cost-quota, and recovery gates. Kubernetes also
 does not become an optional Cloud deployment profile or a second scheduler.
 
+### I0.6: optional protocol and Provider-channel expansion
+
+`I0.6` preserves useful gateway breadth without making the production core wait
+for every vendor or media API. It begins only after `I0.5`; no `I0.6` profile is
+required for the base Inference product or for `EV0`.
+
+- Define one closed, versioned `InferenceProtocolProfile` per Responses,
+  rerank, Anthropic Messages/count-tokens, image generation/editing, speech, or
+  transcription contract. A profile fixes endpoint, body/stream framing,
+  errors, bounds, usage semantics, cancellation, retention, and redaction.
+- Keep Gateway as the protocol/data-plane executor and Inference as desired
+  policy and usage authority. A long asynchronous media operation creates an
+  ordinary authenticated Execution and stores retained results through the
+  existing typed immutable-object/Artifact boundary; Gateway does not gain a
+  job database.
+- Admit custom upstreams and subscription-backed channels only as immutable,
+  credential-isolated Provider profiles. The gate must confirm that the
+  operator is authorized by the upstream terms, tokens never reach the browser
+  or traffic snapshot, rotation/revocation is exact, and every attempt enters
+  the same durable usage ledger.
+- Treat a Provider template as discovery metadata, never as evidence of
+  compatibility. Every named adapter passes real endpoint, streaming or media,
+  error, usage, timeout, fallback, credential-leak, process-death, and recovery
+  fixtures before its capability is published.
+- Reuse `C0.3` external OIDC federation, grants, role-focused surfaces,
+  attribution, audit, and security investigation. No protocol profile creates
+  another identity store, key issuer, route controller, proxy, or billing
+  subsystem.
+
+The first accepted profile must prove old and new Gateway revisions fail closed
+on an unknown profile, mixed Providers cannot cross credentials or usage, and
+removal preserves historical attribution while making the endpoint or channel
+immediately unavailable after exact snapshot acknowledgement.
+
 ## 13. Mandatory verification
 
 In addition to the repository verification matrix, I0 requires:
@@ -1239,8 +1295,10 @@ The recommended merge order is:
 13. I0.3 independent replica failover and rolling update;
 14. H0.3 placement-group/private-network gate, then I0.4 distributed Power;
 15. H0.4 production deployment/HA and H0.5 sole autoscaling controller;
-16. I0.5 inference HA, load, quota and disaster gates; and
-17. named vendor and external-Provider adapters through conformance.
+16. I0.5 inference HA, load, quota and disaster gates;
+17. named vendor and external-Provider adapters through conformance; and
+18. optional I0.6 protocol and approved subscription/custom-channel profiles,
+    one independently certified profile at a time.
 
 No slice weakens the verified E0 path, creates a parallel deployment path, or
 marks a capability available before its real-provider and recovery gates pass.

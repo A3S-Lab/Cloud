@@ -152,6 +152,73 @@ for (const version of registry.versions) {
   }
 }
 
+const preservationContracts = [
+  {
+    path: 'docs/architecture.md',
+    required: [
+      '### 2.1 Reference capability preservation register',
+      'Organizations, projects, environments, identity, grants, API, CLI, Web, and Management MCP',
+      'External sources, webhooks, reproducible builds, provenance, previews, monorepos, and imports',
+      'Generic finite Tasks and ordinary application Services',
+      'Runtime/Box provider lifecycle, isolation, mounts, outputs, checkpoints, and builds',
+      'TokenHub-style private multi-provider model gateway',
+      'Google AX-style isolated distributed Harness execution',
+      'Security-operations correlation',
+      '`HarnessInvocationProfile`',
+      '`I0.6`',
+    ],
+  },
+  {
+    path: 'ROADMAP.md',
+    required: [
+      'External OIDC identity federation',
+      '`HarnessInvocationProfile`',
+      '`I0.6`',
+      'tenant-scoped security investigation',
+    ],
+  },
+  {
+    path: 'docs/development-plan.md',
+    required: [
+      'TokenHub-style private model gateway',
+      'Google AX-style distributed Harness runtime',
+      'Cross-layer security operations',
+      '`HarnessInvocationProfile`',
+      'optional independently certified `I0.6` protocol/channel profiles',
+    ],
+  },
+  {
+    path: 'docs/domain-model.md',
+    required: [
+      '| External identity link |',
+      '| Harness invocation profile |',
+      '| Security incident projection |',
+    ],
+  },
+  {
+    path: 'docs/inference-plan.md',
+    required: [
+      'The TokenHub reference inventory is preserved by outcome',
+      '### I0.6: optional protocol and Provider-channel expansion',
+    ],
+  },
+];
+
+for (const contract of preservationContracts) {
+  const content = await readFile(
+    path.join(repositoryRoot, contract.path),
+    'utf8',
+  );
+  const missing = contract.required.filter(
+    (needle) => !content.includes(needle),
+  );
+  if (missing.length > 0) {
+    fail(
+      `${contract.path} lost capability-preservation invariants: ${missing.join(', ')}`,
+    );
+  }
+}
+
 console.log(
-  `Verified ${registry.versions.length} documentation versions across ${languages.length} languages.`,
+  `Verified ${registry.versions.length} documentation versions across ${languages.length} languages and ${preservationContracts.length} capability-preservation contracts.`,
 );

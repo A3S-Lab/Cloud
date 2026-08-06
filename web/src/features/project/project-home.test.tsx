@@ -38,11 +38,12 @@ describe('ProjectHome', () => {
     expect(host.querySelectorAll('.product-pillar')).toHaveLength(3);
     expect(host.textContent).toContain('Workflow 自主工作流编排');
     expect(host.textContent).toContain('Agent Factory 异构智能体工厂');
-    expect(host.textContent).toContain('安全监控中台');
-    expect(host.textContent).toContain('A3S Gateway / A3S Sentry / AnySentry');
+    expect(host.textContent).toContain('A3S Gateway 统一网关');
+    expect(host.textContent).toContain('Cloud API + A3S Gateway');
+    expect(host.textContent).toContain('Sentry / AnySentry 安全证据');
     expect(host.querySelectorAll('.web-client-capability-grid article')).toHaveLength(6);
     expect(host.textContent).toContain('一个客户端，贯通三大产品的每一次工作');
-    expect(host.querySelectorAll('.architecture-business-group li')).toHaveLength(17);
+    expect(host.querySelectorAll('.architecture-business-group li')).toHaveLength(19);
     expect(host.querySelector('#documentation')).toBeNull();
     expect(host.querySelector('#access')).toBeNull();
     expect(host.querySelector('.architecture-harness-card code')?.textContent).toBe(

@@ -188,7 +188,7 @@ const AUTHORITY_LAYERS = [
   { label: 'Outbound-only Node Agent', detail: 'Leases, Claims, commands, and receipts', icon: Network },
   { label: 'A3S Runtime + Box', detail: 'Task, Service, build, and isolation', icon: Server },
   { label: 'A3S Gateway', detail: 'Applied request-path policy', icon: RouteIcon },
-  { label: 'A3S Code Harness', detail: 'Sole Agent execution owner', icon: Code2 },
+  { label: 'Agent execution providers', detail: 'One provider-neutral contract', icon: Code2 },
 ] as const;
 
 function AuthorityChain() {
@@ -204,7 +204,7 @@ function AuthorityChain() {
       </div>
       <ol className='authority-chain'>
         {AUTHORITY_LAYERS.map(({ label, detail, icon: Icon }) => (
-          <li className={label === 'A3S Code Harness' ? 'authority-harness' : undefined} key={label}>
+          <li className={label === 'Agent execution providers' ? 'authority-harness' : undefined} key={label}>
             <span aria-hidden='true'>
               <Icon size={18} />
             </span>

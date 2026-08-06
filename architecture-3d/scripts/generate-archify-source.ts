@@ -23,7 +23,7 @@ const document = {
   meta: {
     title: 'A3S Cloud Layered Architecture',
     subtitle:
-      'Experience → Gateway → Cloud domains → middleware → managed nodes → providers → infrastructure',
+      'Experience → Unified Gateway → Cloud product semantics → one durable control path → providers → infrastructure',
     output: 'public/archify/a3s-cloud.architecture.html',
     animation: 'trace',
     visual_preset: 'blueprint',
@@ -35,6 +35,21 @@ const document = {
         label: 'Management boundary',
         focus: ['clients', 'web', 'a3s-box', 'code-tui', 'gateway', 'api'],
         note: 'Web and Code both cross the public Gateway before the private Boot API.',
+      },
+      {
+        id: 'product-semantics',
+        label: 'Workflow, Agents, and Evolution',
+        focus: [
+          'api',
+          'workflow',
+          'agents',
+          'evolution',
+          'operations',
+          'postgres',
+          'flow',
+          'workloads',
+        ],
+        note: 'New product semantics retain PostgreSQL authority and reuse Operations, Flow, and Workloads.',
       },
       {
         id: 'deploy-converge',
@@ -50,12 +65,6 @@ const document = {
           'workload-unit',
         ],
         note: 'Follow desired state through durable coordination into one provider-backed unit.',
-      },
-      {
-        id: 'middleware-layer',
-        label: 'Middleware and durable truth',
-        focus: ['postgres', 'flow', 'event', 'object-storage'],
-        note: 'SQL truth, workflow history, committed facts, and immutable bytes stay distinct.',
       },
       {
         id: 'power-gpu',
@@ -119,10 +128,10 @@ const document = {
   cards: [
     {
       dot: 'violet',
-      title: 'Control and middleware stay separate',
+      title: 'One mechanism for each concern',
       items: [
-        'Cloud bounded contexts own business intent and policy.',
-        'PostgreSQL, Flow, Event, and object storage provide distinct durable capabilities.',
+        'PostgreSQL owns business truth; Operations plus Flow own durable orchestration.',
+        'Outbox plus Event publish facts; Fleet alone retains node commands and receipts.',
       ],
     },
     {
@@ -135,10 +144,10 @@ const document = {
     },
     {
       dot: 'emerald',
-      title: 'Inference ownership',
+      title: 'Additive product projection',
       items: [
-        'Cloud Inference owns models, backend profiles, routes, and usage.',
-        'A3S Power is one optional backend carried by a generic Cloud workload.',
+        'Workflow, heterogeneous Agents, and Evolution add semantics, not new engines.',
+        'Existing tenancy, delivery, execution, edge, security, storage, and recovery capabilities remain.',
       ],
     },
   ],
@@ -194,6 +203,42 @@ function connectionVariant(edge: ArchitectureEdge): ArchifyConnectionVariant {
 
 function connectionRoute(id: string): Readonly<Record<string, unknown>> {
   const routes: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+    'api-evolution': {
+      fromSide: 'right',
+      toSide: 'right',
+      via: [
+        [1050, 360],
+        [1600, 360],
+        [1600, 246],
+      ],
+    },
+    'workflow-operations': {
+      fromSide: 'left',
+      toSide: 'bottom',
+      via: [
+        [60, 246],
+        [60, 638],
+        [1327, 638],
+      ],
+    },
+    'workflow-agents': {
+      fromSide: 'top',
+      toSide: 'top',
+      via: [
+        [301, 140],
+        [1111, 140],
+      ],
+    },
+    'agents-workloads': {
+      fromSide: 'bottom',
+      toSide: 'bottom',
+      via: [
+        [1111, 360],
+        [1680, 360],
+        [1680, 638],
+        [355, 638],
+      ],
+    },
     'inference-power': {
       fromSide: 'bottom',
       toSide: 'top',
@@ -259,6 +304,15 @@ function connectionRoute(id: string): Readonly<Record<string, unknown>> {
       via: [
         [757, 796],
         [1555, 796],
+      ],
+    },
+    'struct-boot-hosts-contexts-api-evolution': {
+      fromSide: 'right',
+      toSide: 'right',
+      via: [
+        [1046, 364],
+        [1604, 364],
+        [1604, 246],
       ],
     },
   };

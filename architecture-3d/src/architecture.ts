@@ -52,16 +52,16 @@ export const ARCHITECTURE_DOMAINS: readonly ArchitectureDomain[] = [
     id: 'control',
     label: 'Cloud Control Domains',
     shortLabel: '03 · Control plane',
-    description: 'Tenant-scoped authority, desired state, reconciliation, and policy',
+    description: 'Tenant-scoped authority, product semantics, desired state, reconciliation, and policy',
     center: [0, 5.2],
-    size: [32, 7],
+    size: [32, 8.2],
     color: '#b8f36b',
   },
   {
     id: 'coordination',
     label: 'Platform Middleware & State',
     shortLabel: '04 · Middleware',
-    description: 'Durable SQL state, workflows, committed facts, and content-addressed bytes',
+    description: 'One SQL authority, one Flow history, committed integration facts, and governed storage',
     center: [0, -0.1],
     size: [32, 3],
     color: '#d7b6ff',
@@ -186,11 +186,66 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     status: 'planned',
     gate: 'I0',
     summary:
-      'The planned Cloud bounded context owns model-serving intent and compiles it into generic Workloads, Fleet claims, and Edge policy.',
-    owns: ['Model catalog', 'Typed backend plans', 'Model routes and usage'],
+      'The planned Cloud bounded context owns model, Provider, typed protocol, route, and usage intent and compiles execution into generic Workloads, Fleet claims, and Edge policy.',
+    owns: ['Model and Provider catalog', 'Typed protocol and backend plans', 'Model routes and usage'],
     boundary:
-      'Cloud Inference is not an A3S product binary, scheduler, deployment engine, traffic proxy, or physical inference backend.',
+      'Core and optional protocol profiles reuse one Identity, Secret, Inference, Edge/Gateway, and usage path; Cloud Inference is not another scheduler, proxy, key store, or physical backend.',
     docsUrl: `${cloudDocs}/docs/inference-plan.md`,
+  },
+  {
+    id: 'workflow',
+    label: 'Workflow & Ontology',
+    eyebrow: 'Planned semantic authority',
+    domain: 'control',
+    position: [-10, 0.28, 9.1],
+    visualKind: 'workflow-orchestrator',
+    logoId: 'workflow',
+    status: 'planned',
+    gate: 'W0',
+    summary:
+      'Owns versioned business ontologies, goals, deterministic plan revisions, Workflow runs, and human decisions.',
+    owns: ['Ontology and Workflow revisions', 'Goal and deterministic plan', 'Workflow run semantics'],
+    boundary:
+      'PostgreSQL through A3S ORM is authoritative; Workflow compiles durable work to Operations and A3S Flow instead of adding an engine, scheduler, or Runtime.',
+    docsUrl: `${cloudDocs}/docs/workflow-evolution-plan.md`,
+  },
+  {
+    id: 'agents',
+    label: 'Agent Execution',
+    eyebrow: 'Provider-neutral Cloud lifecycle',
+    domain: 'control',
+    position: [5, 0.28, 9.1],
+    visualKind: 'workload-cluster',
+    logoId: 'agents',
+    status: 'in-progress',
+    gate: 'A0 · A1',
+    summary:
+      'Owns one Agent execution lifecycle and semantic contract across heterogeneous Harness providers; A3S Code is native.',
+    owns: [
+      'Conversation and AgentExecution',
+      'Invocation profile and semantic events',
+      'Approval, recovery, and lineage',
+    ],
+    boundary:
+      'PostgreSQL holds provider-neutral Cloud state; providers retain private details but cannot add a controller, scheduler, run store, node channel, or Runtime.',
+    docsUrl: `${cloudDocs}/docs/workflow-evolution-plan.md`,
+  },
+  {
+    id: 'evolution',
+    label: 'Governed Evolution',
+    eyebrow: 'Planned evidence authority',
+    domain: 'control',
+    position: [11, 0.28, 9.1],
+    visualKind: 'artifact-factory',
+    logoId: 'evolution',
+    status: 'planned',
+    gate: 'EV0',
+    summary:
+      'Owns authorized evidence datasets, evaluation suites, candidates, promotion decisions, and rollback evidence.',
+    owns: ['Evidence dataset manifest', 'Evaluation and candidate revision', 'Promotion decision'],
+    boundary:
+      'PostgreSQL holds decisions and telemetry is evidence only; jobs reuse Flow and Workloads, while promotion uses owning-context rollout authority.',
+    docsUrl: `${cloudDocs}/docs/workflow-evolution-plan.md`,
   },
   {
     id: 'api',
@@ -329,7 +384,8 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     summary:
       'Durable operation projections expose long-running progress, cancellation, replay, and recovery.',
     owns: ['Operation record', 'Workflow identity', 'Timeline projection'],
-    boundary: 'A business commit and a Flow run converge idempotently across their crash gap.',
+    boundary:
+      'A business commit and a Flow run converge idempotently across their crash gap; planned C0.3 security investigations remain read-only evidence projections.',
     docsUrl: `${cloudDocs}/docs/domain-model.md#310-operations`,
   },
   {
@@ -379,17 +435,19 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
   },
   {
     id: 'object-storage',
-    label: 'Artifact & Log Store',
-    eyebrow: 'Content-addressed bytes',
+    label: 'Cloud Storage Plane',
+    eyebrow: 'Immutable live · mutable planned',
     domain: 'coordination',
     position: [12, 0.28, -0.1],
     visualKind: 'object-storage',
     logoId: 'object-store',
     status: 'in-progress',
-    gate: 'G0',
-    summary: 'Immutable log chunks and command-bound Artifact archives live outside business rows.',
-    owns: ['Verified object bytes', 'Artifact receipts', 'Retention lifecycle'],
-    boundary: 'PostgreSQL stores descriptors and gaps, never unbounded image or log bodies.',
+    gate: 'G0 + planned S0',
+    summary:
+      'Immutable log and Artifact bytes use one content-addressed client today; S0 extends the same plane with fenced distributed mutable storage.',
+    owns: ['Verified immutable bytes', 'Fenced mutable volume handles', 'Retention lifecycle'],
+    boundary:
+      'PostgreSQL remains business authority; immutable objects and mutable volumes keep distinct semantics without separate storage control planes.',
     docsUrl: `${cloudDocs}/docs/architecture.md`,
   },
   {
@@ -435,10 +493,10 @@ export const ARCHITECTURE_NODES: readonly ArchitectureNode[] = [
     status: 'historical',
     gate: 'E0',
     summary:
-      'Sits between Web/Code clients and Cloud, routing /api to Boot while also serving live workload ingress.',
+      'Forms the live data plane of Unified Gateway, routing management requests to Cloud API and traffic to acknowledged workloads.',
     owns: ['Public transport and TLS', 'Same-origin API/SPA routing', 'Atomic workload route snapshots'],
     boundary:
-      'Gateway routes to private services and healthy targets; it does not host Cloud business state or read SPA files.',
+      'Cloud API owns identity and desired policy; Gateway applies protocol and routing policy without scheduling, promotion, or business-state authority.',
     docsUrl: 'https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md',
   },
   {
@@ -618,6 +676,27 @@ const ARCHITECTURE_EDGE_DEFINITIONS = [
     journeys: ['deploy'],
   },
   {
+    id: 'api-workflow',
+    from: 'api',
+    to: 'workflow',
+    label: 'authorized goal / definition',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'api-agents',
+    from: 'api',
+    to: 'agents',
+    label: 'Agent intent / query',
+    journeys: ['deploy', 'observe'],
+  },
+  {
+    id: 'api-evolution',
+    from: 'api',
+    to: 'evolution',
+    label: 'authorized evaluation intent',
+    journeys: ['deploy', 'observe'],
+  },
+  {
     id: 'inference-power',
     from: 'inference',
     to: 'power',
@@ -643,6 +722,34 @@ const ARCHITECTURE_EDGE_DEFINITIONS = [
     from: 'workloads',
     to: 'operations',
     label: 'deployment operation',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'workflow-operations',
+    from: 'workflow',
+    to: 'operations',
+    label: 'one durable run',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'workflow-agents',
+    from: 'workflow',
+    to: 'agents',
+    label: 'typed Agent step',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'agents-workloads',
+    from: 'agents',
+    to: 'workloads',
+    label: 'immutable provider workload',
+    journeys: ['deploy'],
+  },
+  {
+    id: 'evolution-operations',
+    from: 'evolution',
+    to: 'operations',
+    label: 'evaluation / candidate job',
     journeys: ['deploy'],
   },
   {

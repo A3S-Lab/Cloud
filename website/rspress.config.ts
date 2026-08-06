@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { defineConfig } from '@rspress/core';
+import { productChapters } from './theme/data/product';
 
 const base = process.env.DOCS_BASE ?? '/Cloud/';
 const siteOrigin = process.env.DOCS_ORIGIN ?? 'https://a3s-lab.github.io';
@@ -58,11 +59,10 @@ export default defineConfig({
       { text: '端云底座', link: '/#edge-cloud-foundation' },
       {
         text: '产品',
-        items: [
-          { text: '工作流编排', link: '/#workflow' },
-          { text: '智能体工厂', link: '/#agent-factory' },
-          { text: '统一网关', link: '/#unified-gateway' },
-        ],
+        items: productChapters.map(({ id, navLabel }) => ({
+          text: navLabel.zh,
+          link: `/#${id}`,
+        })),
       },
       { text: '端侧智能体', link: '/#edge-agent' },
       { text: '行业方案', link: '/#solutions' },

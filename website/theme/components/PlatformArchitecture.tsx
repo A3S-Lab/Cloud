@@ -101,8 +101,8 @@ const coreCapabilities: ArchitectureItem[] = [
     title: 'Ontology Knowledge Graph',
     titleZh: '本体知识图谱',
     description: {
-      zh: '统一表达业务对象、关系、规则、目标与约束',
-      en: 'Represents business objects, relations, rules, goals, and constraints',
+      zh: '以版本化关系数据为权威，派生可重建的对象、关系、规则、目标与约束投影',
+      en: 'Uses versioned relational authority to derive rebuildable projections of objects, relations, rules, goals, and constraints',
     },
     icon: Graph,
     emphasis: true,
@@ -111,19 +111,19 @@ const coreCapabilities: ArchitectureItem[] = [
   {
     title: 'A3S Runtime',
     description: {
-      zh: '承载工作流、智能体与无状态函数的标准运行合约',
-      en: 'Provides standard runtime contracts for workflows, Agents, and stateless functions',
+      zh: '只提供 Task / Service 标准生命周期；WaaS、AaaS 与 FaaS 由上层编译复用',
+      en: 'Exposes only Task and Service lifecycles; WaaS, AaaS, and FaaS compile to those primitives',
     },
     icon: Engine,
     emphasis: true,
-    meta: 'WaaS · AaaS · FaaS',
+    meta: 'Task · Service',
   },
   {
     title: 'Asset Hosting',
     titleZh: '资产托管',
     description: {
-      zh: '托管、版本固定、发布和分发企业 AI 资产包',
-      en: 'Hosts, pins, publishes, and distributes enterprise AI Asset Packages',
+      zh: '联合展示并固定各权威上下文发布的不可变企业 AI 资产引用',
+      en: 'Federates and pins immutable enterprise AI Asset references published by each owning context',
     },
     icon: Vault,
     emphasis: true,
@@ -152,8 +152,8 @@ const infrastructure: ArchitectureItem[] = [
     title: 'Distributed File Storage',
     titleZh: '分布式文件存储',
     description: {
-      zh: '统一持久化代码、数据与制品，并提供分布式访问能力',
-      en: 'Persists code, data, and artifacts with distributed access',
+      zh: '以同一存储平面承载不可变对象与带 Fencing 的可变卷',
+      en: 'Carries immutable objects and fenced mutable volumes through one storage plane',
     },
     icon: Database,
   },
@@ -205,8 +205,8 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
           </h2>
           <p>
             {zh
-              ? 'A3S Gateway 统一治理 A3S Work、A3S CLI、端侧节点与外部系统的智能流量。工作流、智能体、MCP 与模型组成统一服务平台；核心层提供智能编排算法、本体知识图谱、A3S Runtime 与资产托管。'
-              : 'A3S Gateway governs intelligent traffic from A3S Work, A3S CLI, edge nodes, and external systems. Workflow, Agent, MCP, and model services form the unified service platform; the core layer provides intelligent orchestration algorithms, an ontology knowledge graph, A3S Runtime, and asset hosting.'}
+              ? '统一网关产品由 Cloud API 管理面与 A3S Gateway 实时数据面组成。Workflow、Agent、MCP 与模型形成统一服务平台；所有能力继续复用 Cloud 现有的来源交付、资产、调度、运行、存储、安全、审计与恢复机制。'
+              : 'The unified gateway product combines the Cloud API management plane with the A3S Gateway live data plane. Workflow, Agent, MCP, and model services form the unified service platform while reusing Cloud’s existing source delivery, assets, scheduling, runtime, storage, security, audit, and recovery mechanisms.'}
           </p>
         </div>
         <div className="cloud-architecture-actions">
@@ -267,16 +267,16 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
               <LayerConnector
                 label={
                   zh
-                    ? '事件、命令、回执与数据轨迹'
-                    : 'EVENTS, COMMANDS, RECEIPTS, AND DATA TRAJECTORIES'
+                    ? '集成事实 · 证据引用 · 数据轨迹'
+                    : 'INTEGRATION FACTS · EVIDENCE REFERENCES · TRAJECTORIES'
                 }
               />
               <EventBusRail language={language} />
               <LayerConnector
                 label={
                   zh
-                    ? '资源需求 · 调度事件 · 执行回执'
-                    : 'RESOURCE DEMAND · SCHEDULING EVENTS · RECEIPTS'
+                    ? '资源需求 · 放置意图 · 执行回执'
+                    : 'RESOURCE DEMAND · PLACEMENT INTENT · RECEIPTS'
                 }
               />
               <SchedulingRail language={language} />
@@ -305,8 +305,8 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
           </div>
           <p>
             {zh
-              ? 'A3S Gateway 负责统一流量治理；核心层提供智能编排算法、本体知识图谱、A3S Runtime 与资产托管；统一服务平台提供 Workflow、Agent、MCP 与模型服务；A3S Event 传递事件、命令与回执。'
-              : 'A3S Gateway governs traffic. The core layer provides intelligent orchestration algorithms, an ontology knowledge graph, A3S Runtime, and asset hosting. The service platform exposes Workflow, Agent, MCP, and model services; A3S Event carries events, commands, and receipts.'}
+              ? 'Cloud API 与 A3S Gateway 分别负责管理面和实时数据面；Workflow、Agent、MCP、模型与自进化复用同一 Flow、Workloads、Fleet、Runtime、Box、存储和审计链路。A3S Event 只发布已提交的集成事实，控制命令与回执仍由 Fleet 和节点日志负责。'
+              : 'Cloud API and A3S Gateway own the management and live data planes respectively. Workflow, Agent, MCP, model, and evolution capabilities reuse one Flow, Workloads, Fleet, Runtime, Box, storage, and audit path. A3S Event publishes committed integration facts only; Fleet and the node journal retain command and receipt authority.'}
           </p>
         </footer>
       </div>
@@ -317,8 +317,14 @@ export function PlatformArchitecture({ language }: { language: HomeLanguage }) {
 function EventBusRail({ language }: { language: HomeLanguage }) {
   const zh = language === 'zh';
   const channels = zh
-    ? ['领域事件', '控制命令', '执行回执', '轨迹回流', '审计事实']
-    : ['Domain events', 'Commands', 'Receipts', 'Trajectories', 'Audit facts'];
+    ? ['领域事件', '生命周期事实', '证据引用', '轨迹清单', '目录更新']
+    : [
+        'Domain events',
+        'Lifecycle facts',
+        'Evidence refs',
+        'Trajectory manifests',
+        'Catalog updates',
+      ];
 
   return (
     <section className="cloud-event-bus-rail">
@@ -326,13 +332,13 @@ function EventBusRail({ language }: { language: HomeLanguage }) {
         <Queue aria-hidden="true" size={24} weight="duotone" />
       </span>
       <div>
-        <small>{zh ? '事件与命令总线' : 'EVENT AND COMMAND BUS'}</small>
+        <small>{zh ? '集成事实总线' : 'INTEGRATION FACT BUS'}</small>
         <strong>A3S Event</strong>
       </div>
       <p>
         {zh
-          ? '传递领域事件、控制命令、执行回执与审计事实'
-          : 'Carries domain events, control commands, execution receipts, and audit facts'}
+          ? '通过事务 Outbox 发布已提交事实，不替代命令、回执与审计权威'
+          : 'Publishes committed facts through the transactional Outbox without replacing command, receipt, or audit authority'}
       </p>
       <ul>
         {channels.map((channel) => (
@@ -374,8 +380,13 @@ function SchedulingRail({ language }: { language: HomeLanguage }) {
 function EvolutionRail({ language }: { language: HomeLanguage }) {
   const zh = language === 'zh';
   const feedback = zh
-    ? ['数据轨迹', '评测奖励', '运行证据', '安全约束']
-    : ['Trajectories', 'Rewards', 'Run evidence', 'Safety'];
+    ? ['授权数据集', '可复现评测', '候选版本', '审批与回滚']
+    : [
+        'Authorized datasets',
+        'Reproducible evaluation',
+        'Candidates',
+        'Approval and rollback',
+      ];
 
   return (
     <aside
@@ -385,12 +396,12 @@ function EvolutionRail({ language }: { language: HomeLanguage }) {
       <ArrowsClockwise aria-hidden="true" size={26} weight="duotone" />
       <div>
         <strong>{zh ? '自进化系统' : 'Self-Evolution'}</strong>
-        <small>{zh ? '双螺旋自进化机制' : 'DUAL-HELIX EVOLUTION'}</small>
+        <small>{zh ? '治理式演进模型' : 'GOVERNED EVOLUTION MODEL'}</small>
       </div>
       <p>
         {zh
-          ? '消费 AnySentry 回流轨迹，在安全约束下协同演进'
-          : 'Consumes AnySentry trajectories and co-evolves under safety constraints'}
+          ? '基于授权证据生成候选版本，经评测、审批、灰度与回滚后进入现有发布链路'
+          : 'Produces candidates from authorized evidence, then uses evaluation, approval, canary, and rollback through existing release paths'}
       </p>
       <div className="cloud-evolution-helix" aria-hidden="true">
         <span className="is-model">
@@ -432,14 +443,14 @@ function EvolutionRail({ language }: { language: HomeLanguage }) {
 function GatewayProductRail({ language }: { language: HomeLanguage }) {
   const zh = language === 'zh';
   const capabilities = zh
-    ? ['统一接入', '身份策略', '协议适配', '智能路由', '实时流量', '端云治理']
+    ? ['管理 API', '统一身份', '协议策略', '智能路由', '实时流量', '端云证据']
     : [
-        'Ingress',
+        'Management API',
         'Identity',
-        'Protocols',
+        'Protocol policy',
         'Routing',
         'Live traffic',
-        'Cloud-edge',
+        'Cloud-edge evidence',
       ];
 
   return (
@@ -448,15 +459,17 @@ function GatewayProductRail({ language }: { language: HomeLanguage }) {
         <Broadcast aria-hidden="true" size={25} weight="duotone" />
       </span>
       <div>
-        <small>{zh ? '统一流量治理' : 'UNIFIED TRAFFIC GOVERNANCE'}</small>
+        <small>
+          {zh ? '管理面 + 实时数据面' : 'MANAGEMENT + LIVE DATA PLANE'}
+        </small>
         <strong>
-          {zh ? 'A3S Gateway 统一网关' : 'A3S Gateway unified gateway'}
+          {zh ? 'Cloud API + A3S Gateway' : 'Cloud API + A3S Gateway'}
         </strong>
       </div>
       <p>
         {zh
-          ? '统一接入 Workflow、Agent、MCP、模型 API 与业务服务'
-          : 'Provides unified ingress for Workflow, Agents, MCP, model APIs, and business services'}
+          ? '统一治理 Workflow、Agent、MCP、模型 API 与业务服务，管理命令仍由 Cloud API 承载'
+          : 'Governs Workflow, Agents, MCP, model APIs, and business services while management commands remain on Cloud API'}
       </p>
       <ul>
         {capabilities.map((capability) => (
@@ -487,8 +500,8 @@ function ObservabilityRail({ language }: { language: HomeLanguage }) {
       </div>
       <p>
         {zh
-          ? '从基础设施贯穿上层应用，并回流数据轨迹'
-          : 'Observes infrastructure through applications and returns data trajectories'}
+          ? '贯穿基础设施与应用，并按授权导出证据；不直接驱动生产变更'
+          : 'Observes infrastructure through applications and exports authorized evidence without directly driving production changes'}
       </p>
       <div className="cloud-observability-loop" aria-hidden="true">
         <span>
@@ -532,8 +545,8 @@ function ClientLayer({ language }: { language: HomeLanguage }) {
         <strong>{zh ? '平级调用入口' : 'PEER INVOCATION ENTRY'}</strong>
         <small>
           {zh
-            ? '可视化交互与命令行自动化共同进入统一网关'
-            : 'Visual interaction and command-line automation share one gateway'}
+            ? '可视化交互与命令行自动化共同进入 Cloud API 管理面'
+            : 'Visual interaction and command-line automation share the Cloud API management plane'}
         </small>
       </div>
       <div className="cloud-entry-channels">

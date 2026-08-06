@@ -24,7 +24,7 @@ afterEach(async () => {
 });
 
 describe('ArchitectureSection', () => {
-  it('renders the platform map as HTML with the sole Code Harness boundary', async () => {
+  it('renders the platform map with one Agent provider contract and the native Code provider', async () => {
     const host = document.getElementById('root');
     if (!host) throw new Error('test root is missing');
     root = createRoot(host);
@@ -38,21 +38,25 @@ describe('ArchitectureSection', () => {
     expect(diagram?.querySelectorAll('.architecture-product-grid li')).toHaveLength(3);
     expect(diagram?.textContent).toContain('Workflow autonomous orchestration');
     expect(diagram?.textContent).toContain('Agent Factory');
-    expect(diagram?.textContent).toContain('Security operations center');
-    expect(diagram?.querySelectorAll('.architecture-business-group li')).toHaveLength(17);
+    expect(diagram?.textContent).toContain('A3S Gateway unified gateway');
+    expect(diagram?.querySelectorAll('.architecture-business-group li')).toHaveLength(19);
     expect(diagram?.textContent).toContain('Operations + A3S Flow');
     expect(diagram?.textContent).toContain('Fleet node_commands');
     expect(diagram?.textContent).toContain('Outbound-only Node Agent');
     expect(diagram?.textContent).toContain('A3S Runtime Task / Service');
     expect(diagram?.textContent).toContain('A3S Box');
+    expect(diagram?.textContent).toContain('Immutable objects + fenced mutable volumes');
     expect(diagram?.textContent).toContain('Foundation');
     expect(diagram?.textContent).toContain('Durable Agent execution');
     expect(diagram?.textContent).toContain('A3S Use plugin assignments');
     expect(diagram?.textContent).toContain('Inference profile');
+    expect(diagram?.textContent).toContain('Ontology-driven Workflow');
+    expect(diagram?.textContent).toContain('Governed self-evolution');
+    expect(diagram?.textContent).toContain('Native Agent execution provider');
     expect(diagram?.querySelector('.architecture-harness-card code')?.textContent).toBe(
       '/usr/bin/a3s code harness --manifest /app/.a3s/asset.acl'
     );
-    expect(diagram?.textContent).toContain('A3S OS only orchestrates and transports');
+    expect(diagram?.textContent).toContain('One Cloud lifecycle and provider conformance contract');
   });
 
   it('exports the same live diagram as a PNG', async () => {

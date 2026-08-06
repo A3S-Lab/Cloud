@@ -11,8 +11,8 @@ describe('project capability catalog', () => {
   it('publishes every authoritative roadmap gate exactly once', () => {
     const codes = ALL_CAPABILITY_GATES.map((capability) => capability.code);
 
-    expect(codes).toHaveLength(17);
-    expect(new Set(codes).size).toBe(17);
+    expect(codes).toHaveLength(19);
+    expect(new Set(codes).size).toBe(19);
     expect([...codes].sort()).toEqual(
       [
         'A0',
@@ -21,6 +21,7 @@ describe('project capability catalog', () => {
         'C0',
         'D0',
         'E0',
+        'EV0',
         'F0',
         'G0',
         'H0',
@@ -32,6 +33,7 @@ describe('project capability catalog', () => {
         'R0',
         'S0',
         'U0',
+        'W0',
       ].sort()
     );
     expect(CAPABILITY_GROUPS.flatMap((group) => group.gates)).toEqual(ALL_CAPABILITY_GATES);
@@ -42,7 +44,7 @@ describe('project capability catalog', () => {
       verified: 1,
       'in-progress': 8,
       recertification: 4,
-      planned: 4,
+      planned: 6,
     });
     expect(
       ALL_CAPABILITY_GATES.filter((capability) => capability.unavailable).map((capability) => capability.code)
@@ -57,14 +59,14 @@ describe('project capability catalog', () => {
 
   it('positions the three outward-facing products above the shared runtime foundation', () => {
     expect(PRODUCT_PILLARS.map((pillar) => pillar.id)).toEqual([
+      'unified-gateway',
       'workflow',
       'agent-factory',
-      'security-operations',
     ]);
     expect(PRODUCT_PILLARS.map((pillar) => pillar.basedOn)).toEqual([
+      'Cloud API + A3S Gateway',
       'A3S Workflow',
-      'A3S Code',
-      'A3S Gateway / A3S Sentry / AnySentry',
+      'A3S Runtime + A3S Box',
     ]);
   });
 });

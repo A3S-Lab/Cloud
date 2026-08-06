@@ -29,7 +29,7 @@
   grid-column: span 5;
 }
 
-.product-pillar-security-operations {
+.product-pillar-unified-gateway {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
@@ -38,35 +38,35 @@
   background: #f4f8ff;
 }
 
-.product-pillar-security-operations > header,
-.product-pillar-security-operations > h3,
-.product-pillar-security-operations > h4,
-.product-pillar-security-operations > p,
-.product-pillar-security-operations > footer {
+.product-pillar-unified-gateway > header,
+.product-pillar-unified-gateway > h3,
+.product-pillar-unified-gateway > h4,
+.product-pillar-unified-gateway > p,
+.product-pillar-unified-gateway > footer {
   grid-column: 1;
 }
 
-.product-pillar-security-operations > header {
+.product-pillar-unified-gateway > header {
   grid-row: 1;
 }
 
-.product-pillar-security-operations > h3 {
+.product-pillar-unified-gateway > h3 {
   grid-row: 2;
 }
 
-.product-pillar-security-operations > h4 {
+.product-pillar-unified-gateway > h4 {
   grid-row: 3;
 }
 
-.product-pillar-security-operations > p {
+.product-pillar-unified-gateway > p {
   grid-row: 4;
 }
 
-.product-pillar-security-operations > footer {
+.product-pillar-unified-gateway > footer {
   grid-row: 5;
 }
 
-.product-pillar-security-operations > .product-pillar-capabilities {
+.product-pillar-unified-gateway > .product-pillar-capabilities {
   margin-top: 0;
   grid-column: 2;
   grid-row: 1 / -1;
@@ -128,7 +128,7 @@
 }
 
 .product-pillar-agent-factory h3,
-.product-pillar-security-operations h3 {
+.product-pillar-unified-gateway h3 {
   margin-top: 24px;
   font-size: clamp(22px, 2.1vw, 30px);
 }
@@ -235,7 +235,7 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
-.product-pillar-workflow .capability-state-in-progress {
+.product-pillar-workflow .capability-state-planned {
   border-color: rgba(255, 255, 255, 0.44);
   color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
@@ -319,16 +319,16 @@
 
   .product-pillar-workflow,
   .product-pillar-agent-factory,
-  .product-pillar-security-operations {
+  .product-pillar-unified-gateway {
     grid-column: span 12;
     grid-row: auto;
   }
 
-  .product-pillar-security-operations {
+  .product-pillar-unified-gateway {
     display: flex;
   }
 
-  .product-pillar-security-operations > .product-pillar-capabilities {
+  .product-pillar-unified-gateway > .product-pillar-capabilities {
     margin-top: 26px;
   }
 

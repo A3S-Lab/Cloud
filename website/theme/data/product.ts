@@ -11,6 +11,7 @@ export type ProductChapter = {
   id: ProductId;
   index: string;
   basedOn: string;
+  navLabel: LocalizedText;
   title: LocalizedText;
   promise: LocalizedText;
   body: LocalizedText;
@@ -29,7 +30,8 @@ export const productChapters: ProductChapter[] = [
   {
     id: 'unified-gateway',
     index: '01',
-    basedOn: 'A3S Gateway',
+    basedOn: 'Cloud API + A3S Gateway',
+    navLabel: { zh: '统一网关', en: 'Unified Gateway' },
     title: {
       zh: '让所有智能流量通过一个可信入口',
       en: 'Move every intelligent workload through one trusted gateway',
@@ -39,8 +41,8 @@ export const productChapters: ProductChapter[] = [
       en: 'A3S Gateway unified gateway',
     },
     body: {
-      zh: 'A3S Gateway 统一治理 Workflow、Agent、MCP、模型 API 与业务服务，承载接入、身份、协议、策略、路由和实时流量治理。它连接 A3S Work、端侧节点与云端服务；AnySentry 则从基础设施贯穿上层应用，并将全链路数据轨迹回流到治理链路。',
-      en: 'A3S Gateway governs Workflows, Agents, MCP, model APIs, and business services through one ingress, identity, protocol, policy, routing, and live-traffic plane. It connects A3S Work, edge nodes, and cloud services, while AnySentry observes the full path from infrastructure to applications and returns data trajectories to governance.',
+      zh: '统一网关产品由 Cloud API 管理面与 A3S Gateway 实时数据面共同组成：Cloud 管理 Workflow、Agent、MCP、模型 API 与业务服务的身份和期望策略，Gateway 承载协议、路由与实时流量。AnySentry 贯穿基础设施与应用，并把经过授权的证据回流到治理链路。',
+      en: 'The unified gateway product combines the Cloud API management plane with the A3S Gateway live data plane. Cloud owns identity and desired policy for Workflows, Agents, MCP, model APIs, and business services; Gateway owns protocol, routing, and live traffic. AnySentry observes infrastructure and applications and returns authorized evidence to governance.',
     },
     capabilities: [
       {
@@ -65,7 +67,7 @@ export const productChapters: ProductChapter[] = [
         },
       },
     ],
-    gateCodes: ['H0', 'C0', 'E0'],
+    gateCodes: ['E0', 'C0', 'H0', 'MCP0', 'I0'],
     roadmapNote: {
       zh: '统一网关产品持续收敛端云接入、身份、策略、路由与证据链路；未通过路线 Gate 的能力仍明确标记为不可用。',
       en: 'The unified gateway product continues to converge cloud-edge ingress, identity, policy, routing, and evidence; capabilities outside verified roadmap gates remain explicitly unavailable.',
@@ -75,6 +77,7 @@ export const productChapters: ProductChapter[] = [
     id: 'workflow',
     index: '02',
     basedOn: 'A3S Workflow',
+    navLabel: { zh: '工作流编排', en: 'Workflow Orchestration' },
     title: {
       zh: '让业务目标在真实世界中自主推进',
       en: 'Let business goals advance autonomously in the real world',
@@ -84,8 +87,8 @@ export const productChapters: ProductChapter[] = [
       en: 'Workflow autonomous orchestration',
     },
     body: {
-      zh: 'A3S Workflow 先用对象、关系、规则、目标与约束构建业务本体，再把认知模型编译为可执行计划。系统持续协调 Agent、工具、人员与业务系统，并由 A3S Runtime 通过 WaaS 提供可恢复的长期运行能力。',
-      en: 'A3S Workflow models the business domain through objects, relationships, rules, goals, and constraints, then compiles that cognitive model into an executable plan. It coordinates Agents, tools, people, and services while A3S Runtime provides recoverable long-running execution through WaaS.',
+      zh: 'A3S Workflow 先用对象、关系、规则、目标与约束构建业务本体，再把认知模型编译为可执行计划。Cloud Operations 与 A3S Flow 提供唯一的可恢复长期编排，计划中的计算步骤再复用 A3S Runtime Task 或 Service。',
+      en: 'A3S Workflow models the business domain through objects, relationships, rules, goals, and constraints, then compiles that cognitive model into an executable plan. Cloud Operations and A3S Flow provide the sole recoverable long-running orchestration path, while executable steps reuse A3S Runtime Tasks or Services.',
     },
     capabilities: [
       {
@@ -113,16 +116,17 @@ export const productChapters: ProductChapter[] = [
         },
       },
     ],
-    gateCodes: ['F0', 'C0', 'P0'],
+    gateCodes: ['W0', 'C0', 'A1', 'MCP0', 'I0'],
     roadmapNote: {
-      zh: '产品集成进行中，编排语义由 A3S Workflow 承载，长期任务通过 A3S Runtime 的 WaaS 运行合约交付。',
-      en: 'Product integration is in progress; A3S Workflow owns orchestration semantics while long-running work is delivered through the A3S Runtime WaaS contract.',
+      zh: 'W0 仍处于规划状态；Workflow 语义、Flow 编排和 Runtime 执行步骤将复用现有控制链路，在 W0 Gate 通过前不声明可用。',
+      en: 'W0 remains planned. Workflow semantics, Flow orchestration, and Runtime execution steps will reuse the existing control path; no availability is claimed before the W0 gates pass.',
     },
   },
   {
     id: 'agent-factory',
     index: '03',
     basedOn: 'A3S Runtime + A3S Box',
+    navLabel: { zh: '智能体工厂', en: 'Agent Factory' },
     title: {
       zh: '让不同技术栈的 Agent 进入同一条生产线',
       en: 'Bring heterogeneous Agents onto one production line',
@@ -161,10 +165,10 @@ export const productChapters: ProductChapter[] = [
         },
       },
     ],
-    gateCodes: ['A0', 'A1', 'MCP0', 'I0'],
+    gateCodes: ['A0', 'A1', 'MCP0', 'I0', 'EV0'],
     roadmapNote: {
-      zh: '异构资产、托管与执行主链路正在实现，MCP0 的部分子能力仍明确标记为不可用。',
-      en: 'The heterogeneous asset, hosting, and execution path is in progress, with unavailable MCP0 sub-capabilities still labeled explicitly.',
+      zh: 'A3S Code 原生 Provider 正在实现；异构 Harness 合约属于 A1.3，评测与自进化属于 EV0，未通过的子能力继续明确标记为不可用。',
+      en: 'The native A3S Code provider is in progress. The heterogeneous Harness contract belongs to A1.3, while evaluation and self-evolution belong to EV0; unverified sub-capabilities remain explicitly unavailable.',
     },
   },
 ];

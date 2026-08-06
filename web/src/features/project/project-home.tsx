@@ -27,7 +27,7 @@ const AUTHORITY_PATH: ReadonlyArray<{
   { label: 'Operations + A3S Flow', detail: 'Durable orchestration', icon: Workflow },
   { label: 'Outbound-only Node Agent', detail: 'Typed command delivery', icon: Network },
   { label: 'A3S Runtime + Box', detail: 'Execution and isolation', icon: Boxes },
-  { label: 'A3S Code Harness', detail: 'Sole Agent run owner', icon: Code2 },
+  { label: 'Agent execution providers', detail: 'One provider-neutral contract', icon: Code2 },
 ];
 
 const WEB_CAPABILITIES: ReadonlyArray<{
@@ -54,8 +54,8 @@ const WEB_CAPABILITIES: ReadonlyArray<{
   {
     title: { zh: 'Agent 工作台', en: 'Agent workspace' },
     detail: {
-      zh: '管理会话、审批、检查点和唯一 Harness 证据。',
-      en: 'Manage sessions, approvals, checkpoints, and sole-Harness evidence.',
+      zh: '管理会话、审批、检查点和跨 Provider 统一证据。',
+      en: 'Manage sessions, approvals, checkpoints, and provider-neutral evidence.',
     },
     icon: Code2,
   },
@@ -130,8 +130,8 @@ export function ProjectHome() {
           </h1>
           <p>
             {zh
-              ? '以认知驱动的本体工程、自主进化和大规模高可用服务平台，承载自主工作流编排、异构智能体工厂与安全监控中台。'
-              : 'Cognitive ontology engineering, governed autonomous evolution, and a highly available service platform power autonomous workflow orchestration, a heterogeneous Agent Factory, and security operations.'}
+              ? '以认知驱动的本体工程、治理式自主进化和大规模高可用服务平台，承载统一网关、自主工作流编排与异构智能体工厂；安全监控仍贯穿整个网关治理链路。'
+              : 'Cognitive ontology engineering, governed autonomous evolution, and a highly available service platform power Unified Gateway, autonomous workflow orchestration, and a heterogeneous Agent Factory, with security operations spanning the gateway governance path.'}
           </p>
           <div className='product-hero-actions'>
             <a className='hero-primary-action' href='#products'>
@@ -178,7 +178,7 @@ export function ProjectHome() {
       <section className='product-facts' aria-label={zh ? '项目事实' : 'Project facts'}>
         <Fact icon={PanelsTopLeft} value={3} label={zh ? '应用层产品' : 'Application products'} />
         <Fact icon={Monitor} value={1} label='A3S Web' />
-        <Fact icon={Code2} value={1} label={zh ? '唯一 Code Harness' : 'Sole Code Harness'} />
+        <Fact icon={Code2} value={1} label={zh ? '统一 Agent 合约' : 'One Agent contract'} />
         <Fact icon={Workflow} value={1} label={zh ? '共享运行底座' : 'Shared runtime foundation'} />
       </section>
 

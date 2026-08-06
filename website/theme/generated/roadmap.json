@@ -67,7 +67,7 @@
     {
       "code": "C0",
       "name": "Control surfaces",
-      "outcome": "REST/CLI/management MCP parity, grants, search, collaboration, notifications, audit, and bounded exec/terminal",
+      "outcome": "REST/CLI/management MCP parity, external OIDC identity federation, grants, search, collaboration, security investigation, notifications, audit, and bounded exec/terminal",
       "status": "In progress",
       "statusKind": "in-progress"
     },
@@ -94,15 +94,22 @@
     },
     {
       "code": "A1",
-      "name": "Agent execution",
-      "outcome": "Durable conversations, Harness execution, approvals, checkpoints, forks, and trajectories over existing Cloud control paths",
-      "status": "In progress (`A1.0` verified; `A1.1` implemented, Linux verification pending)",
+      "name": "Heterogeneous Agent execution",
+      "outcome": "Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths",
+      "status": "In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification)",
       "statusKind": "in-progress"
     },
     {
+      "code": "W0",
+      "name": "Ontology-driven Workflow",
+      "outcome": "Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
       "code": "S0",
-      "name": "Stateful platform",
-      "outcome": "Databases, volumes, fencing, backup, restore, retention, and stateful import mappings",
+      "name": "Stateful and distributed storage platform",
+      "outcome": "Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings",
       "status": "Planned",
       "statusKind": "planned"
     },
@@ -116,7 +123,14 @@
     {
       "code": "I0",
       "name": "Inference profile",
-      "outcome": "Accelerator-backed model serving, OpenAI-compatible traffic, scoped keys, routing/fallback, Providers, durable usage, and governed self-service",
+      "outcome": "Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion",
+      "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
+      "code": "EV0",
+      "name": "Governed self-evolution",
+      "outcome": "Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback",
       "status": "Planned",
       "statusKind": "planned"
     }

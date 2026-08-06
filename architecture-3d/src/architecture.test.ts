@@ -144,6 +144,53 @@ describe('architecture graph', () => {
     expect(powerHosting?.guestNodeIds).toEqual(['power']);
   });
 
+  it('adds website product semantics without replacing established Cloud capabilities', () => {
+    const nodes = new Map(ARCHITECTURE_NODES.map((node) => [node.id, node]));
+    const edgeIds = new Set(ARCHITECTURE_EDGES.map((edge) => edge.id));
+
+    expect(nodes.get('workflow')).toMatchObject({ gate: 'W0', status: 'planned' });
+    expect(nodes.get('agents')).toMatchObject({ gate: 'A0 · A1', status: 'in-progress' });
+    expect(nodes.get('evolution')).toMatchObject({ gate: 'EV0', status: 'planned' });
+    expect(nodes.get('agents')?.owns).toContain('Invocation profile and semantic events');
+    expect(nodes.get('inference')?.owns).toContain('Typed protocol and backend plans');
+    expect(nodes.get('operations')?.boundary).toContain(
+      'security investigations remain read-only evidence projections'
+    );
+    for (const edgeId of [
+      'workflow-operations',
+      'workflow-agents',
+      'agents-workloads',
+      'evolution-operations',
+    ]) {
+      expect(edgeIds.has(edgeId), edgeId).toBe(true);
+    }
+
+    for (const retainedNodeId of [
+      'identity',
+      'projects',
+      'sources',
+      'artifacts',
+      'workloads',
+      'fleet',
+      'edge',
+      'operations',
+      'inference',
+      'object-storage',
+      'node-agent',
+      'runtime',
+      'box-provider',
+      'gateway',
+    ]) {
+      expect(nodes.has(retainedNodeId), retainedNodeId).toBe(true);
+    }
+
+    expect(
+      ARCHITECTURE_EDGES.some(
+        (edge) => ['workflow', 'agents', 'evolution'].includes(edge.from) && edge.to === 'runtime'
+      )
+    ).toBe(false);
+  });
+
   it('provides detailed HUD content for every business and structural relationship', () => {
     for (const edge of ARCHITECTURE_EDGES) {
       expect(edge.summary.trim(), edge.id).not.toBe('');
@@ -186,6 +233,9 @@ describe('architecture graph', () => {
       'workloads',
       'fleet',
       'operations',
+      'workflow',
+      'agents',
+      'evolution',
       'postgres',
       'flow',
       'event',

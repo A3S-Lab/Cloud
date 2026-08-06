@@ -84,15 +84,41 @@ outcomes; delivery claims remain governed by the exact gates in the
 
 | Product | First-principles outcome | Foundation | Current delivery boundary |
 | --- | --- | --- | --- |
-| Workflow autonomous orchestrator | Turn business objects, relationships, rules, goals, and constraints into executable, recoverable long-running workflows that coordinate Agents, tools, and people | A3S Workflow integrated through Cloud Operations and the existing A3S Flow durability boundary | Product integration in progress through `F0`, `C0`, and planned `P0`; this does not create a second Cloud workflow authority |
-| Agent Factory | Turn one-off Agent prototypes into versioned assets with publishing, Skill and MCP assembly, immutable deployment, sole-Harness execution, and semantic evidence | A3S Code, with `a3s code harness` as the sole Agent run owner | In progress through `A0`, `A1`, `MCP0`, and planned `I0`; unavailable sub-gates remain labeled explicitly |
-| Security operations center | Correlate Gateway request policy, Runtime and Box evidence, Agent semantic events, and host security signals under one tenant and identity model for detection, policy enforcement, audit, and investigation | A3S Gateway, A3S Sentry, AnySentry, and existing Cloud logs, operations, and audit projections | Product integration in progress through `C0`, Box re-certification of `E0`, and `H0`; no separate security control plane or node channel is introduced |
+| Unified Gateway | Give Workflow, Agent, MCP, model APIs, and business services one governed cloud-edge ingress with identity, protocol, policy, routing, security observation, and evidence | Cloud API/Identity/Edge own management and desired policy; A3S Gateway owns the applied live data plane; A3S Sentry and AnySentry contribute evidence | In progress through `E0`, `C0`, `MCP0`, `I0`, and `H0`; Work/CLI management remains on Cloud API and Gateway never becomes another control plane |
+| Workflow autonomous orchestrator | Turn business objects, relationships, rules, goals, and constraints into executable, recoverable long-running workflows that coordinate Agents, tools, people, and services | Workflow owns ontology and plan semantics; Cloud Operations and A3S Flow remain the only durable orchestration boundary | Planned `W0`; verified platform foundations are reused, but no Workflow availability is claimed before its exact gates pass |
+| Agent Factory | Turn heterogeneous Agent and Harness prototypes into versioned assets with evaluation, Skill/MCP/model assembly, immutable deployment, one execution contract, and semantic evidence | Agents owns one provider-neutral Harness port; A3S Code is the native provider and all providers reuse Assets, Workloads, Fleet, Runtime, and Box | Native Code integration is in progress through `A1.2`; `A1.3` through `A1.6` plus the outstanding `A0`, `MCP0`, `I0`, and `EV0` gates close the product |
 
 All three products share PostgreSQL desired-state authority, Operations,
 Workloads, Fleet node control, A3S Runtime, A3S Box, immutable object storage,
 OCI, A3S ACL, and mTLS. Product specialization never creates a second
-scheduler, Runtime, node channel, queue, Harness, routing authority, or evidence
-store.
+scheduler, Runtime, node channel, queue, Agent execution lifecycle, routing
+authority, or evidence store. Different Harness implementations are admitted
+only behind one AgentExecution provider contract; they never introduce another
+Cloud lifecycle.
+
+The public website is an additive product projection rather than the complete
+Cloud inventory. Tenancy, identity, Projects, Sources/builds, ordinary Tasks
+and Services, Secrets, Assets, A3S Use assignments, Workloads/Fleet,
+Runtime/Box, Edge/Gateway, Inference/Power, Operations, Search, stateful data,
+HA, audit, update, rollback, backup/restore, and disaster recovery remain
+first-class capabilities under their existing gates even when the diagram does
+not name them.
+
+Reference products are preserved by useful outcome, not copied mechanism:
+
+- TokenHub-style Provider/catalog routing, project keys, external OIDC sign-in,
+  role-focused governance, diagnostics, usage attribution, and optional
+  Responses/Anthropic/media/subscription-backed profiles remain planned across
+  `C0.3`, `I0.2` through `I0.6`; TokenHub API/UI/storage and commercial billing
+  do not become Cloud authorities.
+- Google AX-style isolated heterogeneous Harnesses, single-writer replay,
+  immutable invocation configuration, approvals, resumption, checkpoints,
+  forks, trajectories, and telemetry remain owned by `A1.1` through `A1.6`,
+  Runtime, and Box without importing AX controllers or wire compatibility.
+- Cross-layer security detection and investigation remains a `C0.3` projection
+  over shared audit and authorized AnySentry/OpenTelemetry evidence; policy
+  enforcement stays with Identity, Edge/Gateway, Workloads, and each owning
+  context.
 
 ## Features
 
@@ -133,6 +159,14 @@ store.
 - **Planned Power-Backed Inference**: Compile the first inference profile into
   an immutable A3S Power Service hosted by A3S Box; Cloud retains placement,
   device claims, routing, authorization, and usage authority
+- **Planned Ontology-Driven Workflow**: Version business objects,
+  relationships, rules, goals, and constraints; compile deterministic plans;
+  and coordinate typed Agent, MCP, model, Tool, human, and service steps through
+  the existing Operations and A3S Flow path under `W0`
+- **Planned Governed Self-Evolution**: Admit authorized, redacted, provenance-
+  complete evidence; reproduce evaluations and reward policy; run candidate and
+  Agentic RL jobs through existing Workloads/Runtime/Box; and promote, halt, or
+  roll back only through owning-context commands under `EV0`
 - **Managed Replica Foundation**: Persist an inference-neutral owner,
   effective placement policy, stable replica/member identity, exact deployment
   binding, current-inventory requirement compilation, shared scalar capacity,
@@ -157,6 +191,11 @@ store.
   Volumes and Task-output staging, deterministically archive quiescent output
   directories, and publish them through the existing command-bound Artifact
   upload path with recovery and cleanup fencing
+- **Planned Distributed Storage Plane**: Reuse the shared immutable-object
+  client for code, models, artifacts, checkpoints, datasets, and evidence; add
+  fenced mutable volume providers under `S0`; and require `H0` replication,
+  failover, integrity, clean restore, and operator evidence before claiming
+  distributed production availability
 - **Durable Logs**: Ship bounded ordered Runtime logs, preserve explicit gaps,
   redact bound Secrets, replay one exact receipt-gated pending batch after
   restart, store immutable chunks, and expose cursor and resumable SSE queries
@@ -180,7 +219,7 @@ store.
   idempotent BuildRun retry and `cloud.build@5` Flow; and retain canonical
   SemVer, immutable source identity, optimistic concurrency, replay-safe
   writes, and A3S ORM as the only database boundary
-- **Durable Agent Execution Foundation**: Create tenant-scoped Agent
+- **Durable Heterogeneous Agent Execution Foundation**: Create tenant-scoped Agent
   conversations, start logical executions pinned to one exact published Agent
   release, append bounded digest-verified semantic events under one contiguous
   conversation sequence, and query or stream the same authoritative history
@@ -188,10 +227,11 @@ store.
   now reconciles the reserved identity through the existing Operations/Flow
   path, binds one already active Agent Workload/Runtime Service, forwards the
   exact Code command through Fleet, and projects only model-output and terminal
-  semantics from receipt-gated Code pages. The sole run owner remains
-  `a3s code harness`
+  semantics from receipt-gated Code pages. `a3s code harness` is the native
+  provider; planned `A1.3` freezes the single provider-neutral contract and
+  certifies a non-Code reference Harness without another scheduler or run store
 - **Focused Web Operations**: Start from a public project portal that presents
-  Workflow, Agent Factory, the security operations center, all 17 roadmap gates,
+  Unified Gateway, Workflow, Agent Factory, all 19 roadmap gates,
   the shared runtime foundation, and versioned documentation before sign-in;
   navigate responsive Overview, Workloads, Agents, Delivery, Edge, and
   Architecture workspaces; render the complete product and platform authority
@@ -258,14 +298,16 @@ store.
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, ordered logs, immutable update, cloned rollback, web operations, and clean-host recovery | Historical evidence; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, Box-native builds and caches, OCI admission and publication, signed SPDX/SLSA evidence, and deployment handoff | In progress |
 | `P0` — Developer workflows | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
-| `C0` — Control surfaces | Stable REST, CLI, management MCP, grants, collaboration, notifications, audit, and bounded terminal access | In progress |
+| `C0` — Control surfaces | Stable REST, CLI, management MCP, external OIDC federation, grants, collaboration, security investigation, notifications, audit, and bounded terminal access | In progress |
 | `A0` — Release catalog | Immutable Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern `2026-07-28` MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
-| `A1` — Agent execution | Durable conversations, executions, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented; `A1.2` Code protocol and Node transport in progress; Linux verification pending) |
-| `S0` — Stateful platform | Databases, volumes, fencing, backup, restore, and retention | Planned |
+| `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` integration pending verification) |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic plans, typed capability steps, and Flow-based recoverable runs | Planned |
+| `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, and retention | Planned |
 | `H0` — Production scale | Replicas, multi-node placement, private networking, Gateway replication, HA, and measured autoscaling | In progress |
-| `I0` — Inference profile | Accelerator-backed serving, OpenAI-compatible traffic, scoped keys, Providers, routing, usage, and governed self-service | Planned |
+| `I0` — Inference profile | Accelerator-backed serving, typed model protocols, scoped keys, Providers, routing, usage, governed self-service, and optional protocol/provider expansion | Planned |
+| `EV0` — Governed self-evolution | Authorized evidence, reproducible evaluation/reward policy, candidate and Agentic RL jobs, approval-gated promotion, canary halt, and rollback | Planned |
 
 The original `R0` through `E0` behavior was certified against the retired
 Docker implementation. That evidence remains useful regression history, but it
@@ -476,17 +518,18 @@ Harness, Fleet command, or Runtime unit; `A1.2` integrates the Code-owned
 execution protocol through those existing control paths. Real Linux PostgreSQL
 verification still remains.
 
-`A1.2` uses the sole native Harness process, `a3s code harness`. A3S Code Core
-owns command semantics, exact run identity, cancellation, checkpoint recovery,
-and source events. Cloud adds only authenticated execution/Workload/Runtime
-delivery identity, carries the exact Code-owned protocol through the existing
-Fleet command and Node Agent journal, and derives bounded model-output and
-terminal semantic facts in the existing Agent execution stream. Raw Code event
-records remain in Code. Cloud does not contain another Harness executable,
-scheduler, controller, run store, or event-log authority. The sole root CLI
-Harness HTTP entrypoint is implemented locally; dependency publication,
-cancel/recover orchestration, and Linux PostgreSQL/Runtime recovery evidence
-remain open.
+`A1.2` uses the native Harness process, `a3s code harness`. A3S Code Core owns
+its private command semantics, exact run identity, cancellation, checkpoint
+recovery, and source events. Cloud adds authenticated
+execution/Workload/Runtime delivery identity, carries the Code protocol through
+the existing Fleet command and Node Agent journal, and derives bounded
+model-output and terminal semantic facts in the existing Agent execution
+stream. Raw Code events remain in Code. Planned `A1.3` extracts one
+provider-neutral contract, migrates Code behind it, and certifies a non-Code
+reference Harness without adding a scheduler, controller, run store, command
+channel, or semantic event authority. The native root CLI Harness HTTP
+entrypoint is implemented locally; dependency publication, cancel/recover
+orchestration, and Linux PostgreSQL/Runtime recovery evidence remain open.
 
 `G0` now routes every new BuildRun through `cloud.build@5`. Flow remains the
 workflow and recovery authority; Fleet's `node_commands` table remains the

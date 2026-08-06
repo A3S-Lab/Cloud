@@ -32,7 +32,7 @@ export interface DocumentationVersion {
 }
 
 export interface ProductPillar {
-  readonly id: 'workflow' | 'agent-factory' | 'security-operations';
+  readonly id: 'unified-gateway' | 'workflow' | 'agent-factory';
   readonly title: LocalizedCopy;
   readonly promise: LocalizedCopy;
   readonly description: LocalizedCopy;
@@ -42,7 +42,7 @@ export interface ProductPillar {
   readonly gateCodes: readonly string[];
 }
 
-export const ROADMAP_SNAPSHOT = '2026-08-03';
+export const ROADMAP_SNAPSHOT = '2026-08-06';
 
 export const CAPABILITY_STATES: Record<
   CapabilityState,
@@ -80,6 +80,27 @@ export const CAPABILITY_STATES: Record<
 
 export const PRODUCT_PILLARS: readonly ProductPillar[] = [
   {
+    id: 'unified-gateway',
+    title: copy('A3S Gateway 统一网关', 'A3S Gateway unified gateway'),
+    promise: copy(
+      '让所有智能流量通过一个可信入口',
+      'Move every intelligent workload through one trusted gateway'
+    ),
+    description: copy(
+      'Cloud API 管理 Workflow、Agent、MCP、模型 API 与业务服务的身份和期望策略，A3S Gateway 承载协议、路由与实时流量。Sentry、AnySentry、审计和安全响应仍是该产品的关键治理能力。',
+      'Cloud API owns identity and desired policy for Workflows, Agents, MCP, model APIs, and business services, while A3S Gateway owns protocol, routing, and live traffic. Sentry, AnySentry, audit, and security response remain key governance capabilities of this product.'
+    ),
+    basedOn: 'Cloud API + A3S Gateway',
+    state: 'in-progress',
+    capabilities: [
+      copy('统一接入与协议', 'Unified ingress and protocols'),
+      copy('身份、ACL、配额与路由', 'Identity, ACL, quota, and routing'),
+      copy('端云流量与发布策略', 'Cloud-edge traffic and release policy'),
+      copy('Sentry / AnySentry 安全证据', 'Sentry / AnySentry security evidence'),
+    ],
+    gateCodes: ['E0', 'C0', 'H0', 'MCP0', 'I0'],
+  },
+  {
     id: 'workflow',
     title: copy('Workflow 自主工作流编排', 'Workflow autonomous orchestration'),
     promise: copy(
@@ -91,14 +112,14 @@ export const PRODUCT_PILLARS: readonly ProductPillar[] = [
       'Use business objects, relationships, rules, goals, and constraints as shared semantics so the system can plan from intent, coordinate Agents, tools, and people, and resume from durable state.'
     ),
     basedOn: 'A3S Workflow',
-    state: 'in-progress',
+    state: 'planned',
     capabilities: [
       copy('本体驱动的业务语义', 'Ontology-driven business semantics'),
       copy('自主计划与多步骤编排', 'Autonomous planning and multi-step orchestration'),
       copy('持久状态、重试与补偿', 'Durable state, retry, and compensation'),
       copy('人工检查点与完整证据', 'Human checkpoints and complete evidence'),
     ],
-    gateCodes: ['F0', 'C0', 'P0'],
+    gateCodes: ['W0', 'C0', 'A1', 'MCP0', 'I0'],
   },
   {
     id: 'agent-factory',
@@ -108,39 +129,18 @@ export const PRODUCT_PILLARS: readonly ProductPillar[] = [
       'Turn one-off Agent prototypes into versioned digital assets'
     ),
     description: copy(
-      '统一适配不同 Agent 框架、模型、Skill、MCP 与安全策略，从评测、发布、装配、部署到运行证据都复用同一资产和执行链路。A3S Code Harness 是唯一运行所有者。',
-      'Adapt different Agent frameworks, models, Skills, MCP servers, and security policies through one lifecycle. Evaluation, publishing, assembly, deployment, and run evidence share one asset and execution path, with A3S Code Harness as the sole run owner.'
+      '通过唯一的 Provider 中立执行合约适配不同 Agent 框架、模型、语言、Harness、Skill、MCP 与安全策略，并复用同一资产、调度、Runtime 和证据链路。A3S Code 是原生 Provider，而不是唯一可托管 Harness。',
+      'Adapt different Agent frameworks, models, languages, harnesses, Skills, MCP servers, and security policies through one provider-neutral execution contract while reusing the same asset, scheduling, Runtime, and evidence paths. A3S Code is the native provider, not the only harness that can be hosted.'
     ),
-    basedOn: 'A3S Code',
+    basedOn: 'A3S Runtime + A3S Box',
     state: 'in-progress',
     capabilities: [
       copy('Agent / Skill / MCP 资产发布', 'Agent / Skill / MCP asset publishing'),
       copy('版本固定与安全装配', 'Version pinning and safe assembly'),
-      copy('Code Harness 持久执行', 'Durable Code Harness execution'),
+      copy('单一 Provider 合约与异构 Harness', 'One provider contract for heterogeneous harnesses'),
       copy('会话、语义事件与轨迹', 'Conversations, semantic events, and trajectories'),
     ],
-    gateCodes: ['A0', 'A1', 'MCP0', 'I0'],
-  },
-  {
-    id: 'security-operations',
-    title: copy('安全监控中台', 'Security operations center'),
-    promise: copy(
-      '让每次访问、执行与策略决策都可观测、可约束、可追溯',
-      'Make every request, execution, and policy decision observable, constrained, and traceable'
-    ),
-    description: copy(
-      '关联 Gateway 请求路径、Runtime 与 Box 运行证据、Agent 语义事件及主机安全信号，以统一身份和租户上下文完成检测、策略执行、审计与事件溯源。',
-      'Correlate Gateway request paths, Runtime and Box evidence, Agent semantic events, and host security signals under one identity and tenant context for detection, policy enforcement, audit, and investigation.'
-    ),
-    basedOn: 'A3S Gateway / A3S Sentry / AnySentry',
-    state: 'in-progress',
-    capabilities: [
-      copy('Gateway 流量与策略证据', 'Gateway traffic and policy evidence'),
-      copy('Runtime / Box 行为观测', 'Runtime / Box behavior observation'),
-      copy('Sentry 分层安全控制', 'Tiered Sentry security controls'),
-      copy('AnySentry 关联分析与响应', 'AnySentry correlation and response'),
-    ],
-    gateCodes: ['C0', 'E0', 'H0'],
+    gateCodes: ['A0', 'A1', 'MCP0', 'I0', 'EV0'],
   },
 ];
 
@@ -190,6 +190,19 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
           ['副本与多节点调度', 'Replicas and multi-node placement'],
           ['资源 Claim 与故障隔离', 'Resource claims and fencing'],
           ['高可用与自动扩缩', 'High availability and autoscaling'],
+        ]
+      ),
+      gate(
+        'W0',
+        '本体驱动的 Workflow',
+        'Ontology-driven Workflow',
+        '版本化业务本体、确定性计划、类型化能力步骤与基于 Operations 和 A3S Flow 的可恢复长期运行。',
+        'Versioned business ontologies, deterministic plans, typed capability steps, and recoverable long-running work on Operations and A3S Flow.',
+        'planned',
+        [
+          ['本体与 Workflow 修订', 'Ontology and Workflow revisions'],
+          ['目标到确定性计划', 'Goals to deterministic plans'],
+          ['类型化步骤与长期恢复', 'Typed steps and long-running recovery'],
         ]
       ),
     ],
@@ -320,13 +333,14 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
         'A1',
         '持久化 Agent 执行',
         'Durable Agent execution',
-        '会话、执行、语义事件、审批、检查点、分叉与轨迹沿既有 Cloud 路径运行，唯一执行所有者是 A3S Code Harness。',
-        'Conversations, executions, semantic events, approvals, checkpoints, forks, and trajectories use existing Cloud paths, with A3S Code Harness as the sole run owner.',
+        '会话、执行、语义事件、审批、检查点、分叉与轨迹沿既有 Cloud 路径运行；A3S Code 是原生 Provider，A1.3 冻结唯一的 Provider 中立合约。',
+        'Conversations, executions, semantic events, approvals, checkpoints, forks, and trajectories use existing Cloud paths. A3S Code is the native provider, while A1.3 freezes the single provider-neutral contract.',
         'in-progress',
         [
           ['A1.0 事件流已验证', 'A1.0 event stream verified'],
           ['A1.1 会话基础已实现', 'A1.1 conversation foundation implemented'],
           ['A1.2 Code 协议与节点传输实现中', 'A1.2 Code protocol and node transport in progress'],
+          ['A1.3 异构 Harness 合约计划中', 'A1.3 heterogeneous Harness contract planned'],
         ]
       ),
       gate(
@@ -357,6 +371,19 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
         ],
         true
       ),
+      gate(
+        'EV0',
+        '治理式自主进化',
+        'Governed self-evolution',
+        '经授权的证据数据集、可复现评测与奖励策略、候选版本、人工审批、灰度、自动停止和精确回滚。',
+        'Authorized evidence datasets, reproducible evaluation and reward policy, candidate revisions, human approval, canaries, automatic halt, and exact rollback.',
+        'planned',
+        [
+          ['授权、脱敏与来源证明', 'Authorization, redaction, and provenance'],
+          ['可复现评测与候选任务', 'Reproducible evaluation and candidate jobs'],
+          ['审批、灰度与精确回滚', 'Approval, canary, and exact rollback'],
+        ]
+      ),
     ],
   },
   {
@@ -382,15 +409,15 @@ export const CAPABILITY_GROUPS: readonly CapabilityGroup[] = [
       ),
       gate(
         'S0',
-        '有状态平台',
-        'Stateful platform',
-        '数据库、Volume、Fencing、备份、恢复、保留策略与有状态导入映射。',
-        'Databases, volumes, fencing, backup, restore, retention, and stateful import mappings.',
+        '有状态与分布式存储平台',
+        'Stateful and distributed storage platform',
+        '在同一存储平面中区分不可变对象与带 Fencing 的可变 Volume，并提供数据库、备份、恢复、保留策略与分布式提供方一致性。',
+        'One storage plane distinguishes immutable objects from fenced mutable volumes and provides databases, backup, restore, retention, and distributed-provider conformance.',
         'planned',
         [
-          ['数据库与 Volume', 'Databases and volumes'],
+          ['不可变对象与数据库 / Volume', 'Immutable objects and databases / volumes'],
           ['Fencing、备份与恢复', 'Fencing, backup, and restore'],
-          ['保留与导入映射', 'Retention and import mappings'],
+          ['分布式提供方、保留与导入', 'Distributed providers, retention, and import'],
         ]
       ),
       gate(
@@ -416,8 +443,8 @@ export const DOCUMENTATION_VERSIONS: readonly DocumentationVersion[] = [
     label: 'main',
     title: copy('当前开发版', 'Current development'),
     description: copy(
-      '跟随当前代码与 2026-08-03 路线图快照，包含已验证、实现中、待复认证及计划能力。',
-      'Tracks the current code and the 2026-08-03 roadmap snapshot, including verified, active, re-certification, and planned work.'
+      '跟随当前代码与 2026-08-06 路线图快照，包含已验证、实现中、待复认证及计划能力。',
+      'Tracks the current code and the 2026-08-06 roadmap snapshot, including verified, active, re-certification, and planned work.'
     ),
     source: copy(
       '来源：当前分支、README、ROADMAP 与开发计划',

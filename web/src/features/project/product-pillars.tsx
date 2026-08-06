@@ -1,19 +1,11 @@
-import {
-  Boxes,
-  CheckCircle2,
-  Factory,
-  GitBranch,
-  ShieldCheck,
-  Workflow,
-  type LucideIcon,
-} from 'lucide-react';
+import { Boxes, CheckCircle2, Factory, GitBranch, Network, Workflow, type LucideIcon } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import { CAPABILITY_STATES, localize, PRODUCT_PILLARS, type ProductPillar } from './project-catalog';
 
 const PILLAR_ICONS: Record<ProductPillar['id'], LucideIcon> = {
+  'unified-gateway': Network,
   workflow: Workflow,
   'agent-factory': Factory,
-  'security-operations': ShieldCheck,
 };
 
 const FOUNDATION_MODULES = [
@@ -37,8 +29,8 @@ export function ProductPillars() {
         </h2>
         <p>
           {zh
-            ? '自主工作流编排负责业务意图，异构智能体工厂负责规模化交付，安全监控中台负责运行治理。A3S OS 将三者收敛到同一套平台。'
-            : 'Autonomous workflow orchestration owns business intent, the heterogeneous Agent Factory owns repeatable delivery, and security operations owns runtime governance. A3S OS unifies all three.'}
+            ? '统一网关负责可信接入与安全治理，自主工作流编排负责业务意图，异构智能体工厂负责规模化交付。A3S OS 将三者收敛到同一套平台。'
+            : 'Unified Gateway owns trusted access and security governance, autonomous workflow orchestration owns business intent, and the heterogeneous Agent Factory owns repeatable delivery. A3S OS unifies all three.'}
         </p>
       </header>
 
@@ -56,8 +48,8 @@ export function ProductPillars() {
           </h3>
           <p>
             {zh
-              ? '三大产品不各建控制器、Runtime 或安全通道，而是共享 A3S OS 权威状态、Runtime 执行与统一证据。'
-              : 'The three products do not build separate controllers, runtimes, or security channels. They share A3S OS authority, Runtime execution, and one evidence model.'}
+              ? '三大产品不各建控制器、调度器、Runtime、Agent 生命周期或证据库，而是共享 A3S OS 权威状态、执行链路与集成事实。'
+              : 'The three products do not build separate controllers, schedulers, runtimes, Agent lifecycles, or evidence stores. They share A3S OS authority, execution paths, and integration facts.'}
           </p>
         </div>
         <ul>

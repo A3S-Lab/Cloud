@@ -69,6 +69,27 @@ export const ARCHITECTURE_EDGE_DETAILS = {
     boundary:
       'Inference intent does not select a physical GPU directly and does not place Cloud on the live request path.',
   },
+  'api-workflow': {
+    summary:
+      'The API admits a tenant-scoped Workflow definition, goal, or query into the Workflow bounded context.',
+    transfers: ['Authorized Workflow intent', 'Exact ontology or definition revision', 'Tenant scope'],
+    boundary:
+      'The API does not compile plans or advance Workflow state, and Workflow cannot bypass normal authorization.',
+  },
+  'api-agents': {
+    summary:
+      'The API dispatches Agent commands and queries to the single Cloud Agent execution lifecycle shared by conforming providers.',
+    transfers: ['Agent execution intent', 'Immutable release and provider references', 'Tenant context'],
+    boundary:
+      'The request cannot select a private provider protocol or create a provider-specific Cloud run record.',
+  },
+  'api-evolution': {
+    summary:
+      'The API admits explicitly authorized evaluation, candidate, and promotion-review intent into Evolution.',
+    transfers: ['Authorized evidence manifest', 'Evaluation or candidate request', 'Approval context'],
+    boundary:
+      'Telemetry alone cannot create a dataset, candidate, promotion, deployment, or rollback decision.',
+  },
   'inference-power': {
     summary:
       'Cloud Inference references a versioned A3S Power backend profile when compiling compatible model-serving intent.',
@@ -98,6 +119,50 @@ export const ARCHITECTURE_EDGE_DETAILS = {
       'Workloads records deployment intent as a durable operation that can reconcile desired and observed state over time.',
     transfers: ['Deployment command', 'Desired revision', 'Convergence policy'],
     boundary: 'HTTP request lifetime is separated from provider execution and rollout completion.',
+  },
+  'workflow-operations': {
+    summary:
+      'Workflow reserves one durable Operation and compiles its immutable plan to the existing A3S Flow orchestration path.',
+    transfers: [
+      'WorkflowRun identity',
+      'Deterministic plan revision',
+      'Retry, compensation, and approval policy',
+    ],
+    boundary:
+      'Workflow owns business semantics while Operations and Flow remain the only durable orchestration mechanism.',
+  },
+  'workflow-agents': {
+    summary:
+      'A Workflow plan invokes an Agent step through the typed Agent application port and pins the exact release and provider profile.',
+    transfers: [
+      'Typed Agent step',
+      'Exact Agent and provider revisions',
+      'Bounded input and evidence references',
+    ],
+    boundary:
+      'Workflow does not write Agent tables, speak a private Harness protocol, or launch Runtime units directly.',
+  },
+  'agents-workloads': {
+    summary:
+      'Agent execution materializes its exact provider and release binding as an ordinary immutable Workload revision.',
+    transfers: [
+      'Provider profile revision',
+      'Agent release and workspace identity',
+      'Runtime capability requirements',
+    ],
+    boundary:
+      'Agents owns semantic execution state, while Workloads, Fleet, Runtime, and Box retain deployment and execution authority.',
+  },
+  'evolution-operations': {
+    summary:
+      'Evolution submits evaluation, candidate, and Agentic RL work as ordinary durable Operations on A3S Flow.',
+    transfers: [
+      'Sealed dataset and evaluation revisions',
+      'Candidate job specification',
+      'Quota and interruption policy',
+    ],
+    boundary:
+      'Evolution does not add a training scheduler or executor; Flow, Workloads, Fleet, Runtime, and Box run the job.',
   },
   'operations-flow': {
     summary:

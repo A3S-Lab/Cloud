@@ -23,9 +23,11 @@ const expectedGates = [
   'U0',
   'MCP0',
   'A1',
+  'W0',
   'S0',
   'H0',
   'I0',
+  'EV0',
 ];
 
 function normalizeStatus(status) {
