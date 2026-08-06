@@ -343,14 +343,8 @@ impl StageMcpGatewaySnapshot {
                 )
             })
             .transpose()?;
-        let next_physical_scope_version = candidate
-            .physical_scope()
-            .aggregate_version
-            .checked_add(1)
-            .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
-        let event = McpGatewaySnapshotStaged::envelope(
-            &logical_scopes(&candidate),
-            next_physical_scope_version,
+        let composition = GatewayManagedSnapshotComposition::new(
+            candidate,
             &publication,
             GatewaySnapshotPublicationOwner::McpReconciler,
         )?;
@@ -384,52 +378,20 @@ impl StageMcpGatewaySnapshot {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        self.composition.validate_for(&self.publication)?;
         let snapshot = self.publication.snapshot()?;
-        let expected_scope_version = self
-            .candidate
-            .physical_scope()
-            .aggregate_version
-            .checked_add(1)
-            .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
-        let payload =
-            serde_json::from_value::<McpGatewaySnapshotStaged>(self.event.payload.clone())
-                .map_err(|error| error.to_string())?;
-        let ordinary_route_ids = ordinary_route_ids(&self.candidate);
-        let mcp_route_ids = mcp_route_ids(&self.candidate);
-        let domain_claim_ids = certificate_domain_claim_ids(&self.candidate);
-        let gateway_scope_ids = self
-            .candidate
-            .mcp()
-            .scope_sets()
-            .iter()
-            .map(|planned| planned.scope().id)
-            .collect::<Vec<_>>();
-        let primary_scope = self.candidate.mcp().primary_scope();
-        if snapshot != *self.candidate.snapshot()
+        let candidate = self.candidate();
+        let payload = serde_json::from_value::<McpGatewaySnapshotStaged>(
+            self.composition.event().payload.clone(),
+        )
+        .map_err(|error| error.to_string())?;
+        let domain_claim_ids = certificate_domain_claim_ids(candidate);
+        let primary_scope = candidate.mcp().primary_scope();
+        if snapshot != *candidate.snapshot()
+            || self.composition.owner() != GatewaySnapshotPublicationOwner::McpReconciler
             || self.publication.state != GatewayPublicationState::Pending
             || self.publication.failure.is_some()
             || self.publication.acknowledged_at.is_some()
-            || self.publication.node_id != self.candidate.physical_scope().node_id
-            || self.publication.command_issued_at != self.candidate.mcp().observed_at()
-            || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
-            || self.event.schema_version != 2
-            || self.event.organization_id != primary_scope.organization_id.as_uuid()
-            || self.event.aggregate_id != self.publication.node_id.as_uuid()
-            || self.event.aggregate_version != expected_scope_version
-            || self.event.occurred_at != self.publication.command_issued_at
-            || self.event.correlation_id != self.publication.command_correlation_id
-            || payload.organization_id != primary_scope.organization_id
-            || payload.project_id != primary_scope.project_id
-            || payload.environment_id != primary_scope.environment_id
-            || payload.gateway_scope_id != primary_scope.id
-            || payload.gateway_scope_ids != gateway_scope_ids
-            || payload.node_id != self.publication.node_id
-            || payload.gateway_revision != self.publication.revision
-            || payload.gateway_command_id != self.publication.command_id
-            || payload.snapshot_digest != self.publication.snapshot_digest
-            || payload.ordinary_route_ids != ordinary_route_ids
-            || payload.mcp_route_ids != mcp_route_ids
-            || payload.domain_claim_ids != domain_claim_ids
         {
             return Err("MCP Gateway snapshot stage bundle is inconsistent".into());
         }

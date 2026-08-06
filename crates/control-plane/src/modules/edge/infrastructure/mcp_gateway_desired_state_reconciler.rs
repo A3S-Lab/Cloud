@@ -493,9 +493,6 @@ pub(super) fn reconciliation_decision(
     if &latest.desired_state_digest != desired_state_digest {
         return ReconciliationDecision::Stage;
     }
-    if has_mcp_routes && certificate_requires_replacement {
-        return ReconciliationDecision::Stage;
-    }
     match latest.publication.state {
         GatewayPublicationState::Pending => ReconciliationDecision::Pending,
         GatewayPublicationState::Applied => {
@@ -510,28 +507,6 @@ pub(super) fn reconciliation_decision(
         }
         GatewayPublicationState::Rejected | GatewayPublicationState::Unavailable => {
             retry_decision(latest, now, retry_delay)
-        }
-    }
-}
-
-fn certificate_requires_replacement(
-    certificate: Option<&GatewayCertificate>,
-    renew_before: DateTime<Utc>,
-) -> Result<bool, String> {
-    let Some(certificate) = certificate else {
-        return Ok(false);
-    };
-    match certificate.state {
-        GatewayCertificateState::Revoked => Ok(true),
-        GatewayCertificateState::Ready => certificate
-            .material
-            .as_ref()
-            .map(|material| material.expires_at <= renew_before)
-            .ok_or_else(|| "ready MCP Gateway certificate omitted material".to_string()),
-        GatewayCertificateState::Provisioning
-        | GatewayCertificateState::Issued
-        | GatewayCertificateState::Failed => {
-            Err("installed MCP Gateway certificate is not ready".into())
         }
     }
 }

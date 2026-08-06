@@ -22,6 +22,7 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::GatewayScopeState;
 use crate::modules::edge::infrastructure::{
     CompiledMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
@@ -373,7 +374,8 @@ impl McpGatewaySnapshotMarkerRow {
             snapshot_digest: decode(row, offset + 7)?,
             desired_state_digest: decode(row, offset + 8)?,
             mcp_route_count: decode(row, offset + 9)?,
-            staged_at: decode(row, offset + 10)?,
+            publication_owner: decode(row, offset + 10)?,
+            staged_at: decode(row, offset + 11)?,
         })
     }
 
@@ -755,6 +757,89 @@ pub(super) async fn lock_marker_by_gateway_identity(
         row.marker(scope_statuses)
             .map_err(PostgresPersistenceError::from)?,
     ))
+}
+
+pub(super) async fn validate_stored_managed_composition(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+) -> Result<(), PostgresPersistenceError> {
+    composition
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let marker = lock_marker_by_gateway_identity(
+        transaction,
+        publication.node_id.as_uuid(),
+        publication.revision,
+        publication.command_id.as_uuid(),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "managed Gateway publication lost its immutable composition marker".into(),
+        )
+    })?;
+    marker
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+
+    let candidate = composition.candidate();
+    let primary_scope = candidate.mcp().primary_scope();
+    let expected_scope_statuses = candidate
+        .mcp()
+        .scope_sets()
+        .iter()
+        .map(|planned| {
+            let scope = planned.scope();
+            let mcp_route_count = u32::try_from(
+                planned
+                    .projection()
+                    .map(|projection| projection.projection().routes.len())
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| {
+                PostgresPersistenceError::Invariant(
+                    "managed Gateway logical scope route count exceeds durable bounds".into(),
+                )
+            })?;
+            Ok(McpGatewaySnapshotScopeStatus {
+                organization_id: scope.organization_id,
+                project_id: scope.project_id,
+                environment_id: scope.environment_id,
+                gateway_scope_id: scope.id,
+                scope_aggregate_version: scope.aggregate_version,
+                membership_generation: scope.membership_generation,
+                receiving_member: scope.contains_member(publication.node_id),
+                mcp_route_count,
+            })
+        })
+        .collect::<Result<Vec<_>, PostgresPersistenceError>>()?;
+    let expected_route_count = u32::try_from(
+        candidate
+            .mcp()
+            .projection()
+            .map(|projection| projection.projection().routes.len())
+            .unwrap_or_default(),
+    )
+    .map_err(|_| {
+        PostgresPersistenceError::Invariant(
+            "managed Gateway complete route count exceeds durable bounds".into(),
+        )
+    })?;
+    if marker.organization_id != primary_scope.organization_id
+        || marker.project_id != primary_scope.project_id
+        || marker.environment_id != primary_scope.environment_id
+        || marker.gateway_scope_id != primary_scope.id
+        || marker.desired_state_digest != *candidate.desired_state_digest()
+        || marker.scope_statuses != expected_scope_statuses
+        || marker.mcp_route_count != expected_route_count
+        || marker.publication_owner != composition.owner()
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored managed Gateway composition changed".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
