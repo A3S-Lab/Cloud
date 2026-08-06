@@ -22,7 +22,6 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
-use crate::modules::edge::domain::GatewayPublicationState;
 use crate::modules::edge::infrastructure::{
     CompiledMcpGatewaySnapshot, IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope,
     McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,

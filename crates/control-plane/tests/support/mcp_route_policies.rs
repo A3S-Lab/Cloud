@@ -61,6 +61,9 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const ROTATED_VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$BAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
+#[path = "mcp_route_policies/node_aggregation.rs"]
+mod node_aggregation;
+
 pub async fn exercise(
     executor: &PostgresExecutor,
     organization_id: OrganizationId,
@@ -869,7 +872,7 @@ pub async fn exercise(
         Arc::new(workloads.clone()),
     ));
     let desired_route_planner = McpRouteProjectionPlanner::new(
-        Arc::new(FixtureRouteTargetReader { workload_id }),
+        Arc::new(FixtureRouteTargetReader::single(workload_id)),
         McpRouteTargetProjectionCompiler,
     );
     let desired_scope_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
@@ -1021,11 +1024,53 @@ pub async fn exercise(
             .await?,
         vec![revoked]
     );
+    node_aggregation::exercise(node_aggregation::Fixture {
+        executor,
+        edge: &edge,
+        assets: &assets,
+        workloads: &workloads,
+        organization_id,
+        project_id,
+        environment_id,
+        scope: &scope,
+        policy: &revised,
+        profile: &profile,
+        asset: &asset,
+        release: &published,
+        profile_binding: &profile_binding,
+        workload_id,
+        workload_revision: &revision,
+        observed_at: rotated_at + Duration::minutes(3),
+    })
+    .await?;
     Ok(())
 }
 
 struct FixtureRouteTargetReader {
     workload_id: WorkloadId,
+    workload_ids_by_revision: BTreeMap<WorkloadRevisionId, WorkloadId>,
+}
+
+impl FixtureRouteTargetReader {
+    fn single(workload_id: WorkloadId) -> Self {
+        Self {
+            workload_id,
+            workload_ids_by_revision: BTreeMap::new(),
+        }
+    }
+
+    fn with_revision(mut self, revision_id: WorkloadRevisionId, workload_id: WorkloadId) -> Self {
+        self.workload_ids_by_revision
+            .insert(revision_id, workload_id);
+        self
+    }
+
+    fn workload_id(&self, revision_id: WorkloadRevisionId) -> WorkloadId {
+        self.workload_ids_by_revision
+            .get(&revision_id)
+            .copied()
+            .unwrap_or(self.workload_id)
+    }
 }
 
 #[async_trait]
@@ -1054,6 +1099,7 @@ impl IRouteTargetReader for FixtureRouteTargetReader {
         member_node_ids: &[NodeId],
         now: DateTime<Utc>,
     ) -> Result<ResolvedRouteTargetSet, RepositoryError> {
+        let workload_id = self.workload_id(revision_id);
         let targets = member_node_ids
             .iter()
             .enumerate()
@@ -1068,12 +1114,12 @@ impl IRouteTargetReader for FixtureRouteTargetReader {
                         RepositoryError::Conflict("Gateway fixture port range overflowed".into())
                     })?;
                 Ok(ResolvedRouteTarget {
-                    workload_id: self.workload_id,
+                    workload_id,
                     node_id: *node_id,
                     target: RouteTarget::new(
-                        self.workload_id,
+                        workload_id,
                         revision_id,
-                        format!("workload:{}:revision:{revision_id}", self.workload_id),
+                        format!("workload:{workload_id}:revision:{revision_id}"),
                         1,
                         port_name.clone(),
                         UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}"))
@@ -1104,7 +1150,7 @@ async fn plan_gateway_snapshot(
         Arc::new(workloads.clone()),
     ));
     let route_planner = McpRouteProjectionPlanner::new(
-        Arc::new(FixtureRouteTargetReader { workload_id }),
+        Arc::new(FixtureRouteTargetReader::single(workload_id)),
         McpRouteTargetProjectionCompiler,
     );
     let planner = McpGatewayProjectionSetPlanner::new(
