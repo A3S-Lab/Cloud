@@ -50,7 +50,7 @@ pub async fn exercise_gateway_replica_recovery(
                 .append(", ")
                 .bind(format!("Gateway recovery fixture {}", ordinal + 1))
                 .append(", ")
-                .bind(format!("gateway-recovery-fixture-{}", node_id))
+                .bind(format!("gateway-recovery-fixture-{node_id}"))
                 .append(", 'ready', ")
                 .bind(agent_instance_id)
                 .append(", 'test', 'test-runtime', 'gateway-recovery-test', ")
