@@ -307,7 +307,7 @@ cleanup. Both machine-checkable results are retained in one revision-bound
 artifact; Cloud adds no provider resource model or second Claim mechanism.
 
 The seventh `BX0.3` slice pins A3S Box
-`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360` and adds one optional closed
+`150a1d068e5b6d073ac93352f83d03eb6d7285fa` and adds one optional closed
 `box.sev_snp` ACL block to the existing Node Agent composition. It maps Milan
 or Genoa plus the exact launch measurement, debug/SMT checks, policy mask, and
 minimum TCB versions into Box's sole confidential Runtime driver. Hardware

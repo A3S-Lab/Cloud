@@ -428,7 +428,7 @@ advertised-profile result and the allocation marker in the same evidence
 artifact.
 
 The seventh `BX0.3` slice pins A3S Box
-`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360` and connects its confidential
+`150a1d068e5b6d073ac93352f83d03eb6d7285fa` and connects its confidential
 Runtime driver to the closed Node Agent ACL boundary. An optional, unique
 `box.sev_snp` block selects Milan or Genoa and maps the launch measurement,
 debug/SMT policy, allowed policy mask, and minimum TCB values into Box's sole
@@ -790,7 +790,7 @@ evidence, and the ordered product portfolio.
 
 ### Requirements
 
-- Rust 1.85 or later
+- Rust 1.88 or later
 - PostgreSQL 17 or a compatible supported release
 - A3S Box for all node-local workload and build execution
 - A3S Power for the inference profile

@@ -21,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         toolchain:
-          - 1.85.0
+          - 1.88.0
           - stable
     defaults:
       run:
@@ -97,10 +97,10 @@ jobs:
           ref: ${{ steps.runtime_revision.outputs.revision }}
           path: crates/runtime
 
-      - name: Install Rust 1.85.0
+      - name: Install Rust 1.88.0
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
 
       - name: Resolve a public branch and confirm its pinned commit
         run: |
@@ -391,10 +391,10 @@ jobs:
           ref: ${{ steps.runtime_revision.outputs.revision }}
           path: crates/runtime
 
-      - name: Install Rust 1.85.0
+      - name: Install Rust 1.88.0
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -455,10 +455,10 @@ jobs:
           ref: ${{ steps.runtime_revision.outputs.revision }}
           path: crates/runtime
 
-      - name: Install Rust 1.85.0
+      - name: Install Rust 1.88.0
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
@@ -520,10 +520,10 @@ jobs:
           ref: ${{ steps.runtime_revision.outputs.revision }}
           path: crates/runtime
 
-      - name: Install Rust 1.85.0
+      - name: Install Rust 1.88.0
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
 
       - name: Install Node.js 22
         uses: actions/setup-node@v4

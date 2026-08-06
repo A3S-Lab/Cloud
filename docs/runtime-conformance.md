@@ -158,7 +158,7 @@ removes, and verifies absence. The evidence artifact contains one exact
 advertised-profile result and one exact allocation certification marker.
 
 The seventh `BX0.3` slice advances the pinned A3S Box revision to
-`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360`. The Node Agent accepts at most
+`150a1d068e5b6d073ac93352f83d03eb6d7285fa`. The Node Agent accepts at most
 one bare `box.sev_snp` ACL block, requires the concrete MicroVM backend, and
 maps its typed generation and attestation policy directly into Box's one
 confidential Runtime driver. Hardware mode requires a canonical lowercase

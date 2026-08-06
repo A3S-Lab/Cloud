@@ -480,7 +480,7 @@ machine-checkable allocation marker together. No provider resource model,
 Claim repository, scheduler, queue, Runtime driver, or node channel is added.
 
 The seventh `BX0.3` slice pins A3S Box
-`be7d19e2f7b163fcd278e020d2b6f5cd2d1f6360` and wires its confidential
+`150a1d068e5b6d073ac93352f83d03eb6d7285fa` and wires its confidential
 Runtime constructor into the Node Agent's closed ACL configuration. The
 optional unique `box.sev_snp` block selects Milan or Genoa and carries the
 measurement, debug/SMT checks, policy mask, and minimum TCB versions without a
