@@ -144,7 +144,7 @@ impl StageMcpGatewaySnapshot {
             candidate.snapshot().issued_at,
             command_not_after,
         )?;
-        let domain_claim_ids = domain_claim_ids(&candidate);
+        let domain_claim_ids = certificate_domain_claim_ids(&candidate);
         let certificate = publication
             .certificate_request
             .clone()
@@ -214,7 +214,7 @@ impl StageMcpGatewaySnapshot {
                 .map_err(|error| error.to_string())?;
         let ordinary_route_ids = ordinary_route_ids(&self.candidate);
         let mcp_route_ids = mcp_route_ids(&self.candidate);
-        let domain_claim_ids = domain_claim_ids(&self.candidate);
+        let domain_claim_ids = certificate_domain_claim_ids(&self.candidate);
         if snapshot != *self.candidate.snapshot()
             || self.publication.state != GatewayPublicationState::Pending
             || self.publication.failure.is_some()
@@ -351,10 +351,6 @@ fn mcp_route_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<RouteId> {
         .collect()
 }
 
-fn domain_claim_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<DomainClaimId> {
-    candidate
-        .domain_claim_versions()
-        .iter()
-        .map(|version| version.domain_claim_id())
-        .collect()
+fn certificate_domain_claim_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<DomainClaimId> {
+    candidate.certificate_domain_claim_ids().to_vec()
 }

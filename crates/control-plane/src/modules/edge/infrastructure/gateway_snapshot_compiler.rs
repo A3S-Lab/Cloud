@@ -72,6 +72,7 @@ pub struct CompiledMcpGatewaySnapshot {
     physical_scope: GatewayScopeState,
     active_route_versions: Vec<GatewayRouteVersion>,
     domain_claim_versions: Vec<GatewayDomainClaimVersion>,
+    certificate_domain_claim_ids: Vec<DomainClaimId>,
     mcp: PlannedMcpGatewayProjectionSet,
 }
 
@@ -96,6 +97,14 @@ impl CompiledMcpGatewaySnapshot {
 
     pub fn domain_claim_versions(&self) -> &[GatewayDomainClaimVersion] {
         &self.domain_claim_versions
+    }
+
+    /// Domain claims for routes that remain in the published snapshot and
+    /// therefore must be covered by its managed certificate. This is narrower
+    /// than `domain_claim_versions`, which also retains CAS evidence for routes
+    /// being removed during reconciliation.
+    pub fn certificate_domain_claim_ids(&self) -> &[DomainClaimId] {
+        &self.certificate_domain_claim_ids
     }
 
     pub const fn mcp(&self) -> &PlannedMcpGatewayProjectionSet {
@@ -203,6 +212,7 @@ impl GatewaySnapshotCompiler {
         let mut claim_authority =
             BTreeMap::<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>::new(
             );
+        let mut certificate_domain_claim_ids = BTreeSet::new();
         let mut routes = Vec::with_capacity(active_routes.len());
         for input in active_routes {
             validate_active_route_authority(&input, metadata.node_id, issued_at)?;
@@ -226,6 +236,7 @@ impl GatewaySnapshotCompiler {
                 domain_claim.aggregate_version,
                 domain_claim.pattern,
             )?;
+            certificate_domain_claim_ids.insert(domain_claim.id);
             routes.push(route);
         }
 
@@ -273,6 +284,7 @@ impl GatewaySnapshotCompiler {
                 version.domain_claim_aggregate_version(),
                 ingress.domain_pattern().clone(),
             )?;
+            certificate_domain_claim_ids.insert(ingress.domain_claim_id());
         }
 
         let projection = mcp.projection().map(|planned| planned.projection());
@@ -289,9 +301,11 @@ impl GatewaySnapshotCompiler {
                 );
             }
         }
-        if ownership.is_empty() != certificate_id.is_none() {
+        if ownership.is_empty() != certificate_id.is_none()
+            || ownership.is_empty() != certificate_domain_claim_ids.is_empty()
+        {
             return Err(
-                "complete Gateway snapshot requires one certificate exactly when traffic routes exist"
+                "complete Gateway snapshot certificate authority differs from its traffic routes"
                     .into(),
             );
         }
@@ -318,6 +332,7 @@ impl GatewaySnapshotCompiler {
                     },
                 )
                 .collect(),
+            certificate_domain_claim_ids: certificate_domain_claim_ids.into_iter().collect(),
             mcp,
         })
     }

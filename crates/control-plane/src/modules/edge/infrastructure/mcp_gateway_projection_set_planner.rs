@@ -748,6 +748,7 @@ mod tests {
             })
             .expect("credential cleanup snapshot");
         assert_eq!(compiled.domain_claim_versions().len(), 1);
+        assert!(compiled.certificate_domain_claim_ids().is_empty());
         assert!(!compiled.snapshot().acl.contains("mcp {"));
         let stage = StageMcpGatewaySnapshot::new(
             compiled,
