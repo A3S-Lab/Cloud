@@ -191,7 +191,7 @@ impl AssetCatalogApplicationService {
             &asset,
             AssetReleaseId::new(),
             version,
-            commit_sha,
+            commit_sha.clone(),
             admission.manifest_digest,
             Utc::now(),
         )
