@@ -43,12 +43,13 @@ use crate::modules::edge::{
     GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
     ListMcpCredentialsHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PostgresEdgeRepository, PublishRouteHandler,
-    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
+    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
+    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -509,6 +510,12 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
+    let mcp_credential_delivery_receipt_sweeper = McpCredentialDeliveryReceiptSweeper::new(
+        Arc::clone(&mcp_credentials),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let gateway_rollout_reconciler = GatewayRolloutReconciler::new(
         Arc::clone(&routes),
         Arc::clone(&route_commands),
@@ -811,6 +818,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(gateway_certificate_reconciler),
             run_operations.then_some(mcp_gateway_desired_state_reconciler),
             run_operations.then_some(mcp_gateway_snapshot_reconciler),
+            run_operations.then_some(mcp_credential_delivery_receipt_sweeper),
             run_operations.then_some(gateway_rollout_reconciler),
             run_operations.then_some(gateway_replica_recovery_reconciler),
             run_operations.then_some(gateway_rollout_rollback_reconciler),

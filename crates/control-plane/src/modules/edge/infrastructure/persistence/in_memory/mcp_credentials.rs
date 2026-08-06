@@ -6,7 +6,8 @@ use crate::modules::edge::domain::repositories::{
 };
 use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
+    canonical_timestamp, EnvironmentId, IdempotencyRequest, McpCredentialId, OrganizationId,
+    ProjectId, RepositoryError,
 };
 use async_trait::async_trait;
 
@@ -308,6 +309,32 @@ impl IMcpCredentialLifecycleRepository for InMemoryEdgeRepository {
             replayed: false,
         })
     }
+
+    async fn sweep_expired_mcp_credential_delivery_receipts(
+        &self,
+        expired_at: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> Result<usize, RepositoryError> {
+        let expired_at = canonical_timestamp(expired_at);
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "MCP credential delivery receipt sweep limit is invalid".into(),
+            ));
+        }
+        let mut state = self.state.write().await;
+        let mut expired = state
+            .mcp_credential_receipts
+            .iter()
+            .filter(|(_, receipt)| receipt.expires_at <= expired_at)
+            .map(|(credential_id, receipt)| (*credential_id, receipt.expires_at))
+            .collect::<Vec<_>>();
+        expired.sort_by_key(|(credential_id, expires_at)| (*expires_at, *credential_id));
+        expired.truncate(limit);
+        for (credential_id, _) in &expired {
+            state.mcp_credential_receipts.remove(credential_id);
+        }
+        Ok(expired.len())
+    }
 }
 
 fn replay(
@@ -366,6 +393,8 @@ fn remember(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::edge::domain::McpCredentialDeliveryReceipt;
+    use crate::modules::secrets::domain::EncryptedSecretValue;
     use chrono::{Duration, TimeZone, Utc};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -561,5 +590,61 @@ mod tests {
             repository.update_mcp_credential(rotated, 1).await,
             Err(RepositoryError::Conflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn sweeps_expired_delivery_receipts_in_bounded_expiry_order() {
+        let repository = InMemoryEdgeRepository::new();
+        let organization_id = OrganizationId::new();
+        let first_id = McpCredentialId::new();
+        let second_id = McpCredentialId::new();
+        let active_id = McpCredentialId::new();
+        let receipt = |credential_id, expires_at| {
+            McpCredentialDeliveryReceipt::new(
+                organization_id,
+                credential_id,
+                1,
+                EncryptedSecretValue::new("test-key", "encrypted-value").expect("encrypted value"),
+                expires_at,
+                now() - Duration::minutes(20),
+            )
+            .expect("delivery receipt")
+        };
+        {
+            let mut state = repository.state.write().await;
+            state
+                .mcp_credential_receipts
+                .insert(first_id, receipt(first_id, now() - Duration::minutes(10)));
+            state
+                .mcp_credential_receipts
+                .insert(second_id, receipt(second_id, now() - Duration::minutes(5)));
+            state
+                .mcp_credential_receipts
+                .insert(active_id, receipt(active_id, now() + Duration::minutes(5)));
+        }
+
+        assert_eq!(
+            repository
+                .sweep_expired_mcp_credential_delivery_receipts(now(), 1)
+                .await
+                .expect("first sweep"),
+            1
+        );
+        {
+            let state = repository.state.read().await;
+            assert!(!state.mcp_credential_receipts.contains_key(&first_id));
+            assert!(state.mcp_credential_receipts.contains_key(&second_id));
+            assert!(state.mcp_credential_receipts.contains_key(&active_id));
+        }
+        assert_eq!(
+            repository
+                .sweep_expired_mcp_credential_delivery_receipts(now(), 100)
+                .await
+                .expect("second sweep"),
+            1
+        );
+        let state = repository.state.read().await;
+        assert!(!state.mcp_credential_receipts.contains_key(&second_id));
+        assert!(state.mcp_credential_receipts.contains_key(&active_id));
     }
 }

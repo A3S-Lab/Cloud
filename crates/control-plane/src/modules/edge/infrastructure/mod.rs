@@ -91,7 +91,8 @@ pub use mcp_gateway_projection_compiler::{
     CompiledMcpGatewayProjection, McpGatewayProjectionCompiler,
 };
 pub use mcp_gateway_projection_planner::{
-    McpCredentialProjectionVersion, McpGatewayProjectionPlanner, PlannedMcpGatewayProjection,
+    McpCredentialAuthorityVersion, McpCredentialProjectionVersion, McpGatewayProjectionPlanner,
+    PlannedMcpGatewayProjection,
 };
 pub use mcp_gateway_projection_set_planner::{
     IMcpGatewayProjectionSetPlanner, McpGatewayIngressRoute, McpGatewayProjectionSetPlanner,

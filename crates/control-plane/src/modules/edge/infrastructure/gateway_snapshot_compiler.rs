@@ -234,10 +234,16 @@ impl GatewaySnapshotCompiler {
             .iter()
             .map(|version| (version.route_id(), version))
             .collect::<BTreeMap<_, _>>();
-        if mcp_route_versions.len() != mcp.route_versions().len()
-            || mcp.ingress_routes().len() != mcp.route_versions().len()
-        {
+        if mcp_route_versions.len() != mcp.route_versions().len() {
             return Err("MCP Gateway snapshot candidate has incomplete route evidence".into());
+        }
+        for version in mcp.route_versions() {
+            insert_claim_authority(
+                &mut claim_authority,
+                version.domain_claim_id(),
+                version.domain_claim_aggregate_version(),
+                version.domain_pattern().clone(),
+            )?;
         }
         for ingress in mcp.ingress_routes() {
             if routes.iter().any(|route| {
@@ -601,18 +607,19 @@ fn desired_state_digest(
             })
         })
         .collect::<Vec<_>>();
-    let mut credential_versions = mcp
-        .projection()
-        .map(|projection| projection.credential_versions().iter().collect::<Vec<_>>())
-        .unwrap_or_default();
-    credential_versions.sort_by_key(|version| version.credential_id());
-    let credential_versions = credential_versions
+    let mut credential_authority_versions = mcp
+        .credential_authority_versions()
+        .iter()
+        .collect::<Vec<_>>();
+    credential_authority_versions.sort_by_key(|version| version.credential_id());
+    let credential_authority_versions = credential_authority_versions
         .into_iter()
         .map(|version| {
             json!({
                 "credential_id": version.credential_id(),
                 "generation": version.generation(),
                 "aggregate_version": version.aggregate_version(),
+                "active_at_observed_at": version.active_at_observed_at(),
             })
         })
         .collect::<Vec<_>>();
@@ -644,7 +651,7 @@ fn desired_state_digest(
         "mcp_route_versions": route_versions,
         "mcp_ingress_routes": ingress_routes,
         "mcp_projection": mcp.projection().map(|projection| projection.projection()),
-        "credential_versions": credential_versions,
+        "credential_authority_versions": credential_authority_versions,
     }))
     .map_err(|error| format!("could not encode MCP Gateway desired state: {error}"))?;
     crate::modules::shared_kernel::domain::Sha256Digest::parse(format!(

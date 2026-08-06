@@ -307,7 +307,7 @@ Status as of 2026-08-06:
 | W0 | Planned | Workflow/Ontology authority, deterministic plan compilation, typed capability steps, and Flow-backed recovery are specified in `workflow-evolution-plan.md`; no Workflow tables, API, or public availability exists yet. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
 | U0 | In progress; unavailable | `U0.1` pins the canonical A3S Use host contract and adds explicit capabilities, plan, apply, enablement, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. Root compatibility locking, production Manager composition, and every Plugins module/schema/API remain open; no user-facing capability is claimed. |
-| MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Fleet dispatch/redelivery, exact acknowledgement and restart convergence, an executed real PostgreSQL gate for the new path, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
+| MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
 | H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
 
@@ -1880,7 +1880,7 @@ request carries version/client metadata, and the server implements
 ### Current state
 
 `MCP0` foundation development is in progress, but the product remains
-unavailable. As of 2026-07-30:
+unavailable. As of 2026-08-06:
 
 - `MCP0.1` has closed A3S ACL contract values, stable errors, digest bindings,
   and frozen Runtime/Gateway fixtures with focused cross-repository tests;
@@ -1914,9 +1914,12 @@ unavailable. As of 2026-07-30:
   DomainClaim and a running Workload's exact active release-bound revision; the
   complete-set planner uses bounded concurrency, aborts on any partial,
   duplicate, or ingress-conflicting input, retains canonical ingress bindings,
-  and represents an empty active set explicitly. The candidate retains exact
-  policy, DomainClaim, Workload/active-revision, and credential
-  generation/aggregate-version evidence. The complete-snapshot composer joins
+  and represents an empty active set explicitly. A rotated, revoked, or expired
+  credential makes only its referencing route ineligible; other valid routes
+  remain in the same complete snapshot. The candidate retains exact policy,
+  DomainClaim, Workload/active-revision, and credential generation,
+  aggregate-version, and observed lifecycle-state evidence even for removed
+  routes. The complete-snapshot composer joins
   this candidate with every ordinary active Route and verified DomainClaim,
   preserves ordinary traffic, rejects prefix bypass, unions certificate
   authority, emits exact MCP routers/targets, and removes stale MCP policy when
@@ -1947,16 +1950,21 @@ unavailable. As of 2026-07-30:
   certificate readiness and installed scope on Applied. Focused tests now
   cover automatic no-op convergence, cursor fairness, pending deferral,
   route-less expiry cleanup, terminal retry, displacement repair, stable
-  desired identity, dispatch failure/restart, replay, expiry, and clock
-  regression. A compiled PostgreSQL fixture additionally checks persisted
-  desired identity and automatic post-acknowledgement no-churn, together with
-  stale-policy rejection, transaction rollback when the final Outbox insert
-  fails, Fleet replay, certificate issuance, and exact Applied projection.
+  desired identity, dispatch failure/restart, replay, expiry, clock regression,
+  revoked-route cleanup, and mixed valid/revoked route isolation. The real
+  PostgreSQL fixture additionally checks persisted desired identity, automatic
+  post-acknowledgement no-churn, atomic credential delivery and replay, bounded
+  expired-receipt removal, and rotation-triggered zero-route staging, together
+  with stale-policy rejection, transaction rollback when the final Outbox
+  insert fails, Fleet replay, certificate issuance, and exact Applied
+  projection. A registered bounded worker removes only expired encrypted
+  delivery receipts through the existing Edge lifecycle repository; credential
+  aggregates and caller idempotency records remain authoritative.
   Node-wide aggregation for physical Gateways shared by active logical MCP
   scopes, unified composition in every ordinary publication path, proactive
-  MCP-only certificate renewal, revoked-credential cleanup, public idempotent
-  one-time delivery/rotation, an executed real PostgreSQL gate, lifecycle
-  surfaces, audit, and joint real-process recovery remain `MCP0.3`; and
+  MCP-only certificate renewal, retained clean-host PostgreSQL lifecycle
+  execution, and joint real-process recovery remain `MCP0.3`; Web lifecycle
+  views remain intentionally deferred until backend conformance; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
@@ -2091,9 +2099,15 @@ the credential verifier, a generation-bound encrypted delivery receipt,
 caller-owned idempotency, Outbox fact, and control-plane audit record. Create
 and rotate can replay the exact committed bearer for at most ten minutes;
 rotation, revocation, or receipt expiry makes stale delivery recovery fail
-closed. This reuses the existing Secret encryption provider and common
-idempotency/audit authorities and does not add TokenHub or another credential
-store. Web views remain planned and intentionally deferred during this phase.
+closed. The existing complete Gateway reconciler treats those lifecycle changes
+as route ineligibility, retains their exact authority version in the same CAS
+vector, and publishes one complete cleanup snapshot without removing unrelated
+valid routes. A bounded worker sweeps expired encrypted receipts through that
+same lifecycle repository while preserving credential and idempotency records.
+This reuses the existing Secret encryption provider and common
+idempotency/audit authorities and does not add TokenHub, another credential
+store, or another Gateway publication path. Web views remain planned and
+intentionally deferred during this phase.
 
 ### Exit gate
 

@@ -51,6 +51,50 @@ impl McpCredentialProjectionVersion {
     }
 }
 
+/// Exact credential-authority evidence observed while reconciling an MCP
+/// route. Unlike projection versions, this also records credentials whose
+/// current generation or lifecycle state makes the route ineligible.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct McpCredentialAuthorityVersion {
+    credential_id: McpCredentialId,
+    generation: u64,
+    aggregate_version: u64,
+    active_at_observed_at: bool,
+}
+
+impl McpCredentialAuthorityVersion {
+    pub fn new(
+        credential_id: McpCredentialId,
+        generation: u64,
+        aggregate_version: u64,
+        active_at_observed_at: bool,
+    ) -> Result<Self, String> {
+        McpCredentialProjectionVersion::new(credential_id, generation, aggregate_version)?;
+        Ok(Self {
+            credential_id,
+            generation,
+            aggregate_version,
+            active_at_observed_at,
+        })
+    }
+
+    pub const fn credential_id(self) -> McpCredentialId {
+        self.credential_id
+    }
+
+    pub const fn generation(self) -> u64 {
+        self.generation
+    }
+
+    pub const fn aggregate_version(self) -> u64 {
+        self.aggregate_version
+    }
+
+    pub const fn active_at_observed_at(self) -> bool {
+        self.active_at_observed_at
+    }
+}
+
 /// A complete MCP snapshot bound to the one physical Gateway that may receive
 /// its node-local Runtime endpoints.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,6 +193,22 @@ pub struct McpGatewayProjectionPlanner {
     credentials: Arc<dyn IMcpCredentialRepository>,
 }
 
+pub(crate) struct ReconciledMcpGatewayProjection {
+    projection: Option<PlannedMcpGatewayProjection>,
+    credential_authority_versions: Vec<McpCredentialAuthorityVersion>,
+}
+
+impl ReconciledMcpGatewayProjection {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Option<PlannedMcpGatewayProjection>,
+        Vec<McpCredentialAuthorityVersion>,
+    ) {
+        (self.projection, self.credential_authority_versions)
+    }
+}
+
 impl McpGatewayProjectionPlanner {
     pub fn new(
         routes: McpRouteProjectionPlanner,
@@ -164,17 +224,31 @@ impl McpGatewayProjectionPlanner {
         &self,
         request: PlanMcpRouteProjection,
     ) -> Result<PlannedMcpGatewayProjection, RepositoryError> {
-        let organization_id = request.policy.spec().organization_id;
-        let project_id = request.policy.spec().project_id;
-        let environment_id = request.policy.spec().environment_id;
-        let policy_expires_at = request.policy.spec().expires_at;
-        let gateway_node_id = request.gateway_node_id;
-        let observed_at = canonical_timestamp(request.observed_at);
-        let profile = request.profile_binding.profile.gateway_projection();
-        let route = self.routes.plan(request).await?;
+        self.plan_for_reconciliation(request)
+            .await?
+            .projection
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "MCP route grant credential generation or state is invalid".into(),
+                )
+            })
+    }
 
-        let credential_ids = route
-            .grants
+    pub(crate) async fn plan_for_reconciliation(
+        &self,
+        request: PlanMcpRouteProjection,
+    ) -> Result<ReconciledMcpGatewayProjection, RepositoryError> {
+        let observed_at = McpRouteProjectionPlanner::validate_request(&request)?;
+        let spec = request.policy.spec();
+        let organization_id = spec.organization_id;
+        let project_id = spec.project_id;
+        let environment_id = spec.environment_id;
+        let policy_expires_at = spec.expires_at;
+        let grants = spec.grants.clone();
+        let gateway_node_id = request.gateway_node_id;
+        let profile = request.profile_binding.profile.gateway_projection();
+
+        let credential_ids = grants
             .iter()
             .map(|grant| McpCredentialId::from_uuid(grant.credential_id))
             .collect::<Vec<_>>();
@@ -191,10 +265,12 @@ impl McpGatewayProjectionPlanner {
             }
         }
 
-        let mut credentials = Vec::with_capacity(route.grants.len());
-        let mut credential_versions = Vec::with_capacity(route.grants.len());
+        let mut credentials = Vec::with_capacity(grants.len());
+        let mut credential_versions = Vec::with_capacity(grants.len());
+        let mut credential_authority_versions = Vec::with_capacity(grants.len());
         let mut expires_at = policy_expires_at;
-        for grant in &route.grants {
+        let mut eligible = true;
+        for grant in &grants {
             let credential_id = McpCredentialId::from_uuid(grant.credential_id);
             let credential = by_id.remove(&credential_id).ok_or_else(|| {
                 RepositoryError::Conflict(
@@ -204,13 +280,23 @@ impl McpGatewayProjectionPlanner {
             if credential.organization_id != organization_id
                 || credential.project_id != project_id
                 || credential.environment_id != environment_id
-                || credential.generation() != grant.credential_generation
-                || !credential.is_active_at(observed_at)
             {
                 return Err(RepositoryError::Conflict(
-                    "MCP route grant credential scope, generation, or state is invalid".into(),
+                    "MCP route grant credential scope is invalid".into(),
                 ));
             }
+            let active_at_observed_at = credential.is_active_at(observed_at);
+            credential_authority_versions.push(
+                McpCredentialAuthorityVersion::new(
+                    credential.id,
+                    credential.generation(),
+                    credential.aggregate_version(),
+                    active_at_observed_at,
+                )
+                .map_err(RepositoryError::Storage)?,
+            );
+            eligible &=
+                credential.generation() == grant.credential_generation && active_at_observed_at;
             expires_at = expires_at.min(credential.expires_at());
             credential_versions.push(
                 McpCredentialProjectionVersion::new(
@@ -222,6 +308,20 @@ impl McpGatewayProjectionPlanner {
             );
             credentials.push(credential.gateway_projection());
         }
+        credential_authority_versions.sort_by_key(|version| version.credential_id());
+        if !eligible {
+            return Ok(ReconciledMcpGatewayProjection {
+                projection: None,
+                credential_authority_versions,
+            });
+        }
+
+        let route = self.routes.plan(request).await?;
+        if route.grants != grants {
+            return Err(RepositoryError::Storage(
+                "MCP route projection changed its credential grants while planning".into(),
+            ));
+        }
         credentials.sort_by_key(|credential| credential.credential_id);
 
         let projection = McpGatewayProjection {
@@ -231,13 +331,17 @@ impl McpGatewayProjectionPlanner {
             credentials,
             routes: vec![route],
         };
-        PlannedMcpGatewayProjection::new(
+        let projection = PlannedMcpGatewayProjection::new(
             gateway_node_id,
             projection,
             credential_versions,
             observed_at,
         )
-        .map_err(RepositoryError::Conflict)
+        .map_err(RepositoryError::Conflict)?;
+        Ok(ReconciledMcpGatewayProjection {
+            projection: Some(projection),
+            credential_authority_versions,
+        })
     }
 }
 

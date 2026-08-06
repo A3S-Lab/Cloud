@@ -506,7 +506,14 @@ async fn insert_marker(
     publication: &crate::modules::edge::domain::GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
     let scope = candidate.mcp().scope();
-    let mcp_route_count = u32::try_from(candidate.mcp().route_versions().len()).map_err(|_| {
+    let mcp_route_count = u32::try_from(
+        candidate
+            .mcp()
+            .projection()
+            .map(|projection| projection.projection().routes.len())
+            .unwrap_or_default(),
+    )
+    .map_err(|_| {
         PostgresPersistenceError::Invariant(
             "MCP Gateway snapshot route count exceeds durable bounds".into(),
         )
@@ -1123,11 +1130,8 @@ async fn lock_credentials(
     transaction: &PostgresTransaction,
     candidate: &CompiledMcpGatewaySnapshot,
 ) -> Result<(), PostgresPersistenceError> {
-    let Some(projection) = candidate.mcp().projection() else {
-        return Ok(());
-    };
     let scope = candidate.mcp().scope();
-    for expected in projection.credential_versions() {
+    for expected in candidate.mcp().credential_authority_versions() {
         let row = fetch_optional::<
             (
                 Uuid,
@@ -1165,8 +1169,8 @@ async fn lock_credentials(
             || row.2 != scope.environment_id.as_uuid()
             || row.3 != expected.generation()
             || row.4 != expected.aggregate_version()
-            || row.5 <= candidate.mcp().observed_at()
-            || row.6.is_some()
+            || (row.5 > candidate.mcp().observed_at() && row.6.is_none())
+                != expected.active_at_observed_at()
         {
             return Err(RepositoryError::Conflict(
                 "MCP snapshot credential authority changed before Gateway staging".into(),

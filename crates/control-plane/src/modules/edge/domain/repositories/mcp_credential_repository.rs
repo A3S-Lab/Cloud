@@ -5,6 +5,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -183,6 +184,14 @@ pub trait IMcpCredentialLifecycleRepository: IMcpCredentialRepository {
         &self,
         bundle: RevokeMcpCredentialWrite,
     ) -> Result<McpCredentialWrite, RepositoryError>;
+
+    /// Permanently removes expired one-time delivery material while leaving
+    /// the credential aggregate and its idempotency record intact.
+    async fn sweep_expired_mcp_credential_delivery_receipts(
+        &self,
+        expired_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<usize, RepositoryError>;
 }
 
 fn validate_event(

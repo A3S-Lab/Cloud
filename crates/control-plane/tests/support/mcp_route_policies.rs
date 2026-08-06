@@ -7,13 +7,17 @@ use a3s_cloud_control_plane::modules::assets::{
     CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
     McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
 };
-use a3s_cloud_control_plane::modules::edge::domain::events::DomainClaimChanged;
+use a3s_cloud_control_plane::modules::edge::domain::events::{
+    DomainClaimChanged, McpCredentialChanged,
+};
+use a3s_cloud_control_plane::modules::edge::domain::repositories::CreateMcpCredentialWrite;
 use a3s_cloud_control_plane::modules::edge::{
     CompileMcpGatewaySnapshot, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
     FleetGatewayCommandQueue, GatewayCertificateMaterial, GatewayCertificateState,
     GatewayPublicationState, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialRepository,
-    IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
+    GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository,
+    IMcpCredentialLifecycleRepository, IMcpCredentialRepository, IMcpGatewaySnapshotRepository,
+    IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential, McpCredentialDeliveryReceipt,
     McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
     McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
@@ -27,6 +31,7 @@ use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
+use a3s_cloud_control_plane::modules::secrets::domain::EncryptedSecretValue;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
     GatewayScopeId, GitCommitSha, IdempotencyRequest, McpCredentialId, NodeCommandId, NodeId,
@@ -94,10 +99,56 @@ pub async fn exercise(
         now + Duration::days(30),
         now,
     )?;
+    let delivery_expires_at = now + Duration::minutes(10);
+    let delivery_idempotency = idempotency(
+        organization_id,
+        "mcp-credentials",
+        "postgres-mcp-credential-create",
+        b"postgres-mcp-credential-create",
+    )?;
+    let delivery_receipt = McpCredentialDeliveryReceipt::new(
+        organization_id,
+        credential.id,
+        credential.generation(),
+        EncryptedSecretValue::new("test-key", "encrypted-test-credential")?,
+        delivery_expires_at,
+        now,
+    )?;
+    let created_delivery = edge
+        .create_mcp_credential_delivery(CreateMcpCredentialWrite {
+            credential: credential.clone(),
+            receipt: delivery_receipt.clone(),
+            idempotency: delivery_idempotency.clone(),
+            event: McpCredentialChanged::created(&credential, Uuid::now_v7())?,
+        })
+        .await?;
+    assert_eq!(created_delivery.credential, credential);
+    assert_eq!(created_delivery.receipt, Some(delivery_receipt.clone()));
+    assert!(!created_delivery.replayed);
+    let replayed_delivery = edge
+        .replay_mcp_credential_write(organization_id, &delivery_idempotency)
+        .await?
+        .ok_or("MCP credential delivery replay is missing")?;
+    assert_eq!(replayed_delivery.credential, credential);
+    assert_eq!(replayed_delivery.receipt, Some(delivery_receipt));
+    assert!(replayed_delivery.replayed);
     assert_eq!(
-        edge.create_mcp_credential(credential.clone()).await?,
-        credential
+        edge.sweep_expired_mcp_credential_delivery_receipts(now, 100)
+            .await?,
+        0
     );
+    assert_eq!(
+        edge.sweep_expired_mcp_credential_delivery_receipts(delivery_expires_at, 100)
+            .await?,
+        1
+    );
+    let replayed_after_sweep = edge
+        .replay_mcp_credential_write(organization_id, &delivery_idempotency)
+        .await?
+        .ok_or("MCP credential replay disappeared after receipt sweep")?;
+    assert_eq!(replayed_after_sweep.credential, credential);
+    assert!(replayed_after_sweep.receipt.is_none());
+    assert!(replayed_after_sweep.replayed);
     assert_eq!(
         edge.find_mcp_credential(organization_id, credential.id)
             .await?,
@@ -866,6 +917,28 @@ pub async fn exercise(
         edge.update_mcp_credential(rotated.clone(), 1).await?,
         rotated
     );
+    let cleanup_report = desired_reconciler
+        .run_once(created_at + Duration::minutes(2) + Duration::milliseconds(1))
+        .await?;
+    assert_eq!(cleanup_report.staged_snapshots, 1);
+    assert_eq!(cleanup_report.unchanged_snapshots, 0);
+    assert!(cleanup_report.failures.is_empty());
+    let (cleanup_route_count, cleanup_acl) = database
+        .fetch_one_as(
+            sql_query::<(u32, String)>(
+                "select marker.mcp_route_count, publication.acl \
+                 from mcp_gateway_snapshot_publications marker \
+                 join gateway_publications publication \
+                   on publication.node_id = marker.node_id \
+                  and publication.revision = marker.gateway_revision \
+                 where marker.node_id = ",
+            )
+            .bind(scope.node_id.as_uuid())
+            .append(" order by marker.gateway_revision desc limit 1"),
+        )
+        .await?;
+    assert_eq!(cleanup_route_count, 0);
+    assert!(!cleanup_acl.contains("\nmcp {\n"));
     let mut stale = credential;
     stale.rotate(
         "a3s_mcp_ghi12345jkl67890",

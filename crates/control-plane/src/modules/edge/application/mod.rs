@@ -1,5 +1,6 @@
 pub mod commands;
 mod mcp_credential_delivery;
+mod mcp_credential_delivery_receipt_sweeper;
 pub mod queries;
 
 pub(crate) use mcp_credential_delivery::{encrypt_delivery_receipt, recover_delivery};
@@ -7,6 +8,7 @@ pub use mcp_credential_delivery::{
     McpCredentialDeliveryResult, McpCredentialMutationResult,
     MCP_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS,
 };
+pub use mcp_credential_delivery_receipt_sweeper::McpCredentialDeliveryReceiptSweeper;
 
 pub use commands::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,

@@ -344,9 +344,10 @@ fn ordinary_route_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<RouteId> {
 fn mcp_route_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<RouteId> {
     candidate
         .mcp()
-        .route_versions()
-        .iter()
-        .map(|version| version.route_id())
+        .projection()
+        .into_iter()
+        .flat_map(|projection| &projection.projection().routes)
+        .map(|route| RouteId::from_uuid(route.route_id))
         .collect()
 }
 
