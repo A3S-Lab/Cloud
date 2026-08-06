@@ -809,7 +809,7 @@ fn acl_string(value: &str) -> String {
 }
 
 fn duration(milliseconds: u64) -> String {
-    if milliseconds % 1_000 == 0 {
+    if milliseconds.is_multiple_of(1_000) {
         format!("{}s", milliseconds / 1_000)
     } else {
         format!("{milliseconds}ms")

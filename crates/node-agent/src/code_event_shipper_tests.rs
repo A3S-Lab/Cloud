@@ -427,7 +427,9 @@ async fn pending_page_replays_after_restart_before_advancing_the_code_cursor() {
         Arc::clone(&transport),
     );
 
-    let interrupted = first_shipper.ship_once(&[binding.clone()]).await;
+    let interrupted = first_shipper
+        .ship_once(std::slice::from_ref(&binding))
+        .await;
     assert!(matches!(
         interrupted,
         Err(CodeEventShippingError::ControlPlane(
@@ -444,12 +446,12 @@ async fn pending_page_replays_after_restart_before_advancing_the_code_cursor() {
         Arc::clone(&transport),
     );
     assert!(restarted
-        .ship_once(&[binding.clone()])
+        .ship_once(std::slice::from_ref(&binding))
         .await
         .expect("replay pending page"));
     assert_eq!(harness.calls.load(Ordering::SeqCst), 1);
     assert!(restarted
-        .ship_once(&[binding.clone()])
+        .ship_once(std::slice::from_ref(&binding))
         .await
         .expect("ship next page"));
     assert!(!restarted
@@ -515,7 +517,7 @@ async fn empty_page_projects_a_state_change_once_without_fabricating_events() {
     );
 
     assert!(shipper
-        .ship_once(&[binding.clone()])
+        .ship_once(std::slice::from_ref(&binding))
         .await
         .expect("ship state transition"));
     assert!(!shipper

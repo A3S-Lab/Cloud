@@ -73,7 +73,7 @@ where
                 continue;
             }
             empty_polls = empty_polls.saturating_add(1);
-            if empty_polls == 1 || empty_polls % options.keepalive_polls == 0 {
+            if empty_polls == 1 || empty_polls.is_multiple_of(options.keepalive_polls) {
                 yield SseEvent::comment("keepalive").with_retry(options.retry_ms);
             }
         }
