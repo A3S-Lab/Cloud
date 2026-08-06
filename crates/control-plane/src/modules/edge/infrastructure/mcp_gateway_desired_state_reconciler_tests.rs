@@ -1,5 +1,5 @@
 use super::mcp_gateway_desired_state_reconciler::{
-    reconciliation_decision, ReconciliationDecision,
+    reconciliation_decision, ReconciliationDecision, ReconciliationTarget,
 };
 use super::{
     CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
@@ -369,9 +369,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
                 latest_mcp_snapshot: None,
             },
             &desired,
-            true,
-            false,
-            None,
+            target(true, false, None),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -393,9 +391,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &applied,
             &desired,
-            true,
-            false,
-            Some(7),
+            target(true, false, Some(7)),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -406,9 +402,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &applied,
             &desired,
-            true,
-            false,
-            Some(8),
+            target(true, false, Some(8)),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -430,9 +424,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &applied_empty,
             &digest('b'),
-            false,
-            false,
-            Some(8),
+            target(false, false, Some(8)),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -455,9 +447,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &failed,
             &desired,
-            true,
-            false,
-            Some(6),
+            target(true, false, Some(6)),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -468,9 +458,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &failed,
             &desired,
-            true,
-            false,
-            Some(6),
+            target(true, false, Some(6)),
             now - ChronoDuration::seconds(45),
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -492,9 +480,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &failed_empty,
             &desired,
-            false,
-            false,
-            Some(6),
+            target(false, false, Some(6)),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -505,9 +491,7 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
         reconciliation_decision(
             &applied,
             &digest('b'),
-            true,
-            false,
-            Some(7),
+            target(true, false, Some(7)),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -540,9 +524,7 @@ fn decision_renews_only_mcp_owned_certificate_before_expiry() {
         reconciliation_decision(
             &expiring,
             &desired,
-            true,
-            false,
-            installed_revision,
+            target(true, false, installed_revision),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -553,9 +535,7 @@ fn decision_renews_only_mcp_owned_certificate_before_expiry() {
         reconciliation_decision(
             &expiring,
             &desired,
-            true,
-            true,
-            installed_revision,
+            target(true, true, installed_revision),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -573,9 +553,7 @@ fn decision_renews_only_mcp_owned_certificate_before_expiry() {
         reconciliation_decision(
             &missing,
             &desired,
-            true,
-            false,
-            installed_revision,
+            target(true, false, installed_revision),
             now,
             certificate_renew_before,
             ChronoDuration::minutes(1),
@@ -600,6 +578,18 @@ fn reconciler(
         10,
     )
     .expect("MCP Gateway desired-state reconciler")
+}
+
+fn target(
+    has_mcp_routes: bool,
+    has_ordinary_routes: bool,
+    installed_revision: Option<u64>,
+) -> ReconciliationTarget {
+    ReconciliationTarget {
+        has_mcp_routes,
+        has_ordinary_routes,
+        installed_revision,
+    }
 }
 
 fn compiler() -> GatewaySnapshotCompiler {

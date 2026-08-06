@@ -272,9 +272,11 @@ impl McpGatewayDesiredStateReconciler {
                 let decision = reconciliation_decision(
                     &state,
                     candidate.desired_state_digest(),
-                    has_mcp_routes,
-                    has_ordinary_routes,
-                    installed_revision,
+                    ReconciliationTarget {
+                        has_mcp_routes,
+                        has_ordinary_routes,
+                        installed_revision,
+                    },
                     now,
                     certificate_renew_before,
                     self.retry_delay,
@@ -402,12 +404,17 @@ pub(super) enum ReconciliationDecision {
     RetryDeferred,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ReconciliationTarget {
+    pub(super) has_mcp_routes: bool,
+    pub(super) has_ordinary_routes: bool,
+    pub(super) installed_revision: Option<u64>,
+}
+
 pub(super) fn reconciliation_decision(
     state: &McpGatewaySnapshotReconciliationState,
     desired_state_digest: &crate::modules::shared_kernel::domain::Sha256Digest,
-    has_mcp_routes: bool,
-    has_ordinary_routes: bool,
-    installed_revision: Option<u64>,
+    target: ReconciliationTarget,
     now: DateTime<Utc>,
     certificate_renew_before: DateTime<Utc>,
     retry_delay: ChronoDuration,
@@ -416,16 +423,16 @@ pub(super) fn reconciliation_decision(
         return ReconciliationDecision::Pending;
     }
     let Some(latest) = &state.latest_mcp_snapshot else {
-        return if has_mcp_routes {
+        return if target.has_mcp_routes {
             ReconciliationDecision::Stage
         } else {
             ReconciliationDecision::Unchanged
         };
     };
-    if has_mcp_routes != (latest.mcp_route_count > 0) {
+    if target.has_mcp_routes != (latest.mcp_route_count > 0) {
         return ReconciliationDecision::Stage;
     }
-    if !has_mcp_routes {
+    if !target.has_mcp_routes {
         return match latest.publication.state {
             GatewayPublicationState::Pending => ReconciliationDecision::Pending,
             GatewayPublicationState::Applied => ReconciliationDecision::Unchanged,
@@ -440,10 +447,9 @@ pub(super) fn reconciliation_decision(
     match latest.publication.state {
         GatewayPublicationState::Pending => ReconciliationDecision::Pending,
         GatewayPublicationState::Applied => {
-            if has_mcp_routes && installed_revision != Some(latest.publication.revision) {
-                ReconciliationDecision::Stage
-            } else if !has_ordinary_routes
-                && latest.certificate_requires_replacement(certificate_renew_before)
+            if target.installed_revision != Some(latest.publication.revision)
+                || (!target.has_ordinary_routes
+                    && latest.certificate_requires_replacement(certificate_renew_before))
             {
                 ReconciliationDecision::Stage
             } else {
