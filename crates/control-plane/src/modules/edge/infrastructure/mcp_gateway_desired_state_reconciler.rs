@@ -108,19 +108,20 @@ impl McpGatewayDesiredStateReconciler {
             .repository
             .mcp_gateway_reconciliation_scopes(now, after_gateway_scope_id, self.batch_size)
             .await?;
+        let mut wrapped_scan = false;
         if scopes.is_empty() && after_gateway_scope_id.is_some() {
             scopes = self
                 .repository
                 .mcp_gateway_reconciliation_scopes(now, None, self.batch_size)
                 .await?;
+            wrapped_scan = true;
         }
         if scopes
             .windows(2)
             .any(|scopes| scopes[0].scope.id >= scopes[1].scope.id)
-            || after_gateway_scope_id.is_some_and(|cursor| {
-                scopes.first().is_some_and(|scope| scope.scope.id <= cursor)
-                    && scopes.last().is_some_and(|scope| scope.scope.id > cursor)
-            })
+            || !wrapped_scan
+                && after_gateway_scope_id
+                    .is_some_and(|cursor| scopes.iter().any(|scope| scope.scope.id <= cursor))
         {
             return Err(RepositoryError::Storage(
                 "MCP Gateway reconciliation scope scan is not cursor ordered".into(),

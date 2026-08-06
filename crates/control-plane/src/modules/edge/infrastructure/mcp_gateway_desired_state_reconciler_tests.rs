@@ -305,7 +305,11 @@ async fn any_pending_physical_publication_defers_planning_and_staging() {
 async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
     let now = Utc::now();
     let node_id = NodeId::new();
-    let mut scopes = vec![scope_for_node(now, node_id), scope_for_node(now, node_id)];
+    let organization_id = OrganizationId::new();
+    let mut scopes = vec![
+        scope_for_node_in_organization(now, node_id, organization_id),
+        scope_for_node_in_organization(now, node_id, organization_id),
+    ];
     scopes.sort_by_key(|scope| scope.id);
     let expected = vec![scopes[0].id, scopes[1].id, scopes[0].id];
     let repository = Arc::new(FakeDesiredStateRepository::with_scopes(
@@ -655,9 +659,17 @@ fn scope(now: DateTime<Utc>) -> GatewayScope {
 }
 
 fn scope_for_node(now: DateTime<Utc>, node_id: NodeId) -> GatewayScope {
+    scope_for_node_in_organization(now, node_id, OrganizationId::new())
+}
+
+fn scope_for_node_in_organization(
+    now: DateTime<Utc>,
+    node_id: NodeId,
+    organization_id: OrganizationId,
+) -> GatewayScope {
     GatewayScope::create(
         GatewayScopeId::new(),
-        OrganizationId::new(),
+        organization_id,
         ProjectId::new(),
         EnvironmentId::new(),
         node_id,
