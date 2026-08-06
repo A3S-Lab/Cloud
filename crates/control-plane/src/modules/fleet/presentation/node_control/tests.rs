@@ -38,7 +38,7 @@ use a3s_runtime::contract::{
 use chrono::{Duration, Utc};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use sha2::{Digest, Sha256};
-use std::net::{SocketAddr, TcpListener as StdTcpListener};
+use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
 use std::time::Duration as StdDuration;
 use tower::ServiceExt;
@@ -118,7 +118,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     .with_rotation_clock(Arc::new(move || {
         *rotation_clock.read().expect("rotation test clock")
     }));
-    let address = unused_address();
+    let (address, listener) = bound_node_control_listener().await;
     let config = NodeControlConfig {
         host: address.ip().to_string(),
         port: address.port(),
@@ -132,8 +132,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
     };
     let server = NodeControlServer::from_config(&config, api.clone()).expect("node-control server");
     let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
-    let server_task = tokio::spawn(server.run(shutdown_receiver));
-    wait_until_listening(address).await;
+    let server_task = tokio::spawn(server.run_with_listener(listener, shutdown_receiver));
 
     let ca = std::fs::read(&bundle_path).expect("CA PEM");
     let root = reqwest::Certificate::from_pem(&ca).expect("root certificate");
@@ -962,21 +961,12 @@ fn event(
     }
 }
 
-fn unused_address() -> SocketAddr {
-    let listener = StdTcpListener::bind("127.0.0.1:0").expect("ephemeral port");
-    listener.local_addr().expect("local address")
-}
-
-async fn wait_until_listening(address: SocketAddr) {
-    let deadline = tokio::time::Instant::now() + StdDuration::from_secs(2);
-    loop {
-        if tokio::net::TcpStream::connect(address).await.is_ok() {
-            return;
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "node-control listener did not start"
-        );
-        tokio::time::sleep(StdDuration::from_millis(10)).await;
-    }
+async fn bound_node_control_listener() -> (SocketAddr, tokio::net::TcpListener) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind ephemeral node-control listener");
+    let address = listener
+        .local_addr()
+        .expect("node-control listener address");
+    (address, listener)
 }
