@@ -15,7 +15,7 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{McpCredential, McpCredentialDeliveryReceipt};
 use crate::modules::secrets::domain::EncryptedSecretValue;
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, OrganizationId, RepositoryError};
-use a3s_orm::{delete_from, insert_into, select_from, Expression, PostgresTransaction};
+use a3s_orm::{delete_from, insert_into, select_from, PostgresTransaction};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

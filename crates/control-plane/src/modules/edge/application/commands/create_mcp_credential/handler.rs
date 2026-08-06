@@ -172,7 +172,9 @@ struct CanonicalCreateMcpCredential {
     expires_at: chrono::DateTime<chrono::Utc>,
 }
 
-pub(super) fn issuance_error(error: McpCredentialIssuanceError) -> ApplicationError {
+pub(in crate::modules::edge::application::commands) fn issuance_error(
+    error: McpCredentialIssuanceError,
+) -> ApplicationError {
     match error {
         McpCredentialIssuanceError::InvalidRequest(message) => ApplicationError::Invalid(message),
         McpCredentialIssuanceError::Unavailable => {
@@ -181,7 +183,9 @@ pub(super) fn issuance_error(error: McpCredentialIssuanceError) -> ApplicationEr
     }
 }
 
-pub(super) fn identity_collision(error: &RepositoryError) -> bool {
+pub(in crate::modules::edge::application::commands) fn identity_collision(
+    error: &RepositoryError,
+) -> bool {
     matches!(
         error,
         RepositoryError::Conflict(message)

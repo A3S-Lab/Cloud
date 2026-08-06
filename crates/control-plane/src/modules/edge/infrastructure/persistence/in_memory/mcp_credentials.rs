@@ -147,7 +147,8 @@ impl IMcpCredentialLifecycleRepository for InMemoryEdgeRepository {
         organization_id: OrganizationId,
         idempotency: &IdempotencyRequest,
     ) -> Result<Option<McpCredentialWrite>, RepositoryError> {
-        replay(&self.state.read().await, organization_id, idempotency)
+        let state = self.state.read().await;
+        replay(&state, organization_id, idempotency)
     }
 
     async fn create_mcp_credential_delivery(
