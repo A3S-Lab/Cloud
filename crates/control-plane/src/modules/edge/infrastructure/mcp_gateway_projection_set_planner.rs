@@ -172,28 +172,6 @@ impl PlannedMcpGatewayProjectionSet {
     pub const fn projection(&self) -> Option<&PlannedMcpGatewayProjection> {
         self.projection.as_ref()
     }
-
-    pub fn into_parts(
-        self,
-    ) -> (
-        GatewayScope,
-        NodeId,
-        DateTime<Utc>,
-        Vec<McpRouteProjectionVersion>,
-        Vec<McpCredentialAuthorityVersion>,
-        Vec<McpGatewayIngressRoute>,
-        Option<PlannedMcpGatewayProjection>,
-    ) {
-        (
-            self.scope,
-            self.gateway_node_id,
-            self.observed_at,
-            self.route_versions,
-            self.credential_authority_versions,
-            self.ingress_routes,
-            self.projection,
-        )
-    }
 }
 
 /// Plans every active hosted MCP route for one physical Gateway and assembles
