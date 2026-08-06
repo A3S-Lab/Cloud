@@ -4,7 +4,9 @@ import {
   positionalUuid,
   rejectExpectedVersionOption,
   rejectFileOption,
+  rejectGatewayRolloutOptions,
   rejectLogOptions,
+  requireArity,
   requireIdempotencyKey,
   requireListCommand,
   requireMutationCommand,
@@ -14,14 +16,19 @@ import type { CloudContext } from './context';
 import { requireEnvironment, requireOrganization, requireProject } from './context';
 import { usageError } from './errors';
 import {
+  type CommandResult,
   domainClaimMutationResult,
   domainClaimResult,
   domainClaimsResult,
   gatewayScopeMutationResult,
   gatewayScopesResult,
+  mcpCredentialDeliveryResult,
+  mcpCredentialMutationResult,
+  mcpCredentialResult,
+  mcpCredentialsResult,
   routePublicationResult,
-  type CommandResult,
 } from './results';
+import { parseRfc3339Timestamp } from './timestamp';
 
 const MAX_GATEWAY_SCOPE_MEMBERS = 100;
 const MAX_U32 = 4_294_967_295;
@@ -116,6 +123,65 @@ export async function executeEdgeCommand(
         )
       );
     }
+    case 'mcp-credentials list': {
+      requireListCommand(arguments_);
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialsResult(
+        await cloudApi().listMcpCredentials(scope.organizationId, scope.projectId, scope.environmentId)
+      );
+    }
+    case 'mcp-credentials get':
+      requireReadCommand(arguments_, 'mcp-credentials get <credential-id>');
+      return mcpCredentialResult(
+        await cloudApi().getMcpCredential(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'MCP credential ID')
+        )
+      );
+    case 'mcp-credentials create': {
+      const idempotencyKey = requireMutationCommand(arguments_, 2, 'mcp-credentials create');
+      const scope = requireEnvironmentScope(context);
+      return mcpCredentialDeliveryResult(
+        await cloudApi().createMcpCredential(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          { expiresAt: parseRfc3339Timestamp(arguments_.expiresAt, 'MCP credential') },
+          idempotencyKey
+        )
+      );
+    }
+    case 'mcp-credentials rotate': {
+      const mutation = requireMcpCredentialVersionedMutation(
+        arguments_,
+        'mcp-credentials rotate <credential-id>'
+      );
+      return mcpCredentialDeliveryResult(
+        await cloudApi().rotateMcpCredential(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'MCP credential ID'),
+          {
+            expiresAt: parseRfc3339Timestamp(arguments_.expiresAt, 'MCP credential'),
+            expectedAggregateVersion: mutation.expectedVersion,
+          },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'mcp-credentials revoke': {
+      const mutation = requireMcpCredentialVersionedMutation(
+        arguments_,
+        'mcp-credentials revoke <credential-id>'
+      );
+      return mcpCredentialMutationResult(
+        await cloudApi().revokeMcpCredential(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'MCP credential ID'),
+          { expectedAggregateVersion: mutation.expectedVersion },
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'routes publish': {
       const idempotencyKey = requireMutationCommand(
         arguments_,
@@ -143,6 +209,26 @@ export async function executeEdgeCommand(
     default:
       return undefined;
   }
+}
+
+function requireMcpCredentialVersionedMutation(
+  arguments_: ParsedArguments,
+  usage: string
+): { expectedVersion: number; idempotencyKey: string } {
+  requireArity(arguments_.positionals, 3, usage);
+  rejectLogOptions(arguments_);
+  rejectFileOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  const idempotencyKey = requireIdempotencyKey(arguments_);
+  const rawVersion = arguments_.expectedVersion;
+  if (rawVersion === undefined || !/^[0-9]+$/.test(rawVersion)) {
+    throw usageError('--expected-version must be a positive safe integer for MCP credential mutation');
+  }
+  const expectedVersion = Number(rawVersion);
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw usageError('--expected-version must be a positive safe integer for MCP credential mutation');
+  }
+  return { expectedVersion, idempotencyKey };
 }
 
 function requireEnvironmentScope(context: CloudContext): {

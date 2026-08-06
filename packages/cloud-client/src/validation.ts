@@ -52,6 +52,18 @@ export function validateExpectedNodeVersion(value: number): void {
   }
 }
 
+export function validateMcpCredentialExpiry(value: string): void {
+  if (!isRfc3339Timestamp(value)) {
+    throw new TypeError('MCP credential expiry must be an RFC 3339 timestamp');
+  }
+}
+
+export function validateExpectedMcpCredentialVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('expected MCP credential version must be a positive safe integer');
+  }
+}
+
 export function validateSecretValue(value: string): void {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value).byteLength : 0;
   if (bytes < 1 || bytes > MAX_SECRET_VALUE_BYTES) {

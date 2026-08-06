@@ -635,6 +635,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/070_agent_execution_cancellation.sql"
             )),
         ),
+        Migration::new(
+            "071",
+            "hosted MCP credential delivery receipts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/071_mcp_credential_delivery_receipts.sql"
+            )),
+        ),
     ]
 }
 

@@ -2,6 +2,8 @@ mod domain_claim_commands_controller;
 mod domain_claim_queries_controller;
 mod gateway_scope_commands_controller;
 mod gateway_scope_queries_controller;
+mod mcp_credential_commands_controller;
+mod mcp_credential_queries_controller;
 mod route_queries_controller;
 mod routes_controller;
 
@@ -9,5 +11,7 @@ pub use domain_claim_commands_controller::domain_claim_commands_controller;
 pub use domain_claim_queries_controller::domain_claim_queries_controller;
 pub use gateway_scope_commands_controller::gateway_scope_commands_controller;
 pub use gateway_scope_queries_controller::gateway_scope_queries_controller;
+pub use mcp_credential_commands_controller::mcp_credential_commands_controller;
+pub use mcp_credential_queries_controller::mcp_credential_queries_controller;
 pub use route_queries_controller::route_queries_controller;
 pub use routes_controller::routes_controller;

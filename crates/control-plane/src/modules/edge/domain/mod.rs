@@ -5,14 +5,14 @@ pub mod services;
 mod value_objects;
 
 pub use entities::{
-    DomainClaim, DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
-    GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
-    GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
-    GatewayPublicationState, GatewayReplicaRecovery, GatewayReplicaRecoveryState,
-    GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutRollback,
-    GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
+    mcp_credential_delivery_context, DomainClaim, DomainClaimState, GatewayCertificate,
+    GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
+    GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
+    GatewayPublication, GatewayPublicationState, GatewayReplicaRecovery,
+    GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
+    GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
     GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, McpCredential,
-    McpRoutePolicy, McpRoutePolicySpec, Route, RouteState,
+    McpCredentialDeliveryReceipt, McpRoutePolicy, McpRoutePolicySpec, Route, RouteState,
 };
 pub use value_objects::{
     DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,

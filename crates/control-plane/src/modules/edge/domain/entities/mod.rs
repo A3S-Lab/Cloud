@@ -8,6 +8,7 @@ mod gateway_rollout_rollback;
 mod gateway_route_cutover;
 mod gateway_scope;
 mod mcp_credential;
+mod mcp_credential_delivery_receipt;
 mod mcp_route_policy;
 mod route;
 
@@ -28,5 +29,8 @@ pub use gateway_rollout_rollback::{GatewayRolloutRollback, GatewayRolloutRollbac
 pub use gateway_route_cutover::{GatewayRouteCutover, GatewayRouteCutoverState};
 pub use gateway_scope::GatewayScope;
 pub use mcp_credential::McpCredential;
+pub use mcp_credential_delivery_receipt::{
+    mcp_credential_delivery_context, McpCredentialDeliveryReceipt,
+};
 pub use mcp_route_policy::{McpRoutePolicy, McpRoutePolicySpec};
 pub use route::{Route, RouteState};

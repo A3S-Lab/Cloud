@@ -31,6 +31,8 @@ use crate::modules::sources::{
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::Engine as _;
 use chrono::Utc;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -44,6 +46,7 @@ mod asset_git_tests;
 mod build_tests;
 mod execution_tests;
 mod management_mcp_tests;
+mod mcp_credential_tests;
 mod platform_tests;
 mod search_tests;
 mod secret_tests;
@@ -152,21 +155,32 @@ impl ISecretEncryptionService for TestSecretEncryption {
         plaintext: &[u8],
         context: &[u8],
     ) -> std::result::Result<EncryptedSecretValue, SecretEncryptionError> {
-        let mut digest = Sha256::new();
-        digest.update(context);
-        digest.update(plaintext);
-        EncryptedSecretValue::new("test:sha256", format!("v1:{:x}", digest.finalize()))
-            .map_err(SecretEncryptionError::Rejected)
+        let context_digest = format!("{:x}", Sha256::digest(context));
+        EncryptedSecretValue::new(
+            "test:base64",
+            format!("v1:{context_digest}:{}", STANDARD_NO_PAD.encode(plaintext)),
+        )
+        .map_err(SecretEncryptionError::Rejected)
     }
 
     async fn decrypt(
         &self,
-        _value: &EncryptedSecretValue,
-        _context: &[u8],
+        value: &EncryptedSecretValue,
+        context: &[u8],
     ) -> std::result::Result<Vec<u8>, SecretEncryptionError> {
-        Err(SecretEncryptionError::Rejected(
-            "test encryption does not materialize values".into(),
-        ))
+        let mut parts = value.ciphertext().splitn(3, ':');
+        let version = parts.next();
+        let context_digest = parts.next();
+        let encoded = parts.next();
+        let expected_context_digest = format!("{:x}", Sha256::digest(context));
+        if version != Some("v1") || context_digest != Some(expected_context_digest.as_str()) {
+            return Err(SecretEncryptionError::Rejected(
+                "test ciphertext context mismatch".into(),
+            ));
+        }
+        STANDARD_NO_PAD
+            .decode(encoded.unwrap_or_default())
+            .map_err(|error| SecretEncryptionError::Rejected(error.to_string()))
     }
 
     async fn health(&self) -> std::result::Result<bool, SecretEncryptionError> {
@@ -726,8 +740,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
-    let routes: Arc<dyn IEdgeRepository> =
-        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new());
+    let edge = Arc::new(crate::modules::edge::InMemoryEdgeRepository::new());
+    let routes: Arc<dyn IEdgeRepository> = edge.clone();
+    let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge;
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
@@ -779,6 +794,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             executions: Arc::new(InMemoryExecutionRepository::new()),
             agents: Arc::new(InMemoryAgentRepository::new()),
             routes,
+            mcp_credentials,
             secrets,
             sources,
             source_webhooks,

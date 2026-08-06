@@ -1,10 +1,12 @@
 use super::InMemoryEdgeRepository;
 use crate::modules::edge::domain::repositories::{
-    validate_mcp_credential_resolution, IMcpCredentialRepository,
+    validate_mcp_credential_resolution, CreateMcpCredentialWrite,
+    IMcpCredentialLifecycleRepository, IMcpCredentialRepository, McpCredentialWrite,
+    McpCredentialWriteReference, RevokeMcpCredentialWrite, RotateMcpCredentialWrite,
 };
 use crate::modules::edge::domain::McpCredential;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
+    EnvironmentId, IdempotencyRequest, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
 };
 use async_trait::async_trait;
 
@@ -136,6 +138,228 @@ impl IMcpCredentialRepository for InMemoryEdgeRepository {
         credentials.sort_by_key(|credential| credential.id);
         Ok(credentials)
     }
+}
+
+#[async_trait]
+impl IMcpCredentialLifecycleRepository for InMemoryEdgeRepository {
+    async fn replay_mcp_credential_write(
+        &self,
+        organization_id: OrganizationId,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<McpCredentialWrite>, RepositoryError> {
+        replay(&self.state.read().await, organization_id, idempotency)
+    }
+
+    async fn create_mcp_credential_delivery(
+        &self,
+        bundle: CreateMcpCredentialWrite,
+    ) -> Result<McpCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replay) = replay(
+            &state,
+            bundle.credential.organization_id,
+            &bundle.idempotency,
+        )? {
+            return Ok(replay);
+        }
+        if state.mcp_credentials.contains_key(&bundle.credential.id)
+            || state
+                .mcp_credential_prefixes
+                .contains_key(bundle.credential.prefix())
+        {
+            return Err(RepositoryError::Conflict(
+                "MCP credential identity or lookup prefix is already in use".into(),
+            ));
+        }
+        state
+            .mcp_credential_prefixes
+            .insert(bundle.credential.prefix().to_owned(), bundle.credential.id);
+        state
+            .mcp_credentials
+            .insert(bundle.credential.id, bundle.credential.clone());
+        state
+            .mcp_credential_receipts
+            .insert(bundle.credential.id, bundle.receipt.clone());
+        remember(
+            &mut state,
+            bundle.idempotency,
+            McpCredentialWriteReference {
+                credential_id: bundle.credential.id,
+                generation: bundle.credential.generation(),
+            },
+        );
+        state.outbox.push(bundle.event);
+        Ok(McpCredentialWrite {
+            credential: bundle.credential,
+            receipt: Some(bundle.receipt),
+            replayed: false,
+        })
+    }
+
+    async fn rotate_mcp_credential_delivery(
+        &self,
+        bundle: RotateMcpCredentialWrite,
+    ) -> Result<McpCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replay) = replay(
+            &state,
+            bundle.credential.organization_id,
+            &bundle.idempotency,
+        )? {
+            return Ok(replay);
+        }
+        let existing = state
+            .mcp_credentials
+            .get(&bundle.credential.id)
+            .filter(|existing| existing.organization_id == bundle.credential.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        bundle
+            .credential
+            .validate_transition_from(&existing, bundle.expected_aggregate_version)
+            .map_err(RepositoryError::Conflict)?;
+        if state
+            .mcp_credential_prefixes
+            .get(bundle.credential.prefix())
+            .is_some_and(|id| *id != bundle.credential.id)
+        {
+            return Err(RepositoryError::Conflict(
+                "MCP credential lookup prefix is already in use".into(),
+            ));
+        }
+        state.mcp_credential_prefixes.remove(existing.prefix());
+        state
+            .mcp_credential_prefixes
+            .insert(bundle.credential.prefix().to_owned(), bundle.credential.id);
+        state
+            .mcp_credentials
+            .insert(bundle.credential.id, bundle.credential.clone());
+        state
+            .mcp_credential_receipts
+            .insert(bundle.credential.id, bundle.receipt.clone());
+        remember(
+            &mut state,
+            bundle.idempotency,
+            McpCredentialWriteReference {
+                credential_id: bundle.credential.id,
+                generation: bundle.credential.generation(),
+            },
+        );
+        state.outbox.push(bundle.event);
+        Ok(McpCredentialWrite {
+            credential: bundle.credential,
+            receipt: Some(bundle.receipt),
+            replayed: false,
+        })
+    }
+
+    async fn revoke_mcp_credential(
+        &self,
+        bundle: RevokeMcpCredentialWrite,
+    ) -> Result<McpCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replay) = replay(
+            &state,
+            bundle.credential.organization_id,
+            &bundle.idempotency,
+        )? {
+            return Ok(replay);
+        }
+        let existing = state
+            .mcp_credentials
+            .get(&bundle.credential.id)
+            .filter(|existing| existing.organization_id == bundle.credential.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if bundle.event.is_some() {
+            bundle
+                .credential
+                .validate_transition_from(&existing, bundle.expected_aggregate_version)
+                .map_err(RepositoryError::Conflict)?;
+        } else if existing != bundle.credential
+            || existing.aggregate_version() != bundle.expected_aggregate_version
+        {
+            return Err(RepositoryError::Conflict(
+                "MCP credential changed while applying revocation".into(),
+            ));
+        }
+        state
+            .mcp_credentials
+            .insert(bundle.credential.id, bundle.credential.clone());
+        state.mcp_credential_receipts.remove(&bundle.credential.id);
+        remember(
+            &mut state,
+            bundle.idempotency,
+            McpCredentialWriteReference {
+                credential_id: bundle.credential.id,
+                generation: bundle.credential.generation(),
+            },
+        );
+        if let Some(event) = bundle.event {
+            state.outbox.push(event);
+        }
+        Ok(McpCredentialWrite {
+            credential: bundle.credential,
+            receipt: None,
+            replayed: false,
+        })
+    }
+}
+
+fn replay(
+    state: &super::State,
+    organization_id: OrganizationId,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<McpCredentialWrite>, RepositoryError> {
+    let key = (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
+    );
+    let Some((digest, reference)) = state.mcp_credential_idempotency.get(&key) else {
+        return Ok(None);
+    };
+    if digest != &idempotency.request_digest {
+        return Err(RepositoryError::IdempotencyConflict);
+    }
+    let credential = state
+        .mcp_credentials
+        .get(&reference.credential_id)
+        .filter(|credential| credential.organization_id == organization_id)
+        .cloned()
+        .ok_or_else(|| {
+            RepositoryError::Storage("MCP credential idempotency target is missing".into())
+        })?;
+    let receipt = state
+        .mcp_credential_receipts
+        .get(&credential.id)
+        .filter(|receipt| {
+            receipt.organization_id == organization_id
+                && receipt.generation == reference.generation
+                && credential.generation() == reference.generation
+        })
+        .cloned();
+    Ok(Some(McpCredentialWrite {
+        credential,
+        receipt,
+        replayed: true,
+    }))
+}
+
+fn remember(
+    state: &mut super::State,
+    idempotency: IdempotencyRequest,
+    reference: McpCredentialWriteReference,
+) {
+    let key = (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
+    );
+    state
+        .mcp_credential_idempotency
+        .insert(key, (idempotency.request_digest, reference));
 }
 
 #[cfg(test)]

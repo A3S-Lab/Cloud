@@ -733,6 +733,7 @@ export interface Workload {
 
 export type {
   CreateGatewayScopeInput,
+  CreateMcpCredentialInput,
   DomainClaim,
   DomainClaimMutationResult,
   DomainClaimState,
@@ -740,7 +741,13 @@ export type {
   GatewayCertificateState,
   GatewayScope,
   GatewayScopeMutationResult,
+  McpCredential,
+  McpCredentialDeliveryResult,
+  McpCredentialMutationResult,
+  McpCredentialState,
   PublishRouteInput,
+  RevokeMcpCredentialInput,
+  RotateMcpCredentialInput,
   Route,
   RoutePublicationResult,
   RouteState,

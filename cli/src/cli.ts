@@ -83,6 +83,11 @@ Commands:
   domain-claims revoke ID REASON Revoke one domain ownership claim idempotently
   gateway-scopes list    List logical Gateway scopes in the selected environment
   gateway-scopes create NODE... Create a replicated Gateway scope idempotently
+  mcp-credentials list  List hosted MCP credential metadata in the selected environment
+  mcp-credentials get ID Get one hosted MCP credential metadata record
+  mcp-credentials create Create and print one recoverable hosted MCP bearer credential
+  mcp-credentials rotate ID Rotate and print one hosted MCP bearer credential
+  mcp-credentials revoke ID Revoke one hosted MCP credential idempotently
   routes list           List routes in the selected environment
   routes get ID         Get one route
   routes publish SCOPE REV CLAIM HOST PATH PORT Publish one managed route idempotently
@@ -105,7 +110,7 @@ Global options:
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation
-  --expected-version <n>    Current aggregate version for a node mutation
+  --expected-version <n>    Current aggregate version for a node or MCP credential mutation
   --min-ready <n>           Required ready members for gateway-scopes create
   --max-unavailable <n>     Allowed unavailable members for gateway-scopes create
   --context-path <path>      Repository context for a Source build recipe

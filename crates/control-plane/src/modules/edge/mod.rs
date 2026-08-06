@@ -5,30 +5,34 @@ pub mod presentation;
 
 pub use application::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,
-    CreateGatewayScopeHandler, CreateGatewayScopeResult, GetDomainClaim, GetDomainClaimHandler,
-    GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler, ListGatewayCertificates,
-    ListGatewayCertificatesHandler, ListGatewayScopes, ListGatewayScopesHandler, ListRoutes,
-    ListRoutesHandler, PublishRoute, PublishRouteHandler, PublishRouteResult, RevokeDomainClaim,
-    RevokeDomainClaimHandler, RevokeDomainClaimResult, SignGatewayCertificate,
-    SignGatewayCertificateHandler, VerifyDomainClaim, VerifyDomainClaimHandler,
-    VerifyDomainClaimResult,
+    CreateGatewayScopeHandler, CreateGatewayScopeResult, CreateMcpCredential,
+    CreateMcpCredentialHandler, GetDomainClaim, GetDomainClaimHandler, GetMcpCredential,
+    GetMcpCredentialHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
+    ListGatewayCertificates, ListGatewayCertificatesHandler, ListGatewayScopes,
+    ListGatewayScopesHandler, ListMcpCredentials, ListMcpCredentialsHandler, ListRoutes,
+    ListRoutesHandler, McpCredentialDeliveryResult, McpCredentialMutationResult, PublishRoute,
+    PublishRouteHandler, PublishRouteResult, RevokeDomainClaim, RevokeDomainClaimHandler,
+    RevokeDomainClaimResult, RevokeMcpCredential, RevokeMcpCredentialHandler, RotateMcpCredential,
+    RotateMcpCredentialHandler, SignGatewayCertificate, SignGatewayCertificateHandler,
+    VerifyDomainClaim, VerifyDomainClaimHandler, VerifyDomainClaimResult,
 };
 pub use domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget,
     GatewayCertificateRouteStatus, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
     GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRolloutRollbackTarget,
-    GatewayRouteCutoverResult, IEdgeRepository, IMcpCredentialRepository,
-    IMcpRoutePolicyRepository, StageGatewayCertificateConvergence, StageGatewayRollout,
-    StageGatewayRolloutRollback, StageGatewayRouteCutover, TransitionDomainClaim,
-    MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    GatewayRouteCutoverResult, IEdgeRepository, IMcpCredentialLifecycleRepository,
+    IMcpCredentialRepository, IMcpRoutePolicyRepository, StageGatewayCertificateConvergence,
+    StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
+    TransitionDomainClaim, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
     GatewayCertificateAuthorityError, GatewayCertificateIssueRequest, GatewayObservationCommand,
     GatewayObservationCommandOutcome, GatewayObservationDispatch, IDomainOwnershipVerifier,
     IGatewayCertificateAuthority, IGatewayCommandQueue, IGatewayObservationQueue,
-    IMcpRouteProjectionInputReader, IRouteTargetReader, ResolvedMcpRouteProjectionInput,
+    IMcpCredentialIssuer, IMcpRouteProjectionInputReader, IRouteTargetReader, IssuedMcpCredential,
+    McpCredentialIssuanceError, McpCredentialIssueRequest, ResolvedMcpRouteProjectionInput,
     ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 pub use domain::{
@@ -39,8 +43,9 @@ pub use domain::{
     GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
     GatewayRolloutPolicy, GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState,
     GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope,
-    GatewayScopeState, McpCredential, McpRoutePolicy, McpRoutePolicySpec, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    GatewayScopeState, McpCredential, McpCredentialDeliveryReceipt, McpRoutePolicy,
+    McpRoutePolicySpec, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+    UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
@@ -56,8 +61,7 @@ pub use infrastructure::{
     GatewayRolloutRollbackReconciliationReport, GatewayRouteRolloutCompiler,
     GatewayRouteRolloutPlanner, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IMcpGatewayProjectionSetPlanner,
-    IMcpGatewaySnapshotRepository, IssuedMcpCredential, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, McpCredentialIssuanceError, McpCredentialIssueRequest,
+    IMcpGatewaySnapshotRepository, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
     McpCredentialIssuer, McpCredentialProjectionVersion, McpGatewayDesiredStateReconciler,
     McpGatewayDesiredStateReconciliationFailure, McpGatewayDesiredStateReconciliationReport,
     McpGatewayIngressRoute, McpGatewayProjectionAssembler, McpGatewayProjectionCompiler,

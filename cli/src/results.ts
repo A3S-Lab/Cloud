@@ -12,6 +12,9 @@ import type {
   EnvironmentMutationResult,
   GatewayScope,
   GatewayScopeMutationResult,
+  McpCredential,
+  McpCredentialDeliveryResult,
+  McpCredentialMutationResult,
   Node,
   Operation,
   Organization,
@@ -274,6 +277,59 @@ export function gatewayScopeMutationResult(row: GatewayScopeMutationResult): Com
     ...GATEWAY_SCOPE_COLUMNS,
     { header: 'REPLAYED', value: (value) => value.replayed },
   ]);
+}
+
+const MCP_CREDENTIAL_COLUMNS: readonly TableColumn<McpCredential>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'PREFIX', value: (row) => row.prefix },
+  { header: 'STATE', value: (row) => row.state },
+  { header: 'GENERATION', value: (row) => row.generation },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'EXPIRES AT', value: (row) => row.expiresAt },
+  { header: 'UPDATED AT', value: (row) => row.updatedAt },
+];
+
+export function mcpCredentialsResult(rows: McpCredential[]): CommandResult {
+  return listResult(rows, MCP_CREDENTIAL_COLUMNS);
+}
+
+export function mcpCredentialResult(row: McpCredential): CommandResult {
+  return singleResult(row, MCP_CREDENTIAL_COLUMNS);
+}
+
+export function mcpCredentialDeliveryResult(row: McpCredentialDeliveryResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'ID', value: (value) => value.credential.id },
+        { header: 'PREFIX', value: (value) => value.credential.prefix },
+        { header: 'GENERATION', value: (value) => value.credential.generation },
+        { header: 'VERSION', value: (value) => value.credential.aggregateVersion },
+        { header: 'BEARER CREDENTIAL', value: (value) => value.bearerCredential },
+        { header: 'DELIVERY EXPIRES', value: (value) => value.deliveryExpiresAt },
+        { header: 'REPLAYED', value: (value) => value.replayed },
+      ]
+    ),
+  };
+}
+
+export function mcpCredentialMutationResult(row: McpCredentialMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'ID', value: (value) => value.credential.id },
+        { header: 'PREFIX', value: (value) => value.credential.prefix },
+        { header: 'STATE', value: (value) => value.credential.state },
+        { header: 'GENERATION', value: (value) => value.credential.generation },
+        { header: 'VERSION', value: (value) => value.credential.aggregateVersion },
+        { header: 'REPLAYED', value: (value) => value.replayed },
+      ]
+    ),
+  };
 }
 
 export function routePublicationResult(row: RoutePublicationResult): CommandResult {

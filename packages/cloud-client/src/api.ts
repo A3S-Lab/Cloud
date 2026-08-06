@@ -1,17 +1,17 @@
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
-import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
+import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import type {
-  ApiToken,
-  ApiTokenMutationResult,
   AgentConversation,
   AgentConversationMutationResult,
   AgentExecution,
   AgentExecutionEventsPage,
   AgentExecutionMutationResult,
+  ApiToken,
+  ApiTokenMutationResult,
   Asset,
   AssetMutationResult,
   AssetRelease,
@@ -27,6 +27,7 @@ import type {
   CreateExecutionInput,
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
+  CreateMcpCredentialInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
@@ -43,6 +44,9 @@ import type {
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
   IssueEnrollmentTokenInput,
+  McpCredential,
+  McpCredentialDeliveryResult,
+  McpCredentialMutationResult,
   Node,
   Operation,
   Organization,
@@ -52,6 +56,8 @@ import type {
   PublishRouteInput,
   ResolveSourceRevisionInput,
   RetryBuildRunResult,
+  RevokeMcpCredentialInput,
+  RotateMcpCredentialInput,
   Route,
   RoutePublicationResult,
   SearchResult,
@@ -62,8 +68,8 @@ import type {
   SourceRevision,
   SourceRevisionMutationResult,
   SourceWorkloadTemplate,
-  StopWorkloadResult,
   StartAgentExecutionInput,
+  StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
   WorkloadLogStreamFilter,
@@ -72,7 +78,9 @@ import type {
 import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
+  validateExpectedMcpCredentialVersion,
   validateExpectedNodeVersion,
+  validateMcpCredentialExpiry,
   validateSecretValue,
   validateWorkloadAcl,
 } from './validation';
@@ -89,7 +97,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.6.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.7.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
@@ -792,6 +800,86 @@ export class CloudApi {
 
   listGatewayCertificates(organizationId: string, signal?: AbortSignal): Promise<GatewayCertificate[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/gateway-certificates`, signal);
+  }
+
+  listMcpCredentials(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<McpCredential[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-credentials`,
+      signal
+    );
+  }
+
+  getMcpCredential(
+    organizationId: string,
+    credentialId: string,
+    signal?: AbortSignal
+  ): Promise<McpCredential> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-credentials/${encodeURIComponent(credentialId)}`,
+      signal
+    );
+  }
+
+  createMcpCredential(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateMcpCredentialInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpCredentialDeliveryResult> {
+    validateMcpCredentialExpiry(input.expiresAt);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-credentials`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  rotateMcpCredential(
+    organizationId: string,
+    credentialId: string,
+    input: RotateMcpCredentialInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpCredentialDeliveryResult> {
+    validateMcpCredentialExpiry(input.expiresAt);
+    validateExpectedMcpCredentialVersion(input.expectedAggregateVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-credentials/${encodeURIComponent(credentialId)}/rotate`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokeMcpCredential(
+    organizationId: string,
+    credentialId: string,
+    input: RevokeMcpCredentialInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpCredentialMutationResult> {
+    validateExpectedMcpCredentialVersion(input.expectedAggregateVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-credentials/${encodeURIComponent(credentialId)}/revoke`,
+      idempotencyKey,
+      input,
+      signal
+    );
   }
 
   listSecrets(

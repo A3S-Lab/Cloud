@@ -64,6 +64,15 @@ struct State {
     rollout_idempotency: BTreeMap<(String, String), (String, GatewayRolloutResult)>,
     mcp_credentials: BTreeMap<McpCredentialId, McpCredential>,
     mcp_credential_prefixes: BTreeMap<String, McpCredentialId>,
+    mcp_credential_receipts:
+        BTreeMap<McpCredentialId, crate::modules::edge::domain::McpCredentialDeliveryReceipt>,
+    mcp_credential_idempotency: BTreeMap<
+        (String, String),
+        (
+            String,
+            crate::modules::edge::domain::repositories::McpCredentialWriteReference,
+        ),
+    >,
     outbox: Vec<DomainEventEnvelope>,
 }
 

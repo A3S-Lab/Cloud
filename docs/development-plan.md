@@ -1509,7 +1509,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.6.0`. Focused tests regenerate the
+  and every API response pin contract `1.7.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -1797,7 +1797,7 @@ draft and yanked visibility for management and pinned deployments. New-binding
 selection accepts an optional exact semantic version or otherwise chooses the
 highest stable published version by semantic precedence; it excludes drafts,
 yanked releases, prereleases by default, and every release of an archived
-Asset. The same contract is exposed by OpenAPI `1.6.0`, the shared TypeScript
+Asset. The same contract is exposed by OpenAPI `1.7.0`, the shared TypeScript
 client, the standalone CLI, and the Web catalog summary.
 
 Migration 066 stores one optional immutable Agent binding on each Workload
@@ -1828,7 +1828,7 @@ read-only Artifact mount per Skill under `/a3s/skills/{asset_id}`; callers
 cannot inject mount names or paths, and Skills never become standalone Runtime
 units. Replay resolves the committed revision before fresh release admission,
 while rollback, Agent release updates, and Secret restarts preserve the exact
-Skill set. OpenAPI `1.6.0`, the shared client, CLI, and Web expose the same
+Skill set. OpenAPI `1.7.0`, the shared client, CLI, and Web expose the same
 tenant-authorized lifecycle.
 
 ### Remaining A0 work
@@ -2020,7 +2020,7 @@ never become its state store.
 | --- | --- | --- |
 | `MCP0.1` | Freeze the modern protocol baseline, canonical immutable Service-profile ACL, separate route-policy ACL projection, identity/digests, Runtime projection, Gateway snapshot, authorization model, retry rule, errors, bounds, telemetry redaction, and pinned fixture | Verified domain and managed-snapshot foundations |
 | `MCP0.2` | Certify one and multiple Box-hosted generic Runtime Service replicas, each with a distinct Unit ID, exact profile digest, typed TCP endpoint, health, logs, restart recovery, generation fencing, and cleanup | Required `BX0.3` and Runtime provider profiles |
-| `MCP0.3` | Implement the Cloud Service profile and route policy, A3S ORM persistence, Workload/Runtime compiler, replica and rollout reconciliation, Gateway ACL compiler, API/client/CLI/Web lifecycle views, operations, control-plane audit, and recovery | `MCP0.1`, `A0.3`, `H0.2`; implementation may proceed with `MCP0.2`, but closing waits for its exact Runtime contract and evidence |
+| `MCP0.3` | Implement the Cloud Service profile and route policy, A3S ORM persistence, Workload/Runtime compiler, replica and rollout reconciliation, Gateway ACL compiler, API/client/CLI lifecycle interfaces, operations, control-plane audit, and recovery; defer Web lifecycle views until backend conformance is complete | `MCP0.1`, `A0.3`, `H0.2`; implementation may proceed with `MCP0.2`, but closing waits for its exact Runtime contract and evidence |
 | `MCP0.4` | Implement and certify Gateway's native modern MCP data plane without sessions, sticky routing, Cloud calls, or post-dispatch replay | `MCP0.1`, `H0.2` |
 | `MCP0.5` | Run a real single-node client-to-Gateway-to-Box-Service gate at exact Cloud, Runtime, Box, Gateway, and fixture revisions | `MCP0.2`-`MCP0.4` |
 | `MCP0.6` | Add multi-node replica placement, zero/one/many target transitions, rollout, drain, policy expiry, partition, load, HA, disaster recovery, and operational limits | `MCP0.5`, `H0.3`, relevant `H0.4`/`H0.5`, `C0.3` |
@@ -2074,6 +2074,17 @@ never become its state store.
 10. Recover every commit-before-dispatch and apply-before-acknowledgement gap
    through Flow, Fleet journals, Runtime inspection, Gateway exact readiness,
    and deterministic reconciliation.
+
+The current backend-first credential slice exposes create, list, get, rotate,
+and revoke through the existing tenant-guarded REST boundary, maintained
+TypeScript client, and CLI. One Edge lifecycle repository atomically persists
+the credential verifier, a generation-bound encrypted delivery receipt,
+caller-owned idempotency, Outbox fact, and control-plane audit record. Create
+and rotate can replay the exact committed bearer for at most ten minutes;
+rotation, revocation, or receipt expiry makes stale delivery recovery fail
+closed. This reuses the existing Secret encryption provider and common
+idempotency/audit authorities and does not add TokenHub or another credential
+store. Web views remain planned and intentionally deferred during this phase.
 
 ### Exit gate
 
@@ -2533,7 +2544,7 @@ Current `A1.1` implementation:
 - event content is canonical bounded inline JSON of at most 64 KiB with a
   stored SHA-256 digest; immutable-object references begin only when a later
   gate admits larger content;
-- REST, OpenAPI `1.6.0`, the shared TypeScript client, CLI, and Web expose
+- REST, OpenAPI `1.7.0`, the shared TypeScript client, CLI, and Web expose
   conversation creation/list/get, execution start/list/get, paged event reads,
   and the shared resumable SSE stream; and
 - domain, application, concurrency, controller, contract, client, CLI, Web,

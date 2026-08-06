@@ -409,7 +409,10 @@ fn operation_tag(path: &str) -> &'static str {
         "Sources"
     } else if path.contains("secrets") {
         "Secrets"
-    } else if path.contains("routes") || path.contains("domain-claims") || path.contains("gateway-")
+    } else if path.contains("routes")
+        || path.contains("domain-claims")
+        || path.contains("gateway-")
+        || path.contains("mcp-credentials")
     {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
@@ -473,6 +476,8 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")
+        || path.ends_with("/mcp-credentials")
+        || (path.contains("/mcp-credentials/") && path.ends_with("/rotate"))
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
         || path.ends_with("/source-revisions")

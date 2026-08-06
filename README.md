@@ -263,10 +263,13 @@ Reference products are preserved by useful outcome, not copied mechanism:
   or errors; and inspect tokenless platform, liveness, and readiness
   diagnostics with a stable unhealthy exit status; manage API-token metadata,
   credential lifecycle, and one-time node bootstrap without rendering
-  stdin-only credentials; and search bounded organization-authorized resource
+  stdin-only credentials; create, list, inspect, rotate, and revoke hosted MCP
+  credentials through one encrypted, idempotent lifecycle while returning
+  bearer material only from the bounded create/rotate delivery response; and
+  search bounded organization-authorized resource
   projections through the API, client, CLI, and Web without broad local reads;
   expose one public raw OpenAPI v1 document, pin the shared client to contract
-  `1.6.0`, and reject incompatible or invalidly deprecated contract changes
+  `1.7.0`, and reject incompatible or invalidly deprecated contract changes
 - **Modern Scoped Management MCP**: Serve the sessionless `2026-07-28`
   Streamable HTTP MCP through the same
   per-request API-token verifier, derive tenant context and tool visibility
@@ -829,7 +832,7 @@ the in-memory event provider. The raw OpenAPI 3.0.3 contract is available
 without authentication at
 `http://127.0.0.1:8080/api/v1/openapi.json`. The served document is the
 committed [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version
-1 and contract version `1.6.0`; it is not wrapped in the normal API envelope.
+1 and contract version `1.7.0`; it is not wrapped in the normal API envelope.
 
 ### Bootstrap an organization
 
@@ -914,6 +917,17 @@ bun run --cwd cli src/main.ts domain-claims verify "<domain-claim-uuid>" "<dns-p
 bun run --cwd cli src/main.ts gateway-scopes create "<node-uuid-a>" "<node-uuid-b>" \
   --min-ready=1 --max-unavailable=1 \
   --idempotency-key="edge:scope:<request-id>"
+bun run --cwd cli src/main.ts mcp-credentials list
+bun run --cwd cli src/main.ts mcp-credentials create \
+  --expires-at="<RFC3339-within-365-days>" \
+  --idempotency-key="edge:mcp-credential:create:<request-id>"
+bun run --cwd cli src/main.ts mcp-credentials rotate "<credential-uuid>" \
+  --expires-at="<RFC3339-within-365-days>" \
+  --expected-version="<current-aggregate-version>" \
+  --idempotency-key="edge:mcp-credential:rotate:<request-id>"
+bun run --cwd cli src/main.ts mcp-credentials revoke "<credential-uuid>" \
+  --expected-version="<current-aggregate-version>" \
+  --idempotency-key="edge:mcp-credential:revoke:<request-id>"
 bun run --cwd cli src/main.ts routes list
 bun run --cwd cli src/main.ts routes get "<route-uuid>"
 bun run --cwd cli src/main.ts routes publish \
@@ -1012,6 +1026,16 @@ pre-provisioned absolute `.acl` node configuration. The release URL and digest
 must come from trusted A3S release metadata; accepting a digest does not create
 a trust root.
 
+Hosted MCP credential list/get/revoke responses contain metadata only. Create
+and rotate deliberately return the new bearer credential so the caller can
+deliver it to a trusted secret store. Cloud persists the Argon2id verifier and
+one encrypted recovery receipt in the same A3S ORM transaction as idempotency,
+Outbox, and audit records. The receipt is recoverable only for the committed
+generation and for at most ten minutes; rotation, revocation, or expiry makes
+older delivery retries fail closed. The CLI prints bearer material only for
+create/rotate, never accepts it as an argument, and introduces no TokenHub,
+credential database, or lifecycle path beside this Edge authority.
+
 Organization-scoped search accepts 1 through 128 safe characters and returns at
 most 50 credential-free resource projections, defaulting to 20. The public API
 applies the organization tenant guard before querying PostgreSQL through A3S
@@ -1025,7 +1049,7 @@ The REST compatibility slice publishes a public, unwrapped OpenAPI 3.0.3
 snapshot with stable operation IDs, explicit security, mutation headers,
 request media types, success and error statuses, shared envelope schemas, and
 the `/api/v1` server boundary. The TypeScript client and every HTTP response
-carry the same `1.6.0` contract version. CI compares `openapi/v1.json` with the
+carry the same `1.7.0` contract version. CI compares `openapi/v1.json` with the
 pull request base and rejects removed paths or methods, new required inputs,
 removed response statuses or schema fields, and semantic changes without a
 version increment. A deprecated operation must name its replacement, record

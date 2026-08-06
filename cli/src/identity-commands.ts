@@ -1,4 +1,4 @@
-import { CloudApiError, type CloudApi } from '@a3s/cloud-client';
+import { type CloudApi, CloudApiError } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalResourceName,
@@ -18,10 +18,11 @@ import { requireOrganization } from './context';
 import { usageError } from './errors';
 import { apiTokenMutationResult, apiTokenResult, apiTokensResult } from './identity-results';
 import type { CommandResult } from './results';
-import { readBoundedUtf8Stdin, type ReadStdin } from './standard-input';
+import { type ReadStdin, readBoundedUtf8Stdin } from './standard-input';
 import { parseRfc3339Timestamp } from './timestamp';
 
 const API_TOKEN_CREATE_COMMAND = 'api-tokens create';
+const MCP_EXPIRY_COMMANDS = new Set(['mcp-credentials create', 'mcp-credentials rotate']);
 
 export interface IdentityCommandDependencies {
   readStdin?: ReadStdin;
@@ -37,9 +38,12 @@ export function rejectMisplacedIdentityOptions(command: string, arguments_: Pars
   if (
     arguments_.expiresAt !== undefined &&
     command !== API_TOKEN_CREATE_COMMAND &&
-    command !== 'nodes bootstrap'
+    command !== 'nodes bootstrap' &&
+    !MCP_EXPIRY_COMMANDS.has(command)
   ) {
-    throw usageError('--expires-at is valid only for API token creation or nodes bootstrap');
+    throw usageError(
+      '--expires-at is valid only for API token creation, node bootstrap, or MCP credential creation and rotation'
+    );
   }
 }
 

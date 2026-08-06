@@ -357,6 +357,18 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct McpCredentialDeliveryReceipts => "mcp_credential_delivery_receipts" {
+        credential_id: Uuid => "credential_id",
+        organization_id: Uuid => "organization_id",
+        generation: u64 => "generation",
+        key_id: String => "key_id",
+        ciphertext: String => "ciphertext",
+        expires_at: DateTime<Utc> => "expires_at",
+        created_at: DateTime<Utc> => "created_at",
+    }
+}
+
+orm_table! {
     pub(super) struct Workloads => "workloads" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

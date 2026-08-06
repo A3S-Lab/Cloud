@@ -61,6 +61,14 @@ Node `ready`, `drain`, and `revoke` additionally require
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale
 versions instead of applying a blind lifecycle transition.
 
+Hosted MCP credential `create` requires an RFC 3339 `--expires-at` no more
+than 365 days in the future. `rotate` additionally requires the current
+`--expected-version`; `revoke` requires the same optimistic precondition.
+Create and rotate print the newly issued bearer so it can be moved directly to
+a trusted secret store. Exact retries with the same idempotency key recover the
+same committed bearer only during Cloud's bounded encrypted delivery window;
+list, get, and revoke never return bearer or verifier material.
+
 `nodes bootstrap <name>` requires `--enrollment-token-stdin`, an RFC 3339
 `--expires-at`, an HTTPS `--agent-release-url`, its exact lowercase
 `--agent-release-sha256`, an absolute `--node-config` ending in `.acl`, and a
@@ -200,6 +208,11 @@ domain-claims verify <domain-claim-id> <proof>
 domain-claims revoke <domain-claim-id> <reason>
 gateway-scopes list
 gateway-scopes create <node-id> [node-id...] [--min-ready=<count>] [--max-unavailable=<count>]
+mcp-credentials list
+mcp-credentials get <credential-id>
+mcp-credentials create --expires-at=<timestamp>
+mcp-credentials rotate <credential-id> --expires-at=<timestamp> --expected-version=<version>
+mcp-credentials revoke <credential-id> --expected-version=<version>
 routes list
 routes get <route-id>
 routes publish <gateway-scope-id> <workload-revision-id> <domain-claim-id> <hostname> <path-prefix> <port-name>

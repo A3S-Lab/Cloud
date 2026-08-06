@@ -27,25 +27,28 @@ use crate::modules::assets::{
     RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler, UploadAssetGitPackHandler,
     YankAssetReleaseHandler,
 };
-use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::repositories::{
+    IEdgeRepository, IMcpCredentialLifecycleRepository,
+};
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
-    IGatewayObservationQueue, IRouteTargetReader,
+    IGatewayObservationQueue, IMcpCredentialIssuer, IRouteTargetReader,
 };
 use crate::modules::edge::{
-    CreateDomainClaimHandler, CreateGatewayScopeHandler, DnsDomainOwnershipVerifier,
-    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, EdgeModule,
-    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
-    GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
-    GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GetDomainClaimHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
-    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
-    PublishRouteHandler, RevokeDomainClaimHandler, VaultGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
+    DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
+    EdgeModule, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
+    GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
+    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
+    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
+    ListMcpCredentialsHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotReconciler, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteTargetProjectionCompiler, PostgresEdgeRepository, PublishRouteHandler,
+    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
+    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -260,6 +263,7 @@ pub async fn build_application_with_source_resolver(
     let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> = node_repository;
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
+    let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
         edge_repository.clone();
     let asset_repository = Arc::new(PostgresAssetRepository::new(executor.clone()));
@@ -764,6 +768,7 @@ pub async fn build_application_with_source_resolver(
             executions,
             agents,
             routes,
+            mcp_credentials,
             secrets,
             sources,
             source_webhooks,
@@ -833,6 +838,7 @@ struct ApplicationDependencies {
     executions: Arc<dyn IExecutionRepository>,
     agents: Arc<dyn IAgentRepository>,
     routes: Arc<dyn IEdgeRepository>,
+    mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     secrets: Arc<dyn ISecretRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
@@ -874,6 +880,7 @@ fn build_application_with_health(
         executions,
         agents,
         routes,
+        mcp_credentials,
         secrets,
         sources,
         source_webhooks,
@@ -904,6 +911,7 @@ fn build_application_with_health(
     let agent_workload_environments = Arc::clone(&environments);
     let domain_environments = Arc::clone(&environments);
     let gateway_scope_environments = Arc::clone(&environments);
+    let mcp_credential_environments = Arc::clone(&environments);
     let secret_environments = Arc::clone(&environments);
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
@@ -981,6 +989,11 @@ fn build_application_with_health(
     let list_gateway_scopes = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
     let get_routes = routes;
+    let create_mcp_credentials = Arc::clone(&mcp_credentials);
+    let rotate_mcp_credentials = Arc::clone(&mcp_credentials);
+    let revoke_mcp_credentials = Arc::clone(&mcp_credentials);
+    let list_mcp_credentials = Arc::clone(&mcp_credentials);
+    let get_mcp_credentials = mcp_credentials;
     let create_secrets = Arc::clone(&secrets);
     let rotate_secrets = Arc::clone(&secrets);
     let revoke_secret_versions = Arc::clone(&secrets);
@@ -1037,7 +1050,11 @@ fn build_application_with_health(
     );
     let subscription_source_policy = Arc::clone(&source_policy);
     let create_secret_encryption = Arc::clone(&secret_encryption);
-    let rotate_secret_encryption = secret_encryption;
+    let rotate_secret_encryption = Arc::clone(&secret_encryption);
+    let create_mcp_credential_encryption = Arc::clone(&secret_encryption);
+    let rotate_mcp_credential_encryption = secret_encryption;
+    let mcp_credential_issuer: Arc<dyn IMcpCredentialIssuer> = Arc::new(McpCredentialIssuer::new());
+    let rotate_mcp_credential_issuer = Arc::clone(&mcp_credential_issuer);
     let workload_log_store = Arc::clone(&log_chunks);
     let log_store = log_chunks;
     let heartbeat_timeout = chrono_duration(config.fleet.heartbeat_timeout_ms)?;
@@ -1307,6 +1324,24 @@ fn build_application_with_health(
                         create_gateway_scopes,
                     ),
                 )
+                .command_handler::<crate::modules::edge::CreateMcpCredential, _>(
+                    CreateMcpCredentialHandler::new(
+                        mcp_credential_environments,
+                        create_mcp_credentials,
+                        mcp_credential_issuer,
+                        create_mcp_credential_encryption,
+                    ),
+                )
+                .command_handler::<crate::modules::edge::RotateMcpCredential, _>(
+                    RotateMcpCredentialHandler::new(
+                        rotate_mcp_credentials,
+                        rotate_mcp_credential_issuer,
+                        rotate_mcp_credential_encryption,
+                    ),
+                )
+                .command_handler::<crate::modules::edge::RevokeMcpCredential, _>(
+                    RevokeMcpCredentialHandler::new(revoke_mcp_credentials),
+                )
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
                     IssueEnrollmentTokenHandler::new(
@@ -1490,6 +1525,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::edge::ListGatewayScopes, _>(
                     ListGatewayScopesHandler::new(list_gateway_scopes),
+                )
+                .query_handler::<crate::modules::edge::ListMcpCredentials, _>(
+                    ListMcpCredentialsHandler::new(list_mcp_credentials),
+                )
+                .query_handler::<crate::modules::edge::GetMcpCredential, _>(
+                    GetMcpCredentialHandler::new(get_mcp_credentials),
                 )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,

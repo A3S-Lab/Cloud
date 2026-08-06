@@ -1,11 +1,17 @@
 mod create_domain_claim_request;
 mod create_gateway_scope_request;
+mod create_mcp_credential_request;
 mod publish_route_request;
 mod revoke_domain_claim_request;
+mod revoke_mcp_credential_request;
+mod rotate_mcp_credential_request;
 mod verify_domain_claim_request;
 
 pub use create_domain_claim_request::CreateDomainClaimRequest;
 pub use create_gateway_scope_request::CreateGatewayScopeRequest;
+pub use create_mcp_credential_request::CreateMcpCredentialRequest;
 pub use publish_route_request::PublishRouteRequest;
 pub use revoke_domain_claim_request::RevokeDomainClaimRequest;
+pub use revoke_mcp_credential_request::RevokeMcpCredentialRequest;
+pub use rotate_mcp_credential_request::RotateMcpCredentialRequest;
 pub use verify_domain_claim_request::VerifyDomainClaimRequest;

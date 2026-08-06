@@ -171,6 +171,22 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         assert!(operation["responses"]["200"].is_object());
         assert!(operation["responses"]["202"].is_object());
     }
+    for path in [
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials",
+        "/organizations/{organization_id}/mcp-credentials/{credential_id}/rotate",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Edge"]));
+        assert!(operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            })));
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["responses"]["201"].is_object());
+    }
     let executions = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions"];
     assert!(executions["get"].is_object());

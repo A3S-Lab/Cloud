@@ -117,3 +117,45 @@ export interface RoutePublicationResult {
   replayed: boolean;
   commandReplayed: boolean;
 }
+
+export type McpCredentialState = 'active' | 'expired' | 'revoked';
+
+export interface McpCredential {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  prefix: string;
+  state: McpCredentialState;
+  generation: number;
+  aggregateVersion: number;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface CreateMcpCredentialInput {
+  expiresAt: string;
+}
+
+export interface RotateMcpCredentialInput {
+  expiresAt: string;
+  expectedAggregateVersion: number;
+}
+
+export interface RevokeMcpCredentialInput {
+  expectedAggregateVersion: number;
+}
+
+export interface McpCredentialDeliveryResult {
+  credential: McpCredential;
+  bearerCredential: string;
+  deliveryExpiresAt: string;
+  replayed: boolean;
+}
+
+export interface McpCredentialMutationResult {
+  credential: McpCredential;
+  replayed: boolean;
+}

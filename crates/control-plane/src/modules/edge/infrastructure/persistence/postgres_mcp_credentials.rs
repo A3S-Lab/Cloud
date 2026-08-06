@@ -2,7 +2,7 @@ use super::postgres::PostgresEdgeRepository;
 use super::postgres_schema::McpCredentials;
 use crate::infrastructure::{
     execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
-    transaction_error,
+    transaction_error, PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::{
     validate_mcp_credential_resolution, IMcpCredentialRepository,
@@ -14,7 +14,7 @@ use crate::modules::shared_kernel::domain::{
 use a3s_orm::expression::Selection;
 use a3s_orm::{
     insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
-    OrderDirection, PostgresDialect, PostgresExecutor, Row,
+    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -88,49 +88,7 @@ async fn create(
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
-                let projection = credential.gateway_projection();
-                let result = execute(
-                    transaction,
-                    insert_into::<McpCredentials>()
-                        .value(McpCredentials::id(), credential.id.as_uuid())
-                        .value(
-                            McpCredentials::organization_id(),
-                            credential.organization_id.as_uuid(),
-                        )
-                        .value(
-                            McpCredentials::project_id(),
-                            credential.project_id.as_uuid(),
-                        )
-                        .value(
-                            McpCredentials::environment_id(),
-                            credential.environment_id.as_uuid(),
-                        )
-                        .value(McpCredentials::prefix(), credential.prefix())
-                        .value(McpCredentials::verifier_hash(), projection.verifier_hash())
-                        .value(McpCredentials::generation(), credential.generation())
-                        .value(
-                            McpCredentials::aggregate_version(),
-                            credential.aggregate_version(),
-                        )
-                        .value(McpCredentials::expires_at(), credential.expires_at())
-                        .value(McpCredentials::created_at(), credential.created_at())
-                        .value(McpCredentials::updated_at(), credential.updated_at())
-                        .value(McpCredentials::revoked_at(), credential.revoked_at()),
-                )
-                .await;
-                match result {
-                    Ok(rows) => require_one_row("MCP credential", rows)?,
-                    Err(error) if is_unique_violation(&error) => {
-                        return Err(RepositoryError::Conflict(
-                            "MCP credential identity or lookup prefix is already in use".into(),
-                        )
-                        .into())
-                    }
-                    Err(error) if is_foreign_key_violation(&error) => {
-                        return Err(RepositoryError::NotFound.into())
-                    }
-                    Err(error) => return Err(error),
-                }
+                insert_credential(transaction, &credential).await?;
                 Ok(credential)
             })
         })
@@ -163,41 +121,7 @@ async fn update(
                 credential
                     .validate_transition_from(&existing, expected_aggregate_version)
                     .map_err(RepositoryError::Conflict)?;
-                let projection = credential.gateway_projection();
-                let result = execute(
-                    transaction,
-                    update_table::<McpCredentials>()
-                        .set(McpCredentials::prefix(), credential.prefix())
-                        .set(McpCredentials::verifier_hash(), projection.verifier_hash())
-                        .set(McpCredentials::generation(), credential.generation())
-                        .set(
-                            McpCredentials::aggregate_version(),
-                            credential.aggregate_version(),
-                        )
-                        .set(McpCredentials::expires_at(), credential.expires_at())
-                        .set(McpCredentials::updated_at(), credential.updated_at())
-                        .set(McpCredentials::revoked_at(), credential.revoked_at())
-                        .filter(
-                            McpCredentials::organization_id()
-                                .eq(credential.organization_id.as_uuid()),
-                        )
-                        .filter(McpCredentials::id().eq(credential.id.as_uuid()))
-                        .filter(McpCredentials::aggregate_version().eq(expected_aggregate_version)),
-                )
-                .await;
-                match result {
-                    Ok(rows) => require_one_row("MCP credential update", rows)?,
-                    Err(error) if is_unique_violation(&error) => {
-                        return Err(RepositoryError::Conflict(
-                            "MCP credential lookup prefix is already in use".into(),
-                        )
-                        .into())
-                    }
-                    Err(error) if is_foreign_key_violation(&error) => {
-                        return Err(RepositoryError::NotFound.into())
-                    }
-                    Err(error) => return Err(error),
-                }
+                update_credential_row(transaction, &credential, expected_aggregate_version).await?;
                 Ok(credential)
             })
         })
@@ -288,7 +212,7 @@ fn resolve_query(
         .order_by(McpCredentials::id(), OrderDirection::Asc)
 }
 
-fn credential_query(
+pub(super) fn credential_query(
     organization_id: OrganizationId,
     credential_id: McpCredentialId,
 ) -> a3s_orm::query::SelectQuery<McpCredentials, McpCredentialRow> {
@@ -298,7 +222,7 @@ fn credential_query(
         .filter(McpCredentials::id().eq(credential_id.as_uuid()))
 }
 
-struct McpCredentialRow {
+pub(super) struct McpCredentialRow {
     id: Uuid,
     organization_id: Uuid,
     project_id: Uuid,
@@ -313,7 +237,7 @@ struct McpCredentialRow {
     revoked_at: Option<DateTime<Utc>>,
 }
 
-struct McpCredentialSelection;
+pub(super) struct McpCredentialSelection;
 
 impl Selection for McpCredentialSelection {
     type Output = McpCredentialRow;
@@ -356,7 +280,7 @@ impl FromRow for McpCredentialRow {
 }
 
 impl McpCredentialRow {
-    fn credential(self) -> Result<McpCredential, RepositoryError> {
+    pub(super) fn credential(self) -> Result<McpCredential, RepositoryError> {
         McpCredential::restore(
             McpCredentialId::from_uuid(self.id),
             OrganizationId::from_uuid(self.organization_id),
@@ -372,6 +296,86 @@ impl McpCredentialRow {
             self.revoked_at,
         )
         .map_err(stored)
+    }
+}
+
+pub(super) async fn insert_credential(
+    transaction: &PostgresTransaction,
+    credential: &McpCredential,
+) -> Result<(), PostgresPersistenceError> {
+    let projection = credential.gateway_projection();
+    let result = execute(
+        transaction,
+        insert_into::<McpCredentials>()
+            .value(McpCredentials::id(), credential.id.as_uuid())
+            .value(
+                McpCredentials::organization_id(),
+                credential.organization_id.as_uuid(),
+            )
+            .value(
+                McpCredentials::project_id(),
+                credential.project_id.as_uuid(),
+            )
+            .value(
+                McpCredentials::environment_id(),
+                credential.environment_id.as_uuid(),
+            )
+            .value(McpCredentials::prefix(), credential.prefix())
+            .value(McpCredentials::verifier_hash(), projection.verifier_hash())
+            .value(McpCredentials::generation(), credential.generation())
+            .value(
+                McpCredentials::aggregate_version(),
+                credential.aggregate_version(),
+            )
+            .value(McpCredentials::expires_at(), credential.expires_at())
+            .value(McpCredentials::created_at(), credential.created_at())
+            .value(McpCredentials::updated_at(), credential.updated_at())
+            .value(McpCredentials::revoked_at(), credential.revoked_at()),
+    )
+    .await;
+    match result {
+        Ok(rows) => require_one_row("MCP credential", rows),
+        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
+            "MCP credential identity or lookup prefix is already in use".into(),
+        )
+        .into()),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
+    }
+}
+
+pub(super) async fn update_credential_row(
+    transaction: &PostgresTransaction,
+    credential: &McpCredential,
+    expected_aggregate_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    let projection = credential.gateway_projection();
+    let result = execute(
+        transaction,
+        update_table::<McpCredentials>()
+            .set(McpCredentials::prefix(), credential.prefix())
+            .set(McpCredentials::verifier_hash(), projection.verifier_hash())
+            .set(McpCredentials::generation(), credential.generation())
+            .set(
+                McpCredentials::aggregate_version(),
+                credential.aggregate_version(),
+            )
+            .set(McpCredentials::expires_at(), credential.expires_at())
+            .set(McpCredentials::updated_at(), credential.updated_at())
+            .set(McpCredentials::revoked_at(), credential.revoked_at())
+            .filter(McpCredentials::organization_id().eq(credential.organization_id.as_uuid()))
+            .filter(McpCredentials::id().eq(credential.id.as_uuid()))
+            .filter(McpCredentials::aggregate_version().eq(expected_aggregate_version)),
+    )
+    .await;
+    match result {
+        Ok(rows) => require_one_row("MCP credential update", rows),
+        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
+            "MCP credential lookup prefix is already in use".into(),
+        )
+        .into()),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
     }
 }
 
