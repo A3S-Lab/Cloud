@@ -46,6 +46,7 @@ pub struct McpGatewaySnapshotStatus {
     pub desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
     pub mcp_route_count: u32,
     pub publication: GatewayPublication,
+    pub certificate: Option<GatewayCertificate>,
 }
 
 impl McpGatewaySnapshotStatus {
@@ -59,7 +60,39 @@ impl McpGatewaySnapshotStatus {
         {
             return Err("MCP Gateway snapshot status is inconsistent".into());
         }
+        if let Some(certificate) = &self.certificate {
+            certificate.request.validate()?;
+            let expected_certificate_id = self
+                .publication
+                .certificate_request
+                .as_ref()
+                .map(|request| GatewayCertificateId::from_uuid(request.certificate_id));
+            if expected_certificate_id != Some(certificate.id)
+                || certificate.organization_id != self.organization_id
+                || certificate.node_id != self.publication.node_id
+                || certificate.gateway_revision != self.publication.revision
+                || certificate.gateway_command_id != self.publication.command_id
+                || certificate.snapshot_digest != self.publication.snapshot_digest
+                || self.publication.certificate_request.as_ref() != Some(&certificate.request)
+            {
+                return Err("MCP Gateway snapshot certificate publication is inconsistent".into());
+            }
+        }
         Ok(())
+    }
+
+    pub fn certificate_requires_replacement(
+        &self,
+        certificate_renew_before: DateTime<Utc>,
+    ) -> bool {
+        self.mcp_route_count > 0
+            && self.certificate.as_ref().is_none_or(|certificate| {
+                certificate.state != GatewayCertificateState::Ready
+                    || certificate
+                        .material
+                        .as_ref()
+                        .is_none_or(|material| material.expires_at <= certificate_renew_before)
+            })
     }
 }
 

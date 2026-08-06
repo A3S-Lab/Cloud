@@ -362,6 +362,7 @@ impl McpGatewaySnapshotDispatchRow {
             desired_state_digest: marker.desired_state_digest,
             mcp_route_count: marker.mcp_route_count,
             publication,
+            certificate: None,
         };
         status.validate().map_err(RepositoryError::Storage)?;
         Ok(status)
@@ -454,7 +455,7 @@ async fn reconciliation_state(
         .await
         .map_err(storage)?
         .is_some();
-    let latest_mcp_snapshot = database
+    let mut latest_mcp_snapshot = database
         .fetch_optional_as(
             select_from::<McpGatewaySnapshotPublications>()
                 .inner_join::<GatewayPublications>(
@@ -485,6 +486,21 @@ async fn reconciliation_state(
         .map_err(storage)?
         .map(McpGatewaySnapshotDispatchRow::status)
         .transpose()?;
+    if let Some(status) = &mut latest_mcp_snapshot {
+        status.certificate = database
+            .fetch_optional_as(
+                select_from::<GatewayCertificates>()
+                    .select(CertificateSelection)
+                    .filter(GatewayCertificates::node_id().eq(status.publication.node_id.as_uuid()))
+                    .filter(GatewayCertificates::gateway_revision().eq(status.publication.revision))
+                    .limit(1),
+            )
+            .await
+            .map_err(storage)?
+            .map(CertificateRow::certificate)
+            .transpose()?;
+        status.validate().map_err(RepositoryError::Storage)?;
+    }
     if latest_mcp_snapshot.as_ref().is_some_and(|status| {
         status.gateway_scope_id != gateway_scope_id || status.publication.node_id != node_id
     }) {

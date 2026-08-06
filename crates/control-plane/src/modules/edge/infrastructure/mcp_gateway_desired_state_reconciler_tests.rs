@@ -9,13 +9,17 @@ use super::{
     PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::{
-    GatewayPublication, GatewayPublicationState, GatewayScope, GatewayScopeState,
+    GatewayCertificate, GatewayCertificateMaterial, GatewayPublication, GatewayPublicationState,
+    GatewayScope, GatewayScopeState,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, GatewayScopeId, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, Sha256Digest,
+    canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
 };
-use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot};
+use a3s_cloud_contracts::{
+    GatewayAckState, GatewayCertificateRequest, GatewayManagementProtocol, GatewaySnapshot,
+    NodeGatewayAck,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -280,6 +284,7 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),
+        ChronoDuration::days(7),
         ChronoDuration::minutes(1),
         1,
     )
@@ -354,6 +359,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
 #[test]
 fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
     let now = Utc::now();
+    let certificate_renew_before = now + ChronoDuration::days(7);
     let scope = scope(now);
     let desired = digest('a');
     assert_eq!(
@@ -364,8 +370,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             },
             &desired,
             true,
+            false,
             None,
             now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Stage
@@ -386,8 +394,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &applied,
             &desired,
             true,
+            false,
             Some(7),
             now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Unchanged
@@ -397,8 +407,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &applied,
             &desired,
             true,
+            false,
             Some(8),
             now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Stage
@@ -419,8 +431,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &applied_empty,
             &digest('b'),
             false,
+            false,
             Some(8),
             now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Unchanged
@@ -442,8 +456,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &failed,
             &desired,
             true,
+            false,
             Some(6),
             now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Stage
@@ -453,8 +469,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &failed,
             &desired,
             true,
+            false,
             Some(6),
             now - ChronoDuration::seconds(45),
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::RetryDeferred
@@ -475,8 +493,10 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &failed_empty,
             &desired,
             false,
+            false,
             Some(6),
             now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Stage
@@ -486,8 +506,78 @@ fn decision_retries_terminal_failures_and_repairs_displaced_mcp_state() {
             &applied,
             &digest('b'),
             true,
+            false,
             Some(7),
             now,
+            certificate_renew_before,
+            ChronoDuration::minutes(1),
+        ),
+        ReconciliationDecision::Stage
+    );
+}
+
+#[test]
+fn decision_renews_only_mcp_owned_certificate_before_expiry() {
+    let now = canonical_timestamp(Utc::now());
+    let scope = scope(now);
+    let desired = digest('a');
+    let installed_revision = Some(7);
+    let certificate_renew_before = now + ChronoDuration::minutes(1);
+    let expiring = McpGatewaySnapshotReconciliationState {
+        pending_publication: false,
+        latest_mcp_snapshot: Some(status_with_certificate_expiry(
+            &scope,
+            desired.clone(),
+            GatewayPublicationState::Applied,
+            7,
+            now - ChronoDuration::minutes(2),
+            1,
+            now + ChronoDuration::seconds(30),
+        )),
+    };
+
+    assert_eq!(
+        reconciliation_decision(
+            &expiring,
+            &desired,
+            true,
+            false,
+            installed_revision,
+            now,
+            certificate_renew_before,
+            ChronoDuration::minutes(1),
+        ),
+        ReconciliationDecision::Stage
+    );
+    assert_eq!(
+        reconciliation_decision(
+            &expiring,
+            &desired,
+            true,
+            true,
+            installed_revision,
+            now,
+            certificate_renew_before,
+            ChronoDuration::minutes(1),
+        ),
+        ReconciliationDecision::Unchanged
+    );
+
+    let mut missing = expiring;
+    missing
+        .latest_mcp_snapshot
+        .as_mut()
+        .expect("latest MCP snapshot")
+        .certificate = None;
+    assert_eq!(
+        reconciliation_decision(
+            &missing,
+            &desired,
+            true,
+            false,
+            installed_revision,
+            now,
+            certificate_renew_before,
             ChronoDuration::minutes(1),
         ),
         ReconciliationDecision::Stage
@@ -505,6 +595,7 @@ fn reconciler(
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),
+        ChronoDuration::days(7),
         ChronoDuration::minutes(1),
         10,
     )
@@ -548,6 +639,26 @@ fn status(
     issued_at: DateTime<Utc>,
     mcp_route_count: u32,
 ) -> McpGatewaySnapshotStatus {
+    status_with_certificate_expiry(
+        scope,
+        desired_state_digest,
+        state,
+        revision,
+        issued_at,
+        mcp_route_count,
+        issued_at + ChronoDuration::days(30),
+    )
+}
+
+fn status_with_certificate_expiry(
+    scope: &GatewayScope,
+    desired_state_digest: Sha256Digest,
+    state: GatewayPublicationState,
+    revision: u64,
+    issued_at: DateTime<Utc>,
+    mcp_route_count: u32,
+    certificate_expires_at: DateTime<Utc>,
+) -> McpGatewaySnapshotStatus {
     let certificate_request = (mcp_route_count > 0)
         .then(|| {
             GatewayCertificateRequest::new(
@@ -575,7 +686,7 @@ fn status(
         issued_at,
         issued_at + ChronoDuration::hours(1),
         acl,
-        certificate_request,
+        certificate_request.clone(),
     )
     .expect("Gateway snapshot");
     let mut publication = GatewayPublication::stage(
@@ -597,6 +708,74 @@ fn status(
             publication.failure = Some("injected terminal publication outcome".into());
         }
     }
+    let certificate = certificate_request
+        .map(|request| {
+            GatewayCertificate::provision(
+                GatewayCertificateId::from_uuid(request.certificate_id),
+                scope.organization_id,
+                scope.node_id,
+                vec![DomainClaimId::new()],
+                publication.revision,
+                publication.command_id,
+                publication.snapshot_digest.clone(),
+                request,
+                publication.command_issued_at,
+            )
+        })
+        .transpose()
+        .expect("MCP Gateway certificate");
+    let certificate = certificate
+        .map(|mut certificate| {
+            let acknowledged_at = issued_at + ChronoDuration::seconds(30);
+            match state {
+                GatewayPublicationState::Pending => {}
+                GatewayPublicationState::Applied => {
+                    let certificate_issued_at = issued_at + ChronoDuration::seconds(10);
+                    certificate
+                        .record_issued(
+                            format!("sha256:{}", "b".repeat(64)),
+                            GatewayCertificateMaterial {
+                                serial_number: certificate.id.to_string(),
+                                fingerprint: format!("sha256:{}", "c".repeat(64)),
+                                certificate_pem: "-----BEGIN CERTIFICATE-----\ndGVzdA==\n-----END CERTIFICATE-----\n".into(),
+                                ca_bundle_pem: "-----BEGIN CERTIFICATE-----\ndGVzdC1jYQ==\n-----END CERTIFICATE-----\n".into(),
+                                issued_at: certificate_issued_at,
+                                expires_at: certificate_expires_at,
+                            },
+                            certificate_issued_at,
+                        )
+                        .expect("issued MCP Gateway certificate");
+                    certificate
+                        .apply_gateway_acknowledgement(&NodeGatewayAck {
+                            schema: NodeGatewayAck::SCHEMA.into(),
+                            acknowledgement_id: Uuid::now_v7(),
+                            command_id: publication.command_id.as_uuid(),
+                            node_id: publication.node_id.as_uuid(),
+                            gateway_id: publication.node_id.as_uuid(),
+                            revision: publication.revision,
+                            snapshot_digest: publication.snapshot_digest.clone(),
+                            expires_at: publication.snapshot_expires_at,
+                            state: GatewayAckState::Applied,
+                            ready: true,
+                            message: None,
+                            acknowledged_at,
+                            management_protocol: Some(
+                                GatewayManagementProtocol::advertised_v1(),
+                            ),
+                        })
+                        .expect("ready MCP Gateway certificate");
+                }
+                GatewayPublicationState::Rejected | GatewayPublicationState::Unavailable => {
+                    certificate
+                        .mark_delivery_unavailable(
+                            "injected terminal publication outcome",
+                            acknowledged_at,
+                        )
+                        .expect("failed MCP Gateway certificate");
+                }
+            }
+            certificate
+        });
     let status = McpGatewaySnapshotStatus {
         organization_id: scope.organization_id,
         project_id: scope.project_id,
@@ -605,6 +784,7 @@ fn status(
         desired_state_digest,
         mcp_route_count,
         publication,
+        certificate,
     };
     status.validate().expect("MCP Gateway snapshot status");
     status

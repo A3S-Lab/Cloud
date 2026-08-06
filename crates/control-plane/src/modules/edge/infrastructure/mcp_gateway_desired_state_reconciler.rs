@@ -39,6 +39,7 @@ pub struct McpGatewayDesiredStateReconciler {
     interval: Duration,
     command_ttl: ChronoDuration,
     empty_snapshot_ttl: ChronoDuration,
+    certificate_renewal_window: ChronoDuration,
     retry_delay: ChronoDuration,
     batch_size: usize,
     scope_cursor: Mutex<Option<GatewayScopeId>>,
@@ -53,6 +54,7 @@ impl McpGatewayDesiredStateReconciler {
         interval: Duration,
         command_ttl: ChronoDuration,
         empty_snapshot_ttl: ChronoDuration,
+        certificate_renewal_window: ChronoDuration,
         retry_delay: ChronoDuration,
         batch_size: usize,
     ) -> Result<Self, String> {
@@ -60,6 +62,7 @@ impl McpGatewayDesiredStateReconciler {
             || command_ttl <= ChronoDuration::zero()
             || empty_snapshot_ttl <= command_ttl
             || empty_snapshot_ttl > ChronoDuration::days(7)
+            || certificate_renewal_window <= ChronoDuration::zero()
             || retry_delay <= ChronoDuration::zero()
             || retry_delay > ChronoDuration::days(1)
             || batch_size == 0
@@ -77,6 +80,7 @@ impl McpGatewayDesiredStateReconciler {
             interval,
             command_ttl,
             empty_snapshot_ttl,
+            certificate_renewal_window,
             retry_delay,
             batch_size,
             scope_cursor: Mutex::new(None),
@@ -88,6 +92,13 @@ impl McpGatewayDesiredStateReconciler {
         now: DateTime<Utc>,
     ) -> Result<McpGatewayDesiredStateReconciliationReport, RepositoryError> {
         let now = canonical_timestamp(now);
+        let certificate_renew_before = now
+            .checked_add_signed(self.certificate_renewal_window)
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "MCP Gateway certificate renewal window exceeds supported time".into(),
+                )
+            })?;
         let after_gateway_scope_id = *self
             .scope_cursor
             .lock()
@@ -202,6 +213,7 @@ impl McpGatewayDesiredStateReconciler {
                     continue;
                 }
                 let installed_revision = inputs.physical_scope.installed_revision;
+                let has_ordinary_routes = !inputs.active_routes.is_empty();
                 let expires_at = match planned.projection() {
                     Some(projection) => projection.projection().expires_at,
                     None => match now.checked_add_signed(self.empty_snapshot_ttl) {
@@ -217,7 +229,7 @@ impl McpGatewayDesiredStateReconciler {
                         }
                     },
                 };
-                let certificate_id = (!inputs.active_routes.is_empty() || has_mcp_routes)
+                let certificate_id = (has_ordinary_routes || has_mcp_routes)
                     .then(crate::modules::shared_kernel::domain::GatewayCertificateId::new);
                 let candidate =
                     match self
@@ -261,8 +273,10 @@ impl McpGatewayDesiredStateReconciler {
                     &state,
                     candidate.desired_state_digest(),
                     has_mcp_routes,
+                    has_ordinary_routes,
                     installed_revision,
                     now,
+                    certificate_renew_before,
                     self.retry_delay,
                 );
                 if decision != ReconciliationDecision::Stage {
@@ -392,8 +406,10 @@ pub(super) fn reconciliation_decision(
     state: &McpGatewaySnapshotReconciliationState,
     desired_state_digest: &crate::modules::shared_kernel::domain::Sha256Digest,
     has_mcp_routes: bool,
+    has_ordinary_routes: bool,
     installed_revision: Option<u64>,
     now: DateTime<Utc>,
+    certificate_renew_before: DateTime<Utc>,
     retry_delay: ChronoDuration,
 ) -> ReconciliationDecision {
     if state.pending_publication {
@@ -425,6 +441,10 @@ pub(super) fn reconciliation_decision(
         GatewayPublicationState::Pending => ReconciliationDecision::Pending,
         GatewayPublicationState::Applied => {
             if has_mcp_routes && installed_revision != Some(latest.publication.revision) {
+                ReconciliationDecision::Stage
+            } else if !has_ordinary_routes
+                && latest.certificate_requires_replacement(certificate_renew_before)
+            {
                 ReconciliationDecision::Stage
             } else {
                 ReconciliationDecision::Unchanged

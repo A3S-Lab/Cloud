@@ -1960,11 +1960,17 @@ unavailable. As of 2026-08-06:
   projection. A registered bounded worker removes only expired encrypted
   delivery receipts through the existing Edge lifecycle repository; credential
   aggregates and caller idempotency records remain authoritative.
-  Node-wide aggregation for physical Gateways shared by active logical MCP
-  scopes, unified composition in every ordinary publication path, proactive
-  MCP-only certificate renewal, retained clean-host PostgreSQL lifecycle
-  execution, and joint real-process recovery remain `MCP0.3`; Web lifecycle
-  views remain intentionally deferred until backend conformance; and
+  For an applied MCP publication without ordinary Routes, the same
+  desired-state worker now reads its exact certificate aggregate and stages a
+  fresh complete snapshot through the existing atomic publication path when
+  shared renewal policy reaches its threshold or certificate evidence is
+  missing, failed, or revoked. Mixed-route certificates remain solely owned by
+  the ordinary certificate reconciler. Node-wide aggregation for physical
+  Gateways shared by active logical MCP scopes,
+  unified composition in every ordinary publication path, retained clean-host
+  PostgreSQL lifecycle execution, and joint real-process recovery remain
+  `MCP0.3`; Web lifecycle views remain intentionally deferred until backend
+  conformance; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
@@ -2108,6 +2114,21 @@ This reuses the existing Secret encryption provider and common
 idempotency/audit authorities and does not add TokenHub, another credential
 store, or another Gateway publication path. Web views remain planned and
 intentionally deferred during this phase.
+
+MCP-only certificate renewal is also owned by that existing desired-state
+worker. When no ordinary Route owns the installed certificate, reconciliation
+loads the persisted `GatewayCertificate` associated with the latest logical
+marker and exact physical publication, compares its material expiry with the
+shared Edge certificate-renewal window, and compiles a new complete snapshot
+with fresh certificate intent when renewal or repair is required. A mixed
+ordinary/MCP snapshot remains solely under the ordinary certificate
+reconciler, preventing two workers from competing for one certificate. Atomic
+staging, Fleet delivery, and exact acknowledgement remain the same path used by
+all MCP desired-state changes. Focused tests cover renewal, missing-projection,
+and mixed-route ownership decisions; the retained PostgreSQL fixture proves
+threshold-triggered staging, a distinct replacement certificate, and terminal
+unavailable projection. This adds no MCP certificate scheduler, certificate
+store, or publication protocol.
 
 ### Exit gate
 

@@ -499,6 +499,7 @@ pub async fn build_application_with_source_resolver(
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         chrono_duration(config.edge.command_ttl_ms)?,
         chrono::Duration::hours(24),
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
         chrono_duration(config.edge.command_ttl_ms)?,
         100,
     )

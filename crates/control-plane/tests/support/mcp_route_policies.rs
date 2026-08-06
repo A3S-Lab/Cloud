@@ -787,11 +787,12 @@ pub async fn exercise(
 
     let certificate_issued_at =
         expected_publication.command_issued_at + Duration::milliseconds(100);
+    let certificate_expires_at = certificate_issued_at + Duration::minutes(10);
     issue_gateway_certificate(
         &edge,
         &expected_certificate,
         certificate_issued_at,
-        certificate_issued_at + Duration::days(30),
+        certificate_expires_at,
     )
     .await?;
     let acknowledged_at = certificate_issued_at + Duration::milliseconds(100);
@@ -876,12 +877,13 @@ pub async fn exercise(
         McpGatewayProjectionAssembler,
     ));
     let desired_reconciler = McpGatewayDesiredStateReconciler::new(
-        desired_edge,
+        desired_edge.clone(),
         desired_planner,
         fixture_gateway_snapshot_compiler()?,
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),
+        Duration::minutes(5),
         Duration::minutes(5),
         100,
     )?;
@@ -906,19 +908,75 @@ pub async fn exercise(
         publication_count_before
     );
 
+    let renewal_at = certificate_expires_at - Duration::minutes(5);
+    let renewal_report = desired_reconciler.run_once(renewal_at).await?;
+    assert_eq!(renewal_report.staged_snapshots, 1);
+    assert_eq!(renewal_report.unchanged_snapshots, 0);
+    assert!(renewal_report.failures.is_empty());
+    let renewal = desired_edge
+        .pending_mcp_gateway_snapshots(100)
+        .await?
+        .into_iter()
+        .find(|target| {
+            target.gateway_scope_id == scope.id
+                && target.publication.node_id == scope.node_id
+                && target.publication.revision == expected_publication.revision + 1
+        })
+        .ok_or("MCP certificate renewal publication was not staged")?;
+    let renewal_certificate_id = GatewayCertificateId::from_uuid(
+        renewal
+            .publication
+            .certificate_request
+            .as_ref()
+            .ok_or("MCP certificate renewal omitted certificate intent")?
+            .certificate_id,
+    );
+    assert_ne!(renewal_certificate_id, expected_certificate.id);
+    assert_eq!(
+        desired_edge
+            .find_gateway_certificate(scope.node_id, renewal_certificate_id)
+            .await?
+            .state,
+        GatewayCertificateState::Provisioning
+    );
+    let renewal_failed_at = renewal_at + Duration::milliseconds(1);
+    let unavailable_renewal = desired_edge
+        .mark_mcp_gateway_snapshot_unavailable(
+            scope.organization_id,
+            scope.id,
+            scope.node_id,
+            renewal.publication.revision,
+            renewal.publication.command_id,
+            "injected renewal delivery failure",
+            renewal_failed_at,
+        )
+        .await?;
+    assert_eq!(
+        unavailable_renewal.publication.state,
+        GatewayPublicationState::Unavailable
+    );
+    assert_eq!(
+        unavailable_renewal
+            .certificate
+            .ok_or("unavailable MCP renewal lost certificate evidence")?
+            .state,
+        GatewayCertificateState::Failed
+    );
+
     let mut rotated = credential.clone();
+    let rotated_at = renewal_failed_at + Duration::milliseconds(1);
     rotated.rotate(
         "a3s_mcp_def67890abc12345",
         ROTATED_VERIFIER,
         now + Duration::days(60),
-        created_at + Duration::minutes(2),
+        rotated_at,
     )?;
     assert_eq!(
         edge.update_mcp_credential(rotated.clone(), 1).await?,
         rotated
     );
     let cleanup_report = desired_reconciler
-        .run_once(created_at + Duration::minutes(2) + Duration::milliseconds(1))
+        .run_once(rotated_at + Duration::milliseconds(1))
         .await?;
     assert_eq!(cleanup_report.staged_snapshots, 1);
     assert_eq!(cleanup_report.unchanged_snapshots, 0);
@@ -944,13 +1002,13 @@ pub async fn exercise(
         "a3s_mcp_ghi12345jkl67890",
         ROTATED_VERIFIER,
         now + Duration::days(60),
-        created_at + Duration::minutes(3),
+        rotated_at + Duration::minutes(1),
     )?;
     assert!(matches!(
         edge.update_mcp_credential(stale, 1).await,
         Err(RepositoryError::Conflict(_))
     ));
-    assert!(rotated.revoke(created_at + Duration::minutes(4))?);
+    assert!(rotated.revoke(rotated_at + Duration::minutes(2))?);
     let revoked = edge.update_mcp_credential(rotated, 2).await?;
     assert!(revoked.gateway_projection().revoked);
     assert_eq!(
