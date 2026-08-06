@@ -233,7 +233,7 @@ fn code_envelope(
     .expect("Code command envelope")
 }
 
-fn code_outcome(command: &AgentProtocolCommandV1) -> NodeCommandOutcome {
+fn code_outcome(command: &AgentProtocolCommandV1, observed_at_ms: u64) -> NodeCommandOutcome {
     NodeCommandOutcome::Succeeded {
         result: Box::new(NodeCommandResult::CodeAgentCommandAccepted {
             receipt: Box::new(AgentProtocolCommandReceiptV1 {
@@ -248,7 +248,7 @@ fn code_outcome(command: &AgentProtocolCommandV1) -> NodeCommandOutcome {
                     AgentProtocolRunStateV1::Created
                 },
                 latest_event_sequence_exclusive: 0,
-                observed_at_ms: 1,
+                observed_at_ms,
                 replayed: false,
             }),
         }),
@@ -551,8 +551,17 @@ async fn successful_code_commands_project_only_the_current_exact_run_binding() {
         .begin(start_envelope.clone())
         .await
         .expect("begin Code start");
+    let start_completed_at = Utc::now();
+    let start_observed_at_ms = start_completed_at
+        .timestamp_millis()
+        .try_into()
+        .expect("Code start completion time after Unix epoch");
     journal
-        .complete(start_envelope.command_id, Utc::now(), code_outcome(&start))
+        .complete(
+            start_envelope.command_id,
+            start_completed_at,
+            code_outcome(&start, start_observed_at_ms),
+        )
         .await
         .expect("complete Code start");
 
@@ -580,11 +589,16 @@ async fn successful_code_commands_project_only_the_current_exact_run_binding() {
         .begin(recover_envelope.clone())
         .await
         .expect("begin Code recovery");
+    let recovery_completed_at = Utc::now();
+    let recovery_observed_at_ms = recovery_completed_at
+        .timestamp_millis()
+        .try_into()
+        .expect("Code recovery completion time after Unix epoch");
     reopened
         .complete(
             recover_envelope.command_id,
-            Utc::now(),
-            code_outcome(&recover),
+            recovery_completed_at,
+            code_outcome(&recover, recovery_observed_at_ms),
         )
         .await
         .expect("complete Code recovery");
@@ -609,11 +623,16 @@ async fn successful_code_commands_project_only_the_current_exact_run_binding() {
         .begin(cancel_envelope.clone())
         .await
         .expect("begin Code cancellation");
+    let cancellation_completed_at = Utc::now();
+    let cancellation_observed_at_ms = cancellation_completed_at
+        .timestamp_millis()
+        .try_into()
+        .expect("Code cancellation completion time after Unix epoch");
     reopened
         .complete(
             cancel_envelope.command_id,
-            Utc::now(),
-            code_outcome(&cancel),
+            cancellation_completed_at,
+            code_outcome(&cancel, cancellation_observed_at_ms),
         )
         .await
         .expect("complete Code cancellation");

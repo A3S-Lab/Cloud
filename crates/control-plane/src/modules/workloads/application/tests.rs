@@ -40,6 +40,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
+    let node_id = NodeId::new();
     let drafted_at = canonical_timestamp(Utc::now() - Duration::minutes(1));
     let asset = Asset::create(
         AssetId::new(),
@@ -49,8 +50,8 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         drafted_at,
     )
     .expect("Agent Asset");
-    let (release_one, build_one) = published_release(&asset, "1.0.0", 'a', drafted_at);
-    let (release_two, build_two) = published_release(&asset, "2.0.0", 'c', drafted_at);
+    let (release_one, build_one) = published_release(&asset, "1.0.0", drafted_at);
+    let (release_two, build_two) = published_release(&asset, "2.0.0", drafted_at);
     let requested_at = release_one.updated_at.max(release_two.updated_at) + Duration::seconds(1);
     let assets = Arc::new(AgentAssetStore::new(
         asset.clone(),
@@ -132,6 +133,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         workloads.as_ref(),
         organization_id,
         created.bundle.deployment.id,
+        node_id,
         requested_at + Duration::seconds(1),
     )
     .await;
@@ -218,6 +220,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
+    let node_id = NodeId::new();
     let drafted_at = canonical_timestamp(Utc::now() - Duration::minutes(1));
     let agent = Asset::create(
         AssetId::new(),
@@ -227,7 +230,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         drafted_at,
     )
     .expect("Agent Asset");
-    let (agent_release, agent_build) = published_release(&agent, "1.0.0", 'a', drafted_at);
+    let (agent_release, agent_build) = published_release(&agent, "1.0.0", drafted_at);
     let skill = Asset::create(
         AssetId::new(),
         organization_id,
@@ -294,6 +297,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         workloads.as_ref(),
         organization_id,
         created.bundle.deployment.id,
+        node_id,
         requested_at + Duration::seconds(1),
     )
     .await;
@@ -350,6 +354,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         workloads.as_ref(),
         organization_id,
         bound.bundle.deployment.id,
+        node_id,
         requested_at + Duration::seconds(4),
     )
     .await;
@@ -394,6 +399,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         workloads.as_ref(),
         organization_id,
         rebound.bundle.deployment.id,
+        node_id,
         requested_at + Duration::seconds(6),
     )
     .await;
@@ -435,6 +441,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         workloads.as_ref(),
         organization_id,
         updated_agent.bundle.deployment.id,
+        node_id,
         requested_at + Duration::seconds(8),
     )
     .await;
@@ -470,16 +477,14 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
 fn published_release(
     asset: &Asset,
     version: &str,
-    character: char,
     drafted_at: chrono::DateTime<Utc>,
 ) -> (AssetRelease, BuildRun) {
     let mut release = AssetRelease::draft(
         asset,
         AssetReleaseId::new(),
         AssetReleaseVersion::parse(version).expect("release version"),
-        GitCommitSha::parse(character.to_string().repeat(40)).expect("commit SHA"),
-        Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64)))
-            .expect("manifest digest"),
+        GitCommitSha::parse("a".repeat(40)).expect("commit SHA"),
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("manifest digest"),
         drafted_at,
     )
     .expect("draft release");
@@ -556,6 +561,7 @@ async fn activate(
     workloads: &InMemoryWorkloadRepository,
     organization_id: OrganizationId,
     deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+    node_id: NodeId,
     mut at: chrono::DateTime<Utc>,
 ) {
     let deployment = workloads
@@ -571,7 +577,7 @@ async fn activate(
         .assign_node(
             deployment.id,
             deployment.aggregate_version,
-            NodeId::new(),
+            node_id,
             at + Duration::milliseconds(1),
         )
         .await
