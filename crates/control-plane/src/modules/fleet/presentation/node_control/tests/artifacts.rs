@@ -76,7 +76,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
         StdDuration::from_secs(5),
     )
     .expect("node-control API");
-    let address = unused_address();
+    let (address, listener) = bound_node_control_listener().await;
     let server = NodeControlServer::from_config(
         &NodeControlConfig {
             host: address.ip().to_string(),
@@ -93,8 +93,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
     )
     .expect("node-control server");
     let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
-    let server_task = tokio::spawn(server.run(shutdown_receiver));
-    wait_until_listening(address).await;
+    let server_task = tokio::spawn(server.run_with_listener(listener, shutdown_receiver));
     let client = reqwest::Client::builder()
         .use_rustls_tls()
         .add_root_certificate(

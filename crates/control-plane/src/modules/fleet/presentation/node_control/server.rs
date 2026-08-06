@@ -59,13 +59,36 @@ impl NodeControlServer {
         })
     }
 
-    pub async fn run(
-        self,
-        mut shutdown: watch::Receiver<bool>,
-    ) -> Result<(), NodeControlServerError> {
+    pub async fn run(self, shutdown: watch::Receiver<bool>) -> Result<(), NodeControlServerError> {
         let listener = TcpListener::bind(self.address)
             .await
             .map_err(NodeControlServerError::Bind)?;
+        self.run_with_bound_listener(listener, shutdown).await
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn run_with_listener(
+        self,
+        listener: TcpListener,
+        shutdown: watch::Receiver<bool>,
+    ) -> Result<(), NodeControlServerError> {
+        let address = listener
+            .local_addr()
+            .map_err(NodeControlServerError::Bind)?;
+        if address != self.address {
+            return Err(NodeControlServerError::Address(format!(
+                "configured address {} does not match bound listener {address}",
+                self.address
+            )));
+        }
+        self.run_with_bound_listener(listener, shutdown).await
+    }
+
+    async fn run_with_bound_listener(
+        self,
+        listener: TcpListener,
+        mut shutdown: watch::Receiver<bool>,
+    ) -> Result<(), NodeControlServerError> {
         let acceptor = TlsAcceptor::from(self.tls);
         let router = self.api.router();
         let mut connections = JoinSet::new();
