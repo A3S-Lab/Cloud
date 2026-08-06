@@ -24,7 +24,7 @@ use crate::infrastructure::{
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::GatewayScopeState;
 use crate::modules::edge::infrastructure::{
-    CompiledMcpGatewaySnapshot, GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
+    GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
     McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
