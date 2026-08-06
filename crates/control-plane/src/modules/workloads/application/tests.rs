@@ -197,12 +197,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
                 organization_id,
                 workload_id: created.bundle.workload.id,
                 expected_name: None,
-                template: created
-                    .bundle
-                    .revision
-                    .resolved_template()
-                    .expect("resolved template")
-                    .clone(),
+                template: created.bundle.revision.request.clone(),
                 idempotency_key: "agent-release:ordinary-update".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: requested_at + Duration::seconds(4),

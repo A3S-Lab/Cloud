@@ -1,5 +1,5 @@
 use super::super::api::PeerCertificate;
-use super::{capabilities, enroll_node, NodeControlApi};
+use super::{enroll_node, NodeControlApi};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentConversationCreated, AgentEventContent,
     AgentExecution, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStarted,

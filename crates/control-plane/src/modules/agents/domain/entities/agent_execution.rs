@@ -408,6 +408,7 @@ fn validate_failure(reason: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::AgentEventContent;
     use super::*;
     use crate::modules::shared_kernel::domain::{
         AssetId, AssetReleaseId, BuildRunId, Sha256Digest,
@@ -463,7 +464,7 @@ mod tests {
         .expect("execution");
         let output = AgentExecutionEventDraft::new(
             AgentExecutionEventKind::ModelOutput,
-            super::AgentEventContent::inline_json(serde_json::json!({"text": "hello"}))
+            AgentEventContent::inline_json(serde_json::json!({"text": "hello"}))
                 .expect("content"),
             at,
         )
@@ -473,7 +474,7 @@ mod tests {
 
         let completed = AgentExecutionEventDraft::new(
             AgentExecutionEventKind::ExecutionCompleted,
-            super::AgentEventContent::inline_json(serde_json::json!({})).expect("content"),
+            AgentEventContent::inline_json(serde_json::json!({})).expect("content"),
             at,
         )
         .expect("completed");
@@ -499,7 +500,7 @@ mod tests {
         let before = execution.clone();
         let completed = AgentExecutionEventDraft::new(
             AgentExecutionEventKind::ExecutionCompleted,
-            super::AgentEventContent::inline_json(serde_json::json!({})).expect("content"),
+            AgentEventContent::inline_json(serde_json::json!({})).expect("content"),
             at,
         )
         .expect("completed");
@@ -533,7 +534,7 @@ mod tests {
 
         let output = AgentExecutionEventDraft::new(
             AgentExecutionEventKind::ModelOutput,
-            super::AgentEventContent::inline_json(serde_json::json!({"text": "late"}))
+            AgentEventContent::inline_json(serde_json::json!({"text": "late"}))
                 .expect("content"),
             cancelled_at,
         )
