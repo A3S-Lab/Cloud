@@ -478,16 +478,25 @@ pub enum CodeEventShippingError {
     State(String),
     #[error(transparent)]
     ControlPlane(#[from] NodeControlClientError),
-    #[error(transparent)]
-    Harness(#[from] CodeHarnessError),
+    #[error("A3S Code Harness event shipping failed: {message}")]
+    Harness { message: String, retryable: bool },
 }
 
 impl CodeEventShippingError {
     pub fn retryable(&self) -> bool {
         match self {
             Self::ControlPlane(error) => error.retryable(),
-            Self::Harness(error) => error.retryable(),
+            Self::Harness { retryable, .. } => *retryable,
             Self::Invalid(_) | Self::Conflict(_) | Self::State(_) => false,
+        }
+    }
+}
+
+impl From<CodeHarnessError> for CodeEventShippingError {
+    fn from(error: CodeHarnessError) -> Self {
+        Self::Harness {
+            retryable: error.retryable(),
+            message: error.to_string(),
         }
     }
 }
