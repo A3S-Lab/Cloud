@@ -622,6 +622,7 @@ async fn ordinary_publication_composes_the_current_mcp_projection_in_the_same_sn
         .verify(now() - Duration::seconds(1))
         .expect("verified DomainClaim");
     let ordinary_route_id = RouteId::new();
+    let certificate_id = GatewayCertificateId::new();
     let ordinary_route = Route::create(
         ordinary_route_id,
         fixture.policy.spec().organization_id,
@@ -633,7 +634,7 @@ async fn ordinary_publication_composes_the_current_mcp_projection_in_the_same_sn
         RoutePath::parse("/ordinary").expect("path"),
         ordinary_claim.id,
         ordinary_claim.pattern.clone(),
-        GatewayCertificateId::new(),
+        certificate_id,
         fixture.policy.spec().workload_id,
         target(&fixture, node_id, 49153).target,
         now(),
@@ -649,7 +650,7 @@ async fn ordinary_publication_composes_the_current_mcp_projection_in_the_same_sn
         .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
             metadata: GatewaySnapshotMetadata::new(node_id, 1, None, now(), expires_at),
             desired_state,
-            certificate_id: GatewayCertificateId::new(),
+            certificate_id,
             snapshot_routes: vec![ordinary_route],
             additional_domain_claims: vec![ordinary_claim],
         })
