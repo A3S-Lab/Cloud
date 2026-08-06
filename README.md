@@ -12,52 +12,70 @@
 </p>
 
 <p align="center">
+  <a href="#product-system">Products</a> &middot;
   <a href="#architecture">Architecture</a> &middot;
-  <a href="#product-outcomes">Products</a> &middot;
   <a href="#capabilities-that-remain-first-class">Capabilities</a> &middot;
   <a href="#delivery-status">Status</a> &middot;
   <a href="#backend-quick-start">Quick start</a> &middot;
   <a href="#documentation">Documentation</a>
 </p>
 
-**A3S Cloud is the self-hosted control plane that turns tenant intent into
-durable, isolated, recoverable application and Agent infrastructure on systems
-you own.** It commits desired state to PostgreSQL, coordinates long-running
-work through A3S Flow, converges nodes through one outbound Fleet channel, and
-activates traffic only after exact Runtime, Box, and Gateway evidence.
+**A3S Cloud is a self-hosted control plane for operating applications, Agents,
+MCP servers, Workflows, and model services on infrastructure you own.** It
+turns authorized tenant intent into versioned, exact applied state through one
+durable control loop, one outbound node channel, and one provider-neutral
+execution path.
 
 > [!IMPORTANT]
-> Architecture describes the stable target; it is not a blanket availability
-> claim. Public availability is decided by the exact gates in
+> The architecture describes the stable target, not blanket availability.
+> Public availability is decided by the exact gates in
 > [ROADMAP.md](ROADMAP.md). The active delivery policy is backend-first: domain
 > contracts, persistence, providers, REST/OpenAPI, the maintained client, CLI,
 > Management MCP, and real recovery evidence come before new frontend work.
 
+## Product system
+
+Three outward-facing products compose the same Cloud authorities. Their order
+matches the public product story; none creates a separate control plane,
+scheduler, runtime, queue, or evidence store.
+
+| Product | Outcome | Shared foundation |
+| --- | --- | --- |
+| **01 / Unified Gateway** | Give Workflow, Agent, MCP, model, and application traffic one governed cloud-edge entry with identity, protocol policy, routing, health, and evidence | Cloud API and Identity own management policy; Edge owns desired traffic; A3S Gateway alone owns the applied byte path |
+| **02 / Workflow Orchestration** | Compile ontology-defined objects, relationships, rules, goals, and constraints into typed, recoverable execution | Workflow owns semantics while Cloud Operations and A3S Flow remain the sole durable orchestration path |
+| **03 / Agent Factory** | Turn heterogeneous Harness implementations into immutable, evaluated, deployable Agent products | Assets, Agents, Workloads, Fleet, Runtime, Box, and one provider-neutral `AgentExecutionProvider` contract |
+
+Security operations remain inside Unified Gateway as tenant-scoped correlation
+over Gateway, Runtime, Box, Agent, A3S Sentry, AnySentry, and audit evidence.
+A3S Code is one first-party Harness provider, not a privileged parallel
+execution architecture.
+
 ## Architecture
 
 <p align="center">
-  <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud single-authority control, execution, and request paths" />
+  <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud products converging through one control, execution, and request architecture" />
 </p>
 
-The diagram separates three paths that must never be collapsed:
+The current architecture separates three paths that must never be collapsed:
 
-1. **Control path.** An accepted mutation commits desired state, replay
-   identity, an Operation, and bounded Outbox facts before work starts.
-2. **Execution path.** Workloads and Fleet reserve exact Claims and deliver one
-   versioned command through the outbound-only Node Agent. Runtime exposes Task
-   and Service lifecycle; Box is the sole local execution and build provider.
-3. **Request path.** A3S Gateway sends live bytes directly to an exact healthy
-   application, Harness, MCP, or Power endpoint. Cloud remains off this path and
-   advances state only from the matching applied acknowledgement.
+1. **Control path:** accepted mutations atomically commit desired state, replay
+   identity, an Operation, and bounded Outbox facts to PostgreSQL.
+2. **Execution path:** Workloads and Fleet reserve exact Claims and send one
+   versioned command through the outbound-only Node Agent; Runtime exposes Task
+   and Service lifecycle, and Box is the sole local execution/build provider.
+3. **Request path:** A3S Gateway sends bytes directly to an exact healthy
+   application, Harness, MCP, or Power endpoint. Cloud stays off this path and
+   advances only from the matching applied acknowledgement.
 
 The control plane is a modular monolith. Its `api`, `worker`, and `relay` roles
 can run together or separately from the same binary. PostgreSQL remains the
 business authority in every profile; A3S Event accelerates committed facts but
 does not replace recovery scans.
 
-Read the [technical architecture](docs/architecture.md) for bounded contexts,
-dependency directions, consistency boundaries, protocols, failure behavior,
-and the complete capability-preservation register.
+Explore the [interactive architecture](https://a3s-lab.github.io/Cloud/architecture/)
+or read the [technical architecture](docs/architecture.md) for bounded
+contexts, dependency directions, consistency boundaries, protocols, failure
+behavior, and the complete capability-preservation register.
 
 ### One concern, one authority
 
@@ -73,22 +91,6 @@ and the complete capability-preservation register.
 | Plugin assignments and package lifecycle | Cloud Plugins for tenant intent; shared A3S Use Plugin Manager for package generations | A Cloud installer, catalog copy, grant store, binding store, or generic plugin RPC |
 | Immutable bytes | One shared content-addressed object client with typed domain adapters | Parallel filesystem/S3 clients or untyped cross-domain blob APIs |
 | Management behavior | One application command/query layer | REST-, CLI-, MCP-, or Web-specific business state and rules |
-
-## Product outcomes
-
-The outward product layer is a composition over that shared architecture. It
-does not create three more control planes.
-
-| Product | Customer outcome | Existing authorities it reuses |
-| --- | --- | --- |
-| **Unified Gateway** | Govern Workflow, Agent, MCP, model, and application ingress with identity, protocol policy, routing, health, and evidence | Identity, Edge, Fleet, Gateway, audit, A3S Sentry, and AnySentry projections |
-| **Workflow autonomous orchestrator** | Compile ontology-defined objects, relationships, rules, goals, and constraints into typed, recoverable execution | Workflow semantics, one A3S Flow/Operations path, and existing Agent, MCP, Inference, Use, and human-step ports |
-| **Agent Factory** | Turn heterogeneous Harness prototypes into immutable, evaluated, deployable Agent products | Assets, Agents, Workloads, Fleet, Runtime, Box, and one provider-neutral `AgentExecutionProvider` contract |
-
-Workflow and Agent Factory are target product outcomes whose availability is
-gate-driven. A3S Code is the first-party Harness provider, not a privileged
-parallel execution architecture. Security monitoring is a Unified Gateway
-capability over shared evidence and audit, not a fourth control plane.
 
 ## Capabilities that remain first-class
 
@@ -111,7 +113,7 @@ its authority.
 | Workflow and evolution | Ontologies, immutable plans, human decisions, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
 | Inference | Power-hosted model Services, accelerator Claims, model/provider policy, scoped keys, routing/fallback, durable usage, and governed self-service | Inference, Power, Workloads, Fleet, Edge, Gateway, `PW0`, `I0` |
 
-### TokenHub and Google AX outcomes are retained
+### TokenHub and Google AX outcomes remain explicit
 
 A3S Cloud keeps the useful outcomes while refusing the duplicate control
 mechanisms of the reference products.
@@ -119,10 +121,12 @@ mechanisms of the reference products.
 | Reference outcome | A3S-owned design | Availability boundary | Not copied |
 | --- | --- | --- | --- |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, concurrency, usage, attribution, diagnostics, and cost showback | Identity owns principals, grants, and credentials; `C0` owns authorized surfaces; Inference owns access policy and the durable usage ledger | `C0.1`/`C0.2` foundations are verified; external OIDC and role-focused policy are planned in `C0.3`; model self-service is planned in `I0.2e` | A second identity/key store, browser-only authorization, plaintext credential recovery, or commercial billing authority |
-| TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol and provider conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
+| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | `C0.1`/`C0.2` foundations are verified; external OIDC and role-focused policy are planned in `C0.3`; model/key self-service is planned in `I0.2e` | A second identity/key store, browser-only authorization, or plaintext credential recovery |
+| TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
+| TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |
 | Google AX-style replay, approvals, pause/resume, checkpoints, forks, trajectories, and telemetry | One PostgreSQL Agent semantic sequence, shared cursor/SSE transport, immutable checkpoints, and the common Operation/Fleet/provider recovery path | Foundations exist; complete governance and recovery remain planned in `A1.5` and `A1.6` | AX event-log authority, Flow history as transcript, Runtime logs as semantic state, or a second checkpoint store |
+| Google AX-style per-execution Harness, instruction, environment, model, Skill, MCP, and Tool customization | One immutable, closed `HarnessInvocationProfile` binds exact release and Secret references before dispatch | Planned `A1.4`, after the provider-neutral `A1.3` contract and applicable `A0`/`MCP0`/`I0` identities | Mutable provider JSON as desired state, arbitrary environment injection, copied Secret material, or provider-owned authorization |
 
 These rows preserve product intent; they do not claim that planned gates are
 already available. Removing a reference name from a site or navigation label
