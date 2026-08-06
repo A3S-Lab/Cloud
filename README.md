@@ -440,6 +440,12 @@ deferred workload release, restart re-attestation, tamper/recovery coverage,
 and a hardware CI gate; that hardware gate has not yet produced certification
 evidence, so this slice does not close TEE qualification.
 
+The eighth `BX0.3` slice advances A3S Box to
+`9ee75351ed1c5b5648639476e664c97825879f89`. Its single native OCI assembly
+boundary uses the canonical epoch because build input has no creation clock, so
+the existing parent-cache hydration path reproduces the exact original manifest
+descriptor. Cloud keeps one Box build adapter and one native cache path.
+
 Complete Sandbox/MicroVM/TEE isolation evidence, builds, and the clean-host
 release loop remain release-blocking `BX0.3` through `BX0.5` work.
 

@@ -171,6 +171,14 @@ tampered or missing evidence, and defines separate simulated and hardware CI
 gates. The hardware gate is present but has not been executed for this lock,
 so hardware TEE certification remains release-blocking.
 
+The eighth `BX0.3` slice advances the pinned A3S Box revision to
+`9ee75351ed1c5b5648639476e664c97825879f89`. Native OCI config and history use
+the canonical epoch because no creation clock exists in the build contract.
+The existing build consumer probe therefore requires an immediate-parent cache
+Artifact hydrated through Box's sole `BuildCache` to rebuild to the exact
+original manifest descriptor, followed by exact operation and Artifact cleanup.
+There is no Cloud-specific timestamp, alternate builder, or parallel cache.
+
 The following evidence remains required before `BX0` is verified:
 
 1. Complete Sandbox/MicroVM/TEE isolation certification.

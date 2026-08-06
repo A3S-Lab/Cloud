@@ -48,10 +48,11 @@ and native cache, then is killed before it can return. A reconstructed executor
 must replay the exact output without another logical upload. The probe removes
 that operation, clears the sole native cache under the explicitly armed
 dedicated home, downloads the immediate-parent cache Artifact, proves native
-cache hydration, rebuilds, and removes again. Revision-bound JSON records every
-check; build receipts, operation-owned ImageStore references, and node Artifact
-files must return to their pre-test baseline. Shared content-addressed image and
-layer caches remain provider-owned reusable state rather than live operations.
+cache hydration, rebuilds to the exact original OCI manifest descriptor, and
+removes again. Revision-bound JSON records every check; build receipts,
+operation-owned ImageStore references, and node Artifact files must return to
+their pre-test baseline. Shared content-addressed image and layer caches remain
+provider-owned reusable state rather than live operations.
 
 The companion Fleet/Flow probe injects loss before persisting nine step
 completion events: start dispatch, start acknowledgement, output receipt, and
