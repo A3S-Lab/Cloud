@@ -317,6 +317,14 @@ revision adds generation-bound RA-TLS persistence, deferred guest release,
 live recovery/restart re-attestation, tamper rejection, simulated conformance,
 and a separate hardware gate; the hardware gate has not yet run for this lock.
 
+The eighth `BX0.3` slice advances A3S Box to
+`9ee75351ed1c5b5648639476e664c97825879f89` and makes native OCI descriptors
+reproducible across immediate-parent cache hydration. The sole Box assembly
+boundary uses the canonical epoch because build input has no creation clock;
+the existing Cloud consumer gate requires the rebuilt descriptor to match and
+then proves exact cleanup. No alternate builder, clock option, or cache path is
+introduced.
+
 `BX0.3` remains in progress only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
 

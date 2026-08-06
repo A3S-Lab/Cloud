@@ -493,6 +493,15 @@ until validation succeeds, reacquires evidence after recovery and restart, and
 adds distinct simulated and hardware CI gates. The hardware gate remains
 unexecuted for this integration revision.
 
+The eighth `BX0.3` slice advances the A3S Box pin to
+`9ee75351ed1c5b5648639476e664c97825879f89`. Box's sole native OCI assembly
+boundary now uses the canonical epoch for config and history creation fields
+because the build contract carries no creation clock. The existing Cloud build
+consumer gate clears the one local native cache, hydrates the immediate-parent
+cache Artifact through the same `BuildCache`, and requires the rebuilt manifest
+descriptor to match the original exactly before cleanup. This adds no clock
+option, alternate build engine, cache store, adapter, or replay mechanism.
+
 The rest of `BX0.3` remains open only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
 
