@@ -3,8 +3,7 @@ use crate::modules::edge::infrastructure::{
     CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
     GatewayNodeDesiredStatePlanner, GatewayRollbackMemberSnapshotContext,
     GatewayRolloutRollbackCompiler, IMcpGatewaySnapshotRepository,
-    ManagedGatewayRollbackMemberSnapshotContext, McpGatewaySnapshotAnchor,
-    PlanGatewayNodeDesiredState,
+    ManagedGatewayRollbackMemberSnapshotContext, PlanGatewayNodeDesiredState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayRolloutId, NodeId, RepositoryError,
@@ -331,14 +330,13 @@ impl GatewayRolloutRollbackReconciler {
         Vec<ManagedGatewayRollbackMemberSnapshotContext>,
         (Option<NodeId>, &'static str, &'static str),
     > {
-        let fallback_anchor = McpGatewaySnapshotAnchor::from_scope(scope);
         let mut contexts = Vec::with_capacity(scope.member_node_ids.len());
         for node_id in &scope.member_node_ids {
             let desired_state = managed
                 .desired_state
                 .plan(PlanGatewayNodeDesiredState {
                     gateway_node_id: *node_id,
-                    fallback_anchor,
+                    fallback_scope: scope.clone(),
                     observed_at,
                 })
                 .await

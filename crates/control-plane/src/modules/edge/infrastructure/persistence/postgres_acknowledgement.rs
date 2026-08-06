@@ -470,9 +470,6 @@ async fn project_ordinary_composition_ack(
             "ordinary Gateway acknowledgement selected an MCP-owned marker".into(),
         ));
     }
-    if acknowledgement.state == GatewayAckState::Applied && marker.mcp_route_count == 0 {
-        postgres_mcp_gateway_snapshots::release_snapshot_head(transaction, &marker).await?;
-    }
     Ok(())
 }
 

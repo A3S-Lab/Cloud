@@ -1,19 +1,16 @@
+use crate::modules::edge::domain::GatewayScope;
 use crate::modules::edge::infrastructure::{
-    GatewaySnapshotRouteInput, IMcpGatewayProjectionSetPlanner, IMcpGatewaySnapshotRepository,
-    McpGatewayNodeProjectionAssembler, McpGatewaySnapshotAnchor, PlanMcpGatewayProjectionSet,
-    PlannedMcpGatewayNodeProjection,
+    GatewaySnapshotRouteInput, IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
+    PlanMcpGatewayNodeProjection, PlannedMcpGatewayNodeProjection,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeId, RepositoryError};
 use chrono::{DateTime, Utc};
-use futures_util::{stream, StreamExt, TryStreamExt};
 use std::sync::Arc;
 
-const SCOPE_PLANNING_CONCURRENCY: usize = 16;
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PlanGatewayNodeDesiredState {
     pub gateway_node_id: NodeId,
-    pub fallback_anchor: McpGatewaySnapshotAnchor,
+    pub fallback_scope: GatewayScope,
     pub observed_at: DateTime<Utc>,
 }
 
@@ -73,19 +70,17 @@ impl PlannedGatewayNodeDesiredState {
 #[derive(Clone)]
 pub struct GatewayNodeDesiredStatePlanner {
     repository: Arc<dyn IMcpGatewaySnapshotRepository>,
-    projections: Arc<dyn IMcpGatewayProjectionSetPlanner>,
-    assembler: McpGatewayNodeProjectionAssembler,
+    projections: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
 }
 
 impl GatewayNodeDesiredStatePlanner {
     pub fn new(
         repository: Arc<dyn IMcpGatewaySnapshotRepository>,
-        projections: Arc<dyn IMcpGatewayProjectionSetPlanner>,
+        projections: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
     ) -> Self {
         Self {
             repository,
             projections,
-            assembler: McpGatewayNodeProjectionAssembler::default(),
         }
     }
 
@@ -94,55 +89,55 @@ impl GatewayNodeDesiredStatePlanner {
         request: PlanGatewayNodeDesiredState,
     ) -> Result<PlannedGatewayNodeDesiredState, RepositoryError> {
         request
-            .fallback_anchor
+            .fallback_scope
             .validate()
             .map_err(RepositoryError::Conflict)?;
-        if request.gateway_node_id.as_uuid().is_nil() {
+        if request.gateway_node_id.as_uuid().is_nil()
+            || !request
+                .fallback_scope
+                .contains_member(request.gateway_node_id)
+        {
             return Err(RepositoryError::Conflict(
-                "Gateway desired-state node identity is invalid".into(),
+                "Gateway desired-state fallback scope does not contain its physical node".into(),
             ));
         }
         let observed_at = canonical_timestamp(request.observed_at);
-        let (inputs, scopes) = tokio::try_join!(
+        let (inputs, mut scopes) = tokio::try_join!(
             self.repository
                 .mcp_gateway_snapshot_inputs(request.gateway_node_id),
             self.repository
-                .mcp_gateway_active_scopes(request.gateway_node_id, observed_at),
+                .mcp_gateway_reconciliation_scope_set(request.gateway_node_id, observed_at),
         )?;
         inputs
             .validate(request.gateway_node_id)
             .map_err(RepositoryError::Storage)?;
         if scopes.iter().any(|scope| {
-            scope.organization_id != request.fallback_anchor.organization_id
+            scope.organization_id != request.fallback_scope.organization_id
                 || !scope.contains_member(request.gateway_node_id)
         }) {
             return Err(RepositoryError::Conflict(
                 "Gateway desired state crosses its physical node organization or membership".into(),
             ));
         }
-        let anchor = scopes
-            .first()
-            .map(McpGatewaySnapshotAnchor::from_scope)
-            .unwrap_or(request.fallback_anchor);
-        let sets = stream::iter(scopes.into_iter().map(|scope| {
-            let projections = Arc::clone(&self.projections);
-            async move {
-                projections
-                    .plan(PlanMcpGatewayProjectionSet {
-                        scope,
-                        gateway_node_id: request.gateway_node_id,
-                        observed_at,
-                    })
-                    .await
+        if scopes.is_empty() {
+            scopes.push(request.fallback_scope);
+        } else if let Ok(index) =
+            scopes.binary_search_by_key(&request.fallback_scope.id, |scope| scope.id)
+        {
+            if scopes[index] != request.fallback_scope {
+                return Err(RepositoryError::Conflict(
+                    "Gateway fallback scope changed while planning complete desired state".into(),
+                ));
             }
-        }))
-        .buffered(SCOPE_PLANNING_CONCURRENCY)
-        .try_collect()
-        .await?;
+        }
         let mcp = self
-            .assembler
-            .assemble(anchor, request.gateway_node_id, observed_at, sets)
-            .map_err(RepositoryError::Conflict)?;
+            .projections
+            .plan(PlanMcpGatewayNodeProjection {
+                scopes,
+                gateway_node_id: request.gateway_node_id,
+                observed_at,
+            })
+            .await?;
         PlannedGatewayNodeDesiredState::new(inputs.physical_scope, inputs.active_routes, mcp)
             .map_err(RepositoryError::Conflict)
     }

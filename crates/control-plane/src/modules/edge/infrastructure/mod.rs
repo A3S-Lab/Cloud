@@ -116,7 +116,10 @@ pub use mcp_gateway_publication::{
     GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
     McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
-    McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus, StageMcpGatewaySnapshot,
+    McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
+    StageManagedGatewayCertificateConvergence, StageManagedGatewayRollout,
+    StageManagedGatewayRolloutRollback, StageManagedGatewayRouteCutover,
+    StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 pub use mcp_gateway_snapshot_reconciler::{
     McpGatewaySnapshotReconciler, McpGatewaySnapshotReconciliationFailure,

@@ -560,7 +560,10 @@ impl GatewaySnapshotCompiler {
             additional_domain_claims,
         } = request;
         let (physical_scope, active_routes, mcp) = desired_state.into_parts();
-        mcp.anchor().validate()?;
+        for planned in mcp.scope_sets() {
+            planned.scope().validate()?;
+        }
+        let organization_id = mcp.primary_scope().organization_id;
         let issued_at = canonical_timestamp(metadata.issued_at);
         let expires_at = canonical_timestamp(metadata.expires_at);
         if physical_scope.node_id.as_uuid().is_nil()
@@ -591,7 +594,7 @@ impl GatewaySnapshotCompiler {
         let mut claims = BTreeMap::<DomainClaimId, DomainClaim>::new();
         for input in active_routes {
             validate_active_route_authority(&input, metadata.node_id, issued_at)?;
-            if input.route.organization_id != mcp.organization_id() {
+            if input.route.organization_id != organization_id {
                 return Err(
                     "complete Gateway snapshot crosses the physical node organization".into(),
                 );
@@ -616,7 +619,7 @@ impl GatewaySnapshotCompiler {
         }
         for claim in additional_domain_claims {
             validate_verified_domain_claim(&claim, issued_at)?;
-            if claim.organization_id != mcp.organization_id() {
+            if claim.organization_id != organization_id {
                 return Err(
                     "managed Gateway Route snapshot additional DomainClaim crosses the node organization"
                         .into(),
@@ -630,7 +633,7 @@ impl GatewaySnapshotCompiler {
         for route in &snapshot_routes {
             route.validate_target_binding()?;
             if route.gateway_node_id != metadata.node_id
-                || route.organization_id != mcp.organization_id()
+                || route.organization_id != organization_id
                 || !matches!(route.state, RouteState::Pending | RouteState::Active)
                 || route.aggregate_version == 0
             {
@@ -693,19 +696,12 @@ impl GatewaySnapshotCompiler {
 
         let mut claim_authority = claims
             .iter()
-            .map(|(id, claim)| {
-                (
-                    *id,
-                    (
-                        claim.organization_id,
-                        claim.project_id,
-                        claim.environment_id,
-                        claim.aggregate_version,
-                        claim.pattern.clone(),
-                    ),
-                )
-            })
+            .map(|(id, claim)| (*id, (claim.aggregate_version, claim.pattern.clone())))
             .collect::<BTreeMap<_, _>>();
+        let mut certificate_domain_claim_ids = snapshot_routes
+            .iter()
+            .filter_map(|route| route.domain_claim_id)
+            .collect::<BTreeSet<_>>();
         let mcp_route_versions = mcp
             .route_versions()
             .iter()
@@ -738,18 +734,13 @@ impl GatewaySnapshotCompiler {
                     "MCP Gateway ingress and route version reference different DomainClaims".into(),
                 );
             }
-            let scope = mcp.scope(version.gateway_scope_id()).ok_or_else(|| {
-                "MCP Gateway route evidence references an inactive logical scope".to_string()
-            })?;
             insert_claim_authority(
                 &mut claim_authority,
                 ingress.domain_claim_id(),
-                scope.organization_id,
-                scope.project_id,
-                scope.environment_id,
                 version.domain_claim_aggregate_version(),
                 ingress.domain_pattern().clone(),
             )?;
+            certificate_domain_claim_ids.insert(ingress.domain_claim_id());
         }
 
         let projection = mcp.projection().map(|planned| planned.projection());
@@ -795,18 +786,13 @@ impl GatewaySnapshotCompiler {
             domain_claim_versions: claim_authority
                 .into_iter()
                 .map(
-                    |(
+                    |(domain_claim_id, (aggregate_version, _))| GatewayDomainClaimVersion {
                         domain_claim_id,
-                        (organization_id, project_id, environment_id, aggregate_version, _),
-                    )| GatewayDomainClaimVersion {
-                        domain_claim_id,
-                        organization_id,
-                        project_id,
-                        environment_id,
                         aggregate_version,
                     },
                 )
                 .collect(),
+            certificate_domain_claim_ids: certificate_domain_claim_ids.into_iter().collect(),
             mcp,
         })
     }

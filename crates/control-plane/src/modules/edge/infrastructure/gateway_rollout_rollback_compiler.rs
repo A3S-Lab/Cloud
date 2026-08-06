@@ -677,7 +677,7 @@ fn validate_managed_member_context(
     };
     if physical_scope.last_issued_revision != replica.revision
         || physical_scope.installed_revision != observed_revision
-        || context.desired_state.mcp().organization_id() != scope.organization_id
+        || context.desired_state.mcp().primary_scope().organization_id != scope.organization_id
         || context.desired_state.active_routes().iter().any(|input| {
             input.route.organization_id != scope.organization_id
                 || input.route.gateway_node_id != physical_scope.node_id
@@ -720,9 +720,9 @@ fn validate_managed_reusable_certificate(
         "managed reused Gateway certificate publication omitted its request".to_string()
     })?;
     let expected_claims = candidate
-        .domain_claim_versions()
+        .certificate_domain_claim_ids()
         .iter()
-        .map(|version| version.domain_claim_id())
+        .copied()
         .collect::<BTreeSet<_>>();
     let stored_claims = certificate
         .domain_claim_ids
@@ -735,7 +735,7 @@ fn validate_managed_reusable_certificate(
         || !expected_claims.is_subset(&stored_claims)
         || !reusable_material_is_current(
             certificate,
-            candidate.mcp().organization_id(),
+            candidate.mcp().primary_scope().organization_id,
             publication.node_id,
             issued_at,
         )

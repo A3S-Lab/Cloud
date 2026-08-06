@@ -56,7 +56,7 @@ pub use infrastructure::{
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
     FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
     GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
-    GatewayDomainClaimVersion, GatewayReplicaRecoveryReconciler,
+    GatewayDomainClaimVersion, GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
     GatewayReplicaRecoveryReconciliationFailure, GatewayReplicaRecoveryReconciliationReport,
     GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
     GatewayRolloutReconciliationReport, GatewayRolloutRollbackCompiler,

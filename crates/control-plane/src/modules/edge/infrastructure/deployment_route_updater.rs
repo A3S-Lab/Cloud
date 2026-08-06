@@ -10,8 +10,8 @@ use crate::modules::edge::domain::{
 use crate::modules::edge::infrastructure::{
     CompileManagedGatewayRouteSnapshot, GatewayManagedSnapshotComposition,
     GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
-    GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository, McpGatewaySnapshotAnchor,
-    PlanGatewayNodeDesiredState, StageManagedGatewayRouteCutover,
+    GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
+    StageManagedGatewayRouteCutover,
 };
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
@@ -204,25 +204,32 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
 
         let (scope, active_routes, managed_desired_state) = match &self.managed {
             Some(managed) => {
-                let fallback_anchor = McpGatewaySnapshotAnchor {
-                    organization_id: request.organization_id,
-                    project_id: request.project_id,
-                    environment_id: request.environment_id,
-                    gateway_scope_id: workload_routes
-                        .iter()
-                        .map(|route| route.gateway_scope_id)
-                        .min()
-                        .ok_or_else(|| {
-                            RepositoryError::Storage(
-                                "managed Gateway route cutover omitted its fallback scope".into(),
-                            )
-                        })?,
-                };
+                let fallback_scope_id = workload_routes
+                    .iter()
+                    .map(|route| route.gateway_scope_id)
+                    .min()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "managed Gateway route cutover omitted its fallback scope".into(),
+                        )
+                    })?;
+                let fallback_scope = self
+                    .routes
+                    .find_gateway_scope(request.organization_id, fallback_scope_id)
+                    .await?;
+                if fallback_scope.project_id != request.project_id
+                    || fallback_scope.environment_id != request.environment_id
+                    || !fallback_scope.contains_member(request.node_id)
+                {
+                    return Err(RepositoryError::Conflict(
+                        "managed Gateway route cutover fallback scope changed".into(),
+                    ));
+                }
                 let mut desired_state = managed
                     .desired_state
                     .plan(PlanGatewayNodeDesiredState {
                         gateway_node_id: request.node_id,
-                        fallback_anchor,
+                        fallback_scope: fallback_scope.clone(),
                         observed_at: now,
                     })
                     .await?;
@@ -236,7 +243,7 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                         .desired_state
                         .plan(PlanGatewayNodeDesiredState {
                             gateway_node_id: request.node_id,
-                            fallback_anchor,
+                            fallback_scope,
                             observed_at: required_observation,
                         })
                         .await?;

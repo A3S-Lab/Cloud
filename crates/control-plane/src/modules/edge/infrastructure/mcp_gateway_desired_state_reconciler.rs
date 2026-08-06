@@ -39,7 +39,6 @@ pub struct McpGatewayDesiredStateReconciler {
     compiler: GatewaySnapshotCompiler,
     interval: Duration,
     command_ttl: ChronoDuration,
-    certificate_renewal_window: ChronoDuration,
     empty_snapshot_ttl: ChronoDuration,
     certificate_renewal_window: ChronoDuration,
     retry_delay: ChronoDuration,
@@ -55,7 +54,6 @@ impl McpGatewayDesiredStateReconciler {
         compiler: GatewaySnapshotCompiler,
         interval: Duration,
         command_ttl: ChronoDuration,
-        certificate_renewal_window: ChronoDuration,
         empty_snapshot_ttl: ChronoDuration,
         certificate_renewal_window: ChronoDuration,
         retry_delay: ChronoDuration,
@@ -63,8 +61,6 @@ impl McpGatewayDesiredStateReconciler {
     ) -> Result<Self, String> {
         if interval.is_zero()
             || command_ttl <= ChronoDuration::zero()
-            || certificate_renewal_window <= ChronoDuration::zero()
-            || certificate_renewal_window > ChronoDuration::days(30)
             || empty_snapshot_ttl <= command_ttl
             || empty_snapshot_ttl > ChronoDuration::days(7)
             || certificate_renewal_window <= ChronoDuration::zero()
@@ -84,7 +80,6 @@ impl McpGatewayDesiredStateReconciler {
             compiler,
             interval,
             command_ttl,
-            certificate_renewal_window,
             empty_snapshot_ttl,
             certificate_renewal_window,
             retry_delay,

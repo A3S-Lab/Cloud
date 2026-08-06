@@ -486,16 +486,12 @@ impl GatewayManagedSnapshotComposition {
             .checked_add(1)
             .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
         let event = McpGatewaySnapshotStaged::envelope(
-            candidate.mcp().anchor().organization_id,
-            candidate.mcp().anchor().project_id,
-            candidate.mcp().anchor().environment_id,
-            candidate.mcp().anchor().gateway_scope_id,
-            candidate.mcp().scope_ids().to_vec(),
+            &logical_scopes(&candidate),
             next_physical_scope_version,
             publication,
             ordinary_route_ids(&candidate),
             mcp_route_ids(&candidate),
-            domain_claim_ids(&candidate),
+            certificate_domain_claim_ids(&candidate),
         )?;
         let composition = Self {
             candidate,
@@ -529,28 +525,36 @@ impl GatewayManagedSnapshotComposition {
         let payload =
             serde_json::from_value::<McpGatewaySnapshotStaged>(self.event.payload.clone())
                 .map_err(|error| error.to_string())?;
+        let primary_scope = self.candidate.mcp().primary_scope();
+        let gateway_scope_ids = self
+            .candidate
+            .mcp()
+            .scope_sets()
+            .iter()
+            .map(|planned| planned.scope().id)
+            .collect::<Vec<_>>();
         if publication.snapshot()? != *self.candidate.snapshot()
             || publication.node_id != self.candidate.physical_scope().node_id
             || publication.command_issued_at != self.candidate.mcp().observed_at()
             || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
             || self.event.schema_version != 2
-            || self.event.organization_id != self.candidate.mcp().organization_id().as_uuid()
+            || self.event.organization_id != primary_scope.organization_id.as_uuid()
             || self.event.aggregate_id != publication.node_id.as_uuid()
             || self.event.aggregate_version != expected_scope_version
             || self.event.occurred_at != publication.command_issued_at
             || self.event.correlation_id != publication.command_correlation_id
-            || payload.organization_id != self.candidate.mcp().anchor().organization_id
-            || payload.project_id != self.candidate.mcp().anchor().project_id
-            || payload.environment_id != self.candidate.mcp().anchor().environment_id
-            || payload.gateway_scope_id != self.candidate.mcp().anchor().gateway_scope_id
-            || payload.desired_gateway_scope_ids != self.candidate.mcp().scope_ids()
+            || payload.organization_id != primary_scope.organization_id
+            || payload.project_id != primary_scope.project_id
+            || payload.environment_id != primary_scope.environment_id
+            || payload.gateway_scope_id != primary_scope.id
+            || payload.gateway_scope_ids != gateway_scope_ids
             || payload.node_id != publication.node_id
             || payload.gateway_revision != publication.revision
             || payload.gateway_command_id != publication.command_id
             || payload.snapshot_digest != publication.snapshot_digest
             || payload.ordinary_route_ids != ordinary_route_ids(&self.candidate)
             || payload.mcp_route_ids != mcp_route_ids(&self.candidate)
-            || payload.domain_claim_ids != domain_claim_ids(&self.candidate)
+            || payload.domain_claim_ids != certificate_domain_claim_ids(&self.candidate)
         {
             return Err("managed Gateway snapshot composition is inconsistent".into());
         }
@@ -567,8 +571,14 @@ impl StageManagedRoutePublication {
         composition.validate_for(&ordinary.publication)?;
         if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
             || composition.candidate().physical_scope().node_id != ordinary.publication.node_id
-            || composition.candidate().mcp().organization_id() != ordinary.route.organization_id
-            || ordinary.certificate.domain_claim_ids != domain_claim_ids(composition.candidate())
+            || composition
+                .candidate()
+                .mcp()
+                .primary_scope()
+                .organization_id
+                != ordinary.route.organization_id
+            || ordinary.certificate.domain_claim_ids
+                != certificate_domain_claim_ids(composition.candidate())
         {
             return Err("managed Route publication composition is inconsistent".into());
         }
@@ -606,8 +616,14 @@ impl StageManagedGatewayRouteCutover {
             .collect::<BTreeSet<_>>();
         if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
             || composition.candidate().physical_scope().node_id != ordinary.publication.node_id
-            || composition.candidate().mcp().organization_id() != ordinary.cutover.organization_id
-            || ordinary.certificate.domain_claim_ids != domain_claim_ids(composition.candidate())
+            || composition
+                .candidate()
+                .mcp()
+                .primary_scope()
+                .organization_id
+                != ordinary.cutover.organization_id
+            || ordinary.certificate.domain_claim_ids
+                != certificate_domain_claim_ids(composition.candidate())
             || ordinary
                 .cutover
                 .routes
@@ -669,7 +685,7 @@ impl StageManagedGatewayCertificateConvergence {
             .iter()
             .copied()
             .collect::<BTreeSet<_>>();
-        let expected_claims = domain_claim_ids(composition.candidate())
+        let expected_claims = certificate_domain_claim_ids(composition.candidate())
             .into_iter()
             .collect::<BTreeSet<_>>();
         let previous_claims = previous_certificate
@@ -679,7 +695,11 @@ impl StageManagedGatewayCertificateConvergence {
             .collect::<BTreeSet<_>>();
         if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
             || composition.candidate().physical_scope().node_id != ordinary.publication.node_id
-            || composition.candidate().mcp().organization_id()
+            || composition
+                .candidate()
+                .mcp()
+                .primary_scope()
+                .organization_id
                 != ordinary.convergence.organization_id
             || classified_routes != observed_routes
             || retained_route_ids != candidate_route_ids
@@ -772,8 +792,14 @@ impl StageManagedGatewayRollout {
                     "managed Gateway rollout publication omitted its certificate".to_string()
                 })?;
             if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
-                || composition.candidate().mcp().organization_id() != ordinary.scope.organization_id
-                || certificate.domain_claim_ids != domain_claim_ids(composition.candidate())
+                || composition
+                    .candidate()
+                    .mcp()
+                    .primary_scope()
+                    .organization_id
+                    != ordinary.scope.organization_id
+                || certificate.domain_claim_ids
+                    != certificate_domain_claim_ids(composition.candidate())
             {
                 return Err("managed Gateway rollout composition is inconsistent".into());
             }
@@ -825,11 +851,16 @@ impl StageManagedGatewayRolloutRollback {
             })?;
             composition.validate_for(publication)?;
             if composition.owner() != GatewaySnapshotPublicationOwner::Ordinary
-                || composition.candidate().mcp().organization_id() != ordinary.scope.organization_id
+                || composition
+                    .candidate()
+                    .mcp()
+                    .primary_scope()
+                    .organization_id
+                    != ordinary.scope.organization_id
             {
                 return Err("managed Gateway rollback composition is inconsistent".into());
             }
-            let expected_claims = domain_claim_ids(composition.candidate())
+            let expected_claims = certificate_domain_claim_ids(composition.candidate())
                 .into_iter()
                 .collect::<BTreeSet<_>>();
             match &publication.certificate_request {

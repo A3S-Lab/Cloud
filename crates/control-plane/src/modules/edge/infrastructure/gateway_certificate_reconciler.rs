@@ -1,7 +1,7 @@
 use super::{
     CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
     GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotAnchor, PlanGatewayNodeDesiredState,
+    IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
     StageManagedGatewayCertificateConvergence,
 };
 use crate::modules::edge::domain::events::GatewayCertificateConvergenceStaged;
@@ -550,16 +550,25 @@ impl GatewayCertificateReconciler {
                 "managed Gateway certificate target omitted its anchor Route".into(),
             )
         })?;
-        let fallback_anchor = McpGatewaySnapshotAnchor {
-            organization_id: fallback_route.route.organization_id,
-            project_id: fallback_route.route.project_id,
-            environment_id: fallback_route.route.environment_id,
-            gateway_scope_id: fallback_route.route.gateway_scope_id,
-        };
+        let fallback_scope = self
+            .repository
+            .find_gateway_scope(
+                fallback_route.route.organization_id,
+                fallback_route.route.gateway_scope_id,
+            )
+            .await?;
+        if fallback_scope.project_id != fallback_route.route.project_id
+            || fallback_scope.environment_id != fallback_route.route.environment_id
+            || !fallback_scope.contains_member(target.scope.node_id)
+        {
+            return Err(RepositoryError::Conflict(
+                "managed Gateway certificate fallback scope changed".into(),
+            ));
+        }
         let desired_state = desired_state
             .plan(PlanGatewayNodeDesiredState {
                 gateway_node_id: target.scope.node_id,
-                fallback_anchor,
+                fallback_scope,
                 observed_at: now,
             })
             .await?;

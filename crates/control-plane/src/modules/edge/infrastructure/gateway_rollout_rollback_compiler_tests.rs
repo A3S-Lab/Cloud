@@ -2,8 +2,8 @@ use super::{
     CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
     GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, GatewaySnapshotPublicationOwner,
-    ManagedGatewayRollbackMemberSnapshotContext, McpGatewayNodeProjectionAssembler,
-    McpGatewaySnapshotAnchor, PlannedGatewayNodeDesiredState,
+    ManagedGatewayRollbackMemberSnapshotContext, PlannedGatewayNodeDesiredState,
+    PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjectionSet,
 };
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayRollout,
@@ -125,14 +125,11 @@ fn managed_rollback_carries_one_complete_composition_for_every_member() {
         claim
             .verify(now - Duration::minutes(25))
             .expect("verified claim");
-        let mcp = McpGatewayNodeProjectionAssembler::default()
-            .assemble(
-                McpGatewaySnapshotAnchor::from_scope(&scope),
-                node_id,
-                now,
-                Vec::new(),
-            )
-            .expect("empty MCP desired state");
+        let mcp = PlannedMcpGatewayNodeProjection::single(
+            PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, now)
+                .expect("empty MCP scope projection"),
+        )
+        .expect("empty MCP desired state");
         let desired_state = PlannedGatewayNodeDesiredState::new(
             GatewayScopeState {
                 node_id,

@@ -652,11 +652,11 @@ fn cloud_migrations() -> Vec<Migration> {
             )),
         ),
         Migration::new(
-            "059",
+            "073",
             "unified Gateway snapshot publication ownership",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/059_gateway_snapshot_publication_owners.sql"
+                "/../../migrations/073_gateway_snapshot_publication_owners.sql"
             )),
         ),
     ]

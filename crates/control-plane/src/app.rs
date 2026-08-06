@@ -38,18 +38,19 @@ use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
     EdgeModule, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
-    GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
-    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
-    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
-    ListMcpCredentialsHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
-    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PostgresEdgeRepository, PublishRouteHandler,
-    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
+    GatewayRolloutReconciler, GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler,
+    GetMcpCredentialHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
+    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
+    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
+    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -480,17 +481,36 @@ pub async fn build_application_with_source_resolver(
         McpGatewayProjectionPlanner::new(mcp_route_planner, edge_repository),
         McpGatewayProjectionAssembler,
     ));
-    let mcp_node_projection_planner = Arc::new(McpGatewayNodeProjectionPlanner::new(
+    let mcp_node_projection_planner: Arc<
+        dyn crate::modules::edge::IMcpGatewayNodeProjectionPlanner,
+    > = Arc::new(McpGatewayNodeProjectionPlanner::new(
         mcp_projection_set_planner,
         McpGatewayProjectionAssembler,
     ));
+    let gateway_node_desired_state_planner = GatewayNodeDesiredStatePlanner::new(
+        Arc::clone(&mcp_gateway_snapshots),
+        Arc::clone(&mcp_node_projection_planner),
+    );
+    let gateway_certificate_reconciler = GatewayCertificateReconciler::new_managed(
+        Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
+        Arc::clone(&route_commands),
+        Arc::clone(&gateway_certificate_authority),
+        deployment_route_compiler.clone(),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
         Arc::clone(&mcp_gateway_snapshots),
         mcp_node_projection_planner,
         deployment_route_compiler.clone(),
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         chrono_duration(config.edge.command_ttl_ms)?,
-        chrono_duration(config.edge.certificate_renewal_window_ms)?,
         chrono::Duration::hours(24),
         chrono_duration(config.edge.certificate_renewal_window_ms)?,
         chrono_duration(config.edge.command_ttl_ms)?,

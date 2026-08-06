@@ -6,7 +6,7 @@ use crate::modules::edge::domain::{
 use crate::modules::edge::infrastructure::{
     CompileGatewayRouteRollout, CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout,
     GatewayMemberSnapshotContext, GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler,
-    McpGatewaySnapshotAnchor, PlanGatewayNodeDesiredState,
+    PlanGatewayNodeDesiredState,
 };
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayRolloutId, RepositoryError, RouteId, WorkloadRevisionId,
@@ -188,12 +188,11 @@ impl GatewayRouteRolloutPlanner {
                 "route target set does not match the requested workload revision and port".into(),
             ));
         }
-        let fallback_anchor = McpGatewaySnapshotAnchor::from_scope(&request.scope);
         let member_desired_states =
             try_join_all(request.scope.member_node_ids.iter().map(|node_id| {
                 desired_state.plan(PlanGatewayNodeDesiredState {
                     gateway_node_id: *node_id,
-                    fallback_anchor,
+                    fallback_scope: request.scope.clone(),
                     observed_at: request.issued_at,
                 })
             }))
