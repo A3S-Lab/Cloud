@@ -6,6 +6,8 @@ mod postgres_cutovers;
 mod postgres_gateway_scopes;
 mod postgres_mcp_credential_lifecycle;
 mod postgres_mcp_credentials;
+mod postgres_mcp_gateway_scope_evidence;
+mod postgres_mcp_gateway_snapshot_cas;
 mod postgres_mcp_gateway_snapshots;
 mod postgres_mcp_route_policies;
 mod postgres_rollout_routes;

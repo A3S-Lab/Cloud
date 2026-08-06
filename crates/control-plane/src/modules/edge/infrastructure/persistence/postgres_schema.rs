@@ -357,6 +357,21 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct McpGatewaySnapshotPublicationScopes => "mcp_gateway_snapshot_publication_scopes" {
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        gateway_scope_id: Uuid => "gateway_scope_id",
+        node_id: Uuid => "node_id",
+        gateway_revision: u64 => "gateway_revision",
+        scope_aggregate_version: u64 => "scope_aggregate_version",
+        membership_generation: u64 => "membership_generation",
+        receiving_member: bool => "receiving_member",
+        mcp_route_count: u32 => "mcp_route_count",
+    }
+}
+
+orm_table! {
     pub(super) struct McpCredentialDeliveryReceipts => "mcp_credential_delivery_receipts" {
         credential_id: Uuid => "credential_id",
         organization_id: Uuid => "organization_id",

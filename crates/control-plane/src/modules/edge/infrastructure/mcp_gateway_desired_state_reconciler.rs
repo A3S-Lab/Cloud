@@ -1,13 +1,14 @@
 use super::{
     CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
-    IMcpGatewayProjectionSetPlanner, IMcpGatewaySnapshotRepository,
-    McpGatewaySnapshotReconciliationState, PlanMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
+    IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
+    McpGatewaySnapshotReconciliationState, PlanMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::GatewayPublicationState;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayScopeId, NodeCommandId, NodeId, RepositoryError,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::watch;
@@ -34,7 +35,7 @@ pub struct McpGatewayDesiredStateReconciliationReport {
 
 pub struct McpGatewayDesiredStateReconciler {
     repository: Arc<dyn IMcpGatewaySnapshotRepository>,
-    planner: Arc<dyn IMcpGatewayProjectionSetPlanner>,
+    planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
     compiler: GatewaySnapshotCompiler,
     interval: Duration,
     command_ttl: ChronoDuration,
@@ -49,7 +50,7 @@ impl McpGatewayDesiredStateReconciler {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         repository: Arc<dyn IMcpGatewaySnapshotRepository>,
-        planner: Arc<dyn IMcpGatewayProjectionSetPlanner>,
+        planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
         compiler: GatewaySnapshotCompiler,
         interval: Duration,
         command_ttl: ChronoDuration,
@@ -107,17 +108,20 @@ impl McpGatewayDesiredStateReconciler {
             .repository
             .mcp_gateway_reconciliation_scopes(now, after_gateway_scope_id, self.batch_size)
             .await?;
+        let mut wrapped_scan = false;
         if scopes.is_empty() && after_gateway_scope_id.is_some() {
             scopes = self
                 .repository
                 .mcp_gateway_reconciliation_scopes(now, None, self.batch_size)
                 .await?;
+            wrapped_scan = true;
         }
-        if scopes.windows(2).any(|scopes| scopes[0].id >= scopes[1].id)
-            || after_gateway_scope_id.is_some_and(|cursor| {
-                scopes.first().is_some_and(|scope| scope.id <= cursor)
-                    && scopes.last().is_some_and(|scope| scope.id > cursor)
-            })
+        if scopes
+            .windows(2)
+            .any(|scopes| scopes[0].scope.id >= scopes[1].scope.id)
+            || !wrapped_scan
+                && after_gateway_scope_id
+                    .is_some_and(|cursor| scopes.iter().any(|scope| scope.scope.id <= cursor))
         {
             return Err(RepositoryError::Storage(
                 "MCP Gateway reconciliation scope scan is not cursor ordered".into(),
@@ -125,205 +129,250 @@ impl McpGatewayDesiredStateReconciler {
         }
         *self.scope_cursor.lock().map_err(|_| {
             RepositoryError::Storage("MCP Gateway scope cursor is poisoned".into())
-        })? = scopes.last().map(|scope| scope.id);
+        })? = scopes.last().map(|scope| scope.scope.id);
         let mut report = McpGatewayDesiredStateReconciliationReport {
             scopes: scopes.len(),
             ..McpGatewayDesiredStateReconciliationReport::default()
         };
-        for scope in scopes {
-            scope.validate().map_err(RepositoryError::Storage)?;
-            for node_id in &scope.member_node_ids {
-                report.gateway_members += 1;
-                let state = match self
-                    .repository
-                    .mcp_gateway_snapshot_reconciliation_state(scope.id, *node_id)
-                    .await
-                {
-                    Ok(state) => state,
-                    Err(_) => {
-                        report.failures.push(failure(
-                            scope.id,
-                            *node_id,
-                            "read-state",
-                            "MCP Gateway reconciliation state read failed",
-                        ));
-                        continue;
-                    }
-                };
-                if state.validate().is_err() {
-                    report.failures.push(failure(
-                        scope.id,
-                        *node_id,
-                        "validate-state",
-                        "MCP Gateway reconciliation state is inconsistent",
-                    ));
-                    continue;
-                }
-                if state.pending_publication {
-                    report.pending_publications += 1;
-                    continue;
-                }
-                let planned = match self
-                    .planner
-                    .plan(PlanMcpGatewayProjectionSet {
-                        scope: scope.clone(),
-                        gateway_node_id: *node_id,
-                        observed_at: now,
+        let mut nodes = BTreeMap::<NodeId, GatewayScopeId>::new();
+        for reconciliation_scope in scopes {
+            reconciliation_scope
+                .validate()
+                .map_err(RepositoryError::Storage)?;
+            for node_id in reconciliation_scope.node_ids {
+                nodes
+                    .entry(node_id)
+                    .and_modify(|scope_id| {
+                        *scope_id = (*scope_id).min(reconciliation_scope.scope.id)
                     })
-                    .await
-                {
-                    Ok(planned) => planned,
-                    Err(_) => {
-                        report.failures.push(failure(
-                            scope.id,
-                            *node_id,
-                            "plan",
-                            "complete MCP Gateway desired-state planning failed",
-                        ));
-                        continue;
-                    }
-                };
-                let has_mcp_routes = planned.projection().is_some();
-                if !has_mcp_routes {
-                    if let Some(decision) = empty_precompile_decision(&state, now, self.retry_delay)
-                    {
-                        record_decision(&mut report, decision);
-                        continue;
-                    }
-                }
-                let inputs = match self.repository.mcp_gateway_snapshot_inputs(*node_id).await {
-                    Ok(inputs) => inputs,
-                    Err(_) => {
-                        report.failures.push(failure(
-                            scope.id,
-                            *node_id,
-                            "read-inputs",
-                            "complete Gateway snapshot input read failed",
-                        ));
-                        continue;
-                    }
-                };
-                if inputs.validate(*node_id).is_err() {
+                    .or_insert(reconciliation_scope.scope.id);
+            }
+        }
+        report.gateway_members = nodes.len();
+        for (node_id, seed_scope_id) in nodes {
+            let scope_set = match self
+                .repository
+                .mcp_gateway_reconciliation_scope_set(node_id, now)
+                .await
+            {
+                Ok(scope_set) => scope_set,
+                Err(_) => {
                     report.failures.push(failure(
-                        scope.id,
-                        *node_id,
-                        "validate-inputs",
-                        "complete Gateway snapshot inputs are inconsistent",
+                        seed_scope_id,
+                        node_id,
+                        "read-scopes",
+                        "node-wide MCP Gateway scope-set read failed",
                     ));
                     continue;
                 }
-                let installed_revision = inputs.physical_scope.installed_revision;
-                let has_ordinary_routes = !inputs.active_routes.is_empty();
-                let expires_at = match planned.projection() {
-                    Some(projection) => projection.projection().expires_at,
-                    None => match now.checked_add_signed(self.empty_snapshot_ttl) {
-                        Some(expires_at) => expires_at,
-                        None => {
-                            report.failures.push(failure(
-                                scope.id,
-                                *node_id,
-                                "compile",
-                                "empty Gateway snapshot expiry exceeds supported time",
-                            ));
-                            continue;
-                        }
-                    },
-                };
-                let certificate_id = (has_ordinary_routes || has_mcp_routes)
-                    .then(crate::modules::shared_kernel::domain::GatewayCertificateId::new);
-                let candidate =
-                    match self
-                        .compiler
-                        .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
-                            metadata: GatewaySnapshotMetadata::new(
-                                *node_id,
-                                match inputs.physical_scope.next_revision() {
-                                    Ok(revision) => revision,
-                                    Err(_) => {
-                                        report.failures.push(failure(
-                                            scope.id,
-                                            *node_id,
-                                            "compile",
-                                            "physical Gateway revision is exhausted",
-                                        ));
-                                        continue;
-                                    }
-                                },
-                                inputs.physical_scope.installed_revision,
-                                now,
-                                expires_at,
-                            ),
-                            physical_scope: inputs.physical_scope.clone(),
-                            certificate_id,
-                            active_routes: inputs.active_routes,
-                            mcp: planned,
-                        }) {
-                        Ok(candidate) => candidate,
-                        Err(_) => {
-                            report.failures.push(failure(
-                                scope.id,
-                                *node_id,
-                                "compile",
-                                "complete MCP Gateway snapshot compilation failed",
-                            ));
-                            continue;
-                        }
-                    };
-                let decision = reconciliation_decision(
-                    &state,
-                    candidate.desired_state_digest(),
-                    ReconciliationTarget {
-                        has_mcp_routes,
-                        has_ordinary_routes,
-                        installed_revision,
-                    },
-                    now,
-                    certificate_renew_before,
-                    self.retry_delay,
-                );
-                if decision != ReconciliationDecision::Stage {
+            };
+            if scope_set.is_empty() {
+                report.unchanged_snapshots += 1;
+                continue;
+            }
+            if scope_set
+                .windows(2)
+                .any(|scopes| scopes[0].id >= scopes[1].id)
+                || scope_set.iter().any(|scope| scope.validate().is_err())
+            {
+                report.failures.push(failure(
+                    seed_scope_id,
+                    node_id,
+                    "validate-scopes",
+                    "node-wide MCP Gateway scope set is inconsistent",
+                ));
+                continue;
+            }
+            let gateway_scope_id = scope_set[0].id;
+            let state = match self
+                .repository
+                .mcp_gateway_snapshot_reconciliation_state(node_id)
+                .await
+            {
+                Ok(state) => state,
+                Err(_) => {
+                    report.failures.push(failure(
+                        gateway_scope_id,
+                        node_id,
+                        "read-state",
+                        "MCP Gateway reconciliation state read failed",
+                    ));
+                    continue;
+                }
+            };
+            if state.validate().is_err() {
+                report.failures.push(failure(
+                    gateway_scope_id,
+                    node_id,
+                    "validate-state",
+                    "MCP Gateway reconciliation state is inconsistent",
+                ));
+                continue;
+            }
+            if state.pending_publication {
+                report.pending_publications += 1;
+                continue;
+            }
+            let planned = match self
+                .planner
+                .plan(PlanMcpGatewayNodeProjection {
+                    scopes: scope_set,
+                    gateway_node_id: node_id,
+                    observed_at: now,
+                })
+                .await
+            {
+                Ok(planned) => planned,
+                Err(_) => {
+                    report.failures.push(failure(
+                        gateway_scope_id,
+                        node_id,
+                        "plan",
+                        "complete MCP Gateway desired-state planning failed",
+                    ));
+                    continue;
+                }
+            };
+            let has_mcp_routes = planned.projection().is_some();
+            if !has_mcp_routes {
+                if let Some(decision) = empty_precompile_decision(&state, now, self.retry_delay) {
                     record_decision(&mut report, decision);
                     continue;
                 }
-                let desired_command_deadline = match now.checked_add_signed(self.command_ttl) {
-                    Some(deadline) => deadline,
+            }
+            let inputs = match self.repository.mcp_gateway_snapshot_inputs(node_id).await {
+                Ok(inputs) => inputs,
+                Err(_) => {
+                    report.failures.push(failure(
+                        gateway_scope_id,
+                        node_id,
+                        "read-inputs",
+                        "complete Gateway snapshot input read failed",
+                    ));
+                    continue;
+                }
+            };
+            if inputs.validate(node_id).is_err() {
+                report.failures.push(failure(
+                    gateway_scope_id,
+                    node_id,
+                    "validate-inputs",
+                    "complete Gateway snapshot inputs are inconsistent",
+                ));
+                continue;
+            }
+            let installed_revision = inputs.physical_scope.installed_revision;
+            let has_ordinary_routes = !inputs.active_routes.is_empty();
+            let expires_at = match planned.projection() {
+                Some(projection) => projection.projection().expires_at,
+                None => match now.checked_add_signed(self.empty_snapshot_ttl) {
+                    Some(expires_at) => expires_at,
                     None => {
                         report.failures.push(failure(
-                            scope.id,
-                            *node_id,
-                            "stage",
-                            "MCP Gateway command deadline exceeds supported time",
+                            gateway_scope_id,
+                            node_id,
+                            "compile",
+                            "empty Gateway snapshot expiry exceeds supported time",
                         ));
                         continue;
                     }
-                };
-                let command_not_after = desired_command_deadline.min(expires_at);
-                let stage = match StageMcpGatewaySnapshot::new(
-                    candidate,
-                    NodeCommandId::new(),
-                    Uuid::now_v7(),
-                    command_not_after,
-                ) {
-                    Ok(stage) => stage,
+                },
+            };
+            let certificate_id = (has_ordinary_routes || has_mcp_routes)
+                .then(crate::modules::shared_kernel::domain::GatewayCertificateId::new);
+            let revision = match inputs.physical_scope.next_revision() {
+                Ok(revision) => revision,
+                Err(_) => {
+                    report.failures.push(failure(
+                        gateway_scope_id,
+                        node_id,
+                        "compile",
+                        "physical Gateway revision is exhausted",
+                    ));
+                    continue;
+                }
+            };
+            let candidate =
+                match self
+                    .compiler
+                    .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
+                        metadata: GatewaySnapshotMetadata::new(
+                            node_id,
+                            revision,
+                            inputs.physical_scope.installed_revision,
+                            now,
+                            expires_at,
+                        ),
+                        physical_scope: inputs.physical_scope.clone(),
+                        certificate_id,
+                        active_routes: inputs.active_routes,
+                        mcp: planned,
+                    }) {
+                    Ok(candidate) => candidate,
                     Err(_) => {
                         report.failures.push(failure(
-                            scope.id,
-                            *node_id,
-                            "stage",
-                            "MCP Gateway publication bundle is invalid",
+                            gateway_scope_id,
+                            node_id,
+                            "compile",
+                            "complete MCP Gateway snapshot compilation failed",
                         ));
                         continue;
                     }
                 };
-                match self.repository.stage_mcp_gateway_snapshot(stage).await {
-                    Ok(_) => report.staged_snapshots += 1,
-                    Err(_) => report.failures.push(failure(
-                        scope.id,
-                        *node_id,
-                        "persist",
-                        "MCP Gateway publication staging failed",
-                    )),
+            let decision = reconciliation_decision(
+                &state,
+                candidate.desired_state_digest(),
+                ReconciliationTarget {
+                    has_mcp_routes,
+                    has_ordinary_routes,
+                    installed_revision,
+                },
+                now,
+                certificate_renew_before,
+                self.retry_delay,
+            );
+            if decision != ReconciliationDecision::Stage {
+                record_decision(&mut report, decision);
+                continue;
+            }
+            let desired_command_deadline = match now.checked_add_signed(self.command_ttl) {
+                Some(deadline) => deadline,
+                None => {
+                    report.failures.push(failure(
+                        gateway_scope_id,
+                        node_id,
+                        "stage",
+                        "MCP Gateway command deadline exceeds supported time",
+                    ));
+                    continue;
                 }
+            };
+            let command_not_after = desired_command_deadline.min(expires_at);
+            let stage = match StageMcpGatewaySnapshot::new(
+                candidate,
+                NodeCommandId::new(),
+                Uuid::now_v7(),
+                command_not_after,
+            ) {
+                Ok(stage) => stage,
+                Err(_) => {
+                    report.failures.push(failure(
+                        gateway_scope_id,
+                        node_id,
+                        "stage",
+                        "MCP Gateway publication bundle is invalid",
+                    ));
+                    continue;
+                }
+            };
+            match self.repository.stage_mcp_gateway_snapshot(stage).await {
+                Ok(_) => report.staged_snapshots += 1,
+                Err(_) => report.failures.push(failure(
+                    gateway_scope_id,
+                    node_id,
+                    "persist",
+                    "MCP Gateway publication staging failed",
+                )),
             }
         }
         Ok(report)

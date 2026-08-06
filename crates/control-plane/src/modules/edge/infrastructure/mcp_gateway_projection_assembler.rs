@@ -24,7 +24,7 @@ impl McpGatewayProjectionAssembler {
     ) -> Result<PlannedMcpGatewayProjection, String> {
         if fragments.is_empty() || fragments.len() > 1_000 {
             return Err(
-                "MCP Gateway assembly requires between one and 1000 one-route fragments".into(),
+                "MCP Gateway assembly requires between one and 1000 bounded fragments".into(),
             );
         }
         let observed_at = canonical_timestamp(observed_at);
@@ -45,7 +45,7 @@ impl McpGatewayProjectionAssembler {
             }
             let (_, projection, fragment_credential_versions) = fragment.into_parts();
             projection.validate(observed_at)?;
-            validate_one_route_fragment(&projection)?;
+            validate_fragment(&projection)?;
             expires_at = Some(
                 expires_at
                     .map(|current| current.min(projection.expires_at))
@@ -101,6 +101,9 @@ impl McpGatewayProjectionAssembler {
                 if routes.insert(route.route_id, route).is_some() {
                     return Err("MCP Gateway assembly contains a duplicate route".into());
                 }
+                if routes.len() > 1_000 {
+                    return Err("MCP Gateway assembly exceeds the complete route bound".into());
+                }
             }
         }
 
@@ -120,20 +123,29 @@ impl McpGatewayProjectionAssembler {
     }
 }
 
-fn validate_one_route_fragment(projection: &McpGatewayProjection) -> Result<(), String> {
-    if projection.routes.len() != 1 || projection.profiles.len() != 1 {
+fn validate_fragment(projection: &McpGatewayProjection) -> Result<(), String> {
+    if projection.routes.is_empty() || projection.routes.len() > 1_000 {
+        return Err("MCP Gateway assembly inputs must contain a bounded route set".into());
+    }
+    let profile_ids = projection
+        .profiles
+        .iter()
+        .map(|profile| profile.profile_digest.as_str())
+        .collect::<BTreeSet<_>>();
+    let referenced_profile_ids = projection
+        .routes
+        .iter()
+        .map(|route| route.profile_digest.as_str())
+        .collect::<BTreeSet<_>>();
+    if profile_ids.len() != projection.profiles.len() || profile_ids != referenced_profile_ids {
         return Err(
-            "MCP Gateway assembly inputs must each contain exactly one route and one profile"
-                .into(),
+            "MCP Gateway assembly fragment profiles do not exactly cover its routes".into(),
         );
     }
-    let route = &projection.routes[0];
-    if projection.profiles[0].profile_digest != route.profile_digest {
-        return Err("MCP Gateway assembly fragment profile does not belong to its route".into());
-    }
-    let grant_ids = route
-        .grants
+    let grant_ids = projection
+        .routes
         .iter()
+        .flat_map(|route| &route.grants)
         .map(|grant| grant.credential_id)
         .collect::<BTreeSet<_>>();
     let credential_ids = projection
@@ -410,16 +422,20 @@ mod tests {
     }
 
     #[test]
-    fn rejects_a_preassembled_snapshot_as_a_route_fragment() {
+    fn merges_preassembled_scope_fragments_without_changing_canonical_output() {
         let gateway_node_id = NodeId::new();
         let (first, second) = fragments(gateway_node_id);
         let assembled = McpGatewayProjectionAssembler
-            .assemble(vec![first, second], now())
+            .assemble(vec![first.clone(), second.clone()], now())
             .expect("assembled projection");
 
-        assert!(McpGatewayProjectionAssembler
-            .assemble(vec![assembled], now())
-            .expect_err("nested complete snapshot")
-            .contains("exactly one route and one profile"));
+        assert_eq!(
+            McpGatewayProjectionAssembler
+                .assemble(vec![assembled], now())
+                .expect("preassembled scope fragment"),
+            McpGatewayProjectionAssembler
+                .assemble(vec![second, first], now())
+                .expect("independent route fragments")
+        );
     }
 }

@@ -38,11 +38,62 @@ pub struct McpGatewaySnapshotDispatchTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewayReconciliationScope {
+    pub scope: GatewayScope,
+    pub node_ids: Vec<NodeId>,
+}
+
+impl McpGatewayReconciliationScope {
+    pub fn validate(&self) -> Result<(), String> {
+        self.scope.validate()?;
+        if self.node_ids.is_empty()
+            || self
+                .node_ids
+                .iter()
+                .any(|node_id| node_id.as_uuid().is_nil())
+            || !strictly_sorted(&self.node_ids)
+        {
+            return Err("MCP Gateway reconciliation scope nodes are invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpGatewaySnapshotScopeStatus {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub gateway_scope_id: GatewayScopeId,
+    pub scope_aggregate_version: u64,
+    pub membership_generation: u64,
+    pub receiving_member: bool,
+    pub mcp_route_count: u32,
+}
+
+impl McpGatewaySnapshotScopeStatus {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.gateway_scope_id.as_uuid().is_nil()
+            || self.scope_aggregate_version == 0
+            || self.membership_generation == 0
+            || self.mcp_route_count > 1_000
+        {
+            return Err("MCP Gateway snapshot logical scope status is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpGatewaySnapshotStatus {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub gateway_scope_id: GatewayScopeId,
+    pub scope_statuses: Vec<McpGatewaySnapshotScopeStatus>,
     pub desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
     pub mcp_route_count: u32,
     pub publication: GatewayPublication,
@@ -59,6 +110,34 @@ impl McpGatewaySnapshotStatus {
             || self.mcp_route_count > 1_000
         {
             return Err("MCP Gateway snapshot status is inconsistent".into());
+        }
+        for scope in &self.scope_statuses {
+            scope.validate()?;
+        }
+        let primary = self
+            .scope_statuses
+            .first()
+            .ok_or_else(|| "MCP Gateway snapshot status omitted logical scopes".to_string())?;
+        let route_count = self.scope_statuses.iter().try_fold(0_u32, |total, scope| {
+            total
+                .checked_add(scope.mcp_route_count)
+                .ok_or_else(|| "MCP Gateway snapshot route count overflowed".to_string())
+        })?;
+        if self
+            .scope_statuses
+            .windows(2)
+            .any(|scopes| scopes[0].gateway_scope_id >= scopes[1].gateway_scope_id)
+            || primary.organization_id != self.organization_id
+            || primary.project_id != self.project_id
+            || primary.environment_id != self.environment_id
+            || primary.gateway_scope_id != self.gateway_scope_id
+            || self
+                .scope_statuses
+                .iter()
+                .any(|scope| scope.organization_id != self.organization_id)
+            || route_count != self.mcp_route_count
+        {
+            return Err("MCP Gateway snapshot logical scope evidence is inconsistent".into());
         }
         if let Some(certificate) = &self.certificate {
             certificate.request.validate()?;
@@ -184,7 +263,7 @@ impl StageMcpGatewaySnapshot {
             .map(|request| {
                 GatewayCertificate::provision(
                     GatewayCertificateId::from_uuid(request.certificate_id),
-                    candidate.mcp().scope().organization_id,
+                    candidate.mcp().primary_scope().organization_id,
                     publication.node_id,
                     domain_claim_ids.clone(),
                     publication.revision,
@@ -201,7 +280,7 @@ impl StageMcpGatewaySnapshot {
             .checked_add(1)
             .ok_or_else(|| "Gateway scope aggregate version space is exhausted".to_string())?;
         let event = McpGatewaySnapshotStaged::envelope(
-            candidate.mcp().scope(),
+            &logical_scopes(&candidate),
             next_physical_scope_version,
             &publication,
             ordinary_route_ids(&candidate),
@@ -248,6 +327,14 @@ impl StageMcpGatewaySnapshot {
         let ordinary_route_ids = ordinary_route_ids(&self.candidate);
         let mcp_route_ids = mcp_route_ids(&self.candidate);
         let domain_claim_ids = certificate_domain_claim_ids(&self.candidate);
+        let gateway_scope_ids = self
+            .candidate
+            .mcp()
+            .scope_sets()
+            .iter()
+            .map(|planned| planned.scope().id)
+            .collect::<Vec<_>>();
+        let primary_scope = self.candidate.mcp().primary_scope();
         if snapshot != *self.candidate.snapshot()
             || self.publication.state != GatewayPublicationState::Pending
             || self.publication.failure.is_some()
@@ -255,16 +342,17 @@ impl StageMcpGatewaySnapshot {
             || self.publication.node_id != self.candidate.physical_scope().node_id
             || self.publication.command_issued_at != self.candidate.mcp().observed_at()
             || self.event.event_key != "edge.mcp-gateway.snapshot-staged"
-            || self.event.schema_version != 1
-            || self.event.organization_id != self.candidate.mcp().scope().organization_id.as_uuid()
+            || self.event.schema_version != 2
+            || self.event.organization_id != primary_scope.organization_id.as_uuid()
             || self.event.aggregate_id != self.publication.node_id.as_uuid()
             || self.event.aggregate_version != expected_scope_version
             || self.event.occurred_at != self.publication.command_issued_at
             || self.event.correlation_id != self.publication.command_correlation_id
-            || payload.organization_id != self.candidate.mcp().scope().organization_id
-            || payload.project_id != self.candidate.mcp().scope().project_id
-            || payload.environment_id != self.candidate.mcp().scope().environment_id
-            || payload.gateway_scope_id != self.candidate.mcp().scope().id
+            || payload.organization_id != primary_scope.organization_id
+            || payload.project_id != primary_scope.project_id
+            || payload.environment_id != primary_scope.environment_id
+            || payload.gateway_scope_id != primary_scope.id
+            || payload.gateway_scope_ids != gateway_scope_ids
             || payload.node_id != self.publication.node_id
             || payload.gateway_revision != self.publication.revision
             || payload.gateway_command_id != self.publication.command_id
@@ -281,8 +369,7 @@ impl StageMcpGatewaySnapshot {
         ) {
             (Some(request), Some(certificate))
                 if certificate.id.as_uuid() == request.certificate_id
-                    && certificate.organization_id
-                        == self.candidate.mcp().scope().organization_id
+                    && certificate.organization_id == primary_scope.organization_id
                     && certificate.node_id == self.publication.node_id
                     && certificate.domain_claim_ids == domain_claim_ids
                     && certificate.gateway_revision == self.publication.revision
@@ -330,11 +417,16 @@ pub trait IMcpGatewaySnapshotRepository: Send + Sync {
         observed_at: DateTime<Utc>,
         after_gateway_scope_id: Option<GatewayScopeId>,
         limit: usize,
+    ) -> Result<Vec<McpGatewayReconciliationScope>, RepositoryError>;
+
+    async fn mcp_gateway_reconciliation_scope_set(
+        &self,
+        node_id: NodeId,
+        observed_at: DateTime<Utc>,
     ) -> Result<Vec<GatewayScope>, RepositoryError>;
 
     async fn mcp_gateway_snapshot_reconciliation_state(
         &self,
-        gateway_scope_id: GatewayScopeId,
         node_id: NodeId,
     ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError>;
 
@@ -386,4 +478,17 @@ fn mcp_route_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<RouteId> {
 
 fn certificate_domain_claim_ids(candidate: &CompiledMcpGatewaySnapshot) -> Vec<DomainClaimId> {
     candidate.certificate_domain_claim_ids().to_vec()
+}
+
+fn logical_scopes(candidate: &CompiledMcpGatewaySnapshot) -> Vec<GatewayScope> {
+    candidate
+        .mcp()
+        .scope_sets()
+        .iter()
+        .map(|planned| planned.scope().clone())
+        .collect()
+}
+
+fn strictly_sorted<T: Ord>(values: &[T]) -> bool {
+    values.windows(2).all(|values| values[0] < values[1])
 }

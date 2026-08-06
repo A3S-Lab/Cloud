@@ -1,39 +1,45 @@
 use super::postgres::{
-    insert_publication, PostgresEdgeRepository, PublicationRow, PublicationSelection, RouteRow,
-    RouteSelection,
+    insert_publication, PostgresEdgeRepository, PublicationRow, PublicationSelection,
+};
+use super::postgres_mcp_gateway_scope_evidence::{
+    insert_scope_evidence, load_scope_statuses, lock_scope_statuses, reconciliation_scope_set,
+    reconciliation_scopes,
+};
+use super::postgres_mcp_gateway_snapshot_cas::{
+    advance_physical_scope, lock_credentials, lock_domain_claims, lock_logical_scopes,
+    lock_mcp_policies, lock_node_scope_set, lock_ordinary_routes, lock_physical_scope,
+    lock_workloads,
 };
 use super::postgres_schema::{
-    DomainClaims, GatewayCertificates, GatewayPublications, GatewayRouteProjections,
-    GatewayRouteScopes, GatewayScopeMembers, GatewayScopes, McpCredentials,
-    McpGatewaySnapshotPublications, McpRoutePolicies, Nodes, Routes, Workloads,
+    GatewayCertificates, GatewayPublications, GatewayScopeMembers, McpGatewaySnapshotPublications,
+    McpRoutePolicies, Nodes,
 };
 use super::postgres_tls::{
     insert_certificate, update_certificate, CertificateRow, CertificateSelection,
 };
-use super::{postgres_gateway_scopes, postgres_rollout_routes};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, store_outbox, transaction_error,
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
-use crate::modules::edge::domain::{GatewayPublicationState, GatewayScopeState, RouteState};
 use crate::modules::edge::infrastructure::{
-    CompiledMcpGatewaySnapshot, IMcpGatewaySnapshotRepository, McpGatewaySnapshotDispatchTarget,
-    McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult,
-    McpGatewaySnapshotStatus, StageMcpGatewaySnapshot,
+    CompiledMcpGatewaySnapshot, IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope,
+    McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
+    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
+    McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus, StageMcpGatewaySnapshot,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
-    NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadRevisionId,
+    NodeId, OrganizationId, ProjectId, RepositoryError,
 };
-use a3s_orm::expression::{exists, not, Selection};
+use a3s_orm::expression::Selection;
 use a3s_orm::{
-    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
-    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
+    insert_into, lock_table, select_from, update_table, Database, DecodeError, Expression, FromRow,
+    FromValue, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTableLockMode,
+    PostgresTransaction, Row,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[async_trait]
@@ -43,16 +49,23 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         observed_at: DateTime<Utc>,
         after_gateway_scope_id: Option<GatewayScopeId>,
         limit: usize,
-    ) -> Result<Vec<crate::modules::edge::domain::GatewayScope>, RepositoryError> {
+    ) -> Result<Vec<McpGatewayReconciliationScope>, RepositoryError> {
         reconciliation_scopes(&self.executor, observed_at, after_gateway_scope_id, limit).await
+    }
+
+    async fn mcp_gateway_reconciliation_scope_set(
+        &self,
+        node_id: NodeId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<Vec<crate::modules::edge::domain::GatewayScope>, RepositoryError> {
+        reconciliation_scope_set(&self.executor, node_id, observed_at).await
     }
 
     async fn mcp_gateway_snapshot_reconciliation_state(
         &self,
-        gateway_scope_id: GatewayScopeId,
         node_id: NodeId,
     ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError> {
-        reconciliation_state(&self.executor, gateway_scope_id, node_id).await
+        reconciliation_state(&self.executor, node_id).await
     }
 
     async fn mcp_gateway_snapshot_inputs(
@@ -95,7 +108,7 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
             .transaction(move |transaction| {
                 Box::pin(async move {
                     let (candidate, publication, certificate, event) = stage.into_parts();
-                    let scope = candidate.mcp().scope();
+                    let scope = candidate.mcp().primary_scope();
                     let organization_id = fetch_optional::<Uuid, _>(
                         transaction,
                         select_from::<Nodes>()
@@ -109,7 +122,18 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
                         return Err(RepositoryError::NotFound.into());
                     }
 
-                    lock_logical_scope(transaction, &candidate).await?;
+                    lock_logical_scopes(transaction, &candidate).await?;
+                    execute(
+                        transaction,
+                        lock_table::<McpRoutePolicies>(PostgresTableLockMode::Share),
+                    )
+                    .await?;
+                    execute(
+                        transaction,
+                        lock_table::<GatewayScopeMembers>(PostgresTableLockMode::Share),
+                    )
+                    .await?;
+                    lock_node_scope_set(transaction, &candidate).await?;
                     let physical_scope = lock_physical_scope(transaction, &candidate).await?;
                     if fetch_optional::<u64, _>(
                         transaction,
@@ -141,6 +165,7 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
                         insert_certificate(transaction, certificate).await?;
                     }
                     insert_marker(transaction, &candidate, &publication).await?;
+                    insert_scope_evidence(transaction, &candidate, &publication).await?;
                     advance_physical_scope(transaction, &physical_scope, &publication).await?;
                     store_outbox(transaction, &event).await?;
                     Ok(McpGatewaySnapshotStageResult {
@@ -197,6 +222,7 @@ pub(super) struct McpGatewaySnapshotMarker {
     pub(super) desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
     pub(super) mcp_route_count: u32,
     pub(super) staged_at: DateTime<Utc>,
+    pub(super) scope_statuses: Vec<McpGatewaySnapshotScopeStatus>,
 }
 
 impl McpGatewaySnapshotMarker {
@@ -206,6 +232,17 @@ impl McpGatewaySnapshotMarker {
     ) -> Result<(), String> {
         publication.snapshot()?;
         crate::modules::shared_kernel::domain::Sha256Digest::parse(self.snapshot_digest.clone())?;
+        for scope in &self.scope_statuses {
+            scope.validate()?;
+        }
+        let primary = self.scope_statuses.first().ok_or_else(|| {
+            "stored MCP Gateway snapshot omitted logical scope evidence".to_string()
+        })?;
+        let route_count = self.scope_statuses.iter().try_fold(0_u32, |total, scope| {
+            total
+                .checked_add(scope.mcp_route_count)
+                .ok_or_else(|| "stored MCP Gateway snapshot route count overflowed".to_string())
+        })?;
         if self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.environment_id.as_uuid().is_nil()
@@ -213,6 +250,19 @@ impl McpGatewaySnapshotMarker {
             || self.node_id.as_uuid().is_nil()
             || self.gateway_revision == 0
             || self.mcp_route_count > 1_000
+            || self
+                .scope_statuses
+                .windows(2)
+                .any(|scopes| scopes[0].gateway_scope_id >= scopes[1].gateway_scope_id)
+            || primary.organization_id != self.organization_id
+            || primary.project_id != self.project_id
+            || primary.environment_id != self.environment_id
+            || primary.gateway_scope_id != self.gateway_scope_id
+            || self
+                .scope_statuses
+                .iter()
+                .any(|scope| scope.organization_id != self.organization_id)
+            || route_count != self.mcp_route_count
             || self.node_id != publication.node_id
             || self.gateway_revision != publication.revision
             || self.gateway_command_id != publication.command_id
@@ -301,7 +351,10 @@ impl McpGatewaySnapshotMarkerRow {
         })
     }
 
-    fn marker(self) -> Result<McpGatewaySnapshotMarker, RepositoryError> {
+    fn marker(
+        self,
+        scope_statuses: Vec<McpGatewaySnapshotScopeStatus>,
+    ) -> Result<McpGatewaySnapshotMarker, RepositoryError> {
         Ok(McpGatewaySnapshotMarker {
             organization_id: OrganizationId::from_uuid(self.organization_id),
             project_id: ProjectId::from_uuid(self.project_id),
@@ -317,6 +370,7 @@ impl McpGatewaySnapshotMarkerRow {
             .map_err(RepositoryError::Storage)?,
             mcp_route_count: self.mcp_route_count,
             staged_at: self.staged_at,
+            scope_statuses,
         })
     }
 }
@@ -348,9 +402,12 @@ impl FromRow for McpGatewaySnapshotDispatchRow {
 }
 
 impl McpGatewaySnapshotDispatchRow {
-    fn status(self) -> Result<McpGatewaySnapshotStatus, RepositoryError> {
+    fn status(
+        self,
+        scope_statuses: Vec<McpGatewaySnapshotScopeStatus>,
+    ) -> Result<McpGatewaySnapshotStatus, RepositoryError> {
         let publication = self.publication.publication()?;
-        let marker = self.marker.marker()?;
+        let marker = self.marker.marker(scope_statuses)?;
         marker
             .validate_for(&publication)
             .map_err(RepositoryError::Storage)?;
@@ -359,6 +416,7 @@ impl McpGatewaySnapshotDispatchRow {
             project_id: marker.project_id,
             environment_id: marker.environment_id,
             gateway_scope_id: marker.gateway_scope_id,
+            scope_statuses: marker.scope_statuses,
             desired_state_digest: marker.desired_state_digest,
             mcp_route_count: marker.mcp_route_count,
             publication,
@@ -369,76 +427,11 @@ impl McpGatewaySnapshotDispatchRow {
     }
 }
 
-async fn reconciliation_scopes(
-    executor: &PostgresExecutor,
-    observed_at: DateTime<Utc>,
-    after_gateway_scope_id: Option<GatewayScopeId>,
-    limit: usize,
-) -> Result<Vec<crate::modules::edge::domain::GatewayScope>, RepositoryError> {
-    validate_dispatch_limit(limit)?;
-    if after_gateway_scope_id.is_some_and(|scope_id| scope_id.as_uuid().is_nil()) {
-        return Err(RepositoryError::Conflict(
-            "MCP Gateway reconciliation cursor is invalid".into(),
-        ));
-    }
-    let observed_at = canonical_timestamp(observed_at);
-    let limit = u64::try_from(limit).map_err(|_| {
-        RepositoryError::Conflict("MCP Gateway reconciliation scope limit is invalid".into())
-    })?;
-    let active_policy = exists(
-        select_from::<McpRoutePolicies>()
-            .select(McpRoutePolicies::id())
-            .filter(McpRoutePolicies::gateway_scope_id().eq_column(GatewayRouteScopes::id()))
-            .filter(McpRoutePolicies::expires_at().gt(observed_at)),
-    );
-    let prior_mcp_publication = exists(
-        select_from::<McpGatewaySnapshotPublications>()
-            .select(McpGatewaySnapshotPublications::gateway_revision())
-            .filter(
-                McpGatewaySnapshotPublications::gateway_scope_id()
-                    .eq_column(GatewayRouteScopes::id()),
-            ),
-    );
-    let query = select_from::<GatewayRouteScopes>()
-        .select((
-            GatewayRouteScopes::organization_id(),
-            GatewayRouteScopes::id(),
-        ))
-        .filter(active_policy.or(prior_mcp_publication));
-    let query = if let Some(after_gateway_scope_id) = after_gateway_scope_id {
-        query.filter(GatewayRouteScopes::id().gt(after_gateway_scope_id.as_uuid()))
-    } else {
-        query
-    };
-    let identities = Database::new(PostgresDialect, executor.clone())
-        .fetch_all_as(
-            query
-                .order_by(GatewayRouteScopes::id(), OrderDirection::Asc)
-                .limit(limit),
-        )
-        .await
-        .map_err(storage)?
-        .rows;
-    let mut scopes = Vec::with_capacity(identities.len());
-    for (organization_id, scope_id) in identities {
-        scopes.push(
-            postgres_gateway_scopes::find(
-                executor,
-                OrganizationId::from_uuid(organization_id),
-                GatewayScopeId::from_uuid(scope_id),
-            )
-            .await?,
-        );
-    }
-    Ok(scopes)
-}
-
 async fn reconciliation_state(
     executor: &PostgresExecutor,
-    gateway_scope_id: GatewayScopeId,
     node_id: NodeId,
 ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError> {
-    if gateway_scope_id.as_uuid().is_nil() || node_id.as_uuid().is_nil() {
+    if node_id.as_uuid().is_nil() {
         return Err(RepositoryError::Conflict(
             "MCP Gateway reconciliation identity is invalid".into(),
         ));
@@ -455,7 +448,7 @@ async fn reconciliation_state(
         .await
         .map_err(storage)?
         .is_some();
-    let mut latest_mcp_snapshot = database
+    let latest_row = database
         .fetch_optional_as(
             select_from::<McpGatewaySnapshotPublications>()
                 .inner_join::<GatewayPublications>(
@@ -471,10 +464,6 @@ async fn reconciliation_state(
                         ),
                 )
                 .select(McpGatewaySnapshotDispatchSelection)
-                .filter(
-                    McpGatewaySnapshotPublications::gateway_scope_id()
-                        .eq(gateway_scope_id.as_uuid()),
-                )
                 .filter(McpGatewaySnapshotPublications::node_id().eq(node_id.as_uuid()))
                 .order_by(
                     McpGatewaySnapshotPublications::gateway_revision(),
@@ -483,9 +472,15 @@ async fn reconciliation_state(
                 .limit(1),
         )
         .await
-        .map_err(storage)?
-        .map(McpGatewaySnapshotDispatchRow::status)
-        .transpose()?;
+        .map_err(storage)?;
+    let mut latest_mcp_snapshot = match latest_row {
+        Some(row) => {
+            let scope_statuses =
+                load_scope_statuses(executor, node_id, row.marker.gateway_revision).await?;
+            Some(row.status(scope_statuses)?)
+        }
+        None => None,
+    };
     if let Some(status) = &mut latest_mcp_snapshot {
         status.certificate = database
             .fetch_optional_as(
@@ -501,9 +496,10 @@ async fn reconciliation_state(
             .transpose()?;
         status.validate().map_err(RepositoryError::Storage)?;
     }
-    if latest_mcp_snapshot.as_ref().is_some_and(|status| {
-        status.gateway_scope_id != gateway_scope_id || status.publication.node_id != node_id
-    }) {
+    if latest_mcp_snapshot
+        .as_ref()
+        .is_some_and(|status| status.publication.node_id != node_id)
+    {
         return Err(RepositoryError::Storage(
             "MCP Gateway reconciliation state crossed its requested identity".into(),
         ));
@@ -521,7 +517,7 @@ async fn insert_marker(
     candidate: &CompiledMcpGatewaySnapshot,
     publication: &crate::modules::edge::domain::GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
-    let scope = candidate.mcp().scope();
+    let scope = candidate.mcp().primary_scope();
     let mcp_route_count = u32::try_from(
         candidate
             .mcp()
@@ -627,13 +623,21 @@ async fn pending(
         .await
         .map_err(storage)?
         .rows;
-    rows.into_iter()
-        .map(|row| {
+    let mut targets = Vec::with_capacity(rows.len());
+    for row in rows {
+        let scope_statuses = load_scope_statuses(
+            executor,
+            NodeId::from_uuid(row.marker.node_id),
+            row.marker.gateway_revision,
+        )
+        .await?;
+        targets.push(
             row.marker
-                .marker()?
-                .dispatch_target(row.publication.publication()?)
-        })
-        .collect()
+                .marker(scope_statuses)?
+                .dispatch_target(row.publication.publication()?)?,
+        );
+    }
+    Ok(targets)
 }
 
 pub(super) async fn lock_marker_by_gateway_identity(
@@ -652,9 +656,14 @@ pub(super) async fn lock_marker_by_gateway_identity(
             .for_update(),
     )
     .await?;
-    row.map(McpGatewaySnapshotMarkerRow::marker)
-        .transpose()
-        .map_err(PostgresPersistenceError::from)
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let scope_statuses = lock_scope_statuses(transaction, node_id, gateway_revision).await?;
+    Ok(Some(
+        row.marker(scope_statuses)
+            .map_err(PostgresPersistenceError::from)?,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -796,476 +805,6 @@ async fn mark_unavailable(
         })
         .await
         .map_err(transaction_error)
-}
-
-async fn lock_logical_scope(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<(), PostgresPersistenceError> {
-    let scope = candidate.mcp().scope();
-    let stored = fetch_optional::<(Uuid, Uuid, Uuid, Uuid, u64, u64), _>(
-        transaction,
-        select_from::<GatewayRouteScopes>()
-            .select((
-                GatewayRouteScopes::organization_id(),
-                GatewayRouteScopes::project_id(),
-                GatewayRouteScopes::environment_id(),
-                GatewayRouteScopes::node_id(),
-                GatewayRouteScopes::membership_generation(),
-                GatewayRouteScopes::aggregate_version(),
-            ))
-            .filter(GatewayRouteScopes::id().eq(scope.id.as_uuid()))
-            .for_update(),
-    )
-    .await?
-    .ok_or(RepositoryError::NotFound)?;
-    if stored
-        != (
-            scope.organization_id.as_uuid(),
-            scope.project_id.as_uuid(),
-            scope.environment_id.as_uuid(),
-            scope.node_id.as_uuid(),
-            scope.membership_generation,
-            scope.aggregate_version,
-        )
-    {
-        return Err(RepositoryError::Conflict(
-            "logical Gateway scope changed while planning the MCP snapshot".into(),
-        )
-        .into());
-    }
-    let members = fetch_all::<(Uuid, u32, u64), _>(
-        transaction,
-        select_from::<GatewayScopeMembers>()
-            .select((
-                GatewayScopeMembers::node_id(),
-                GatewayScopeMembers::ordinal(),
-                GatewayScopeMembers::membership_generation(),
-            ))
-            .filter(GatewayScopeMembers::gateway_scope_id().eq(scope.id.as_uuid()))
-            .filter(GatewayScopeMembers::organization_id().eq(scope.organization_id.as_uuid()))
-            .filter(GatewayScopeMembers::project_id().eq(scope.project_id.as_uuid()))
-            .filter(GatewayScopeMembers::environment_id().eq(scope.environment_id.as_uuid()))
-            .order_by(GatewayScopeMembers::ordinal(), OrderDirection::Asc)
-            .for_update(),
-    )
-    .await?;
-    if members.len() != scope.member_node_ids.len()
-        || members.iter().zip(&scope.member_node_ids).enumerate().any(
-            |(index, ((node_id, ordinal, generation), expected_node_id))| {
-                *node_id != expected_node_id.as_uuid()
-                    || usize::try_from(*ordinal).ok() != Some(index)
-                    || *generation != scope.membership_generation
-            },
-        )
-    {
-        return Err(RepositoryError::Conflict(
-            "logical Gateway membership changed while planning the MCP snapshot".into(),
-        )
-        .into());
-    }
-    Ok(())
-}
-
-async fn lock_physical_scope(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<GatewayScopeState, PostgresPersistenceError> {
-    let expected = candidate.physical_scope();
-    let row = fetch_optional::<(u64, Option<u64>, u64), _>(
-        transaction,
-        select_from::<GatewayScopes>()
-            .select((
-                GatewayScopes::last_issued_revision(),
-                GatewayScopes::installed_revision(),
-                GatewayScopes::aggregate_version(),
-            ))
-            .filter(GatewayScopes::node_id().eq(expected.node_id.as_uuid()))
-            .for_update(),
-    )
-    .await?;
-    let current = row
-        .map(
-            |(last_issued_revision, installed_revision, aggregate_version)| GatewayScopeState {
-                node_id: expected.node_id,
-                last_issued_revision,
-                installed_revision,
-                aggregate_version,
-            },
-        )
-        .unwrap_or_else(|| GatewayScopeState::empty(expected.node_id));
-    validate_physical_scope(&current)?;
-    if &current != expected {
-        return Err(RepositoryError::Conflict(
-            "physical Gateway scope changed while compiling the complete snapshot".into(),
-        )
-        .into());
-    }
-    Ok(current)
-}
-
-async fn lock_ordinary_routes(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<(), PostgresPersistenceError> {
-    let node_id = candidate.physical_scope().node_id;
-    let projected_route = exists(
-        select_from::<GatewayRouteProjections>()
-            .select(GatewayRouteProjections::route_id())
-            .filter(GatewayRouteProjections::route_id().eq_column(Routes::id())),
-    );
-    let mut active = fetch_all::<RouteRow, _>(
-        transaction,
-        select_from::<Routes>()
-            .select(RouteSelection)
-            .filter(Routes::gateway_node_id().eq(node_id.as_uuid()))
-            .filter(Routes::state().eq("active"))
-            .filter(not(projected_route))
-            .order_by(Routes::id(), OrderDirection::Asc)
-            .for_update(),
-    )
-    .await?
-    .into_iter()
-    .map(RouteRow::route)
-    .collect::<Result<Vec<_>, _>>()?;
-    active.extend(postgres_rollout_routes::lock_active(transaction, node_id).await?);
-    active.sort_by_key(|route| route.id);
-    let expected = candidate.active_route_versions();
-    if active.len() != expected.len()
-        || active.iter().zip(expected).any(|(route, expected)| {
-            route.state != RouteState::Active
-                || route.gateway_node_id != node_id
-                || route.id != expected.route_id
-                || route.aggregate_version != expected.aggregate_version
-        })
-    {
-        return Err(RepositoryError::Conflict(
-            "ordinary Gateway Route set changed while compiling the complete snapshot".into(),
-        )
-        .into());
-    }
-    Ok(())
-}
-
-async fn lock_mcp_policies(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<(), PostgresPersistenceError> {
-    let scope = candidate.mcp().scope();
-    let rows = fetch_all::<(Uuid, u64, String, Uuid, Uuid, DateTime<Utc>), _>(
-        transaction,
-        select_from::<McpRoutePolicies>()
-            .select((
-                McpRoutePolicies::id(),
-                McpRoutePolicies::policy_revision(),
-                McpRoutePolicies::policy_digest(),
-                McpRoutePolicies::workload_id(),
-                McpRoutePolicies::domain_claim_id(),
-                McpRoutePolicies::updated_at(),
-            ))
-            .filter(McpRoutePolicies::organization_id().eq(scope.organization_id.as_uuid()))
-            .filter(McpRoutePolicies::project_id().eq(scope.project_id.as_uuid()))
-            .filter(McpRoutePolicies::environment_id().eq(scope.environment_id.as_uuid()))
-            .filter(McpRoutePolicies::gateway_scope_id().eq(scope.id.as_uuid()))
-            .filter(McpRoutePolicies::expires_at().gt(candidate.mcp().observed_at()))
-            .order_by(McpRoutePolicies::id(), OrderDirection::Asc)
-            .limit(1_001)
-            .for_update(),
-    )
-    .await?;
-    let expected = candidate.mcp().route_versions();
-    if rows.len() != expected.len()
-        || rows.iter().zip(expected).any(
-            |((route_id, revision, digest, workload_id, domain_claim_id, updated_at), expected)| {
-                *route_id != expected.route_id().as_uuid()
-                    || *revision != expected.policy_revision()
-                    || digest != expected.policy_digest().as_str()
-                    || *workload_id != expected.workload_id().as_uuid()
-                    || *domain_claim_id != expected.domain_claim_id().as_uuid()
-                    || *updated_at > candidate.mcp().observed_at()
-            },
-        )
-    {
-        return Err(RepositoryError::Conflict(
-            "active MCP route-policy set changed while compiling the complete snapshot".into(),
-        )
-        .into());
-    }
-    Ok(())
-}
-
-async fn lock_domain_claims(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<(), PostgresPersistenceError> {
-    let mcp_claims = candidate
-        .mcp()
-        .route_versions()
-        .iter()
-        .map(|version| version.domain_claim_id())
-        .collect::<BTreeSet<_>>();
-    for expected in candidate.domain_claim_versions() {
-        let row = fetch_optional::<
-            (
-                Uuid,
-                Uuid,
-                Uuid,
-                String,
-                Option<String>,
-                u64,
-                DateTime<Utc>,
-                Option<DateTime<Utc>>,
-            ),
-            _,
-        >(
-            transaction,
-            select_from::<DomainClaims>()
-                .select((
-                    DomainClaims::organization_id(),
-                    DomainClaims::project_id(),
-                    DomainClaims::environment_id(),
-                    DomainClaims::state(),
-                    DomainClaims::failure(),
-                    DomainClaims::aggregate_version(),
-                    DomainClaims::updated_at(),
-                    DomainClaims::revoked_at(),
-                ))
-                .filter(DomainClaims::id().eq(expected.domain_claim_id().as_uuid()))
-                .for_update(),
-        )
-        .await?
-        .ok_or_else(|| {
-            RepositoryError::Conflict(
-                "Gateway snapshot DomainClaim disappeared before staging".into(),
-            )
-        })?;
-        let (
-            organization_id,
-            project_id,
-            environment_id,
-            state,
-            failure,
-            aggregate_version,
-            updated_at,
-            revoked_at,
-        ) = row;
-        let is_mcp_claim = mcp_claims.contains(&expected.domain_claim_id());
-        let scope = candidate.mcp().scope();
-        if organization_id != scope.organization_id.as_uuid()
-            || is_mcp_claim
-                && (project_id != scope.project_id.as_uuid()
-                    || environment_id != scope.environment_id.as_uuid())
-            || state != "verified"
-            || failure.is_some()
-            || aggregate_version != expected.aggregate_version()
-            || updated_at > candidate.mcp().observed_at()
-            || revoked_at.is_some()
-        {
-            return Err(RepositoryError::Conflict(
-                "Gateway snapshot DomainClaim authority changed before staging".into(),
-            )
-            .into());
-        }
-    }
-    Ok(())
-}
-
-async fn lock_workloads(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<(), PostgresPersistenceError> {
-    let mut expected = BTreeMap::<WorkloadId, (u64, WorkloadRevisionId)>::new();
-    for version in candidate.mcp().route_versions() {
-        match expected.get(&version.workload_id()) {
-            Some(value)
-                if *value
-                    != (
-                        version.workload_aggregate_version(),
-                        version.active_revision_id(),
-                    ) =>
-            {
-                return Err(RepositoryError::Conflict(
-                    "MCP snapshot observed conflicting versions of one Workload".into(),
-                )
-                .into())
-            }
-            Some(_) => {}
-            None => {
-                expected.insert(
-                    version.workload_id(),
-                    (
-                        version.workload_aggregate_version(),
-                        version.active_revision_id(),
-                    ),
-                );
-            }
-        }
-    }
-    let scope = candidate.mcp().scope();
-    for (workload_id, (aggregate_version, active_revision_id)) in expected {
-        let row = fetch_optional::<(Uuid, Uuid, Uuid, String, Option<Uuid>, u64), _>(
-            transaction,
-            select_from::<Workloads>()
-                .select((
-                    Workloads::organization_id(),
-                    Workloads::project_id(),
-                    Workloads::environment_id(),
-                    Workloads::desired_state(),
-                    Workloads::active_revision_id(),
-                    Workloads::aggregate_version(),
-                ))
-                .filter(Workloads::id().eq(workload_id.as_uuid()))
-                .for_update(),
-        )
-        .await?
-        .ok_or_else(|| {
-            RepositoryError::Conflict(
-                "MCP snapshot Workload disappeared before Gateway staging".into(),
-            )
-        })?;
-        if row
-            != (
-                scope.organization_id.as_uuid(),
-                scope.project_id.as_uuid(),
-                scope.environment_id.as_uuid(),
-                "running".to_owned(),
-                Some(active_revision_id.as_uuid()),
-                aggregate_version,
-            )
-        {
-            return Err(RepositoryError::Conflict(
-                "MCP snapshot Workload authority changed before Gateway staging".into(),
-            )
-            .into());
-        }
-    }
-    Ok(())
-}
-
-async fn lock_credentials(
-    transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
-) -> Result<(), PostgresPersistenceError> {
-    let scope = candidate.mcp().scope();
-    for expected in candidate.mcp().credential_authority_versions() {
-        let row = fetch_optional::<
-            (
-                Uuid,
-                Uuid,
-                Uuid,
-                u64,
-                u64,
-                DateTime<Utc>,
-                Option<DateTime<Utc>>,
-            ),
-            _,
-        >(
-            transaction,
-            select_from::<McpCredentials>()
-                .select((
-                    McpCredentials::organization_id(),
-                    McpCredentials::project_id(),
-                    McpCredentials::environment_id(),
-                    McpCredentials::generation(),
-                    McpCredentials::aggregate_version(),
-                    McpCredentials::expires_at(),
-                    McpCredentials::revoked_at(),
-                ))
-                .filter(McpCredentials::id().eq(expected.credential_id().as_uuid()))
-                .for_update(),
-        )
-        .await?
-        .ok_or_else(|| {
-            RepositoryError::Conflict(
-                "MCP snapshot credential disappeared before Gateway staging".into(),
-            )
-        })?;
-        if row.0 != scope.organization_id.as_uuid()
-            || row.1 != scope.project_id.as_uuid()
-            || row.2 != scope.environment_id.as_uuid()
-            || row.3 != expected.generation()
-            || row.4 != expected.aggregate_version()
-            || (row.5 > candidate.mcp().observed_at() && row.6.is_none())
-                != expected.active_at_observed_at()
-        {
-            return Err(RepositoryError::Conflict(
-                "MCP snapshot credential authority changed before Gateway staging".into(),
-            )
-            .into());
-        }
-    }
-    Ok(())
-}
-
-async fn advance_physical_scope(
-    transaction: &PostgresTransaction,
-    current: &GatewayScopeState,
-    publication: &crate::modules::edge::domain::GatewayPublication,
-) -> Result<(), PostgresPersistenceError> {
-    if publication.state != GatewayPublicationState::Pending
-        || publication.node_id != current.node_id
-        || publication.revision != current.next_revision().map_err(RepositoryError::Conflict)?
-        || publication.expected_revision != current.installed_revision
-    {
-        return Err(RepositoryError::Conflict(
-            "MCP Gateway publication does not advance its exact physical scope".into(),
-        )
-        .into());
-    }
-    let next_version = current.aggregate_version.checked_add(1).ok_or_else(|| {
-        PostgresPersistenceError::Invariant("Gateway scope aggregate version overflowed".into())
-    })?;
-    if current.aggregate_version == 0 {
-        require_one_row(
-            "MCP Gateway scope",
-            execute(
-                transaction,
-                insert_into::<GatewayScopes>()
-                    .value(GatewayScopes::node_id(), publication.node_id.as_uuid())
-                    .value(GatewayScopes::last_issued_revision(), publication.revision)
-                    .value(
-                        GatewayScopes::installed_revision(),
-                        current.installed_revision,
-                    )
-                    .value(GatewayScopes::aggregate_version(), next_version)
-                    .value(GatewayScopes::updated_at(), publication.command_issued_at),
-            )
-            .await?,
-        )?;
-    } else {
-        require_one_row(
-            "MCP Gateway scope",
-            execute(
-                transaction,
-                update_table::<GatewayScopes>()
-                    .set(GatewayScopes::last_issued_revision(), publication.revision)
-                    .set(GatewayScopes::aggregate_version(), next_version)
-                    .set(GatewayScopes::updated_at(), publication.command_issued_at)
-                    .filter(GatewayScopes::node_id().eq(publication.node_id.as_uuid()))
-                    .filter(GatewayScopes::aggregate_version().eq(current.aggregate_version)),
-            )
-            .await?,
-        )?;
-    }
-    Ok(())
-}
-
-fn validate_physical_scope(scope: &GatewayScopeState) -> Result<(), PostgresPersistenceError> {
-    if scope.node_id.as_uuid().is_nil()
-        || scope
-            .installed_revision
-            .is_some_and(|revision| revision == 0 || revision > scope.last_issued_revision)
-        || if scope.last_issued_revision == 0 {
-            scope.aggregate_version != 0 || scope.installed_revision.is_some()
-        } else {
-            scope.aggregate_version == 0
-        }
-    {
-        return Err(PostgresPersistenceError::Invariant(
-            "stored physical Gateway scope is invalid".into(),
-        ));
-    }
-    Ok(())
 }
 
 fn validate_dispatch_limit(limit: usize) -> Result<(), RepositoryError> {
