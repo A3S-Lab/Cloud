@@ -145,6 +145,26 @@ impl PlannedMcpGatewayProjectionSet {
         })
     }
 
+    pub(crate) fn empty_for_departed_member(
+        scope: GatewayScope,
+        gateway_node_id: NodeId,
+        observed_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        scope.validate()?;
+        if scope.contains_member(gateway_node_id) {
+            return Err("departed MCP projection Gateway is still a scope member".into());
+        }
+        Ok(Self {
+            scope,
+            gateway_node_id,
+            observed_at: canonical_timestamp(observed_at),
+            route_versions: Vec::new(),
+            credential_authority_versions: Vec::new(),
+            ingress_routes: Vec::new(),
+            projection: None,
+        })
+    }
+
     pub const fn scope(&self) -> &GatewayScope {
         &self.scope
     }
@@ -422,7 +442,7 @@ mod tests {
     use crate::modules::edge::infrastructure::{
         CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
         GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpRouteProjectionPlanner,
-        McpRouteTargetProjectionCompiler, StageMcpGatewaySnapshot,
+        McpRouteTargetProjectionCompiler, PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
     };
     use crate::modules::edge::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
@@ -628,7 +648,8 @@ mod tests {
                 physical_scope: GatewayScopeState::empty(node_id),
                 certificate_id: Some(GatewayCertificateId::new()),
                 active_routes: Vec::new(),
-                mcp: planned,
+                mcp: PlannedMcpGatewayNodeProjection::single(planned)
+                    .expect("single-scope node projection"),
             })
             .expect("complete MCP snapshot");
         let snapshot = compiled.snapshot();
@@ -722,7 +743,8 @@ mod tests {
                 physical_scope: GatewayScopeState::empty(node_id),
                 certificate_id: None,
                 active_routes: Vec::new(),
-                mcp: planned,
+                mcp: PlannedMcpGatewayNodeProjection::single(planned)
+                    .expect("single-scope node projection"),
             })
             .expect("credential cleanup snapshot");
         assert_eq!(compiled.domain_claim_versions().len(), 1);
@@ -866,7 +888,8 @@ mod tests {
                 physical_scope: GatewayScopeState::empty(node_id),
                 certificate_id: None,
                 active_routes: Vec::new(),
-                mcp: planned,
+                mcp: PlannedMcpGatewayNodeProjection::single(planned)
+                    .expect("single-scope node projection"),
             })
             .expect("complete empty MCP snapshot");
         assert!(!compiled.snapshot().acl.contains("mcp {"));
@@ -957,7 +980,8 @@ mod tests {
                     route: ordinary,
                     domain_claim: ordinary_claim,
                 }],
-                mcp: planned,
+                mcp: PlannedMcpGatewayNodeProjection::single(planned)
+                    .expect("single-scope node projection"),
             })
             .expect("mixed complete snapshot");
 
@@ -1095,7 +1119,8 @@ mod tests {
                     route: ordinary,
                     domain_claim,
                 }],
-                mcp: planned,
+                mcp: PlannedMcpGatewayNodeProjection::single(planned)
+                    .expect("single-scope node projection"),
             })
             .expect_err("overlapping ingress")
             .contains("PathPrefix"));

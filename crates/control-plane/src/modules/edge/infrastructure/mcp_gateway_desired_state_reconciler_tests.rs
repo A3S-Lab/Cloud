@@ -3,10 +3,12 @@ use super::mcp_gateway_desired_state_reconciler::{
 };
 use super::{
     CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GatewaySnapshotMetadata, IMcpGatewayProjectionSetPlanner, IMcpGatewaySnapshotRepository,
-    McpGatewayDesiredStateReconciler, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
-    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
-    PlanMcpGatewayProjectionSet, PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
+    GatewaySnapshotMetadata, IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
+    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayReconciliationScope,
+    McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
+    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
+    McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus, PlanMcpGatewayNodeProjection,
+    PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateMaterial, GatewayPublication, GatewayPublicationState,
@@ -32,7 +34,7 @@ struct FakeDesiredStateRepository {
     state: McpGatewaySnapshotReconciliationState,
     inputs: McpGatewaySnapshotInputs,
     state_reads: AtomicUsize,
-    state_scope_ids: Mutex<Vec<GatewayScopeId>>,
+    scan_scope_ids: Mutex<Vec<GatewayScopeId>>,
     input_reads: AtomicUsize,
     staged: Mutex<Vec<StageMcpGatewaySnapshot>>,
 }
@@ -59,7 +61,7 @@ impl FakeDesiredStateRepository {
                 active_routes: Vec::new(),
             },
             state_reads: AtomicUsize::new(0),
-            state_scope_ids: Mutex::new(Vec::new()),
+            scan_scope_ids: Mutex::new(Vec::new()),
             input_reads: AtomicUsize::new(0),
             staged: Mutex::new(Vec::new()),
         }
@@ -77,26 +79,47 @@ impl IMcpGatewaySnapshotRepository for FakeDesiredStateRepository {
         _observed_at: DateTime<Utc>,
         after_gateway_scope_id: Option<GatewayScopeId>,
         limit: usize,
-    ) -> Result<Vec<GatewayScope>, RepositoryError> {
-        Ok(self
+    ) -> Result<Vec<McpGatewayReconciliationScope>, RepositoryError> {
+        let scopes = self
             .scopes
             .iter()
             .filter(|scope| after_gateway_scope_id.is_none_or(|cursor| scope.id > cursor))
             .take(limit)
             .cloned()
+            .collect::<Vec<_>>();
+        self.scan_scope_ids
+            .lock()
+            .expect("scan scope IDs")
+            .extend(scopes.iter().map(|scope| scope.id));
+        Ok(scopes
+            .into_iter()
+            .map(|scope| McpGatewayReconciliationScope {
+                node_ids: scope.member_node_ids.clone(),
+                scope,
+            })
             .collect())
+    }
+
+    async fn mcp_gateway_reconciliation_scope_set(
+        &self,
+        node_id: NodeId,
+        _observed_at: DateTime<Utc>,
+    ) -> Result<Vec<GatewayScope>, RepositoryError> {
+        let mut scopes = self
+            .scopes
+            .iter()
+            .filter(|scope| scope.contains_member(node_id))
+            .cloned()
+            .collect::<Vec<_>>();
+        scopes.sort_by_key(|scope| scope.id);
+        Ok(scopes)
     }
 
     async fn mcp_gateway_snapshot_reconciliation_state(
         &self,
-        gateway_scope_id: GatewayScopeId,
         _node_id: NodeId,
     ) -> Result<McpGatewaySnapshotReconciliationState, RepositoryError> {
         self.state_reads.fetch_add(1, Ordering::SeqCst);
-        self.state_scope_ids
-            .lock()
-            .expect("state scope IDs")
-            .push(gateway_scope_id);
         Ok(self.state.clone())
     }
 
@@ -148,18 +171,34 @@ struct EmptyProjectionPlanner {
 }
 
 #[async_trait]
-impl IMcpGatewayProjectionSetPlanner for EmptyProjectionPlanner {
+impl IMcpGatewayNodeProjectionPlanner for EmptyProjectionPlanner {
     async fn plan(
         &self,
-        request: PlanMcpGatewayProjectionSet,
-    ) -> Result<PlannedMcpGatewayProjectionSet, RepositoryError> {
+        request: PlanMcpGatewayNodeProjection,
+    ) -> Result<PlannedMcpGatewayNodeProjection, RepositoryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        PlannedMcpGatewayProjectionSet::empty(
-            request.scope,
-            request.gateway_node_id,
-            request.observed_at,
-        )
-        .map_err(RepositoryError::Conflict)
+        let planned = request
+            .scopes
+            .into_iter()
+            .map(|scope| {
+                if scope.contains_member(request.gateway_node_id) {
+                    PlannedMcpGatewayProjectionSet::empty(
+                        scope,
+                        request.gateway_node_id,
+                        request.observed_at,
+                    )
+                } else {
+                    PlannedMcpGatewayProjectionSet::empty_for_departed_member(
+                        scope,
+                        request.gateway_node_id,
+                        request.observed_at,
+                    )
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(RepositoryError::Conflict)?;
+        PlannedMcpGatewayNodeProjection::aggregate(planned, McpGatewayProjectionAssembler)
+            .map_err(RepositoryError::Conflict)
     }
 }
 
@@ -300,7 +339,7 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         assert!(report.failures.is_empty());
     }
     assert_eq!(
-        *repository.state_scope_ids.lock().expect("state scope IDs"),
+        *repository.scan_scope_ids.lock().expect("scan scope IDs"),
         expected
     );
 }
@@ -323,8 +362,11 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             physical_scope: GatewayScopeState::empty(node_id),
             certificate_id: None,
             active_routes: Vec::new(),
-            mcp: PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, now)
-                .expect("first empty projection"),
+            mcp: PlannedMcpGatewayNodeProjection::single(
+                PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, now)
+                    .expect("first empty projection"),
+            )
+            .expect("first node projection"),
         })
         .expect("first complete snapshot");
     let second = compiler()
@@ -344,8 +386,11 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             },
             certificate_id: None,
             active_routes: Vec::new(),
-            mcp: PlannedMcpGatewayProjectionSet::empty(scope, node_id, later)
-                .expect("second empty projection"),
+            mcp: PlannedMcpGatewayNodeProjection::single(
+                PlannedMcpGatewayProjectionSet::empty(scope, node_id, later)
+                    .expect("second empty projection"),
+            )
+            .expect("second node projection"),
         })
         .expect("second complete snapshot");
 
@@ -771,6 +816,16 @@ fn status_with_certificate_expiry(
         project_id: scope.project_id,
         environment_id: scope.environment_id,
         gateway_scope_id: scope.id,
+        scope_statuses: vec![McpGatewaySnapshotScopeStatus {
+            organization_id: scope.organization_id,
+            project_id: scope.project_id,
+            environment_id: scope.environment_id,
+            gateway_scope_id: scope.id,
+            scope_aggregate_version: scope.aggregate_version,
+            membership_generation: scope.membership_generation,
+            receiving_member: scope.contains_member(scope.node_id),
+            mcp_route_count,
+        }],
         desired_state_digest,
         mcp_route_count,
         publication,

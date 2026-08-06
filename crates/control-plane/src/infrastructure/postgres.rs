@@ -643,6 +643,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/071_mcp_credential_delivery_receipts.sql"
             )),
         ),
+        Migration::new(
+            "072",
+            "hosted MCP Gateway node-wide logical scope evidence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/072_mcp_gateway_node_scope_evidence.sql"
+            )),
+        ),
     ]
 }
 

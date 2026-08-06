@@ -13,6 +13,7 @@ pub struct McpGatewaySnapshotStaged {
     pub project_id: ProjectId,
     pub environment_id: crate::modules::shared_kernel::domain::EnvironmentId,
     pub gateway_scope_id: GatewayScopeId,
+    pub gateway_scope_ids: Vec<GatewayScopeId>,
     pub node_id: NodeId,
     pub gateway_revision: u64,
     pub gateway_command_id: NodeCommandId,
@@ -26,17 +27,30 @@ pub struct McpGatewaySnapshotStaged {
 impl McpGatewaySnapshotStaged {
     #[allow(clippy::too_many_arguments)]
     pub fn envelope(
-        scope: &GatewayScope,
+        scopes: &[GatewayScope],
         next_physical_scope_version: u64,
         publication: &GatewayPublication,
         ordinary_route_ids: Vec<RouteId>,
         mcp_route_ids: Vec<RouteId>,
         domain_claim_ids: Vec<DomainClaimId>,
     ) -> Result<DomainEventEnvelope, String> {
-        scope.validate()?;
+        let scope = scopes.first().ok_or_else(|| {
+            "staged MCP Gateway snapshot requires logical scope evidence".to_string()
+        })?;
+        for scope in scopes {
+            scope.validate()?;
+        }
         publication.snapshot()?;
+        let gateway_scope_ids = scopes.iter().map(|scope| scope.id).collect::<Vec<_>>();
         if next_physical_scope_version == 0
-            || !scope.contains_member(publication.node_id)
+            || scopes
+                .iter()
+                .any(|candidate| candidate.organization_id != scope.organization_id)
+            || !strictly_sorted(&gateway_scope_ids)
+            || !mcp_route_ids.is_empty()
+                && !scopes
+                    .iter()
+                    .any(|scope| scope.contains_member(publication.node_id))
             || !strictly_sorted(&ordinary_route_ids)
             || !strictly_sorted(&mcp_route_ids)
             || !strictly_sorted(&domain_claim_ids)
@@ -55,7 +69,7 @@ impl McpGatewaySnapshotStaged {
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "edge.mcp-gateway.snapshot-staged".into(),
-            schema_version: 1,
+            schema_version: 2,
             organization_id: scope.organization_id.as_uuid(),
             aggregate_id: publication.node_id.as_uuid(),
             aggregate_version: next_physical_scope_version,
@@ -67,6 +81,7 @@ impl McpGatewaySnapshotStaged {
                 project_id: scope.project_id,
                 environment_id: scope.environment_id,
                 gateway_scope_id: scope.id,
+                gateway_scope_ids,
                 node_id: publication.node_id,
                 gateway_revision: publication.revision,
                 gateway_command_id: publication.command_id,

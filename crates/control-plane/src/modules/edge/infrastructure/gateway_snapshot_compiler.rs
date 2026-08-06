@@ -2,7 +2,7 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState, Route, RouteState,
 };
 use crate::modules::edge::infrastructure::{
-    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedMcpGatewayProjectionSet,
+    McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedMcpGatewayNodeProjection,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
@@ -46,7 +46,7 @@ pub struct CompileMcpGatewaySnapshot {
     pub physical_scope: GatewayScopeState,
     pub certificate_id: Option<GatewayCertificateId>,
     pub active_routes: Vec<GatewaySnapshotRouteInput>,
-    pub mcp: PlannedMcpGatewayProjectionSet,
+    pub mcp: PlannedMcpGatewayNodeProjection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -73,7 +73,7 @@ pub struct CompiledMcpGatewaySnapshot {
     active_route_versions: Vec<GatewayRouteVersion>,
     domain_claim_versions: Vec<GatewayDomainClaimVersion>,
     certificate_domain_claim_ids: Vec<DomainClaimId>,
-    mcp: PlannedMcpGatewayProjectionSet,
+    mcp: PlannedMcpGatewayNodeProjection,
 }
 
 impl CompiledMcpGatewaySnapshot {
@@ -107,7 +107,7 @@ impl CompiledMcpGatewaySnapshot {
         &self.certificate_domain_claim_ids
     }
 
-    pub const fn mcp(&self) -> &PlannedMcpGatewayProjectionSet {
+    pub const fn mcp(&self) -> &PlannedMcpGatewayNodeProjection {
         &self.mcp
     }
 }
@@ -180,7 +180,9 @@ impl GatewaySnapshotCompiler {
             active_routes,
             mcp,
         } = request;
-        mcp.scope().validate()?;
+        for planned in mcp.scope_sets() {
+            planned.scope().validate()?;
+        }
         let issued_at = canonical_timestamp(metadata.issued_at);
         let expires_at = canonical_timestamp(metadata.expires_at);
         if physical_scope.node_id.as_uuid().is_nil()
@@ -197,7 +199,6 @@ impl GatewaySnapshotCompiler {
             || mcp.observed_at() != issued_at
             || metadata.node_id != physical_scope.node_id
             || metadata.node_id != mcp.gateway_node_id()
-            || !mcp.scope().contains_member(metadata.node_id)
             || metadata.revision != physical_scope.next_revision()?
             || metadata.expected_revision != physical_scope.installed_revision
         {
@@ -553,7 +554,7 @@ fn desired_state_digest(
     config: &GatewaySnapshotCompilerConfig,
     routes: &[Route],
     claims: &BTreeMap<DomainClaimId, (u64, crate::modules::edge::domain::DomainNamePattern)>,
-    mcp: &PlannedMcpGatewayProjectionSet,
+    mcp: &PlannedMcpGatewayNodeProjection,
 ) -> Result<crate::modules::shared_kernel::domain::Sha256Digest, String> {
     let mut routes = routes.iter().collect::<Vec<_>>();
     routes.sort_by_key(|route| route.id);
@@ -638,9 +639,30 @@ fn desired_state_digest(
             })
         })
         .collect::<Vec<_>>();
-    let scope = mcp.scope();
+    let scopes = mcp
+        .scope_sets()
+        .iter()
+        .map(|planned| {
+            let scope = planned.scope();
+            json!({
+                "id": scope.id,
+                "organization_id": scope.organization_id,
+                "project_id": scope.project_id,
+                "environment_id": scope.environment_id,
+                "bootstrap_node_id": scope.node_id,
+                "receiving_member": scope.contains_member(mcp.gateway_node_id()),
+                "member_node_ids": scope.member_node_ids,
+                "membership_generation": scope.membership_generation,
+                "min_ready": scope.rollout_policy.min_ready,
+                "max_unavailable": scope.rollout_policy.max_unavailable,
+                "projected_route_count": planned
+                    .projection()
+                    .map_or(0, |projection| projection.projection().routes.len()),
+            })
+        })
+        .collect::<Vec<_>>();
     let canonical = serde_json::to_vec(&json!({
-        "schema": "a3s.cloud.mcp-gateway-desired-state.v1",
+        "schema": "a3s.cloud.mcp-gateway-desired-state.v2",
         "compiler": {
             "entrypoint_address": config.entrypoint_address,
             "management_address": config.management_address,
@@ -650,17 +672,8 @@ fn desired_state_digest(
             "certificate_directory": config.certificate_directory,
             "managed_state_file": config.managed_state_file,
         },
-        "scope": {
-            "id": scope.id,
-            "organization_id": scope.organization_id,
-            "project_id": scope.project_id,
-            "environment_id": scope.environment_id,
-            "gateway_node_id": mcp.gateway_node_id(),
-            "member_node_ids": scope.member_node_ids,
-            "membership_generation": scope.membership_generation,
-            "min_ready": scope.rollout_policy.min_ready,
-            "max_unavailable": scope.rollout_policy.max_unavailable,
-        },
+        "gateway_node_id": mcp.gateway_node_id(),
+        "scopes": scopes,
         "ordinary_routes": ordinary_routes,
         "domain_claim_versions": claim_versions,
         "mcp_route_versions": route_versions,

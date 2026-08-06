@@ -18,10 +18,11 @@ use a3s_cloud_control_plane::modules::edge::{
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository,
     IMcpCredentialLifecycleRepository, IMcpCredentialRepository, IMcpGatewaySnapshotRepository,
     IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential, McpCredentialDeliveryReceipt,
-    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
-    McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PlanMcpGatewayProjectionSet, PostgresEdgeRepository,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    PlanMcpGatewayProjectionSet, PlannedMcpGatewayNodeProjection, PostgresEdgeRepository,
     ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
     StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
 };
@@ -871,9 +872,13 @@ pub async fn exercise(
         Arc::new(FixtureRouteTargetReader { workload_id }),
         McpRouteTargetProjectionCompiler,
     );
-    let desired_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
+    let desired_scope_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
         desired_inputs,
         McpGatewayProjectionPlanner::new(desired_route_planner, desired_edge.clone()),
+        McpGatewayProjectionAssembler,
+    ));
+    let desired_planner = Arc::new(McpGatewayNodeProjectionPlanner::new(
+        desired_scope_planner,
         McpGatewayProjectionAssembler,
     ));
     let desired_reconciler = McpGatewayDesiredStateReconciler::new(
@@ -1145,7 +1150,7 @@ async fn plan_gateway_snapshot(
             physical_scope,
             certificate_id: Some(GatewayCertificateId::new()),
             active_routes,
-            mcp: planned,
+            mcp: PlannedMcpGatewayNodeProjection::single(planned)?,
         },
     )?;
     Ok(StageMcpGatewaySnapshot::new(

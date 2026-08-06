@@ -44,12 +44,12 @@ use crate::modules::edge::{
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
     ListMcpCredentialsHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
     LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
-    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
-    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
-    PublishRouteHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
-    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
-    WorkloadRouteTargetReader,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotReconciler, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteTargetProjectionCompiler, PostgresEdgeRepository, PublishRouteHandler,
+    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
+    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -492,9 +492,13 @@ pub async fn build_application_with_source_resolver(
         McpGatewayProjectionPlanner::new(mcp_route_planner, edge_repository),
         McpGatewayProjectionAssembler,
     ));
+    let mcp_node_projection_planner = Arc::new(McpGatewayNodeProjectionPlanner::new(
+        mcp_projection_set_planner,
+        McpGatewayProjectionAssembler,
+    ));
     let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
         Arc::clone(&mcp_gateway_snapshots),
-        mcp_projection_set_planner,
+        mcp_node_projection_planner,
         deployment_route_compiler.clone(),
         Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
         chrono_duration(config.edge.command_ttl_ms)?,
