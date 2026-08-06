@@ -1919,27 +1919,36 @@ unavailable. As of 2026-08-06:
   remain in the same complete snapshot. The candidate retains exact policy,
   DomainClaim, Workload/active-revision, and credential generation,
   aggregate-version, and observed lifecycle-state evidence even for removed
-  routes. The complete-snapshot composer joins
-  this candidate with every ordinary active Route and verified DomainClaim,
-  preserves ordinary traffic, rejects prefix bypass, unions certificate
-  authority, emits exact MCP routers/targets, and removes stale MCP policy when
-  the active set becomes empty. Durable staging then locks the physical Node,
-  exact logical membership, physical scope, complete ordinary and MCP route
-  sets, every Claim, Workload revision, and credential generation before
-  atomically writing the pending publication, optional certificate, scope
-  advance, immutable MCP publication-kind marker, and one secret-free Outbox
-  event. Policy mutations take the same logical-scope lock, closing the
-  concurrent active-policy insertion gap. Migration 057 binds each marker to
-  its exact tenant, logical scope, receiving node, revision, command, and
-  digest. Migration 058 corrects secondary-member scope binding and adds a
-  stable logical desired-state digest plus exact MCP route count. A registered
-  cursor-fair worker discovers scopes with active or previously published MCP
-  state, defers any physical pending publication, replans the complete scope,
-  rereads all ordinary Route inputs, and feeds only changed, due-retry,
-  displaced, or empty-removal candidates into the atomic stage. Physical
-  revision, command/certificate identity, ordinary acknowledgement binding,
-  and observation time cannot create churn. A successful zero-route marker
-  releases later ordinary-only changes back to their existing owner.
+  routes. The complete-snapshot composer aggregates every active or previously
+  published logical MCP scope for one physical Gateway, then joins that
+  node-wide projection with every ordinary active Route and verified
+  DomainClaim. It preserves ordinary traffic, rejects prefix bypass, unions
+  certificate authority, emits exact MCP routers/targets, and removes stale MCP
+  policy when an active set becomes empty. Durable staging locks the physical
+  Node, the exact logical scope set and membership generations, physical scope,
+  complete ordinary and MCP route sets, every Claim, Workload revision, and
+  credential generation before atomically writing the pending publication,
+  optional certificate, scope advance, immutable composition marker, and one
+  secret-free Outbox event. Policy mutations take the same logical-scope lock,
+  closing the concurrent active-policy insertion gap. Migrations 057 and 058
+  bind each marker to its exact tenant, receiving node, revision, command,
+  digest, stable desired-state identity, and route count. Migration 072 adds
+  sorted node-wide logical-scope evidence, and migration 073 assigns exactly one
+  durable dispatcher to each composed publication.
+
+  One node desired-state planner and complete snapshot compiler now serve MCP
+  reconciliation plus ordinary Route publication, deployment cutover, rollout,
+  exact rollback, and certificate convergence. The originating ordinary flow
+  dispatches ordinary-owned publications; the MCP worker scans only
+  MCP-reconciler-owned markers. Both owners persist the same complete scope-set
+  CAS and acknowledgement evidence, so an ordinary change cannot erase MCP
+  routes and the MCP worker cannot duplicate an ordinary dispatch. The
+  registered cursor-fair worker discovers scopes with active or previously
+  published MCP state, defers any physical pending publication, replans the
+  complete node, rereads all ordinary Route inputs, and feeds only changed,
+  due-retry, displaced, or empty-removal candidates into the same atomic stage.
+  Physical revision, command/certificate identity, ordinary acknowledgement
+  binding, and observation time cannot create churn.
 
   The separate bounded dispatch reconciler scans durable pending markers,
   idempotently dispatches the existing Fleet Gateway command, survives queue
@@ -1965,12 +1974,9 @@ unavailable. As of 2026-08-06:
   fresh complete snapshot through the existing atomic publication path when
   shared renewal policy reaches its threshold or certificate evidence is
   missing, failed, or revoked. Mixed-route certificates remain solely owned by
-  the ordinary certificate reconciler. Node-wide aggregation for physical
-  Gateways shared by active logical MCP scopes,
-  unified composition in every ordinary publication path, retained clean-host
-  PostgreSQL lifecycle execution, and joint real-process recovery remain
-  `MCP0.3`; Web lifecycle views remain intentionally deferred until backend
-  conformance; and
+  the ordinary certificate reconciler. Retained clean-host PostgreSQL lifecycle
+  execution and joint real-process recovery remain `MCP0.3`; Web lifecycle
+  views remain intentionally deferred until backend conformance; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps

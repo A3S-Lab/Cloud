@@ -1,3 +1,4 @@
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::{
     CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
     GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
@@ -592,11 +593,9 @@ impl GatewayCertificateReconciler {
                     "Gateway certificate convergence snapshot expiry exceeds supported time".into(),
                 )
             })?;
-        let snapshot_expires_at = desired_state
-            .mcp()
-            .projection()
-            .map(|projection| projection.projection().expires_at)
-            .unwrap_or(default_snapshot_expires_at);
+        let snapshot_expires_at =
+            managed_snapshot_expires_at(desired_state.mcp(), now, default_snapshot_expires_at)
+                .map_err(RepositoryError::Conflict)?;
         let command_not_after = desired_command_not_after.min(snapshot_expires_at);
         if command_not_after <= now {
             return Err(RepositoryError::Conflict(

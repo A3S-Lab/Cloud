@@ -1,3 +1,4 @@
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use crate::modules::edge::domain::events::{GatewayRolloutStaged, RoutePublicationStaged};
 use crate::modules::edge::domain::repositories::StageGatewayRollout;
 use crate::modules::edge::domain::services::ResolvedRouteTargetSet;
@@ -321,10 +322,10 @@ impl GatewayRouteRolloutCompiler {
             return Err("Gateway route rollout DomainClaim does not cover its exact tenant".into());
         }
         let issued_at = canonical_timestamp(request.issued_at);
-        let command_not_after = issued_at
+        let default_command_not_after = issued_at
             .checked_add_signed(self.command_ttl)
             .ok_or_else(|| "Gateway rollout command expiry exceeds supported time".to_string())?;
-        let snapshot_expires_at = issued_at
+        let default_snapshot_expires_at = issued_at
             .checked_add_signed(self.snapshot_ttl)
             .ok_or_else(|| "Gateway rollout snapshot expiry exceeds supported time".to_string())?;
         let target_nodes = request
@@ -385,6 +386,12 @@ impl GatewayRouteRolloutCompiler {
             )?;
             let revision = desired_state.physical_scope().next_revision()?;
             let expected_scope_version = desired_state.physical_scope().aggregate_version;
+            let snapshot_expires_at = managed_snapshot_expires_at(
+                desired_state.mcp(),
+                issued_at,
+                default_snapshot_expires_at,
+            )?;
+            let command_not_after = default_command_not_after.min(snapshot_expires_at);
             let mut complete_routes = desired_state
                 .active_routes()
                 .iter()

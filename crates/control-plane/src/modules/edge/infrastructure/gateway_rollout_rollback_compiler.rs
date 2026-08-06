@@ -18,6 +18,8 @@ use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
+
 const COMMAND_ID_NAME: &[u8] = b"a3s-cloud.gateway-rollout.rollback.command.v1";
 const CERTIFICATE_ID_NAME: &[u8] = b"a3s-cloud.gateway-rollout.rollback.certificate.v1";
 
@@ -271,10 +273,10 @@ impl GatewayRolloutRollbackCompiler {
         if issued_at < request.rollback.required_at {
             return Err("Gateway rollback issue time predates its durable requirement".into());
         }
-        let command_not_after = issued_at
+        let default_command_not_after = issued_at
             .checked_add_signed(self.command_ttl)
             .ok_or_else(|| "Gateway rollback command expiry exceeds supported time".to_string())?;
-        let snapshot_expires_at = issued_at
+        let default_snapshot_expires_at = issued_at
             .checked_add_signed(self.snapshot_ttl)
             .ok_or_else(|| "Gateway rollback snapshot expiry exceeds supported time".to_string())?;
 
@@ -288,6 +290,12 @@ impl GatewayRolloutRollbackCompiler {
             let node_id = context.desired_state.physical_scope().node_id;
             let revision = context.desired_state.physical_scope().next_revision()?;
             let expected_scope_version = context.desired_state.physical_scope().aggregate_version;
+            let snapshot_expires_at = managed_snapshot_expires_at(
+                context.desired_state.mcp(),
+                issued_at,
+                default_snapshot_expires_at,
+            )?;
+            let command_not_after = default_command_not_after.min(snapshot_expires_at);
             let metadata = GatewaySnapshotMetadata::new(
                 node_id,
                 revision,

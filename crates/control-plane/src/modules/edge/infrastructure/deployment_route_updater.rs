@@ -28,6 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::runtime_http_upstream::gateway_http_upstream;
 
 pub struct EdgeDeploymentRouteUpdater {
@@ -296,6 +297,22 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                         .into(),
             });
         }
+        let default_snapshot_expires_at = issued_at
+            .checked_add_signed(Duration::hours(24))
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway route cutover snapshot expiry exceeds supported time".into(),
+                )
+            })?;
+        let snapshot_expires_at = match managed_desired_state.as_ref() {
+            Some(desired_state) => managed_snapshot_expires_at(
+                desired_state.mcp(),
+                issued_at,
+                default_snapshot_expires_at,
+            )
+            .map_err(RepositoryError::Conflict)?,
+            None => default_snapshot_expires_at,
+        };
         let command_not_after = issued_at
             .checked_add_signed(self.command_ttl)
             .ok_or_else(|| {
@@ -303,19 +320,13 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                     "Gateway route cutover command expiry exceeds supported time".into(),
                 )
             })?
-            .min(request.convergence_deadline);
+            .min(request.convergence_deadline)
+            .min(snapshot_expires_at);
         if command_not_after <= issued_at {
             return Ok(DeploymentRouteStage::Failed {
                 reason: "Gateway route cutover command expired before staging".into(),
             });
         }
-        let snapshot_expires_at = issued_at
-            .checked_add_signed(Duration::hours(24))
-            .ok_or_else(|| {
-                RepositoryError::Conflict(
-                    "Gateway route cutover snapshot expiry exceeds supported time".into(),
-                )
-            })?;
         let certificate_id = GatewayCertificateId::from_uuid(Uuid::new_v5(
             &request.deployment_id.as_uuid(),
             b"gateway-route-cutover-certificate",

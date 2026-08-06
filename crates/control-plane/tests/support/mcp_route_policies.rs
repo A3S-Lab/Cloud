@@ -8,23 +8,27 @@ use a3s_cloud_control_plane::modules::assets::{
     McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
-    DomainClaimChanged, McpCredentialChanged,
+    DomainClaimChanged, McpCredentialChanged, RoutePublicationStaged,
 };
-use a3s_cloud_control_plane::modules::edge::domain::repositories::CreateMcpCredentialWrite;
+use a3s_cloud_control_plane::modules::edge::domain::repositories::{
+    CreateMcpCredentialWrite, StageRoutePublication,
+};
 use a3s_cloud_control_plane::modules::edge::{
-    CompileMcpGatewaySnapshot, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
-    FleetGatewayCommandQueue, GatewayCertificateMaterial, GatewayCertificateState,
-    GatewayPublicationState, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IEdgeRepository,
-    IMcpCredentialLifecycleRepository, IMcpCredentialRepository, IMcpGatewaySnapshotRepository,
-    IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential, McpCredentialDeliveryReceipt,
-    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
-    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-    PlanMcpGatewayProjectionSet, PlannedMcpGatewayNodeProjection, PostgresEdgeRepository,
-    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePortName, RouteTarget,
-    StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
+    CompileMcpGatewaySnapshot, CompiledGatewayRouteRollout, CreateDomainClaimWrite, DomainClaim,
+    DomainNamePattern, FleetGatewayCommandQueue, GatewayCertificateMaterial,
+    GatewayCertificateState, GatewayNodeDesiredStatePlanner, GatewayPublicationState,
+    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
+    IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpCredentialRepository,
+    IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
+    McpCredentialDeliveryReceipt, McpGatewayDesiredStateReconciler,
+    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
+    McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteTargetProjectionCompiler, PlanManagedGatewayRouteRollout, PlanMcpGatewayProjectionSet,
+    PlannedMcpGatewayNodeProjection, PostgresEdgeRepository, ResolvedRouteTarget,
+    ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName, RouteTarget,
+    StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
@@ -35,9 +39,9 @@ use a3s_cloud_control_plane::modules::operations::{
 use a3s_cloud_control_plane::modules::secrets::domain::EncryptedSecretValue;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
-    GatewayScopeId, GitCommitSha, IdempotencyRequest, McpCredentialId, NodeCommandId, NodeId,
-    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, RouteId, Sha256Digest,
-    WorkloadId, WorkloadRevisionId,
+    GatewayRolloutId, GatewayScopeId, GitCommitSha, IdempotencyRequest, McpCredentialId,
+    NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName,
+    RouteId, Sha256Digest, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
@@ -738,8 +742,8 @@ pub async fn exercise(
     );
     let stored_marker = Database::new(PostgresDialect, executor.clone())
         .fetch_one_as(
-            sql_query::<(String, u32)>(
-                "select desired_state_digest, mcp_route_count from mcp_gateway_snapshot_publications where gateway_command_id = ",
+            sql_query::<(String, u32, String)>(
+                "select desired_state_digest, mcp_route_count, publication_owner from mcp_gateway_snapshot_publications where gateway_command_id = ",
             )
             .bind(current_stage.publication().command_id.as_uuid()),
         )
@@ -1045,7 +1049,49 @@ pub async fn exercise(
         observed_at: rotated_at + Duration::minutes(3),
     })
     .await?;
+
     Ok(())
+}
+
+fn managed_primary_route_stage(
+    planned: &CompiledGatewayRouteRollout,
+    scope: a3s_cloud_control_plane::modules::edge::GatewayScope,
+    idempotency: IdempotencyRequest,
+) -> Result<StageManagedRoutePublication, String> {
+    let node_id = scope.node_id;
+    let route = planned.primary_route()?.clone();
+    let publication = planned
+        .publications
+        .iter()
+        .find(|publication| publication.node_id == node_id)
+        .cloned()
+        .ok_or_else(|| "managed rollout omitted its primary publication".to_string())?;
+    let certificate = planned
+        .certificates
+        .iter()
+        .find(|certificate| certificate.node_id == node_id)
+        .cloned()
+        .ok_or_else(|| "managed rollout omitted its primary certificate".to_string())?;
+    let expected_scope_version = planned
+        .expected_scope_versions
+        .get(&node_id)
+        .copied()
+        .ok_or_else(|| "managed rollout omitted its primary scope version".to_string())?;
+    let ordinary = StageRoutePublication {
+        event: RoutePublicationStaged::envelope(&route, &publication)?,
+        route,
+        gateway_scope: scope,
+        certificate,
+        publication,
+        expected_scope_version,
+        idempotency,
+    };
+    let composition = planned
+        .managed_compositions
+        .get(&node_id)
+        .cloned()
+        .ok_or_else(|| "managed rollout omitted its primary composition".to_string())?;
+    StageManagedRoutePublication::new(ordinary, composition)
 }
 
 struct FixtureRouteTargetReader {

@@ -168,6 +168,30 @@ impl GatewaySnapshotMetadata {
     }
 }
 
+pub(super) fn managed_snapshot_expires_at(
+    mcp: &PlannedMcpGatewayNodeProjection,
+    issued_at: DateTime<Utc>,
+    default_expires_at: DateTime<Utc>,
+) -> Result<DateTime<Utc>, String> {
+    let issued_at = canonical_timestamp(issued_at);
+    let default_expires_at = canonical_timestamp(default_expires_at);
+    let expires_at = mcp
+        .projection()
+        .map(|projection| projection.projection().expires_at)
+        .unwrap_or(default_expires_at);
+    if mcp.observed_at() != issued_at
+        || default_expires_at <= issued_at
+        || expires_at <= issued_at
+        || expires_at > default_expires_at
+    {
+        return Err(
+            "managed Gateway snapshot expiry does not match its exact desired-state boundary"
+                .into(),
+        );
+    }
+    Ok(expires_at)
+}
+
 #[derive(Debug, Clone)]
 pub struct GatewaySnapshotCompiler {
     config: GatewaySnapshotCompilerConfig,
