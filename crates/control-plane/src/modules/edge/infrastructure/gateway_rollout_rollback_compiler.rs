@@ -316,9 +316,9 @@ impl GatewayRolloutRollbackCompiler {
                     })
                     .ok()?;
                 let expected_claims = candidate
-                    .domain_claim_versions()
+                    .certificate_domain_claim_ids()
                     .iter()
-                    .map(|version| version.domain_claim_id())
+                    .copied()
                     .collect::<BTreeSet<_>>();
                 let stored_claims = certificate
                     .domain_claim_ids
@@ -394,11 +394,7 @@ impl GatewayRolloutRollbackCompiler {
                         "managed Gateway rollback TLS snapshot omitted its certificate request"
                             .to_string()
                     })?;
-                let domain_claim_ids = candidate
-                    .domain_claim_versions()
-                    .iter()
-                    .map(|version| version.domain_claim_id())
-                    .collect::<Vec<_>>();
+                let domain_claim_ids = candidate.certificate_domain_claim_ids().to_vec();
                 let certificate = GatewayCertificate::provision(
                     certificate_id,
                     request.scope.organization_id,

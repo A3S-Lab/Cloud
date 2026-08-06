@@ -628,12 +628,10 @@ impl GatewayCertificateReconciler {
                     },
                 ) {
                 Ok(candidate)
-                    if candidate.domain_claim_versions().iter().all(|version| {
-                        target
-                            .certificate
-                            .domain_claim_ids
-                            .contains(&version.domain_claim_id())
-                    }) =>
+                    if candidate
+                        .certificate_domain_claim_ids()
+                        .iter()
+                        .all(|claim_id| target.certificate.domain_claim_ids.contains(claim_id)) =>
                 {
                     candidate
                 }
@@ -685,11 +683,7 @@ impl GatewayCertificateReconciler {
             command_not_after,
         )
         .map_err(RepositoryError::Conflict)?;
-        let domain_claim_ids = candidate
-            .domain_claim_versions()
-            .iter()
-            .map(|version| version.domain_claim_id())
-            .collect::<Vec<_>>();
+        let domain_claim_ids = candidate.certificate_domain_claim_ids().to_vec();
         let certificate = match (
             replacement_certificate_id,
             publication.certificate_request.clone(),

@@ -424,11 +424,7 @@ impl GatewayRouteRolloutCompiler {
             let certificate_request = publication.certificate_request.clone().ok_or_else(|| {
                 "TLS Gateway rollout publication omitted its certificate request".to_string()
             })?;
-            let domain_claim_ids = candidate
-                .domain_claim_versions()
-                .iter()
-                .map(|version| version.domain_claim_id())
-                .collect();
+            let domain_claim_ids = candidate.certificate_domain_claim_ids().to_vec();
             let certificate = GatewayCertificate::provision(
                 certificate_id,
                 request.scope.organization_id,

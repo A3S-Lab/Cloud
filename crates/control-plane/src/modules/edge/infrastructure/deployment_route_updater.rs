@@ -410,11 +410,7 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             )
         })?;
         let mut domain_claim_ids = match &managed_candidate {
-            Some(candidate) => candidate
-                .domain_claim_versions()
-                .iter()
-                .map(|version| version.domain_claim_id())
-                .collect::<Vec<_>>(),
+            Some(candidate) => candidate.certificate_domain_claim_ids().to_vec(),
             None => complete_routes
                 .iter()
                 .filter_map(|route| route.domain_claim_id)
