@@ -12,9 +12,11 @@ use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::
     fixture, now, target,
 };
 use crate::modules::edge::infrastructure::{
-    CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GatewaySnapshotMetadata, GatewaySnapshotRouteInput, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
+    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot,
+    GatewayManagedSnapshotComposition, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, GatewaySnapshotRouteInput,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PlannedGatewayNodeDesiredState,
+    PlannedMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::shared_kernel::domain::{

@@ -895,7 +895,6 @@ pub async fn exercise(
         fixture_gateway_snapshot_compiler()?,
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
-        Duration::minutes(30),
         Duration::hours(1),
         Duration::minutes(5),
         Duration::minutes(5),
