@@ -407,8 +407,8 @@ jobs:
               modules::artifacts::infrastructure::build_flow::tests::flow::fleet_flow_event_loss_replays_the_exact_start_and_cleanup_command_chain \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.log"
-          grep --extended-regexp \
-            '^A3S_CLOUD_G0_FLEET_FLOW_REPLAY_CERTIFIED boundaries=9 ' \
+          grep --fixed-strings \
+            'A3S_CLOUD_G0_FLEET_FLOW_REPLAY_CERTIFIED boundaries=9 ' \
             "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay.log" \
             >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay-certification.txt"
           test "$(wc -l <"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-build-replay-certification.txt")" -eq 1
@@ -471,8 +471,8 @@ jobs:
               postgres_build_flow_survives_process_death_at_every_fleet_completion_boundary \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.log"
-          grep --extended-regexp \
-            '^A3S_CLOUD_G0_FLEET_FLOW_PROCESS_DEATH_CERTIFIED boundaries=9 sigkills=9 commands=5 status=succeeded store=postgresql ' \
+          grep --fixed-strings \
+            'A3S_CLOUD_G0_FLEET_FLOW_PROCESS_DEATH_CERTIFIED boundaries=9 sigkills=9 commands=5 status=succeeded store=postgresql ' \
             "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.log" \
             >"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death-certification.txt"
           test "$(wc -l <"$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death-certification.txt")" -eq 1
