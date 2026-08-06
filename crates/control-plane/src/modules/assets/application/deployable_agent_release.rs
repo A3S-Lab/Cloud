@@ -80,13 +80,17 @@ pub async fn load_deployable_agent_release(
             "published Agent release changed its OCI artifact identity".into(),
         ));
     }
+    let artifact_uri = published.uri.clone();
+    let artifact_digest = published.digest.clone();
+    let artifact_media_type = published.media_type.clone();
+    let artifact_size_bytes = published.size_bytes;
     Ok(DeployableAgentRelease {
         asset,
         release,
         build,
-        artifact_uri: published.uri.clone(),
-        artifact_digest: published.digest.clone(),
-        artifact_media_type: published.media_type.clone(),
-        artifact_size_bytes: published.size_bytes,
+        artifact_uri,
+        artifact_digest,
+        artifact_media_type,
+        artifact_size_bytes,
     })
 }

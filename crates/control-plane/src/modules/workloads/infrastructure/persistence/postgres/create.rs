@@ -361,10 +361,12 @@ async fn insert_revision(
     .await;
     match result {
         Ok(rows) => require_one_row("workload revision", rows)?,
-        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
-            "workload revision identity or generation is already in use".into(),
-        )
-        .into())?,
+        Err(error) if is_unique_violation(&error) => {
+            return Err(RepositoryError::Conflict(
+                "workload revision identity or generation is already in use".into(),
+            )
+            .into())
+        }
         Err(error) => return Err(error),
     }
     for binding in revision.skill_bindings() {

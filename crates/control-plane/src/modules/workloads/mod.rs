@@ -4,16 +4,17 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult,
-    CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
-    CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
-    CreateSourceWorkloadDeploymentResult, CreateWorkloadDeployment,
-    CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
-    GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, GetWorkloadLogs,
-    GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, RollbackWorkloadDeployment,
-    RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult, SourceWorkloadTemplate,
-    StopWorkload, StopWorkloadHandler, StopWorkloadResult, UpdateAgentWorkloadDeployment,
-    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
+    BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, CancelDeployment,
+    CancelDeploymentHandler, CancelDeploymentResult, CreateAgentWorkloadDeployment,
+    CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeployment,
+    CreateSourceWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentResult,
+    CreateWorkloadDeployment, CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult,
+    DeploymentQueryResult, GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler,
+    GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,
+    RollbackWorkloadDeployment, RollbackWorkloadDeploymentHandler,
+    RollbackWorkloadDeploymentResult, SourceWorkloadTemplate, StopWorkload, StopWorkloadHandler,
+    StopWorkloadResult, UnbindSkillWorkloadDeployment, UnbindSkillWorkloadDeploymentHandler,
+    UpdateAgentWorkloadDeployment, UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadLogGapReason,
     WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult, WorkloadReplicaQueryResult,
 };
@@ -44,7 +45,7 @@ pub use domain::services::{
     OciArtifactResolutionError, OciRegistryCredentialReference, UnroutedDeploymentRouteUpdater,
 };
 pub use infrastructure::{
-    DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
+    project_runtime_spec, DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
     IWorkloadRuntimeControl, InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
     OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
     SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,

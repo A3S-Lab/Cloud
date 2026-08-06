@@ -58,7 +58,7 @@ impl AssetCatalogApplicationService {
         }
         let name = ResourceName::parse(name).map_err(ApplicationError::Invalid)?;
         let kind = AssetKind::parse(&kind).map_err(ApplicationError::Invalid)?;
-        let idempotency = idempotency(
+        let release_idempotency = idempotency(
             format!("organizations/{organization_id}/assets"),
             idempotency_key,
             &serde_json::json!({
@@ -203,7 +203,7 @@ impl AssetCatalogApplicationService {
             .create_release(CreateAssetReleaseWrite {
                 release,
                 event,
-                idempotency,
+                idempotency: release_idempotency,
             })
             .await
             .map_err(ApplicationError::from)?;
