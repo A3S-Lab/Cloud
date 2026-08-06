@@ -705,7 +705,7 @@ format never becomes a second mutable source of truth.
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
-| `C0.3` | Planned | External OIDC identity federation, memberships, grants, role-focused console, attribution, tenant-scoped security investigation, notifications, and audit |
+| `C0.3` | Planned | External OIDC identity federation, memberships, grants, attribution, tenant-scoped security investigation, notification, and audit interfaces; the role-focused console projection is retained but deferred during the backend-first phase |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
 No presentation surface owns business rules or bypasses tenant guards,
@@ -1118,7 +1118,7 @@ multi-node Gateways remain `H0.3`; production control-plane and Gateway HA remai
 | `I0.2b` | OpenAI Models, Chat Completions, Completions, and Embeddings data plane, scoped keys, grants, per-Gateway limits, Redis-backed globally exact limits, streaming, and fallback | `H0.2` + `I0.2a` |
 | `I0.2c` | Durable Gateway usage spool, Cloud ledger, observability, model rollout, and rollback | `I0.2b` |
 | `I0.2d` | Credential-isolated external OpenAI-compatible Provider targets | `I0.2b` + `I0.2c` |
-| `I0.2e` | Grant-derived model/key self-service, diagnostics, playground, search, and usage showback | `C0.3` + `I0.2d` |
+| `I0.2e` | Grant-derived model/key self-service APIs, diagnostics, search, and usage showback through the maintained client, CLI, and Management MCP; console and playground projections are deferred during the backend-first phase | `C0.3` + `I0.2d` |
 | `I0.3` | Multi-node independent serving replicas and failover | `I0.2e` + `H0.3` |
 | `I0.4` | One typed Power distributed serving replica across multiple nodes | `I0.3` + `H0.3` placement-group and private-network gates |
 | `I0.5` | Gateway/control-plane HA, autoscaling, quota, disaster recovery, provider breadth, and load hardening | `I0.4` + `H0.4` + `H0.5` |
@@ -1216,7 +1216,7 @@ lifecycle application service.
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
 | `U0.1` | In progress | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-1 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | A3S Use M0 contracts and the frozen managed-host contract; complete shared-manager composition still gates mutation |
-| `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Web/Management MCP read parity and no package download | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
+| `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
@@ -1345,6 +1345,28 @@ gates live in the
 
 ## 6. Near-term execution order
 
+### 6.1 Active backend-first freeze
+
+Effective 2026-08-06, no new frontend feature work is scheduled until the
+operator explicitly lifts this freeze. Existing frontend behavior remains in
+place, but delivery does not add or redesign files under `web/`, `website/`, or
+`architecture-3d/`. Security or build-break work in those paths requires
+explicit operator scope.
+
+Active slices must finish the owning domain and ACL contracts, persistence,
+provider adapters, REST/OpenAPI, maintained client, CLI, applicable Management
+MCP, and real failure/recovery evidence before any new visual projection is
+considered. UI-specific endpoints, presentation-owned business state, mock-only
+providers, and a second interface-specific mechanism remain prohibited.
+
+Frontend outcomes already named by `C0.3`, `U0`, `I0.2e`, `A1`, `W0`, or other
+gates stay in the capability backlog; the freeze defers them rather than
+retiring them. A backend/interface sub-gate may pass without new frontend work,
+but a full product gate that explicitly promises a Web or console outcome stays
+in progress until that projection is delivered in a later authorized phase.
+
+### 6.2 Backend execution order
+
 The default portfolio priority is:
 
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
@@ -1361,9 +1383,11 @@ The default portfolio priority is:
 5. complete `PW0.1` and make the immutable Box-hosted Power profile the first
    `I0` backend;
 6. preserve the verified `A1.0` shared-infrastructure regressions while
-   advancing `C0.3`, `C0.2m`, the contract-only `U0.1`, and the first `S0`
-   foundation independently when staffed; `U0.1` must change A3S Use rather
-   than copy any missing canonical type into Cloud;
+   advancing the backend identity, grant, attribution, investigation,
+   notification, and audit contracts of `C0.3`, the contract-only `U0.1`, and
+   the first `S0` foundation independently when staffed; do not implement the
+   role-focused console during the active freeze, and make any missing
+   canonical `U0.1` type in A3S Use rather than copying it into Cloud;
 7. re-certify the `H0.1` real-provider Claim behavior while beginning
    `I0.0`, then follow the ordered inference slices without bypassing their
    generic platform dependencies;
@@ -1484,8 +1508,11 @@ A product gate is complete only when:
 - the documentation capability-preservation check retains the native Cloud,
   TokenHub-inspired, Google AX-inspired, and cross-layer security outcomes or
   records an explicit reviewed retirement migration;
-- its domain invariants, commands, queries, persistence, provider adapters,
-  transport contracts, web, and applicable CLI/MCP surfaces land together;
+- a backend/interface slice lands its domain invariants, commands, queries,
+  persistence, provider adapters, REST/OpenAPI, maintained client, and
+  applicable CLI/MCP surfaces together; no new Web work is required while the
+  section 6.1 freeze is active, and a broader gate that promises Web remains in
+  progress until that retained projection lands;
 - every mutation has tenant scope, idempotency, audit, timeout, cancellation,
   retry, cleanup, and documented error semantics;
 - real-provider happy path, failure, process-death, replay, corruption, and

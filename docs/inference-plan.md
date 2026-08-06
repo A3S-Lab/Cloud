@@ -13,6 +13,15 @@ portfolio and publishes its current status and dependencies. This document
 owns the detailed inference contracts, delivery gates, and evidence within the
 roadmap's Cloud/Gateway ownership boundary.
 
+The active delivery phase follows the roadmap's backend-first freeze. I0 work
+may change domain, ACL, persistence, provider, Gateway, REST/OpenAPI, maintained
+client, CLI, Management MCP, and conformance code, but it does not add or
+redesign Web, product-site, playground, or architecture-visualization code.
+Named console and workspace outcomes remain retained later projections; they
+do not become browser-owned authority and do not block verification of a
+backend/interface slice. The complete product gate remains in progress when it
+still promises one of those deferred projections.
+
 I0 adds an optional inference product profile to A3S Cloud. Its target is a
 clearly gated GPUStack-like multi-node model-serving capability set, not API,
 UI, or implementation compatibility with GPUStack. The finished profile will:
@@ -27,8 +36,9 @@ UI, or implementation compatibility with GPUStack. The finished profile will:
 - record auditable request and token usage without coupling scheduling to
   commercial billing;
 - expose grant-derived consumer, project-steward, and platform-operator
-  workspaces for model discovery, key lifecycle, route diagnostics, API
-  exploration, and usage showback;
+  commands and queries for model discovery, key lifecycle, route diagnostics,
+  API contract discovery, and usage showback, while retaining their frontend
+  workspaces for the later frontend phase;
 - preserve valuable multi-protocol and subscription-backed Provider outcomes as
   separately gated optional profiles after the production core is complete;
   and
@@ -947,11 +957,15 @@ overflow, timeout, and restart gates.
 
 ### 10.6 Enterprise gateway self-service and governance
 
-I0.2e turns the verified inference contracts into grant-derived console
-workspaces. It takes product inspiration from TokenHub without adopting its API,
-UI, storage topology, or billing model. The workspace selected by the console
-changes navigation and default queries only; C0 effective grants remain the
-sole authority for every result and action.
+I0.2e first turns the verified inference contracts into grant-derived backend
+self-service and governance interfaces. It takes product inspiration from
+TokenHub without adopting its API, UI, storage topology, or billing model. The
+active slice lands commands, queries, REST/OpenAPI, the maintained client, CLI,
+Management MCP, and conformance evidence. Console workspaces and the
+browser-local playground are retained for the later frontend phase. When that
+phase is authorized, workspace selection may change navigation and default
+queries only; C0 effective grants remain the sole authority for every result
+and action.
 
 The TokenHub reference inventory is preserved by outcome rather than by
 surface compatibility:
@@ -1121,22 +1135,24 @@ evidence, and fenced release protocol.
 
 ### I0.2e: enterprise gateway self-service and governance
 
-- Depend on C0.3 and I0.2b/I0.2c/I0.2d. Land the grant-derived console
-  workspaces, authorized I0 search registration, model and key self-service,
-  Provider/route diagnostics, API explorer, in-memory playground, and usage
-  showback over the existing commands and queries.
-- Prove consumer, project-steward, and platform-operator fixtures cannot learn
-  or mutate an ungranted resource through navigation, search, counts, recent
-  items, diagnostics, usage rollups, timing, or a forged deep link.
+- Depend on C0.3 and I0.2b/I0.2c/I0.2d. Land authorized I0 search registration,
+  model and key self-service, Provider/route diagnostics, API-contract
+  discovery, and usage showback through commands, queries, REST/OpenAPI, the
+  maintained client, CLI, and Management MCP. Retain console workspaces, the
+  visual API explorer, and in-memory playground for the later frontend phase.
+- Prove consumer, project-steward, and platform-operator backend fixtures
+  cannot learn or mutate an ungranted resource through search, counts,
+  diagnostics, usage rollups, timing, or a guessed identifier. Navigation,
+  recent-item, and forged-deep-link fixtures remain a later frontend gate.
 - Create, reveal once, rotate, and revoke a real inference key; prove reload and
   receipt expiry cannot recover it, the exact Gateway revocation acknowledgement
   closes access, and plaintext scans of durable browser/server state, logs,
   events, audit, and exports remain clean.
-- Exercise the playground through the public Gateway against both the local
-  backend and certified generic external Provider. Force target and fallback
-  failures, reconcile visible diagnostics and usage with the durable ledger,
-  and prove browser reload loses drafts while Cloud stores no prompt or
-  response.
+- Exercise the public protocol and maintained SDK through Gateway against both
+  the local backend and certified generic external Provider. Force target and
+  fallback failures and reconcile diagnostics and usage with the durable
+  ledger. The browser-local playground and browser-reload draft test remain a
+  retained later frontend gate; Cloud still stores no prompt or response.
 - Change a project attribution profile and prove future usage selects the new
   immutable reference while historical request facts and authorized exports
   retain the prior reference exactly.
@@ -1289,8 +1305,9 @@ The recommended merge order is:
    streaming;
 9. I0.2c durable usage spool/ledger, observability, update and rollback;
 10. I0.2d external-provider egress and Secret-version replacement;
-11. C0.3 principal/grant, authorized-search, attribution, and console
-    foundations, then I0.2e enterprise gateway self-service and governance;
+11. C0.3 principal/grant, authorized-search, and attribution backend
+    foundations, then I0.2e API/client/CLI/MCP self-service and governance;
+    retain console and playground projections for the later frontend phase;
 12. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
 13. I0.3 independent replica failover and rolling update;
 14. H0.3 placement-group/private-network gate, then I0.4 distributed Power;

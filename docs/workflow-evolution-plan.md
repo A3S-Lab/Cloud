@@ -288,9 +288,11 @@ restore evidence.
 
 `W0`, heterogeneous `A1`, or `EV0` is complete only when:
 
-- every aggregate, command, query, migration, A3S ORM repository, adapter,
-  REST/client/CLI/Web/Management MCP surface, and OpenAPI contract lands under
-  its owning gate;
+- during the active backend-first phase, every aggregate, command, query,
+  migration, A3S ORM repository, adapter, REST/OpenAPI contract, maintained
+  client, CLI, and Management MCP surface lands under its owning backend slice;
+  new Web projections are deferred, and a broader gate that promises Web stays
+  in progress until that retained projection is later delivered;
 - closed A3S ACL is the only product configuration and every exact revision is
   digest-bound before use;
 - architecture tests reject new schedulers, Flow engines, queues, node

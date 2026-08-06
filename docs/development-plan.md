@@ -90,10 +90,46 @@ is the detailed authority. A
 delivery slice may defer one of these outcomes only by retaining its named gate
 and unavailable status; deleting its marketing label is not retirement.
 
+## 1.1 Active backend-first execution policy
+
+Effective 2026-08-06, feature delivery is backend and interface first until the
+operator explicitly lifts this policy. Existing frontend behavior remains a
+supported projection, but it is frozen: planned work does not add or redesign
+pages, components, interactions, product-site sections, or architecture
+visualizations under `web/`, `website/`, or `architecture-3d/`. An unavoidable
+security or build-break repair in those paths requires explicit operator scope.
+
+An active delivery slice proceeds in this order:
+
+1. freeze the closed ACL, domain invariants, ownership, and versioned protocol;
+2. implement application commands and queries, A3S ORM migrations,
+   idempotency, Operations, Outbox facts, and audit;
+3. implement the real Runtime, Box, Gateway, Power, A3S Use, storage, or other
+   provider adapter without an in-memory production fallback;
+4. expose stable REST and OpenAPI contracts with typed errors, pagination,
+   cancellation, replay, and compatibility rules;
+5. expose the same application boundary through the maintained client, CLI,
+   and applicable Management MCP tools;
+6. pass real-provider, failure, process-death, recovery, cleanup, security, and
+   cross-repository conformance gates; and
+7. retain the future frontend projection as an explicit backlog item without
+   implementing it during this phase.
+
+No backend endpoint is added only to fit a screen, and no frontend state may
+become business, authorization, routing, execution, or recovery truth. A
+backend/interface slice may be verified without a new Web projection. When a
+named product gate promises a Web or console outcome, the backend slice can
+land first, but the full product gate remains in progress until that retained
+projection is delivered after this policy is lifted. Existing frontend tests
+remain regression evidence and are not rewritten as part of backend feature
+work.
+
 ## 2. Engineering rules
 
-- Implement vertical behavior through domain, application, infrastructure,
-  transport, web UI, documentation, and tests in the same milestone.
+- During the active backend-first phase, implement vertical behavior through
+  domain, application, infrastructure, transport, maintained non-Web
+  interfaces, documentation, and tests. Defer new frontend projections under
+  section 1.1.
 - Write aggregate and protocol tests before the implementation they constrain.
 - Keep the repository root as orchestration only. The Rust workspace lives at
   `apps/cloud/Cargo.toml`.
@@ -110,8 +146,9 @@ and unavailable status; deleting its marketing label is not retirement.
   Runtime driver, fake Gateway acknowledgement, or mocked health response.
 - Every long-running command is idempotent, cancellable, resumable after
   process death, and visible as one Operation timeline.
-- REST, web, CLI, and MCP surfaces call the same application commands and
-  queries. No interface owns business rules or bypasses tenant guards.
+- REST, the maintained client, CLI, and MCP surfaces call the same application
+  commands and queries. Existing Web surfaces remain adapters over that same
+  boundary; no interface owns business rules or bypasses tenant guards.
 - Cloud plugin APIs manage one desired `PluginAssignment`; they never copy or
   proxy A3S Use's installer, management MCP, TUF/catalog verifier, plan
   generator, Workspace Grants, Runtime Bindings, capability registry, surface
@@ -1574,12 +1611,14 @@ node.
   roles, invitations, and explicit project/environment/node grants. Platform
   administration remains a separate role and cannot be inferred from
   organization ownership.
-- Add grant-derived console modes for consumers, project stewards, and platform
-  operators, plus one tenant-authorized global search over registered resource
-  projections. These modes change navigation and default queries only; they are
-  not new authorization roles, and hidden navigation never substitutes for a
-  command/query guard. Optional product profiles such as I0 register their own
-  cards and searches only after their exit gates pass.
+- Add one tenant-authorized global-search command/query and REST/client/CLI/MCP
+  interface over registered resource projections. Retain grant-derived console
+  modes for consumers, project stewards, and platform operators as a deferred
+  frontend projection under section 1.1. Those later modes may change
+  navigation and default queries only; they are not authorization roles, and
+  hidden navigation never substitutes for a command/query guard. Optional
+  product profiles such as I0 register backend search projections only after
+  their exit gates pass.
 - Add a bounded project attribution profile containing a business owner
   reference, an optional external cost-attribution code, and validated labels.
   Audit and product usage facts snapshot the applicable project/environment and
@@ -1625,11 +1664,12 @@ node.
 - A read-only MCP client cannot discover or invoke mutation tools. A
   project-scoped client cannot act on another project even when it guesses an
   identifier or supplies a forged organization context.
-- Consumer, project-steward, and platform-operator console fixtures expose only
-  resources returned by the same authorized queries used by REST and CLI.
-  Global search, counts, empty states, timing, and deep links do not reveal a
-  denied resource, and changing presentation mode never changes effective
-  grants.
+- Backend persona fixtures prove consumer, project-steward, and
+  platform-operator REST/client/CLI/MCP calls expose only authorized query
+  results. Global search, counts, timing, and guessed identifiers do not reveal
+  a denied resource. Console, empty-state, navigation, and deep-link fixtures
+  remain a retained later frontend exit gate and do not block the active
+  backend/interface slice.
 - Updating a project attribution profile affects only future audit and usage
   facts. Historical records retain the exact prior attribution reference, and
   export fixtures contain no Secret, prompt, response, or commercial balance
@@ -3277,7 +3317,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Box-only provider migration | Release blocking | `BX0.1` dependency/config alignment -> `BX0.2` lifecycle -> `BX0.3` networking/mounts/health/Secrets/outputs/evidence -> `BX0.4` typed Box builds -> `BX0.5` complete re-certification, retired-code removal, and zero-Docker guard |
 | Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> sole `cloud.build@5` Box command path -> Cloud OCI admission -> registry publication -> locally verified signed evidence -> evidence API/web -> deployment handoff -> parent-bound Box cache reuse -> external-provider and fault-injection operator gates |
 | Developer workflows | `G0` | `P0` A3S ACL build-plan/source-layout detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
-| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped management MCP -> `C0.2m` modern-protocol migration -> `C0.3` external OIDC identity federation/membership/role-focused console/attribution/security investigation/notifications/audit -> `C0.4` exec/terminal |
+| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped management MCP -> `C0.2m` modern-protocol migration -> `C0.3` external OIDC identity federation/membership/grants/attribution/security-investigation/notification/audit APIs -> `C0.4` exec/terminal; the role-focused console projection is retained but deferred by section 1.1 |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent deployment -> Skill binding |
 | A3S Use plugin assignments | `U0.1`: A3S Use M0/M2 contract; `U0.3`: completed shared Manager saga plus `C0.3`; executable/multi-host gates consume named Use M5-M7, BX0, H0, Gateway, and Knowledge foundations | `U0.1` compatibility/host contract -> `U0.2` trusted catalog reads -> `U0.3` single-host safe assignment -> `U0.4` permission-bearing executable surfaces -> `U0.5` multi-host production hardening |
 | Hosted MCP services | `A0.3`, `BX0.3`, and `H0.2`; production scale also consumes `H0.3` and `C0.3` | `MCP0.1` contract -> `MCP0.2` Runtime/Box substrate + `MCP0.3` Cloud orchestration + `MCP0.4` Gateway data plane -> `MCP0.5` single-node release -> `MCP0.6` production scale |
@@ -3285,7 +3325,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Ontology-driven Workflow | `F0`, `C0`; typed steps consume verified `A1.3`, `MCP0.5`, `I0.2`, and applicable `U0.4` | `W0.1` authority/ACL -> `W0.2` ontology revisions -> `W0.3` deterministic plans/Flow runs -> `W0.4` typed capability steps -> `W0.5` production recovery |
 | Stateful and distributed storage platform | `E0`; production distribution also consumes `H0` | shared immutable-object provider conformance -> `S0` local volume -> PostgreSQL -> backup/restore -> distributed object/remote volume providers -> additional engines |
 | Production scale | `P0`, `C0`, `A0`, `A1`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
-| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` enterprise gateway self-service/governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth -> optional independently certified `I0.6` protocol/channel profiles |
+| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` API/client/CLI/MCP self-service and governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth -> optional independently certified `I0.6` protocol/channel profiles; console and playground projections are retained for the later frontend phase |
 | Governed self-evolution | `W0.5`, `A1.6`, `I0.5`, `H0.5`, `C0.3`, and shared storage/evidence foundations | `EV0.1` evidence admission -> `EV0.2` reproducible evaluation -> `EV0.3` candidate/Agentic RL jobs -> `EV0.4` approval/canary/halt/rollback -> `EV0.5` production safety and recovery |
 
 The lane table expresses dependency, not a promise of equal staffing or calendar
@@ -3315,9 +3355,11 @@ A milestone is complete only when all of the following are true:
 - The capability-preservation check passes; removing a native Cloud,
   TokenHub-inspired, Google AX-inspired, or cross-layer security outcome
   requires an explicit architecture migration and replacement evidence.
-- Its domain invariants, application commands/queries, PostgreSQL schema,
-  provider adapters, transport contracts, web and applicable CLI/MCP surfaces
-  land together.
+- A backend/interface milestone lands its domain invariants, application
+  commands/queries, PostgreSQL schema, provider adapters, transport contracts,
+  REST/OpenAPI, maintained client, and applicable CLI/MCP surfaces together.
+  New Web work is excluded while section 1.1 is active; a broader product gate
+  that promises Web remains in progress until the retained projection lands.
 - Every mutation has tenant scope, idempotency, audit, timeout, cancellation,
   retry, and cleanup semantics with documented errors.
 - Real-provider happy path, failure, process-death, replay, corruption, and
