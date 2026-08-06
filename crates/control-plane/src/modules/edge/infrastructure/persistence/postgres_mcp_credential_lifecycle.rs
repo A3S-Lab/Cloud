@@ -239,7 +239,7 @@ async fn sweep_expired_receipts(
         transaction,
         select_from::<McpCredentialDeliveryReceipts>()
             .select(McpCredentialDeliveryReceipts::credential_id())
-            .filter(McpCredentialDeliveryReceipts::expires_at().le(expired_at))
+            .filter(McpCredentialDeliveryReceipts::expires_at().lte(expired_at))
             .order_by(
                 McpCredentialDeliveryReceipts::expires_at(),
                 OrderDirection::Asc,

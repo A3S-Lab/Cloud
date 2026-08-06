@@ -337,7 +337,7 @@ impl McpGatewayProjectionSetPlanner {
                 domain_pattern: input.domain_claim.pattern.clone(),
             })
             .collect::<Vec<_>>();
-        let planned_routes = stream::iter(inputs.into_iter().map(|input| {
+        let planned_routes: Vec<_> = stream::iter(inputs.into_iter().map(|input| {
             self.routes.plan_for_reconciliation(PlanMcpRouteProjection {
                 policy: input.policy,
                 profile_binding: input.profile_binding,
