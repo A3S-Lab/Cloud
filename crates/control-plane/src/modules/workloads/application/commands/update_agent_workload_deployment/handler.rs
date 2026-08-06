@@ -146,9 +146,9 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            if !active_revision
+            if active_revision
                 .agent_binding()
-                .is_some_and(|binding| binding.asset_id() == command.asset_id)
+                .is_none_or(|binding| binding.asset_id() != command.asset_id)
             {
                 return Ok(Err(ApplicationError::Conflict(
                     "Agent Workload updates must retain the same Asset identity".into(),

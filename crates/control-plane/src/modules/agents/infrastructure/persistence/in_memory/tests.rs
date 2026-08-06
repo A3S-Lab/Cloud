@@ -523,7 +523,9 @@ async fn consecutive_code_pages_use_code_time_instead_of_control_plane_latency()
     };
     second_page.validate().expect("second Code page");
     assert!(
-        second_page.observed_at_ms < u64::try_from(first_accepted_at.timestamp_millis()).unwrap()
+        second_page.observed_at_ms
+            < u64::try_from(first_accepted_at.timestamp_millis())
+                .expect("accepted timestamp fits u64")
     );
     let second = NodeCodeAgentEventBatchV1 {
         schema: NodeCodeAgentEventBatchV1::SCHEMA.into(),
