@@ -58,7 +58,7 @@ impl AssetCatalogApplicationService {
         }
         let name = ResourceName::parse(name).map_err(ApplicationError::Invalid)?;
         let kind = AssetKind::parse(&kind).map_err(ApplicationError::Invalid)?;
-        let release_idempotency = idempotency(
+        let idempotency = idempotency(
             format!("organizations/{organization_id}/assets"),
             idempotency_key,
             &serde_json::json!({
@@ -151,7 +151,7 @@ impl AssetCatalogApplicationService {
         let version = AssetReleaseVersion::parse(version).map_err(ApplicationError::Invalid)?;
         let commit_sha = GitCommitSha::parse(commit_sha).map_err(ApplicationError::Invalid)?;
         let publication_key = idempotency_key.clone();
-        let idempotency = idempotency(
+        let release_idempotency = idempotency(
             format!("organizations/{organization_id}/assets/{asset_id}/releases"),
             idempotency_key,
             &serde_json::json!({
