@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Cloud — intent in, exact state out</title>
+  <desc id="desc">A technical overview showing A3S Cloud committing intent, coordinating durable work, converging nodes, and returning exact evidence.</desc>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <path d="M32 0H0V32" fill="none" stroke="#26352b" stroke-width="1" opacity="0.42"/>
+    </pattern>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#72b7ff"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#b8f36b"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="440" rx="24" fill="#0b100d"/>
+  <rect x="1" y="1" width="1198" height="438" rx="23" fill="none" stroke="#354b3d" stroke-width="2"/>
+  <rect x="1" y="1" width="1198" height="438" rx="23" fill="url(#grid)"/>
+
+  <g transform="translate(58 42)">
+    <path d="M9 28h28a10 10 0 0 0 1.7-19.8A17 17 0 0 0 6.3 5.1 12 12 0 0 0 9 28Z" fill="none" stroke="#b8f36b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="m14 18 8-8 8 8M22 10v13" fill="none" stroke="#72b7ff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="58" y="14" fill="#e9f1eb" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="19" font-weight="700" letter-spacing="3">A3S CLOUD</text>
+    <text x="58" y="37" fill="#91a398" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" letter-spacing="2">DURABLE CONTROL PLANE</text>
+  </g>
+
+  <text x="58" y="164" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="72" font-weight="760" letter-spacing="-3">INTENT IN.</text>
+  <text x="58" y="238" fill="#b8f36b" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="72" font-weight="760" letter-spacing="-3">EXACT STATE OUT.</text>
+  <text x="61" y="286" fill="#b8c5bd" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="20">Self-hosted orchestration for applications, Agents, MCP,</text>
+  <text x="61" y="316" fill="#b8c5bd" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="20">Workflows, model services, and the infrastructure beneath them.</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" font-weight="700" letter-spacing="1.5">
+    <rect x="58" y="356" width="142" height="38" rx="8" fill="#111914" stroke="#354b3d"/>
+    <text x="77" y="380" fill="#d0ff91">SELF-HOSTED</text>
+    <rect x="214" y="356" width="136" height="38" rx="8" fill="#111914" stroke="#354b3d"/>
+    <text x="234" y="380" fill="#d0ff91">ACL-NATIVE</text>
+    <rect x="364" y="356" width="164" height="38" rx="8" fill="#111914" stroke="#354b3d"/>
+    <text x="383" y="380" fill="#d0ff91">BACKEND-FIRST</text>
+  </g>
+
+  <g transform="translate(688 42)">
+    <rect width="454" height="352" rx="18" fill="#111914" stroke="#354b3d" stroke-width="1.5"/>
+    <text x="26" y="34" fill="#91a398" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="2">ONE CONTROL LOOP</text>
+    <line x1="26" y1="50" x2="428" y2="50" stroke="#26352b"/>
+
+    <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+      <rect x="26" y="72" width="188" height="68" rx="10" fill="#162019" stroke="#72b7ff" stroke-opacity="0.72"/>
+      <text x="44" y="96" fill="#72b7ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">01 / COMMIT</text>
+      <text x="44" y="122" fill="#e9f1eb" font-size="18" font-weight="650">PostgreSQL + ORM</text>
+
+      <rect x="240" y="72" width="188" height="68" rx="10" fill="#162019" stroke="#72b7ff" stroke-opacity="0.72"/>
+      <text x="258" y="96" fill="#72b7ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">02 / COORDINATE</text>
+      <text x="258" y="122" fill="#e9f1eb" font-size="18" font-weight="650">Flow + Operations</text>
+
+      <rect x="26" y="174" width="188" height="68" rx="10" fill="#162019" stroke="#72b7ff" stroke-opacity="0.72"/>
+      <text x="44" y="198" fill="#72b7ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">03 / CONVERGE</text>
+      <text x="44" y="224" fill="#e9f1eb" font-size="18" font-weight="650">Workloads + Fleet</text>
+
+      <rect x="240" y="174" width="188" height="68" rx="10" fill="#162019" stroke="#b8f36b" stroke-opacity="0.72"/>
+      <text x="258" y="198" fill="#b8f36b" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">04 / APPLY</text>
+      <text x="258" y="224" fill="#e9f1eb" font-size="16" font-weight="650">Runtime · Box · Gateway</text>
+    </g>
+
+    <path d="M214 106h26M334 140v17H120v17M214 208h26" fill="none" stroke="#72b7ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <path d="M334 242v44H120v-44" fill="none" stroke="#b8f36b" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-green)"/>
+    <text x="142" y="309" fill="#b8f36b" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.3">EXACT OBSERVATIONS + RECEIPTS</text>
+    <text x="26" y="335" fill="#65766c" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11">NO SECOND SCHEDULER · QUEUE · STATE STORE · NODE CHANNEL</text>
+  </g>
+</svg>
