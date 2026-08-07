@@ -7,6 +7,10 @@ use crate::config::{
 };
 use crate::modules::agents::InMemoryAgentRepository;
 use crate::modules::artifacts::InMemoryBuildRunRepository;
+use crate::modules::edge::domain::repositories::{
+    IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
+};
+use crate::modules::edge::domain::McpRoutePolicy;
 use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
@@ -18,6 +22,9 @@ use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::search::{ISearchRepository, InMemorySearchRepository};
 use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
+};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
@@ -33,7 +40,7 @@ use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine as _;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -76,6 +83,48 @@ struct TestSecretEncryption;
 struct TestSourceResolver;
 
 struct TestGithubAppAuthorization;
+
+struct UnavailableMcpRoutePolicyRepository;
+
+#[async_trait::async_trait]
+impl IMcpRoutePolicyRepository for UnavailableMcpRoutePolicyRepository {
+    async fn mutate_mcp_route_policy(
+        &self,
+        _write: MutateMcpRoutePolicyWrite,
+    ) -> std::result::Result<McpRoutePolicyWrite, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "MCP route policies are unavailable in this application fixture".into(),
+        ))
+    }
+
+    async fn find_mcp_route_policy(
+        &self,
+        _organization_id: OrganizationId,
+        _route_id: RouteId,
+    ) -> std::result::Result<Option<McpRoutePolicy>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn list_mcp_route_policies(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+    ) -> std::result::Result<Vec<McpRoutePolicy>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn list_active_mcp_route_policies_for_gateway(
+        &self,
+        _organization_id: OrganizationId,
+        _project_id: ProjectId,
+        _environment_id: EnvironmentId,
+        _gateway_scope_id: GatewayScopeId,
+        _active_at: DateTime<Utc>,
+    ) -> std::result::Result<Vec<McpRoutePolicy>, RepositoryError> {
+        Ok(Vec::new())
+    }
+}
 
 #[async_trait::async_trait]
 impl ISourceResolver for TestSourceResolver {
@@ -762,6 +811,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(
         unavailable_assets.clone(),
     ));
+    let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
+        Arc::new(UnavailableMcpRoutePolicyRepository),
+        unavailable_assets.clone(),
+    ));
     let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
         identity.clone(),
         unavailable_assets.clone(),
@@ -791,6 +844,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             search,
             asset_catalog,
             mcp_service_profiles,
+            mcp_route_policies,
             asset_git,
             assets: unavailable_assets,
             workloads: workload_port,

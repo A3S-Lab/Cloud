@@ -15,7 +15,7 @@ pub fn mcp_route_policy_queries_controller(bus: Arc<QueryBus>) -> Result<Control
     let list_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::MCP_READ])?
+        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
         .get(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies",
             move |request: BootRequest| {

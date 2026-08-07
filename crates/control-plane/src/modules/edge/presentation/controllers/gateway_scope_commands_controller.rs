@@ -8,7 +8,8 @@ use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, AUTH_SCOPES_METADATA,
+    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
+    AUTH_SCOPES_METADATA,
 };
 use chrono::Utc;
 use std::sync::Arc;

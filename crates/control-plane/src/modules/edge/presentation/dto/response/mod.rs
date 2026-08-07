@@ -15,8 +15,5 @@ pub use gateway_scope_response::GatewayScopeResponse;
 pub use mcp_credential_response::{
     McpCredentialDeliveryResponse, McpCredentialMutationResponse, McpCredentialResponse,
 };
-pub use mcp_route_policy_response::{
-    McpRoutePolicyGrantResponse, McpRoutePolicyLimitResponse, McpRoutePolicyMutationResponse,
-    McpRoutePolicyResponse,
-};
+pub use mcp_route_policy_response::{McpRoutePolicyMutationResponse, McpRoutePolicyResponse};
 pub use route_response::{RoutePublicationResponse, RouteResponse};
