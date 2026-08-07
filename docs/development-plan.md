@@ -304,7 +304,7 @@ Status as of 2026-08-06:
 | C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance and the clean real PostgreSQL/A3S Box gate pass. The first backend-only `C0.3` slice implements stable human/service Principals, organization Membership roles, Principal-bound credentials, immediate role/revocation enforcement, last-owner protection, A3S ORM/Outbox/audit writes, REST `1.10.0`, client, CLI, and five administrator-only Management MCP tools. Resource Grants, invitations, OIDC, attribution, notifications, security investigation, audit-query interfaces, and role-focused frontend projections remain planned; `C0.3` is in progress and `C0.4` remains planned. |
 | A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI/Web management projections. `A0.4` has immutable exact Agent release-to-Workload binding, server-side OCI injection, lifecycle reuse, migration 066 persistence, and REST/client/CLI/Web projections. `A0.5` now publishes exact hosted Git archives as immutable Skill bundles and binds them to Agent Workload revisions through migration 067, read-only Runtime Artifact mounts, rollback-safe revision history, and REST/client/CLI/Web surfaces. Retained external-provider and real PostgreSQL/Box evidence still blocks `A0.3` through `A0.5` verification. |
 | A1 | In progress | `A1.0` is verified and `A1.1` implements the durable conversation/execution foundation. The local `A1.2` native Code provider pins the Code-owned protocol, persists exact Workload/Runtime/run delivery identity through migration 069, reconciles the reserved Operation through the existing Flow runtime, forwards commands through Fleet and the node journal, settles Code pages through the shared outbound-batch primitive, derives only bounded semantic output/terminal facts, and implements the root `a3s code harness` HTTP entrypoint. Dependency publication, cancel/recover orchestration, and clean Linux PostgreSQL/Runtime recovery evidence remain open; provider-neutral `A1.3` and `A1.4` through `A1.6` remain planned. |
-| W0 | Planned | Workflow/Ontology authority, deterministic plan compilation, typed capability steps, and Flow-backed recovery are specified in `workflow-evolution-plan.md`; no Workflow tables, API, or public availability exists yet. |
+| W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology contract foundation, exact capability references, deterministic graph validation, the ten-node outcome mapping, and architectural guards against duplicate execution mechanisms. `W0.2`-`W0.5` persistence, APIs, plan compilation, typed dispatch, recovery, and public availability remain planned. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
 | U0 | In progress; unavailable | `U0.1` pins the canonical A3S Use host contract and adds explicit capabilities, plan, apply, enablement, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. Root compatibility locking, production Manager composition, and every Plugins module/schema/API remain open; no user-facing capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
@@ -2775,21 +2775,34 @@ queue, graph database authority, object client, or provider launcher.
 
 Deliver `W0.1` through `W0.5` in order:
 
-1. freeze the Workflow/Ontology domain, closed ACL, authority, quota, and
-   capability-reference contracts;
+1. retain the implemented Workflow/Ontology closed ACL, canonical digest,
+   bounded DAG/ontology validation, authority, quota, federated capability
+   reference, standalone-node migration map, and duplicate-mechanism guards;
 2. persist immutable ontologies through A3S ORM and rebuild authorized Search
    and vector projections;
-3. compile immutable plan revisions and execute human, service, and finite-task
-   steps through one Operation and A3S Flow;
+3. persist Workflow definitions, exact canonical step payloads, and goals;
+   compile immutable plan revisions; execute human, service, and finite-task
+   steps through one Operation and A3S Flow; and expose authorized lifecycle,
+   history, evidence, tracing, and statistics projections;
 4. add typed Agent, MCP, model, Tool, and business-service steps only through
    their verified owning application ports; and
 5. close migration, pause/resume, replay, cancellation, compensation,
-   multi-day recovery, tenant, scale, and operator evidence.
+   history/tracing/statistics integrity, multi-day recovery, tenant, scale,
+   and operator evidence.
 
 `WaaS` is the resulting product profile. It does not add a Runtime unit type;
 only executable steps create existing Runtime Tasks or Services. The complete
 aggregate, dependency, security, crash, and exit contracts are authoritative
 in [`workflow-evolution-plan.md`](workflow-evolution-plan.md).
+
+The former standalone feature inventory is acceptance input, not a source
+tree to embed. `input`, `transform`, `branch`, `output`, and decision
+coordination remain deterministic Workflow semantics. Agent, MCP, model, Tool,
+memory, finite execution, subworkflow, and business-service steps bind exact
+owning-context capability and policy digests. REST, maintained client, CLI,
+and Management MCP must expose one Cloud lifecycle before the separate
+`a3s-workflow` CLI/Skill contract is considered replaced. Designer delivery
+remains deferred by the backend-first freeze.
 
 ### Exit gate
 

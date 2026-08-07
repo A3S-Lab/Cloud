@@ -146,7 +146,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
-| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | Planned |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress (`W0.1` contract foundation implemented; persistence and execution remain planned) |
 | `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
@@ -1347,16 +1347,25 @@ Operations remains the only durable orchestration mechanism.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
-| `W0.1` | Planned | Freeze the Workflow/Ontology domain contract, closed ACL schemas, authority guards, quotas, and federated capability-reference shape |
+| `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
 | `W0.2` | Planned | Persist immutable ontology revisions, validate migrations, expose authorized query/diff, and rebuild Search/vector projections without a graph database authority |
-| `W0.3` | Planned | Persist Workflow definitions and goals, compile deterministic immutable plans, and run human/service/finite-task steps through one Operation and A3S Flow |
+| `W0.3` | Planned | Persist Workflow definitions, canonical step payloads, and goals; compile deterministic immutable plans; run human/service/finite-task steps through one Operation and A3S Flow; and expose authorized lifecycle/history projections |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
-| `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, scale, and runbooks |
+| `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
 Workflow connectors call owning application ports. They cannot write Agent,
 MCP, Inference, Use, Workloads, Fleet, or Operations tables, publish provider
 commands, or start Runtime units directly. `WaaS` is this product composition,
 not a new Runtime unit or Flow implementation.
+
+The former standalone A3S Workflow feature inventory is consolidated into
+`W0` by the preservation register in
+[`docs/workflow-evolution-plan.md`](docs/workflow-evolution-plan.md). Graph
+versioning, deterministic validation, the ten node outcomes, placement intent,
+approval recovery, digest-bound evidence, coding-agent automation, and the
+future Designer remain required. The standalone server, Flow queue, Runtime
+provider, Memory store, node-execution store, CLI authority, deployment stack,
+and Studio are retired rather than copied into Cloud.
 
 ### 5.12 `EV0`: governed self-evolution
 
@@ -1439,9 +1448,9 @@ The default portfolio priority is:
    pass, then start single-host `U0.3` only after the shared Manager mutation
    saga and `C0.3` authorization/audit are ready; keep executable and
    multi-host surfaces behind `U0.4` and `U0.5`;
-10. freeze `W0.1` after the shared authority review, then implement `W0.2` and
-    `W0.3` on PostgreSQL, A3S ORM, Operations, and A3S Flow without waiting for
-    every external step provider;
+10. retain the implemented `W0.1` closed contracts and authority guards, then
+    implement `W0.2` and `W0.3` on PostgreSQL, A3S ORM, Operations, and A3S
+    Flow without waiting for every external step provider;
 11. add `W0.4` only as its selected `A1.3`, `MCP0.5`, `I0.2`, and `U0.4`
     provider contracts pass, then close `W0.5` through multi-day recovery,
     migration, compensation, tenant, scale, and operator evidence;

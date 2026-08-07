@@ -12,9 +12,11 @@ pub use identifiers::{
     AgentConversationId, AgentExecutionId, ApiTokenId, AssetId, AssetReleaseId, BuildRunId,
     DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId,
     GatewayCertificateId, GatewayRolloutId, GatewayScopeId, McpCredentialId, MembershipId,
-    NodeCertificateId, NodeCommandId, NodeId, OperationId, OrganizationId, PrincipalId, ProjectId,
-    ResourceClaimId, RouteId, SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId,
-    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    NodeCertificateId, NodeCommandId, NodeId, OntologyId, OntologyRevisionId, OperationId,
+    OrganizationId, PlanRevisionId, PrincipalId, ProjectId, ResourceClaimId, RouteId, SecretId,
+    SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
+    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

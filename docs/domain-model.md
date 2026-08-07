@@ -19,10 +19,11 @@ engine, scheduler, node channel, provider-specific controller, or event-log
 authority. A3S Code is the native provider rather than the only admissible
 Harness.
 
-Planned W0 adds versioned ontologies, Workflow definitions, goals,
-deterministic plan revisions, Workflow runs, and human decisions. It compiles
-semantic intent to the existing Operations and A3S Flow path; it does not add
-another workflow engine, scheduler, graph database authority, or task queue.
+W0 adds versioned ontologies, Workflow definitions, goals, deterministic plan
+revisions, Workflow runs, and human decisions. `W0.1` implements their closed
+contract foundation; later gates compile semantic intent to the existing
+Operations and A3S Flow path. W0 does not add another workflow engine,
+scheduler, graph database authority, or task queue.
 
 Planned EV0 adds authorized evidence-dataset manifests, evaluation suites,
 experiments, candidate revisions, promotion decisions, and rollback evidence.
@@ -398,7 +399,7 @@ may retain private in-process state and source events but cannot add a
 Cloud-visible run store, scheduler, command queue, approval authority, or
 second semantic history.
 
-### 3.14 Workflow and ontology (planned W0)
+### 3.14 Workflow and ontology (`W0.1` contract implemented)
 
 Owns ontology revisions, Workflow definitions and revisions, goals,
 deterministic plan revisions, Workflow runs, human decisions, and semantic step
@@ -420,6 +421,32 @@ Supporting immutable records:
 - `PlanRevision`
 - `WorkflowStepProjection`
 - `WorkflowDecision`
+
+The first closed Workflow contract uses these semantic step kinds:
+
+| Step kind | Authority and execution rule |
+| --- | --- |
+| `input`, `transform`, `branch`, `output` | Workflow-local deterministic plan semantics; no Runtime Task is created only to copy, transform, select, or return data |
+| `human_decision` | WorkflowDecision plus Identity/Resource Grants, coordinated by the same Operation/Flow run |
+| `execution` | Exact Executions-owned template and the ordinary finite Task path |
+| `agent` | Exact Assets release and Agents provider profile |
+| `mcp` | Exact admitted MCP Service profile and existing MCP/Gateway path |
+| `model` | Exact Inference model/route revision |
+| `tool`, `memory` | Exact A3S Use package capability; Workflow owns no Tool or Memory registry/store |
+| `service` | Exact Workflow connector revision with bounded schema, egress policy, and Secret identities |
+| `subworkflow` | Exact immutable WorkflowRevision; recursion and depth are compiler-bounded |
+
+The standalone node names map as `start -> input`, `template -> transform`,
+`llm -> model`, `router -> branch`, `http -> service`, and
+`approval -> human_decision`; `agent`, `tool`, `memory`, and `output` retain
+their semantic names. The map preserves outcomes, not the former standalone
+wire, queue, provider, or node-runner contracts.
+
+One `WorkflowStepDescriptor` supplies typed ports, closed configuration schema,
+allowed CapabilityReference kinds, presentation keys, and policy requirements
+to CLI, Management MCP, and the deferred Designer. Presentation layout has a
+separate digest and cannot change the semantic WorkflowRevision or a running
+PlanRevision.
 
 Ontology and Workflow definitions use closed A3S ACL parsed only through
 `a3s-acl`. PostgreSQL through A3S ORM owns objects, relationships, rules,
@@ -1089,7 +1116,7 @@ contexts' tables.
   Harness plus exact A3S Runtime and Box checkpoint contracts pass crash,
   integrity, compatibility, adoption, and cleanup certification.
 
-### Workflow, ontology, and plan execution (planned W0)
+### Workflow, ontology, and plan execution (`W0.1` contract implemented)
 
 - An OntologyRevision is immutable and binds one closed ACL digest, compiler
   schema version, parent revision, migration policy, and canonical semantic
@@ -1518,7 +1545,7 @@ exact `PluginHostObservation` matches the desired assignment generation, the
 computed assignment status is `pending`, `blocked`, or `unavailable`, never
 partially installed or optimistically active.
 
-### Workflow run state (planned W0)
+### Workflow run state (planned `W0.3`)
 
 ```text
 draft -> compiled -> queued -> running -> succeeded

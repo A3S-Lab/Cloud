@@ -280,7 +280,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | Planned |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress (`W0.1` closed contract foundation implemented) |
 | `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
 | `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |

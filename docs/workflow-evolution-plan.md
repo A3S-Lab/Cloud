@@ -142,6 +142,81 @@ Plan steps call typed application ports:
 No connector may write another context's tables or start a Runtime unit
 directly.
 
+### 4.4 Standalone A3S Workflow consolidation register
+
+The former standalone `A3S-Lab/Workflow` repository is a migration source,
+not a second product authority. Its useful outcomes are retained by the Cloud
+contract below. Its standalone server, database bootstrap, Flow queue,
+development Runtime provider, node-execution store, Memory API, CLI binary,
+deployment stack, and Studio are not embedded because Cloud already owns those
+mechanisms or surfaces.
+
+| Standalone outcome | Cloud-owned form | Gate | Consolidation rule |
+| --- | --- | --- | --- |
+| Optimistically versioned graph definitions | `WorkflowDefinition` plus immutable `WorkflowRevision` in closed ACL | `W0.1`-`W0.3` | Preserve immutable publication and conflict detection; do not retain a mutable legacy representation as product configuration |
+| DAG validation, one input, one output, reachability, deterministic ordering, and named branch handles | Workflow contract validator and deterministic compiler | `W0.1`, `W0.3` | Preserve the graph invariants and make compiler order independent of authoring/layout order |
+| Start, template, router, and output nodes | `input`, `transform`, `branch`, and `output` Workflow-local semantic steps | `W0.1`, `W0.3` | These steps are part of the immutable plan; they do not create Runtime Tasks merely to copy, transform, branch, or return data |
+| LLM node | Typed `model` step bound to one exact Inference model/route revision | `W0.4`, `I0.2` | No direct OpenAI-compatible client, model key, or model scheduler enters Workflow |
+| Bounded Agent node | Typed `agent` step bound to one exact Agent release and provider profile | `W0.4`, `A1.3`-`A1.6` | Retire the node-local model/tool loop; Agents owns conversations, semantic events, approvals, checkpoints, and Harness lifecycle |
+| Tool node | Typed `tool` step bound to one exact A3S Use package capability | `W0.4`, `U0.4` | No endpoint-backed Tool registry or direct Tool process launch is copied into Workflow |
+| Memory node | Typed `memory` step bound to an admitted A3S Use/Agent memory capability | `W0.4`, selected `U0`/`A1` gate | Preserve store/search/retrieve/delete outcomes without a Workflow-owned Memory database or HTTP API |
+| HTTP node | Typed `service` step bound to one immutable connector revision | `W0.4` | Connector policy owns method, schema, destination, egress, and Secret references; arbitrary URLs and header environment injection are not durable Workflow state |
+| Approval execute/resume | `WorkflowDecision` guarded by Identity/Resource Grants and coordinated by the same Operation/Flow run | `W0.3`-`W0.5`, `C0.3` | Preserve explicit allow/deny/expiry/cancel and replay; do not launch a Runtime Task only to create or consume a hook |
+| Per-node provider, pool, resources, isolation, network, timeout, and Secret references | Exact capability and policy digests compiled through the owning context, Workloads, Fleet, Runtime, Box, and Secrets | `W0.4`, applicable provider gates | Preserve placement and isolation intent; provider names, pool selectors, plaintext values, and another provider registry do not enter Workflow |
+| Invocation/result schemas, generation fencing, artifact digests, and per-attempt evidence | Exact child identity, request/receipt digest, Operation correlation, and bounded evidence reference on `WorkflowStepProjection` | `W0.3`-`W0.5` | Preserve evidence and stale-attempt rejection; do not copy Runtime observations or create a Workflow node-execution evidence store |
+| Run lifecycle, event history, per-step tracing, statistics, and diagnostics | Authorized WorkflowRun and WorkflowStepProjection reads correlated with the one Operation/Flow history and owning-context evidence | `W0.3`-`W0.5` | Preserve list/get/start/wait/cancel/history/evidence/diagnostic outcomes without a second event log, metrics authority, or mutable run-history store |
+| PostgreSQL durability, Flow recovery, approval hooks, and worker scaling | Cloud PostgreSQL through A3S ORM plus the existing Operations/A3S Flow workers | `W0.2`-`W0.5` | No Workflow database bootstrap, queue table, lease worker, retry daemon, or local audit file is introduced |
+| Machine-readable CLI and coding-agent Skill | Existing Cloud client, CLI, and Management MCP expose the same list/get/author/apply/start/wait/cancel/history/evidence/decide outcomes | `W0.2`-`W0.5` | One Cloud authentication, response envelope, idempotency model, and management catalog; no `a3s-workflow` control-plane URL or token namespace |
+| Graph Designer, node catalog, diagnostics, patch review, and run projection | Deferred Cloud Workflow Designer using one descriptor contract and the existing Cloud shell | Later frontend phase after the backend freeze | Preserve the product outcome and controlled editing model; do not copy the standalone React application or make layout state execution authority |
+
+The ten standalone node names have one explicit migration map:
+
+```text
+start -> input                 template -> transform
+llm -> model                  agent -> agent
+tool -> tool                  router -> branch
+memory -> memory              http -> service
+approval -> human_decision    output -> output
+```
+
+This map preserves user intent, not the old standalone wire contract. A3S ACL
+remains the only admitted product configuration. A future authoring surface
+may use an internal view model, but only canonical closed ACL and its semantic
+digest can become a Workflow revision.
+
+### 4.5 Step descriptor and Designer boundary
+
+One versioned descriptor drives future CLI discovery, Management MCP schema,
+and the deferred Designer without becoming execution authority:
+
+```text
+WorkflowStepDescriptor
+├── presentation       stable kind, label key, icon key, safe summary fields
+├── ports              typed static or declarative dynamic inputs and outputs
+├── configuration      closed schema reference, defaults, and semantic digest rules
+├── binding            allowed CapabilityReference kinds and compatibility rules
+└── requirements       capability/policy constraints, never a provider or pool registry
+```
+
+Authoring position, grouping, comments, and viewport metadata belong to a
+separate presentation digest. Changing only presentation data does not change
+the semantic Workflow revision or PlanRevision digest. Structured AI edits
+produce a revision-bound patch with diagnostics and an explicit review result;
+they cannot mutate a published graph or running plan in place.
+
+Every step configuration, input schema, output schema, capability reference,
+policy, ontology, Workflow, and compiler revision is digest-bound before plan
+compilation. Workflow-local `input`, `transform`, `branch`, `output`, and
+decision coordination remain deterministic semantic work. Other steps call
+the named owning application port; only that owner may decide whether an
+ordinary Runtime Task or Service is required.
+
+`W0.3` must persist each admitted closed configuration and schema payload
+atomically with its WorkflowRevision, then verify every stored digest before
+publication or compilation. A digest without retrievable canonical content is
+not a publishable Workflow input, and mutable external content cannot fill the
+gap during replay.
+
 ## 5. `A1`: heterogeneous Agent hosting through one contract
 
 ### 5.1 Provider model
