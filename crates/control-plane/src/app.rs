@@ -29,7 +29,7 @@ use crate::modules::assets::{
     UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
 use crate::modules::edge::domain::repositories::{
-    IEdgeRepository, IMcpCredentialLifecycleRepository,
+    IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
 };
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -37,21 +37,22 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
-    DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
-    EdgeModule, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
-    GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
-    GatewayRolloutReconciler, GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler,
-    GetMcpCredentialHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
-    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
+    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
+    FleetGatewayObservationQueue, GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner,
+    GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
+    GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GetDomainClaimHandler, GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler,
+    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
+    ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
     McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
     McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
-    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
-    PublishRouteHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
-    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
-    WorkloadRouteTargetReader,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    PostgresEdgeRepository, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
+    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
+    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -267,6 +268,7 @@ pub async fn build_application_with_source_resolver(
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
     let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge_repository.clone();
+    let mcp_route_policy_repository: Arc<dyn IMcpRoutePolicyRepository> = edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
         edge_repository.clone();
     let asset_repository = Arc::new(PostgresAssetRepository::new(executor.clone()));
@@ -276,6 +278,10 @@ pub async fn build_application_with_source_resolver(
     let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(Arc::clone(
         &mcp_profiles,
     )));
+    let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
+        mcp_route_policy_repository,
+        Arc::clone(&mcp_profiles),
+    ));
     let asset_backup_objects =
         ImmutableObjectClient::local(&config.artifacts.store_dir, "asset-git-backups")
             .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
@@ -791,6 +797,7 @@ pub async fn build_application_with_source_resolver(
             search,
             asset_catalog,
             mcp_service_profiles,
+            mcp_route_policies,
             asset_git,
             assets,
             workloads,
@@ -865,6 +872,7 @@ struct ApplicationDependencies {
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
+    mcp_route_policies: Arc<McpRoutePolicyApplicationService>,
     asset_git: Arc<AssetGitApplicationService>,
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
@@ -910,6 +918,7 @@ fn build_application_with_health(
         search,
         asset_catalog,
         mcp_service_profiles,
+        mcp_route_policies,
         asset_git,
         assets,
         workloads,
@@ -999,6 +1008,10 @@ fn build_application_with_health(
     let get_asset_releases = Arc::clone(&asset_catalog);
     let bind_mcp_service_profiles = Arc::clone(&mcp_service_profiles);
     let get_mcp_service_profiles = mcp_service_profiles;
+    let create_mcp_route_policies = Arc::clone(&mcp_route_policies);
+    let revise_mcp_route_policies = Arc::clone(&mcp_route_policies);
+    let list_mcp_route_policies = Arc::clone(&mcp_route_policies);
+    let get_mcp_route_policies = mcp_route_policies;
     let agent_create_assets = Arc::clone(&assets);
     let agent_update_assets = Arc::clone(&assets);
     let agent_execution_assets = Arc::clone(&assets);
@@ -1390,6 +1403,12 @@ fn build_application_with_health(
                         create_mcp_credential_encryption,
                     ),
                 )
+                .command_handler::<crate::modules::edge::CreateMcpRoutePolicy, _>(
+                    CreateMcpRoutePolicyHandler::new(create_mcp_route_policies),
+                )
+                .command_handler::<crate::modules::edge::ReviseMcpRoutePolicy, _>(
+                    ReviseMcpRoutePolicyHandler::new(revise_mcp_route_policies),
+                )
                 .command_handler::<crate::modules::edge::RotateMcpCredential, _>(
                     RotateMcpCredentialHandler::new(
                         rotate_mcp_credentials,
@@ -1592,6 +1611,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::edge::GetMcpCredential, _>(
                     GetMcpCredentialHandler::new(get_mcp_credentials),
+                )
+                .query_handler::<crate::modules::edge::ListMcpRoutePolicies, _>(
+                    ListMcpRoutePoliciesHandler::new(list_mcp_route_policies),
+                )
+                .query_handler::<crate::modules::edge::GetMcpRoutePolicy, _>(
+                    GetMcpRoutePolicyHandler::new(get_mcp_route_policies),
                 )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,

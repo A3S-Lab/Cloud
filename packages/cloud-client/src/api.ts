@@ -47,6 +47,8 @@ import type {
   McpCredential,
   McpCredentialDeliveryResult,
   McpCredentialMutationResult,
+  McpRoutePolicy,
+  McpRoutePolicyMutationResult,
   McpServiceProfile,
   McpServiceProfileMutationResult,
   Node,
@@ -83,6 +85,7 @@ import {
   validateExpectedMcpCredentialVersion,
   validateExpectedNodeVersion,
   validateMcpCredentialExpiry,
+  validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
   validateSecretValue,
   validateWorkloadAcl,
@@ -100,13 +103,14 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.8.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.9.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
   MAX_ACL_DOCUMENT_BYTES,
+  MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
@@ -922,6 +926,62 @@ export class CloudApi {
     );
   }
 
+  listMcpRoutePolicies(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<McpRoutePolicy[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-route-policies`,
+      signal
+    );
+  }
+
+  getMcpRoutePolicy(organizationId: string, routeId: string, signal?: AbortSignal): Promise<McpRoutePolicy> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-route-policies/${encodeURIComponent(routeId)}`,
+      signal
+    );
+  }
+
+  createMcpRoutePolicyFromAcl(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpRoutePolicyMutationResult> {
+    return this.postMcpRoutePolicyAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-route-policies`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
+  reviseMcpRoutePolicyFromAcl(
+    organizationId: string,
+    routeId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpRoutePolicyMutationResult> {
+    return this.postMcpRoutePolicyAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-route-policies/${encodeURIComponent(routeId)}/revisions`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
   listSecrets(
     organizationId: string,
     projectId: string,
@@ -1488,6 +1548,16 @@ export class CloudApi {
     signal?: AbortSignal
   ): Promise<T> {
     validateMcpServiceProfileAcl(acl);
+    return this.postAcl(path, idempotencyKey, acl, signal);
+  }
+
+  private postMcpRoutePolicyAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    acl: string,
+    signal?: AbortSignal
+  ): Promise<T> {
+    validateMcpRoutePolicyAcl(acl);
     return this.postAcl(path, idempotencyKey, acl, signal);
   }
 

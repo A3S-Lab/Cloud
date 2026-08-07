@@ -63,6 +63,16 @@ same profile digest and an identical binding is a replay/no-op. The client
 does not create another profile store, route policy, deployment path, or MCP
 scheduler.
 
+`listMcpRoutePolicies`, `getMcpRoutePolicy`,
+`createMcpRoutePolicyFromAcl`, and `reviseMcpRoutePolicyFromAcl` expose the
+separately mutable Edge desired-state policy. Writes send one nonempty UTF-8
+A3S ACL document of at most 512 KiB through the shared ACL transport with a
+caller-owned idempotency key. Cloud alone canonicalizes the policy, validates
+its exact Service profile, release, domain, Workload, Gateway scope, grants,
+revision, limits, and expiry, and commits audit/Outbox evidence. The client
+does not publish a Gateway snapshot, derive targets, or create a second MCP
+policy lifecycle.
+
 `bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
 lifecycle and require caller-owned idempotency keys. A bind names one exact
 published Skill AssetRelease; an unbind names the Skill Asset already present

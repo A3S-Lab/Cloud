@@ -159,3 +159,56 @@ export interface McpCredentialMutationResult {
   credential: McpCredential;
   replayed: boolean;
 }
+
+export interface McpRoutePolicyLimit {
+  maxConcurrentRequests: number;
+  requestsPerMinute: number;
+  requestBurst: number;
+}
+
+export interface McpRoutePolicyGrant {
+  credentialId: string;
+  credentialGeneration: number;
+  methods: string[];
+  names: string[];
+  limits: McpRoutePolicyLimit;
+}
+
+export interface McpRoutePolicy {
+  id: string;
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  gatewayScopeId: string;
+  domainClaimId: string;
+  workloadId: string;
+  assetId: string;
+  assetReleaseId: string;
+  profileDigest: string;
+  hostname: string;
+  path: string;
+  tlsRequired: boolean;
+  allowedOrigins: string[];
+  maxHeaderBytes: number;
+  maxRequestBytes: number;
+  maxResponseBytes: number;
+  firstResponseTimeoutSeconds: number;
+  streamIdleTimeoutSeconds: number;
+  streamTotalTimeoutSeconds: number;
+  drainTimeoutSeconds: number;
+  telemetryNames: string[];
+  telemetryEventsPerMinute: number;
+  auditRequired: boolean;
+  grants: McpRoutePolicyGrant[];
+  policyRevision: number;
+  policyDigest: string;
+  acl: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface McpRoutePolicyMutationResult {
+  policy: McpRoutePolicy;
+  replayed: boolean;
+}

@@ -127,12 +127,13 @@ error. API-token list/get and create/revoke results are projected onto safe
 metadata; Cloud stores only the credential digest through its A3S ORM-backed
 Identity repository.
 
-Desired-state commands additionally require `--file=<path>` and accept only a
-nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
-bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
-bounded closed-schema validation, and dispatches the existing application
-command. The CLI does not parse ACL, accept JSON/TOML manifests, or place
-manifest content in command arguments.
+Desired-state commands additionally require `--file=<path>`. Workload and MCP
+Service-profile commands accept a nonempty UTF-8 A3S ACL document of at most
+64 KiB; MCP route-policy create/revise accepts at most 512 KiB. The CLI sends
+those exact bytes as `application/vnd.a3s.acl`; Cloud parses them with
+`a3s-acl`, applies bounded closed-schema validation, and dispatches the
+existing application command. The CLI does not parse ACL, accept JSON/TOML
+manifests, or place manifest content in command arguments.
 
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
@@ -215,6 +216,10 @@ mcp-credentials get <credential-id>
 mcp-credentials create --expires-at=<timestamp>
 mcp-credentials rotate <credential-id> --expires-at=<timestamp> --expected-version=<version>
 mcp-credentials revoke <credential-id> --expected-version=<version>
+mcp-routes list
+mcp-routes get <route-id>
+mcp-routes create --file=<path>
+mcp-routes revise <route-id> --file=<path>
 routes list
 routes get <route-id>
 routes publish <gateway-scope-id> <workload-revision-id> <domain-claim-id> <hostname> <path-prefix> <port-name>
@@ -243,6 +248,13 @@ caller-owned idempotency key and sends the bounded UTF-8 bytes unchanged as
 authority. `asset-releases mcp-profile` reads the resulting profile. An
 identical canonical binding is a replay/no-op, while a different profile for
 the same release is rejected as immutable.
+
+`mcp-routes create` and `mcp-routes revise` submit the separately mutable Edge
+route-policy ACL with a caller-owned idempotency key. List/get expose the
+canonical policy and revision. Cloud remains authoritative for Service-profile
+admission, tenancy, grant generations, domain and Workload identity, audit,
+Outbox, reconciliation, and the single complete Gateway publication path; the
+CLI does not compile or publish Gateway state.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing

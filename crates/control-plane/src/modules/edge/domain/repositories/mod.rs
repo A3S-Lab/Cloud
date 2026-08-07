@@ -18,5 +18,6 @@ pub use mcp_credential_repository::{
     RotateMcpCredentialWrite,
 };
 pub use mcp_route_policy_repository::{
-    IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    IMcpRoutePolicyRepository, McpRoutePolicyWrite, McpRoutePolicyWriteSnapshot,
+    MutateMcpRoutePolicyWrite, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };

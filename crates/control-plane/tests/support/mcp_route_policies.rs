@@ -9,7 +9,7 @@ use a3s_cloud_control_plane::modules::assets::{
     McpServiceProfileBound, McpServiceProfileSpec, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
-    DomainClaimChanged, McpCredentialChanged, RoutePublicationStaged,
+    DomainClaimChanged, McpCredentialChanged, McpRoutePolicyMutationKind, RoutePublicationStaged,
 };
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
     CreateMcpCredentialWrite, StageRoutePublication,
@@ -26,10 +26,11 @@ use a3s_cloud_control_plane::modules::edge::{
     McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
     McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PlanManagedGatewayRouteRollout, PlanMcpGatewayProjectionSet,
-    PlannedMcpGatewayNodeProjection, PostgresEdgeRepository, ResolvedRouteTarget,
-    ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName, RouteTarget,
-    StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
+    McpRouteTargetProjectionCompiler, MutateMcpRoutePolicyWrite, PlanManagedGatewayRouteRollout,
+    PlanMcpGatewayProjectionSet, PlannedMcpGatewayNodeProjection, PostgresEdgeRepository,
+    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName,
+    RouteTarget, StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim,
+    UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
@@ -576,10 +577,55 @@ pub async fn exercise(
     unowned_spec.hostname = RouteHostname::parse("unowned-mcp.integration.example")?;
     let unowned = McpRoutePolicy::create(unowned_spec, &profile, created_at)?;
     assert!(matches!(
-        edge.create_mcp_route_policy(unowned).await,
+        edge.mutate_mcp_route_policy(policy_write(
+            &unowned,
+            McpRoutePolicyMutationKind::Create,
+            "postgres-mcp-route-policy-unowned",
+        )?)
+        .await,
         Err(RepositoryError::NotFound)
     ));
-    assert_eq!(edge.create_mcp_route_policy(policy.clone()).await?, policy);
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "alter table outbox_events add constraint mcp_route_policy_outbox_failure_probe check (event_key <> 'edge.mcp-route-policy.created')",
+        )
+        .await?;
+    let failed_create = edge
+        .mutate_mcp_route_policy(policy_write(
+            &policy,
+            McpRoutePolicyMutationKind::Create,
+            "postgres-mcp-route-policy-rollback-probe",
+        )?)
+        .await;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "alter table outbox_events drop constraint mcp_route_policy_outbox_failure_probe",
+        )
+        .await?;
+    assert!(matches!(failed_create, Err(RepositoryError::Storage(_))));
+    assert_eq!(
+        edge.find_mcp_route_policy(organization_id, policy.spec().route_id)
+            .await?,
+        None
+    );
+
+    let create_write = policy_write(
+        &policy,
+        McpRoutePolicyMutationKind::Create,
+        "postgres-mcp-route-policy-create",
+    )?;
+    let created = edge.mutate_mcp_route_policy(create_write.clone()).await?;
+    assert!(!created.replayed);
+    assert_eq!(created.policy, policy);
+    let replayed_create = edge.mutate_mcp_route_policy(create_write).await?;
+    assert!(replayed_create.replayed);
+    assert_eq!(replayed_create.policy, policy);
     assert_eq!(
         edge.find_mcp_route_policy(organization_id, policy.spec().route_id)
             .await?,
@@ -616,6 +662,24 @@ pub async fn exercise(
         )
         .await?
         .is_empty());
+
+    assert_eq!(
+        policy_mutation_artifact_counts(executor, policy.spec().route_id).await?,
+        (1, 1, 0)
+    );
+    let no_op_create = edge
+        .mutate_mcp_route_policy(policy_write(
+            &policy,
+            McpRoutePolicyMutationKind::Create,
+            "postgres-mcp-route-policy-equivalent",
+        )?)
+        .await?;
+    assert!(no_op_create.replayed);
+    assert_eq!(no_op_create.policy, policy);
+    assert_eq!(
+        policy_mutation_artifact_counts(executor, policy.spec().route_id).await?,
+        (1, 2, 0)
+    );
     assert!(edge
         .list_active_mcp_route_policies_for_gateway(
             organization_id,
@@ -658,9 +722,28 @@ pub async fn exercise(
     revised_spec.expires_at += Duration::minutes(1);
     revised.revise(revised_spec, &profile, created_at + Duration::minutes(1))?;
     assert_eq!(
-        edge.update_mcp_route_policy(revised.clone(), 1).await?,
+        edge.mutate_mcp_route_policy(policy_write(
+            &revised,
+            McpRoutePolicyMutationKind::Revise,
+            "postgres-mcp-route-policy-revise",
+        )?)
+        .await?
+        .policy,
         revised
     );
+    assert_eq!(
+        policy_mutation_artifact_counts(executor, policy.spec().route_id).await?,
+        (2, 2, 1)
+    );
+    let historical_create = edge
+        .mutate_mcp_route_policy(policy_write(
+            &policy,
+            McpRoutePolicyMutationKind::Create,
+            "postgres-mcp-route-policy-create",
+        )?)
+        .await?;
+    assert!(historical_create.replayed);
+    assert_eq!(historical_create.policy, policy);
     assert!(matches!(
         edge.stage_mcp_gateway_snapshot(stale_stage.clone()).await,
         Err(RepositoryError::Conflict(_))
@@ -679,7 +762,12 @@ pub async fn exercise(
     stale_spec.expires_at += Duration::minutes(2);
     stale.revise(stale_spec, &profile, created_at + Duration::minutes(2))?;
     assert!(matches!(
-        edge.update_mcp_route_policy(stale, 1).await,
+        edge.mutate_mcp_route_policy(policy_write(
+            &stale,
+            McpRoutePolicyMutationKind::Revise,
+            "postgres-mcp-route-policy-stale-revision",
+        )?)
+        .await,
         Err(RepositoryError::Conflict(_))
     ));
 
@@ -1318,6 +1406,37 @@ async fn stage_artifact_counts(
     Ok((publications, certificates, events, markers))
 }
 
+async fn policy_mutation_artifact_counts(
+    executor: &PostgresExecutor,
+    route_id: RouteId,
+) -> TestResult<(i64, i64, i64)> {
+    let database = Database::new(PostgresDialect, executor.clone());
+    let outbox = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ")
+                .bind(route_id.as_uuid())
+                .append(
+                    " and event_key in ('edge.mcp-route-policy.created', 'edge.mcp-route-policy.revised')",
+                ),
+        )
+        .await?;
+    let create_audits = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from audit_records where aggregate_id = ")
+                .bind(route_id.as_uuid())
+                .append(" and action = 'edge.mcp-route-policy.created'"),
+        )
+        .await?;
+    let revise_audits = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from audit_records where aggregate_id = ")
+                .bind(route_id.as_uuid())
+                .append(" and action = 'edge.mcp-route-policy.revised'"),
+        )
+        .await?;
+    Ok((outbox, create_audits, revise_audits))
+}
+
 async fn issue_gateway_certificate(
     repository: &dyn IEdgeRepository,
     certificate: &a3s_cloud_control_plane::modules::edge::GatewayCertificate,
@@ -1398,6 +1517,25 @@ a3s_orm::orm_table! {
 
 fn digest(character: char) -> Result<Sha256Digest, String> {
     Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64)))
+}
+
+fn policy_write(
+    policy: &McpRoutePolicy,
+    kind: McpRoutePolicyMutationKind,
+    key: &str,
+) -> Result<MutateMcpRoutePolicyWrite, String> {
+    Ok(MutateMcpRoutePolicyWrite {
+        document: McpRoutePolicy::parse_acl(policy.canonical_acl())?,
+        kind,
+        idempotency: idempotency(
+            policy.spec().organization_id,
+            format!("mcp-route-policies/{}", policy.spec().route_id),
+            key,
+            policy.canonical_acl().as_bytes(),
+        )?,
+        request_id: Uuid::now_v7(),
+        requested_at: policy.updated_at(),
+    })
 }
 
 fn idempotency(

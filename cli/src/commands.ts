@@ -116,7 +116,9 @@ export async function executeCommand(
   if (searchResult !== undefined) {
     return searchResult;
   }
-  const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi);
+  const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
   if (edgeResult !== undefined) {
     return edgeResult;
   }

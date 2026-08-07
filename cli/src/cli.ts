@@ -90,6 +90,10 @@ Commands:
   mcp-credentials create Create and print one recoverable hosted MCP bearer credential
   mcp-credentials rotate ID Rotate and print one hosted MCP bearer credential
   mcp-credentials revoke ID Revoke one hosted MCP credential idempotently
+  mcp-routes list        List MCP route policies in the selected environment
+  mcp-routes get ID      Get one MCP route policy and canonical ACL
+  mcp-routes create      Create one MCP route policy from A3S ACL
+  mcp-routes revise ID   Revise one MCP route policy from A3S ACL
   routes list           List routes in the selected environment
   routes get ID         Get one route
   routes publish SCOPE REV CLAIM HOST PATH PORT Publish one managed route idempotently

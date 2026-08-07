@@ -7,6 +7,7 @@ import {
   CloudApiError,
   type CloudFetch,
   DEFAULT_CLOUD_API_BASE_PATH,
+  MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
@@ -27,7 +28,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.8.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.9.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -294,6 +295,55 @@ describe('CloudApi', () => {
         body: acl,
       })
     );
+  });
+
+  it('reads, creates, and revises MCP route policy desired state as raw A3S ACL', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'mcp_route_policy "route" { policy_revision = 1 }';
+
+    await api.listMcpRoutePolicies('organization / one', 'project', 'environment');
+    await api.getMcpRoutePolicy('organization / one', 'route');
+    await api.createMcpRoutePolicyFromAcl(
+      'organization / one',
+      'project',
+      'environment',
+      acl,
+      'mcp-route:create-1'
+    );
+    await api.reviseMcpRoutePolicyFromAcl('organization / one', 'route', acl, 'mcp-route:revise-1');
+
+    expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/mcp-route-policies',
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/mcp-route-policies/route', 'GET'],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/mcp-route-policies',
+        'POST',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/mcp-route-policies/route/revisions', 'POST'],
+    ]);
+    for (const [call, key] of [
+      [calls[2], 'mcp-route:create-1'],
+      [calls[3], 'mcp-route:revise-1'],
+    ] as const) {
+      expect(call?.[1]).toEqual(
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': A3S_ACL_MEDIA_TYPE,
+            'Idempotency-Key': key,
+          }),
+          body: acl,
+        })
+      );
+    }
   });
 
   it('uses the shared transport for finite Execution lifecycle operations', async () => {
@@ -1105,6 +1155,17 @@ describe('CloudApi', () => {
         'profile:bind-2'
       )
     ).toThrow('MCP Service profile ACL must contain between');
+    expect(() =>
+      api.createMcpRoutePolicyFromAcl('organization', 'project', 'environment', '', 'mcp-route:create-1')
+    ).toThrow('MCP route policy ACL must contain between');
+    expect(() =>
+      api.reviseMcpRoutePolicyFromAcl(
+        'organization',
+        'route',
+        '茅'.repeat(MAX_MCP_ROUTE_POLICY_ACL_BYTES),
+        'mcp-route:revise-1'
+      )
+    ).toThrow('MCP route policy ACL must contain between');
     expect(called).toBe(false);
   });
 

@@ -32,5 +32,7 @@ pub use mcp_credential::McpCredential;
 pub use mcp_credential_delivery_receipt::{
     mcp_credential_delivery_context, McpCredentialDeliveryReceipt,
 };
-pub use mcp_route_policy::{McpRoutePolicy, McpRoutePolicySpec};
+pub use mcp_route_policy::{
+    McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec, MCP_ROUTE_POLICY_MAX_ACL_BYTES,
+};
 pub use route::{Route, RouteState};

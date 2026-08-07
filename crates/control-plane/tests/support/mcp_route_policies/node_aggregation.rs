@@ -54,8 +54,13 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     assert_eq!(
         fixture
             .edge
-            .update_mcp_route_policy(first_policy.clone(), fixture.policy.policy_revision())
-            .await?,
+            .mutate_mcp_route_policy(policy_write(
+                &first_policy,
+                McpRoutePolicyMutationKind::Revise,
+                "postgres-mcp-route-policy-first-credential",
+            )?)
+            .await?
+            .policy,
         first_policy
     );
 
@@ -112,8 +117,13 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     assert_eq!(
         fixture
             .edge
-            .create_mcp_route_policy(second_policy.clone())
-            .await?,
+            .mutate_mcp_route_policy(policy_write(
+                &second_policy,
+                McpRoutePolicyMutationKind::Create,
+                "postgres-mcp-route-policy-second-scope",
+            )?)
+            .await?
+            .policy,
         second_policy
     );
 
@@ -345,7 +355,11 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     )?;
     fixture
         .edge
-        .update_mcp_route_policy(concurrent_policy, first_policy.policy_revision())
+        .mutate_mcp_route_policy(policy_write(
+            &concurrent_policy,
+            McpRoutePolicyMutationKind::Revise,
+            "postgres-mcp-route-policy-concurrent-publication",
+        )?)
         .await?;
     assert!(matches!(
         managed_repository

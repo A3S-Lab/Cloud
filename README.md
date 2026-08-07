@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.8.0" src="https://img.shields.io/badge/REST_contract-1.8.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.9.0" src="https://img.shields.io/badge/REST_contract-1.9.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -100,6 +100,14 @@ This is the current Cloud `MCP0.3` foundation, not a hosted-MCP availability
 claim. Real Runtime, Box, Gateway, process-loss, recovery, and cleanup evidence
 must still close the joint gates in [ROADMAP.md](ROADMAP.md).
 
+The backend now exposes that existing Edge-owned `McpRoutePolicy` as one
+tenant-guarded A3S ACL lifecycle through REST contract `1.9.0`, the maintained
+TypeScript client, and `mcp-routes` CLI commands. Create and revision writes
+atomically commit the canonical ACL and digest, caller idempotency, changed-only
+Outbox fact, and audit record through the existing A3S ORM repository. They do
+not add another route table, ACL parser, scheduler, reconciler, Gateway
+publisher, or frontend lifecycle.
+
 ### One concern, one authority
 
 | Concern | Sole authority | Duplicate mechanism that is prohibited |
@@ -153,7 +161,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.8.0`.
+contract version `1.9.0`.
 
 ### Bootstrap the first organization
 
@@ -208,7 +216,7 @@ its authority.
 | Generic compute | Finite Tasks, ordinary application Services, cancellation, cleanup, and operation replay | Executions, Workloads, `R0`, `D0`, `BX0` |
 | Fleet control | Enrollment, outbound mTLS, inventory, Claims, commands, receipts, fencing, draining, and cleanup | Fleet, Node Agent, `N0`, `H0` |
 | Execution substrate | Runtime/Box isolation, images, builds, mounts, outputs, logs, checkpoints, health, and provider recovery | Runtime, Box, `BX0`, `PW0` |
-| Managed traffic | Domains, certificate issuance and ownership-exclusive renewal, logical Gateway scopes, one node planner/compiler, owner-exclusive complete publication, routing, health, update, rollback, and exact applied state | Edge, Fleet, Gateway, Secrets, `E0`, `H0`, `MCP0`, `I0` |
+| Managed traffic | Domains, certificate issuance and ownership-exclusive renewal, logical Gateway scopes, ACL-native MCP route-policy lifecycle, one node planner/compiler, owner-exclusive complete publication, routing, health, update, rollback, and exact applied state | Edge, Fleet, Gateway, Secrets, `E0`, `H0`, `MCP0`, `I0` |
 | Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
 | Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
 | Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |

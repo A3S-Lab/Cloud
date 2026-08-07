@@ -281,6 +281,17 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
+    } else if is_mcp_route_policy_mutation_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 524288
+                }
+            }),
+        );
     } else {
         content.insert(
             "application/json".into(),
@@ -318,7 +329,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     }
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
     if asset_git_request_media_type(path).is_some()
-        || (method == "post" && is_mcp_service_profile_path(path))
+        || (method == "post"
+            && (is_mcp_service_profile_path(path) || is_mcp_route_policy_mutation_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -428,6 +440,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("domain-claims")
         || path.contains("gateway-")
         || path.contains("mcp-credentials")
+        || path.contains("mcp-route-policies")
     {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
@@ -493,6 +506,8 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/gateway-scopes")
         || path.ends_with("/mcp-credentials")
         || (path.contains("/mcp-credentials/") && path.ends_with("/rotate"))
+        || path.ends_with("/mcp-route-policies")
+        || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
         || path.ends_with("/source-revisions")
@@ -507,6 +522,11 @@ fn creates_resource(path: &str) -> bool {
 fn is_mcp_service_profile_path(path: &str) -> bool {
     path.ends_with("/mcp-service-profile")
         && path.contains("/assets/{asset_id}/releases/{asset_release_id}/")
+}
+
+fn is_mcp_route_policy_mutation_path(path: &str) -> bool {
+    path.ends_with("/mcp-route-policies")
+        || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
 }
 
 fn is_asset_git_path(path: &str) -> bool {

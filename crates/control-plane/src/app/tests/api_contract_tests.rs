@@ -148,6 +148,41 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(mcp_profile["post"]["responses"]["201"].is_object());
     assert!(mcp_profile["post"]["responses"]["413"].is_object());
     assert!(mcp_profile["post"]["responses"]["415"].is_object());
+    let mcp_route_collection = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
+    assert_eq!(mcp_route_collection["get"]["tags"], json!(["Edge"]));
+    assert!(mcp_route_collection["get"]["responses"]["200"].is_object());
+    assert!(mcp_route_collection["get"]["responses"]
+        .get("413")
+        .is_none());
+    assert!(mcp_route_collection["get"]["responses"]
+        .get("415")
+        .is_none());
+    assert_eq!(
+        mcp_route_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        524_288
+    );
+    assert!(mcp_route_collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    for path in [
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies",
+        "/organizations/{organization_id}/mcp-route-policies/{route_id}/revisions",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Edge"]));
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["responses"]["201"].is_object());
+        assert!(operation["responses"]["413"].is_object());
+        assert!(operation["responses"]["415"].is_object());
+    }
+    let mcp_route =
+        &document["paths"]["/organizations/{organization_id}/mcp-route-policies/{route_id}"]["get"];
+    assert_eq!(mcp_route["tags"], json!(["Edge"]));
+    assert!(mcp_route["responses"]["200"].is_object());
+    assert!(mcp_route["responses"].get("413").is_none());
+    assert!(mcp_route["responses"].get("415").is_none());
     for path in [
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/assets/{asset_id}/releases/{asset_release_id}/workloads",
         "/organizations/{organization_id}/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",

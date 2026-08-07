@@ -1518,7 +1518,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.8.0`. Focused tests regenerate the
+  and every API response pin contract `1.9.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -1806,7 +1806,7 @@ draft and yanked visibility for management and pinned deployments. New-binding
 selection accepts an optional exact semantic version or otherwise chooses the
 highest stable published version by semantic precedence; it excludes drafts,
 yanked releases, prereleases by default, and every release of an archived
-Asset. The same contract is exposed by OpenAPI `1.8.0`, the shared TypeScript
+Asset. The same contract is exposed by OpenAPI `1.9.0`, the shared TypeScript
 client, the standalone CLI, and the Web catalog summary.
 
 Migration 066 stores one optional immutable Agent binding on each Workload
@@ -1837,7 +1837,7 @@ read-only Artifact mount per Skill under `/a3s/skills/{asset_id}`; callers
 cannot inject mount names or paths, and Skills never become standalone Runtime
 units. Replay resolves the committed revision before fresh release admission,
 while rollback, Agent release updates, and Secret restarts preserve the exact
-Skill set. OpenAPI `1.8.0`, the shared client, CLI, and Web expose the same
+Skill set. OpenAPI `1.9.0`, the shared client, CLI, and Web expose the same
 tenant-authorized lifecycle.
 
 ### Remaining A0 work
@@ -1977,7 +1977,7 @@ unavailable. As of 2026-08-07:
   the ordinary certificate reconciler. Retained clean-host PostgreSQL lifecycle
   execution and joint real-process recovery remain `MCP0.3`. The tenant-guarded
   backend now exposes the immutable release-owned Service profile through raw
-  A3S ACL REST/OpenAPI `1.8.0`, the maintained TypeScript client, and CLI. One
+  A3S ACL REST/OpenAPI `1.9.0`, the maintained TypeScript client, and CLI. One
   Asset repository transaction reuses migration 053 and atomically stores the
   binding, caller idempotency, one secret-free Outbox event, and control-plane
   audit; canonical-equivalent ACL is the same digest and an identical binding
@@ -2128,6 +2128,21 @@ This reuses the existing Secret encryption provider and common
 idempotency/audit authorities and does not add TokenHub, another credential
 store, or another Gateway publication path. Web views remain planned and
 intentionally deferred during this phase.
+
+The current backend-first route-policy slice exposes create, list, get, and
+revision writes through REST/OpenAPI `1.9.0`, the maintained TypeScript client,
+and `mcp-routes` CLI commands. Requests carry only a bounded raw A3S ACL
+document; Cloud parses and canonicalizes it once with `a3s-acl`, admits it
+against the exact immutable Service profile and current policy revision, and
+uses the existing migration 054 table and Edge repository. One transaction
+stores desired state, a full historical idempotency response snapshot,
+changed-only Outbox event, and audit record. Exact-key replay resolves before
+current-expiry and revision checks, so a committed historical response remains
+recoverable after later revisions. The same route policy continues into the
+existing node desired-state planner, complete snapshot compiler, MCP
+reconciler, Fleet command, and Gateway acknowledgement path. No second policy
+store, ACL parser, scheduler, publication worker, or frontend implementation is
+introduced.
 
 MCP-only certificate renewal is also owned by that existing desired-state
 worker. When no ordinary Route owns the installed certificate, reconciliation
@@ -2602,7 +2617,7 @@ Current `A1.1` implementation:
 - event content is canonical bounded inline JSON of at most 64 KiB with a
   stored SHA-256 digest; immutable-object references begin only when a later
   gate admits larger content;
-- REST, OpenAPI `1.8.0`, the shared TypeScript client, CLI, and Web expose
+- REST, OpenAPI `1.9.0`, the shared TypeScript client, CLI, and Web expose
   conversation creation/list/get, execution start/list/get, paged event reads,
   and the shared resumable SSE stream; and
 - domain, application, concurrency, controller, contract, client, CLI, Web,

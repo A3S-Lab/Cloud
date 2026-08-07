@@ -6,16 +6,18 @@ pub mod presentation;
 pub use application::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,
     CreateGatewayScopeHandler, CreateGatewayScopeResult, CreateMcpCredential,
-    CreateMcpCredentialHandler, GetDomainClaim, GetDomainClaimHandler, GetMcpCredential,
-    GetMcpCredentialHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
+    CreateMcpCredentialHandler, CreateMcpRoutePolicy, CreateMcpRoutePolicyHandler, GetDomainClaim,
+    GetDomainClaimHandler, GetMcpCredential, GetMcpCredentialHandler, GetMcpRoutePolicy,
+    GetMcpRoutePolicyHandler, GetRoute, GetRouteHandler, ListDomainClaims, ListDomainClaimsHandler,
     ListGatewayCertificates, ListGatewayCertificatesHandler, ListGatewayScopes,
-    ListGatewayScopesHandler, ListMcpCredentials, ListMcpCredentialsHandler, ListRoutes,
-    ListRoutesHandler, McpCredentialDeliveryReceiptSweeper, McpCredentialDeliveryResult,
-    McpCredentialMutationResult, PublishRoute, PublishRouteHandler, PublishRouteResult,
-    RevokeDomainClaim, RevokeDomainClaimHandler, RevokeDomainClaimResult, RevokeMcpCredential,
-    RevokeMcpCredentialHandler, RotateMcpCredential, RotateMcpCredentialHandler,
-    SignGatewayCertificate, SignGatewayCertificateHandler, VerifyDomainClaim,
-    VerifyDomainClaimHandler, VerifyDomainClaimResult,
+    ListGatewayScopesHandler, ListMcpCredentials, ListMcpCredentialsHandler, ListMcpRoutePolicies,
+    ListMcpRoutePoliciesHandler, ListRoutes, ListRoutesHandler,
+    McpCredentialDeliveryReceiptSweeper, McpCredentialDeliveryResult, McpCredentialMutationResult,
+    McpRoutePolicyApplicationService, PublishRoute, PublishRouteHandler, PublishRouteResult,
+    ReviseMcpRoutePolicy, ReviseMcpRoutePolicyHandler, RevokeDomainClaim, RevokeDomainClaimHandler,
+    RevokeDomainClaimResult, RevokeMcpCredential, RevokeMcpCredentialHandler, RotateMcpCredential,
+    RotateMcpCredentialHandler, SignGatewayCertificate, SignGatewayCertificateHandler,
+    VerifyDomainClaim, VerifyDomainClaimHandler, VerifyDomainClaimResult,
 };
 pub use domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
@@ -23,7 +25,8 @@ pub use domain::repositories::{
     GatewayCertificateRouteStatus, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
     GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRolloutRollbackTarget,
     GatewayRouteCutoverResult, IEdgeRepository, IMcpCredentialLifecycleRepository,
-    IMcpCredentialRepository, IMcpRoutePolicyRepository, StageGatewayCertificateConvergence,
+    IMcpCredentialRepository, IMcpRoutePolicyRepository, McpRoutePolicyWrite,
+    McpRoutePolicyWriteSnapshot, MutateMcpRoutePolicyWrite, StageGatewayCertificateConvergence,
     StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
     TransitionDomainClaim, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
@@ -45,8 +48,8 @@ pub use domain::{
     GatewayRolloutPolicy, GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState,
     GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope,
     GatewayScopeState, McpCredential, McpCredentialDeliveryReceipt, McpRoutePolicy,
-    McpRoutePolicySpec, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
-    UpstreamEndpoint,
+    McpRoutePolicyDocument, McpRoutePolicySpec, Route, RouteHostname, RoutePath, RoutePortName,
+    RouteState, RouteTarget, UpstreamEndpoint, MCP_ROUTE_POLICY_MAX_ACL_BYTES,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
