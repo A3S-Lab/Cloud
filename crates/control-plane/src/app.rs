@@ -20,12 +20,13 @@ use crate::modules::artifacts::{
 use crate::modules::assets::{
     AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, ArchiveAssetHandler,
     AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
-    AssetsModule, BackupAssetGitRepositoryHandler, CreateAssetHandler, CreateAssetReleaseHandler,
-    GetAssetHandler, GetAssetReleaseHandler, IAssetGitRepository, IAssetGitRepositoryControl,
-    IAssetRepository, IMcpServiceProfileRepository, ListAssetReleasesHandler, ListAssetsHandler,
-    LocalAssetGitRepository, PostgresAssetRepository, ReceiveAssetGitPackHandler,
-    RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler, UploadAssetGitPackHandler,
-    YankAssetReleaseHandler,
+    AssetsModule, BackupAssetGitRepositoryHandler, BindMcpServiceProfileHandler,
+    CreateAssetHandler, CreateAssetReleaseHandler, GetAssetHandler, GetAssetReleaseHandler,
+    GetMcpServiceProfileHandler, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
+    IMcpServiceProfileRepository, ListAssetReleasesHandler, ListAssetsHandler,
+    LocalAssetGitRepository, McpServiceProfileApplicationService, PostgresAssetRepository,
+    ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler,
+    UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository,
@@ -272,6 +273,9 @@ pub async fn build_application_with_source_resolver(
     let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
     let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
+    let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(Arc::clone(
+        &mcp_profiles,
+    )));
     let asset_backup_objects =
         ImmutableObjectClient::local(&config.artifacts.store_dir, "asset-git-backups")
             .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
@@ -786,6 +790,7 @@ pub async fn build_application_with_source_resolver(
             environments: projects,
             search,
             asset_catalog,
+            mcp_service_profiles,
             asset_git,
             assets,
             workloads,
@@ -859,6 +864,7 @@ struct ApplicationDependencies {
     environments: Arc<dyn IEnvironmentRepository>,
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
+    mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
     asset_git: Arc<AssetGitApplicationService>,
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
@@ -903,6 +909,7 @@ fn build_application_with_health(
         environments,
         search,
         asset_catalog,
+        mcp_service_profiles,
         asset_git,
         assets,
         workloads,
@@ -990,6 +997,8 @@ fn build_application_with_health(
     let get_assets = Arc::clone(&asset_catalog);
     let list_asset_releases = Arc::clone(&asset_catalog);
     let get_asset_releases = Arc::clone(&asset_catalog);
+    let bind_mcp_service_profiles = Arc::clone(&mcp_service_profiles);
+    let get_mcp_service_profiles = mcp_service_profiles;
     let agent_create_assets = Arc::clone(&assets);
     let agent_update_assets = Arc::clone(&assets);
     let agent_execution_assets = Arc::clone(&assets);
@@ -1182,6 +1191,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::assets::CreateAssetRelease, _>(
                     CreateAssetReleaseHandler::new(create_asset_releases),
+                )
+                .command_handler::<crate::modules::assets::BindMcpServiceProfile, _>(
+                    BindMcpServiceProfileHandler::new(bind_mcp_service_profiles),
                 )
                 .command_handler::<crate::modules::assets::YankAssetRelease, _>(
                     YankAssetReleaseHandler::new(yank_asset_releases),
@@ -1455,6 +1467,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::assets::GetAssetRelease, _>(
                     GetAssetReleaseHandler::new(get_asset_releases),
+                )
+                .query_handler::<crate::modules::assets::GetMcpServiceProfile, _>(
+                    GetMcpServiceProfileHandler::new(get_mcp_service_profiles),
                 )
                 .query_handler::<crate::modules::assets::SelectAssetRelease, _>(
                     SelectAssetReleaseHandler::new(select_asset_releases),

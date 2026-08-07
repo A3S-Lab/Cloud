@@ -3,9 +3,10 @@ use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetArchived, AssetCreated, AssetGitRepositoryControlError,
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, AssetRelease, AssetReleaseArtifact,
     AssetReleaseDrafted, AssetReleasePublished, AssetReleaseVersion, AssetReleaseYanked,
-    ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease, CreateAssetReleaseWrite,
-    CreateAssetWrite, IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
-    McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
+    BindMcpServiceProfileWrite, ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease,
+    CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepositoryControl, IAssetRepository,
+    IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
+    McpServiceProfileBound, McpServiceProfileSpec, PostgresAssetRepository,
     TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -826,7 +827,12 @@ async fn exercise_mcp_service_profiles(
         created_at: release.updated_at + Duration::seconds(1),
     };
     assert!(matches!(
-        repository.bind_mcp_service_profile(draft_binding).await,
+        repository
+            .bind_mcp_service_profile(mcp_service_profile_write(
+                &draft_binding,
+                "bind-draft-weather-mcp",
+            )?)
+            .await,
         Err(RepositoryError::Conflict(_))
     ));
 
@@ -839,12 +845,45 @@ async fn exercise_mcp_service_profiles(
         profile,
         created_at: published.updated_at + Duration::seconds(1),
     };
-    let (left, right) = tokio::join!(
-        repository.bind_mcp_service_profile(binding.clone()),
-        repository.bind_mcp_service_profile(binding.clone()),
+
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "alter table outbox_events add constraint mcp_profile_outbox_failure_probe check (event_key <> 'asset.mcp-service-profile.bound')",
+        )
+        .await?;
+    let failed = repository
+        .bind_mcp_service_profile(mcp_service_profile_write(
+            &binding,
+            "bind-weather-mcp-rollback-probe",
+        )?)
+        .await;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute("alter table outbox_events drop constraint mcp_profile_outbox_failure_probe")
+        .await?;
+    assert!(matches!(failed, Err(RepositoryError::Storage(_))));
+    assert_eq!(
+        repository
+            .find_mcp_service_profile(organization_id, asset.id, published.id)
+            .await?,
+        None
     );
-    assert_eq!(left?, binding);
-    assert_eq!(right?, binding);
+
+    let write = mcp_service_profile_write(&binding, "bind-weather-mcp")?;
+    let (left, right) = tokio::join!(
+        repository.bind_mcp_service_profile(write.clone()),
+        repository.bind_mcp_service_profile(write),
+    );
+    let left = left?;
+    let right = right?;
+    assert_eq!(left.binding, binding);
+    assert_eq!(right.binding, binding);
+    assert_ne!(left.replayed, right.replayed);
     assert_eq!(
         repository
             .find_mcp_service_profile(organization_id, asset.id, published.id)
@@ -858,17 +897,106 @@ async fn exercise_mcp_service_profiles(
         None
     );
 
+    let database = Database::new(PostgresDialect, executor.clone());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ",)
+                    .bind(published.id.as_uuid())
+                    .append(" and event_key = 'asset.mcp-service-profile.bound'")
+            )
+            .await?,
+        1
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where aggregate_id = ",)
+                    .bind(published.id.as_uuid())
+                    .append(" and action = 'asset.mcp-service-profile.bound'")
+            )
+            .await?,
+        1
+    );
+
+    let no_op = repository
+        .bind_mcp_service_profile(mcp_service_profile_write(
+            &binding,
+            "bind-weather-mcp-equivalent",
+        )?)
+        .await?;
+    assert!(no_op.replayed);
+    assert_eq!(no_op.binding, binding);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ",)
+                    .bind(published.id.as_uuid())
+                    .append(" and event_key = 'asset.mcp-service-profile.bound'")
+            )
+            .await?,
+        1
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from audit_records where aggregate_id = ",)
+                    .bind(published.id.as_uuid())
+                    .append(" and action = 'asset.mcp-service-profile.bound'")
+            )
+            .await?,
+        2
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from audit_records where aggregate_id = ",
+                )
+                .bind(published.id.as_uuid())
+                .append(
+                    " and action = 'asset.mcp-service-profile.bound' and (details ->> 'changed')::boolean",
+                )
+            )
+            .await?,
+        1
+    );
+
     let mut changed_spec = binding.profile.spec().clone();
     changed_spec.endpoint_path = "/other-mcp".into();
     let changed = McpServiceProfileBinding {
         profile: McpServiceProfile::from_spec(changed_spec)?,
-        ..binding
+        ..binding.clone()
     };
     assert!(matches!(
-        repository.bind_mcp_service_profile(changed).await,
+        repository
+            .bind_mcp_service_profile(mcp_service_profile_write(
+                &changed,
+                "bind-changed-weather-mcp",
+            )?)
+            .await,
         Err(RepositoryError::Conflict(_))
     ));
     Ok(())
+}
+
+fn mcp_service_profile_write(
+    binding: &McpServiceProfileBinding,
+    key: &str,
+) -> TestResult<BindMcpServiceProfileWrite> {
+    Ok(BindMcpServiceProfileWrite {
+        binding: binding.clone(),
+        event: McpServiceProfileBound::envelope(binding, Uuid::now_v7())?,
+        idempotency: idempotency(
+            binding.organization_id,
+            format!(
+                "assets/{}/releases/{}/mcp-service-profile",
+                binding.asset_id, binding.asset_release_id
+            ),
+            key,
+            binding.profile.digest().as_str().as_bytes(),
+        )?,
+    })
 }
 
 fn create_asset_write(

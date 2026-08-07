@@ -405,7 +405,7 @@ impl AssetCatalogApplicationService {
     }
 }
 
-fn validate_request_id(request_id: Uuid) -> ApplicationResult<()> {
+pub(super) fn validate_request_id(request_id: Uuid) -> ApplicationResult<()> {
     if request_id.is_nil() {
         return Err(ApplicationError::Invalid(
             "request identity must be a UUID".into(),
@@ -414,7 +414,7 @@ fn validate_request_id(request_id: Uuid) -> ApplicationResult<()> {
     Ok(())
 }
 
-fn idempotency<T: Serialize>(
+pub(super) fn idempotency<T: Serialize>(
     scope: String,
     key: String,
     input: &T,

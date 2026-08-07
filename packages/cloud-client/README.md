@@ -54,6 +54,15 @@ release locally. Cloud admits the exact hosted Git commit, excludes draft and
 yanked releases from new bindings, and keeps exact yanked identities available
 to existing pinned deployments.
 
+`getMcpServiceProfile` and `bindMcpServiceProfileFromAcl` expose the one
+immutable Service-profile binding owned by a published MCP OCI
+`AssetRelease`. Binding sends one nonempty A3S ACL document of at most 64 KiB
+as `application/vnd.a3s.acl` with a caller-owned idempotency key. Cloud parses
+and canonicalizes the document, so semantically equivalent ACL produces the
+same profile digest and an identical binding is a replay/no-op. The client
+does not create another profile store, route policy, deployment path, or MCP
+scheduler.
+
 `bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
 lifecycle and require caller-owned idempotency keys. A bind names one exact
 published Skill AssetRelease; an unbind names the Skill Asset already present

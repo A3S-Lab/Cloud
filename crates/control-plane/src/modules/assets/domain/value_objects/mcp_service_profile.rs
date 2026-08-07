@@ -9,7 +9,7 @@ const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_REQUEST_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_RESPONSE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_STREAM_SECONDS: u64 = 24 * 60 * 60;
-const MAX_PROFILE_ACL_BYTES: usize = 64 * 1024;
+pub const MCP_SERVICE_PROFILE_MAX_ACL_BYTES: usize = 64 * 1024;
 const PROFILE_BLOCK: &str = "mcp_service_profile";
 const PROFILE_ATTRIBUTES: [&str; 11] = [
     "endpoint_path",
@@ -59,7 +59,7 @@ impl McpServiceProfile {
         spec.validate()?;
         let document = profile_document(&spec)?;
         let canonical_acl = generate_acl(&document);
-        if canonical_acl.len() > MAX_PROFILE_ACL_BYTES {
+        if canonical_acl.len() > MCP_SERVICE_PROFILE_MAX_ACL_BYTES {
             return Err("MCP Service profile ACL exceeds its storage bound".into());
         }
         let reparsed = parse_acl(&canonical_acl)
@@ -76,7 +76,7 @@ impl McpServiceProfile {
     }
 
     pub fn parse_acl(acl: &str) -> Result<Self, String> {
-        if acl.is_empty() || acl.len() > MAX_PROFILE_ACL_BYTES {
+        if acl.is_empty() || acl.len() > MCP_SERVICE_PROFILE_MAX_ACL_BYTES {
             return Err("MCP Service profile ACL size is invalid".into());
         }
         let document = parse_acl(acl)

@@ -1,5 +1,6 @@
 pub mod archive_asset;
 pub mod backup_repository;
+pub mod bind_mcp_service_profile;
 pub mod create_asset;
 pub mod create_release;
 pub mod receive_pack;
@@ -8,6 +9,7 @@ pub mod yank_release;
 
 pub use archive_asset::{ArchiveAsset, ArchiveAssetHandler};
 pub use backup_repository::{BackupAssetGitRepository, BackupAssetGitRepositoryHandler};
+pub use bind_mcp_service_profile::{BindMcpServiceProfile, BindMcpServiceProfileHandler};
 pub use create_asset::{CreateAsset, CreateAssetHandler};
 pub use create_release::{CreateAssetRelease, CreateAssetReleaseHandler};
 pub use receive_pack::{ReceiveAssetGitPack, ReceiveAssetGitPackHandler};

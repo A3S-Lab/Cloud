@@ -759,6 +759,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let source_webhooks = sources.clone();
     let source_subscriptions = sources.clone();
     let unavailable_assets = Arc::new(UnavailableAssetStore);
+    let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(
+        unavailable_assets.clone(),
+    ));
     let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
         identity.clone(),
         unavailable_assets.clone(),
@@ -787,6 +790,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             environments: projects,
             search,
             asset_catalog,
+            mcp_service_profiles,
             asset_git,
             assets: unavailable_assets,
             workloads: workload_port,

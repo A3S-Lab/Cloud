@@ -1,5 +1,6 @@
 use super::controllers::{
     advertisement_controller, asset_commands_controller, asset_queries_controller,
+    mcp_service_profile_commands_controller, mcp_service_profile_queries_controller,
     receive_pack_controller, upload_pack_controller,
 };
 use a3s_boot::{CommandBus, ControllerDefinition, Module, ModuleRef, QueryBus, Result};
@@ -31,6 +32,8 @@ impl Module for AssetsModule {
         Ok(vec![
             asset_commands_controller(module_ref.get::<CommandBus>()?)?,
             asset_queries_controller(module_ref.get::<QueryBus>()?)?,
+            mcp_service_profile_commands_controller(module_ref.get::<CommandBus>()?)?,
+            mcp_service_profile_queries_controller(module_ref.get::<QueryBus>()?)?,
             advertisement_controller(module_ref.get::<QueryBus>()?)?,
             upload_pack_controller(module_ref.get::<QueryBus>()?, self.maximum_rpc_body_bytes)?,
             receive_pack_controller(module_ref.get::<CommandBus>()?, self.maximum_rpc_body_bytes)?,

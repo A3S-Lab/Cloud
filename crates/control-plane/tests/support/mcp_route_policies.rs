@@ -4,8 +4,9 @@ use a3s_cloud_contracts::{
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, IMcpServiceProfileRepository,
-    McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec, PostgresAssetRepository,
+    BindMcpServiceProfileWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository,
+    IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
+    McpServiceProfileBound, McpServiceProfileSpec, PostgresAssetRepository,
 };
 use a3s_cloud_control_plane::modules::edge::domain::events::{
     DomainClaimChanged, McpCredentialChanged, RoutePublicationStaged,
@@ -281,7 +282,19 @@ pub async fn exercise(
         created_at: published.updated_at + Duration::milliseconds(1),
     };
     assets
-        .bind_mcp_service_profile(profile_binding.clone())
+        .bind_mcp_service_profile(BindMcpServiceProfileWrite {
+            binding: profile_binding.clone(),
+            event: McpServiceProfileBound::envelope(&profile_binding, Uuid::now_v7())?,
+            idempotency: idempotency(
+                organization_id,
+                format!(
+                    "assets/{}/releases/{}/mcp-service-profile",
+                    asset.id, published.id
+                ),
+                "postgres-mcp-service-profile",
+                profile.digest().as_str().as_bytes(),
+            )?,
+        })
         .await?;
 
     let workload_created_at = profile_binding.created_at + Duration::milliseconds(1);

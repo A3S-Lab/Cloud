@@ -130,6 +130,24 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .and_then(|body| body.get("content"))
         .and_then(|content| content.get("application/vnd.a3s.acl"))
         .is_some());
+    let mcp_profile = &document["paths"]
+        ["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/mcp-service-profile"];
+    assert!(mcp_profile["get"]["responses"]["200"].is_object());
+    assert!(mcp_profile["get"]["responses"].get("413").is_none());
+    assert!(mcp_profile["get"]["responses"].get("415").is_none());
+    assert!(mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"].is_object());
+    assert_eq!(
+        mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        65_536
+    );
+    assert!(mcp_profile["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert!(mcp_profile["post"]["responses"]["200"].is_object());
+    assert!(mcp_profile["post"]["responses"]["201"].is_object());
+    assert!(mcp_profile["post"]["responses"]["413"].is_object());
+    assert!(mcp_profile["post"]["responses"]["415"].is_object());
     for path in [
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/assets/{asset_id}/releases/{asset_release_id}/workloads",
         "/organizations/{organization_id}/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",

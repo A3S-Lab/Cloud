@@ -270,15 +270,28 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    content.insert(
-        "application/json".into(),
-        json!({ "schema": { "type": "object", "additionalProperties": true } }),
-    );
-    if accepts_acl(path) {
+    if is_mcp_service_profile_path(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
-            json!({ "schema": { "type": "string", "minLength": 1 } }),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536
+                }
+            }),
         );
+    } else {
+        content.insert(
+            "application/json".into(),
+            json!({ "schema": { "type": "object", "additionalProperties": true } }),
+        );
+        if accepts_acl(path) {
+            content.insert(
+                "application/vnd.a3s.acl".into(),
+                json!({ "schema": { "type": "string", "minLength": 1 } }),
+            );
+        }
     }
     operation.insert(
         "requestBody".into(),
@@ -304,7 +317,9 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         responses.insert(status.to_string(), response_ref(&component));
     }
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
-    if asset_git_request_media_type(path).is_some() {
+    if asset_git_request_media_type(path).is_some()
+        || (method == "post" && is_mcp_service_profile_path(path))
+    {
         error_statuses.extend([413, 415]);
     }
     for status in error_statuses {
@@ -485,7 +500,13 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/source-connections/github")
         || path.ends_with("/assets")
         || path.ends_with("/releases")
+        || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
+}
+
+fn is_mcp_service_profile_path(path: &str) -> bool {
+    path.ends_with("/mcp-service-profile")
+        && path.contains("/assets/{asset_id}/releases/{asset_release_id}/")
 }
 
 fn is_asset_git_path(path: &str) -> bool {

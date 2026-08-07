@@ -1,5 +1,5 @@
 use crate::modules::artifacts::domain::BuildRun;
-use crate::modules::assets::domain::{Asset, AssetRelease};
+use crate::modules::assets::domain::{Asset, AssetRelease, McpServiceProfileBinding};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -164,6 +164,43 @@ pub struct AssetReleaseYanked {
     pub asset_id: Uuid,
     pub asset_release_id: Uuid,
     pub version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServiceProfileBound {
+    pub organization_id: Uuid,
+    pub asset_id: Uuid,
+    pub asset_release_id: Uuid,
+    pub profile_digest: String,
+}
+
+impl McpServiceProfileBound {
+    pub fn envelope(
+        binding: &McpServiceProfileBinding,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        binding.validate()?;
+        let payload = serde_json::to_value(Self {
+            organization_id: binding.organization_id.as_uuid(),
+            asset_id: binding.asset_id.as_uuid(),
+            asset_release_id: binding.asset_release_id.as_uuid(),
+            profile_digest: binding.profile.digest().to_string(),
+        })
+        .map_err(|error| error.to_string())?;
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: "asset.mcp-service-profile.bound".into(),
+            schema_version: 1,
+            organization_id: binding.organization_id.as_uuid(),
+            aggregate_id: binding.asset_release_id.as_uuid(),
+            aggregate_version: 1,
+            occurred_at: binding.created_at,
+            correlation_id,
+            causation_id: None,
+            payload,
+        })
+    }
 }
 
 impl AssetReleaseYanked {
