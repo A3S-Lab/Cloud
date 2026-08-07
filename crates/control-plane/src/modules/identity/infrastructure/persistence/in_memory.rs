@@ -1,10 +1,13 @@
-use crate::modules::identity::domain::entities::{ApiToken, IdentityBootstrap, Organization};
-use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IOrganizationRepository,
+use crate::modules::identity::domain::entities::{
+    ApiToken, AuthenticatedApiToken, IdentityBootstrap, IdentityPrincipal, Membership, Organization,
 };
-use crate::modules::identity::domain::value_objects::ApiTokenDigest;
+use crate::modules::identity::domain::repositories::{
+    CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
+};
+use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, IdempotentWrite, OrganizationId, RepositoryError,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, MembershipId, OrganizationId, PrincipalId,
+    RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -17,18 +20,21 @@ use tokio::sync::RwLock;
 
 #[derive(Default)]
 pub struct InMemoryIdentityRepository {
-    state: RwLock<State>,
+    pub(super) state: RwLock<State>,
 }
 
 #[derive(Default)]
-struct State {
-    organizations: BTreeMap<OrganizationId, Organization>,
-    names: BTreeMap<String, OrganizationId>,
-    tokens: BTreeMap<ApiTokenId, ApiToken>,
-    token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,
-    token_digests: BTreeMap<String, ApiTokenId>,
-    idempotency: BTreeMap<(String, String), (String, Value)>,
-    outbox: Vec<DomainEventEnvelope>,
+pub(super) struct State {
+    pub(super) organizations: BTreeMap<OrganizationId, Organization>,
+    pub(super) names: BTreeMap<String, OrganizationId>,
+    pub(super) principals: BTreeMap<PrincipalId, IdentityPrincipal>,
+    pub(super) memberships: BTreeMap<MembershipId, Membership>,
+    pub(super) membership_subjects: BTreeMap<(OrganizationId, PrincipalId), MembershipId>,
+    pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
+    pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,
+    pub(super) token_digests: BTreeMap<String, ApiTokenId>,
+    pub(super) idempotency: BTreeMap<(String, String), (String, Value)>,
+    pub(super) outbox: Vec<DomainEventEnvelope>,
 }
 
 impl InMemoryIdentityRepository {
@@ -41,7 +47,7 @@ impl InMemoryIdentityRepository {
     }
 }
 
-fn replay<T: DeserializeOwned>(
+pub(super) fn replay<T: DeserializeOwned>(
     state: &State,
     idempotency: &IdempotencyRequest,
 ) -> Result<Option<IdempotentWrite<T>>, RepositoryError> {
@@ -65,7 +71,7 @@ fn replay<T: DeserializeOwned>(
         .map_err(|error| RepositoryError::Storage(error.to_string()))
 }
 
-fn remember<T: Serialize>(
+pub(super) fn remember<T: Serialize>(
     state: &mut State,
     idempotency: IdempotencyRequest,
     response: &T,
@@ -86,13 +92,35 @@ fn remember<T: Serialize>(
 impl IOrganizationRepository for InMemoryIdentityRepository {
     async fn create(
         &self,
-        organization: Organization,
-        event: DomainEventEnvelope,
-        idempotency: IdempotencyRequest,
+        write: CreateOrganizationWrite,
     ) -> Result<IdempotentWrite<Organization>, RepositoryError> {
         let mut state = self.state.write().await;
+        let CreateOrganizationWrite {
+            organization,
+            owner_membership,
+            events,
+            actor_principal_id,
+            idempotency,
+            ..
+        } = write;
         if let Some(existing) = replay(&state, &idempotency)? {
             return Ok(existing);
+        }
+        if !state
+            .principals
+            .get(&actor_principal_id)
+            .is_some_and(IdentityPrincipal::is_active)
+        {
+            return Err(RepositoryError::Forbidden(
+                "organization creator is not an active identity principal".into(),
+            ));
+        }
+        if owner_membership.organization_id != organization.id
+            || owner_membership.principal_id != actor_principal_id
+        {
+            return Err(RepositoryError::Storage(
+                "organization owner membership does not bind its creator".into(),
+            ));
         }
         if state.names.contains_key(organization.name.key()) {
             return Err(RepositoryError::Conflict(
@@ -105,8 +133,18 @@ impl IOrganizationRepository for InMemoryIdentityRepository {
         state
             .organizations
             .insert(organization.id, organization.clone());
+        state.membership_subjects.insert(
+            (
+                owner_membership.organization_id,
+                owner_membership.principal_id,
+            ),
+            owner_membership.id,
+        );
+        state
+            .memberships
+            .insert(owner_membership.id, owner_membership);
         remember(&mut state, idempotency, &organization)?;
-        state.outbox.push(event);
+        state.outbox.extend(events);
         Ok(IdempotentWrite {
             value: organization,
             replayed: false,
@@ -144,7 +182,7 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
         &self,
         bootstrap: IdentityBootstrap,
         digest: ApiTokenDigest,
-        events: [DomainEventEnvelope; 2],
+        events: [DomainEventEnvelope; 4],
         idempotency: IdempotencyRequest,
     ) -> Result<IdempotentWrite<IdentityBootstrap>, RepositoryError> {
         let mut state = self.state.write().await;
@@ -157,11 +195,19 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
             ));
         }
         let organization = bootstrap.organization.clone();
+        let principal = bootstrap.principal.clone();
+        let membership = bootstrap.membership.clone();
         let token = bootstrap.api_token.clone();
         state
             .names
             .insert(organization.name.key().to_owned(), organization.id);
         state.organizations.insert(organization.id, organization);
+        state.principals.insert(principal.id, principal);
+        state.membership_subjects.insert(
+            (membership.organization_id, membership.principal_id),
+            membership.id,
+        );
+        state.memberships.insert(membership.id, membership);
         state.token_names.insert(
             (token.organization_id, token.name.key().to_owned()),
             token.id,
@@ -180,12 +226,53 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
 
     async fn create(
         &self,
-        token: ApiToken,
-        digest: ApiTokenDigest,
-        event: DomainEventEnvelope,
-        idempotency: IdempotencyRequest,
+        write: CreateApiTokenWrite,
     ) -> Result<IdempotentWrite<ApiToken>, RepositoryError> {
+        let CreateApiTokenWrite {
+            token,
+            digest,
+            event,
+            issuer_principal_id,
+            issuer_is_platform_admin,
+            idempotency,
+        } = write;
         let mut state = self.state.write().await;
+        let target_membership = state
+            .membership_subjects
+            .get(&(token.organization_id, token.principal_id))
+            .and_then(|id| state.memberships.get(id))
+            .filter(|membership| membership.is_active())
+            .cloned();
+        let Some(target_membership) = target_membership else {
+            return Err(RepositoryError::Forbidden(
+                "API token principal is not an active organization member".into(),
+            ));
+        };
+        let target_principal_is_active = state
+            .principals
+            .get(&token.principal_id)
+            .is_some_and(IdentityPrincipal::is_active);
+        if !target_principal_is_active {
+            return Err(RepositoryError::Forbidden(
+                "API token principal is not an active organization member".into(),
+            ));
+        }
+        if token.principal_id != issuer_principal_id && !issuer_is_platform_admin {
+            let issuer_can_manage_target = state
+                .membership_subjects
+                .get(&(token.organization_id, issuer_principal_id))
+                .and_then(|id| state.memberships.get(id))
+                .is_some_and(|membership| {
+                    membership.is_active()
+                        && membership.role.can_manage_memberships()
+                        && membership.role.can_manage_role(target_membership.role)
+                });
+            if !issuer_can_manage_target {
+                return Err(RepositoryError::Forbidden(
+                    "issuer role cannot manage credentials for the target membership".into(),
+                ));
+            }
+        }
         if let Some(existing) = replay(&state, &idempotency)? {
             return Ok(existing);
         }
@@ -256,16 +343,45 @@ impl IApiTokenRepository for InMemoryIdentityRepository {
         &self,
         digest: &ApiTokenDigest,
         now: DateTime<Utc>,
-    ) -> Result<Option<ApiToken>, RepositoryError> {
+    ) -> Result<Option<AuthenticatedApiToken>, RepositoryError> {
         let state = self.state.read().await;
         let Some(token_id) = state.token_digests.get(digest.as_str()) else {
             return Ok(None);
         };
-        Ok(state
+        let Some(api_token) = state
             .tokens
             .get(token_id)
             .filter(|token| token.is_active_at(now))
-            .cloned())
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        let Some(principal) = state
+            .principals
+            .get(&api_token.principal_id)
+            .filter(|principal| principal.is_active())
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        let membership = state
+            .membership_subjects
+            .get(&(api_token.organization_id, api_token.principal_id))
+            .and_then(|id| state.memberships.get(id))
+            .filter(|membership| membership.is_active())
+            .cloned();
+        let is_platform_token = api_token
+            .scopes
+            .iter()
+            .any(|scope| scope.as_str() == ApiTokenScope::PLATFORM_WRITE);
+        if membership.is_none() && !is_platform_token {
+            return Ok(None);
+        }
+        Ok(Some(AuthenticatedApiToken {
+            api_token,
+            principal,
+            membership,
+        }))
     }
 
     async fn revoke(

@@ -184,6 +184,16 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
     run_isolated_postgres(&admin_url, exercise_postgres_foundation).await
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn identity_migration_backfills_legacy_credentials_and_ownerless_organizations() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_identity_migration_backfill)
+        .await
+        .expect("legacy Identity migration gate");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_hosted_draft_recovery_is_atomic() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -228,6 +238,211 @@ where
             std::panic::resume_unwind(panic_payload)
         }
     }
+}
+
+async fn exercise_identity_migration_backfill(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = PostgresExecutor::connect_no_tls(&url, 2)?;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(concat!(
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/001_foundation.sql"
+            )),
+            "\n",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/004_api_tokens.sql"
+            ))
+        ))
+        .await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let platform_organization_id = Uuid::now_v7();
+    let delegated_organization_id = Uuid::now_v7();
+    let ownerless_organization_id = Uuid::now_v7();
+    let created_at = Utc::now();
+    for (id, name, name_key) in [
+        (platform_organization_id, "Platform", "platform"),
+        (delegated_organization_id, "Delegated", "delegated"),
+        (ownerless_organization_id, "Ownerless", "ownerless"),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+                )
+                .bind(id)
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name_key)
+                .append(", 1, ")
+                .bind(created_at)
+                .append(")"),
+            )
+            .await?;
+    }
+
+    let expired_platform_token_id = Uuid::now_v7();
+    let platform_token_id = Uuid::now_v7();
+    let delegated_owner_token_id = Uuid::now_v7();
+    let delegated_admin_token_id = Uuid::now_v7();
+    let delegated_member_token_id = Uuid::now_v7();
+    for (
+        id,
+        organization_id,
+        name,
+        name_key,
+        token_hash,
+        scopes,
+        token_created_at,
+        expires_at,
+        revoked_at,
+    ) in [
+        (
+            expired_platform_token_id,
+            platform_organization_id,
+            "Expired platform administrator",
+            "expired-platform-administrator",
+            "legacy-expired-platform-token-digest",
+            json!(["platform:write", "token:write"]),
+            created_at - chrono::Duration::seconds(2),
+            Some(created_at - chrono::Duration::seconds(1)),
+            None,
+        ),
+        (
+            platform_token_id,
+            platform_organization_id,
+            "Platform administrator",
+            "platform-administrator",
+            "legacy-platform-token-digest",
+            json!(["platform:write", "token:write"]),
+            created_at,
+            None,
+            None,
+        ),
+        (
+            delegated_owner_token_id,
+            delegated_organization_id,
+            "Delegated owner",
+            "delegated-owner",
+            "legacy-delegated-owner-token-digest",
+            json!(["token:write"]),
+            created_at,
+            None,
+            Some(created_at + chrono::Duration::seconds(1)),
+        ),
+        (
+            delegated_admin_token_id,
+            delegated_organization_id,
+            "Delegated administrator",
+            "delegated-administrator",
+            "legacy-delegated-administrator-token-digest",
+            json!(["token:write"]),
+            created_at + chrono::Duration::seconds(2),
+            None,
+            None,
+        ),
+        (
+            delegated_member_token_id,
+            delegated_organization_id,
+            "Delegated member",
+            "delegated-member",
+            "legacy-delegated-member-token-digest",
+            json!(["cloud:read"]),
+            created_at + chrono::Duration::seconds(3),
+            None,
+            None,
+        ),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into api_tokens (id, organization_id, name, name_key, token_hash, scopes, aggregate_version, created_at, expires_at, revoked_at) values (",
+                )
+                .bind(id)
+                .append(", ")
+                .bind(organization_id)
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name_key)
+                .append(", ")
+                .bind(token_hash)
+                .append(", ")
+                .bind(scopes)
+                .append(", 1, ")
+                .bind(token_created_at)
+                .append(", ")
+                .bind(expires_at)
+                .append(", ")
+                .bind(revoked_at)
+                .append(")"),
+            )
+            .await?;
+    }
+
+    Migrator::new(executor.clone())
+        .run([Migration::new(
+            "074",
+            "Identity principals and organization memberships",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/074_identity_principals_and_memberships.sql"
+            )),
+        )])
+        .await?;
+
+    let authority_counts = database
+        .fetch_one_as(sql_query::<(i64, i64, i64)>(
+            "select (select count(*) from identity_principals), (select count(*) from organization_memberships), (select count(*) from api_tokens where principal_id = id)",
+        ))
+        .await?;
+    assert_eq!(authority_counts, (5, 6, 5));
+    let delegated_roles = database
+        .fetch_one_as(
+            sql_query::<(String, String, String)>(
+                "select (select role from organization_memberships where principal_id = ",
+            )
+            .bind(delegated_owner_token_id)
+            .append("), (select role from organization_memberships where principal_id = ")
+            .bind(delegated_admin_token_id)
+            .append("), (select role from organization_memberships where principal_id = ")
+            .bind(delegated_member_token_id)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(
+        delegated_roles,
+        ("admin".into(), "owner".into(), "member".into())
+    );
+    let ownerless_owner = database
+        .fetch_one_as(
+            sql_query::<Uuid>(
+                "select principal_id from organization_memberships where organization_id = ",
+            )
+            .bind(ownerless_organization_id)
+            .append(" and role = 'owner' and revoked_at is null"),
+        )
+        .await?;
+    assert_eq!(ownerless_owner, platform_token_id);
+    let scope_counts = database
+        .fetch_one_as(sql_query::<(i64, i64)>(
+            "select count(*) filter (where scopes ? 'identity:write'), count(*) filter (where not scopes ? 'identity:write') from api_tokens",
+        ))
+        .await?;
+    assert_eq!(scope_counts, (4, 1));
+    let organizations_without_owner = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from organizations organization where not exists (select 1 from organization_memberships membership where membership.organization_id = organization.id and membership.role = 'owner' and membership.revoked_at is null)",
+        ))
+        .await?;
+    assert_eq!(organizations_without_owner, 0);
+    Ok(())
 }
 
 async fn exercise_postgres_hosted_draft_recovery(
@@ -330,7 +545,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists node_enrollment_reservations cascade;
              drop table if exists nodes cascade;
              drop table if exists enrollment_tokens cascade;
+             drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
+             drop table if exists identity_principals cascade;
              drop table if exists operation_projections cascade;
              drop table if exists operation_requests cascade;
              drop table if exists audit_records cascade;
@@ -359,7 +576,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 68);
+    assert_eq!(applied, 74);
     for table in [
         "agent_conversations",
         "agent_executions",
@@ -1230,7 +1447,193 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     assert_eq!(changed.status(), 409);
 
+    let memberships_path = format!("/api/v1/organizations/{organization_id}/memberships");
+    let initial_memberships = app.call(get_as(&memberships_path, ADMIN_TOKEN)).await?;
+    assert_eq!(initial_memberships.status(), 200);
+    let owner_membership_id = response_json(&initial_memberships)?["data"][0]["id"]
+        .as_str()
+        .ok_or("bootstrap membership has no ID")?
+        .to_owned();
+    let owner_principal_id = response_json(&initial_memberships)?["data"][0]["principalId"]
+        .as_str()
+        .ok_or("bootstrap membership has no principal ID")?
+        .to_owned();
+    let service_membership = app
+        .call(post_json(
+            &memberships_path,
+            "membership-service-automation",
+            json!({"name": "service automation", "role": "member"}),
+        ))
+        .await?;
+    let service_membership_replay = app
+        .call(post_json(
+            &memberships_path,
+            "membership-service-automation",
+            json!({"name": "service automation", "role": "member"}),
+        ))
+        .await?;
+    assert_eq!(service_membership.status(), 201);
+    assert_eq!(service_membership_replay.status(), 200);
+    let service_membership_data = response_json(&service_membership)?["data"].clone();
+    let service_membership_id = service_membership_data["id"]
+        .as_str()
+        .ok_or("service membership has no ID")?
+        .to_owned();
+    let service_principal_id = service_membership_data["principalId"]
+        .as_str()
+        .ok_or("service membership has no principal ID")?
+        .to_owned();
+    assert_eq!(
+        response_json(&service_membership_replay)?["data"]["id"],
+        service_membership_id
+    );
+    let stored_membership_authority = database
+        .fetch_one_as(
+            sql_query::<(i64, i64)>(
+                "select (select count(*) from identity_principals), (select count(*) from organization_memberships where organization_id = ",
+            )
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(stored_membership_authority, (2, 2));
+
+    let service_token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization_id}/api-tokens"),
+            "membership-service-token",
+            json!({
+                "name": "service automation",
+                "token": SERVICE_MEMBER_TOKEN,
+                "scopes": ["project:write", "identity:write", "token:write"],
+                "principalId": service_principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(service_token.status(), 201);
+    assert_eq!(
+        response_json(&service_token)?["data"]["principalId"],
+        service_principal_id
+    );
+    let privilege_escalation = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization_id}/api-tokens"),
+            "membership-privilege-escalation",
+            json!({
+                "name": "forged owner credential",
+                "token": PRIVILEGE_ESCALATION_TOKEN,
+                "scopes": ["cloud:read"],
+                "principalId": owner_principal_id,
+                "expiresAt": null
+            }),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(privilege_escalation.status(), 403);
+
     let project_path = format!("/api/v1/organizations/{organization_id}/projects");
+    let service_role_path = format!("{memberships_path}/{service_membership_id}/role");
+    let promoted = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-promote-admin",
+            json!({"role": "admin", "expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(promoted.status(), 200);
+    let admin_privilege_escalation = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization_id}/api-tokens"),
+            "membership-admin-privilege-escalation",
+            json!({
+                "name": "forged owner credential",
+                "token": PRIVILEGE_ESCALATION_TOKEN,
+                "scopes": ["cloud:read"],
+                "principalId": owner_principal_id,
+                "expiresAt": null
+            }),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(admin_privilege_escalation.status(), 403);
+    let returned_to_member = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-return-to-member",
+            json!({"role": "member", "expectedVersion": 2}),
+        ))
+        .await?;
+    assert_eq!(returned_to_member.status(), 200);
+
+    let service_project = app
+        .call(post_json_as(
+            &project_path,
+            "membership-service-project",
+            json!({"name": "Service Project"}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(service_project.status(), 201);
+    let restricted = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-restrict",
+            json!({"role": "restricted", "expectedVersion": 3}),
+        ))
+        .await?;
+    assert_eq!(restricted.status(), 200);
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        403
+    );
+    let restored = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-restore",
+            json!({"role": "member", "expectedVersion": 4}),
+        ))
+        .await?;
+    assert_eq!(restored.status(), 200);
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        200
+    );
+    let revoked_membership = app
+        .call(post_json(
+            format!("{memberships_path}/{service_membership_id}/revocation"),
+            "membership-service-revoke",
+            json!({"expectedVersion": 5}),
+        ))
+        .await?;
+    assert_eq!(revoked_membership.status(), 200);
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        401
+    );
+    let last_owner = app
+        .call(post_json(
+            format!("{memberships_path}/{owner_membership_id}/revocation"),
+            "membership-last-owner",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(last_owner.status(), 409);
+    let membership_audits = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from audit_records where aggregate_id = ")
+                .bind(Uuid::parse_str(&service_membership_id)?)
+                .append(" and action like 'identity.membership.%'"),
+        )
+        .await?;
+    assert_eq!(membership_audits, 6);
+
     let project = app
         .call(post_json(
             &project_path,
@@ -1801,7 +2204,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(plaintext_token_rows, 0);
-    assert_eq!(hashed_token_rows, 2);
+    assert_eq!(hashed_token_rows, 3);
 
     let own_project = app
         .call(post_json_as(

@@ -15,13 +15,9 @@ use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
 use crate::modules::identity::domain::entities::Organization;
-use crate::modules::identity::domain::events::OrganizationCreated;
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
-use crate::modules::identity::domain::value_objects::OrganizationName;
 use crate::modules::identity::infrastructure::persistence::InMemoryIdentityRepository;
-use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
-};
+use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
+use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeCommandId, NodeId};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
@@ -83,22 +79,24 @@ fn csr() -> String {
         .expect("CSR PEM")
 }
 
-async fn organization(repository: &InMemoryIdentityRepository) -> Organization {
-    let now = Utc::now();
-    let organization = Organization::create(
-        OrganizationId::new(),
-        OrganizationName::parse("Acme").expect("organization name"),
-        now,
-    );
-    IOrganizationRepository::create(
-        repository,
-        organization.clone(),
-        OrganizationCreated::envelope(&organization, Uuid::now_v7()).expect("event"),
-        IdempotencyRequest::new("organizations", "acme", b"Acme").expect("idempotency"),
-    )
-    .await
-    .expect("create organization");
-    organization
+async fn organization(repository: &Arc<InMemoryIdentityRepository>) -> Organization {
+    BootstrapIdentityHandler::new(repository.clone())
+        .execute(
+            BootstrapIdentity {
+                organization_name: "Acme".into(),
+                token_name: "fleet-test-admin".into(),
+                token_secret: format!("a3s_{}", "1".repeat(64)),
+                expires_at: None,
+                idempotency_key: "fleet-tests:identity-bootstrap".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("bootstrap transport")
+        .expect("bootstrap identity")
+        .identity
+        .organization
 }
 
 #[tokio::test]

@@ -12,6 +12,10 @@ pub(super) const PROJECT_TOKEN: &str =
     "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 pub(super) const EXPIRING_TOKEN: &str =
     "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+pub(super) const SERVICE_MEMBER_TOKEN: &str =
+    "a3s_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+pub(super) const PRIVILEGE_ESCALATION_TOKEN: &str =
+    "a3s_0000000000000000000000000000000000000000000000000000000000000000";
 
 pub(super) struct EnvironmentOverride {
     name: &'static str,

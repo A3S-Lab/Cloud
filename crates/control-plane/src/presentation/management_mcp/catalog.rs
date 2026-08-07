@@ -13,6 +13,11 @@ pub const DEPLOYMENTS_CANCEL: &str = "a3s_cloud_deployments_cancel";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
+pub const MEMBERSHIPS_LIST: &str = "a3s_cloud_memberships_list";
+pub const MEMBERSHIPS_GET: &str = "a3s_cloud_memberships_get";
+pub const SERVICE_MEMBERSHIPS_CREATE: &str = "a3s_cloud_service_memberships_create";
+pub const MEMBERSHIPS_CHANGE_ROLE: &str = "a3s_cloud_memberships_change_role";
+pub const MEMBERSHIPS_REVOKE: &str = "a3s_cloud_memberships_revoke";
 pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
@@ -31,6 +36,11 @@ pub const WORKLOAD_LOGS_GET: &str = "a3s_cloud_workload_logs_get";
 pub enum ManagementTool {
     EnvironmentsCreate,
     EnvironmentsList,
+    MembershipsList,
+    MembershipsGet,
+    ServiceMembershipsCreate,
+    MembershipsChangeRole,
+    MembershipsRevoke,
     ProjectsCreate,
     ProjectsList,
     Search,
@@ -55,9 +65,14 @@ pub enum ManagementTool {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 23] = [
+    const ALL: [Self; 28] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
+        Self::MembershipsList,
+        Self::MembershipsGet,
+        Self::ServiceMembershipsCreate,
+        Self::MembershipsChangeRole,
+        Self::MembershipsRevoke,
         Self::ProjectsCreate,
         Self::ProjectsList,
         Self::Search,
@@ -82,8 +97,14 @@ impl ManagementTool {
     ];
 
     pub fn visible_to(self, principal: &AuthPrincipal) -> bool {
-        self.required_scope()
-            .is_none_or(|scope| principal.has_scope(scope))
+        !principal.has_role("organization_restricted")
+            && self
+                .required_scope()
+                .is_none_or(|scope| principal.has_scope(scope))
+            && (!self.requires_identity_administrator()
+                || principal.has_role("platform_admin")
+                || principal.has_role("organization_owner")
+                || principal.has_role("organization_admin"))
     }
 
     pub fn resolve(name: &str, principal: &AuthPrincipal) -> Option<Self> {
@@ -104,6 +125,11 @@ impl ManagementTool {
         match self {
             Self::EnvironmentsCreate => ENVIRONMENTS_CREATE,
             Self::EnvironmentsList => ENVIRONMENTS_LIST,
+            Self::MembershipsList => MEMBERSHIPS_LIST,
+            Self::MembershipsGet => MEMBERSHIPS_GET,
+            Self::ServiceMembershipsCreate => SERVICE_MEMBERSHIPS_CREATE,
+            Self::MembershipsChangeRole => MEMBERSHIPS_CHANGE_ROLE,
+            Self::MembershipsRevoke => MEMBERSHIPS_REVOKE,
             Self::ProjectsCreate => PROJECTS_CREATE,
             Self::ProjectsList => PROJECTS_LIST,
             Self::Search => SEARCH,
@@ -131,6 +157,11 @@ impl ManagementTool {
     const fn required_scope(self) -> Option<&'static str> {
         match self {
             Self::EnvironmentsCreate => Some(ApiTokenScope::ENVIRONMENT_WRITE),
+            Self::MembershipsList
+            | Self::MembershipsGet
+            | Self::ServiceMembershipsCreate
+            | Self::MembershipsChangeRole
+            | Self::MembershipsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
@@ -155,6 +186,17 @@ impl ManagementTool {
         }
     }
 
+    const fn requires_identity_administrator(self) -> bool {
+        matches!(
+            self,
+            Self::MembershipsList
+                | Self::MembershipsGet
+                | Self::ServiceMembershipsCreate
+                | Self::MembershipsChangeRole
+                | Self::MembershipsRevoke
+        )
+    }
+
     fn definition(self) -> Value {
         let (title, description, input_schema, read_only) = match self {
             Self::EnvironmentsCreate => (
@@ -168,6 +210,36 @@ impl ManagementTool {
                 "List environments in one tenant-authorized project.",
                 project_id_schema(),
                 true,
+            ),
+            Self::MembershipsList => (
+                "List memberships",
+                "List organization memberships from the shared Cloud identity authority.",
+                empty_schema(),
+                true,
+            ),
+            Self::MembershipsGet => (
+                "Get membership",
+                "Get one organization membership and its bound principal.",
+                uuid_id_schema("membershipId"),
+                true,
+            ),
+            Self::ServiceMembershipsCreate => (
+                "Create service membership",
+                "Create one service principal and organization membership atomically with explicit idempotency.",
+                create_service_membership_schema(),
+                false,
+            ),
+            Self::MembershipsChangeRole => (
+                "Change membership role",
+                "Change one membership role with optimistic concurrency and explicit idempotency.",
+                change_membership_role_schema(),
+                false,
+            ),
+            Self::MembershipsRevoke => (
+                "Revoke membership",
+                "Revoke one membership with last-owner protection, optimistic concurrency, and explicit idempotency.",
+                revoke_membership_schema(),
+                false,
             ),
             Self::ProjectsCreate => (
                 "Create project",
@@ -298,7 +370,10 @@ impl ManagementTool {
         };
         let destructive = matches!(
             self,
-            Self::WorkloadsStop | Self::DeploymentsCancel | Self::BuildRunsCancel
+            Self::MembershipsRevoke
+                | Self::WorkloadsStop
+                | Self::DeploymentsCancel
+                | Self::BuildRunsCancel
         );
         json!({
             "name": self.name(),
@@ -488,6 +563,54 @@ fn create_environment_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["projectId", "name", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn membership_role_schema() -> Value {
+    json!({"type": "string", "enum": ["owner", "admin", "member", "restricted"]})
+}
+
+fn expected_version_schema() -> Value {
+    json!({"type": "integer", "minimum": 1})
+}
+
+fn create_service_membership_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "minLength": 1, "maxLength": 63},
+            "role": membership_role_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["name", "role", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn change_membership_role_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "membershipId": {"type": "string", "format": "uuid"},
+            "role": membership_role_schema(),
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["membershipId", "role", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_membership_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "membershipId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["membershipId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

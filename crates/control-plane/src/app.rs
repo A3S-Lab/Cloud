@@ -72,14 +72,17 @@ use crate::modules::fleet::{
     RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
     RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
-use crate::modules::identity::domain::repositories::IApiTokenRepository;
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
+use crate::modules::identity::domain::repositories::{
+    IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
+};
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
-    BootstrapIdentityHandler, CreateApiTokenHandler, CreateOrganizationHandler, GetApiTokenHandler,
-    IdentityModule, ListApiTokensHandler, ListOrganizationsHandler, PostgresIdentityRepository,
-    RevokeApiTokenHandler,
+    BootstrapIdentityHandler, ChangeMembershipRoleHandler, CreateApiTokenHandler,
+    CreateOrganizationHandler, CreateServiceMembershipHandler, GetApiTokenHandler,
+    GetMembershipHandler, IdentityModule, ListApiTokensHandler, ListMembershipsHandler,
+    ListOrganizationsHandler, PostgresIdentityRepository, RevokeApiTokenHandler,
+    RevokeMembershipHandler,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
@@ -239,7 +242,8 @@ pub async fn build_application_with_source_resolver(
         .map_err(ControlPlaneStartupError::Auth)?;
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
-    let api_tokens: Arc<dyn IApiTokenRepository> = identity;
+    let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
+    let memberships: Arc<dyn IMembershipRepository> = identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
@@ -792,6 +796,7 @@ pub async fn build_application_with_source_resolver(
         ApplicationDependencies {
             organizations,
             api_tokens,
+            memberships,
             projects: projects.clone(),
             environments: projects,
             search,
@@ -867,6 +872,7 @@ pub async fn build_application_with_source_resolver(
 struct ApplicationDependencies {
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
+    memberships: Arc<dyn IMembershipRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     search: Arc<dyn ISearchRepository>,
@@ -913,6 +919,7 @@ fn build_application_with_health(
     let ApplicationDependencies {
         organizations,
         api_tokens,
+        memberships,
         projects,
         environments,
         search,
@@ -994,6 +1001,11 @@ fn build_application_with_health(
     let deployment_get_operations = Arc::clone(&operations);
     let list_api_tokens = Arc::clone(&api_tokens);
     let get_api_tokens = Arc::clone(&api_tokens);
+    let create_memberships = Arc::clone(&memberships);
+    let change_memberships = Arc::clone(&memberships);
+    let revoke_memberships = Arc::clone(&memberships);
+    let list_memberships = Arc::clone(&memberships);
+    let get_memberships = Arc::clone(&memberships);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
     let list_environment_projects = Arc::clone(&projects);
@@ -1189,6 +1201,15 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::CreateOrganization, _>(
                     CreateOrganizationHandler::new(organizations),
+                )
+                .command_handler::<crate::modules::identity::CreateServiceMembership, _>(
+                    CreateServiceMembershipHandler::new(create_memberships),
+                )
+                .command_handler::<crate::modules::identity::ChangeMembershipRole, _>(
+                    ChangeMembershipRoleHandler::new(change_memberships),
+                )
+                .command_handler::<crate::modules::identity::RevokeMembership, _>(
+                    RevokeMembershipHandler::new(revoke_memberships),
                 )
                 .command_handler::<crate::modules::projects::CreateProject, _>(
                     CreateProjectHandler::new(project_organizations, projects),
@@ -1465,6 +1486,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::identity::GetApiToken, _>(
                     GetApiTokenHandler::new(get_api_tokens),
+                )
+                .query_handler::<crate::modules::identity::ListMemberships, _>(
+                    ListMembershipsHandler::new(list_memberships),
+                )
+                .query_handler::<crate::modules::identity::GetMembership, _>(
+                    GetMembershipHandler::new(get_memberships),
                 )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),

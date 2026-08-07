@@ -28,7 +28,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.9.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.10.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1213,6 +1213,7 @@ describe('CloudApi', () => {
         name: 'automation',
         token: credential,
         scopes: ['project:write', 'build:write'],
+        principalId: '019c0000-0000-7000-8000-000000000010',
         expiresAt: '2027-01-02T03:04:05.000Z',
       },
       'client:token-create'
@@ -1233,6 +1234,7 @@ describe('CloudApi', () => {
           name: 'automation',
           token: credential,
           scopes: ['project:write', 'build:write'],
+          principalId: '019c0000-0000-7000-8000-000000000010',
           expiresAt: '2027-01-02T03:04:05.000Z',
         }),
       })
@@ -1284,6 +1286,74 @@ describe('CloudApi', () => {
         'client:token-invalid-calendar-expiry'
       )
     ).toThrow('API token expiry must be an RFC 3339 timestamp');
+    expect(called).toBe(false);
+  });
+
+  it('exposes one tenant-scoped membership lifecycle with optimistic concurrency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+
+    await api.listMemberships('organization / one');
+    await api.getMembership('organization / one', 'membership / one');
+    await api.createServiceMembership(
+      'organization / one',
+      { name: 'release automation', role: 'member' },
+      'client:membership-create'
+    );
+    await api.changeMembershipRole(
+      'organization / one',
+      'membership / one',
+      'restricted',
+      2,
+      'client:membership-role'
+    );
+    await api.revokeMembership('organization / one', 'membership / one', 3, 'client:membership-revoke');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/memberships',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/memberships',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one/role',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one/revocation',
+    ]);
+    expect(calls.slice(2).map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-create' }),
+        body: JSON.stringify({ name: 'release automation', role: 'member' }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-role' }),
+        body: JSON.stringify({ role: 'restricted', expectedVersion: 2 }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-revoke' }),
+        body: JSON.stringify({ expectedVersion: 3 }),
+      }),
+    ]);
+  });
+
+  it('rejects invalid membership input before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createServiceMembership('organization', { name: '', role: 'member' }, 'client:membership-name')
+    ).toThrow('service principal name must contain 1 to 63 visible characters');
+    expect(() =>
+      api.changeMembershipRole('organization', 'membership', 'member', 0, 'client:membership-version')
+    ).toThrow('expected membership version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

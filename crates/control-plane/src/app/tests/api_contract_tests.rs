@@ -112,6 +112,40 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 && parameter["in"] == "header"
                 && parameter["required"] == true
         })));
+    let memberships = &document["paths"]["/organizations/{organization_id}/memberships"];
+    assert_eq!(memberships["get"]["tags"], json!(["Identity"]));
+    assert!(memberships["get"]["responses"]["200"].is_object());
+    assert_eq!(memberships["post"]["tags"], json!(["Identity"]));
+    assert!(memberships["post"]["requestBody"]["content"]["application/json"].is_object());
+    assert!(memberships["post"]["responses"]["200"].is_object());
+    assert!(memberships["post"]["responses"]["201"].is_object());
+    assert!(memberships["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let membership =
+        &document["paths"]["/organizations/{organization_id}/memberships/{membership_id}"];
+    assert_eq!(membership["get"]["tags"], json!(["Identity"]));
+    assert!(membership["get"]["responses"]["200"].is_object());
+    for path in [
+        "/organizations/{organization_id}/memberships/{membership_id}/role",
+        "/organizations/{organization_id}/memberships/{membership_id}/revocation",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Identity"]));
+        assert!(operation["requestBody"]["content"]["application/json"].is_object());
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            })));
+    }
     let log_stream = &document["paths"]
         ["/organizations/{organization_id}/build-runs/{build_run_id}/logs/stream"]["get"];
     assert_eq!(

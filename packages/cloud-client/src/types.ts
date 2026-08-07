@@ -144,7 +144,16 @@ export interface McpServiceProfileMutationResult extends McpServiceProfile {
   replayed: boolean;
 }
 
-export type { ApiToken, ApiTokenMutationResult, CreateApiTokenInput } from './identity';
+export type {
+  ApiToken,
+  ApiTokenMutationResult,
+  CreateApiTokenInput,
+  CreateServiceMembershipInput,
+  IdentityPrincipalKind,
+  Membership,
+  MembershipMutationResult,
+  MembershipRole,
+} from './identity';
 
 export type {
   EnrollmentToken,

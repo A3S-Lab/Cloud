@@ -4,6 +4,8 @@ pub enum RepositoryError {
     NotFound,
     #[error("resource already exists: {0}")]
     Conflict(String),
+    #[error("repository authorization rejected the request: {0}")]
+    Forbidden(String),
     #[error("idempotency key was reused with different input")]
     IdempotencyConflict,
     #[error("repository failed: {0}")]

@@ -7,6 +7,7 @@ pub struct ApiTokenScope(String);
 impl ApiTokenScope {
     pub const CLOUD_READ: &'static str = "cloud:read";
     pub const PLATFORM_WRITE: &'static str = "platform:write";
+    pub const IDENTITY_WRITE: &'static str = "identity:write";
     pub const TOKEN_WRITE: &'static str = "token:write";
     pub const PROJECT_WRITE: &'static str = "project:write";
     pub const ENVIRONMENT_WRITE: &'static str = "environment:write";
@@ -48,6 +49,7 @@ impl ApiTokenScope {
         [
             Self::CLOUD_READ,
             Self::PLATFORM_WRITE,
+            Self::IDENTITY_WRITE,
             Self::TOKEN_WRITE,
             Self::PROJECT_WRITE,
             Self::ENVIRONMENT_WRITE,

@@ -713,7 +713,7 @@ format never becomes a second mutable source of truth.
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
-| `C0.3` | Planned | External OIDC identity federation, memberships, grants, attribution, tenant-scoped security investigation, notification, and audit interfaces; the role-focused console projection is retained but deferred during the backend-first phase |
+| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, Principal-bound scoped credentials, immediate role/revocation enforcement, last-owner protection, Outbox/audit, and REST/client/CLI/Management MCP parity are implemented as the backend foundation. Resource Grants, invitations, external OIDC links, attribution, tenant-scoped security investigation, notification, and audit-query interfaces remain planned; the role-focused console projection remains deferred |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 
 No presentation surface owns business rules or bypasses tenant guards,
@@ -782,6 +782,23 @@ state, and reuses the same application buses,
 authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
+
+The first backend-only `C0.3` slice adds one Identity-owned Principal,
+Membership, credential, and revocation authority without adding another RBAC
+or audit mechanism. Human and service Principals receive organization roles
+`owner`, `admin`, `member`, or `restricted`; credentials bind to a Principal
+and may be delegated to another Principal only by an organization
+administrator or platform administrator. Membership role changes and
+revocation are enforced on the next request, restricted memberships fail
+closed until explicit Resource Grants exist, and the last active owner cannot
+be removed. A3S ORM migration `074` backfills existing credentials and owners;
+new writes atomically retain idempotency, Outbox facts, and audit. REST/OpenAPI
+contract `1.10.0`, the maintained client, CLI, and five administrator-only
+Management MCP tools reuse the same application handlers. Resource Grants are
+the next slice; invitations and external OIDC issuer/subject links must attach
+to the same Principal and Membership authority. Attribution, notifications,
+security investigation, audit queries, and role-focused frontend projections
+remain planned, so `C0.3` is in progress rather than verified.
 
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 

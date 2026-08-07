@@ -34,12 +34,20 @@ impl BearerTokenVerifier for ApiTokenVerifier {
                 .map_err(|error| {
                     BootError::Internal(format!("API token verification failed: {error}"))
                 })?;
-            let Some(token) = authenticated else {
+            let Some(authenticated) = authenticated else {
                 return Ok(None);
             };
-            let mut principal = AuthPrincipal::new(token.id.to_string())
+            let token = authenticated.api_token;
+            let mut principal = AuthPrincipal::new(authenticated.principal.id.to_string())
+                .with_claim("credential_id", token.id.to_string())?
                 .with_claim("organization_id", token.organization_id.to_string())?
                 .with_scopes(token.scopes.iter().map(ApiTokenScope::as_str));
+            if let Some(membership) = authenticated.membership {
+                principal = principal
+                    .with_claim("membership_id", membership.id.to_string())?
+                    .with_claim("organization_role", membership.role.as_str())?
+                    .with_role(format!("organization_{}", membership.role.as_str()));
+            }
             if token
                 .scopes
                 .iter()

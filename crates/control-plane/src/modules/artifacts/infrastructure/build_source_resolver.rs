@@ -120,6 +120,7 @@ fn map_repository_error(error: RepositoryError) -> BuildSourceResolutionError {
     match error {
         RepositoryError::NotFound => BuildSourceResolutionError::NotFound,
         RepositoryError::Conflict(_) => BuildSourceResolutionError::Conflict,
+        RepositoryError::Forbidden(_) => BuildSourceResolutionError::Conflict,
         RepositoryError::IdempotencyConflict => BuildSourceResolutionError::Conflict,
         RepositoryError::Storage(message) => BuildSourceResolutionError::Storage(message),
     }

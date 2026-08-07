@@ -5,26 +5,59 @@ use super::arguments::{
 };
 use super::artifacts::BuildRunMutationArguments;
 use super::catalog::ManagementTool;
+use super::identity::{
+    ChangeMembershipRoleArguments, CreateServiceMembershipArguments, MembershipArguments,
+    RevokeMembershipArguments,
+};
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
-use super::{artifacts, edge, nodes, operations, projects, search, workloads};
-use crate::modules::shared_kernel::domain::OrganizationId;
+use super::{artifacts, edge, identity, nodes, operations, projects, search, workloads};
+use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ManagementExecutionContext {
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    actor_is_platform_admin: bool,
+    request_id: Uuid,
+}
+
+impl ManagementExecutionContext {
+    pub(super) const fn new(
+        organization_id: OrganizationId,
+        actor_principal_id: PrincipalId,
+        actor_is_platform_admin: bool,
+        request_id: Uuid,
+    ) -> Self {
+        Self {
+            organization_id,
+            actor_principal_id,
+            actor_is_platform_admin,
+            request_id,
+        }
+    }
+}
+
 pub async fn execute(
     tool: ManagementTool,
     command_bus: Arc<CommandBus>,
     query_bus: Arc<QueryBus>,
-    organization_id: OrganizationId,
+    context: ManagementExecutionContext,
     arguments: Value,
-    request_id: Uuid,
 ) -> Option<Result<Value>> {
+    let ManagementExecutionContext {
+        organization_id,
+        actor_principal_id,
+        actor_is_platform_admin,
+        request_id,
+    } = context;
     let result = match tool {
         ManagementTool::EnvironmentsCreate => {
             let arguments = arguments::parse::<CreateEnvironmentArguments>(arguments).ok()?;
@@ -33,6 +66,50 @@ pub async fn execute(
         ManagementTool::EnvironmentsList => {
             let arguments = arguments::parse::<ProjectArguments>(arguments).ok()?;
             projects::list_environments(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::MembershipsList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            identity::list_memberships(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::MembershipsGet => {
+            let arguments = arguments::parse::<MembershipArguments>(arguments).ok()?;
+            identity::get_membership(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::ServiceMembershipsCreate => {
+            let arguments = arguments::parse::<CreateServiceMembershipArguments>(arguments).ok()?;
+            identity::create_service_membership(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipsChangeRole => {
+            let arguments = arguments::parse::<ChangeMembershipRoleArguments>(arguments).ok()?;
+            identity::change_membership_role(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipsRevoke => {
+            let arguments = arguments::parse::<RevokeMembershipArguments>(arguments).ok()?;
+            identity::revoke_membership(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
         }
         ManagementTool::ProjectsCreate => {
             let arguments = arguments::parse::<CreateProjectArguments>(arguments).ok()?;

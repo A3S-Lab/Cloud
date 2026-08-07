@@ -23,6 +23,7 @@ impl From<RepositoryError> for ApplicationError {
         match error {
             RepositoryError::NotFound => Self::NotFound("resource not found".into()),
             RepositoryError::Conflict(message) => Self::Conflict(message),
+            RepositoryError::Forbidden(message) => Self::Forbidden(message),
             RepositoryError::IdempotencyConflict => {
                 Self::Conflict("idempotency key reused with different input".into())
             }

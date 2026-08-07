@@ -22,6 +22,11 @@ Commands:
   api-tokens get ID     Get one API token metadata record
   api-tokens create NAME Create an API token from standard input idempotently
   api-tokens revoke ID  Revoke one API token idempotently
+  memberships list      List organization memberships
+  memberships get ID    Get one organization membership
+  memberships create-service NAME ROLE Create a service principal membership idempotently
+  memberships change-role ID ROLE Change one membership role with optimistic concurrency
+  memberships revoke ID Revoke one membership with optimistic concurrency
   projects list        List projects in the selected organization
   projects create NAME Create a project idempotently
   environments list    List environments in the selected project
@@ -116,7 +121,7 @@ Global options:
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation
-  --expected-version <n>    Current aggregate version for a node or MCP credential mutation
+  --expected-version <n>    Current aggregate version for a node, membership, or MCP credential mutation
   --min-ready <n>           Required ready members for gateway-scopes create
   --max-unavailable <n>     Allowed unavailable members for gateway-scopes create
   --context-path <path>      Repository context for a Source build recipe
@@ -127,6 +132,7 @@ Global options:
   --token-stdin              Read a new API token credential from standard input
   --enrollment-token-stdin   Read a node enrollment credential from standard input
   --scopes <csv>             API token scopes for api-tokens create
+  --principal <uuid>         Principal bound to a newly created API token
   --expires-at <timestamp>   RFC 3339 credential expiry
   --agent-release-url <url>  HTTPS node-agent release binary for nodes bootstrap
   --agent-release-sha256 <digest> SHA-256 of the node-agent release binary

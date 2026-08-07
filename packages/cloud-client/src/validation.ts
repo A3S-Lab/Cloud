@@ -1,4 +1,4 @@
-import type { CreateApiTokenInput } from './identity';
+import type { CreateApiTokenInput, CreateServiceMembershipInput, MembershipRole } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
@@ -26,6 +26,35 @@ export function validateApiTokenInput(input: CreateApiTokenInput): void {
   }
   if (input.expiresAt !== undefined && input.expiresAt !== null && !isRfc3339Timestamp(input.expiresAt)) {
     throw new TypeError('API token expiry must be an RFC 3339 timestamp');
+  }
+}
+
+export function validateServiceMembershipInput(input: CreateServiceMembershipInput): void {
+  validateResourceName(input.name, 'service principal name');
+  validateMembershipRole(input.role);
+}
+
+export function validateMembershipRole(role: MembershipRole): void {
+  if (!['owner', 'admin', 'member', 'restricted'].includes(role)) {
+    throw new TypeError('membership role must be owner, admin, member, or restricted');
+  }
+}
+
+export function validateExpectedMembershipVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('expected membership version must be a positive safe integer');
+  }
+}
+
+function validateResourceName(value: string, label: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.trim() !== value ||
+    [...value].length < 1 ||
+    [...value].length > 63 ||
+    /[\0\r\n]/.test(value)
+  ) {
+    throw new TypeError(`${label} must contain 1 to 63 visible characters`);
   }
 }
 

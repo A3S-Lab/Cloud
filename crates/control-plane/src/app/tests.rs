@@ -72,6 +72,10 @@ const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccc
 const SOURCE_TOKEN: &str = "a3s_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 const TOKEN_MANAGER_TOKEN: &str =
     "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const SERVICE_MEMBER_TOKEN: &str =
+    "a3s_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+const PRIVILEGE_ESCALATION_TOKEN: &str =
+    "a3s_0000000000000000000000000000000000000000000000000000000000000000";
 const GITHUB_WEBHOOK_SECRET: &str = "github-webhook-test-secret-0123456789abcdef";
 
 struct TestCertificateAuthority;
@@ -838,7 +842,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         config(),
         ApplicationDependencies {
             organizations: identity.clone(),
-            api_tokens: identity,
+            api_tokens: identity.clone(),
+            memberships: identity,
             projects: projects.clone(),
             environments: projects,
             search,
@@ -1040,7 +1045,23 @@ async fn organization_writes_are_idempotent_unique_and_atomic() -> Result<()> {
         ))
         .await?;
     assert_eq!(duplicate.status(), 409);
-    assert_eq!(repository.outbox_events().await.len(), 3);
+    let events = repository.outbox_events().await;
+    assert_eq!(events.len(), 6);
+    for (event_key, expected) in [
+        ("identity.organization.created", 2),
+        ("identity.principal.created", 1),
+        ("identity.membership.created", 2),
+        ("identity.token.created", 1),
+    ] {
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.event_key == event_key)
+                .count(),
+            expected,
+            "unexpected {event_key} event count"
+        );
+    }
     Ok(())
 }
 
@@ -1314,6 +1335,215 @@ async fn revoked_and_expired_tokens_stop_authenticating_immediately() -> Result<
         ))
         .await?;
     assert_eq!(expired_use.status(), 401);
+    Ok(())
+}
+
+#[tokio::test]
+async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediately() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "membership-bootstrap", "Acme").await?;
+    let memberships_path = format!("/api/v1/organizations/{organization}/memberships");
+
+    let initial = app.call(get_as(&memberships_path, ADMIN_TOKEN)).await?;
+    assert_eq!(initial.status(), 200);
+    let initial_memberships = response_json(&initial)?["data"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| BootError::Internal("membership list is not an array".into()))?;
+    assert_eq!(initial_memberships.len(), 1);
+    assert_eq!(initial_memberships[0]["role"], "owner");
+    let owner_membership_id = initial_memberships[0]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("owner membership has no ID".into()))?
+        .to_owned();
+    let owner_principal_id = initial_memberships[0]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("owner membership has no principal ID".into()))?
+        .to_owned();
+
+    let create_body = json!({"name": "release automation", "role": "member"});
+    let created = app
+        .call(post_json(
+            &memberships_path,
+            "membership:create:release-automation",
+            create_body.clone(),
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created_data = response_json(&created)?["data"].clone();
+    let membership_id = created_data["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("created membership has no ID".into()))?;
+    let principal_id = created_data["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("created membership has no principal ID".into()))?;
+    assert_eq!(created_data["principalKind"], "service");
+    assert_eq!(created_data["aggregateVersion"], 1);
+
+    let replayed = app
+        .call(post_json(
+            &memberships_path,
+            "membership:create:release-automation",
+            create_body,
+        ))
+        .await?;
+    assert_eq!(replayed.status(), 200);
+    let replayed_data = response_json(&replayed)?["data"].clone();
+    assert_eq!(replayed_data["id"], membership_id);
+    assert_eq!(replayed_data["replayed"], true);
+
+    let token_created = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "membership:service-token",
+            json!({
+                "name": "release automation",
+                "token": SERVICE_MEMBER_TOKEN,
+                "scopes": [
+                    ApiTokenScope::PROJECT_WRITE,
+                    ApiTokenScope::IDENTITY_WRITE,
+                    ApiTokenScope::TOKEN_WRITE
+                ],
+                "principalId": principal_id,
+                "expiresAt": null,
+            }),
+        ))
+        .await?;
+    assert_eq!(token_created.status(), 201);
+    assert_eq!(
+        response_json(&token_created)?["data"]["principalId"],
+        principal_id
+    );
+    assert!(!String::from_utf8_lossy(token_created.body()).contains(SERVICE_MEMBER_TOKEN));
+
+    let privilege_escalation = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "membership:privilege-escalation",
+            json!({
+                "name": "forged owner credential",
+                "token": PRIVILEGE_ESCALATION_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ],
+                "principalId": owner_principal_id,
+                "expiresAt": null,
+            }),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(privilege_escalation.status(), 403);
+
+    let member_cannot_administer = app
+        .call(get_as(&memberships_path, SERVICE_MEMBER_TOKEN))
+        .await?;
+    assert_eq!(member_cannot_administer.status(), 403);
+
+    let role_path = format!("{memberships_path}/{membership_id}/role");
+    let promoted = app
+        .call(post_json(
+            &role_path,
+            "membership:promote-admin",
+            json!({"role": "admin", "expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(promoted.status(), 200);
+    let admin_privilege_escalation = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "membership:admin-privilege-escalation",
+            json!({
+                "name": "forged owner credential",
+                "token": PRIVILEGE_ESCALATION_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ],
+                "principalId": owner_principal_id,
+                "expiresAt": null,
+            }),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(admin_privilege_escalation.status(), 403);
+    let returned_to_member = app
+        .call(post_json(
+            &role_path,
+            "membership:return-to-member",
+            json!({"role": "member", "expectedVersion": 2}),
+        ))
+        .await?;
+    assert_eq!(returned_to_member.status(), 200);
+
+    let own_project = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization}/projects"),
+            "membership:member-project",
+            json!({"name": "Member Project"}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(own_project.status(), 201);
+
+    let restricted = app
+        .call(post_json(
+            &role_path,
+            "membership:restrict",
+            json!({"role": "restricted", "expectedVersion": 3}),
+        ))
+        .await?;
+    assert_eq!(restricted.status(), 200);
+    assert_eq!(response_json(&restricted)?["data"]["aggregateVersion"], 4);
+
+    let restricted_access = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/projects"),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(restricted_access.status(), 403);
+
+    let restored = app
+        .call(post_json(
+            &role_path,
+            "membership:restore",
+            json!({"role": "member", "expectedVersion": 4}),
+        ))
+        .await?;
+    assert_eq!(restored.status(), 200);
+    assert_eq!(response_json(&restored)?["data"]["aggregateVersion"], 5);
+
+    let restored_access = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/projects"),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(restored_access.status(), 200);
+
+    let revoked = app
+        .call(post_json(
+            format!("{memberships_path}/{membership_id}/revocation"),
+            "membership:revoke",
+            json!({"expectedVersion": 5}),
+        ))
+        .await?;
+    assert_eq!(revoked.status(), 200);
+    assert!(response_json(&revoked)?["data"]["revokedAt"].is_string());
+
+    let revoked_access = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/projects"),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(revoked_access.status(), 401);
+
+    let last_owner = app
+        .call(post_json(
+            format!("{memberships_path}/{owner_membership_id}/revocation"),
+            "membership:last-owner",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(last_owner.status(), 409);
     Ok(())
 }
 

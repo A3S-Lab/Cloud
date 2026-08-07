@@ -107,17 +107,20 @@ are different facts.
 
 ### 3.1 Identity and access
 
-Owns users, organizations, memberships, roles, API tokens, optional external
-OIDC subject links under `C0.3`, and tenant context. It answers who may issue a
-command. It does not decide runtime placement, treat an identity-provider
-session as Cloud authority, or store asset collaborator data in an unvalidated
-metadata document.
+Owns stable human and service Principals, organizations, Membership roles,
+Principal-bound API credentials, revocation, planned Resource Grants, optional
+external OIDC subject links under `C0.3`, and tenant context. It answers who may
+issue a command. It does not decide runtime placement, treat a credential as a
+role, treat an identity-provider session as Cloud authority, or store asset
+collaborator data in an unvalidated metadata document.
 
 Primary aggregates:
 
+- `IdentityPrincipal`
 - `Organization`
 - `Membership`
 - `ApiToken`
+- `ResourceGrant` (next `C0.3` slice)
 - `ExternalIdentityLink` (planned `C0.3`)
 
 ### 3.2 Projects
@@ -491,8 +494,18 @@ contexts' tables.
 
 - Every tenant-owned aggregate carries `organization_id`.
 - Cross-organization references are rejected before persistence.
+- A Principal is stable across credentials and may be `human` or `service`.
+- One active Membership assigns exactly one `owner`, `admin`, `member`, or
+  `restricted` role to a Principal in an organization; a credential never owns
+  the role.
 - The last organization owner cannot be removed.
-- API token scopes cannot exceed the issuing member's effective permissions.
+- API token scopes cannot exceed the issuer's effective scopes. An ordinary
+  member may issue only for its own Principal; cross-Principal issuance reuses
+  the Membership role matrix, so an `admin` cannot issue an owner credential
+  and only an owner or platform administrator can manage owner credentials.
+- Membership restriction and revocation affect every bound credential on the
+  next request. `restricted` fails closed on tenant resources until the shared
+  Resource Grant evaluator is implemented.
 
 ### Project and Environment
 

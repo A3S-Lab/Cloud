@@ -370,6 +370,11 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         vec![
             "a3s_cloud_environments_create",
             "a3s_cloud_environments_list",
+            "a3s_cloud_memberships_list",
+            "a3s_cloud_memberships_get",
+            "a3s_cloud_service_memberships_create",
+            "a3s_cloud_memberships_change_role",
+            "a3s_cloud_memberships_revoke",
             "a3s_cloud_projects_create",
             "a3s_cloud_projects_list",
             "a3s_cloud_search",
@@ -406,6 +411,138 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         .await?;
     assert_eq!(hidden_call.status(), 200);
     assert_eq!(response_json(&hidden_call)?["error"]["code"], -32602);
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    bootstrap_organization(&app, "mcp-memberships", "Acme").await?;
+
+    let create_arguments = json!({
+        "name": "Release automation",
+        "role": "member",
+        "idempotencyKey": "mcp-membership-create"
+    });
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_service_memberships_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created_body = response_json(&created)?;
+    assert_eq!(created_body["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        created_body["result"]["structuredContent"]["data"]["principalKind"],
+        "service"
+    );
+    assert_eq!(
+        created_body["result"]["structuredContent"]["data"]["replayed"],
+        false
+    );
+    let membership_id = created_body["result"]["structuredContent"]["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP membership response has no ID".into()))?
+        .to_owned();
+
+    let replayed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_service_memberships_create", create_arguments),
+        ))
+        .await?;
+    let replayed_body = response_json(&replayed)?;
+    assert_eq!(replayed_body["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replayed_body["result"]["structuredContent"]["data"]["id"],
+        membership_id
+    );
+    assert_eq!(
+        replayed_body["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(3, "a3s_cloud_memberships_list", json!({})),
+        ))
+        .await?;
+    let listed_body = response_json(&listed)?;
+    assert!(listed_body["result"]["structuredContent"]["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|membership| membership["id"] == membership_id));
+
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_memberships_get",
+                json!({"membershipId": membership_id}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&fetched)?["result"]["structuredContent"]["data"]["role"],
+        "member"
+    );
+
+    let changed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_memberships_change_role",
+                json!({
+                    "membershipId": membership_id,
+                    "role": "restricted",
+                    "expectedVersion": 1,
+                    "idempotencyKey": "mcp-membership-restrict"
+                }),
+            ),
+        ))
+        .await?;
+    let changed_body = response_json(&changed)?;
+    assert_eq!(changed_body["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        changed_body["result"]["structuredContent"]["data"]["role"],
+        "restricted"
+    );
+    assert_eq!(
+        changed_body["result"]["structuredContent"]["data"]["aggregateVersion"],
+        2
+    );
+
+    let revoked = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_memberships_revoke",
+                json!({
+                    "membershipId": membership_id,
+                    "expectedVersion": 2,
+                    "idempotencyKey": "mcp-membership-revoke"
+                }),
+            ),
+        ))
+        .await?;
+    let revoked_body = response_json(&revoked)?;
+    assert_eq!(revoked_body["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        revoked_body["result"]["structuredContent"]["data"]["aggregateVersion"],
+        3
+    );
+    assert!(revoked_body["result"]["structuredContent"]["data"]["revokedAt"].is_string());
     Ok(())
 }
 

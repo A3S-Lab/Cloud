@@ -268,6 +268,7 @@ fn map_repository_error(error: RepositoryError) -> RefreshError {
         RepositoryError::Conflict(_) | RepositoryError::IdempotencyConflict => {
             RefreshError::Conflict
         }
+        RepositoryError::Forbidden(_) => RefreshError::Unavailable,
         RepositoryError::Storage(_) => RefreshError::Unavailable,
     }
 }

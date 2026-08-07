@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct ApiTokenReadResponse {
     pub id: Uuid,
     pub organization_id: Uuid,
+    pub principal_id: Uuid,
     pub name: String,
     pub scopes: Vec<String>,
     pub aggregate_version: u64,
@@ -21,6 +22,7 @@ impl From<ApiToken> for ApiTokenReadResponse {
         Self {
             id: token.id.as_uuid(),
             organization_id: token.organization_id.as_uuid(),
+            principal_id: token.principal_id.as_uuid(),
             name: token.name.as_str().to_owned(),
             scopes: token
                 .scopes

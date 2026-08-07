@@ -22,6 +22,7 @@ import type {
   CancelBuildRunResult,
   CancelDeploymentResult,
   CreateApiTokenInput,
+  CreateServiceMembershipInput,
   CreateAssetInput,
   CreateAssetReleaseInput,
   CreateExecutionInput,
@@ -51,6 +52,9 @@ import type {
   McpRoutePolicyMutationResult,
   McpServiceProfile,
   McpServiceProfileMutationResult,
+  Membership,
+  MembershipMutationResult,
+  MembershipRole,
   Node,
   Operation,
   Organization,
@@ -81,12 +85,15 @@ import type {
 } from './types';
 import {
   validateApiTokenInput,
+  validateExpectedMembershipVersion,
+  validateMembershipRole,
   validateEnrollmentTokenInput,
   validateExpectedMcpCredentialVersion,
   validateExpectedNodeVersion,
   validateMcpCredentialExpiry,
   validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
+  validateServiceMembershipInput,
   validateSecretValue,
   validateWorkloadAcl,
 } from './validation';
@@ -103,7 +110,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.9.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.10.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
@@ -217,6 +224,66 @@ export class CloudApi {
     return this.delete(
       `/organizations/${encodeURIComponent(organizationId)}/api-tokens/${encodeURIComponent(tokenId)}`,
       idempotencyKey,
+      signal
+    );
+  }
+
+  listMemberships(organizationId: string, signal?: AbortSignal): Promise<Membership[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/memberships`, signal);
+  }
+
+  getMembership(organizationId: string, membershipId: string, signal?: AbortSignal): Promise<Membership> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}`,
+      signal
+    );
+  }
+
+  createServiceMembership(
+    organizationId: string,
+    input: CreateServiceMembershipInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipMutationResult> {
+    validateServiceMembershipInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  changeMembershipRole(
+    organizationId: string,
+    membershipId: string,
+    role: MembershipRole,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipMutationResult> {
+    validateMembershipRole(role);
+    validateExpectedMembershipVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/role`,
+      idempotencyKey,
+      { role, expectedVersion },
+      signal
+    );
+  }
+
+  revokeMembership(
+    organizationId: string,
+    membershipId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipMutationResult> {
+    validateExpectedMembershipVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
       signal
     );
   }

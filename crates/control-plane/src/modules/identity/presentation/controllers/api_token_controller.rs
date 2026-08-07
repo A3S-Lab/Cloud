@@ -6,6 +6,9 @@ use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::dto::{
     ApiTokenReadResponse, ApiTokenResponse, CreateApiTokenRequest,
 };
+use crate::modules::identity::presentation::request_context::{
+    actor, mutation_identity, request_id,
+};
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId};
 use crate::presentation::application_error_response;
@@ -78,15 +81,22 @@ pub fn api_token_controller(
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let principal = request.require_auth_principal()?;
+                    let actor = actor(&request)?;
                     let issuer_scopes = principal
                         .scopes()
                         .map(ApiTokenScope::parse)
                         .collect::<std::result::Result<BTreeSet<_>, _>>()
                         .map_err(BootError::Internal)?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let (idempotency_key, request_id) = mutation_identity(&request)?;
                     match bus
                         .execute(CreateApiToken {
                             organization_id,
+                            principal_id: body
+                                .principal_id
+                                .map(crate::modules::shared_kernel::domain::PrincipalId::from_uuid)
+                                .unwrap_or(actor.principal_id),
+                            issuer_principal_id: actor.principal_id,
+                            issuer_is_platform_admin: actor.is_platform_admin,
                             name: body.name,
                             token_secret: body.token,
                             scopes: body.scopes,
@@ -114,7 +124,7 @@ pub fn api_token_controller(
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let token_id = ApiTokenId::from_uuid(request.param_as::<Uuid>("token_id")?);
-                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let (idempotency_key, request_id) = mutation_identity(&request)?;
                     match bus
                         .execute(RevokeApiToken {
                             organization_id,
@@ -130,30 +140,4 @@ pub fn api_token_controller(
                 }
             },
         )
-}
-
-fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
-    let idempotency_key = request
-        .header("idempotency-key")
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| BootError::BadRequest("idempotency-key header is required".into()))?
-        .to_owned();
-    let request_id = request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })?;
-    Ok((idempotency_key, request_id))
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
 }

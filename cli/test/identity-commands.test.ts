@@ -5,6 +5,8 @@ import { ExitCode } from '../src/errors';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const API_TOKEN_ID = '019c0000-0000-7000-8000-000000000018';
+const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000020';
+const MEMBERSHIP_ID = '019c0000-0000-7000-8000-000000000021';
 const API_TOKEN = `a3s_${'a'.repeat(64)}`;
 
 describe('a3s-cloud identity commands', () => {
@@ -53,6 +55,7 @@ describe('a3s-cloud identity commands', () => {
         'automation',
         '--token-stdin',
         '--scopes=project:write,build:write',
+        `--principal=${PRINCIPAL_ID}`,
         '--expires-at=2027-01-02T03:04:05Z',
         '--idempotency-key=cli:token-create',
         '--output=json',
@@ -80,6 +83,7 @@ describe('a3s-cloud identity commands', () => {
           name: 'automation',
           token: API_TOKEN,
           scopes: ['project:write', 'build:write'],
+          principalId: PRINCIPAL_ID,
           expiresAt: '2027-01-02T03:04:05.000Z',
         }),
       })
@@ -112,6 +116,97 @@ describe('a3s-cloud identity commands', () => {
         body: undefined,
       })
     );
+    expect(output.stderr()).toBe('');
+  });
+
+  it.each([
+    [['memberships', 'list'], `/organizations/${ORGANIZATION_ID}/memberships`, [membershipResource()]],
+    [
+      ['memberships', 'get', MEMBERSHIP_ID],
+      `/organizations/${ORGANIZATION_ID}/memberships/${MEMBERSHIP_ID}`,
+      membershipResource(),
+    ],
+  ] as const)('queries membership authority %#', async (command, path, response) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(response);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...command, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(output.stderr()).toBe('');
+  });
+
+  it('creates, changes, and revokes memberships through one optimistic lifecycle', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope({ ...membershipResource(), replayed: false }, calls.length === 1 ? 201 : 200);
+    };
+    const output = capture();
+    const runtime = { ...output.runtime, environment: completeEnvironment(), fetch: fetcher };
+
+    expect(
+      await runCli(
+        [
+          'memberships',
+          'create-service',
+          'release automation',
+          'member',
+          '--idempotency-key=cli:membership-create',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'memberships',
+          'change-role',
+          MEMBERSHIP_ID,
+          'restricted',
+          '--expected-version=1',
+          '--idempotency-key=cli:membership-role',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'memberships',
+          'revoke',
+          MEMBERSHIP_ID,
+          '--expected-version=2',
+          '--idempotency-key=cli:membership-revoke',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+
+    expect(calls.map(([input]) => input)).toEqual([
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/memberships`,
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/memberships/${MEMBERSHIP_ID}/role`,
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/memberships/${MEMBERSHIP_ID}/revocation`,
+    ]);
+    expect(calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({ name: 'release automation', role: 'member' }),
+      JSON.stringify({ role: 'restricted', expectedVersion: 1 }),
+      JSON.stringify({ expectedVersion: 2 }),
+    ]);
+    expect(calls.map(([, init]) => (init?.headers as Record<string, string>)['Idempotency-Key'])).toEqual([
+      'cli:membership-create',
+      'cli:membership-role',
+      'cli:membership-revoke',
+    ]);
     expect(output.stderr()).toBe('');
   });
 
@@ -270,7 +365,19 @@ describe('a3s-cloud identity commands', () => {
       },
       {
         argv: ['organizations', 'list', '--scopes=project:write'],
-        message: '--scopes and --expires-at are valid only for API token creation',
+        message: '--scopes is valid only for API token creation',
+      },
+      {
+        argv: ['organizations', 'list', `--principal=${PRINCIPAL_ID}`],
+        message: '--principal is valid only for API token creation',
+      },
+      {
+        argv: ['memberships', 'change-role', MEMBERSHIP_ID, 'member', '--idempotency-key=k'],
+        message: '--expected-version must be a positive safe integer for membership mutation',
+      },
+      {
+        argv: ['memberships', 'create-service', 'automation', 'superuser', '--idempotency-key=k'],
+        message: 'membership role must be owner, admin, member, or restricted',
       },
     ];
 
@@ -338,11 +445,29 @@ function apiTokenResource(): Record<string, unknown> {
   return {
     id: API_TOKEN_ID,
     organizationId: ORGANIZATION_ID,
+    principalId: PRINCIPAL_ID,
     name: 'automation',
     scopes: ['project:write', 'build:write'],
     aggregateVersion: 1,
     createdAt: '2026-07-27T00:00:00.000Z',
     expiresAt: '2027-01-02T03:04:05.000Z',
+    revokedAt: null,
+  };
+}
+
+function membershipResource(): Record<string, unknown> {
+  return {
+    id: MEMBERSHIP_ID,
+    organizationId: ORGANIZATION_ID,
+    principalId: PRINCIPAL_ID,
+    principalKind: 'service',
+    principalName: 'release automation',
+    principalAggregateVersion: 1,
+    principalDisabledAt: null,
+    role: 'member',
+    aggregateVersion: 1,
+    createdAt: '2026-08-07T00:00:00.000Z',
+    updatedAt: '2026-08-07T00:00:00.000Z',
     revokedAt: null,
   };
 }

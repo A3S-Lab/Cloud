@@ -415,7 +415,10 @@ fn operation_id(method: &str, path: &str) -> String {
 fn operation_tag(path: &str) -> &'static str {
     if path.starts_with("/health") || path == "/platform" {
         "Platform"
-    } else if path.starts_with("/bootstrap") || path.contains("api-tokens") {
+    } else if path.starts_with("/bootstrap")
+        || path.contains("api-tokens")
+        || path.contains("memberships")
+    {
         "Identity"
     } else if path.starts_with("/node-control")
         || path.contains("/nodes")
@@ -501,6 +504,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/projects")
         || path.ends_with("/environments")
         || path.ends_with("/api-tokens")
+        || path.ends_with("/memberships")
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")

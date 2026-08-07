@@ -11,10 +11,10 @@ pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     AgentConversationId, AgentExecutionId, ApiTokenId, AssetId, AssetReleaseId, BuildRunId,
     DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId,
-    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, McpCredentialId, NodeCertificateId,
-    NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, ResourceClaimId, RouteId,
-    SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkloadId,
-    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, McpCredentialId, MembershipId,
+    NodeCertificateId, NodeCommandId, NodeId, OperationId, OrganizationId, PrincipalId, ProjectId,
+    ResourceClaimId, RouteId, SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId,
+    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

@@ -1,5 +1,5 @@
 use super::controllers::{
-    api_token_controller, bootstrap_controller, organization_controller,
+    api_token_controller, bootstrap_controller, membership_controller, organization_controller,
     organizations_query_controller,
 };
 use super::BootstrapGuard;
@@ -32,7 +32,8 @@ impl Module for IdentityModule {
                 BootstrapGuard::new(self.bootstrap_credential.clone()),
             )?,
             organization_controller(command_bus.clone())?,
-            api_token_controller(command_bus, module_ref.get::<QueryBus>()?)?,
+            api_token_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
+            membership_controller(command_bus, module_ref.get::<QueryBus>()?)?,
             organizations_query_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }

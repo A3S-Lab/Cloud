@@ -1,10 +1,12 @@
 use super::{CreateOrganization, CreateOrganizationResult};
-use crate::modules::identity::domain::entities::Organization;
-use crate::modules::identity::domain::events::OrganizationCreated;
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
-use crate::modules::identity::domain::value_objects::OrganizationName;
+use crate::modules::identity::domain::entities::{Membership, Organization};
+use crate::modules::identity::domain::events::{MembershipChanged, OrganizationCreated};
+use crate::modules::identity::domain::repositories::{
+    CreateOrganizationWrite, IOrganizationRepository,
+};
+use crate::modules::identity::domain::value_objects::{MembershipRole, OrganizationName};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, OrganizationId};
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, MembershipId, OrganizationId};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
 use std::sync::Arc;
@@ -41,9 +43,30 @@ impl CommandHandler<CreateOrganization> for CreateOrganizationHandler {
                     Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
                 };
             let organization = Organization::create(OrganizationId::new(), name, Utc::now());
-            let event = OrganizationCreated::envelope(&organization, command.request_id)
-                .map_err(|error| BootError::Internal(error.to_string()))?;
-            let result = match repository.create(organization, event, idempotency).await {
+            let owner_membership = Membership::create(
+                MembershipId::new(),
+                organization.id,
+                command.actor_principal_id,
+                MembershipRole::Owner,
+                organization.created_at,
+            );
+            let organization_event =
+                OrganizationCreated::envelope(&organization, command.request_id)
+                    .map_err(|error| BootError::Internal(error.to_string()))?;
+            let membership_event =
+                MembershipChanged::created(&owner_membership, command.request_id)
+                    .map_err(|error| BootError::Internal(error.to_string()))?;
+            let result = match repository
+                .create(CreateOrganizationWrite {
+                    organization,
+                    owner_membership,
+                    events: [organization_event, membership_event],
+                    actor_principal_id: command.actor_principal_id,
+                    request_id: command.request_id,
+                    idempotency,
+                })
+                .await
+            {
                 Ok(result) => result,
                 Err(error) => return Ok(Err(error.into())),
             };

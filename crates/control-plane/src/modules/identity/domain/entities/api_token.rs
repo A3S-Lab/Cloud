@@ -1,6 +1,8 @@
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::value_objects::{ApiTokenName, ApiTokenScope};
-use crate::modules::shared_kernel::domain::{canonical_timestamp, ApiTokenId, OrganizationId};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, ApiTokenId, OrganizationId, PrincipalId,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -9,6 +11,7 @@ use std::collections::BTreeSet;
 pub struct ApiToken {
     pub id: ApiTokenId,
     pub organization_id: OrganizationId,
+    pub principal_id: PrincipalId,
     pub name: ApiTokenName,
     pub scopes: BTreeSet<ApiTokenScope>,
     pub aggregate_version: u64,
@@ -20,13 +23,23 @@ pub struct ApiToken {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentityBootstrap {
     pub organization: Organization,
+    pub principal: super::IdentityPrincipal,
+    pub membership: super::Membership,
     pub api_token: ApiToken,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthenticatedApiToken {
+    pub api_token: ApiToken,
+    pub principal: super::IdentityPrincipal,
+    pub membership: Option<super::Membership>,
 }
 
 impl ApiToken {
     pub fn issue(
         id: ApiTokenId,
         organization_id: OrganizationId,
+        principal_id: PrincipalId,
         name: ApiTokenName,
         scopes: BTreeSet<ApiTokenScope>,
         created_at: DateTime<Utc>,
@@ -43,6 +56,7 @@ impl ApiToken {
         Ok(Self {
             id,
             organization_id,
+            principal_id,
             name,
             scopes,
             aggregate_version: 1,
@@ -78,6 +92,7 @@ mod tests {
         let mut token = ApiToken::issue(
             ApiTokenId::new(),
             OrganizationId::new(),
+            PrincipalId::new(),
             ApiTokenName::parse("automation").expect("name"),
             scopes,
             created_at,

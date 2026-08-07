@@ -12,15 +12,16 @@ use crate::modules::assets::domain::{
     TransitionAssetReleaseWrite, TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::identity::domain::entities::Organization;
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
+use crate::modules::identity::domain::repositories::{
+    CreateOrganizationWrite, IOrganizationRepository,
+};
 use crate::modules::identity::domain::value_objects::OrganizationName;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, IdempotencyRequest, IdempotentWrite,
-    OrganizationId, RepositoryError, Sha256Digest,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, IdempotentWrite, OrganizationId,
+    RepositoryError, Sha256Digest,
 };
 use crate::modules::sources::domain::BuildRecipe;
-use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_runtime::contract::ArtifactRef;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -39,9 +40,7 @@ struct TestOrganizations {
 impl IOrganizationRepository for TestOrganizations {
     async fn create(
         &self,
-        _organization: Organization,
-        _event: DomainEventEnvelope,
-        _idempotency: IdempotencyRequest,
+        _write: CreateOrganizationWrite,
     ) -> Result<IdempotentWrite<Organization>, RepositoryError> {
         Err(RepositoryError::Storage("unused organization write".into()))
     }

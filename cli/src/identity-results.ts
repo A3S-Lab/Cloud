@@ -1,10 +1,16 @@
-import type { ApiToken, ApiTokenMutationResult } from '@a3s/cloud-client';
+import type {
+  ApiToken,
+  ApiTokenMutationResult,
+  Membership,
+  MembershipMutationResult,
+} from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
 import type { CommandResult } from './results';
 
 const API_TOKEN_COLUMNS: readonly TableColumn<ApiToken>[] = [
   { header: 'ID', value: (row) => row.id },
   { header: 'NAME', value: (row) => row.name },
+  { header: 'PRINCIPAL', value: (row) => row.principalId },
   { header: 'SCOPES', value: (row) => row.scopes.join(',') },
   { header: 'VERSION', value: (row) => row.aggregateVersion },
   { header: 'EXPIRES AT', value: (row) => row.expiresAt ?? '' },
@@ -36,11 +42,40 @@ function safeApiToken(row: ApiToken): ApiToken {
   return {
     id: row.id,
     organizationId: row.organizationId,
+    principalId: row.principalId,
     name: row.name,
     scopes: [...row.scopes],
     aggregateVersion: row.aggregateVersion,
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
+  };
+}
+
+const MEMBERSHIP_COLUMNS: readonly TableColumn<Membership>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'PRINCIPAL', value: (row) => row.principalId },
+  { header: 'NAME', value: (row) => row.principalName },
+  { header: 'KIND', value: (row) => row.principalKind },
+  { header: 'ROLE', value: (row) => row.role },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'REVOKED AT', value: (row) => row.revokedAt ?? '' },
+];
+
+export function membershipsResult(rows: Membership[]): CommandResult {
+  return { json: rows, table: renderTable(rows, MEMBERSHIP_COLUMNS) };
+}
+
+export function membershipResult(row: Membership): CommandResult {
+  return { json: row, table: renderTable([row], MEMBERSHIP_COLUMNS) };
+}
+
+export function membershipMutationResult(row: MembershipMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...MEMBERSHIP_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
   };
 }

@@ -1,11 +1,23 @@
-use crate::modules::identity::domain::entities::{ApiToken, IdentityBootstrap};
+use crate::modules::identity::domain::entities::{
+    ApiToken, AuthenticatedApiToken, IdentityBootstrap,
+};
 use crate::modules::identity::domain::value_objects::ApiTokenDigest;
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, IdempotentWrite, OrganizationId, RepositoryError,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+
+#[derive(Debug, Clone)]
+pub struct CreateApiTokenWrite {
+    pub token: ApiToken,
+    pub digest: ApiTokenDigest,
+    pub event: DomainEventEnvelope,
+    pub issuer_principal_id: PrincipalId,
+    pub issuer_is_platform_admin: bool,
+    pub idempotency: IdempotencyRequest,
+}
 
 #[async_trait]
 pub trait IApiTokenRepository: Send + Sync {
@@ -13,16 +25,13 @@ pub trait IApiTokenRepository: Send + Sync {
         &self,
         bootstrap: IdentityBootstrap,
         digest: ApiTokenDigest,
-        events: [DomainEventEnvelope; 2],
+        events: [DomainEventEnvelope; 4],
         idempotency: IdempotencyRequest,
     ) -> Result<IdempotentWrite<IdentityBootstrap>, RepositoryError>;
 
     async fn create(
         &self,
-        token: ApiToken,
-        digest: ApiTokenDigest,
-        event: DomainEventEnvelope,
-        idempotency: IdempotencyRequest,
+        write: CreateApiTokenWrite,
     ) -> Result<IdempotentWrite<ApiToken>, RepositoryError>;
 
     async fn find(
@@ -38,7 +47,7 @@ pub trait IApiTokenRepository: Send + Sync {
         &self,
         digest: &ApiTokenDigest,
         now: DateTime<Utc>,
-    ) -> Result<Option<ApiToken>, RepositoryError>;
+    ) -> Result<Option<AuthenticatedApiToken>, RepositoryError>;
 
     async fn revoke(
         &self,

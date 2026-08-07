@@ -349,6 +349,7 @@ fn map_repository_error(error: RepositoryError) -> BuildInputPreparationError {
             BuildInputPreparationError::Unavailable("hosted Asset is unavailable".into())
         }
         RepositoryError::Conflict(message) => BuildInputPreparationError::Integrity(message),
+        RepositoryError::Forbidden(message) => BuildInputPreparationError::Unavailable(message),
         RepositoryError::IdempotencyConflict => BuildInputPreparationError::Conflict,
         RepositoryError::Storage(message) => BuildInputPreparationError::Storage(message),
     }

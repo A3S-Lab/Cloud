@@ -4,6 +4,7 @@ mod catalog;
 mod dispatch;
 mod edge;
 mod handler;
+mod identity;
 mod module;
 mod nodes;
 mod operations;

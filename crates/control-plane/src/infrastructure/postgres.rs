@@ -659,6 +659,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/073_gateway_snapshot_publication_owners.sql"
             )),
         ),
+        Migration::new(
+            "074",
+            "Identity principals and organization memberships",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/074_identity_principals_and_memberships.sql"
+            )),
+        ),
     ]
 }
 

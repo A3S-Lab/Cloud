@@ -1,12 +1,18 @@
 use super::{BootstrapIdentity, BootstrapIdentityResult};
-use crate::modules::identity::domain::entities::{ApiToken, IdentityBootstrap, Organization};
-use crate::modules::identity::domain::events::{ApiTokenCreated, OrganizationCreated};
+use crate::modules::identity::domain::entities::{
+    ApiToken, IdentityBootstrap, IdentityPrincipal, Membership, Organization,
+};
+use crate::modules::identity::domain::events::{
+    ApiTokenCreated, MembershipChanged, OrganizationCreated, PrincipalCreated,
+};
 use crate::modules::identity::domain::repositories::IApiTokenRepository;
 use crate::modules::identity::domain::value_objects::{
-    ApiTokenName, ApiTokenScope, ApiTokenSecret, OrganizationName,
+    ApiTokenName, ApiTokenScope, ApiTokenSecret, MembershipRole, OrganizationName,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{ApiTokenId, IdempotencyRequest, OrganizationId};
+use crate::modules::shared_kernel::domain::{
+    ApiTokenId, IdempotencyRequest, MembershipId, OrganizationId, PrincipalId, ResourceName,
+};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
 use std::sync::Arc;
@@ -60,9 +66,22 @@ impl CommandHandler<BootstrapIdentity> for BootstrapIdentityHandler {
             };
             let now = Utc::now();
             let organization = Organization::create(OrganizationId::new(), organization_name, now);
+            let principal = IdentityPrincipal::create_service(
+                PrincipalId::new(),
+                ResourceName::parse(token_name.as_str()).map_err(BootError::Internal)?,
+                now,
+            );
+            let membership = Membership::create(
+                MembershipId::new(),
+                organization.id,
+                principal.id,
+                MembershipRole::Owner,
+                now,
+            );
             let token = match ApiToken::issue(
                 ApiTokenId::new(),
                 organization.id,
+                principal.id,
                 token_name,
                 ApiTokenScope::bootstrap_scopes(),
                 now,
@@ -74,16 +93,28 @@ impl CommandHandler<BootstrapIdentity> for BootstrapIdentityHandler {
             let organization_event =
                 OrganizationCreated::envelope(&organization, command.request_id)
                     .map_err(|error| BootError::Internal(error.to_string()))?;
+            let principal_event =
+                PrincipalCreated::envelope(organization.id, &principal, command.request_id)
+                    .map_err(|error| BootError::Internal(error.to_string()))?;
+            let membership_event = MembershipChanged::created(&membership, command.request_id)
+                .map_err(|error| BootError::Internal(error.to_string()))?;
             let token_event = ApiTokenCreated::envelope(&token, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
             let result = match repository
                 .bootstrap(
                     IdentityBootstrap {
                         organization,
+                        principal,
+                        membership,
                         api_token: token,
                     },
                     digest,
-                    [organization_event, token_event],
+                    [
+                        organization_event,
+                        principal_event,
+                        membership_event,
+                        token_event,
+                    ],
                     idempotency,
                 )
                 .await

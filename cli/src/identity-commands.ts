@@ -1,4 +1,4 @@
-import { type CloudApi, CloudApiError } from '@a3s/cloud-client';
+import { type CloudApi, CloudApiError, type MembershipRole } from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalResourceName,
@@ -16,7 +16,14 @@ import {
 import type { CloudContext } from './context';
 import { requireOrganization } from './context';
 import { usageError } from './errors';
-import { apiTokenMutationResult, apiTokenResult, apiTokensResult } from './identity-results';
+import {
+  apiTokenMutationResult,
+  apiTokenResult,
+  apiTokensResult,
+  membershipMutationResult,
+  membershipResult,
+  membershipsResult,
+} from './identity-results';
 import type { CommandResult } from './results';
 import { type ReadStdin, readBoundedUtf8Stdin } from './standard-input';
 import { parseRfc3339Timestamp } from './timestamp';
@@ -33,7 +40,10 @@ export function rejectMisplacedIdentityOptions(command: string, arguments_: Pars
     throw usageError('--token-stdin is valid only for API token creation');
   }
   if (arguments_.scopes !== undefined && command !== API_TOKEN_CREATE_COMMAND) {
-    throw usageError('--scopes and --expires-at are valid only for API token creation');
+    throw usageError('--scopes is valid only for API token creation');
+  }
+  if (arguments_.apiTokenPrincipalId !== undefined && command !== API_TOKEN_CREATE_COMMAND) {
+    throw usageError('--principal is valid only for API token creation');
   }
   if (
     arguments_.expiresAt !== undefined &&
@@ -78,9 +88,72 @@ export async function executeIdentityCommand(
               name: input.name,
               token,
               scopes: input.scopes,
+              principalId: input.principalId,
               expiresAt: input.expiresAt,
             },
             input.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'memberships list':
+      requireListCommand(arguments_);
+      return membershipsResult(await cloudApi().listMemberships(requireOrganization(context)));
+    case 'memberships get':
+      requireReadCommand(arguments_, 'memberships get <membership-id>');
+      return membershipResult(
+        await cloudApi().getMembership(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'membership ID')
+        )
+      );
+    case 'memberships create-service': {
+      requireArity(positionals, 4, 'memberships create-service <name> <role>');
+      rejectLogOptions(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      const idempotencyKey = requireIdempotencyKey(arguments_);
+      return membershipMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().createServiceMembership(
+            requireOrganization(context),
+            {
+              name: positionalResourceName(positionals, 2),
+              role: membershipRole(positionals[3]),
+            },
+            idempotencyKey
+          )
+        )
+      );
+    }
+    case 'memberships change-role': {
+      const mutation = requireMembershipVersionMutation(
+        arguments_,
+        4,
+        'memberships change-role <membership-id> <role>'
+      );
+      return membershipMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().changeMembershipRole(
+            requireOrganization(context),
+            positionalUuid(positionals, 2, 'membership ID'),
+            membershipRole(positionals[3]),
+            mutation.expectedVersion,
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'memberships revoke': {
+      const mutation = requireMembershipVersionMutation(arguments_, 3, 'memberships revoke <membership-id>');
+      return membershipMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().revokeMembership(
+            requireOrganization(context),
+            positionalUuid(positionals, 2, 'membership ID'),
+            mutation.expectedVersion,
+            mutation.idempotencyKey
           )
         )
       );
@@ -106,6 +179,7 @@ function requireApiTokenCreateCommand(arguments_: ParsedArguments): {
   name: string;
   scopes: string[];
   expiresAt: string | null;
+  principalId?: string;
   idempotencyKey: string;
 } {
   requireArity(arguments_.positionals, 3, 'api-tokens create <name>');
@@ -121,8 +195,35 @@ function requireApiTokenCreateCommand(arguments_: ParsedArguments): {
     name: positionalResourceName(arguments_.positionals, 2),
     scopes: parseScopes(arguments_.scopes),
     expiresAt: parseExpiry(arguments_.expiresAt),
+    principalId:
+      arguments_.apiTokenPrincipalId === undefined
+        ? undefined
+        : positionalUuid([arguments_.apiTokenPrincipalId], 0, 'principal ID'),
     idempotencyKey,
   };
+}
+
+function requireMembershipVersionMutation(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string
+): { expectedVersion: number; idempotencyKey: string } {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectLogOptions(arguments_);
+  rejectFileOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  const expectedVersion = Number(arguments_.expectedVersion);
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw usageError('--expected-version must be a positive safe integer for membership mutation');
+  }
+  return { expectedVersion, idempotencyKey: requireIdempotencyKey(arguments_) };
+}
+
+function membershipRole(value: string | undefined): MembershipRole {
+  if (!value || !['owner', 'admin', 'member', 'restricted'].includes(value)) {
+    throw usageError('membership role must be owner, admin, member, or restricted');
+  }
+  return value as MembershipRole;
 }
 
 function parseScopes(value: string | undefined): string[] {
@@ -168,6 +269,17 @@ async function safeApiTokenMutation<Result>(operation: () => Promise<Result>): P
   } catch (error) {
     if (error instanceof CloudApiError) {
       throw new CloudApiError(error.status, 'API token mutation failed', error.statusCode, error.requestId);
+    }
+    throw error;
+  }
+}
+
+async function safeMembershipMutation<Result>(operation: () => Promise<Result>): Promise<Result> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof CloudApiError) {
+      throw new CloudApiError(error.status, 'membership mutation failed', error.statusCode, error.requestId);
     }
     throw error;
   }
