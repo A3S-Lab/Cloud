@@ -11,6 +11,12 @@ authority, legacy product-configuration authority, or Studio.
 proves bounded object, relation, and rule admission. Both reject unknown fields
 and produce canonical semantic SHA-256 digests through `a3s-acl`.
 
+The source repository's recoverable Git history is retained in the Cloud
+remote under `archive/workflow-standalone-20260807/branches/*` and
+`archive/workflow-standalone-20260807/pulls/*`. The archive verification covers
+29 source refs and all 36 commits reachable from the source branches and pull
+request head/merge refs.
+
 The ten standalone node outcomes map to the Cloud step kinds documented in
 `docs/workflow-evolution-plan.md`. External steps bind only exact federated
 capability references and are dispatched later through their owning Cloud
