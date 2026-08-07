@@ -67,9 +67,9 @@
     <text x="736" y="434" fill="#96a99e" font-size="18">Placement + Claims</text>
 
     <rect x="934" y="344" width="196" height="112" rx="11" fill="#142019" stroke="#47755c"/>
-    <text x="952" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">TRAFFIC INTENT</text>
-    <text x="952" y="406" fill="#eff7f1" font-size="21" font-weight="700">Edge</text>
-    <text x="952" y="434" fill="#96a99e" font-size="18">Complete snapshots</text>
+    <text x="952" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">TRAFFIC STATE</text>
+    <text x="952" y="406" fill="#eff7f1" font-size="21" font-weight="700">Edge planner</text>
+    <text x="952" y="434" fill="#96a99e" font-size="18">Snapshot + owner</text>
   </g>
 
   <path d="M266 400h20M482 400h20M698 400h20M914 400h20" fill="none" stroke="#67b7ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
@@ -86,9 +86,8 @@
     <rect x="506" y="578" width="190" height="70" rx="10" fill="#142019" stroke="#47755c"/>
     <text x="601" y="620" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">A3S Box</text>
     <rect x="722" y="578" width="214" height="70" rx="10" fill="#142019" stroke="#47755c"/>
-    <text x="829" y="606" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">Workload</text>
-    <text x="829" y="630" fill="#96a99e" font-size="17" text-anchor="middle">App / Harness / MCP</text>
-    <text x="829" y="647" fill="#96a99e" font-size="17" text-anchor="middle">Power</text>
+    <text x="829" y="606" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">Managed Workload</text>
+    <text x="829" y="633" fill="#96a99e" font-size="16" text-anchor="middle">App &#183; Harness &#183; MCP &#183; Power</text>
     <rect x="962" y="578" width="166" height="70" rx="10" fill="#142019" stroke="#47755c"/>
     <text x="1045" y="608" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">CPU / GPU</text>
     <text x="1045" y="633" fill="#96a99e" font-size="18" text-anchor="middle">Host resources</text>
@@ -106,8 +105,8 @@
     <text x="946" y="775" fill="#eff7f1" text-anchor="middle">Exact healthy endpoint</text>
   </g>
   <path d="M338 768h166M696 768h138" fill="none" stroke="#f2c66d" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M1032 456v68H600v232" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
-  <path d="M600 756v-48H1032V456" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
+  <path d="M1032 456v56H220v66" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
+  <path d="M169 648v42H600v66" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
 
   <text x="48" y="828" fill="#70857a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">TARGET ARCHITECTURE / ROADMAP GATES DECIDE AVAILABILITY</text>
   <text x="1152" y="828" fill="#70857a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" text-anchor="end">ACL-ONLY / VERSIONED / FAIL-CLOSED</text>

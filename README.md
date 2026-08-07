@@ -14,9 +14,9 @@
 <p align="center">
   <a href="#product-system">Products</a> &middot;
   <a href="#architecture">Architecture</a> &middot;
+  <a href="#backend-quick-start">Quick start</a> &middot;
   <a href="#capabilities-that-remain-first-class">Capabilities</a> &middot;
   <a href="#delivery-status">Status</a> &middot;
-  <a href="#backend-quick-start">Quick start</a> &middot;
   <a href="#documentation">Documentation</a>
 </p>
 
@@ -77,6 +77,29 @@ or read the [technical architecture](docs/architecture.md) for bounded
 contexts, dependency directions, consistency boundaries, protocols, failure
 behavior, and the complete capability-preservation register.
 
+### One Gateway publication path
+
+<p align="center">
+  <img src="assets/readme/gateway-publication.svg" width="100%" alt="Ordinary Routes and hosted MCP share one node desired-state planner, complete Gateway snapshot compiler, atomic publication owner, Fleet command, and exact acknowledgement path" />
+</p>
+
+Ordinary Route changes and hosted MCP reconciliation never publish independent
+snapshots. Both enter one node-scoped desired-state planner, which rereads the
+complete ordinary Route set and every active or previously published logical
+MCP scope. One compiler then produces the complete routes, targets,
+certificates, expiry, and canonical digest for that physical Gateway.
+
+Atomic staging records the exact scope-set CAS, snapshot revision, command, and
+one durable publication owner. The originating ordinary flow dispatches an
+ordinary-owned marker; the MCP reconciler dispatches only an MCP-owned marker.
+Both reuse the same Fleet command and acknowledgement projection, so one path
+cannot erase the other's routes or dispatch the same snapshot twice. Cloud
+advances installed state only from the matching Gateway acknowledgement.
+
+This is the current Cloud `MCP0.3` foundation, not a hosted-MCP availability
+claim. Real Runtime, Box, Gateway, process-loss, recovery, and cleanup evidence
+must still close the joint gates in [ROADMAP.md](ROADMAP.md).
+
 ### One concern, one authority
 
 | Concern | Sole authority | Duplicate mechanism that is prohibited |
@@ -87,86 +110,10 @@ behavior, and the complete capability-preservation register.
 | Node delivery and hard-resource ownership | Fleet commands, Node Agent journal, and Fleet Claims | A second node channel, direct process control, or in-memory reservations |
 | Provider-neutral lifecycle | A3S Runtime Task and Service | Product policy inside Runtime or direct provider calls from a Cloud context |
 | Local execution and builds | A3S Box | Docker, BuildKit, another Runtime driver, or a Cloud executor |
-| Routing intent and applied traffic | Edge for intent; A3S Gateway for applied state | Cloud proxying, Gateway-owned tenant policy, or inferred apply success |
+| Routing intent, snapshot publication, and applied traffic | Edge owns one node planner/compiler and durable publication owner; Fleet delivers one command; A3S Gateway owns applied state | Ordinary- or MCP-specific publishers, Cloud proxying, Gateway-owned tenant policy, or inferred apply success |
 | Plugin assignments and package lifecycle | Cloud Plugins for tenant intent; shared A3S Use Plugin Manager for package generations | A Cloud installer, catalog copy, grant store, binding store, or generic plugin RPC |
 | Immutable bytes | One shared content-addressed object client with typed domain adapters | Parallel filesystem/S3 clients or untyped cross-domain blob APIs |
 | Management behavior | One application command/query layer | REST-, CLI-, MCP-, or Web-specific business state and rules |
-
-## Capabilities that remain first-class
-
-The public website is intentionally simpler than the product architecture.
-Omission from a website diagram never retires a Cloud capability or transfers
-its authority.
-
-| Capability group | Preserved Cloud outcome | Authority and gates |
-| --- | --- | --- |
-| Governance and management | Organizations, projects, environments, identity, memberships, grants, REST, CLI, Web, Search, and Management MCP | Identity, Projects, `F0`, `C0` |
-| Source delivery | External Git sources, webhooks, immutable revisions, reproducible Box builds, provenance, previews, monorepos, and imports | Sources, Artifacts, `G0`, `P0` |
-| Hosted assets and plugins | Hosted Git, immutable Agent/MCP/Skill releases, Skill binding, and exact A3S Use assignments | Assets, Plugins, `A0`, `U0` |
-| Generic compute | Finite Tasks, ordinary application Services, cancellation, cleanup, and operation replay | Executions, Workloads, `R0`, `D0`, `BX0` |
-| Fleet control | Enrollment, outbound mTLS, inventory, Claims, commands, receipts, fencing, draining, and cleanup | Fleet, Node Agent, `N0`, `H0` |
-| Execution substrate | Runtime/Box isolation, images, builds, mounts, outputs, logs, checkpoints, health, and provider recovery | Runtime, Box, `BX0`, `PW0` |
-| Managed traffic | Domains, certificate issuance and ownership-exclusive renewal, logical Gateway scopes, complete snapshots, routing, health, update, rollback, and exact applied state | Edge, Gateway, Secrets, `E0`, `H0`, `MCP0`, `I0` |
-| Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
-| Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
-| Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |
-| Workflow and evolution | Ontologies, immutable plans, human decisions, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
-| Inference | Power-hosted model Services, accelerator Claims, model/provider policy, scoped keys, routing/fallback, durable usage, and governed self-service | Inference, Power, Workloads, Fleet, Edge, Gateway, `PW0`, `I0` |
-
-### TokenHub and Google AX outcomes remain explicit
-
-A3S Cloud keeps the useful outcomes while refusing the duplicate control
-mechanisms of the reference products.
-
-| Reference outcome | A3S-owned design | Availability boundary | Not copied |
-| --- | --- | --- | --- |
-| TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | `C0.1`/`C0.2` foundations are verified; external OIDC and role-focused policy are planned in `C0.3`; model/key self-service is planned in `I0.2e` | A second identity/key store, browser-only authorization, or plaintext credential recovery |
-| TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
-| TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
-| Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |
-| Google AX-style replay, approvals, pause/resume, checkpoints, forks, trajectories, and telemetry | One PostgreSQL Agent semantic sequence, shared cursor/SSE transport, immutable checkpoints, and the common Operation/Fleet/provider recovery path | Foundations exist; complete governance and recovery remain planned in `A1.5` and `A1.6` | AX event-log authority, Flow history as transcript, Runtime logs as semantic state, or a second checkpoint store |
-| Google AX-style per-execution Harness, instruction, environment, model, Skill, MCP, and Tool customization | One immutable, closed `HarnessInvocationProfile` binds exact release and Secret references before dispatch | Planned `A1.4`, after the provider-neutral `A1.3` contract and applicable `A0`/`MCP0`/`I0` identities | Mutable provider JSON as desired state, arbitrary environment injection, copied Secret material, or provider-owned authorization |
-
-These rows preserve product intent; they do not claim that planned gates are
-already available. Removing a reference name from a site or navigation label
-does not authorize deleting the A3S-owned outcome.
-
-## Delivery status
-
-Status is gate-driven rather than date-driven. **Verified** means the complete
-real-provider, failure, recovery, cleanup, and release evidence passes.
-**Historical** means prior regression evidence exists but does not certify the
-current Box-only provider contract.
-
-| Gate | Product outcome | State |
-| --- | --- | --- |
-| `BX0` | Sole A3S Box execution/build path and re-certification of the complete baseline | In progress |
-| `PW0` | Immutable ACL-native Power Service profile and inference boundary | Planned |
-| `R0` | Universal Runtime Task and Service contract | Historical; Box re-certification pending |
-| `F0` | Boot API, PostgreSQL, tenancy, identity, Flow, Outbox, and projections | **Verified** |
-| `N0` | Enrollment, outbound mTLS, commands, observations, journal, and sole Box driver | Historical; Box re-certification pending |
-| `D0` | Digest-pinned Workloads, scheduling, activation, cancellation, and recovery | Historical; Box re-certification pending |
-| `E0` | TLS, Gateway snapshots, Secrets, logs, update, rollback, and clean-host recovery | Historical; Box re-certification pending |
-| `G0` | External source resolution, Box builds, OCI publication, provenance, and deployment handoff | In progress |
-| `P0` | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
-| `C0` | REST/CLI/Management MCP parity, OIDC, grants, collaboration, investigation, notifications, audit, and bounded exec | In progress |
-| `A0` | Immutable Agent/MCP/Skill release catalog, Agent deployment, and Skill binding | In progress |
-| `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; unavailable |
-| `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | In progress; unavailable |
-| `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | Planned |
-| `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
-| `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
-| `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |
-| `EV0` | Governed evidence, evaluation, Agentic RL candidates, promotion, canary halt, and rollback | Planned |
-
-The full evidence, dependencies, and backend execution order live in the
-[product roadmap](ROADMAP.md). Current priorities close the Box-only baseline
-and external-source evidence, bind hosted MCP to immutable releases, complete
-the Runtime/Cloud/Gateway MCP contract, establish Power as the first inference
-backend, and advance identity, plugin, stateful, Agent, Workflow, and scale
-contracts only through their existing authorities.
 
 ## Backend quick start
 
@@ -247,6 +194,82 @@ bun run --cwd cli src/main.ts operations list --output=json
 See the [CLI reference](cli/README.md) for contexts, resource commands,
 standard-input credential handling, output contracts, and exit codes.
 
+## Capabilities that remain first-class
+
+The public website is intentionally simpler than the product architecture.
+Omission from a website diagram never retires a Cloud capability or transfers
+its authority.
+
+| Capability group | Preserved Cloud outcome | Authority and gates |
+| --- | --- | --- |
+| Governance and management | Organizations, projects, environments, identity, memberships, grants, REST, CLI, Web, Search, and Management MCP | Identity, Projects, `F0`, `C0` |
+| Source delivery | External Git sources, webhooks, immutable revisions, reproducible Box builds, provenance, previews, monorepos, and imports | Sources, Artifacts, `G0`, `P0` |
+| Hosted assets and plugins | Hosted Git, immutable Agent/MCP/Skill releases, Skill binding, and exact A3S Use assignments | Assets, Plugins, `A0`, `U0` |
+| Generic compute | Finite Tasks, ordinary application Services, cancellation, cleanup, and operation replay | Executions, Workloads, `R0`, `D0`, `BX0` |
+| Fleet control | Enrollment, outbound mTLS, inventory, Claims, commands, receipts, fencing, draining, and cleanup | Fleet, Node Agent, `N0`, `H0` |
+| Execution substrate | Runtime/Box isolation, images, builds, mounts, outputs, logs, checkpoints, health, and provider recovery | Runtime, Box, `BX0`, `PW0` |
+| Managed traffic | Domains, certificate issuance and ownership-exclusive renewal, logical Gateway scopes, one node planner/compiler, owner-exclusive complete publication, routing, health, update, rollback, and exact applied state | Edge, Fleet, Gateway, Secrets, `E0`, `H0`, `MCP0`, `I0` |
+| Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
+| Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
+| Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |
+| Workflow and evolution | Ontologies, immutable plans, human decisions, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
+| Inference | Power-hosted model Services, accelerator Claims, model/provider policy, scoped keys, routing/fallback, durable usage, and governed self-service | Inference, Power, Workloads, Fleet, Edge, Gateway, `PW0`, `I0` |
+
+### TokenHub and Google AX outcomes remain explicit
+
+A3S Cloud keeps the useful outcomes while refusing the duplicate control
+mechanisms of the reference products.
+
+| Reference outcome | A3S-owned design | Availability boundary | Not copied |
+| --- | --- | --- | --- |
+| TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
+| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | `C0.1`/`C0.2` foundations are verified; external OIDC and role-focused policy are planned in `C0.3`; model/key self-service is planned in `I0.2e` | A second identity/key store, browser-only authorization, or plaintext credential recovery |
+| TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
+| TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
+| Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |
+| Google AX-style replay, approvals, pause/resume, checkpoints, forks, trajectories, and telemetry | One PostgreSQL Agent semantic sequence, shared cursor/SSE transport, immutable checkpoints, and the common Operation/Fleet/provider recovery path | Foundations exist; complete governance and recovery remain planned in `A1.5` and `A1.6` | AX event-log authority, Flow history as transcript, Runtime logs as semantic state, or a second checkpoint store |
+| Google AX-style per-execution Harness, instruction, environment, model, Skill, MCP, and Tool customization | One immutable, closed `HarnessInvocationProfile` binds exact release and Secret references before dispatch | Planned `A1.4`, after the provider-neutral `A1.3` contract and applicable `A0`/`MCP0`/`I0` identities | Mutable provider JSON as desired state, arbitrary environment injection, copied Secret material, or provider-owned authorization |
+
+These rows preserve product intent; they do not claim that planned gates are
+already available. Removing a reference name from a site or navigation label
+does not authorize deleting the A3S-owned outcome.
+
+## Delivery status
+
+Status is gate-driven rather than date-driven. **Verified** means the complete
+real-provider, failure, recovery, cleanup, and release evidence passes.
+**Historical** means prior regression evidence exists but does not certify the
+current Box-only provider contract.
+
+| Gate | Product outcome | State |
+| --- | --- | --- |
+| `BX0` | Sole A3S Box execution/build path and re-certification of the complete baseline | In progress |
+| `PW0` | Immutable ACL-native Power Service profile and inference boundary | Planned |
+| `R0` | Universal Runtime Task and Service contract | Historical; Box re-certification pending |
+| `F0` | Boot API, PostgreSQL, tenancy, identity, Flow, Outbox, and projections | **Verified** |
+| `N0` | Enrollment, outbound mTLS, commands, observations, journal, and sole Box driver | Historical; Box re-certification pending |
+| `D0` | Digest-pinned Workloads, scheduling, activation, cancellation, and recovery | Historical; Box re-certification pending |
+| `E0` | TLS, Gateway snapshots, Secrets, logs, update, rollback, and clean-host recovery | Historical; Box re-certification pending |
+| `G0` | External source resolution, Box builds, OCI publication, provenance, and deployment handoff | In progress |
+| `P0` | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
+| `C0` | REST/CLI/Management MCP parity, OIDC, grants, collaboration, investigation, notifications, audit, and bounded exec | In progress |
+| `A0` | Immutable Agent/MCP/Skill release catalog, Agent deployment, and Skill binding | In progress |
+| `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; unavailable |
+| `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
+| `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | Planned |
+| `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
+| `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
+| `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |
+| `EV0` | Governed evidence, evaluation, Agentic RL candidates, promotion, canary halt, and rollback | Planned |
+
+The full evidence, dependencies, and backend execution order live in the
+[product roadmap](ROADMAP.md). Current priorities close the Box-only baseline
+and external-source evidence, bind hosted MCP to immutable releases, complete
+the Runtime/Cloud/Gateway MCP contract, establish Power as the first inference
+backend, and advance identity, plugin, stateful, Agent, Workflow, and scale
+contracts only through their existing authorities.
+
 ## Management interfaces
 
 | Interface | Contract |
@@ -261,9 +284,7 @@ Controllers and adapters remain thin. They cannot call providers directly,
 invent presentation-owned state, or create interface-specific lifecycle
 mechanisms.
 
-## Platform model
-
-### Tenancy
+## Tenancy and boundaries
 
 ```text
 Organization
@@ -278,23 +299,6 @@ Organization
 Authentication is global except for bootstrap and health endpoints. Commands
 and queries enforce organization ownership and resource scope at the
 application boundary.
-
-### Durable delivery
-
-```text
-API command
-  -> commit desired state + replay identity + Outbox in PostgreSQL
-  -> start or resume one A3S Flow Operation
-  -> reserve Workload placement and Fleet Claims
-  -> lease one versioned command to an outbound Node Agent
-  -> apply one Runtime Task or Service through Box
-  -> persist exact receipts, health, endpoints, and cleanup evidence
-  -> publish a complete Gateway snapshot when traffic is required
-  -> activate only after the matching applied acknowledgement
-```
-
-Update, rollback, cancellation, retry, process loss, and ambiguous delivery all
-reuse this path. Absence of evidence is never success.
 
 ## Configuration
 
