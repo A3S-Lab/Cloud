@@ -768,7 +768,7 @@ impl GatewaySnapshotCompiler {
         }
 
         let projection = mcp.projection().map(|planned| planned.projection());
-        if projection.is_some() != !mcp.ingress_routes().is_empty() {
+        if projection.is_some() == mcp.ingress_routes().is_empty() {
             return Err(
                 "MCP Gateway snapshot candidate projection and ingress cardinality differ".into(),
             );
