@@ -116,6 +116,34 @@ export interface AssetReleaseMutationResult extends AssetRelease {
   replayed: boolean;
 }
 
+export interface McpServiceProfileSpec {
+  protocolVersions: string[];
+  endpointPath: string;
+  runtimePort: string;
+  healthPath: string;
+  requestSse: boolean;
+  subscriptions: boolean;
+  serverDiscover: boolean;
+  expectedCapabilities: string[];
+  maxRequestBytes: number;
+  maxResponseBytes: number;
+  maxStreamSeconds: number;
+}
+
+export interface McpServiceProfile {
+  organizationId: string;
+  assetId: string;
+  assetReleaseId: string;
+  profileDigest: string;
+  acl: string;
+  spec: McpServiceProfileSpec;
+  createdAt: string;
+}
+
+export interface McpServiceProfileMutationResult extends McpServiceProfile {
+  replayed: boolean;
+}
+
 export type { ApiToken, ApiTokenMutationResult, CreateApiTokenInput } from './identity';
 
 export type {

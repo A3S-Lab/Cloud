@@ -7,9 +7,11 @@ use crate::modules::assets::{
     AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRepositoryWrite,
     AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal,
     AssetGitWriteLease, AssetGitWriteRecovery, AssetManifestAdmission, AssetRelease,
-    AssetReleaseWrite, AssetWrite, ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease,
-    CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepository, IAssetGitRepositoryControl,
-    IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
+    AssetReleaseWrite, AssetWrite, BindMcpServiceProfileWrite, ClaimAssetGitWriteRecovery,
+    CompleteAssetGitWriteLease, CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepository,
+    IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
+    McpServiceProfileBinding, McpServiceProfileWrite, TransitionAssetReleaseWrite,
+    TransitionAssetWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
@@ -82,6 +84,25 @@ impl IAssetRepository for UnavailableAssetStore {
         _asset_id: AssetId,
     ) -> UnavailableResult<Vec<AssetRelease>, RepositoryError> {
         Ok(Vec::new())
+    }
+}
+
+#[async_trait::async_trait]
+impl IMcpServiceProfileRepository for UnavailableAssetStore {
+    async fn bind_mcp_service_profile(
+        &self,
+        _bundle: BindMcpServiceProfileWrite,
+    ) -> UnavailableResult<McpServiceProfileWrite, RepositoryError> {
+        Err(RepositoryError::NotFound)
+    }
+
+    async fn find_mcp_service_profile(
+        &self,
+        _organization_id: OrganizationId,
+        _asset_id: AssetId,
+        _asset_release_id: AssetReleaseId,
+    ) -> UnavailableResult<Option<McpServiceProfileBinding>, RepositoryError> {
+        Ok(None)
     }
 }
 

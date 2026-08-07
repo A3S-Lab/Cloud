@@ -6,14 +6,11 @@ use crate::modules::assets::presentation::dto::{
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
-use crate::modules::shared_kernel::domain::{AssetId, AssetReleaseId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, AUTH_SCOPES_METADATA,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
 pub fn asset_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let create_assets = Arc::clone(&bus);
@@ -27,8 +24,7 @@ pub fn asset_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
             let bus = Arc::clone(&create_assets);
             async move {
                 let body: CreateAssetRequest = request.json_with_content_type()?;
-                let organization_id =
-                    OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                let organization_id = organization_id(&request)?;
                 let (idempotency_key, request_id) = request_identity(&request)?;
                 match bus
                     .execute(CreateAsset {
@@ -106,9 +102,8 @@ pub fn asset_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
             move |request: BootRequest| {
                 let bus = Arc::clone(&yank_releases);
                 async move {
-                    let (organization_id, asset_id) = asset_ids(&request)?;
-                    let asset_release_id =
-                        AssetReleaseId::from_uuid(request.param_as::<Uuid>("asset_release_id")?);
+                    let (organization_id, asset_id, asset_release_id) =
+                        asset_release_ids(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(YankAssetRelease {
@@ -127,26 +122,4 @@ pub fn asset_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
             },
         )
 }
-
-fn asset_ids(request: &BootRequest) -> Result<(OrganizationId, AssetId)> {
-    Ok((
-        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?),
-        AssetId::from_uuid(request.param_as::<Uuid>("asset_id")?),
-    ))
-}
-
-fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
-    let idempotency_key = request
-        .header("idempotency-key")
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| BootError::BadRequest("idempotency-key header is required".into()))?
-        .to_owned();
-    let request_id = request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })?;
-    Ok((idempotency_key, request_id))
-}
+use super::asset_request::{asset_ids, asset_release_ids, organization_id, request_identity};

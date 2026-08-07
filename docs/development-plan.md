@@ -1518,7 +1518,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.7.0`. Focused tests regenerate the
+  and every API response pin contract `1.8.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -1806,7 +1806,7 @@ draft and yanked visibility for management and pinned deployments. New-binding
 selection accepts an optional exact semantic version or otherwise chooses the
 highest stable published version by semantic precedence; it excludes drafts,
 yanked releases, prereleases by default, and every release of an archived
-Asset. The same contract is exposed by OpenAPI `1.7.0`, the shared TypeScript
+Asset. The same contract is exposed by OpenAPI `1.8.0`, the shared TypeScript
 client, the standalone CLI, and the Web catalog summary.
 
 Migration 066 stores one optional immutable Agent binding on each Workload
@@ -1837,7 +1837,7 @@ read-only Artifact mount per Skill under `/a3s/skills/{asset_id}`; callers
 cannot inject mount names or paths, and Skills never become standalone Runtime
 units. Replay resolves the committed revision before fresh release admission,
 while rollback, Agent release updates, and Secret restarts preserve the exact
-Skill set. OpenAPI `1.7.0`, the shared client, CLI, and Web expose the same
+Skill set. OpenAPI `1.8.0`, the shared client, CLI, and Web expose the same
 tenant-authorized lifecycle.
 
 ### Remaining A0 work
@@ -1880,7 +1880,7 @@ request carries version/client metadata, and the server implements
 ### Current state
 
 `MCP0` foundation development is in progress, but the product remains
-unavailable. As of 2026-08-06:
+unavailable. As of 2026-08-07:
 
 - `MCP0.1` has closed A3S ACL contract values, stable errors, digest bindings,
   and frozen Runtime/Gateway fixtures with focused cross-repository tests;
@@ -1888,11 +1888,11 @@ unavailable. As of 2026-08-06:
   or profile evidence, while real Linux Box hosting and recovery remain the
   `MCP0.2` gate;
 - Cloud admits one canonical immutable Service-profile ACL, binds it to a
-  published MCP AssetRelease through migration 052, and stores a separately
-  revisioned, expiring Edge route-policy ACL through migration 053. Each policy
+  published MCP AssetRelease through migration 053, and stores a separately
+  revisioned, expiring Edge route-policy ACL through migration 054. Each policy
   now pins an exact tenant-qualified DomainClaim; candidates require its
   verified hostname coverage and retain its aggregate version for publication
-  CAS. Migration 054 binds an ordinary WorkloadRevision to the exact tenant,
+  CAS. Migration 055 binds an ordinary WorkloadRevision to the exact tenant,
   AssetRelease, OCI artifact digest/media type, and profile digest; the ordinary
   Runtime projection now inherits that opaque digest automatically. These paths
   use typed A3S ORM, and route desired state contains authorization references
@@ -1975,8 +1975,15 @@ unavailable. As of 2026-08-06:
   shared renewal policy reaches its threshold or certificate evidence is
   missing, failed, or revoked. Mixed-route certificates remain solely owned by
   the ordinary certificate reconciler. Retained clean-host PostgreSQL lifecycle
-  execution and joint real-process recovery remain `MCP0.3`; Web lifecycle
-  views remain intentionally deferred until backend conformance; and
+  execution and joint real-process recovery remain `MCP0.3`. The tenant-guarded
+  backend now exposes the immutable release-owned Service profile through raw
+  A3S ACL REST/OpenAPI `1.8.0`, the maintained TypeScript client, and CLI. One
+  Asset repository transaction reuses migration 053 and atomically stores the
+  binding, caller idempotency, one secret-free Outbox event, and control-plane
+  audit; canonical-equivalent ACL is the same digest and an identical binding
+  is a no-op. Web lifecycle views remain intentionally deferred until backend
+  conformance; no profile table, parser, scheduler, or publication mechanism is
+  duplicated; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
@@ -2099,7 +2106,8 @@ never become its state store.
    from acknowledged traffic before Runtime stop.
 9. Expose deployment, health, logs, update, rollback, stop, route readiness,
    and bounded protocol diagnostics through the existing API, client, CLI,
-   Web, Operation, and control-plane audit paths.
+   Operation, and control-plane audit paths. Defer Web lifecycle views until
+   backend conformance is complete.
 10. Recover every commit-before-dispatch and apply-before-acknowledgement gap
    through Flow, Fleet journals, Runtime inspection, Gateway exact readiness,
    and deterministic reconciliation.
@@ -2594,7 +2602,7 @@ Current `A1.1` implementation:
 - event content is canonical bounded inline JSON of at most 64 KiB with a
   stored SHA-256 digest; immutable-object references begin only when a later
   gate admits larger content;
-- REST, OpenAPI `1.7.0`, the shared TypeScript client, CLI, and Web expose
+- REST, OpenAPI `1.8.0`, the shared TypeScript client, CLI, and Web expose
   conversation creation/list/get, execution start/list/get, paged event reads,
   and the shared resumable SSE stream; and
 - domain, application, concurrency, controller, contract, client, CLI, Web,

@@ -6,6 +6,8 @@ export {
   CloudApiError,
   DEFAULT_CLOUD_API_BASE_PATH,
   isValidIdempotencyKey,
+  MAX_ACL_DOCUMENT_BYTES,
+  MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
   type CloudApiClientOptions,

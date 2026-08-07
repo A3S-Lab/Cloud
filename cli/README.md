@@ -161,6 +161,8 @@ asset-releases get <asset-id> <release-id>
 asset-releases select <asset-id> [version]
 asset-releases create <asset-id> <version> <commit-sha>
 asset-releases yank <asset-id> <release-id>
+asset-releases mcp-profile <asset-id> <release-id>
+asset-releases bind-mcp-profile <asset-id> <release-id> --file=<path>
 asset-releases deploy <asset-id> <release-id> --file=<path>
 asset-releases update <workload-id> <asset-id> <release-id> --file=<path>
 skill-bindings bind <workload-id> <skill-asset-id> <skill-release-id>
@@ -233,6 +235,14 @@ version when no version is supplied. Draft and yanked releases are never
 selected, while `asset-releases get` retains exact access to yanked identities
 for pinned deployments. Skill releases publish the exact reachable hosted-Git
 commit as an immutable content-addressed bundle without a BuildRun.
+
+`asset-releases bind-mcp-profile` binds one canonical immutable MCP Service
+Profile to an exact published MCP OCI release. It requires `--file` plus a
+caller-owned idempotency key and sends the bounded UTF-8 bytes unchanged as
+`application/vnd.a3s.acl`; Cloud remains the sole parser and canonical digest
+authority. `asset-releases mcp-profile` reads the resulting profile. An
+identical canonical binding is a replay/no-op, while a different profile for
+the same release is rejected as immutable.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing

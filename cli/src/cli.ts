@@ -35,6 +35,8 @@ Commands:
   asset-releases select ASSET [VERSION] Select one published release for a new binding
   asset-releases create ASSET VERSION COMMIT Create a hosted release draft idempotently
   asset-releases yank ASSET ID Yank one published release idempotently
+  asset-releases mcp-profile ASSET ID Read the immutable MCP Service Profile binding
+  asset-releases bind-mcp-profile ASSET ID Bind an MCP Service Profile from A3S ACL
   asset-releases deploy ASSET RELEASE Deploy one published Agent release from A3S ACL
   asset-releases update WORKLOAD ASSET RELEASE Update an Agent workload to one published release
   skill-bindings bind WORKLOAD SKILL RELEASE Bind one exact Skill release to an Agent workload

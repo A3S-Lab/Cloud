@@ -2,7 +2,9 @@ import type { CreateApiTokenInput } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
-export const MAX_WORKLOAD_ACL_BYTES = 64 * 1024;
+export const MAX_ACL_DOCUMENT_BYTES = 64 * 1024;
+export const MAX_MCP_SERVICE_PROFILE_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
+export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
   if (!/^a3s_[0-9a-f]{64}$/.test(input.token)) {
@@ -72,9 +74,17 @@ export function validateSecretValue(value: string): void {
 }
 
 export function validateWorkloadAcl(manifest: string): void {
-  const bytes = new TextEncoder().encode(manifest).byteLength;
-  if (bytes < 1 || bytes > MAX_WORKLOAD_ACL_BYTES) {
-    throw new RangeError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
+  validateAclBytes(manifest, MAX_WORKLOAD_ACL_BYTES, 'workload ACL');
+}
+
+export function validateMcpServiceProfileAcl(acl: string): void {
+  validateAclBytes(acl, MAX_MCP_SERVICE_PROFILE_ACL_BYTES, 'MCP Service profile ACL');
+}
+
+function validateAclBytes(value: string, maximumBytes: number, label: string): void {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value).byteLength : 0;
+  if (bytes < 1 || bytes > maximumBytes) {
+    throw new RangeError(`${label} must contain between 1 and ${maximumBytes} UTF-8 bytes`);
   }
 }
 

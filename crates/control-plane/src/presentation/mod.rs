@@ -5,6 +5,8 @@ mod polling_sse;
 mod request_id_middleware;
 mod sequence_stream;
 
+pub(crate) const A3S_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.acl";
+
 pub use api_contract::{
     generate_openapi_contract, openapi_info, ApiContractModule, API_CONTRACT_VERSION_HEADER,
     API_MAJOR_VERSION, API_PREFIX, MINIMUM_DEPRECATION_DAYS, OPENAPI_CONTRACT_VERSION,

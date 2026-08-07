@@ -7,6 +7,7 @@ import {
   CloudApiError,
   type CloudFetch,
   DEFAULT_CLOUD_API_BASE_PATH,
+  MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 
@@ -26,7 +27,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.7.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.8.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -262,6 +263,37 @@ describe('CloudApi', () => {
         undefined,
       ],
     ]);
+  });
+
+  it('reads and binds an immutable MCP Service Profile as raw A3S ACL', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'service { endpoint_path = "/mcp" runtime_port = "mcp" }';
+
+    await api.getMcpServiceProfile('organization / one', 'asset', 'release');
+    await api.bindMcpServiceProfileFromAcl('organization / one', 'asset', 'release', acl, 'profile:bind-1');
+
+    expect(calls[0]).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/assets/asset/releases/release/mcp-service-profile',
+      expect.objectContaining({ method: 'GET' }),
+    ]);
+    expect(calls[1]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/assets/asset/releases/release/mcp-service-profile'
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'profile:bind-1',
+        }),
+        body: acl,
+      })
+    );
   });
 
   it('uses the shared transport for finite Execution lifecycle operations', async () => {
@@ -1061,6 +1093,18 @@ describe('CloudApi', () => {
         'cli:update-1'
       )
     ).toThrow('workload ACL must contain between');
+    expect(() =>
+      api.bindMcpServiceProfileFromAcl('organization', 'asset', 'release', '', 'profile:bind-1')
+    ).toThrow('MCP Service profile ACL must contain between');
+    expect(() =>
+      api.bindMcpServiceProfileFromAcl(
+        'organization',
+        'asset',
+        'release',
+        '茅'.repeat(MAX_MCP_SERVICE_PROFILE_ACL_BYTES),
+        'profile:bind-2'
+      )
+    ).toThrow('MCP Service profile ACL must contain between');
     expect(called).toBe(false);
   });
 

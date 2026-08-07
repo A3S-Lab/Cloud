@@ -1,14 +1,16 @@
 use super::queries::{lock_asset, lock_release};
 use crate::infrastructure::{
-    execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
-    transaction_error, PostgresPersistenceError,
+    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
+    require_one_row, store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
+    PostgresPersistenceError,
 };
 use crate::modules::assets::domain::{
-    AssetKind, AssetReleaseArtifactKind, AssetReleaseState, McpServiceProfile,
-    McpServiceProfileBinding,
+    AssetKind, AssetReleaseArtifactKind, AssetReleaseState, BindMcpServiceProfileWrite,
+    McpServiceProfile, McpServiceProfileBinding, McpServiceProfileWrite,
+    McpServiceProfileWriteReference,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, OrganizationId, RepositoryError,
+    AssetId, AssetReleaseId, IdempotencyRequest, OrganizationId, RepositoryError, Sha256Digest,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor,
@@ -21,15 +23,22 @@ const SELECT_PROFILE: &str = "select organization_id, asset_id, asset_release_id
 
 pub(super) async fn bind(
     executor: &PostgresExecutor,
-    binding: McpServiceProfileBinding,
-) -> Result<McpServiceProfileBinding, RepositoryError> {
-    binding.validate().map_err(|error| {
+    bundle: BindMcpServiceProfileWrite,
+) -> Result<McpServiceProfileWrite, RepositoryError> {
+    bundle.validate().map_err(|error| {
         RepositoryError::Conflict(format!("invalid MCP profile write: {error}"))
     })?;
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
-                let asset = lock_asset(transaction, binding.organization_id, binding.asset_id).await?;
+                if let Some(replay) =
+                    replay(transaction, &bundle.binding, &bundle.idempotency).await?
+                {
+                    return Ok(replay);
+                }
+                let binding = bundle.binding;
+                let asset =
+                    lock_asset(transaction, binding.organization_id, binding.asset_id).await?;
                 let release = lock_release(
                     transaction,
                     binding.organization_id,
@@ -63,8 +72,20 @@ pub(super) async fn bind(
                 )
                 .await?
                 {
-                    if existing == binding {
-                        return Ok(existing);
+                    if existing.profile == binding.profile {
+                        store_profile_audit(
+                            transaction,
+                            &binding,
+                            bundle.event.correlation_id,
+                            false,
+                        )
+                        .await?;
+                        let reference = reference(&existing);
+                        store_idempotency(transaction, &bundle.idempotency, &reference).await?;
+                        return Ok(McpServiceProfileWrite {
+                            binding: existing,
+                            replayed: true,
+                        });
                     }
                     return Err(RepositoryError::Conflict(
                         "published MCP Service profile binding is immutable".into(),
@@ -104,11 +125,108 @@ pub(super) async fn bind(
                     }
                     Err(error) => return Err(error),
                 }
-                Ok(binding)
+                store_outbox(transaction, &bundle.event).await?;
+                store_profile_audit(
+                    transaction,
+                    &binding,
+                    bundle.event.correlation_id,
+                    true,
+                )
+                .await?;
+                let reference = reference(&binding);
+                store_idempotency(transaction, &bundle.idempotency, &reference).await?;
+                Ok(McpServiceProfileWrite {
+                    binding,
+                    replayed: false,
+                })
             })
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn replay(
+    transaction: &PostgresTransaction,
+    expected: &McpServiceProfileBinding,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<McpServiceProfileWrite>, PostgresPersistenceError> {
+    let Some(replay) =
+        idempotency_replay::<McpServiceProfileWriteReference>(transaction, idempotency).await?
+    else {
+        return Ok(None);
+    };
+    if replay.value.asset_id.as_uuid().is_nil()
+        || replay.value.asset_release_id.as_uuid().is_nil()
+        || Sha256Digest::parse(&replay.value.profile_digest).is_err()
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored MCP Service profile idempotency reference is invalid".into(),
+        ));
+    }
+    if replay.value.asset_id != expected.asset_id
+        || replay.value.asset_release_id != expected.asset_release_id
+        || replay.value.profile_digest != expected.profile.digest().as_str()
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored MCP Service profile idempotency reference does not match the request".into(),
+        ));
+    }
+    let binding = find_in_transaction(
+        transaction,
+        expected.organization_id,
+        replay.value.asset_id,
+        replay.value.asset_release_id,
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "MCP Service profile idempotency target is missing".into(),
+        )
+    })?;
+    if binding.profile.digest().as_str() != replay.value.profile_digest {
+        return Err(PostgresPersistenceError::Invariant(
+            "MCP Service profile idempotency target changed".into(),
+        ));
+    }
+    Ok(Some(McpServiceProfileWrite {
+        binding,
+        replayed: true,
+    }))
+}
+
+fn reference(binding: &McpServiceProfileBinding) -> McpServiceProfileWriteReference {
+    McpServiceProfileWriteReference {
+        asset_id: binding.asset_id,
+        asset_release_id: binding.asset_release_id,
+        profile_digest: binding.profile.digest().to_string(),
+    }
+}
+
+async fn store_profile_audit(
+    transaction: &PostgresTransaction,
+    binding: &McpServiceProfileBinding,
+    request_id: Uuid,
+    changed: bool,
+) -> Result<(), PostgresPersistenceError> {
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            organization_id: binding.organization_id.as_uuid(),
+            actor_id: None,
+            action: "asset.mcp-service-profile.bound",
+            aggregate_id: binding.asset_release_id.as_uuid(),
+            occurred_at: binding.created_at,
+            request_id,
+            details: serde_json::json!({
+                "assetId": binding.asset_id,
+                "assetReleaseId": binding.asset_release_id,
+                "profileDigest": binding.profile.digest().as_str(),
+                "changed": changed,
+            }),
+        },
+    )
+    .await
 }
 
 pub(super) async fn find(

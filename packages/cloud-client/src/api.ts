@@ -47,6 +47,8 @@ import type {
   McpCredential,
   McpCredentialDeliveryResult,
   McpCredentialMutationResult,
+  McpServiceProfile,
+  McpServiceProfileMutationResult,
   Node,
   Operation,
   Organization,
@@ -81,6 +83,7 @@ import {
   validateExpectedMcpCredentialVersion,
   validateExpectedNodeVersion,
   validateMcpCredentialExpiry,
+  validateMcpServiceProfileAcl,
   validateSecretValue,
   validateWorkloadAcl,
 } from './validation';
@@ -97,12 +100,17 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.7.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.8.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
-export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
+export {
+  MAX_ACL_DOCUMENT_BYTES,
+  MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
+  MAX_SECRET_VALUE_BYTES,
+  MAX_WORKLOAD_ACL_BYTES,
+} from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
@@ -352,6 +360,38 @@ export class CloudApi {
         `/assets/${encodeURIComponent(assetId)}` +
         `/releases/${encodeURIComponent(assetReleaseId)}/yank`,
       idempotencyKey,
+      signal
+    );
+  }
+
+  getMcpServiceProfile(
+    organizationId: string,
+    assetId: string,
+    assetReleaseId: string,
+    signal?: AbortSignal
+  ): Promise<McpServiceProfile> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/mcp-service-profile`,
+      signal
+    );
+  }
+
+  bindMcpServiceProfileFromAcl(
+    organizationId: string,
+    assetId: string,
+    assetReleaseId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpServiceProfileMutationResult> {
+    return this.postMcpServiceProfileAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/mcp-service-profile`,
+      idempotencyKey,
+      acl,
       signal
     );
   }
@@ -1061,7 +1101,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/projects/${encodeURIComponent(projectId)}` +
         `/environments/${encodeURIComponent(environmentId)}/workloads`,
@@ -1078,7 +1118,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/deployments`,
       idempotencyKey,
       manifest,
@@ -1095,7 +1135,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/projects/${encodeURIComponent(projectId)}` +
         `/environments/${encodeURIComponent(environmentId)}` +
@@ -1116,7 +1156,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/projects/${encodeURIComponent(projectId)}` +
         `/environments/${encodeURIComponent(environmentId)}` +
@@ -1137,7 +1177,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/workloads/${encodeURIComponent(workloadId)}` +
         `/assets/${encodeURIComponent(assetId)}` +
@@ -1431,15 +1471,29 @@ export class CloudApi {
     });
   }
 
-  private postAcl<T>(
+  private postWorkloadAcl<T>(
     path: string,
     idempotencyKey: string,
     manifest: string,
     signal?: AbortSignal
   ): Promise<T> {
     validateWorkloadAcl(manifest);
+    return this.postAcl(path, idempotencyKey, manifest, signal);
+  }
+
+  private postMcpServiceProfileAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    acl: string,
+    signal?: AbortSignal
+  ): Promise<T> {
+    validateMcpServiceProfileAcl(acl);
+    return this.postAcl(path, idempotencyKey, acl, signal);
+  }
+
+  private postAcl<T>(path: string, idempotencyKey: string, acl: string, signal?: AbortSignal): Promise<T> {
     return this.request('POST', path, {
-      body: manifest,
+      body: acl,
       contentType: A3S_ACL_MEDIA_TYPE,
       idempotencyKey,
       signal,

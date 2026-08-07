@@ -442,7 +442,7 @@ transport.
   Web adds debounced keyboard search and validated contextual navigation; and
 - REST major version 1 publishes one unauthenticated raw OpenAPI 3.0.3 snapshot
   at `/api/v1/openapi.json`. The shared client and response headers pin contract
-  `1.7.0`; route-snapshot tests and a PR-base semantic checker reject removed
+  `1.8.0`; route-snapshot tests and a PR-base semantic checker reject removed
   operations, new required inputs, removed responses or schema fields, missing
   version increments, and deprecations without a replacement and a 180-day
   minimum sunset window; and
@@ -748,7 +748,7 @@ bypassing Fleet A3S ORM persistence. The authorized-search slice adds one
 organization-scoped API query over registered credential-free projections,
 bounded A3S ORM exact/prefix/contains ranking, typed client and CLI parity, and
 debounced Web navigation without broad local reads. The contract slice adds a
-public raw OpenAPI v1 snapshot, shared `1.7.0` client/response versioning,
+public raw OpenAPI v1 snapshot, shared `1.8.0` client/response versioning,
 route-snapshot synchronization, semantic compatibility enforcement, and a
 minimum 180-day replacement-bound deprecation policy. The final conformance
 slice runs raw REST, the Web client import, and compiled CLI against real
@@ -1152,6 +1152,15 @@ on the request path. The protocol baseline is revision `2026-07-28`.
 | `MCP0.4` | Gateway | Foundation in progress | Closed request parsing/auth, exact healthy-target selection, one-attempt no-replay dispatch, JSON/notification/SSE/subscription forwarding, cancellation, snapshot-swap old/new target isolation, and listener-first graceful drain pass focused tests; managed stale/rejected snapshots, forced drain, exact readiness, telemetry, real-client/server, fault, and release evidence remain |
 | `MCP0.5` | Joint release gate | Planned | Prove one Box-hosted Service end to end through real Cloud, Runtime, and Gateway processes at exact revisions |
 | `MCP0.6` | Joint production gate | Planned | Prove multi-replica and multi-node rollout, loss, partition, policy expiry, load, recovery, and cleanup after the required `H0` and `C0` foundations |
+
+As of 2026-08-07, the `MCP0.3` backend exposes the immutable Service-profile
+binding owned by a published MCP OCI `AssetRelease` through one tenant-guarded
+raw-ACL REST/OpenAPI `1.8.0` contract shared by the maintained TypeScript
+client and CLI. The existing Asset repository transaction owns canonical
+digest admission, caller idempotency, one secret-free Outbox fact, and
+control-plane audit using migration 053. It adds no profile table, parser,
+scheduler, publication path, or frontend lifecycle; the hosted product remains
+unavailable until the Runtime, Box, Gateway, and joint gates pass.
 
 The ownership boundary is closed:
 

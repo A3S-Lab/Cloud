@@ -12,6 +12,4 @@ pub use response::{
     WorkloadResponse, WorkloadStopResponse,
 };
 pub use service_template::{ServiceTemplateDto, SourceWorkloadTemplateDto};
-pub(crate) use workload_manifest::{
-    parse_source_workload_manifest, parse_workload_manifest, A3S_ACL_MEDIA_TYPE,
-};
+pub(crate) use workload_manifest::{parse_source_workload_manifest, parse_workload_manifest};
