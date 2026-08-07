@@ -50,11 +50,14 @@ pub use domain::{
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
-    CompileMcpGatewaySnapshot, CompiledMcpGatewaySnapshot, DnsDomainOwnershipVerifier,
-    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue,
-    FleetGatewayObservationQueue, GatewayCertificateReconciler,
-    GatewayCertificateReconciliationFailure, GatewayCertificateReconciliationReport,
-    GatewayDomainClaimVersion, GatewayReplicaRecoveryReconciler,
+    CompileManagedGatewayCertificateConvergenceSnapshot, CompileManagedGatewayRetainedSnapshot,
+    CompileManagedGatewayRolloutRollback, CompileManagedGatewayRouteRollout,
+    CompileManagedGatewayRouteSnapshot, CompileMcpGatewaySnapshot, CompiledGatewayRouteRollout,
+    CompiledMcpGatewaySnapshot, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
+    EdgeGatewayAcknowledgementProjector, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
+    GatewayCertificateReconciler, GatewayCertificateReconciliationFailure,
+    GatewayCertificateReconciliationReport, GatewayDomainClaimVersion,
+    GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
     GatewayReplicaRecoveryReconciliationFailure, GatewayReplicaRecoveryReconciliationReport,
     GatewayRolloutReconciler, GatewayRolloutReconciliationFailure,
     GatewayRolloutReconciliationReport, GatewayRolloutRollbackCompiler,
@@ -74,8 +77,9 @@ pub use infrastructure::{
     McpGatewaySnapshotScopeStatus, McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
     McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteProjectionVersion,
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler, PlanGatewayRouteRollout,
-    PlanMcpGatewayNodeProjection, PlanMcpGatewayProjectionSet, PlanMcpRouteProjection,
-    PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjection, PlannedMcpGatewayProjectionSet,
-    StageMcpGatewaySnapshot, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    PlanManagedGatewayRouteRollout, PlanMcpGatewayNodeProjection, PlanMcpGatewayProjectionSet,
+    PlanMcpRouteProjection, PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjection,
+    PlannedMcpGatewayProjectionSet, StageManagedRoutePublication, StageMcpGatewaySnapshot,
+    VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
 };
 pub use presentation::EdgeModule;

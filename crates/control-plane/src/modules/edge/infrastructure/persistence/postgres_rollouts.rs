@@ -38,7 +38,7 @@ pub(super) use recovery::{
     record_observation as record_recovery_observation,
     stage_observation as stage_recovery_observation,
 };
-pub(super) use staging::{stage, stage_rollback};
+pub(super) use staging::{stage, stage_managed, stage_managed_rollback, stage_rollback};
 
 pub(super) async fn mark_unavailable(
     executor: &PostgresExecutor,

@@ -113,6 +113,7 @@ async fn lock_logical_scope(
 pub(super) async fn lock_node_scope_set(
     transaction: &PostgresTransaction,
     candidate: &CompiledMcpGatewaySnapshot,
+    allow_ordinary_empty_fallback: bool,
 ) -> Result<(), PostgresPersistenceError> {
     let node_id = candidate.physical_scope().node_id;
     let active_policy = exists(
@@ -166,7 +167,17 @@ pub(super) async fn lock_node_scope_set(
         .iter()
         .map(|planned| planned.scope().id)
         .collect::<BTreeSet<_>>();
-    if actual != expected || expected.len() != candidate.mcp().scope_sets().len() {
+    let ordinary_empty_fallback = allow_ordinary_empty_fallback
+        && actual.is_empty()
+        && expected.len() == 1
+        && candidate.mcp().scope_sets().len() == 1
+        && candidate.mcp().projection().is_none()
+        && candidate.mcp().route_versions().is_empty()
+        && candidate.mcp().ingress_routes().is_empty()
+        && candidate.mcp().credential_authority_versions().is_empty();
+    if (actual != expected && !ordinary_empty_fallback)
+        || expected.len() != candidate.mcp().scope_sets().len()
+    {
         return Err(RepositoryError::Conflict(
             "node-wide MCP Gateway logical scope set changed while planning the snapshot".into(),
         )

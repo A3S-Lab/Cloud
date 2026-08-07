@@ -13,6 +13,7 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::GatewayPublicationState;
+use crate::modules::edge::infrastructure::GatewaySnapshotPublicationOwner;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, NodeCommandId, NodeId, RepositoryError,
 };
@@ -159,6 +160,8 @@ pub(super) async fn project(
                         )
                         .await?;
                     }
+                    project_ordinary_composition_ack(transaction, &publication, &acknowledgement)
+                        .await?;
                     return Ok(true);
                 }
                 if let Some(marker) =
@@ -169,6 +172,9 @@ pub(super) async fn project(
                         acknowledgement.command_id,
                     )
                     .await?
+                    .filter(|marker| {
+                        marker.publication_owner == GatewaySnapshotPublicationOwner::McpReconciler
+                    })
                 {
                     marker.validate_for(&publication).map_err(|error| {
                         PostgresPersistenceError::Invariant(format!(
@@ -432,11 +438,39 @@ pub(super) async fn project(
                     )
                     .await?;
                 }
+                project_ordinary_composition_ack(transaction, &publication, &acknowledgement)
+                    .await?;
                 Ok(true)
             })
         })
         .await
         .map_err(transaction_error)
+}
+
+async fn project_ordinary_composition_ack(
+    transaction: &a3s_orm::PostgresTransaction,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+    acknowledgement: &NodeGatewayAck,
+) -> Result<(), PostgresPersistenceError> {
+    let Some(marker) = postgres_mcp_gateway_snapshots::lock_marker_by_gateway_identity(
+        transaction,
+        acknowledgement.node_id,
+        acknowledgement.revision,
+        acknowledgement.command_id,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    marker
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    if marker.publication_owner != GatewaySnapshotPublicationOwner::Ordinary {
+        return Err(PostgresPersistenceError::Invariant(
+            "ordinary Gateway acknowledgement selected an MCP-owned marker".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn has_active_routes(

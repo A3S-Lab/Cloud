@@ -38,18 +38,19 @@ use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
     DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
     EdgeModule, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
-    GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
-    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
-    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
-    ListMcpCredentialsHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
-    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PostgresEdgeRepository, PublishRouteHandler,
-    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
+    GatewayRolloutReconciler, GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler,
+    GetMcpCredentialHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
+    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
+    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRouteProjectionInputReader,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PostgresEdgeRepository,
+    PublishRouteHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
+    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
@@ -465,18 +466,6 @@ pub async fn build_application_with_source_resolver(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
-    let gateway_certificate_reconciler = GatewayCertificateReconciler::new(
-        Arc::clone(&routes),
-        Arc::clone(&route_commands),
-        Arc::clone(&gateway_certificate_authority),
-        deployment_route_compiler.clone(),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        chrono_duration(config.edge.certificate_renewal_window_ms)?,
-        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
-        chrono_duration(config.edge.command_ttl_ms)?,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         edge_repository.clone(),
         Arc::clone(&routes),
@@ -492,10 +481,30 @@ pub async fn build_application_with_source_resolver(
         McpGatewayProjectionPlanner::new(mcp_route_planner, edge_repository),
         McpGatewayProjectionAssembler,
     ));
-    let mcp_node_projection_planner = Arc::new(McpGatewayNodeProjectionPlanner::new(
+    let mcp_node_projection_planner: Arc<
+        dyn crate::modules::edge::IMcpGatewayNodeProjectionPlanner,
+    > = Arc::new(McpGatewayNodeProjectionPlanner::new(
         mcp_projection_set_planner,
         McpGatewayProjectionAssembler,
     ));
+    let gateway_node_desired_state_planner = GatewayNodeDesiredStatePlanner::new(
+        Arc::clone(&mcp_gateway_snapshots),
+        Arc::clone(&mcp_node_projection_planner),
+    );
+    let gateway_certificate_reconciler = GatewayCertificateReconciler::new_managed(
+        Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
+        Arc::clone(&route_commands),
+        Arc::clone(&gateway_certificate_authority),
+        deployment_route_compiler.clone(),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
         Arc::clone(&mcp_gateway_snapshots),
         mcp_node_projection_planner,
@@ -536,8 +545,10 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
-    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new(
+    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new_managed(
         Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
         GatewayRolloutRollbackCompiler::new(
             deployment_route_compiler.clone(),
             chrono_duration(config.edge.command_ttl_ms)?,
@@ -549,11 +560,13 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::Edge)?;
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
-        EdgeDeploymentRouteUpdater::new(
+        EdgeDeploymentRouteUpdater::new_managed(
             Arc::clone(&routes),
+            Arc::clone(&mcp_gateway_snapshots),
             Arc::clone(&node_control),
             Arc::clone(&route_commands),
             deployment_route_compiler,
+            gateway_node_desired_state_planner.clone(),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
@@ -793,6 +806,8 @@ pub async fn build_application_with_source_resolver(
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
+            mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
+            gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
             domain_verifier,
             gateway_projector,
             operations: operation_repository,
@@ -864,6 +879,8 @@ struct ApplicationDependencies {
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
+    mcp_gateway_snapshots: Option<Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository>>,
+    gateway_node_desired_state_planner: Option<GatewayNodeDesiredStatePlanner>,
     domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
@@ -906,6 +923,8 @@ fn build_application_with_health(
         secret_encryption,
         route_targets,
         route_commands,
+        mcp_gateway_snapshots,
+        gateway_node_desired_state_planner,
         domain_verifier,
         gateway_projector,
         operations,
@@ -1101,13 +1120,27 @@ fn build_application_with_health(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(BootError::Internal)?;
-    let publish_route_handler = PublishRouteHandler::new(
-        publish_routes,
-        route_targets,
-        route_commands,
-        route_compiler,
-        chrono_duration(config.edge.command_ttl_ms)?,
-    )
+    let publish_route_handler = match (mcp_gateway_snapshots, gateway_node_desired_state_planner) {
+        (Some(mcp_gateway_snapshots), Some(gateway_node_desired_state_planner)) => {
+            PublishRouteHandler::new_managed(
+                publish_routes,
+                mcp_gateway_snapshots,
+                route_targets,
+                route_commands,
+                route_compiler,
+                gateway_node_desired_state_planner,
+                chrono_duration(config.edge.command_ttl_ms)?,
+            )
+        }
+        (None, None) => PublishRouteHandler::new(
+            publish_routes,
+            route_targets,
+            route_commands,
+            route_compiler,
+            chrono_duration(config.edge.command_ttl_ms)?,
+        ),
+        _ => Err("managed Gateway publication dependencies are incomplete".into()),
+    }
     .map_err(BootError::Internal)?;
     BootApplication::builder()
         .import(PublicHealthModule::new(
