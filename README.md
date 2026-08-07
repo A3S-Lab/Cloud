@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.10.0" src="https://img.shields.io/badge/REST_contract-1.10.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.11.0" src="https://img.shields.io/badge/REST_contract-1.11.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -101,12 +101,24 @@ claim. Real Runtime, Box, Gateway, process-loss, recovery, and cleanup evidence
 must still close the joint gates in [ROADMAP.md](ROADMAP.md).
 
 The backend now exposes that existing Edge-owned `McpRoutePolicy` as one
-tenant-guarded A3S ACL lifecycle through REST contract `1.10.0`, the maintained
+tenant-guarded A3S ACL lifecycle through REST contract `1.11.0`, the maintained
 TypeScript client, and `mcp-routes` CLI commands. Create and revision writes
 atomically commit the canonical ACL and digest, caller idempotency, changed-only
 Outbox fact, and audit record through the existing A3S ORM repository. They do
 not add another route table, ACL parser, scheduler, reconciler, Gateway
 publisher, or frontend lifecycle.
+
+The first persisted Workflow slice now exposes one project-scoped,
+ACL-native Ontology authority. PostgreSQL through A3S ORM stores the aggregate
+head and immutable canonical revisions; deterministic diffs classify object,
+relation, rule, and metadata changes, and every breaking change must bind a
+real `migration` rule from the target ACL. The same handlers serve REST
+contract `1.11.0`, the maintained TypeScript client, `ontologies` CLI commands,
+and seven Management MCP tools. Search receives one rebuildable Ontology
+projection. This `W0.2` backend does not add a graph database, migration-policy
+store, workflow engine, queue, object client, or frontend. Focused lifecycle
+and cross-surface tests pass; clean real-PostgreSQL conformance remains the
+verification boundary.
 
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one
@@ -115,7 +127,7 @@ tokens bind to that Principal, cannot exceed the issuer's scopes, and reuse the
 Membership role matrix for cross-Principal issuance; an admin cannot mint an
 owner credential. Role changes and revocation
 take effect on the next request, the last active owner is protected, and the
-same CQRS handlers are exposed through REST contract `1.10.0`, the maintained
+same CQRS handlers are exposed through REST contract `1.11.0`, the maintained
 TypeScript client, CLI, and Management MCP. A3S ORM transactions commit
 membership state, idempotency, Outbox facts, and audit together. Resource
 Grants are the next authorization slice; future OIDC subjects attach to the
@@ -127,6 +139,7 @@ frontend identity surface is included in this backend-first slice.
 | Concern | Sole authority | Duplicate mechanism that is prohibited |
 | --- | --- | --- |
 | Business desired state | PostgreSQL through A3S ORM | Redis, an event stream, a node journal, or a local file as product truth |
+| Ontology semantics and revision lineage | Workflow-owned immutable ACL revisions in PostgreSQL through A3S ORM | A graph database authority, Search-owned writes, mutable schema rows, or a second migration-policy store |
 | Long-running work | A3S Flow plus Cloud Operations | Product-specific workflow engines, queues, or retry loops |
 | Placement, replicas, rollout, scaling | Workloads | Agent-, MCP-, inference-, Gateway-, or import-specific schedulers |
 | Node delivery and hard-resource ownership | Fleet commands, Node Agent journal, and Fleet Claims | A second node channel, direct process control, or in-memory reservations |
@@ -176,7 +189,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.10.0`.
+contract version `1.11.0`.
 
 ### Bootstrap the first organization
 
@@ -235,7 +248,7 @@ its authority.
 | Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
 | Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
 | Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |
-| Workflow and evolution | Ontologies, immutable plans, human decisions, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
+| Workflow and evolution | ACL-native versioned Ontologies and deterministic diffs today; immutable plans, human decisions, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback remain gate-driven | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
 | Inference | Power-hosted model Services, accelerator Claims, model/provider policy, scoped keys, routing/fallback, durable usage, and governed self-service | Inference, Power, Workloads, Fleet, Edge, Gateway, `PW0`, `I0` |
 
 ### TokenHub and Google AX outcomes remain explicit
@@ -280,7 +293,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress (`W0.1` closed contract foundation implemented) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` and the backend `W0.2` Ontology lifecycle implemented; real PostgreSQL verification and `W0.3`-`W0.5` remain) |
 | `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
 | `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |

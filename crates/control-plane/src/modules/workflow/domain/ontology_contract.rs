@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const ONTOLOGY_SCHEMA: &str = "cloud.workflow.ontology.v1";
+pub const ONTOLOGY_MAX_ACL_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OntologyContractQuotas {
@@ -21,7 +22,7 @@ pub struct OntologyContractQuotas {
 impl Default for OntologyContractQuotas {
     fn default() -> Self {
         Self {
-            max_acl_bytes: 1024 * 1024,
+            max_acl_bytes: ONTOLOGY_MAX_ACL_BYTES,
             max_object_types: 512,
             max_relation_types: 4_096,
             max_rules: 4_096,
@@ -63,7 +64,7 @@ pub enum OntologyRelationCardinality {
 }
 
 impl OntologyRelationCardinality {
-    const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::OneToOne => "one_to_one",
             Self::OneToMany => "one_to_many",
@@ -106,7 +107,7 @@ pub enum OntologyRuleKind {
 }
 
 impl OntologyRuleKind {
-    const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Constraint => "constraint",
             Self::Derivation => "derivation",
@@ -152,6 +153,11 @@ impl OntologySpec {
     pub fn validate(&self, quotas: OntologyContractQuotas) -> Result<(), String> {
         let quotas = quotas.validate()?;
         validate_text("Ontology name", &self.name, 1, 120)?;
+        if self.name != self.name.trim() || self.name.contains(['\r', '\n']) {
+            return Err(
+                "Ontology name must not contain surrounding or line-breaking whitespace".into(),
+            );
+        }
         validate_text("Ontology description", &self.description, 0, 4_096)?;
         if self.object_types.is_empty() || self.object_types.len() > quotas.max_object_types {
             return Err(format!(

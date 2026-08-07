@@ -9,6 +9,7 @@ import {
   DEFAULT_CLOUD_API_BASE_PATH,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
+  MAX_ONTOLOGY_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 
@@ -28,7 +29,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.10.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.11.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -264,6 +265,94 @@ describe('CloudApi', () => {
         undefined,
       ],
     ]);
+  });
+
+  it('uses one ACL-native versioned Ontology lifecycle with explicit revision headers', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'ontology { schema = "cloud.workflow.ontology.v1" }';
+
+    await api.listOntologies('organization', 'project');
+    await api.getOntology('organization', 'ontology');
+    await api.createOntologyFromAcl('organization', 'project', acl, 'ontology:create');
+    await api.listOntologyRevisions('organization', 'ontology');
+    await api.getOntologyRevision('organization', 'ontology', 'revision-one');
+    await api.diffOntologyRevisions('organization', 'ontology', 'revision-one', 'revision-two');
+    await api.reviseOntologyFromAcl(
+      'organization',
+      'ontology',
+      acl,
+      { expectedVersion: 2, migrationRuleId: 'migrate_ticket_v2' },
+      'ontology:revise'
+    );
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization/projects/project/ontologies',
+      '/api/v1/organizations/organization/ontologies/ontology',
+      '/api/v1/organizations/organization/projects/project/ontologies',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions/revision-one',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions/revision-one/diff/revision-two',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions',
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: acl,
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'ontology:create',
+        }),
+      })
+    );
+    expect(calls[6]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: acl,
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'ontology:revise',
+          'x-a3s-expected-version': '2',
+          'x-a3s-migration-rule': 'migrate_ticket_v2',
+        }),
+      })
+    );
+  });
+
+  it('rejects invalid Ontology ACL and revision controls before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() => api.createOntologyFromAcl('organization', 'project', '', 'ontology:create')).toThrow();
+    expect(() =>
+      api.createOntologyFromAcl(
+        'organization',
+        'project',
+        'x'.repeat(MAX_ONTOLOGY_ACL_BYTES + 1),
+        'ontology:create'
+      )
+    ).toThrow();
+    expect(() =>
+      api.reviseOntologyFromAcl('organization', 'ontology', 'acl', { expectedVersion: 0 }, 'ontology:revise')
+    ).toThrow('expected Ontology version must be a positive safe integer');
+    expect(() =>
+      api.reviseOntologyFromAcl(
+        'organization',
+        'ontology',
+        'acl',
+        { expectedVersion: 1, migrationRuleId: 'not/a/rule' },
+        'ontology:revise'
+      )
+    ).toThrow('Ontology migration rule must be a portable rule ID');
+    expect(called).toBe(false);
   });
 
   it('reads and binds an immutable MCP Service Profile as raw A3S ACL', async () => {

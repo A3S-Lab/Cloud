@@ -98,6 +98,33 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             }),
         );
     }
+    if method == "post" && is_ontology_revision_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current Ontology aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-migration-rule",
+                "in": "header",
+                "required": false,
+                "description": "Target ACL migration-rule ID. Required only for a breaking structural diff.",
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 96,
+                    "pattern": "^[A-Za-z0-9_-]+$"
+                }
+            }),
+        );
+    }
     if path == "/webhooks/github" {
         for name in ["x-github-event", "x-github-delivery", "x-hub-signature-256"] {
             upsert_parameter(
@@ -270,7 +297,18 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    if is_mcp_service_profile_path(path) {
+    if is_ontology_mutation_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1048576
+                }
+            }),
+        );
+    } else if is_mcp_service_profile_path(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
             json!({
@@ -330,7 +368,9 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
     if asset_git_request_media_type(path).is_some()
         || (method == "post"
-            && (is_mcp_service_profile_path(path) || is_mcp_route_policy_mutation_path(path)))
+            && (is_ontology_mutation_path(path)
+                || is_mcp_service_profile_path(path)
+                || is_mcp_route_policy_mutation_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -448,6 +488,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
         "Workloads"
+    } else if path.contains("ontologies") {
+        "Workflow"
     } else if path.contains("projects") || path.contains("environments") {
         "Projects"
     } else if path.contains("operations") {
@@ -503,6 +545,8 @@ fn creates_resource(path: &str) -> bool {
         || path == "/organizations"
         || path.ends_with("/projects")
         || path.ends_with("/environments")
+        || path.ends_with("/ontologies")
+        || is_ontology_revision_mutation_path(path)
         || path.ends_with("/api-tokens")
         || path.ends_with("/memberships")
         || path.ends_with("/enrollment-tokens")
@@ -526,6 +570,14 @@ fn creates_resource(path: &str) -> bool {
 fn is_mcp_service_profile_path(path: &str) -> bool {
     path.ends_with("/mcp-service-profile")
         && path.contains("/assets/{asset_id}/releases/{asset_release_id}/")
+}
+
+fn is_ontology_mutation_path(path: &str) -> bool {
+    path.ends_with("/ontologies") || is_ontology_revision_mutation_path(path)
+}
+
+fn is_ontology_revision_mutation_path(path: &str) -> bool {
+    path.contains("/ontologies/{ontology_id}/") && path.ends_with("/revisions")
 }
 
 fn is_mcp_route_policy_mutation_path(path: &str) -> bool {

@@ -23,6 +23,13 @@ pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const PROJECTS_CREATE: &str = "a3s_cloud_projects_create";
 pub const PROJECTS_LIST: &str = "a3s_cloud_projects_list";
+pub const ONTOLOGIES_CREATE: &str = "a3s_cloud_ontologies_create";
+pub const ONTOLOGIES_GET: &str = "a3s_cloud_ontologies_get";
+pub const ONTOLOGIES_LIST: &str = "a3s_cloud_ontologies_list";
+pub const ONTOLOGIES_REVISE: &str = "a3s_cloud_ontologies_revise";
+pub const ONTOLOGY_REVISIONS_GET: &str = "a3s_cloud_ontology_revisions_get";
+pub const ONTOLOGY_REVISIONS_LIST: &str = "a3s_cloud_ontology_revisions_list";
+pub const ONTOLOGY_REVISIONS_DIFF: &str = "a3s_cloud_ontology_revisions_diff";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
@@ -43,6 +50,13 @@ pub enum ManagementTool {
     MembershipsRevoke,
     ProjectsCreate,
     ProjectsList,
+    OntologiesCreate,
+    OntologiesGet,
+    OntologiesList,
+    OntologiesRevise,
+    OntologyRevisionsGet,
+    OntologyRevisionsList,
+    OntologyRevisionsDiff,
     Search,
     NodesList,
     NodesGet,
@@ -65,7 +79,7 @@ pub enum ManagementTool {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 28] = [
+    const ALL: [Self; 35] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -75,6 +89,13 @@ impl ManagementTool {
         Self::MembershipsRevoke,
         Self::ProjectsCreate,
         Self::ProjectsList,
+        Self::OntologiesCreate,
+        Self::OntologiesGet,
+        Self::OntologiesList,
+        Self::OntologiesRevise,
+        Self::OntologyRevisionsGet,
+        Self::OntologyRevisionsList,
+        Self::OntologyRevisionsDiff,
         Self::Search,
         Self::NodesList,
         Self::NodesGet,
@@ -132,6 +153,13 @@ impl ManagementTool {
             Self::MembershipsRevoke => MEMBERSHIPS_REVOKE,
             Self::ProjectsCreate => PROJECTS_CREATE,
             Self::ProjectsList => PROJECTS_LIST,
+            Self::OntologiesCreate => ONTOLOGIES_CREATE,
+            Self::OntologiesGet => ONTOLOGIES_GET,
+            Self::OntologiesList => ONTOLOGIES_LIST,
+            Self::OntologiesRevise => ONTOLOGIES_REVISE,
+            Self::OntologyRevisionsGet => ONTOLOGY_REVISIONS_GET,
+            Self::OntologyRevisionsList => ONTOLOGY_REVISIONS_LIST,
+            Self::OntologyRevisionsDiff => ONTOLOGY_REVISIONS_DIFF,
             Self::Search => SEARCH,
             Self::NodesList => NODES_LIST,
             Self::NodesGet => NODES_GET,
@@ -163,12 +191,18 @@ impl ManagementTool {
             | Self::MembershipsChangeRole
             | Self::MembershipsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
+            Self::OntologiesCreate | Self::OntologiesRevise => Some(ApiTokenScope::ONTOLOGY_WRITE),
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::EnvironmentsList
             | Self::ProjectsList
+            | Self::OntologiesGet
+            | Self::OntologiesList
+            | Self::OntologyRevisionsGet
+            | Self::OntologyRevisionsList
+            | Self::OntologyRevisionsDiff
             | Self::Search
             | Self::NodesList
             | Self::NodesGet
@@ -251,6 +285,48 @@ impl ManagementTool {
                 "List projects",
                 "List projects in the authenticated organization.",
                 empty_schema(),
+                true,
+            ),
+            Self::OntologiesCreate => (
+                "Create Ontology",
+                "Create one project-scoped Ontology from canonical A3S ACL with explicit idempotency.",
+                create_ontology_schema(),
+                false,
+            ),
+            Self::OntologiesGet => (
+                "Get Ontology",
+                "Get one tenant-authorized Ontology aggregate and its current revision identity.",
+                uuid_id_schema("ontologyId"),
+                true,
+            ),
+            Self::OntologiesList => (
+                "List Ontologies",
+                "List Ontology aggregates in one tenant-authorized project.",
+                project_id_schema(),
+                true,
+            ),
+            Self::OntologiesRevise => (
+                "Revise Ontology",
+                "Publish one immutable Ontology revision with optimistic concurrency and migration-rule enforcement.",
+                revise_ontology_schema(),
+                false,
+            ),
+            Self::OntologyRevisionsGet => (
+                "Get Ontology revision",
+                "Get one immutable Ontology revision including its canonical A3S ACL.",
+                ontology_revision_schema(),
+                true,
+            ),
+            Self::OntologyRevisionsList => (
+                "List Ontology revisions",
+                "List immutable revision summaries for one tenant-authorized Ontology.",
+                uuid_id_schema("ontologyId"),
+                true,
+            ),
+            Self::OntologyRevisionsDiff => (
+                "Diff Ontology revisions",
+                "Compute the deterministic structural and compatibility diff between two Ontology revisions.",
+                ontology_diff_schema(),
                 true,
             ),
             Self::Search => (
@@ -563,6 +639,64 @@ fn create_environment_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["projectId", "name", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn create_ontology_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "acl": {"type": "string", "minLength": 1, "maxLength": 1048576},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "acl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revise_ontology_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "ontologyId": {"type": "string", "format": "uuid"},
+            "acl": {"type": "string", "minLength": 1, "maxLength": 1048576},
+            "expectedVersion": expected_version_schema(),
+            "migrationRuleId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 96,
+                "pattern": "^[A-Za-z0-9_-]+$"
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["ontologyId", "acl", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn ontology_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "ontologyId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["ontologyId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn ontology_diff_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "ontologyId": {"type": "string", "format": "uuid"},
+            "fromRevisionId": {"type": "string", "format": "uuid"},
+            "toRevisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["ontologyId", "fromRevisionId", "toRevisionId"],
         "additionalProperties": false
     })
 }

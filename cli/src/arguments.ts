@@ -14,6 +14,7 @@ export interface ParsedArguments {
   idempotencyKey?: string;
   file?: string;
   expectedVersion?: string;
+  migrationRuleId?: string;
   minReady?: string;
   maxUnavailable?: string;
   contextPath?: string;
@@ -51,6 +52,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--idempotency-key': 'idempotencyKey',
   '--file': 'file',
   '--expected-version': 'expectedVersion',
+  '--migration-rule': 'migrationRuleId',
   '--min-ready': 'minReady',
   '--max-unavailable': 'maxUnavailable',
   '--context-path': 'contextPath',

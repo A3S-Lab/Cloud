@@ -97,7 +97,7 @@ scheduler, event log, identity store, or data plane.
 
 | Reference outcome worth retaining | A3S-owned outcome | Owning gate and current boundary | Deliberately not copied |
 | --- | --- | --- | --- |
-| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` closed contracts and capability mapping are implemented; `W0.2`-`W0.5` persistence, execution, provider bindings, recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
+| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` contracts and capability mapping plus the backend `W0.2` immutable Ontology lifecycle are implemented; real PostgreSQL verification and `W0.3`-`W0.5` execution, provider binding, recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and route-health diagnostics | Inference owns immutable model, Provider, route, and policy revisions; Edge owns route intent; Gateway applies the typed protocol/data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` protocol/provider expansion | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
 | TokenHub-style consumer, project-steward, and platform-operator workspaces with project/environment keys, enterprise sign-in, RBAC, quotas, and concurrency policy | Identity owns Principals, external OIDC subject links, Memberships, Resource Grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential foundation is implemented; Resource Grants, invitations, external OIDC federation, and role-focused surfaces remain planned; model/key self-service is planned in `I0.2e` | Browser-only filtering, another user/key store, plaintext credential recovery, credential-owned roles, or UI modes as authorization |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; Project attribution and authorized views belong to `C0` | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts or responses in management telemetry, commercial balance/invoice/settlement authority, or client-side usage truth |
@@ -354,8 +354,8 @@ not business ownership or convenience wrappers.
 | Secrets | Immutable Secret versions, bindings, authorization, and materialization policy | Current |
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
-| Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current foundation; new projections planned by their owning gates |
-| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, human decisions, and semantic step projections | `W0.1` closed contract foundation implemented; `W0.2`-`W0.5` planned |
+| Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
+| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, human decisions, and semantic step projections | `W0.1` and backend `W0.2` implemented; real PostgreSQL verification and `W0.3`-`W0.5` remain |
 | Evolution | Authorized evidence-dataset manifests, evaluation suites, experiments, candidate revisions, promotion decisions, and rollback evidence | Planned `EV0` |
 | Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
 | Agents | Conversations, heterogeneous-provider Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented; the `A1.2` native Code provider is implemented locally with publication and Linux recovery verification pending; provider-neutral `A1.3` and `A1.4` through `A1.6` are planned |
@@ -840,6 +840,16 @@ step projections. Closed ontology and Workflow ACL is parsed only through
 relations, rules, constraints, lineage, and current revisions; Search and
 vector indexes are disposable projections rather than another knowledge-graph
 authority.
+
+The implemented backend `W0.2` slice stores one mutable Ontology aggregate
+head and immutable canonical `OntologyRevision` lineage in that authority.
+Create and revise commands share Cloud idempotency, audit, Outbox, tenant, and
+optimistic-concurrency mechanisms. Deterministic structural diffs infer
+compatible migration policy; a breaking change is admitted only when the
+caller names a target ACL rule whose kind is `migration`. REST, the maintained
+client, CLI, and Management MCP call the same command/query handlers, while
+Search projects only the current aggregate. There is no parallel graph store,
+migration registry, revision-byte store, or surface-specific lifecycle.
 
 Workflow planning and Workflow execution are separate responsibilities. The
 planner compiles exact ontology, Workflow, policy, capability, and input

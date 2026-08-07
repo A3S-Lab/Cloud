@@ -61,6 +61,12 @@ Node `ready`, `drain`, and `revoke` additionally require
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale
 versions instead of applying a blind lifecycle transition.
 
+`ontologies revise` also requires a positive `--expected-version`. A breaking
+object, relation, or rule change additionally requires
+`--migration-rule=<target-rule-id>` naming an exact rule of kind `migration`
+inside the submitted target ACL. The flag does not create a CLI migration
+policy or another configuration document.
+
 Hosted MCP credential `create` requires an RFC 3339 `--expires-at` no more
 than 365 days in the future. `rotate` additionally requires the current
 `--expected-version`; `revoke` requires the same optimistic precondition.
@@ -129,8 +135,9 @@ Identity repository.
 
 Desired-state commands additionally require `--file=<path>`. Workload and MCP
 Service-profile commands accept a nonempty UTF-8 A3S ACL document of at most
-64 KiB; MCP route-policy create/revise accepts at most 512 KiB. The CLI sends
-those exact bytes as `application/vnd.a3s.acl`; Cloud parses them with
+64 KiB; MCP route-policy create/revise accepts at most 512 KiB; Ontology
+create/revise accepts at most 1 MiB. The CLI sends those exact bytes as
+`application/vnd.a3s.acl`; Cloud parses them with
 `a3s-acl`, applies bounded closed-schema validation, and dispatches the
 existing application command. The CLI does not parse ACL, accept JSON/TOML
 manifests, or place manifest content in command arguments.
@@ -153,6 +160,13 @@ projects list
 projects create <name>
 environments list
 environments create <name>
+ontologies list
+ontologies get <ontology-id>
+ontologies create --file=<path>
+ontologies revisions <ontology-id>
+ontologies revision <ontology-id> <revision-id>
+ontologies diff <ontology-id> <from-revision-id> <to-revision-id>
+ontologies revise <ontology-id> --file=<path> --expected-version=<version> [--migration-rule=<rule-id>]
 assets list
 assets get <asset-id>
 assets create <name> <agent|mcp|skill>
@@ -255,6 +269,15 @@ canonical policy and revision. Cloud remains authoritative for Service-profile
 admission, tenancy, grant generations, domain and Workload identity, audit,
 Outbox, reconciliation, and the single complete Gateway publication path; the
 CLI does not compile or publish Gateway state.
+
+The `ontologies` commands expose the one Workflow-owned, project-scoped
+Ontology lifecycle. Create and revise submit bounded closed A3S ACL with a
+caller-owned idempotency key; list/get and revision list/get/diff read the
+authoritative aggregate or immutable lineage. Cloud computes deterministic
+diffs, infers compatible migration policy, validates explicit breaking
+migrations against the target ACL, and persists through A3S ORM. The CLI does
+not parse Ontology ACL, store revisions, maintain a graph index, or define a
+second migration mechanism.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing

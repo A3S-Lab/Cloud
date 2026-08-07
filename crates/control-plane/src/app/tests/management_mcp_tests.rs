@@ -8,6 +8,10 @@ const MCP_WORKLOAD_TOKEN: &str =
     "a3s_1111111111111111111111111111111111111111111111111111111111111111";
 const MCP_BUILD_TOKEN: &str =
     "a3s_2222222222222222222222222222222222222222222222222222222222222222";
+const MCP_ONTOLOGY_ACL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/w0.1/ontology.acl"
+));
 
 #[tokio::test]
 async fn management_mcp_discovers_modern_stateless_json_rpc() -> Result<()> {
@@ -322,6 +326,11 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         vec![
             "a3s_cloud_environments_list",
             "a3s_cloud_projects_list",
+            "a3s_cloud_ontologies_get",
+            "a3s_cloud_ontologies_list",
+            "a3s_cloud_ontology_revisions_get",
+            "a3s_cloud_ontology_revisions_list",
+            "a3s_cloud_ontology_revisions_diff",
             "a3s_cloud_search",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
@@ -377,6 +386,13 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_memberships_revoke",
             "a3s_cloud_projects_create",
             "a3s_cloud_projects_list",
+            "a3s_cloud_ontologies_create",
+            "a3s_cloud_ontologies_get",
+            "a3s_cloud_ontologies_list",
+            "a3s_cloud_ontologies_revise",
+            "a3s_cloud_ontology_revisions_get",
+            "a3s_cloud_ontology_revisions_list",
+            "a3s_cloud_ontology_revisions_diff",
             "a3s_cloud_search",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
@@ -1126,6 +1142,139 @@ async fn management_mcp_observes_api_token_revocation_on_the_next_request() -> R
         .await?;
     assert_eq!(denied.status(), 401);
     assert_eq!(response_json(&denied)?["statusCode"], "UNAUTHORIZED");
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_the_versioned_ontology_lifecycle() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-ontology", "Acme").await?;
+    let project = create_project(&app, &organization, "mcp-ontology-project", "Knowledge").await?;
+    let create_arguments = json!({
+        "projectId": project,
+        "acl": MCP_ONTOLOGY_ACL,
+        "idempotencyKey": "mcp-ontology-create"
+    });
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(1, "a3s_cloud_ontologies_create", create_arguments.clone()),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    let data = &created["result"]["structuredContent"]["data"];
+    let ontology_id = data["ontology"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Ontology response has no ID".into()))?;
+    let first_revision_id = data["revision"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Ontology response has no revision ID".into()))?;
+
+    let replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_ontologies_create", create_arguments),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&replay)?["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_ontologies_list",
+                json!({"projectId": project}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&listed)?["result"]["structuredContent"]["data"][0]["id"],
+        ontology_id
+    );
+
+    let compatible_acl = MCP_ONTOLOGY_ACL.replace(
+        "Deterministic W0.1 Ontology contract fixture",
+        "MCP compatible revision",
+    );
+    let revised = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_ontologies_revise",
+                json!({
+                    "ontologyId": ontology_id,
+                    "acl": compatible_acl,
+                    "expectedVersion": 1,
+                    "idempotencyKey": "mcp-ontology-revise"
+                }),
+            ),
+        ))
+        .await?;
+    let revised = response_json(&revised)?;
+    assert_eq!(revised["result"]["structuredContent"]["code"], 201);
+    let second_revision_id = revised["result"]["structuredContent"]["data"]["revision"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP revised Ontology has no revision ID".into()))?;
+
+    let revisions = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_ontology_revisions_list",
+                json!({"ontologyId": ontology_id}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&revisions)?["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+
+    let revision = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_ontology_revisions_get",
+                json!({"ontologyId": ontology_id, "revisionId": second_revision_id}),
+            ),
+        ))
+        .await?;
+    assert!(
+        response_json(&revision)?["result"]["structuredContent"]["data"]["canonicalAcl"]
+            .as_str()
+            .is_some_and(|acl| acl.contains("MCP compatible revision"))
+    );
+
+    let diff = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                7,
+                "a3s_cloud_ontology_revisions_diff",
+                json!({
+                    "ontologyId": ontology_id,
+                    "fromRevisionId": first_revision_id,
+                    "toRevisionId": second_revision_id
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&diff)?["result"]["structuredContent"]["data"]["breaking"],
+        false
+    );
     Ok(())
 }
 

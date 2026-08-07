@@ -399,7 +399,7 @@ may retain private in-process state and source events but cannot add a
 Cloud-visible run store, scheduler, command queue, approval authority, or
 second semantic history.
 
-### 3.14 Workflow and ontology (`W0.1` contract implemented)
+### 3.14 Workflow and ontology (`W0.1` and backend `W0.2` implemented)
 
 Owns ontology revisions, Workflow definitions and revisions, goals,
 deterministic plan revisions, Workflow runs, human decisions, and semantic step
@@ -454,6 +454,16 @@ constraints, lineage, and current revision. Search and vector indexes are
 rebuildable projections. The context calls typed Agents, MCP, Inference, Use,
 Identity, Executions, and connector ports; it writes none of their tables and
 never starts Runtime work directly.
+
+The implemented `W0.2` persistence model keeps exactly one mutable aggregate
+head per project/name and immutable canonical `OntologyRevision` rows. The
+head points to its current revision through a deferred foreign key so one A3S
+ORM transaction can insert the revision and advance the head atomically.
+Compatible migration policy is inferred from a deterministic structural diff;
+breaking changes must bind an exact `migration` rule already present in the
+target ACL. Idempotency stores only the organization/Ontology/revision
+identity, and replay reconstructs the aggregate snapshot at that revision.
+Search reads one disposable current-head view and cannot revise an Ontology.
 
 ### 3.15 Governed evolution (planned EV0)
 
@@ -1116,11 +1126,16 @@ contexts' tables.
   Harness plus exact A3S Runtime and Box checkpoint contracts pass crash,
   integrity, compatibility, adoption, and cleanup certification.
 
-### Workflow, ontology, and plan execution (`W0.1` contract implemented)
+### Workflow, ontology, and plan execution (`W0.1` and backend `W0.2` implemented)
 
 - An OntologyRevision is immutable and binds one closed ACL digest, compiler
   schema version, parent revision, migration policy, and canonical semantic
   content digest.
+- A breaking structural diff is invalid unless the target revision contains
+  the exact named `migration` rule; no parallel migration-policy store exists.
+- Replaying an accepted historical create or revise identity returns the
+  aggregate snapshot at that exact revision, even after later revisions are
+  current.
 - Search, vector, and materialized graph projections may lag or rebuild; they
   cannot accept writes or become current-revision authority.
 - A PlanRevision binds exact OntologyRevision, WorkflowRevision, policy,

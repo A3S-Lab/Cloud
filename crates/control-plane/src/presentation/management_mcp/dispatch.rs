@@ -9,12 +9,16 @@ use super::identity::{
     ChangeMembershipRoleArguments, CreateServiceMembershipArguments, MembershipArguments,
     RevokeMembershipArguments,
 };
+use super::ontology::{
+    CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
+    OntologyRevisionArguments, ReviseOntologyArguments,
+};
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
-use super::{artifacts, edge, identity, nodes, operations, projects, search, workloads};
+use super::{artifacts, edge, identity, nodes, ontology, operations, projects, search, workloads};
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
@@ -118,6 +122,48 @@ pub async fn execute(
         ManagementTool::ProjectsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
             projects::list_projects(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologiesCreate => {
+            let arguments = arguments::parse::<CreateOntologyArguments>(arguments).ok()?;
+            ontology::create_ontology(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::OntologiesRevise => {
+            let arguments = arguments::parse::<ReviseOntologyArguments>(arguments).ok()?;
+            ontology::revise_ontology(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::OntologiesList => {
+            let arguments = arguments::parse::<ListOntologiesArguments>(arguments).ok()?;
+            ontology::list_ontologies(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologiesGet => {
+            let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
+            ontology::get_ontology(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologyRevisionsList => {
+            let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
+            ontology::list_revisions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologyRevisionsGet => {
+            let arguments = arguments::parse::<OntologyRevisionArguments>(arguments).ok()?;
+            ontology::get_revision(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologyRevisionsDiff => {
+            let arguments = arguments::parse::<OntologyDiffArguments>(arguments).ok()?;
+            ontology::diff_revisions(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;

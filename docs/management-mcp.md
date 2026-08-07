@@ -15,6 +15,9 @@ BuildRun-log unavailability, and signed BuildRun evidence through the same
 application queries and REST response projections. The operational-mutation slice adds five replay-safe
 Workload, Deployment, and BuildRun commands through the existing application
 handlers and REST response projections.
+The backend `W0.2` slice adds seven Ontology create/read/revise/revision/diff
+tools over the same Workflow command/query handlers. It does not introduce an
+MCP-specific Ontology store, migration policy, ACL parser, or graph database.
 
 ## Transport contract
 
@@ -86,6 +89,18 @@ scopes control mutation tool visibility and invocation independently:
 | --- | --- | --- |
 | `a3s_cloud_projects_list` | Query | None |
 | `a3s_cloud_environments_list` | Query | None |
+| `a3s_cloud_memberships_list` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_memberships_get` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_service_memberships_create` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_memberships_change_role` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_memberships_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_ontologies_list` | Query | None |
+| `a3s_cloud_ontologies_get` | Query | None |
+| `a3s_cloud_ontology_revisions_list` | Query | None |
+| `a3s_cloud_ontology_revisions_get` | Query | None |
+| `a3s_cloud_ontology_revisions_diff` | Query | None |
+| `a3s_cloud_ontologies_create` | Command | `ontology:write` |
+| `a3s_cloud_ontologies_revise` | Command | `ontology:write` |
 | `a3s_cloud_search` | Query | None |
 | `a3s_cloud_nodes_list` | Query | None |
 | `a3s_cloud_nodes_get` | Query | None |
@@ -177,6 +192,24 @@ Mutation tools require a caller-owned idempotency key in their arguments. A
 REST call and an MCP call with the same command input and key resolve to the
 same durable idempotency identity and replay projection.
 
+## Versioned Ontology lifecycle
+
+`a3s_cloud_ontologies_create` accepts `projectId`, at most 1 MiB of closed A3S
+ACL, and `idempotencyKey`. `a3s_cloud_ontologies_revise` accepts `ontologyId`,
+ACL, a positive `expectedVersion`, `idempotencyKey`, and an optional portable
+`migrationRuleId`. The optional rule is not a second policy source: a breaking
+deterministic diff is admitted only when that ID resolves to a rule of kind
+`migration` in the target ACL. Non-breaking changes derive the `compatible`
+policy from the same diff.
+
+The five read tools list/get Ontologies, list/get immutable revisions, and diff
+two exact revisions. They return the same REST DTOs and canonical ACL as the
+Workflow QueryBus. Create and revise return the same mutation envelope,
+including diff and replay status. Historical replay projects the aggregate at
+the accepted revision even when a later head exists. All seven tools use the
+same PostgreSQL/A3S ORM repository, audit, Outbox, Search projection, tenant
+guard, and application handlers as REST and CLI.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
@@ -224,13 +257,18 @@ The dedicated `C0.2m` scenario in
 control-plane binary with the shipped A3S ACL configuration and digest-pinned
 PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
-removal, and unsupported-version errors. It then proves the exact 23-tool
-administrator and 16-tool
+removal, and unsupported-version errors. The verified pre-extension evidence
+proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
+current expanded runner requires exact 35-tool administrator and 21-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
 record; and returns the same `404` business-error contract for foreign and
-missing Projects. It creates a real Environment, exercises all five operational
+missing Projects. It also creates an Ontology through REST, replays it through
+MCP, exercises all seven Ontology tools with a read-only token where
+applicable, rejects a breaking revision without its target migration rule,
+publishes the explicit migration, and proves historical replay after later
+revisions. It creates a real Environment, exercises all five operational
 list tools, verifies all eight detail/log/evidence tools and all five commands
 return bounded `NOT_FOUND` envelopes for missing resources, and rejects invalid
 read and command arguments. It also creates one Workload from A3S ACL, stops it
@@ -240,6 +278,10 @@ scope, revocation, Project, Environment, stopped Workload, and idempotency rows,
 plus zero plaintext credentials in responses, logs, evidence, or the PostgreSQL
 dump. Production persistence reaches PostgreSQL only through A3S ORM
 repositories.
+
+The expanded focused catalog, permission, lifecycle, migration, and replay
+tests pass. The updated clean PostgreSQL/A3S Box scenario and its Ontology row,
+revision, and idempotency assertions must pass before `W0.2` is verified.
 
 ## Current limits
 

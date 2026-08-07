@@ -73,6 +73,15 @@ revision, limits, and expiry, and commits audit/Outbox evidence. The client
 does not publish a Gateway snapshot, derive targets, or create a second MCP
 policy lifecycle.
 
+`listOntologies`, `getOntology`, `createOntologyFromAcl`,
+`listOntologyRevisions`, `getOntologyRevision`, `diffOntologyRevisions`, and
+`reviseOntologyFromAcl` expose the backend `W0.2` lifecycle through REST
+contract `1.11.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
+Revision requires a positive expected aggregate version and may name one
+portable migration rule ID; Cloud admits a breaking diff only when that exact
+target ACL rule has kind `migration`. The client does not parse Ontology ACL,
+infer migration policy, maintain revision state, or create a graph index.
+
 `bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
 lifecycle and require caller-owned idempotency keys. A bind names one exact
 published Skill AssetRelease; an unbind names the Skill Asset already present

@@ -33,25 +33,30 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 1. proves `server/discover`, mandatory per-request protocol/client metadata,
    matching transport headers, unsupported-version errors, complete-result
    metadata, and removal of the legacy initialization flow;
-2. compares the 23-tool administrator and 16-tool `cloud:read` catalogs and
+2. compares the 35-tool administrator and 21-tool `cloud:read` catalogs and
    verifies their behavioral annotations;
 3. proves a hidden mutation cannot be invoked and leaves no Project row;
 4. creates a Project through REST and replays the same command and idempotency
    key through MCP using one durable record;
-5. creates one Environment, exercises Node, Operation, Workload, Route, and
+5. creates an Ontology through REST, replays it through MCP, exercises all
+   seven Ontology tools, rejects a breaking revision without its exact target
+   migration rule, publishes the explicit migration, and proves historical
+   replay after later revisions;
+6. creates one Environment, exercises Node, Operation, Workload, Route, and
    BuildRun lists, checks missing Node, Workload, Deployment, Route, and
    BuildRun details plus Workload logs, BuildRun logs, and BuildRun evidence,
    and rejects invalid list/log bounds, cursors, and stream filters;
-6. checks all five replay-safe operational commands against missing resources,
+7. checks all five replay-safe operational commands against missing resources,
    rejects missing, empty, and forged command arguments, then creates a
    Workload from A3S ACL and proves MCP stop plus exact replay;
-7. rejects a forged organization argument and returns the same `404`
+8. rejects a forged organization argument and returns the same `404`
    business-error contract for a foreign and a missing Project;
-8. revokes the read-only Token through REST and requires the next MCP request
+9. revokes the read-only Token through REST and requires the next MCP request
    to return `401`; and
-9. requires the expected Project, Environment, stopped Workload, idempotency,
-   and Token-digest rows, read-only scope, revocation, and zero plaintext
-   credentials in responses, logs, evidence, or the PostgreSQL dump.
+10. requires the expected Project, Ontology head, three immutable Ontology
+    revisions, Environment, stopped Workload, idempotency, and Token-digest
+    rows, read-only scope, revocation, and zero plaintext credentials in
+    responses, logs, evidence, or the PostgreSQL dump.
 
 Both scenarios execute production PostgreSQL repositories through A3S ORM.
 The runner creates isolated temporary state and a digest-pinned PostgreSQL

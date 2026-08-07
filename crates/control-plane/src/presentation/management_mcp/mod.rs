@@ -7,6 +7,7 @@ mod handler;
 mod identity;
 mod module;
 mod nodes;
+mod ontology;
 mod operations;
 mod projects;
 mod protocol;

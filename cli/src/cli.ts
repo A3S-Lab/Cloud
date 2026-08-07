@@ -31,6 +31,13 @@ Commands:
   projects create NAME Create a project idempotently
   environments list    List environments in the selected project
   environments create NAME Create an environment idempotently
+  ontologies list       List Ontologies in the selected project
+  ontologies get ID     Get one Ontology aggregate
+  ontologies create     Create an Ontology from A3S ACL
+  ontologies revisions ID List immutable Ontology revision summaries
+  ontologies revision ID REV Get one immutable Ontology revision and canonical ACL
+  ontologies diff ID FROM TO Diff two revisions deterministically
+  ontologies revise ID  Publish a version-checked Ontology revision from A3S ACL
   assets list           List Assets in the selected organization
   assets get ID         Get one Asset
   assets create NAME KIND Create an Agent, MCP, or Skill Asset idempotently
@@ -121,7 +128,8 @@ Global options:
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL file for a desired-state mutation
-  --expected-version <n>    Current aggregate version for a node, membership, or MCP credential mutation
+  --expected-version <n>    Current aggregate version for a versioned mutation
+  --migration-rule <id>     Target ACL migration rule for a breaking Ontology revision
   --min-ready <n>           Required ready members for gateway-scopes create
   --max-unavailable <n>     Allowed unavailable members for gateway-scopes create
   --context-path <path>      Repository context for a Source build recipe

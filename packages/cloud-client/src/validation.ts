@@ -5,6 +5,7 @@ export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
 export const MAX_ACL_DOCUMENT_BYTES = 64 * 1024;
 export const MAX_MCP_SERVICE_PROFILE_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 export const MAX_MCP_ROUTE_POLICY_ACL_BYTES = 512 * 1024;
+export const MAX_ONTOLOGY_ACL_BYTES = 1024 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
@@ -113,6 +114,19 @@ export function validateMcpServiceProfileAcl(acl: string): void {
 
 export function validateMcpRoutePolicyAcl(acl: string): void {
   validateAclBytes(acl, MAX_MCP_ROUTE_POLICY_ACL_BYTES, 'MCP route policy ACL');
+}
+
+export function validateOntologyAcl(acl: string): void {
+  validateAclBytes(acl, MAX_ONTOLOGY_ACL_BYTES, 'Ontology ACL');
+}
+
+export function validateOntologyRevisionControl(expectedVersion: number, migrationRuleId?: string): void {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new RangeError('expected Ontology version must be a positive safe integer');
+  }
+  if (migrationRuleId !== undefined && !/^[A-Za-z0-9_-]{1,96}$/.test(migrationRuleId)) {
+    throw new TypeError('Ontology migration rule must be a portable rule ID');
+  }
 }
 
 function validateAclBytes(value: string, maximumBytes: number, label: string): void {

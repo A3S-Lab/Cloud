@@ -794,6 +794,20 @@ export type {
   RouteState,
 } from './edge';
 export type {
+  Ontology,
+  OntologyChange,
+  OntologyChangeCompatibility,
+  OntologyChangeKind,
+  OntologyDiff,
+  OntologyMigrationPolicy,
+  OntologyMigrationPolicyKind,
+  OntologyMutationResult,
+  OntologyResourceKind,
+  OntologyRevision,
+  OntologyRevisionSummary,
+  ReviseOntologyOptions,
+} from './ontology';
+export type {
   Secret,
   SecretDetails,
   SecretMutationResult,

@@ -182,6 +182,38 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(mcp_profile["post"]["responses"]["201"].is_object());
     assert!(mcp_profile["post"]["responses"]["413"].is_object());
     assert!(mcp_profile["post"]["responses"]["415"].is_object());
+    let ontology_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/ontologies"];
+    assert_eq!(ontology_collection["get"]["tags"], json!(["Workflow"]));
+    assert_eq!(ontology_collection["post"]["tags"], json!(["Workflow"]));
+    assert_eq!(
+        ontology_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        1_048_576
+    );
+    assert!(ontology_collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert!(ontology_collection["post"]["responses"]["201"].is_object());
+    assert!(ontology_collection["post"]["responses"]["413"].is_object());
+    assert!(ontology_collection["post"]["responses"]["415"].is_object());
+    let ontology_revision = &document["paths"]
+        ["/organizations/{organization_id}/ontologies/{ontology_id}/revisions"]["post"];
+    assert_eq!(ontology_revision["tags"], json!(["Workflow"]));
+    assert!(ontology_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    assert!(ontology_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-migration-rule"
+                && parameter["in"] == "header"
+                && parameter["required"] == false
+        })));
     let mcp_route_collection = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
     assert_eq!(mcp_route_collection["get"]["tags"], json!(["Edge"]));

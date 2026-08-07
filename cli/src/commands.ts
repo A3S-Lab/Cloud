@@ -1,7 +1,7 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
-import type { ParsedArguments } from './arguments';
 import { executeAgentCommand } from './agent-commands';
+import type { ParsedArguments } from './arguments';
 import { executeAssetCommand } from './asset-commands';
 import {
   positionalResourceName,
@@ -29,6 +29,7 @@ import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
+import { executeOntologyCommand } from './ontology-commands';
 import {
   buildEvidenceResult,
   buildRunLogsResult,
@@ -77,6 +78,9 @@ export async function executeCommand(
     throw usageError('a command and action are required; run a3s-cloud --help');
   }
   const command = `${positionals[0]} ${positionals[1]}`;
+  if (arguments_.migrationRuleId !== undefined && command !== 'ontologies revise') {
+    throw usageError('--migration-rule is valid only for ontologies revise');
+  }
   rejectMisplacedSourceRecipeOptions(command, arguments_);
   rejectMisplacedSecretValueOption(command, arguments_);
   rejectMisplacedIdentityOptions(command, arguments_);
@@ -115,6 +119,12 @@ export async function executeCommand(
   const searchResult = await executeSearchCommand(command, arguments_, context, cloudApi);
   if (searchResult !== undefined) {
     return searchResult;
+  }
+  const ontologyResult = await executeOntologyCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (ontologyResult !== undefined) {
+    return ontologyResult;
   }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

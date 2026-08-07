@@ -20,6 +20,7 @@ import {
   toolNames,
   uuidValue,
 } from './management-mcp-conformance-support';
+import { proveOntologyConformance } from './management-mcp-ontology-conformance';
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
@@ -284,6 +285,18 @@ conformanceIt(
     const replayData = objectValue(projectReplay.structured.data, 'MCP project replay data');
     expect(replayData.id).toBe(projectId);
     expect(replayData.replayed).toBe(true);
+
+    const ontologyEvidence = await proveOntologyConformance(
+      environment,
+      organizationId,
+      projectId,
+      credentials
+    );
+    const {
+      ontologyId,
+      firstRevisionId: firstOntologyRevisionId,
+      secondRevisionId: secondOntologyRevisionId,
+    } = ontologyEvidence;
 
     const restEnvironment = await restEnvelope(
       `${environment.baseUrl}/organizations/${organizationId}/projects/${projectId}/environments`,
@@ -738,6 +751,9 @@ workload "mcp-stop" {
       resources: {
         organizationId,
         projectId,
+        ontologyId,
+        firstOntologyRevisionId,
+        secondOntologyRevisionId,
         environmentId,
         workloadId,
         foreignOrganizationId,
@@ -750,6 +766,10 @@ workload "mcp-stop" {
         readOnlyTokenCreate: requestId(readOnlyToken.body, 'token-create request ID'),
         restProjectCreate: requestId(restProject.body, 'REST project request ID'),
         mcpProjectReplay: requestId(projectReplay.structured, 'MCP replay request ID'),
+        restOntologyCreate: ontologyEvidence.requestIds.restCreate,
+        mcpOntologyCreateReplay: ontologyEvidence.requestIds.mcpCreateReplay,
+        mcpOntologyCompatibleRevision: ontologyEvidence.requestIds.mcpCompatibleRevision,
+        mcpOntologyExplicitMigration: ontologyEvidence.requestIds.mcpExplicitMigration,
         restEnvironmentCreate: requestId(restEnvironment.body, 'REST environment request ID'),
         restWorkloadCreate: requestId(workloadCreate.body, 'REST Workload request ID'),
         mcpWorkloadStop: requestId(workloadStop.structured, 'MCP Workload stop request ID'),
@@ -773,6 +793,8 @@ workload "mcp-stop" {
         'scope-derived-tool-catalogs',
         'hidden-mutation-denial-without-side-effect',
         'rest-to-mcp-idempotency-replay',
+        'acl-native-versioned-ontology-lifecycle',
+        'ontology-migration-and-historical-replay',
         'operational-read-query-catalog',
         'bounded-operational-query-arguments',
         'paged-log-and-evidence-query-boundaries',

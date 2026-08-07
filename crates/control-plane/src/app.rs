@@ -122,6 +122,12 @@ use crate::modules::sources::{
     PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
+use crate::modules::workflow::{
+    CreateOntologyHandler, DiffOntologyRevisionsHandler, GetOntologyHandler,
+    GetOntologyRevisionHandler, IOntologyRepository, ListOntologiesHandler,
+    ListOntologyRevisionsHandler, PostgresOntologyRepository, ReviseOntologyHandler,
+    WorkflowModule,
+};
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -245,6 +251,8 @@ pub async fn build_application_with_source_resolver(
     let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
     let memberships: Arc<dyn IMembershipRepository> = identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let ontologies: Arc<dyn IOntologyRepository> =
+        Arc::new(PostgresOntologyRepository::new(executor.clone()));
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
@@ -799,6 +807,7 @@ pub async fn build_application_with_source_resolver(
             memberships,
             projects: projects.clone(),
             environments: projects,
+            ontologies,
             search,
             asset_catalog,
             mcp_service_profiles,
@@ -875,6 +884,7 @@ struct ApplicationDependencies {
     memberships: Arc<dyn IMembershipRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
+    ontologies: Arc<dyn IOntologyRepository>,
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
@@ -922,6 +932,7 @@ fn build_application_with_health(
         memberships,
         projects,
         environments,
+        ontologies,
         search,
         asset_catalog,
         mcp_service_profiles,
@@ -960,6 +971,14 @@ fn build_application_with_health(
     } = dependencies;
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
+    let create_ontology_projects = Arc::clone(&projects);
+    let create_ontologies = Arc::clone(&ontologies);
+    let revise_ontologies = Arc::clone(&ontologies);
+    let get_ontologies = Arc::clone(&ontologies);
+    let list_ontologies = Arc::clone(&ontologies);
+    let get_ontology_revisions = Arc::clone(&ontologies);
+    let list_ontology_revisions = Arc::clone(&ontologies);
+    let diff_ontology_revisions = Arc::clone(&ontologies);
     let agent_conversation_environments = Arc::clone(&environments);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
@@ -1216,6 +1235,12 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
+                )
+                .command_handler::<crate::modules::workflow::CreateOntology, _>(
+                    CreateOntologyHandler::new(create_ontology_projects, create_ontologies),
+                )
+                .command_handler::<crate::modules::workflow::ReviseOntology, _>(
+                    ReviseOntologyHandler::new(revise_ontologies),
                 )
                 .command_handler::<crate::modules::assets::CreateAsset, _>(
                     CreateAssetHandler::new(create_assets),
@@ -1499,6 +1524,21 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::projects::ListEnvironments, _>(
                     ListEnvironmentsHandler::new(list_environment_projects, query_environments),
                 )
+                .query_handler::<crate::modules::workflow::GetOntology, _>(
+                    GetOntologyHandler::new(get_ontologies),
+                )
+                .query_handler::<crate::modules::workflow::ListOntologies, _>(
+                    ListOntologiesHandler::new(list_ontologies),
+                )
+                .query_handler::<crate::modules::workflow::GetOntologyRevision, _>(
+                    GetOntologyRevisionHandler::new(get_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::ListOntologyRevisions, _>(
+                    ListOntologyRevisionsHandler::new(list_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::DiffOntologyRevisions, _>(
+                    DiffOntologyRevisionsHandler::new(diff_ontology_revisions),
+                )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),
                 )
@@ -1652,6 +1692,7 @@ fn build_application_with_health(
         )
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
+        .import(WorkflowModule)
         .import(SearchModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))

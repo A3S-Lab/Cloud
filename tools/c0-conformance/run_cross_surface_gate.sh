@@ -339,6 +339,15 @@ if [[ $scenario == management-mcp ]]; then
   mcp_environment_count="$(postgres_query \
     "select count(*) from environments e join projects p on p.organization_id = e.organization_id and p.id = e.project_id where p.name = 'MCP Conformance Project' and e.name = 'MCP Operational Environment'")"
   [[ $mcp_environment_count == 1 ]] || die "PostgreSQL did not retain the expected MCP operational environment"
+  mcp_ontology_count="$(postgres_query \
+    "select count(*) from ontologies o join projects p on p.organization_id = o.organization_id and p.id = o.project_id where p.name = 'MCP Conformance Project' and o.name = 'Support' and o.aggregate_version = 3")"
+  [[ $mcp_ontology_count == 1 ]] || die "PostgreSQL did not retain the expected versioned Ontology"
+  mcp_ontology_revision_count="$(postgres_query \
+    "select count(*) from ontology_revisions r join ontologies o on o.organization_id = r.organization_id and o.id = r.ontology_id join projects p on p.organization_id = o.organization_id and p.id = o.project_id where p.name = 'MCP Conformance Project' and o.name = 'Support'")"
+  [[ $mcp_ontology_revision_count == 3 ]] || die "PostgreSQL did not retain the three expected Ontology revisions"
+  mcp_ontology_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key in ('c0:mcp:rest-ontology', 'c0:mcp:ontology-compatible', 'c0:mcp:ontology-breaking')")"
+  [[ $mcp_ontology_idempotency_count == 3 ]] || die "Ontology replay did not preserve one record per accepted idempotency identity"
   hidden_project_count="$(postgres_query \
     "select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
   [[ $hidden_project_count == 0 ]] || die "hidden MCP mutation changed PostgreSQL state"

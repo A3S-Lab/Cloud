@@ -22,13 +22,13 @@ import type {
   CancelBuildRunResult,
   CancelDeploymentResult,
   CreateApiTokenInput,
-  CreateServiceMembershipInput,
   CreateAssetInput,
   CreateAssetReleaseInput,
   CreateExecutionInput,
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
   CreateMcpCredentialInput,
+  CreateServiceMembershipInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
@@ -56,6 +56,11 @@ import type {
   MembershipMutationResult,
   MembershipRole,
   Node,
+  Ontology,
+  OntologyDiff,
+  OntologyMutationResult,
+  OntologyRevision,
+  OntologyRevisionSummary,
   Operation,
   Organization,
   OrganizationMutationResult,
@@ -64,6 +69,7 @@ import type {
   PublishRouteInput,
   ResolveSourceRevisionInput,
   RetryBuildRunResult,
+  ReviseOntologyOptions,
   RevokeMcpCredentialInput,
   RotateMcpCredentialInput,
   Route,
@@ -85,16 +91,18 @@ import type {
 } from './types';
 import {
   validateApiTokenInput,
-  validateExpectedMembershipVersion,
-  validateMembershipRole,
   validateEnrollmentTokenInput,
   validateExpectedMcpCredentialVersion,
+  validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
   validateMcpCredentialExpiry,
   validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
-  validateServiceMembershipInput,
+  validateMembershipRole,
+  validateOntologyAcl,
+  validateOntologyRevisionControl,
   validateSecretValue,
+  validateServiceMembershipInput,
   validateWorkloadAcl,
 } from './validation';
 
@@ -110,7 +118,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.10.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.11.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
@@ -119,6 +127,7 @@ export {
   MAX_ACL_DOCUMENT_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
+  MAX_ONTOLOGY_ACL_BYTES,
   MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './validation';
@@ -326,6 +335,103 @@ export class CloudApi {
       idempotencyKey,
       { name },
       signal
+    );
+  }
+
+  listOntologies(organizationId: string, projectId: string, signal?: AbortSignal): Promise<Ontology[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/ontologies`,
+      signal
+    );
+  }
+
+  getOntology(organizationId: string, ontologyId: string, signal?: AbortSignal): Promise<Ontology> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/ontologies/${encodeURIComponent(ontologyId)}`,
+      signal
+    );
+  }
+
+  createOntologyFromAcl(
+    organizationId: string,
+    projectId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OntologyMutationResult> {
+    validateOntologyAcl(acl);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/ontologies`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
+  listOntologyRevisions(
+    organizationId: string,
+    ontologyId: string,
+    signal?: AbortSignal
+  ): Promise<OntologyRevisionSummary[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}/revisions`,
+      signal
+    );
+  }
+
+  getOntologyRevision(
+    organizationId: string,
+    ontologyId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<OntologyRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  diffOntologyRevisions(
+    organizationId: string,
+    ontologyId: string,
+    fromRevisionId: string,
+    toRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<OntologyDiff> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}` +
+        `/revisions/${encodeURIComponent(fromRevisionId)}` +
+        `/diff/${encodeURIComponent(toRevisionId)}`,
+      signal
+    );
+  }
+
+  reviseOntologyFromAcl(
+    organizationId: string,
+    ontologyId: string,
+    acl: string,
+    options: ReviseOntologyOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OntologyMutationResult> {
+    validateOntologyAcl(acl);
+    validateOntologyRevisionControl(options.expectedVersion, options.migrationRuleId);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}/revisions`,
+      idempotencyKey,
+      acl,
+      signal,
+      {
+        'x-a3s-expected-version': String(options.expectedVersion),
+        ...(options.migrationRuleId === undefined ? {} : { 'x-a3s-migration-rule': options.migrationRuleId }),
+      }
     );
   }
 
@@ -1628,12 +1734,19 @@ export class CloudApi {
     return this.postAcl(path, idempotencyKey, acl, signal);
   }
 
-  private postAcl<T>(path: string, idempotencyKey: string, acl: string, signal?: AbortSignal): Promise<T> {
+  private postAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    acl: string,
+    signal?: AbortSignal,
+    additionalHeaders?: Readonly<Record<string, string>>
+  ): Promise<T> {
     return this.request('POST', path, {
       body: acl,
       contentType: A3S_ACL_MEDIA_TYPE,
       idempotencyKey,
       signal,
+      additionalHeaders,
     });
   }
 
@@ -1646,6 +1759,7 @@ export class CloudApi {
       healthResponse?: boolean;
       idempotencyKey?: string;
       signal?: AbortSignal;
+      additionalHeaders?: Readonly<Record<string, string>>;
     }
   ): Promise<T> {
     if (options.idempotencyKey !== undefined && !isValidIdempotencyKey(options.idempotencyKey)) {
@@ -1675,6 +1789,9 @@ export class CloudApi {
     }
     if (options.body !== undefined) {
       headers['Content-Type'] = options.contentType as string;
+    }
+    for (const [name, value] of Object.entries(options.additionalHeaders ?? {})) {
+      headers[name] = value;
     }
 
     try {

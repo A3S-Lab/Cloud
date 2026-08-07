@@ -36,6 +36,7 @@ use crate::modules::sources::domain::{
 use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
 };
+use crate::modules::workflow::InMemoryOntologyRepository;
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use base64::engine::general_purpose::STANDARD_NO_PAD;
@@ -54,6 +55,7 @@ mod build_tests;
 mod execution_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
+mod ontology_tests;
 mod platform_tests;
 mod search_tests;
 mod secret_tests;
@@ -846,6 +848,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             memberships: identity,
             projects: projects.clone(),
             environments: projects,
+            ontologies: Arc::new(InMemoryOntologyRepository::new()),
             search,
             asset_catalog,
             mcp_service_profiles,

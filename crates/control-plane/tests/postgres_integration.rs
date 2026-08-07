@@ -90,6 +90,25 @@ mod workloads_support;
 
 use postgres_fixture::*;
 
+const ONTOLOGY_ACL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/w0.1/ontology.acl"
+));
+
+fn integration_breaking_ontology_acl(compatible_acl: &str) -> String {
+    let changed = compatible_acl.replacen(
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        1,
+    );
+    let body = changed
+        .strip_suffix("}\n")
+        .expect("public Ontology fixture must end with its root block");
+    format!(
+        "{body}\n  rule \"migrate_ticket_v2\" {{\n    label = \"Migrate ticket v2\"\n    kind = \"migration\"\n    expression_digest = \"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"\n  }}\n}}\n"
+    )
+}
+
 struct OfflineCommitSourceResolver;
 
 #[async_trait]
@@ -548,6 +567,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
              drop table if exists identity_principals cascade;
+             drop table if exists ontology_revisions cascade;
+             drop table if exists ontologies cascade;
              drop table if exists operation_projections cascade;
              drop table if exists operation_requests cascade;
              drop table if exists audit_records cascade;
@@ -565,7 +586,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists a3s_orm_rollback_probe cascade;
              drop table if exists a3s_orm_migrations cascade;
              drop function if exists reject_cloud_outbox() cascade;
-             drop function if exists reject_outbox_ack() cascade;",
+             drop function if exists reject_outbox_ack() cascade;
+             drop function if exists reject_ontology_revision_mutation() cascade;",
         )
         .await?;
 
@@ -576,11 +598,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 74);
+    assert_eq!(applied, 75);
     for table in [
         "agent_conversations",
         "agent_executions",
         "agent_execution_events",
+        "ontologies",
+        "ontology_revisions",
     ] {
         let relation = database
             .fetch_one_as(
@@ -618,6 +642,18 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         search_projection.as_deref(),
         Some("authorized_search_projections")
     );
+    let ontology_search_projection = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_viewdef('authorized_search_projections'::regclass, true)",
+        ))
+        .await?;
+    assert!(ontology_search_projection.contains("'ontology'::text"));
+    let immutable_revision_trigger = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid = 'ontology_revisions'::regclass and tgname = 'ontology_revisions_immutable' and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(immutable_revision_trigger, 1);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
@@ -1652,6 +1688,125 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(project_replay.status(), 200);
     assert_eq!(response_id(&project)?, response_id(&project_replay)?);
     let project_id = response_id(&project)?;
+
+    let ontology_path =
+        format!("/api/v1/organizations/{organization_id}/projects/{project_id}/ontologies");
+    let create_ontology = || {
+        BootRequest::new(HttpMethod::Post, &ontology_path)
+            .with_header("content-type", "application/vnd.a3s.acl")
+            .with_header("idempotency-key", "ontology-support")
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+            .with_body(ONTOLOGY_ACL.as_bytes().to_vec())
+    };
+    let ontology = app.call(create_ontology()).await?;
+    let ontology_replay = app.call(create_ontology()).await?;
+    assert_eq!(ontology.status(), 201);
+    assert_eq!(ontology_replay.status(), 200);
+    let ontology_body = response_json(&ontology)?;
+    let ontology_id = ontology_body["data"]["ontology"]["id"]
+        .as_str()
+        .ok_or("Ontology response has no ID")?
+        .to_owned();
+    assert_eq!(
+        response_json(&ontology_replay)?["data"]["ontology"]["id"],
+        ontology_id
+    );
+    let ontology_root = format!("/api/v1/organizations/{organization_id}/ontologies/{ontology_id}");
+    let compatible_acl = ONTOLOGY_ACL.replace(
+        "Deterministic W0.1 Ontology contract fixture",
+        "PostgreSQL-compatible description revision",
+    );
+    let compatible_revision_request = || {
+        BootRequest::new(HttpMethod::Post, format!("{ontology_root}/revisions"))
+            .with_header("content-type", "application/vnd.a3s.acl")
+            .with_header("idempotency-key", "ontology-support-compatible")
+            .with_header("x-a3s-expected-version", "1")
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+            .with_body(compatible_acl.as_bytes().to_vec())
+    };
+    let compatible_revision = app.call(compatible_revision_request()).await?;
+    assert_eq!(compatible_revision.status(), 201);
+
+    let breaking_acl = integration_breaking_ontology_acl(&compatible_acl);
+    let breaking_without_migration = app
+        .call(
+            BootRequest::new(HttpMethod::Post, format!("{ontology_root}/revisions"))
+                .with_header("content-type", "application/vnd.a3s.acl")
+                .with_header("idempotency-key", "ontology-support-breaking-rejected")
+                .with_header("x-a3s-expected-version", "2")
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+                .with_body(breaking_acl.as_bytes().to_vec()),
+        )
+        .await?;
+    assert_eq!(breaking_without_migration.status(), 422);
+    let explicit_migration = app
+        .call(
+            BootRequest::new(HttpMethod::Post, format!("{ontology_root}/revisions"))
+                .with_header("content-type", "application/vnd.a3s.acl")
+                .with_header("idempotency-key", "ontology-support-breaking")
+                .with_header("x-a3s-expected-version", "2")
+                .with_header("x-a3s-migration-rule", "migrate_ticket_v2")
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+                .with_body(breaking_acl.as_bytes().to_vec()),
+        )
+        .await?;
+    assert_eq!(explicit_migration.status(), 201);
+    assert_eq!(
+        response_json(&explicit_migration)?["data"]["revision"]["migrationPolicy"]["kind"],
+        "explicit"
+    );
+    let historical_create_replay = app.call(create_ontology()).await?;
+    assert_eq!(historical_create_replay.status(), 200);
+    assert_eq!(
+        response_json(&historical_create_replay)?["data"]["ontology"]["currentRevisionNumber"],
+        1
+    );
+    let historical_revision_replay = app.call(compatible_revision_request()).await?;
+    assert_eq!(historical_revision_replay.status(), 200);
+    let historical_revision_replay = response_json(&historical_revision_replay)?;
+    assert_eq!(
+        historical_revision_replay["data"]["ontology"]["currentRevisionNumber"],
+        2
+    );
+    assert_eq!(
+        historical_revision_replay["data"]["revision"]["revisionNumber"],
+        2
+    );
+    let ontology_storage = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64)>(
+                "select (select count(*) from ontologies where organization_id = ",
+            )
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append(" and aggregate_version = 3), (select count(*) from ontology_revisions where organization_id = ")
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and ontology_id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append("), (select count(*) from audit_records where organization_id = ")
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and aggregate_id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append(" and action in ('workflow.ontology.created', 'workflow.ontology.revised')), (select count(*) from authorized_search_projections where organization_id = ")
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and resource_kind = 'ontology' and resource_id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(ontology_storage, (1, 3, 3, 1));
+    let immutable_revision = database
+        .execute(
+            sql_query::<()>("update ontology_revisions set canonical_acl = canonical_acl where organization_id = ")
+                .bind(Uuid::parse_str(&organization_id)?)
+                .append(" and ontology_id = ")
+                .bind(Uuid::parse_str(&ontology_id)?),
+        )
+        .await;
+    assert!(immutable_revision.err().is_some_and(|error| error
+        .to_string()
+        .contains("Ontology revisions are immutable")));
 
     let environment_path =
         format!("/api/v1/organizations/{organization_id}/projects/{project_id}/environments");
