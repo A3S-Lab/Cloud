@@ -808,6 +808,27 @@ export type {
   ReviseOntologyOptions,
 } from './ontology';
 export type {
+  PublishWorkflowDefinitionInput,
+  ReviseWorkflowDefinitionOptions,
+  WorkflowCapabilityOwner,
+  WorkflowCapabilityReference,
+  WorkflowCapabilityType,
+  WorkflowDefinition,
+  WorkflowDefinitionMutationResult,
+  WorkflowGoal,
+  WorkflowGoalMutationResult,
+  WorkflowPayload,
+  WorkflowPayloadAclInput,
+  WorkflowPayloadKind,
+  WorkflowPlan,
+  WorkflowPlanEdge,
+  WorkflowPlanRevision,
+  WorkflowPlanStep,
+  WorkflowRevision,
+  WorkflowRevisionSummary,
+  WorkflowStepKind,
+} from './workflow';
+export type {
   Secret,
   SecretDetails,
   SecretMutationResult,

@@ -146,7 +146,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
-| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1` and the backend `W0.2` Ontology lifecycle implemented; real PostgreSQL verification and `W0.3`-`W0.5` remain) |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan slice are implemented; real PostgreSQL verification plus WorkflowRun execution and `W0.4`-`W0.5` remain) |
 | `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
@@ -783,12 +783,13 @@ authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
 
-The current catalog contains 35 administrator tools and 21 read-only tools:
+The current catalog contains 45 administrator tools and 28 read-only tools:
 the verified catalog is retained, five Identity tools come from the first
-`C0.3` slice, and seven Ontology tools come from backend `W0.2`. Focused
-catalog, permission, strict-argument, lifecycle, migration, and historical
-replay tests pass. The expanded clean real-PostgreSQL/A3S Box gate must rerun
-before `W0.2` is verified.
+`C0.3` slice, seven Ontology tools come from backend `W0.2`, and ten Workflow
+definition/goal/plan tools come from the `W0.3` planning slice. Focused
+catalog, permission, strict-argument, lifecycle, migration, deterministic-plan,
+and historical-replay tests pass. The expanded clean real-PostgreSQL/A3S Box
+gate must rerun before these persistence slices are verified.
 
 The first backend-only `C0.3` slice adds one Identity-owned Principal,
 Membership, credential, and revocation authority without adding another RBAC
@@ -800,7 +801,7 @@ revocation are enforced on the next request, restricted memberships fail
 closed until explicit Resource Grants exist, and the last active owner cannot
 be removed. A3S ORM migration `074` backfills existing credentials and owners;
 new writes atomically retain idempotency, Outbox facts, and audit. REST/OpenAPI
-contract `1.11.0`, the maintained client, CLI, and five administrator-only
+contract `1.12.0`, the maintained client, CLI, and five administrator-only
 Management MCP tools reuse the same application handlers. Resource Grants are
 the next slice; invitations and external OIDC issuer/subject links must attach
 to the same Principal and Membership authority. Attribution, notifications,
@@ -1355,8 +1356,8 @@ Operations remains the only durable orchestration mechanism.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
-| `W0.2` | Implemented; verification pending | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.11.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests pass; clean real-PostgreSQL and expanded cross-surface evidence remain required |
-| `W0.3` | Planned | Persist Workflow definitions, canonical step payloads, and goals; compile deterministic immutable plans; run human/service/finite-task steps through one Operation and A3S Flow; and expose authorized lifecycle/history projections |
+| `W0.2` | Implemented; verification pending | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.12.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests pass; clean real-PostgreSQL and expanded cross-surface evidence remain required |
+| `W0.3` | In progress; planning slice implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. REST `1.12.0`, client, CLI, and ten Management MCP tools share the same CQRS lifecycle and historical idempotency replay. WorkflowRun, human decisions, service/finite-task dispatch through one Operation/A3S Flow, recovery projections, and clean real-PostgreSQL evidence remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
@@ -1455,10 +1456,11 @@ The default portfolio priority is:
    pass, then start single-host `U0.3` only after the shared Manager mutation
    saga and `C0.3` authorization/audit are ready; keep executable and
    multi-host surfaces behind `U0.4` and `U0.5`;
-10. retain the implemented `W0.1` contracts and backend `W0.2` Ontology
-    lifecycle, close the real-PostgreSQL and expanded cross-surface `W0.2`
-    evidence, then implement `W0.3` on Operations and A3S Flow without waiting
-    for every external step provider;
+10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
+    and `W0.3` definition/goal/deterministic-plan slice; close their
+    real-PostgreSQL and expanded cross-surface evidence, then finish WorkflowRun
+    execution on Operations and A3S Flow without waiting for every external
+    step provider;
 11. add `W0.4` only as its selected `A1.3`, `MCP0.5`, `I0.2`, and `U0.4`
     provider contracts pass, then close `W0.5` through multi-day recovery,
     migration, compensation, tenant, scale, and operator evidence;

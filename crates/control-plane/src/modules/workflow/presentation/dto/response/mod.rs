@@ -1,3 +1,5 @@
+mod workflow_response;
+
 use crate::modules::workflow::application::queries::diff_ontology_revisions::OntologyRevisionDiff;
 use crate::modules::workflow::application::OntologyMutationResult;
 use crate::modules::workflow::domain::{
@@ -6,6 +8,12 @@ use crate::modules::workflow::domain::{
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
+
+pub use workflow_response::{
+    PlanRevisionResponse, WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse,
+    WorkflowGoalMutationResponse, WorkflowGoalResponse, WorkflowRevisionResponse,
+    WorkflowRevisionSummaryResponse,
+};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

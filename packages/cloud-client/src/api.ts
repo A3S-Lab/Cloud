@@ -70,6 +70,7 @@ import type {
   ResolveSourceRevisionInput,
   RetryBuildRunResult,
   ReviseOntologyOptions,
+  ReviseWorkflowDefinitionOptions,
   RevokeMcpCredentialInput,
   RotateMcpCredentialInput,
   Route,
@@ -88,6 +89,14 @@ import type {
   WorkloadDeploymentResult,
   WorkloadLogStreamFilter,
   WorkloadLogsPage,
+  WorkflowDefinition,
+  WorkflowDefinitionMutationResult,
+  WorkflowGoal,
+  WorkflowGoalMutationResult,
+  WorkflowPlanRevision,
+  WorkflowRevision,
+  WorkflowRevisionSummary,
+  PublishWorkflowDefinitionInput,
 } from './types';
 import {
   validateApiTokenInput,
@@ -101,6 +110,9 @@ import {
   validateMembershipRole,
   validateOntologyAcl,
   validateOntologyRevisionControl,
+  validateWorkflowDefinitionPublication,
+  validateWorkflowGoalAcl,
+  validateWorkflowRevisionControl,
   validateSecretValue,
   validateServiceMembershipInput,
   validateWorkloadAcl,
@@ -118,7 +130,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.11.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.12.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
@@ -128,6 +140,11 @@ export {
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
+  MAX_WORKFLOW_DEFINITION_ACL_BYTES,
+  MAX_WORKFLOW_GOAL_ACL_BYTES,
+  MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
+  MAX_WORKFLOW_REVISION_PAYLOAD_BYTES,
+  MAX_WORKFLOW_REVISION_PAYLOADS,
   MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './validation';
@@ -432,6 +449,148 @@ export class CloudApi {
         'x-a3s-expected-version': String(options.expectedVersion),
         ...(options.migrationRuleId === undefined ? {} : { 'x-a3s-migration-rule': options.migrationRuleId }),
       }
+    );
+  }
+
+  listWorkflowDefinitions(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinition[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-definitions`,
+      signal
+    );
+  }
+
+  getWorkflowDefinition(
+    organizationId: string,
+    workflowDefinitionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinition> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}`,
+      signal
+    );
+  }
+
+  createWorkflowDefinitionFromAcl(
+    organizationId: string,
+    projectId: string,
+    input: PublishWorkflowDefinitionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinitionMutationResult> {
+    validateWorkflowDefinitionPublication(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-definitions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  listWorkflowRevisions(
+    organizationId: string,
+    workflowDefinitionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRevisionSummary[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}/revisions`,
+      signal
+    );
+  }
+
+  getWorkflowRevision(
+    organizationId: string,
+    workflowDefinitionId: string,
+    workflowRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}` +
+        `/revisions/${encodeURIComponent(workflowRevisionId)}`,
+      signal
+    );
+  }
+
+  reviseWorkflowDefinitionFromAcl(
+    organizationId: string,
+    workflowDefinitionId: string,
+    input: PublishWorkflowDefinitionInput,
+    options: ReviseWorkflowDefinitionOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinitionMutationResult> {
+    validateWorkflowDefinitionPublication(input);
+    validateWorkflowRevisionControl(options.expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}/revisions`,
+      idempotencyKey,
+      input,
+      signal,
+      { 'x-a3s-expected-version': String(options.expectedVersion) }
+    );
+  }
+
+  listWorkflowGoals(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowGoal[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-goals`,
+      signal
+    );
+  }
+
+  getWorkflowGoal(
+    organizationId: string,
+    workflowGoalId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowGoal> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-goals/${encodeURIComponent(workflowGoalId)}`,
+      signal
+    );
+  }
+
+  createWorkflowGoalFromAcl(
+    organizationId: string,
+    projectId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowGoalMutationResult> {
+    validateWorkflowGoalAcl(acl);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-goals`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
+  getWorkflowPlanRevision(
+    organizationId: string,
+    workflowGoalId: string,
+    planRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowPlanRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-goals/${encodeURIComponent(workflowGoalId)}` +
+        `/plan-revisions/${encodeURIComponent(planRevisionId)}`,
+      signal
     );
   }
 
@@ -1695,12 +1854,19 @@ export class CloudApi {
     return this.request('POST', path, { idempotencyKey, signal });
   }
 
-  private postJson<T>(path: string, idempotencyKey: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  private postJson<T>(
+    path: string,
+    idempotencyKey: string,
+    body: unknown,
+    signal?: AbortSignal,
+    additionalHeaders?: Readonly<Record<string, string>>
+  ): Promise<T> {
     return this.request('POST', path, {
       body: JSON.stringify(body),
       contentType: 'application/json',
       idempotencyKey,
       signal,
+      additionalHeaders,
     });
   }
 

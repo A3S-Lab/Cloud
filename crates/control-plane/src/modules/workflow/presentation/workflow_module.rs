@@ -1,4 +1,7 @@
-use super::controllers::{ontology_commands_controller, ontology_queries_controller};
+use super::controllers::{
+    ontology_commands_controller, ontology_queries_controller, workflow_commands_controller,
+    workflow_queries_controller,
+};
 use a3s_boot::{CommandBus, ControllerDefinition, Module, ModuleRef, QueryBus, Result};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -13,6 +16,8 @@ impl Module for WorkflowModule {
         Ok(vec![
             ontology_commands_controller(module_ref.get::<CommandBus>()?)?,
             ontology_queries_controller(module_ref.get::<QueryBus>()?)?,
+            workflow_commands_controller(module_ref.get::<CommandBus>()?)?,
+            workflow_queries_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }
 }

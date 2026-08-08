@@ -1,3 +1,4 @@
+mod canonical_json;
 mod git_commit_sha;
 mod idempotency;
 mod identifiers;
@@ -6,6 +7,7 @@ mod resource_name;
 mod sha256_digest;
 mod timestamp;
 
+pub use canonical_json::{canonical_json_bounded, sha256_digest};
 pub use git_commit_sha::GitCommitSha;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{

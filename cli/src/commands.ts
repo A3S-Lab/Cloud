@@ -30,6 +30,7 @@ import { usageError } from './errors';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
 import { executeOntologyCommand } from './ontology-commands';
+import { executeWorkflowCommand } from './workflow-commands';
 import {
   buildEvidenceResult,
   buildRunLogsResult,
@@ -125,6 +126,12 @@ export async function executeCommand(
   });
   if (ontologyResult !== undefined) {
     return ontologyResult;
+  }
+  const workflowResult = await executeWorkflowCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (workflowResult !== undefined) {
+    return workflowResult;
   }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

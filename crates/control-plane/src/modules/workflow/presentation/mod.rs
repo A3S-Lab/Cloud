@@ -4,6 +4,8 @@ mod workflow_module;
 
 pub(crate) use dto::{
     OntologyDiffResponse, OntologyMutationResponse, OntologyResponse, OntologyRevisionResponse,
-    OntologyRevisionSummaryResponse,
+    OntologyRevisionSummaryResponse, PlanRevisionResponse, WorkflowDefinitionMutationResponse,
+    WorkflowDefinitionResponse, WorkflowGoalMutationResponse, WorkflowGoalResponse,
+    WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
 };
 pub use workflow_module::WorkflowModule;

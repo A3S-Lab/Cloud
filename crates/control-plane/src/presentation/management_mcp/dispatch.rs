@@ -15,10 +15,17 @@ use super::ontology::{
 };
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
+use super::workflow::{
+    CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments, ListProjectWorkflowArguments,
+    ReviseWorkflowDefinitionArguments, WorkflowDefinitionArguments, WorkflowGoalArguments,
+    WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
+};
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
-use super::{artifacts, edge, identity, nodes, ontology, operations, projects, search, workloads};
+use super::{
+    artifacts, edge, identity, nodes, ontology, operations, projects, search, workflow, workloads,
+};
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
@@ -164,6 +171,69 @@ pub async fn execute(
         ManagementTool::OntologyRevisionsDiff => {
             let arguments = arguments::parse::<OntologyDiffArguments>(arguments).ok()?;
             ontology::diff_revisions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowDefinitionsCreate => {
+            let arguments =
+                arguments::parse::<CreateWorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::create_definition(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowDefinitionsRevise => {
+            let arguments =
+                arguments::parse::<ReviseWorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::revise_definition(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowDefinitionsList => {
+            let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
+            workflow::list_definitions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowDefinitionsGet => {
+            let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::get_definition(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRevisionsList => {
+            let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::list_revisions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRevisionsGet => {
+            let arguments = arguments::parse::<WorkflowRevisionArguments>(arguments).ok()?;
+            workflow::get_revision(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowGoalsCreate => {
+            let arguments = arguments::parse::<CreateWorkflowGoalArguments>(arguments).ok()?;
+            workflow::create_goal(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowGoalsList => {
+            let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
+            workflow::list_goals(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowGoalsGet => {
+            let arguments = arguments::parse::<WorkflowGoalArguments>(arguments).ok()?;
+            workflow::get_goal(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowPlanRevisionsGet => {
+            let arguments = arguments::parse::<WorkflowPlanRevisionArguments>(arguments).ok()?;
+            workflow::get_plan_revision(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;

@@ -120,19 +120,26 @@ Search index authoritative.
 | `W0.4` | Add immutable Agent, MCP, model, Tool, and business-service step bindings with typed inputs/outputs, compensation, approval, and bounded evidence references | `W0.3`, provider-neutral `A1.3`, `MCP0.5`, `I0.2`, `U0.4` where a Use surface is selected |
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
-`W0.1` and the backend implementation of `W0.2` are now present. Migration
+`W0.1`, the backend implementation of `W0.2`, and the planning/persistence/API
+portion of `W0.3` are now present. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
-and deterministic diff are exposed through REST `1.11.0`, the maintained
+and deterministic diff are exposed through REST `1.12.0`, the maintained
 client, CLI, and seven Management MCP tools; Search has one rebuildable current
 Ontology projection. Compatible migration policy is derived from the diff. A
 breaking change is valid only when the caller names an exact rule in the
 target ACL whose kind is `migration`; there is no separate policy document or
-migration registry. Historical idempotency replay reconstructs the aggregate
+migration registry. Migration `076` stores project-scoped WorkflowDefinition
+heads, immutable Workflow revisions, every exact referenced closed ACL
+payload, immutable Goals, and deterministic Plan revisions through the same
+A3S ORM transaction boundary. REST `1.12.0`, the maintained client, CLI, and
+ten additional Management MCP tools reuse the same CQRS handlers. Historical
+idempotency replay reconstructs the aggregate
 as it existed at the referenced revision instead of pairing an old revision
 with the current head. Focused tests pass, while clean real-PostgreSQL and
-expanded cross-surface conformance still block `W0.2` verification and all
-Workflow execution remains unavailable.
+expanded cross-surface conformance still block persistence verification.
+WorkflowRun, human/service/finite-task dispatch through one Operation/A3S
+Flow, recovery, and all public Workflow execution remain unavailable.
 
 ### 4.3 Compiler rules
 

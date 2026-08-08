@@ -123,9 +123,14 @@ use crate::modules::sources::{
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
 use crate::modules::workflow::{
-    CreateOntologyHandler, DiffOntologyRevisionsHandler, GetOntologyHandler,
-    GetOntologyRevisionHandler, IOntologyRepository, ListOntologiesHandler,
-    ListOntologyRevisionsHandler, PostgresOntologyRepository, ReviseOntologyHandler,
+    CreateOntologyHandler, CreateWorkflowDefinitionHandler, CreateWorkflowGoalHandler,
+    DiffOntologyRevisionsHandler, GetOntologyHandler, GetOntologyRevisionHandler,
+    GetPlanRevisionHandler, GetWorkflowDefinitionHandler, GetWorkflowGoalHandler,
+    GetWorkflowRevisionHandler, IOntologyRepository, IWorkflowDefinitionRepository,
+    IWorkflowGoalRepository, ListOntologiesHandler, ListOntologyRevisionsHandler,
+    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
+    PostgresWorkflowGoalRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
     WorkflowModule,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
@@ -253,6 +258,10 @@ pub async fn build_application_with_source_resolver(
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let ontologies: Arc<dyn IOntologyRepository> =
         Arc::new(PostgresOntologyRepository::new(executor.clone()));
+    let workflow_definitions: Arc<dyn IWorkflowDefinitionRepository> =
+        Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
+    let workflow_goals: Arc<dyn IWorkflowGoalRepository> =
+        Arc::new(PostgresWorkflowGoalRepository::new(executor.clone()));
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
@@ -808,6 +817,8 @@ pub async fn build_application_with_source_resolver(
             projects: projects.clone(),
             environments: projects,
             ontologies,
+            workflow_definitions,
+            workflow_goals,
             search,
             asset_catalog,
             mcp_service_profiles,
@@ -885,6 +896,8 @@ struct ApplicationDependencies {
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
+    workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
+    workflow_goals: Arc<dyn IWorkflowGoalRepository>,
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
@@ -933,6 +946,8 @@ fn build_application_with_health(
         projects,
         environments,
         ontologies,
+        workflow_definitions,
+        workflow_goals,
         search,
         asset_catalog,
         mcp_service_profiles,
@@ -979,6 +994,21 @@ fn build_application_with_health(
     let get_ontology_revisions = Arc::clone(&ontologies);
     let list_ontology_revisions = Arc::clone(&ontologies);
     let diff_ontology_revisions = Arc::clone(&ontologies);
+    let create_workflow_projects = Arc::clone(&projects);
+    let create_workflow_definitions = Arc::clone(&workflow_definitions);
+    let revise_workflow_definitions = Arc::clone(&workflow_definitions);
+    let get_workflow_definitions = Arc::clone(&workflow_definitions);
+    let list_workflow_definitions = Arc::clone(&workflow_definitions);
+    let get_workflow_revisions = Arc::clone(&workflow_definitions);
+    let list_workflow_revisions = Arc::clone(&workflow_definitions);
+    let create_workflow_goal_projects = Arc::clone(&projects);
+    let create_workflow_goal_environments = Arc::clone(&environments);
+    let create_goal_workflows = Arc::clone(&workflow_definitions);
+    let create_goal_ontologies = Arc::clone(&ontologies);
+    let create_workflow_goals = Arc::clone(&workflow_goals);
+    let get_workflow_goals = Arc::clone(&workflow_goals);
+    let list_workflow_goals = Arc::clone(&workflow_goals);
+    let get_plan_revisions = Arc::clone(&workflow_goals);
     let agent_conversation_environments = Arc::clone(&environments);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
@@ -1241,6 +1271,24 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workflow::ReviseOntology, _>(
                     ReviseOntologyHandler::new(revise_ontologies),
+                )
+                .command_handler::<crate::modules::workflow::CreateWorkflowDefinition, _>(
+                    CreateWorkflowDefinitionHandler::new(
+                        create_workflow_projects,
+                        create_workflow_definitions,
+                    ),
+                )
+                .command_handler::<crate::modules::workflow::ReviseWorkflowDefinition, _>(
+                    ReviseWorkflowDefinitionHandler::new(revise_workflow_definitions),
+                )
+                .command_handler::<crate::modules::workflow::CreateWorkflowGoal, _>(
+                    CreateWorkflowGoalHandler::new(
+                        create_workflow_goal_projects,
+                        create_workflow_goal_environments,
+                        create_goal_workflows,
+                        create_goal_ontologies,
+                        create_workflow_goals,
+                    ),
                 )
                 .command_handler::<crate::modules::assets::CreateAsset, _>(
                     CreateAssetHandler::new(create_assets),
@@ -1538,6 +1586,27 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::workflow::DiffOntologyRevisions, _>(
                     DiffOntologyRevisionsHandler::new(diff_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowDefinition, _>(
+                    GetWorkflowDefinitionHandler::new(get_workflow_definitions),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowDefinitions, _>(
+                    ListWorkflowDefinitionsHandler::new(list_workflow_definitions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRevision, _>(
+                    GetWorkflowRevisionHandler::new(get_workflow_revisions),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowRevisions, _>(
+                    ListWorkflowRevisionsHandler::new(list_workflow_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowGoal, _>(
+                    GetWorkflowGoalHandler::new(get_workflow_goals),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowGoals, _>(
+                    ListWorkflowGoalsHandler::new(list_workflow_goals),
+                )
+                .query_handler::<crate::modules::workflow::GetPlanRevision, _>(
+                    GetPlanRevisionHandler::new(get_plan_revisions),
                 )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),

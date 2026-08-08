@@ -36,7 +36,10 @@ use crate::modules::sources::domain::{
 use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
 };
-use crate::modules::workflow::InMemoryOntologyRepository;
+use crate::modules::workflow::{
+    InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
+    InMemoryWorkflowGoalRepository,
+};
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use base64::engine::general_purpose::STANDARD_NO_PAD;
@@ -63,6 +66,7 @@ mod source_lifecycle_tests;
 mod source_private_tests;
 mod source_subscription_tests;
 mod source_tests;
+mod workflow_tests;
 mod workload_tests;
 
 use asset_git_support::UnavailableAssetStore;
@@ -849,6 +853,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),
+            workflow_definitions: Arc::new(InMemoryWorkflowDefinitionRepository::new()),
+            workflow_goals: Arc::new(InMemoryWorkflowGoalRepository::new()),
             search,
             asset_catalog,
             mcp_service_profiles,

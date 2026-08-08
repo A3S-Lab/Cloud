@@ -1,0 +1,364 @@
+import { describe, expect, it } from 'bun:test';
+import { type CloudFetch, MAX_WORKFLOW_GOAL_ACL_BYTES } from '@a3s/cloud-client';
+import { runCli } from '../src/cli';
+import { ExitCode } from '../src/errors';
+
+const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
+const PROJECT_ID = '019c0000-0000-7000-8000-000000000002';
+const DEFINITION_ID = '019c0000-0000-7000-8000-000000000003';
+const REVISION_ID = '019c0000-0000-7000-8000-000000000004';
+const GOAL_ID = '019c0000-0000-7000-8000-000000000005';
+const PLAN_ID = '019c0000-0000-7000-8000-000000000006';
+const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000007';
+const DIGEST = `sha256:${'a'.repeat(64)}`;
+const DEFINITION_ACL = 'workflow { schema = "cloud.workflow.definition.v1" }\n';
+const PAYLOAD_ACL = 'configuration { schema = "cloud.workflow.configuration.v1" }\n';
+const GOAL_ACL = 'goal { schema = "cloud.workflow.goal.v1" }\n';
+const PUBLICATION = {
+  definitionAcl: DEFINITION_ACL,
+  payloads: [{ kind: 'configuration', acl: PAYLOAD_ACL }],
+};
+
+describe('a3s-cloud Workflow commands', () => {
+  it.each([
+    [
+      ['workflow-definitions', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-definitions`,
+      [definition()],
+    ],
+    [
+      ['workflow-definitions', 'get', DEFINITION_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-definitions/${DEFINITION_ID}`,
+      definition(),
+    ],
+    [
+      ['workflow-definitions', 'revisions', DEFINITION_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-definitions/${DEFINITION_ID}/revisions`,
+      [revision()],
+    ],
+    [
+      ['workflow-definitions', 'revision', DEFINITION_ID, REVISION_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-definitions/${DEFINITION_ID}/revisions/${REVISION_ID}`,
+      revision(),
+    ],
+    [
+      ['workflow-goals', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-goals`,
+      [goal()],
+    ],
+    [
+      ['workflow-goals', 'get', GOAL_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-goals/${GOAL_ID}`,
+      goal(),
+    ],
+    [
+      ['workflow-goals', 'plan', GOAL_ID, PLAN_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-goals/${GOAL_ID}/plan-revisions/${PLAN_ID}`,
+      planRevision(),
+    ],
+  ] as const)('queries the authoritative Workflow lifecycle %#', async (argv, path, data) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli([...argv, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: async (...args) => {
+        calls.push(args);
+        return envelope(data);
+      },
+    });
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(calls[0]?.[1]?.method).toBe('GET');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('publishes and revises the exact Workflow ACL bundle through JSON transport', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      readFile: async (path: string) => {
+        expect(path).toBe('workflow-publication.json');
+        return new TextEncoder().encode(JSON.stringify(PUBLICATION));
+      },
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        return envelope(definitionMutation(), 201);
+      },
+    };
+    const created = await runCli(
+      [
+        'workflow-definitions',
+        'create',
+        '--file=workflow-publication.json',
+        '--idempotency-key=cli:workflow:create',
+        '--output=json',
+      ],
+      runtime
+    );
+    const revised = await runCli(
+      [
+        'workflow-definitions',
+        'revise',
+        DEFINITION_ID,
+        '--file=workflow-publication.json',
+        '--expected-version=1',
+        '--idempotency-key=cli:workflow:revise',
+        '--output=json',
+      ],
+      runtime
+    );
+
+    expect(created).toBe(ExitCode.Success);
+    expect(revised).toBe(ExitCode.Success);
+    expect(calls.map(([input]) => input)).toEqual([
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-definitions`,
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/workflow-definitions/${DEFINITION_ID}/revisions`,
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(PUBLICATION),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'cli:workflow:create',
+        }),
+      })
+    );
+    expect(calls[1]?.[1]?.headers).toEqual(
+      expect.objectContaining({
+        'Idempotency-Key': 'cli:workflow:revise',
+        'x-a3s-expected-version': '1',
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
+  it('compiles one WorkflowGoal from bounded ACL through the shared transport', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli(
+      [
+        'workflow-goals',
+        'create',
+        '--file=goal.acl',
+        '--idempotency-key=cli:workflow-goal:create',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        readFile: async () => new TextEncoder().encode(GOAL_ACL),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope(goalMutation(), 201);
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-goals`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        body: GOAL_ACL,
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'cli:workflow-goal:create',
+        }),
+      })
+    );
+  });
+
+  it('rejects malformed publication and oversized goal ACL before transport', async () => {
+    let called = false;
+    const malformed = capture();
+    const malformedExit = await runCli(
+      [
+        'workflow-definitions',
+        'create',
+        '--file=workflow-publication.json',
+        '--idempotency-key=cli:workflow:invalid',
+      ],
+      {
+        ...malformed.runtime,
+        environment: completeEnvironment(),
+        readFile: async () => new TextEncoder().encode('{"definitionAcl":"workflow {}","extra":true}'),
+        fetch: async () => {
+          called = true;
+          return envelope({});
+        },
+      }
+    );
+    const oversized = capture();
+    const oversizedExit = await runCli(
+      ['workflow-goals', 'create', '--file=goal.acl', '--idempotency-key=cli:workflow-goal:oversized'],
+      {
+        ...oversized.runtime,
+        environment: completeEnvironment(),
+        readFile: async () => new Uint8Array(MAX_WORKFLOW_GOAL_ACL_BYTES + 1),
+        fetch: async () => {
+          called = true;
+          return envelope({});
+        },
+      }
+    );
+
+    expect(malformedExit).toBe(ExitCode.Usage);
+    expect(oversizedExit).toBe(ExitCode.Usage);
+    expect(malformed.stderr()).toContain('only definitionAcl and typed ACL payloads');
+    expect(oversized.stderr()).toContain('Workflow goal ACL must contain between');
+    expect(called).toBe(false);
+  });
+});
+
+function definition() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    id: DEFINITION_ID,
+    name: 'Support triage',
+    description: 'Exact Workflow',
+    currentRevisionId: REVISION_ID,
+    currentRevisionNumber: 1,
+    currentRevisionDigest: DIGEST,
+    aggregateVersion: 1,
+    createdBy: PRINCIPAL_ID,
+    createdAt: '2026-08-07T00:00:00.000Z',
+    updatedAt: '2026-08-07T00:00:00.000Z',
+  };
+}
+
+function revision() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    workflowDefinitionId: DEFINITION_ID,
+    id: REVISION_ID,
+    revisionNumber: 1,
+    parentRevisionId: null,
+    parentDigest: null,
+    contractSchema: 'cloud.workflow.definition.v1',
+    compilerSchemaVersion: 1,
+    contentDigest: DIGEST,
+    payloadSetDigest: DIGEST,
+    payloadCount: 1,
+    createdBy: PRINCIPAL_ID,
+    createdAt: '2026-08-07T00:00:00.000Z',
+    canonicalDefinitionAcl: DEFINITION_ACL,
+    payloads: [
+      {
+        kind: 'configuration',
+        schema: 'cloud.workflow.configuration.v1',
+        digest: DIGEST,
+        canonicalAcl: PAYLOAD_ACL,
+      },
+    ],
+  };
+}
+
+function definitionMutation() {
+  return { workflowDefinition: definition(), revision: revision(), replayed: false };
+}
+
+function goal() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    id: GOAL_ID,
+    name: 'Resolve support case',
+    contractSchema: 'cloud.workflow.goal.v1',
+    contractDigest: DIGEST,
+    inputDigest: DIGEST,
+    canonicalGoalAcl: GOAL_ACL,
+    workflowDefinitionId: DEFINITION_ID,
+    workflowRevisionId: REVISION_ID,
+    workflowDigest: DIGEST,
+    ontologyId: ORGANIZATION_ID,
+    ontologyRevisionId: PROJECT_ID,
+    ontologyDigest: DIGEST,
+    environmentId: null,
+    input: { caseId: 'T-42' },
+    planRevisionId: PLAN_ID,
+    planDigest: DIGEST,
+    createdBy: PRINCIPAL_ID,
+    createdAt: '2026-08-07T00:00:00.000Z',
+  };
+}
+
+function planRevision() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    workflowGoalId: GOAL_ID,
+    id: PLAN_ID,
+    schema: 'cloud.workflow.plan.v1',
+    compilerRevision: 'cloud.workflow.plan-compiler.v1',
+    digest: DIGEST,
+    canonicalPlan: '{}',
+    plan: {
+      schema: 'cloud.workflow.plan.v1',
+      compilerRevision: 'cloud.workflow.plan-compiler.v1',
+      workflowDefinitionId: DEFINITION_ID,
+      workflowRevisionId: REVISION_ID,
+      workflowDigest: DIGEST,
+      workflowPayloadSetDigest: DIGEST,
+      ontologyId: ORGANIZATION_ID,
+      ontologyRevisionId: PROJECT_ID,
+      ontologyDigest: DIGEST,
+      environmentId: null,
+      inputDigest: DIGEST,
+      steps: [],
+      edges: [],
+    },
+    createdBy: PRINCIPAL_ID,
+    createdAt: '2026-08-07T00:00:00.000Z',
+  };
+}
+
+function goalMutation() {
+  return { goal: goal(), planRevision: planRevision(), replayed: false };
+}
+
+function envelope(data: unknown, status = 200): Response {
+  return new Response(
+    JSON.stringify({
+      code: status,
+      message: 'Success',
+      data,
+      requestId: '019c0000-0000-7000-8000-000000000010',
+      timestamp: '2026-08-07T00:00:00.000Z',
+    }),
+    { status }
+  );
+}
+
+function capture() {
+  let stdout = '';
+  let stderr = '';
+  return {
+    runtime: {
+      writeStdout: (value: string) => {
+        stdout += value;
+      },
+      writeStderr: (value: string) => {
+        stderr += value;
+      },
+    },
+    stdout: () => stdout,
+    stderr: () => stderr,
+  };
+}
+
+function completeEnvironment() {
+  return {
+    A3S_CLOUD_TOKEN: 'token',
+    A3S_CLOUD_ORGANIZATION_ID: ORGANIZATION_ID,
+    A3S_CLOUD_PROJECT_ID: PROJECT_ID,
+  };
+}

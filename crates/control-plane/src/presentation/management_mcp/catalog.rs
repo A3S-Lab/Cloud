@@ -30,6 +30,16 @@ pub const ONTOLOGIES_REVISE: &str = "a3s_cloud_ontologies_revise";
 pub const ONTOLOGY_REVISIONS_GET: &str = "a3s_cloud_ontology_revisions_get";
 pub const ONTOLOGY_REVISIONS_LIST: &str = "a3s_cloud_ontology_revisions_list";
 pub const ONTOLOGY_REVISIONS_DIFF: &str = "a3s_cloud_ontology_revisions_diff";
+pub const WORKFLOW_DEFINITIONS_CREATE: &str = "a3s_cloud_workflow_definitions_create";
+pub const WORKFLOW_DEFINITIONS_GET: &str = "a3s_cloud_workflow_definitions_get";
+pub const WORKFLOW_DEFINITIONS_LIST: &str = "a3s_cloud_workflow_definitions_list";
+pub const WORKFLOW_DEFINITIONS_REVISE: &str = "a3s_cloud_workflow_definitions_revise";
+pub const WORKFLOW_REVISIONS_GET: &str = "a3s_cloud_workflow_revisions_get";
+pub const WORKFLOW_REVISIONS_LIST: &str = "a3s_cloud_workflow_revisions_list";
+pub const WORKFLOW_GOALS_CREATE: &str = "a3s_cloud_workflow_goals_create";
+pub const WORKFLOW_GOALS_GET: &str = "a3s_cloud_workflow_goals_get";
+pub const WORKFLOW_GOALS_LIST: &str = "a3s_cloud_workflow_goals_list";
+pub const WORKFLOW_PLAN_REVISIONS_GET: &str = "a3s_cloud_workflow_plan_revisions_get";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
@@ -57,6 +67,16 @@ pub enum ManagementTool {
     OntologyRevisionsGet,
     OntologyRevisionsList,
     OntologyRevisionsDiff,
+    WorkflowDefinitionsCreate,
+    WorkflowDefinitionsGet,
+    WorkflowDefinitionsList,
+    WorkflowDefinitionsRevise,
+    WorkflowRevisionsGet,
+    WorkflowRevisionsList,
+    WorkflowGoalsCreate,
+    WorkflowGoalsGet,
+    WorkflowGoalsList,
+    WorkflowPlanRevisionsGet,
     Search,
     NodesList,
     NodesGet,
@@ -79,7 +99,7 @@ pub enum ManagementTool {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 35] = [
+    const ALL: [Self; 45] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -96,6 +116,16 @@ impl ManagementTool {
         Self::OntologyRevisionsGet,
         Self::OntologyRevisionsList,
         Self::OntologyRevisionsDiff,
+        Self::WorkflowDefinitionsCreate,
+        Self::WorkflowDefinitionsGet,
+        Self::WorkflowDefinitionsList,
+        Self::WorkflowDefinitionsRevise,
+        Self::WorkflowRevisionsGet,
+        Self::WorkflowRevisionsList,
+        Self::WorkflowGoalsCreate,
+        Self::WorkflowGoalsGet,
+        Self::WorkflowGoalsList,
+        Self::WorkflowPlanRevisionsGet,
         Self::Search,
         Self::NodesList,
         Self::NodesGet,
@@ -160,6 +190,16 @@ impl ManagementTool {
             Self::OntologyRevisionsGet => ONTOLOGY_REVISIONS_GET,
             Self::OntologyRevisionsList => ONTOLOGY_REVISIONS_LIST,
             Self::OntologyRevisionsDiff => ONTOLOGY_REVISIONS_DIFF,
+            Self::WorkflowDefinitionsCreate => WORKFLOW_DEFINITIONS_CREATE,
+            Self::WorkflowDefinitionsGet => WORKFLOW_DEFINITIONS_GET,
+            Self::WorkflowDefinitionsList => WORKFLOW_DEFINITIONS_LIST,
+            Self::WorkflowDefinitionsRevise => WORKFLOW_DEFINITIONS_REVISE,
+            Self::WorkflowRevisionsGet => WORKFLOW_REVISIONS_GET,
+            Self::WorkflowRevisionsList => WORKFLOW_REVISIONS_LIST,
+            Self::WorkflowGoalsCreate => WORKFLOW_GOALS_CREATE,
+            Self::WorkflowGoalsGet => WORKFLOW_GOALS_GET,
+            Self::WorkflowGoalsList => WORKFLOW_GOALS_LIST,
+            Self::WorkflowPlanRevisionsGet => WORKFLOW_PLAN_REVISIONS_GET,
             Self::Search => SEARCH,
             Self::NodesList => NODES_LIST,
             Self::NodesGet => NODES_GET,
@@ -192,6 +232,9 @@ impl ManagementTool {
             | Self::MembershipsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
             Self::OntologiesCreate | Self::OntologiesRevise => Some(ApiTokenScope::ONTOLOGY_WRITE),
+            Self::WorkflowDefinitionsCreate
+            | Self::WorkflowDefinitionsRevise
+            | Self::WorkflowGoalsCreate => Some(ApiTokenScope::WORKFLOW_WRITE),
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
@@ -203,6 +246,13 @@ impl ManagementTool {
             | Self::OntologyRevisionsGet
             | Self::OntologyRevisionsList
             | Self::OntologyRevisionsDiff
+            | Self::WorkflowDefinitionsGet
+            | Self::WorkflowDefinitionsList
+            | Self::WorkflowRevisionsGet
+            | Self::WorkflowRevisionsList
+            | Self::WorkflowGoalsGet
+            | Self::WorkflowGoalsList
+            | Self::WorkflowPlanRevisionsGet
             | Self::Search
             | Self::NodesList
             | Self::NodesGet
@@ -327,6 +377,66 @@ impl ManagementTool {
                 "Diff Ontology revisions",
                 "Compute the deterministic structural and compatibility diff between two Ontology revisions.",
                 ontology_diff_schema(),
+                true,
+            ),
+            Self::WorkflowDefinitionsCreate => (
+                "Create Workflow definition",
+                "Publish one project-scoped WorkflowDefinition and its exact canonical ACL payloads with explicit idempotency.",
+                create_workflow_definition_schema(),
+                false,
+            ),
+            Self::WorkflowDefinitionsGet => (
+                "Get Workflow definition",
+                "Get one tenant-authorized WorkflowDefinition aggregate and current revision identity.",
+                uuid_id_schema("workflowDefinitionId"),
+                true,
+            ),
+            Self::WorkflowDefinitionsList => (
+                "List Workflow definitions",
+                "List WorkflowDefinition aggregates in one tenant-authorized project.",
+                project_id_schema(),
+                true,
+            ),
+            Self::WorkflowDefinitionsRevise => (
+                "Revise Workflow definition",
+                "Publish one immutable Workflow revision and exact ACL payload set with optimistic concurrency.",
+                revise_workflow_definition_schema(),
+                false,
+            ),
+            Self::WorkflowRevisionsGet => (
+                "Get Workflow revision",
+                "Get one immutable Workflow revision including canonical definition and payload ACLs.",
+                workflow_revision_schema(),
+                true,
+            ),
+            Self::WorkflowRevisionsList => (
+                "List Workflow revisions",
+                "List immutable revision summaries for one tenant-authorized WorkflowDefinition.",
+                uuid_id_schema("workflowDefinitionId"),
+                true,
+            ),
+            Self::WorkflowGoalsCreate => (
+                "Create Workflow goal",
+                "Compile one exact WorkflowGoal ACL into a deterministic immutable PlanRevision with explicit idempotency.",
+                create_workflow_goal_schema(),
+                false,
+            ),
+            Self::WorkflowGoalsGet => (
+                "Get Workflow goal",
+                "Get one immutable WorkflowGoal and its exact authority and plan bindings.",
+                uuid_id_schema("workflowGoalId"),
+                true,
+            ),
+            Self::WorkflowGoalsList => (
+                "List Workflow goals",
+                "List immutable compiled WorkflowGoals in one tenant-authorized project.",
+                project_id_schema(),
+                true,
+            ),
+            Self::WorkflowPlanRevisionsGet => (
+                "Get Workflow plan revision",
+                "Get one immutable deterministic PlanRevision for an exact WorkflowGoal.",
+                workflow_plan_revision_schema(),
                 true,
             ),
             Self::Search => (
@@ -697,6 +807,95 @@ fn ontology_diff_schema() -> Value {
             "toRevisionId": {"type": "string", "format": "uuid"}
         },
         "required": ["ontologyId", "fromRevisionId", "toRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn workflow_payloads_schema() -> Value {
+    json!({
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 2048,
+        "items": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["configuration", "data_schema", "policy"]},
+                "acl": {"type": "string", "minLength": 1, "maxLength": 262144}
+            },
+            "required": ["kind", "acl"],
+            "additionalProperties": false
+        }
+    })
+}
+
+fn create_workflow_definition_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "definitionAcl": {"type": "string", "minLength": 1, "maxLength": 1048576},
+            "payloads": workflow_payloads_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "definitionAcl", "payloads", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revise_workflow_definition_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workflowDefinitionId": {"type": "string", "format": "uuid"},
+            "definitionAcl": {"type": "string", "minLength": 1, "maxLength": 1048576},
+            "payloads": workflow_payloads_schema(),
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "workflowDefinitionId",
+            "definitionAcl",
+            "payloads",
+            "expectedVersion",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn workflow_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workflowDefinitionId": {"type": "string", "format": "uuid"},
+            "workflowRevisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["workflowDefinitionId", "workflowRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn create_workflow_goal_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "acl": {"type": "string", "minLength": 1, "maxLength": 262144},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "acl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn workflow_plan_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workflowGoalId": {"type": "string", "format": "uuid"},
+            "planRevisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["workflowGoalId", "planRevisionId"],
         "additionalProperties": false
     })
 }

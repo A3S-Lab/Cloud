@@ -125,6 +125,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             }),
         );
     }
+    if method == "post" && is_workflow_revision_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current WorkflowDefinition aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
     if path == "/webhooks/github" {
         for name in ["x-github-event", "x-github-delivery", "x-hub-signature-256"] {
             upsert_parameter(
@@ -297,7 +309,57 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    if is_ontology_mutation_path(path) {
+    if is_workflow_goal_mutation_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 262144
+                }
+            }),
+        );
+    } else if is_workflow_definition_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["definitionAcl", "payloads"],
+                    "properties": {
+                        "definitionAcl": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1048576
+                        },
+                        "payloads": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2048,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["kind", "acl"],
+                                "properties": {
+                                    "kind": {
+                                        "type": "string",
+                                        "enum": ["configuration", "data_schema", "policy"]
+                                    },
+                                    "acl": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 262144
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_ontology_mutation_path(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
             json!({
@@ -369,6 +431,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     if asset_git_request_media_type(path).is_some()
         || (method == "post"
             && (is_ontology_mutation_path(path)
+                || is_workflow_mutation_path(path)
                 || is_mcp_service_profile_path(path)
                 || is_mcp_route_policy_mutation_path(path)))
     {
@@ -488,7 +551,7 @@ fn operation_tag(path: &str) -> &'static str {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
         "Workloads"
-    } else if path.contains("ontologies") {
+    } else if path.contains("ontologies") || path.contains("workflow-") {
         "Workflow"
     } else if path.contains("projects") || path.contains("environments") {
         "Projects"
@@ -547,6 +610,9 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/environments")
         || path.ends_with("/ontologies")
         || is_ontology_revision_mutation_path(path)
+        || path.ends_with("/workflow-definitions")
+        || is_workflow_revision_mutation_path(path)
+        || path.ends_with("/workflow-goals")
         || path.ends_with("/api-tokens")
         || path.ends_with("/memberships")
         || path.ends_with("/enrollment-tokens")
@@ -578,6 +644,22 @@ fn is_ontology_mutation_path(path: &str) -> bool {
 
 fn is_ontology_revision_mutation_path(path: &str) -> bool {
     path.contains("/ontologies/{ontology_id}/") && path.ends_with("/revisions")
+}
+
+fn is_workflow_mutation_path(path: &str) -> bool {
+    is_workflow_definition_mutation_path(path) || is_workflow_goal_mutation_path(path)
+}
+
+fn is_workflow_definition_mutation_path(path: &str) -> bool {
+    path.ends_with("/workflow-definitions") || is_workflow_revision_mutation_path(path)
+}
+
+fn is_workflow_revision_mutation_path(path: &str) -> bool {
+    path.contains("/workflow-definitions/{workflow_definition_id}/") && path.ends_with("/revisions")
+}
+
+fn is_workflow_goal_mutation_path(path: &str) -> bool {
+    path.ends_with("/workflow-goals")
 }
 
 fn is_mcp_route_policy_mutation_path(path: &str) -> bool {

@@ -142,6 +142,14 @@ create/revise accepts at most 1 MiB. The CLI sends those exact bytes as
 existing application command. The CLI does not parse ACL, accept JSON/TOML
 manifests, or place manifest content in command arguments.
 
+Workflow Goal creation also accepts one bounded closed A3S ACL file unchanged.
+Workflow definition create/revise accepts a bounded JSON publication envelope
+containing only `definitionAcl` and typed `{kind, acl}` payload entries so the
+canonical Workflow/configuration/data-schema/policy ACL documents are committed
+atomically. This envelope is transport packaging, not a JSON configuration
+authority; Cloud alone parses ACL, verifies every digest/binding, persists the
+immutable revision, and compiles Goals into deterministic Plans.
+
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 
@@ -167,6 +175,16 @@ ontologies revisions <ontology-id>
 ontologies revision <ontology-id> <revision-id>
 ontologies diff <ontology-id> <from-revision-id> <to-revision-id>
 ontologies revise <ontology-id> --file=<path> --expected-version=<version> [--migration-rule=<rule-id>]
+workflow-definitions list
+workflow-definitions get <workflow-definition-id>
+workflow-definitions create --file=<publication.json>
+workflow-definitions revisions <workflow-definition-id>
+workflow-definitions revision <workflow-definition-id> <workflow-revision-id>
+workflow-definitions revise <workflow-definition-id> --file=<publication.json> --expected-version=<version>
+workflow-goals list
+workflow-goals get <workflow-goal-id>
+workflow-goals create --file=<goal.acl>
+workflow-goals plan <workflow-goal-id> <plan-revision-id>
 assets list
 assets get <asset-id>
 assets create <name> <agent|mcp|skill>
@@ -278,6 +296,14 @@ diffs, infers compatible migration policy, validates explicit breaking
 migrations against the target ACL, and persists through A3S ORM. The CLI does
 not parse Ontology ACL, store revisions, maintain a graph index, or define a
 second migration mechanism.
+
+`workflow-definitions` creates, revises, lists, and reads the project-scoped
+aggregate and immutable revision lineage, including exact canonical payloads.
+`workflow-goals` creates one immutable Goal from closed ACL and lists/reads the
+Goal and deterministic Plan revision. Cloud owns digest validation,
+compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
+persistence. The CLI does not retain a graph, compile or run a plan, start a
+provider, or recreate the retired standalone Workflow control plane.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing

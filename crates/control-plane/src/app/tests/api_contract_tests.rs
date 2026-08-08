@@ -214,6 +214,63 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 && parameter["in"] == "header"
                 && parameter["required"] == false
         })));
+    let workflow_definition_collection = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/workflow-definitions"];
+    assert_eq!(
+        workflow_definition_collection["get"]["tags"],
+        json!(["Workflow"])
+    );
+    assert_eq!(
+        workflow_definition_collection["post"]["tags"],
+        json!(["Workflow"])
+    );
+    let workflow_publication = &workflow_definition_collection["post"]["requestBody"]["content"]
+        ["application/json"]["schema"];
+    assert_eq!(workflow_publication["additionalProperties"], false);
+    assert_eq!(
+        workflow_publication["properties"]["definitionAcl"]["maxLength"],
+        1_048_576
+    );
+    assert_eq!(
+        workflow_publication["properties"]["payloads"]["maxItems"],
+        2_048
+    );
+    assert!(
+        workflow_definition_collection["post"]["requestBody"]["content"]
+            .get("application/vnd.a3s.acl")
+            .is_none()
+    );
+    assert!(workflow_definition_collection["post"]["responses"]["201"].is_object());
+    assert!(workflow_definition_collection["post"]["responses"]["413"].is_object());
+    assert!(workflow_definition_collection["post"]["responses"]["415"].is_object());
+    let workflow_revision = &document["paths"]
+        ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"]
+        ["post"];
+    assert!(workflow_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let workflow_goal_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-goals"];
+    assert_eq!(
+        workflow_goal_collection["post"]["tags"],
+        json!(["Workflow"])
+    );
+    assert_eq!(
+        workflow_goal_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]
+            ["schema"]["maxLength"],
+        262_144
+    );
+    assert!(workflow_goal_collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    let workflow_plan = &document["paths"]
+        ["/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}"]
+        ["get"];
+    assert_eq!(workflow_plan["tags"], json!(["Workflow"]));
     let mcp_route_collection = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
     assert_eq!(mcp_route_collection["get"]["tags"], json!(["Edge"]));

@@ -13,6 +13,7 @@ mod projects;
 mod protocol;
 mod search;
 mod tool_result;
+mod workflow;
 mod workloads;
 
 pub use module::ManagementMcpModule;

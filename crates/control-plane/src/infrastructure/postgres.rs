@@ -675,6 +675,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/075_versioned_ontologies.sql"
             )),
         ),
+        Migration::new(
+            "076",
+            "versioned Workflow definitions, goals, and plans",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/076_workflow_definitions_goals_and_plans.sql"
+            )),
+        ),
     ]
 }
 

@@ -1,6 +1,10 @@
 use super::*;
 use crate::modules::search::{SearchResourceKind, SearchResult};
-use crate::modules::shared_kernel::domain::OrganizationId;
+use crate::modules::shared_kernel::domain::{
+    OntologyId, OntologyRevisionId, OrganizationId, Sha256Digest, WorkflowDefinitionId,
+    WorkflowRevisionId,
+};
+use crate::modules::workflow::{WorkflowGoalContract, WorkflowGoalSpec};
 
 const MCP_PATH: &str = "/api/v1/mcp";
 const MCP_PROTOCOL_VERSION: &str = a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
@@ -331,6 +335,13 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_ontology_revisions_get",
             "a3s_cloud_ontology_revisions_list",
             "a3s_cloud_ontology_revisions_diff",
+            "a3s_cloud_workflow_definitions_get",
+            "a3s_cloud_workflow_definitions_list",
+            "a3s_cloud_workflow_revisions_get",
+            "a3s_cloud_workflow_revisions_list",
+            "a3s_cloud_workflow_goals_get",
+            "a3s_cloud_workflow_goals_list",
+            "a3s_cloud_workflow_plan_revisions_get",
             "a3s_cloud_search",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
@@ -393,6 +404,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_ontology_revisions_get",
             "a3s_cloud_ontology_revisions_list",
             "a3s_cloud_ontology_revisions_diff",
+            "a3s_cloud_workflow_definitions_create",
+            "a3s_cloud_workflow_definitions_get",
+            "a3s_cloud_workflow_definitions_list",
+            "a3s_cloud_workflow_definitions_revise",
+            "a3s_cloud_workflow_revisions_get",
+            "a3s_cloud_workflow_revisions_list",
+            "a3s_cloud_workflow_goals_create",
+            "a3s_cloud_workflow_goals_get",
+            "a3s_cloud_workflow_goals_list",
+            "a3s_cloud_workflow_plan_revisions_get",
             "a3s_cloud_search",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
@@ -1274,6 +1295,184 @@ async fn management_mcp_reuses_the_versioned_ontology_lifecycle() -> Result<()> 
     assert_eq!(
         response_json(&diff)?["result"]["structuredContent"]["data"]["breaking"],
         false
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_the_workflow_definition_goal_and_plan_lifecycle() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-workflow", "Acme").await?;
+    let project = create_project(&app, &organization, "mcp-workflow-project", "Automation").await?;
+    let ontology = app
+        .call(post_acl(
+            format!("/api/v1/organizations/{organization}/projects/{project}/ontologies"),
+            "mcp-workflow-ontology",
+            MCP_ONTOLOGY_ACL.as_bytes().to_vec(),
+        ))
+        .await?;
+    let ontology = response_json(&ontology)?;
+
+    let fixture =
+        super::workflow_tests::workflow_fixture("MCP Workflow").map_err(BootError::Internal)?;
+    let mut create_arguments = fixture.transport;
+    let create_arguments_object = create_arguments
+        .as_object_mut()
+        .ok_or_else(|| BootError::Internal("Workflow publication is not an object".into()))?;
+    create_arguments_object.insert("projectId".into(), json!(project));
+    create_arguments_object.insert(
+        "idempotencyKey".into(),
+        json!("mcp-workflow-definition-create"),
+    );
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_workflow_definitions_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    let definition = &created["result"]["structuredContent"]["data"];
+    let definition_id = definition["workflowDefinition"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP WorkflowDefinition has no ID".into()))?;
+    let revision_id = definition["revision"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Workflow revision has no ID".into()))?;
+    let workflow_digest = definition["revision"]["contentDigest"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Workflow revision has no digest".into()))?;
+
+    let replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_workflow_definitions_create", create_arguments),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&replay)?["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_workflow_definitions_list",
+                json!({"projectId": project}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&listed)?["result"]["structuredContent"]["data"][0]["id"],
+        definition_id
+    );
+    let revision = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_workflow_revisions_get",
+                json!({
+                    "workflowDefinitionId": definition_id,
+                    "workflowRevisionId": revision_id
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&revision)?["result"]["structuredContent"]["data"]["payloadCount"],
+        4
+    );
+
+    let goal_contract = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+        name: "MCP exact plan".into(),
+        workflow_definition_id: WorkflowDefinitionId::from_uuid(
+            Uuid::parse_str(definition_id)
+                .map_err(|error| BootError::Internal(error.to_string()))?,
+        ),
+        workflow_revision_id: WorkflowRevisionId::from_uuid(
+            Uuid::parse_str(revision_id).map_err(|error| BootError::Internal(error.to_string()))?,
+        ),
+        workflow_digest: Sha256Digest::parse(workflow_digest).map_err(BootError::Internal)?,
+        ontology_id: OntologyId::from_uuid(
+            Uuid::parse_str(
+                ontology["data"]["ontology"]["id"]
+                    .as_str()
+                    .ok_or_else(|| BootError::Internal("Ontology ID is missing".into()))?,
+            )
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+        ),
+        ontology_revision_id: OntologyRevisionId::from_uuid(
+            Uuid::parse_str(
+                ontology["data"]["revision"]["id"]
+                    .as_str()
+                    .ok_or_else(|| BootError::Internal("Ontology revision ID is missing".into()))?,
+            )
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+        ),
+        ontology_digest: Sha256Digest::parse(
+            ontology["data"]["revision"]["contentDigest"]
+                .as_str()
+                .ok_or_else(|| BootError::Internal("Ontology digest is missing".into()))?,
+        )
+        .map_err(BootError::Internal)?,
+        environment_id: None,
+        input: json!({"caseId": "MCP-42"}),
+    })
+    .map_err(BootError::Internal)?;
+    let goal = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_workflow_goals_create",
+                json!({
+                    "projectId": project,
+                    "acl": goal_contract.canonical_acl(),
+                    "idempotencyKey": "mcp-workflow-goal-create"
+                }),
+            ),
+        ))
+        .await?;
+    let goal = response_json(&goal)?;
+    assert_eq!(goal["result"]["structuredContent"]["code"], 201);
+    let goal_data = &goal["result"]["structuredContent"]["data"];
+    let goal_id = goal_data["goal"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP WorkflowGoal has no ID".into()))?;
+    let plan_revision_id = goal_data["planRevision"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP PlanRevision has no ID".into()))?;
+    let plan = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_workflow_plan_revisions_get",
+                json!({
+                    "workflowGoalId": goal_id,
+                    "planRevisionId": plan_revision_id
+                }),
+            ),
+        ))
+        .await?;
+    let plan = response_json(&plan)?;
+    assert_eq!(
+        plan["result"]["structuredContent"]["data"]["digest"],
+        goal_data["goal"]["planDigest"]
+    );
+    assert_eq!(
+        plan["result"]["structuredContent"]["data"]["plan"]["steps"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
     );
     Ok(())
 }

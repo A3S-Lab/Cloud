@@ -18,6 +18,10 @@ handlers and REST response projections.
 The backend `W0.2` slice adds seven Ontology create/read/revise/revision/diff
 tools over the same Workflow command/query handlers. It does not introduce an
 MCP-specific Ontology store, migration policy, ACL parser, or graph database.
+The `W0.3` planning slice adds ten Workflow definition, immutable revision,
+Goal, and deterministic Plan tools over the same CQRS handlers used by REST,
+the maintained client, and CLI. It adds no MCP-owned planner, run engine,
+payload store, or authorization path.
 
 ## Transport contract
 
@@ -210,6 +214,27 @@ the accepted revision even when a later head exists. All seven tools use the
 same PostgreSQL/A3S ORM repository, audit, Outbox, Search projection, tenant
 guard, and application handlers as REST and CLI.
 
+## Workflow definition, Goal, and Plan lifecycle
+
+`a3s_cloud_workflow_definitions_create` and
+`a3s_cloud_workflow_definitions_revise` accept the canonical closed Workflow
+ACL plus the exact typed configuration, data-schema, and policy ACL payloads
+referenced by its digests. Revision additionally requires a positive
+`expectedVersion`. Both mutations use `workflow:write`, caller-owned
+idempotency, immutable revision history, audit, and Outbox through the same
+A3S ORM repository as REST.
+
+Definition/revision list and get tools return the aggregate head, immutable
+lineage, canonical definition ACL, payload-set digest, and exact canonical
+payload ACL. `a3s_cloud_workflow_goals_create` accepts a project ID, bounded
+closed Goal ACL, and idempotency key. It binds exact Workflow and Ontology
+revision identities/digests and optional Environment identity, then compiles
+one immutable `cloud.workflow.plan.v1` revision with
+`cloud.workflow.plan-compiler.v1`. Goal list/get and Plan get return the same
+DTOs as REST. Identical semantic inputs produce identical canonical Plan bytes
+and digest; Goal and Plan identities remain distinct records. WorkflowRun and
+step execution are not exposed by this slice.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
@@ -259,7 +284,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 35-tool administrator and 21-tool
+current expanded runner requires exact 45-tool administrator and 28-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -279,9 +304,10 @@ plus zero plaintext credentials in responses, logs, evidence, or the PostgreSQL
 dump. Production persistence reaches PostgreSQL only through A3S ORM
 repositories.
 
-The expanded focused catalog, permission, lifecycle, migration, and replay
-tests pass. The updated clean PostgreSQL/A3S Box scenario and its Ontology row,
-revision, and idempotency assertions must pass before `W0.2` is verified.
+The expanded focused catalog, permission, Ontology migration, Workflow
+definition/Goal/Plan lifecycle, deterministic-plan, and replay tests pass. The
+updated clean PostgreSQL/A3S Box scenario and its Ontology and Workflow
+persistence/idempotency assertions must pass before these slices are verified.
 
 ## Current limits
 

@@ -1560,7 +1560,23 @@ exact `PluginHostObservation` matches the desired assignment generation, the
 computed assignment status is `pending`, `blocked`, or `unavailable`, never
 partially installed or optimistically active.
 
-### Workflow run state (planned `W0.3`)
+### Workflow planning authority (implemented `W0.3` slice)
+
+`WorkflowDefinition` is the mutable optimistic head for an immutable
+`WorkflowRevision` lineage. Each revision atomically owns its exact canonical
+definition ACL plus every referenced closed configuration, data-schema, and
+policy ACL payload. `WorkflowGoal` is immutable and binds exact Workflow and
+Ontology revision identities and digests, optional Environment identity, and
+canonical input. It points to one immutable `PlanRevision` compiled by
+`cloud.workflow.plan-compiler.v1`; identical semantic inputs produce identical
+canonical plan bytes and digest even though Goal and Plan identities differ.
+
+PostgreSQL through A3S ORM is the sole authority for these records. REST,
+client, CLI, and Management MCP are adapters over the same commands and
+queries. Search, Flow history, external payload locations, and presentation
+JSON are not alternate Workflow stores.
+
+### Workflow run state (remaining `W0.3` work)
 
 ```text
 draft -> compiled -> queued -> running -> succeeded

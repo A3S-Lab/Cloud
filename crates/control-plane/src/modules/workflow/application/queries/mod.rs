@@ -1,5 +1,12 @@
 pub mod diff_ontology_revisions;
 pub mod get_ontology;
 pub mod get_ontology_revision;
+pub mod get_plan_revision;
+pub mod get_workflow_definition;
+pub mod get_workflow_goal;
+pub mod get_workflow_revision;
 pub mod list_ontologies;
 pub mod list_ontology_revisions;
+pub mod list_workflow_definitions;
+pub mod list_workflow_goals;
+pub mod list_workflow_revisions;

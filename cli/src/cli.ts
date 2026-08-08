@@ -38,6 +38,16 @@ Commands:
   ontologies revision ID REV Get one immutable Ontology revision and canonical ACL
   ontologies diff ID FROM TO Diff two revisions deterministically
   ontologies revise ID  Publish a version-checked Ontology revision from A3S ACL
+  workflow-definitions list List Workflow definitions in the selected project
+  workflow-definitions get ID Get one WorkflowDefinition aggregate
+  workflow-definitions create Publish a Workflow definition and exact ACL payload bundle
+  workflow-definitions revisions ID List immutable Workflow revision summaries
+  workflow-definitions revision ID REV Get one immutable Workflow revision and ACL payloads
+  workflow-definitions revise ID Publish a version-checked Workflow revision
+  workflow-goals list    List compiled Workflow goals in the selected project
+  workflow-goals get ID  Get one exact WorkflowGoal
+  workflow-goals create  Compile a WorkflowGoal from A3S ACL
+  workflow-goals plan ID REV Get one immutable deterministic PlanRevision
   assets list           List Assets in the selected organization
   assets get ID         Get one Asset
   assets create NAME KIND Create an Agent, MCP, or Skill Asset idempotently

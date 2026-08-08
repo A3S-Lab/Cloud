@@ -6,6 +6,11 @@ export const MAX_ACL_DOCUMENT_BYTES = 64 * 1024;
 export const MAX_MCP_SERVICE_PROFILE_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 export const MAX_MCP_ROUTE_POLICY_ACL_BYTES = 512 * 1024;
 export const MAX_ONTOLOGY_ACL_BYTES = 1024 * 1024;
+export const MAX_WORKFLOW_DEFINITION_ACL_BYTES = 1024 * 1024;
+export const MAX_WORKFLOW_PAYLOAD_ACL_BYTES = 256 * 1024;
+export const MAX_WORKFLOW_REVISION_PAYLOAD_BYTES = 8 * 1024 * 1024;
+export const MAX_WORKFLOW_REVISION_PAYLOADS = 2048;
+export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
@@ -127,6 +132,45 @@ export function validateOntologyRevisionControl(expectedVersion: number, migrati
   if (migrationRuleId !== undefined && !/^[A-Za-z0-9_-]{1,96}$/.test(migrationRuleId)) {
     throw new TypeError('Ontology migration rule must be a portable rule ID');
   }
+}
+
+export function validateWorkflowDefinitionPublication(input: {
+  definitionAcl: string;
+  payloads: ReadonlyArray<{ kind: string; acl: string }>;
+}): void {
+  validateAclBytes(input.definitionAcl, MAX_WORKFLOW_DEFINITION_ACL_BYTES, 'Workflow definition ACL');
+  if (
+    !Array.isArray(input.payloads) ||
+    input.payloads.length < 1 ||
+    input.payloads.length > MAX_WORKFLOW_REVISION_PAYLOADS
+  ) {
+    throw new RangeError(
+      `Workflow revision must contain between 1 and ${MAX_WORKFLOW_REVISION_PAYLOADS} payloads`
+    );
+  }
+  let totalBytes = 0;
+  for (const payload of input.payloads) {
+    if (!['configuration', 'data_schema', 'policy'].includes(payload.kind)) {
+      throw new TypeError('Workflow payload kind must be configuration, data_schema, or policy');
+    }
+    validateAclBytes(payload.acl, MAX_WORKFLOW_PAYLOAD_ACL_BYTES, 'Workflow payload ACL');
+    totalBytes += new TextEncoder().encode(payload.acl).byteLength;
+  }
+  if (totalBytes > MAX_WORKFLOW_REVISION_PAYLOAD_BYTES) {
+    throw new RangeError(
+      `Workflow revision payloads must contain at most ${MAX_WORKFLOW_REVISION_PAYLOAD_BYTES} UTF-8 bytes`
+    );
+  }
+}
+
+export function validateWorkflowRevisionControl(expectedVersion: number): void {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new RangeError('expected WorkflowDefinition version must be a positive safe integer');
+  }
+}
+
+export function validateWorkflowGoalAcl(acl: string): void {
+  validateAclBytes(acl, MAX_WORKFLOW_GOAL_ACL_BYTES, 'Workflow goal ACL');
 }
 
 function validateAclBytes(value: string, maximumBytes: number, label: string): void {

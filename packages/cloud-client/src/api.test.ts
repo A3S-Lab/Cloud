@@ -10,6 +10,8 @@ import {
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
+  MAX_WORKFLOW_GOAL_ACL_BYTES,
+  MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 
@@ -29,7 +31,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.11.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.12.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -352,6 +354,136 @@ describe('CloudApi', () => {
         'ontology:revise'
       )
     ).toThrow('Ontology migration rule must be a portable rule ID');
+    expect(called).toBe(false);
+  });
+
+  it('uses one versioned Workflow definition, goal, and deterministic plan lifecycle', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const publication = {
+      definitionAcl: 'workflow { schema = "cloud.workflow.definition.v1" }',
+      payloads: [
+        {
+          kind: 'configuration' as const,
+          acl: 'configuration { schema = "cloud.workflow.configuration.v1" }',
+        },
+      ],
+    };
+    const goalAcl = 'goal { schema = "cloud.workflow.goal.v1" }';
+
+    await api.listWorkflowDefinitions('organization', 'project');
+    await api.getWorkflowDefinition('organization', 'definition');
+    await api.createWorkflowDefinitionFromAcl('organization', 'project', publication, 'workflow:create');
+    await api.listWorkflowRevisions('organization', 'definition');
+    await api.getWorkflowRevision('organization', 'definition', 'revision');
+    await api.reviseWorkflowDefinitionFromAcl(
+      'organization',
+      'definition',
+      publication,
+      { expectedVersion: 2 },
+      'workflow:revise'
+    );
+    await api.listWorkflowGoals('organization', 'project');
+    await api.getWorkflowGoal('organization', 'goal');
+    await api.createWorkflowGoalFromAcl('organization', 'project', goalAcl, 'goal:create');
+    await api.getWorkflowPlanRevision('organization', 'goal', 'plan');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization/projects/project/workflow-definitions',
+      '/api/v1/organizations/organization/workflow-definitions/definition',
+      '/api/v1/organizations/organization/projects/project/workflow-definitions',
+      '/api/v1/organizations/organization/workflow-definitions/definition/revisions',
+      '/api/v1/organizations/organization/workflow-definitions/definition/revisions/revision',
+      '/api/v1/organizations/organization/workflow-definitions/definition/revisions',
+      '/api/v1/organizations/organization/projects/project/workflow-goals',
+      '/api/v1/organizations/organization/workflow-goals/goal',
+      '/api/v1/organizations/organization/projects/project/workflow-goals',
+      '/api/v1/organizations/organization/workflow-goals/goal/plan-revisions/plan',
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(publication),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'workflow:create',
+        }),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-a3s-expected-version': '2',
+        }),
+      })
+    );
+    expect(calls[8]?.[1]).toEqual(
+      expect.objectContaining({
+        body: goalAcl,
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'goal:create',
+        }),
+      })
+    );
+  });
+
+  it('rejects invalid Workflow publication, revision, and goal inputs before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() =>
+      api.createWorkflowDefinitionFromAcl(
+        'organization',
+        'project',
+        { definitionAcl: 'workflow {}', payloads: [] },
+        'workflow:create'
+      )
+    ).toThrow('Workflow revision must contain between');
+    expect(() =>
+      api.createWorkflowDefinitionFromAcl(
+        'organization',
+        'project',
+        {
+          definitionAcl: 'workflow {}',
+          payloads: [
+            {
+              kind: 'configuration',
+              acl: 'x'.repeat(MAX_WORKFLOW_PAYLOAD_ACL_BYTES + 1),
+            },
+          ],
+        },
+        'workflow:create'
+      )
+    ).toThrow('Workflow payload ACL must contain between');
+    expect(() =>
+      api.reviseWorkflowDefinitionFromAcl(
+        'organization',
+        'definition',
+        {
+          definitionAcl: 'workflow {}',
+          payloads: [{ kind: 'configuration', acl: 'configuration {}' }],
+        },
+        { expectedVersion: 0 },
+        'workflow:revise'
+      )
+    ).toThrow('expected WorkflowDefinition version must be a positive safe integer');
+    expect(() =>
+      api.createWorkflowGoalFromAcl(
+        'organization',
+        'project',
+        'x'.repeat(MAX_WORKFLOW_GOAL_ACL_BYTES + 1),
+        'goal:create'
+      )
+    ).toThrow('Workflow goal ACL must contain between');
     expect(called).toBe(false);
   });
 

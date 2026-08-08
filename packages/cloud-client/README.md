@@ -76,11 +76,23 @@ policy lifecycle.
 `listOntologies`, `getOntology`, `createOntologyFromAcl`,
 `listOntologyRevisions`, `getOntologyRevision`, `diffOntologyRevisions`, and
 `reviseOntologyFromAcl` expose the backend `W0.2` lifecycle through REST
-contract `1.11.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
+contract `1.12.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
 Revision requires a positive expected aggregate version and may name one
 portable migration rule ID; Cloud admits a breaking diff only when that exact
 target ACL rule has kind `migration`. The client does not parse Ontology ACL,
 infer migration policy, maintain revision state, or create a graph index.
+
+`listWorkflowDefinitions`, `getWorkflowDefinition`,
+`createWorkflowDefinitionFromAcl`, `listWorkflowRevisions`,
+`getWorkflowRevision`, and `reviseWorkflowDefinitionFromAcl` expose the
+`W0.3` planning lifecycle. Publication uses a bounded JSON transport envelope
+only to carry the canonical closed Workflow ACL and every exact typed
+configuration, data-schema, and policy ACL payload atomically; JSON is not a
+second product-configuration format. `listWorkflowGoals`, `getWorkflowGoal`,
+`createWorkflowGoalFromAcl`, and `getWorkflowPlanRevision` bind exact Workflow
+and Ontology revisions and read the deterministic immutable plan. The client
+validates transport bounds and optimistic version shape but does not parse
+ACL, compile plans, retain revision state, or execute Workflow steps.
 
 `bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
 lifecycle and require caller-owned idempotency keys. A bind names one exact
