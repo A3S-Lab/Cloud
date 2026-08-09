@@ -699,6 +699,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/078_boot_flow_task_queue_schema.sql"
             )),
         ),
+        Migration::new(
+            "079",
+            "Form drafts and immutable releases",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/079_form_drafts_and_releases.sql"
+            )),
+        ),
     ]
 }
 

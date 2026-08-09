@@ -22,6 +22,10 @@ The `W0.3` planning slice adds ten Workflow definition, immutable revision,
 Goal, and deterministic Plan tools over the same CQRS handlers used by REST,
 the maintained client, and CLI. It adds no MCP-owned planner, run engine,
 payload store, or authorization path.
+The native Form lifecycle adds seven draft/release tools over the same Form
+commands, queries, owner compiler port, A3S ORM repository, audit, and Outbox
+used by REST, the maintained client, and CLI. It adds no MCP-owned Form parser,
+compiler, validator, store, or submission path.
 
 ## Transport contract
 
@@ -93,6 +97,13 @@ scopes control mutation tool visibility and invocation independently:
 | --- | --- | --- |
 | `a3s_cloud_projects_list` | Query | None |
 | `a3s_cloud_environments_list` | Query | None |
+| `a3s_cloud_forms_list` | Query | None |
+| `a3s_cloud_forms_get` | Query | None |
+| `a3s_cloud_form_releases_list` | Query | None |
+| `a3s_cloud_form_releases_get` | Query | None |
+| `a3s_cloud_forms_create` | Command | `form:write` |
+| `a3s_cloud_forms_revise` | Command | `form:write` |
+| `a3s_cloud_form_releases_publish` | Command | `form:write` |
 | `a3s_cloud_memberships_list` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_get` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_service_memberships_create` | Administrator command | `identity:write` plus organization administrator role |
@@ -105,6 +116,16 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_ontology_revisions_diff` | Query | None |
 | `a3s_cloud_ontologies_create` | Command | `ontology:write` |
 | `a3s_cloud_ontologies_revise` | Command | `ontology:write` |
+| `a3s_cloud_workflow_definitions_list` | Query | None |
+| `a3s_cloud_workflow_definitions_get` | Query | None |
+| `a3s_cloud_workflow_revisions_list` | Query | None |
+| `a3s_cloud_workflow_revisions_get` | Query | None |
+| `a3s_cloud_workflow_goals_list` | Query | None |
+| `a3s_cloud_workflow_goals_get` | Query | None |
+| `a3s_cloud_workflow_plan_revisions_get` | Query | None |
+| `a3s_cloud_workflow_definitions_create` | Command | `workflow:write` |
+| `a3s_cloud_workflow_definitions_revise` | Command | `workflow:write` |
+| `a3s_cloud_workflow_goals_create` | Command | `workflow:write` |
 | `a3s_cloud_search` | Query | None |
 | `a3s_cloud_nodes_list` | Query | None |
 | `a3s_cloud_nodes_get` | Query | None |
@@ -235,6 +256,25 @@ DTOs as REST. Identical semantic inputs produce identical canonical Plan bytes
 and digest; Goal and Plan identities remain distinct records. WorkflowRun and
 step execution are not exposed by this slice.
 
+## Native Form draft and release lifecycle
+
+`a3s_cloud_forms_create` accepts `projectId`, a bounded name and optional
+description, one native Form `document` JSON object, and `idempotencyKey`.
+`a3s_cloud_forms_revise` replaces `projectId` with `formId` and adds a positive
+`expectedVersion`. Both reject unknown properties, non-object documents,
+invalid UUIDs, zero versions, and unsafe idempotency keys before dispatch.
+
+Draft list/get and release list/get tools return the same REST DTOs. Release
+publication accepts `formId`, `expectedVersion`, and `idempotencyKey`, then
+calls the pinned A3S Form owner compiler through the Forms application port.
+It atomically commits the next aggregate version, immutable release,
+idempotency record, audit, and Outbox through A3S ORM. Exact create, revise, and
+publish replay returns the historical accepted projection even after the
+aggregate advances. The adapter derives organization and actor identity from
+the principal and never accepts either as an argument. It does not compile or
+validate Form semantics itself and does not expose Form submission or
+WorkflowRun execution.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional
@@ -284,7 +324,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 45-tool administrator and 28-tool
+current expanded runner requires exact 52-tool administrator and 32-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -293,21 +333,25 @@ missing Projects. It also creates an Ontology through REST, replays it through
 MCP, exercises all seven Ontology tools with a read-only token where
 applicable, rejects a breaking revision without its target migration rule,
 publishes the explicit migration, and proves historical replay after later
-revisions. It creates a real Environment, exercises all five operational
+revisions. It creates a native Form through REST, replays creation through
+MCP, revises and publishes through MCP, exercises all four read tools with the
+read-only token, and proves publication plus historical revision replay. It
+creates a real Environment, exercises all five operational
 list tools, verifies all eight detail/log/evidence tools and all five commands
 return bounded `NOT_FOUND` envelopes for missing resources, and rejects invalid
 read and command arguments. It also creates one Workload from A3S ACL, stops it
 through MCP, proves exact replay, and observes token revocation on the next MCP
 request. The persistence check requires the expected Token digests, read-only
-scope, revocation, Project, Environment, stopped Workload, and idempotency rows,
-plus zero plaintext credentials in responses, logs, evidence, or the PostgreSQL
-dump. Production persistence reaches PostgreSQL only through A3S ORM
-repositories.
+scope, revocation, Project, Ontology, Form draft/release, Environment, stopped
+Workload, and idempotency rows, plus zero plaintext credentials in responses,
+logs, evidence, or the PostgreSQL dump. Production persistence reaches
+PostgreSQL only through A3S ORM repositories.
 
 The expanded focused catalog, permission, Ontology migration, Workflow
-definition/Goal/Plan lifecycle, deterministic-plan, and replay tests pass. The
-updated clean PostgreSQL/A3S Box scenario and its Ontology and Workflow
-persistence/idempotency assertions must pass before these slices are verified.
+definition/Goal/Plan lifecycle, native Form lifecycle, tenant/role boundary,
+deterministic-plan, and replay tests pass. The updated clean PostgreSQL/A3S Box
+scenario and its Ontology, Workflow, and Form persistence/idempotency
+assertions must pass before these slices are verified.
 
 ## Current limits
 

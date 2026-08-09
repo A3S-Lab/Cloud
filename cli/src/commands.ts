@@ -27,6 +27,7 @@ import {
 } from './context';
 import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
+import { executeFormCommand } from './form-commands';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
 import { executeOntologyCommand } from './ontology-commands';
@@ -132,6 +133,12 @@ export async function executeCommand(
   });
   if (workflowResult !== undefined) {
     return workflowResult;
+  }
+  const formResult = await executeFormCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (formResult !== undefined) {
+    return formResult;
   }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

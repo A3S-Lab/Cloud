@@ -70,6 +70,8 @@ mod edge_support;
 mod executions_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
+#[path = "support/forms.rs"]
+mod forms_support;
 #[path = "support/g0_external_release.rs"]
 mod g0_external_release_support;
 #[path = "support/gateway_replica_recovery.rs"]
@@ -206,6 +208,16 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
         return Ok(());
     };
     run_isolated_postgres(&admin_url, exercise_postgres_foundation).await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_form_lifecycle_is_atomic_tenant_scoped_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, forms_support::exercise_form_persistence)
+        .await
+        .expect("PostgreSQL Form lifecycle gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -748,6 +760,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
              drop table if exists identity_principals cascade;
+             drop table if exists form_releases cascade;
+             drop table if exists form_drafts cascade;
              drop table if exists ontology_revisions cascade;
              drop table if exists ontologies cascade;
              drop table if exists operation_projections cascade;
@@ -768,6 +782,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists a3s_orm_migrations cascade;
              drop function if exists reject_cloud_outbox() cascade;
              drop function if exists reject_outbox_ack() cascade;
+             drop function if exists reject_form_release_mutation() cascade;
              drop function if exists reject_ontology_revision_mutation() cascade;",
         )
         .await?;
@@ -779,7 +794,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 78);
+    assert_eq!(applied, 79);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -790,6 +805,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "agent_conversations",
         "agent_executions",
         "agent_execution_events",
+        "form_drafts",
+        "form_releases",
         "ontologies",
         "ontology_revisions",
     ] {
@@ -841,6 +858,24 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(immutable_revision_trigger, 1);
+    let immutable_form_release_trigger = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid = 'form_releases'::regclass and tgname = 'form_releases_immutable' and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(immutable_form_release_trigger, 1);
+    let latest_form_release_foreign_key = database
+        .fetch_one_as(sql_query::<(bool, bool)>(
+            "select condeferrable, condeferred from pg_constraint where conrelid = 'form_drafts'::regclass and conname = 'form_drafts_latest_release_fk'",
+        ))
+        .await?;
+    assert_eq!(latest_form_release_foreign_key, (true, true));
+    let form_release_uniqueness = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'form_releases'::regclass and conname in ('form_releases_revision_unique', 'form_releases_source_draft_version_unique')",
+        ))
+        .await?;
+    assert_eq!(form_release_uniqueness, 2);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)

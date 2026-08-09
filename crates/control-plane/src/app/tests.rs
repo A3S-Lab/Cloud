@@ -15,6 +15,7 @@ use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
+use crate::modules::forms::{InMemoryFormRepository, NativeFormSemanticCore};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
@@ -56,6 +57,7 @@ mod asset_git_support;
 mod asset_git_tests;
 mod build_tests;
 mod execution_tests;
+mod forms_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
 mod ontology_tests;
@@ -76,6 +78,7 @@ const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const PROJECT_TOKEN: &str = "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const SOURCE_TOKEN: &str = "a3s_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const FORM_TOKEN: &str = "a3s_1111111111111111111111111111111111111111111111111111111111111111";
 const TOKEN_MANAGER_TOKEN: &str =
     "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const SERVICE_MEMBER_TOKEN: &str =
@@ -855,6 +858,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ontologies: Arc::new(InMemoryOntologyRepository::new()),
             workflow_definitions: Arc::new(InMemoryWorkflowDefinitionRepository::new()),
             workflow_goals: Arc::new(InMemoryWorkflowGoalRepository::new()),
+            forms: Arc::new(InMemoryFormRepository::new()),
+            form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
             search,
             asset_catalog,
             mcp_service_profiles,

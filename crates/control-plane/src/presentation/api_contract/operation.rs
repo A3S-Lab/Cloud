@@ -1,5 +1,6 @@
 use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
 
@@ -133,6 +134,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
                 "in": "header",
                 "required": true,
                 "description": "Current WorkflowDefinition aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
+    if method == "post" && is_form_version_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current Form draft aggregate version used for optimistic concurrency.",
                 "schema": { "type": "integer", "minimum": 1 }
             }),
         );
@@ -309,7 +322,35 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    if is_workflow_goal_mutation_path(path) {
+    if is_form_draft_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "document"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                        },
+                        "description": {
+                            "type": "string",
+                            "maxLength": 4096,
+                            "default": ""
+                        },
+                        "document": {
+                            "type": "object",
+                            "description": "A native A3S Form document. Canonicalization and semantic validation remain owned by A3S Form.",
+                            "x-a3s-max-canonical-bytes": CLOUD_FORM_DOCUMENT_MAX_BYTES
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_workflow_goal_mutation_path(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
             json!({
@@ -432,6 +473,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         || (method == "post"
             && (is_ontology_mutation_path(path)
                 || is_workflow_mutation_path(path)
+                || is_form_draft_mutation_path(path)
                 || is_mcp_service_profile_path(path)
                 || is_mcp_route_policy_mutation_path(path)))
     {
@@ -553,6 +595,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Workloads"
     } else if path.contains("ontologies") || path.contains("workflow-") {
         "Workflow"
+    } else if path.contains("/forms") {
+        "Forms"
     } else if path.contains("projects") || path.contains("environments") {
         "Projects"
     } else if path.contains("operations") {
@@ -585,6 +629,7 @@ fn request_has_no_body(path: &str) -> bool {
         || path.ends_with("/agent-conversations")
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || path.ends_with("/source-connections/github")
+        || is_form_release_mutation_path(path)
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
 }
 
@@ -613,6 +658,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/workflow-definitions")
         || is_workflow_revision_mutation_path(path)
         || path.ends_with("/workflow-goals")
+        || is_form_mutation_path(path)
         || path.ends_with("/api-tokens")
         || path.ends_with("/memberships")
         || path.ends_with("/enrollment-tokens")
@@ -660,6 +706,24 @@ fn is_workflow_revision_mutation_path(path: &str) -> bool {
 
 fn is_workflow_goal_mutation_path(path: &str) -> bool {
     path.ends_with("/workflow-goals")
+}
+
+fn is_form_mutation_path(path: &str) -> bool {
+    is_form_draft_mutation_path(path) || is_form_release_mutation_path(path)
+}
+
+fn is_form_draft_mutation_path(path: &str) -> bool {
+    path.ends_with("/forms")
+        || (path.contains("/forms/{form_id}/") && path.ends_with("/draft-revisions"))
+}
+
+fn is_form_release_mutation_path(path: &str) -> bool {
+    path.contains("/forms/{form_id}/") && path.ends_with("/releases")
+}
+
+fn is_form_version_mutation_path(path: &str) -> bool {
+    (path.contains("/forms/{form_id}/") && path.ends_with("/draft-revisions"))
+        || is_form_release_mutation_path(path)
 }
 
 fn is_mcp_route_policy_mutation_path(path: &str) -> bool {

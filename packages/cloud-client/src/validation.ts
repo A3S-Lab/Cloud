@@ -11,6 +11,7 @@ export const MAX_WORKFLOW_PAYLOAD_ACL_BYTES = 256 * 1024;
 export const MAX_WORKFLOW_REVISION_PAYLOAD_BYTES = 8 * 1024 * 1024;
 export const MAX_WORKFLOW_REVISION_PAYLOADS = 2048;
 export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
+export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
@@ -171,6 +172,58 @@ export function validateWorkflowRevisionControl(expectedVersion: number): void {
 
 export function validateWorkflowGoalAcl(acl: string): void {
   validateAclBytes(acl, MAX_WORKFLOW_GOAL_ACL_BYTES, 'Workflow goal ACL');
+}
+
+export function validateFormDraftInput(input: {
+  name: string;
+  description?: string;
+  document: unknown;
+}): void {
+  validateFormText(input.name, 'Form name', 1, 120);
+  validateFormText(input.description ?? '', 'Form description', 0, 4_096);
+  if (typeof input.document !== 'object' || input.document === null || Array.isArray(input.document)) {
+    throw new TypeError('Form document must be a JSON object');
+  }
+  let encoded: string | undefined;
+  try {
+    encoded = JSON.stringify(input.document);
+  } catch {
+    throw new TypeError('Form document must be JSON serializable');
+  }
+  if (encoded === undefined) {
+    throw new TypeError('Form document must serialize to a JSON object');
+  }
+  const transported = JSON.parse(encoded) as unknown;
+  if (typeof transported !== 'object' || transported === null || Array.isArray(transported)) {
+    throw new TypeError('Form document must serialize to a JSON object');
+  }
+  if (new TextEncoder().encode(encoded).byteLength > MAX_FORM_DOCUMENT_BYTES) {
+    throw new RangeError(`Form document must contain at most ${MAX_FORM_DOCUMENT_BYTES} UTF-8 bytes`);
+  }
+}
+
+export function validateFormVersionControl(expectedVersion: number): void {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new RangeError('expected Form draft version must be a positive safe integer');
+  }
+}
+
+function validateFormText(
+  value: string,
+  label: string,
+  minimumTrimmedCharacters: number,
+  maximumCharacters: number
+): void {
+  if (
+    typeof value !== 'string' ||
+    [...value.trim()].length < minimumTrimmedCharacters ||
+    [...value].length > maximumCharacters ||
+    value.includes('\0')
+  ) {
+    throw new TypeError(
+      `${label} must contain between ${minimumTrimmedCharacters} and ${maximumCharacters} characters`
+    );
+  }
 }
 
 function validateAclBytes(value: string, maximumBytes: number, label: string): void {

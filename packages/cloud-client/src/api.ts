@@ -37,6 +37,11 @@ import type {
   EnvironmentMutationResult,
   Execution,
   ExecutionMutationResult,
+  FormDraft,
+  FormDraftInput,
+  FormDraftMutationResult,
+  FormPublicationMutationResult,
+  FormRelease,
   GatewayCertificate,
   GatewayScope,
   GatewayScopeMutationResult,
@@ -66,9 +71,11 @@ import type {
   OrganizationMutationResult,
   Project,
   ProjectMutationResult,
+  PublishFormReleaseOptions,
   PublishRouteInput,
   ResolveSourceRevisionInput,
   RetryBuildRunResult,
+  ReviseFormDraftOptions,
   ReviseOntologyOptions,
   ReviseWorkflowDefinitionOptions,
   RevokeMcpCredentialInput,
@@ -104,6 +111,8 @@ import {
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
+  validateFormDraftInput,
+  validateFormVersionControl,
   validateMcpCredentialExpiry,
   validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
@@ -130,13 +139,14 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.12.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.13.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
   MAX_ACL_DOCUMENT_BYTES,
+  MAX_FORM_DOCUMENT_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
@@ -147,6 +157,8 @@ export {
   MAX_WORKFLOW_REVISION_PAYLOADS,
   MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
+  validateFormDraftInput,
+  validateFormVersionControl,
 } from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
@@ -591,6 +603,108 @@ export class CloudApi {
         `/workflow-goals/${encodeURIComponent(workflowGoalId)}` +
         `/plan-revisions/${encodeURIComponent(planRevisionId)}`,
       signal
+    );
+  }
+
+  listFormDrafts(organizationId: string, projectId: string, signal?: AbortSignal): Promise<FormDraft[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/forms`,
+      signal
+    );
+  }
+
+  getFormDraft(organizationId: string, formId: string, signal?: AbortSignal): Promise<FormDraft> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/forms/${encodeURIComponent(formId)}`,
+      signal
+    );
+  }
+
+  createFormDraft(
+    organizationId: string,
+    projectId: string,
+    input: FormDraftInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<FormDraftMutationResult> {
+    validateFormDraftInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/forms`,
+      idempotencyKey,
+      {
+        name: input.name,
+        description: input.description ?? '',
+        document: input.document,
+      },
+      signal
+    );
+  }
+
+  reviseFormDraft(
+    organizationId: string,
+    formId: string,
+    input: FormDraftInput,
+    options: ReviseFormDraftOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<FormDraftMutationResult> {
+    validateFormDraftInput(input);
+    validateFormVersionControl(options.expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}/draft-revisions`,
+      idempotencyKey,
+      {
+        name: input.name,
+        description: input.description ?? '',
+        document: input.document,
+      },
+      signal,
+      { 'x-a3s-expected-version': String(options.expectedVersion) }
+    );
+  }
+
+  listFormReleases(organizationId: string, formId: string, signal?: AbortSignal): Promise<FormRelease[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}/releases`,
+      signal
+    );
+  }
+
+  getFormRelease(
+    organizationId: string,
+    formId: string,
+    releaseId: string,
+    signal?: AbortSignal
+  ): Promise<FormRelease> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}` +
+        `/releases/${encodeURIComponent(releaseId)}`,
+      signal
+    );
+  }
+
+  publishFormRelease(
+    organizationId: string,
+    formId: string,
+    options: PublishFormReleaseOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<FormPublicationMutationResult> {
+    validateFormVersionControl(options.expectedVersion);
+    return this.request(
+      'POST',
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}/releases`,
+      {
+        idempotencyKey,
+        signal,
+        additionalHeaders: { 'x-a3s-expected-version': String(options.expectedVersion) },
+      }
     );
   }
 
