@@ -145,6 +145,18 @@ queue gate and the existing nine-boundary Build Flow `SIGKILL` matrix pass on
 this dependency set. This is the reusable `F0` durability substrate, not a
 claim that WorkflowRun, A3S Form, or HumanTask execution is complete.
 
+The first interaction-contract slice pins native `a3s-form-core` `0.1.0` at
+revision `a71bcc525c9cfa075e34cec4c8ac0fa9185a39af` and consumes the owner
+repository's request-bound golden fixture. A domain-only Forms context now
+records immutable accepted submissions, while Workflow owns the optimistic
+`pending_activation -> ready -> claimed -> completed | expired | cancelled`
+HumanTask lifecycle, immutable decisions, bounded resume payloads, and receipts
+derived only from matching Flow `HookReceived` history. Identical terminal hook
+redelivery is verified against Flow `0.11.0`; payload drift conflicts. This
+freezes the Phase 0 domain boundary only. Form draft/release persistence,
+server-side submitted-value evaluation, WorkflowRun execution, task APIs,
+Outbox delivery/reconciliation, and the task inbox remain unavailable.
+
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one
 `owner`, `admin`, `member`, or fail-closed `restricted` organization role. API
@@ -319,7 +331,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan slice are implemented; real PostgreSQL verification plus WorkflowRun execution and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan plus interaction-contract slices are implemented; native Form parity, persistence, real PostgreSQL verification, WorkflowRun execution, and `W0.4`-`W0.5` remain) |
 | `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
 | `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |

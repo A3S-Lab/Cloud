@@ -78,4 +78,6 @@ identifier!(WorkflowRevisionId);
 identifier!(WorkflowGoalId);
 identifier!(PlanRevisionId);
 identifier!(WorkflowRunId);
+identifier!(HumanTaskId);
+identifier!(FormSubmissionId);
 identifier!(WorkflowDecisionId);

@@ -146,7 +146,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
-| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan slice are implemented; real PostgreSQL verification plus WorkflowRun execution and `W0.4`-`W0.5` remain) |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan plus interaction-contract slices are implemented; native Form parity, persistence, real PostgreSQL verification, WorkflowRun execution, and `W0.4`-`W0.5` remain) |
 | `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
@@ -1357,7 +1357,7 @@ Operations remains the only durable orchestration mechanism.
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
 | `W0.2` | Implemented; verification pending | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.12.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests pass; clean real-PostgreSQL and expanded cross-surface evidence remain required |
-| `W0.3` | In progress; planning slice implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. REST `1.12.0`, client, CLI, and ten Management MCP tools share the same CQRS lifecycle and historical idempotency replay. WorkflowRun, human decisions, service/finite-task dispatch through one Operation/A3S Flow, recovery projections, and clean real-PostgreSQL evidence remain required |
+| `W0.3` | In progress; planning and interaction-contract slices implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. REST `1.12.0`, client, CLI, and ten Management MCP tools share the same CQRS lifecycle and historical idempotency replay. The interaction-contract slice pins the exact native A3S Form revision, consumes its shared golden fixture, and freezes Cloud-owned HumanTask, immutable FormSubmission/WorkflowDecision, bounded Flow-resume payload, and HookReceived receipt invariants. WorkflowRun and Form lifecycle persistence, human-task commands/APIs, Outbox reconciliation, service/finite-task dispatch, and clean real-PostgreSQL evidence remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
@@ -1369,7 +1369,13 @@ remain replayable. PostgreSQL tests cover queue draining, bounded retries,
 terminal-failure readiness, and the existing nine Build Flow `SIGKILL`
 boundaries. Publishing the exact root compatibility lock remains open. This
 removes an execution-infrastructure blocker for `W0.3`; it does not implement
-WorkflowRun, Form lifecycle, human decisions, or `W0.4` provider steps.
+WorkflowRun, Form lifecycle persistence, human-task product surfaces, or `W0.4`
+provider steps. The subsequent interaction-contract slice pins native
+`a3s-form-core` `0.1.0` at revision
+`a71bcc525c9cfa075e34cec4c8ac0fa9185a39af`, consumes its byte-identical
+request/submission fixture, and verifies exact/conflicting Flow hook redelivery.
+Those domain contracts are not persistence, API, worker, or end-to-end product
+availability evidence.
 
 Workflow connectors call owning application ports. They cannot write Agent,
 MCP, Inference, Use, Workloads, Fleet, or Operations tables, publish provider
@@ -1467,9 +1473,10 @@ The default portfolio priority is:
    saga and `C0.3` authorization/audit are ready; keep executable and
    multi-host surfaces behind `U0.4` and `U0.5`;
 10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
-    and `W0.3` definition/goal/deterministic-plan slice; publish the exact Flow
-    `0.11.0`/Boot/ORM compatibility lock, close their real-PostgreSQL and
-    expanded cross-surface evidence, then finish WorkflowRun execution on
+    and `W0.3` definition/goal/deterministic-plan plus interaction-contract
+    slices; publish the exact Form/Flow `0.11.0`/Boot/ORM compatibility lock,
+    close native submitted-value parity and real-PostgreSQL cross-surface
+    evidence, then finish Form lifecycle and WorkflowRun execution on
     Operations and A3S Flow without waiting for every external step provider;
 11. add `W0.4` only as its selected `A1.3`, `MCP0.5`, `I0.2`, and `U0.4`
     provider contracts pass, then close `W0.5` through multi-day recovery,

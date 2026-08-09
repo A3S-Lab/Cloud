@@ -1,6 +1,7 @@
 mod capability_reference;
 pub mod entities;
 pub mod events;
+mod flow_resume;
 mod ontology_contract;
 pub mod repositories;
 pub mod services;
@@ -13,12 +14,17 @@ mod workflow_payload;
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
-    Ontology, OntologyRevision, PlanRevision, WorkflowDefinition, WorkflowGoal, WorkflowPlan,
+    HumanTask, HumanTaskStatus, NewHumanTask, Ontology, OntologyRevision, PlanRevision,
+    WorkflowDecision, WorkflowDecisionOutcome, WorkflowDefinition, WorkflowGoal, WorkflowPlan,
     WorkflowPlanStep, WorkflowRevision, ONTOLOGY_COMPILER_SCHEMA_VERSION,
     WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
     WORKFLOW_PLAN_SCHEMA, WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
 };
 pub use events::{OntologyRevisionPublished, WorkflowGoalCompiled, WorkflowRevisionPublished};
+pub use flow_resume::{
+    FlowResumePayload, FlowResumeReceipt, FLOW_RESUME_PAYLOAD_API_VERSION,
+    FLOW_RESUME_RECEIPT_API_VERSION,
+};
 pub use ontology_contract::{
     OntologyContract, OntologyContractQuotas, OntologyObjectType, OntologyRelationCardinality,
     OntologyRelationType, OntologyRule, OntologyRuleKind, OntologySpec, ONTOLOGY_MAX_ACL_BYTES,
@@ -35,7 +41,7 @@ pub use services::{
     OntologyChangeCompatibility, OntologyChangeKind, OntologyDiff, OntologyResourceKind,
     WorkflowPlanCompiler,
 };
-pub use value_objects::{OntologyMigrationPolicy, OntologyName};
+pub use value_objects::{AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName};
 pub use workflow_contract::{
     WorkflowContract, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind,
     WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
@@ -53,3 +59,5 @@ pub use workflow_payload::{
 
 #[cfg(test)]
 mod authority_tests;
+#[cfg(test)]
+mod human_task_contract_tests;

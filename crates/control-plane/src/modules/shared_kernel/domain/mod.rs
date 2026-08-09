@@ -1,3 +1,4 @@
+mod authorization_decision_ref;
 mod canonical_json;
 mod git_commit_sha;
 mod idempotency;
@@ -7,16 +8,17 @@ mod resource_name;
 mod sha256_digest;
 mod timestamp;
 
+pub use authorization_decision_ref::AuthorizationDecisionRef;
 pub use canonical_json::{canonical_json_bounded, sha256_digest};
 pub use git_commit_sha::GitCommitSha;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     AgentConversationId, AgentExecutionId, ApiTokenId, AssetId, AssetReleaseId, BuildRunId,
-    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId,
-    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, McpCredentialId, MembershipId,
-    NodeCertificateId, NodeCommandId, NodeId, OntologyId, OntologyRevisionId, OperationId,
-    OrganizationId, PlanRevisionId, PrincipalId, ProjectId, ResourceClaimId, RouteId, SecretId,
-    SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
+    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId, FormSubmissionId,
+    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, HumanTaskId, McpCredentialId,
+    MembershipId, NodeCertificateId, NodeCommandId, NodeId, OntologyId, OntologyRevisionId,
+    OperationId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, ResourceClaimId, RouteId,
+    SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
     WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };

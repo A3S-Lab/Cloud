@@ -169,6 +169,7 @@ dependencies = [
  "a3s-cloud-node-agent",
  "a3s-event",
  "a3s-flow",
+ "a3s-form-core",
  "a3s-orm",
  "a3s-runtime",
  "aes-gcm",
@@ -374,6 +375,20 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "a3s-form-core"
+version = "0.1.0"
+source = "git+https://github.com/A3S-Lab/Form.git?rev=a71bcc525c9cfa075e34cec4c8ac0fa9185a39af#a71bcc525c9cfa075e34cec4c8ac0fa9185a39af"
+dependencies = [
+ "regress",
+ "ryu-js",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "url",
 ]
 
 [[package]]
@@ -4895,6 +4910,16 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "regress"
+version = "0.10.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2057b2325e68a893284d1538021ab90279adac1139957ca2a74426c6f118fb48"
+dependencies = [
+ "hashbrown 0.16.1",
+ "memchr",
+]
 
 [[package]]
 name = "relative-path"

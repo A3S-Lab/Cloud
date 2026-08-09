@@ -399,7 +399,7 @@ may retain private in-process state and source events but cannot add a
 Cloud-visible run store, scheduler, command queue, approval authority, or
 second semantic history.
 
-### 3.14 Workflow and ontology (`W0.1` and backend `W0.2` implemented)
+### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and the interaction contract implemented)
 
 Owns ontology revisions, Workflow definitions and revisions, goals,
 deterministic plan revisions, Workflow runs, human decisions, and semantic step
@@ -413,6 +413,7 @@ Primary aggregates:
 - `WorkflowDefinition`
 - `WorkflowGoal`
 - `WorkflowRun`
+- `HumanTask`
 
 Supporting immutable records:
 
@@ -421,6 +422,16 @@ Supporting immutable records:
 - `PlanRevision`
 - `WorkflowStepProjection`
 - `WorkflowDecision`
+- `FormSubmission`
+
+The Phase 0 interaction boundary reuses A3S Form's exact `FormReleaseRef`,
+request, submission, canonicalization, and digest contracts. Forms owns an
+immutable accepted `FormSubmission`; Workflow owns the optimistically versioned
+HumanTask and immutable WorkflowDecision. Flow owns hook history. Cloud creates
+a resume receipt only after observing the exact matching `HookReceived` event,
+never from Outbox delivery alone. Draft/release persistence, commands, APIs,
+and tasklist projections remain later slices and are not implied by these
+domain records.
 
 The first closed Workflow contract uses these semantic step kinds:
 
