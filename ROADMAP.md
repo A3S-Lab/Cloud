@@ -141,7 +141,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Historical; Box re-certification pending |
 | `G0` — External source delivery | Pinned Git sources, isolated builds, OCI validation/publication, provenance, and deployment through the common Workload path | In progress |
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
-| `C0` — Control surfaces | REST/CLI/management MCP parity, external OIDC identity federation, grants, search, collaboration, security investigation, notifications, audit, and bounded exec/terminal | In progress |
+| `C0` — Control surfaces | REST/CLI/management MCP parity, External OIDC identity federation, grants, search, collaboration, security investigation, notifications, audit, and bounded exec/terminal | In progress |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
