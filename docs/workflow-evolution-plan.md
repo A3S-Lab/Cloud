@@ -120,11 +120,11 @@ Search index authoritative.
 | `W0.4` | Add immutable Agent, MCP, model, Tool, and business-service step bindings with typed inputs/outputs, compensation, approval, and bounded evidence references | `W0.3`, provider-neutral `A1.3`, `MCP0.5`, `I0.2`, `U0.4` where a Use surface is selected |
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
-`W0.1`, the backend implementation of `W0.2`, and the planning/persistence/API
-portion of `W0.3` are now present. Migration
+`W0.1`, the backend implementation of `W0.2`, and the planning/persistence plus
+minimal Workflow-local execution portions of `W0.3` are now present. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
-and deterministic diff are exposed through REST `1.13.0`, the maintained
+and deterministic diff are exposed through REST `1.14.0`, the maintained
 client, CLI, and seven Management MCP tools; Search has one rebuildable current
 Ontology projection. Compatible migration policy is derived from the diff. A
 breaking change is valid only when the caller names an exact rule in the
@@ -132,21 +132,31 @@ target ACL whose kind is `migration`; there is no separate policy document or
 migration registry. Migration `076` stores project-scoped WorkflowDefinition
 heads, immutable Workflow revisions, every exact referenced closed ACL
 payload, immutable Goals, and deterministic Plan revisions through the same
-A3S ORM transaction boundary. REST `1.13.0`, the maintained client, CLI, and
+A3S ORM transaction boundary. REST `1.14.0`, the maintained client, CLI, and
 ten additional Management MCP tools reuse the same CQRS handlers. Historical
 idempotency replay reconstructs the aggregate
 as it existed at the referenced revision instead of pairing an old revision
 with the current head. Focused tests pass, while clean real-PostgreSQL and
 expanded cross-surface conformance still block Workflow planning verification.
 Migration `079` additionally stores project-scoped canonical native Form draft
-heads and immutable owner-compiled releases through A3S ORM. REST `1.13.0`, the
+heads and immutable owner-compiled releases through A3S ORM. REST `1.14.0`, the
 maintained client, CLI, and seven Management MCP tools share create/list/get/
 revise/publish commands and queries, tenant and role boundaries, optimistic
 versions, and historical idempotency replay. Focused PostgreSQL 17 plus domain,
 REST, OpenAPI, client, CLI, and MCP lifecycle tests pass without copying the
-Form compiler or validator. WorkflowRun, protected Form submission,
-human/service/finite-task dispatch through one Operation/A3S Flow, recovery,
-and all public Workflow execution remain unavailable.
+Form compiler or validator. Migration `080` atomically stores the exact
+Goal/Plan-bound WorkflowRun, correlated Operation, WorkflowStepProjection
+records, idempotency, audit, and Outbox through A3S ORM. One A3S Flow run
+executes Workflow-local `input`, `transform`, `branch`, and `output` steps; the
+reconciler verifies immutable plan/input/payload authority, rejects replay
+drift, and projects cancellation, deadlines, terminal output, and bounded
+redacted history. REST `1.14.0`, the maintained client, CLI, and seven
+additional Management MCP tools expose start, cancel, list, get, wait, output,
+and history through the same CQRS handlers. Focused PostgreSQL 17, domain,
+REST, OpenAPI, client, CLI, MCP, replay, cancellation, and timeout tests pass.
+Protected Form submission, HumanTask, human/service/finite-task dispatch,
+typed capability steps, compensation, expanded cross-surface evidence, and
+public Workflow availability remain open.
 
 ### 4.3 Compiler rules
 
@@ -239,11 +249,12 @@ decision coordination remain deterministic semantic work. Other steps call
 the named owning application port; only that owner may decide whether an
 ordinary Runtime Task or Service is required.
 
-`W0.3` must persist each admitted closed configuration and schema payload
-atomically with its WorkflowRevision, then verify every stored digest before
-publication or compilation. A digest without retrievable canonical content is
-not a publishable Workflow input, and mutable external content cannot fill the
-gap during replay.
+The implemented `W0.3` publication path persists each admitted closed
+configuration and schema payload atomically with its WorkflowRevision, then
+verifies every stored digest before publication, compilation, and minimal run
+replay. A digest without retrievable canonical content is not a publishable or
+executable Workflow input, and mutable external content cannot fill the gap
+during replay.
 
 ## 5. `A1`: heterogeneous Agent hosting through one contract
 

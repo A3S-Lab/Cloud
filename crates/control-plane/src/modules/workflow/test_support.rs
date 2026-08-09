@@ -1,9 +1,18 @@
 use crate::modules::forms::domain::{AcceptedFormSubmission, FormSubmission};
 use crate::modules::shared_kernel::domain::{
-    AuthorizationDecisionRef, FormSubmissionId, HumanTaskId, OrganizationId, PrincipalId,
-    ProjectId, Sha256Digest, WorkflowRunId,
+    canonical_json_bounded, sha256_digest, AuthorizationDecisionRef, FormSubmissionId, HumanTaskId,
+    OntologyId, OntologyRevisionId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
+    Sha256Digest, WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
 };
-use crate::modules::workflow::domain::{AssignmentPolicyRef, HumanTask, NewHumanTask};
+use crate::modules::workflow::domain::entities::digest_payload_set;
+use crate::modules::workflow::domain::{
+    AssignmentPolicyRef, HumanTask, NewHumanTask, ResolvedWorkflowPayload, WorkflowBranchRoute,
+    WorkflowDataSchema, WorkflowDataType, WorkflowEdgeSpec, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowRunInput,
+    WorkflowStepConfiguration, WorkflowStepKind, WORKFLOW_PLAN_COMPILER_REVISION,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+};
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
     FormInteractionOutcome, FormInteractionOutputMapping, FormInteractionRequest,
@@ -154,6 +163,177 @@ pub(crate) fn timestamp(hour: u32, minute: u32) -> DateTime<Utc> {
     Utc.with_ymd_and_hms(2026, 8, 9, hour, minute, 0)
         .single()
         .expect("timestamp")
+}
+
+pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let goal_input = serde_json::json!({"ticketId": "T-42", "priority": "high"});
+    let input_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &goal_input,
+        1024 * 1024,
+        "WorkflowRun test input",
+    )?))?;
+    let data_schema =
+        WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
+            value_type: WorkflowDataType::Any,
+            fields: Vec::new(),
+        }))?;
+    let input_configuration =
+        configuration(WorkflowStepConfiguration::empty(WorkflowStepKind::Input))?;
+    let mut normalize = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    normalize.template = Some("{{input}}".into());
+    let normalize_configuration = configuration(normalize)?;
+    let mut branch = WorkflowStepConfiguration::empty(WorkflowStepKind::Branch);
+    branch.selector = Some("current.priority".into());
+    branch.default_handle = Some("normal".into());
+    branch.routes = vec![
+        WorkflowBranchRoute {
+            handle: "high".into(),
+            equals: "high".into(),
+        },
+        WorkflowBranchRoute {
+            handle: "normal".into(),
+            equals: "normal".into(),
+        },
+    ];
+    let branch_configuration = configuration(branch)?;
+    let mut high = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    high.template = Some("HIGH {{input.ticketId}}".into());
+    let high_configuration = configuration(high)?;
+    let mut normal = WorkflowStepConfiguration::empty(WorkflowStepKind::Transform);
+    normal.template = Some("NORMAL {{input.ticketId}}".into());
+    let normal_configuration = configuration(normal)?;
+    let output_configuration =
+        configuration(WorkflowStepConfiguration::empty(WorkflowStepKind::Output))?;
+
+    let schema_digest = data_schema.digest().clone();
+    let mut payloads = vec![
+        data_schema,
+        input_configuration.clone(),
+        normalize_configuration.clone(),
+        branch_configuration.clone(),
+        high_configuration.clone(),
+        normal_configuration.clone(),
+        output_configuration.clone(),
+    ];
+    payloads.sort_by(|left, right| left.digest().cmp(right.digest()));
+    let workflow_payload_set_digest = digest_payload_set(&payloads)?;
+    let plan = WorkflowPlan {
+        schema: WORKFLOW_PLAN_SCHEMA.into(),
+        compiler_revision: WORKFLOW_PLAN_COMPILER_REVISION.into(),
+        workflow_definition_id: WorkflowDefinitionId::new(),
+        workflow_revision_id: WorkflowRevisionId::new(),
+        workflow_digest: Sha256Digest::parse(digest('1'))?,
+        workflow_payload_set_digest,
+        ontology_id: OntologyId::new(),
+        ontology_revision_id: OntologyRevisionId::new(),
+        ontology_digest: Sha256Digest::parse(digest('2'))?,
+        environment_id: None,
+        input_digest,
+        steps: vec![
+            plan_step(
+                "input",
+                WorkflowStepKind::Input,
+                &input_configuration,
+                &schema_digest,
+            ),
+            plan_step(
+                "normalize",
+                WorkflowStepKind::Transform,
+                &normalize_configuration,
+                &schema_digest,
+            ),
+            plan_step(
+                "route",
+                WorkflowStepKind::Branch,
+                &branch_configuration,
+                &schema_digest,
+            ),
+            plan_step(
+                "high",
+                WorkflowStepKind::Transform,
+                &high_configuration,
+                &schema_digest,
+            ),
+            plan_step(
+                "normal",
+                WorkflowStepKind::Transform,
+                &normal_configuration,
+                &schema_digest,
+            ),
+            plan_step(
+                "output",
+                WorkflowStepKind::Output,
+                &output_configuration,
+                &schema_digest,
+            ),
+        ],
+        edges: vec![
+            edge("input-normalize", "input", "normalize", None),
+            edge("normalize-route", "normalize", "route", None),
+            edge("route-high", "route", "high", Some("high")),
+            edge("route-normal", "route", "normal", Some("normal")),
+            edge("high-output", "high", "output", None),
+            edge("normal-output", "normal", "output", None),
+        ],
+    };
+    plan.validate()?;
+    let plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun test plan",
+    )?))?;
+    let input = WorkflowRunInput {
+        schema: WORKFLOW_RUN_INPUT_SCHEMA.into(),
+        runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION.into(),
+        flow_workflow_name: WORKFLOW_RUN_FLOW_NAME.into(),
+        flow_workflow_version: WORKFLOW_RUN_FLOW_VERSION.into(),
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        workflow_run_id: WorkflowRunId::new(),
+        workflow_goal_id: WorkflowGoalId::new(),
+        plan_revision_id: PlanRevisionId::new(),
+        plan_digest,
+        plan,
+        goal_input,
+        payloads: payloads
+            .iter()
+            .map(ResolvedWorkflowPayload::from_payload)
+            .collect(),
+        requested_at: timestamp(8, 0),
+        deadline_at: timestamp(9, 0),
+    };
+    input.validate()?;
+    Ok(input)
+}
+
+fn configuration(value: WorkflowStepConfiguration) -> Result<WorkflowPayload, String> {
+    WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(value))
+}
+
+fn plan_step(
+    id: &str,
+    kind: WorkflowStepKind,
+    configuration: &WorkflowPayload,
+    schema_digest: &Sha256Digest,
+) -> WorkflowPlanStep {
+    WorkflowPlanStep {
+        id: id.into(),
+        kind,
+        configuration_digest: configuration.digest().clone(),
+        input_schema_digest: schema_digest.clone(),
+        output_schema_digest: schema_digest.clone(),
+        policy_digest: None,
+        capability: None,
+    }
+}
+
+fn edge(id: &str, source: &str, target: &str, source_handle: Option<&str>) -> WorkflowEdgeSpec {
+    WorkflowEdgeSpec {
+        id: id.into(),
+        source: source.into(),
+        target: target.into(),
+        source_handle: source_handle.map(str::to_owned),
+    }
 }
 
 fn form_timestamp(value: DateTime<Utc>) -> String {

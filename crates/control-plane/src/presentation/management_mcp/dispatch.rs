@@ -20,9 +20,11 @@ use super::ontology::{
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
 use super::workflow::{
-    CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments, ListProjectWorkflowArguments,
-    ReviseWorkflowDefinitionArguments, WorkflowDefinitionArguments, WorkflowGoalArguments,
-    WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
+    CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
+    ListProjectWorkflowArguments, ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments,
+    StartWorkflowRunArguments, WaitWorkflowRunArguments, WorkflowDefinitionArguments,
+    WorkflowGoalArguments, WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
+    WorkflowRunArguments, WorkflowRunHistoryArguments,
 };
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
@@ -288,6 +290,48 @@ pub async fn execute(
         ManagementTool::WorkflowPlanRevisionsGet => {
             let arguments = arguments::parse::<WorkflowPlanRevisionArguments>(arguments).ok()?;
             workflow::get_plan_revision(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunsStart => {
+            let arguments = arguments::parse::<StartWorkflowRunArguments>(arguments).ok()?;
+            workflow::start_run(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowRunsCancel => {
+            let arguments = arguments::parse::<CancelWorkflowRunArguments>(arguments).ok()?;
+            workflow::cancel_run(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowRunsList => {
+            let arguments = arguments::parse::<ListWorkflowRunsArguments>(arguments).ok()?;
+            workflow::list_runs(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunsGet => {
+            let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
+            workflow::get_run(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunsWait => {
+            let arguments = arguments::parse::<WaitWorkflowRunArguments>(arguments).ok()?;
+            workflow::wait_run(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunOutputGet => {
+            let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
+            workflow::get_run_output(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunHistoryGet => {
+            let arguments = arguments::parse::<WorkflowRunHistoryArguments>(arguments).ok()?;
+            workflow::get_run_history(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;

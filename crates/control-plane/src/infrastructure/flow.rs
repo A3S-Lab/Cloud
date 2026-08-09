@@ -76,6 +76,7 @@ pub struct FlowRuntimeRouter {
     builds: Arc<dyn FlowRuntime>,
     executions: Arc<dyn FlowRuntime>,
     agent_executions: Arc<dyn FlowRuntime>,
+    workflow_runs: Arc<dyn FlowRuntime>,
 }
 
 impl FlowRuntimeRouter {
@@ -84,12 +85,14 @@ impl FlowRuntimeRouter {
         builds: Arc<dyn FlowRuntime>,
         executions: Arc<dyn FlowRuntime>,
         agent_executions: Arc<dyn FlowRuntime>,
+        workflow_runs: Arc<dyn FlowRuntime>,
     ) -> Self {
         Self {
             deployments,
             builds,
             executions,
             agent_executions,
+            workflow_runs,
         }
     }
 }
@@ -107,6 +110,7 @@ impl FlowRuntime for FlowRuntimeRouter {
         use crate::modules::executions::application::{
             EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
         };
+        use crate::modules::workflow::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
         use crate::modules::workloads::infrastructure::{
             DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
             LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
@@ -122,6 +126,7 @@ impl FlowRuntime for FlowRuntimeRouter {
             (AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION) => {
                 &self.agent_executions
             }
+            (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION) => &self.workflow_runs,
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
@@ -143,6 +148,8 @@ impl FlowRuntime for FlowRuntimeRouter {
             self.agent_executions.run_step(invocation).await
         } else if invocation.step_name.starts_with("execution_") {
             self.executions.run_step(invocation).await
+        } else if invocation.step_name.starts_with("workflow_run_") {
+            self.workflow_runs.run_step(invocation).await
         } else {
             self.deployments.run_step(invocation).await
         }
@@ -578,6 +585,7 @@ mod tests {
             Arc::new(StubRuntime("build")),
             Arc::new(StubRuntime("execution")),
             Arc::new(StubRuntime("agent_execution")),
+            Arc::new(StubRuntime("workflow_run")),
         )
     }
 
@@ -591,6 +599,7 @@ mod tests {
             ("cloud.build", "5", "build"),
             ("cloud.execution", "1", "execution"),
             ("cloud.agent-execution", "1", "agent_execution"),
+            ("cloud.workflow-run", "1", "workflow_run"),
         ] {
             assert_eq!(
                 router().run_workflow(workflow(name, version)).await?,

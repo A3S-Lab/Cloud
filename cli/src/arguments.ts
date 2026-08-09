@@ -27,6 +27,9 @@ export interface ParsedArguments {
   agentReleaseUrl?: string;
   agentReleaseSha256?: string;
   nodeConfig?: string;
+  workflowRunTimeoutSeconds?: string;
+  workflowRunWaitSeconds?: string;
+  reason?: string;
   valueStdin: boolean;
   tokenStdin: boolean;
   enrollmentTokenStdin: boolean;
@@ -65,6 +68,9 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--agent-release-url': 'agentReleaseUrl',
   '--agent-release-sha256': 'agentReleaseSha256',
   '--node-config': 'nodeConfig',
+  '--run-timeout-seconds': 'workflowRunTimeoutSeconds',
+  '--wait-seconds': 'workflowRunWaitSeconds',
+  '--reason': 'reason',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {

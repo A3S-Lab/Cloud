@@ -10,6 +10,7 @@ use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
+use crate::modules::workflow::WorkflowRunReconciler;
 use crate::modules::workloads::{SecretRotationRestartReconciler, WorkloadRuntimeReconciler};
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
 use std::net::SocketAddr;
@@ -23,6 +24,7 @@ pub(crate) struct ControlPlaneWorkers {
     build_run_reconciler: Option<BuildRunReconciler>,
     execution_reconciler: Option<ExecutionReconciler>,
     agent_execution_reconciler: Option<AgentExecutionReconciler>,
+    workflow_run_reconciler: Option<WorkflowRunReconciler>,
     github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
@@ -46,6 +48,7 @@ impl ControlPlaneWorkers {
         build_run_reconciler: Option<BuildRunReconciler>,
         execution_reconciler: Option<ExecutionReconciler>,
         agent_execution_reconciler: Option<AgentExecutionReconciler>,
+        workflow_run_reconciler: Option<WorkflowRunReconciler>,
         github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
@@ -66,6 +69,7 @@ impl ControlPlaneWorkers {
             build_run_reconciler,
             execution_reconciler,
             agent_execution_reconciler,
+            workflow_run_reconciler,
             github_authority_reconciler,
             operation_coordinator,
             gateway_certificate_reconciler,
@@ -117,6 +121,9 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.agent_execution_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.workflow_run_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.github_authority_reconciler {

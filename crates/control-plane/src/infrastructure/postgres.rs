@@ -707,6 +707,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/079_form_drafts_and_releases.sql"
             )),
         ),
+        Migration::new(
+            "080",
+            "Workflow runs and semantic step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/080_workflow_runs.sql"
+            )),
+        ),
     ]
 }
 

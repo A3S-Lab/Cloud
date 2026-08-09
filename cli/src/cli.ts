@@ -48,6 +48,13 @@ Commands:
   workflow-goals get ID  Get one exact WorkflowGoal
   workflow-goals create  Compile a WorkflowGoal from A3S ACL
   workflow-goals plan ID REV Get one immutable deterministic PlanRevision
+  workflow-runs list     List recent WorkflowRuns in the selected project
+  workflow-runs get ID   Get one WorkflowRun and its step projections
+  workflow-runs start GOAL PLAN Start one exact PlanRevision idempotently
+  workflow-runs wait ID  Wait up to a bounded interval for terminal state
+  workflow-runs cancel ID Request WorkflowRun cancellation idempotently
+  workflow-runs output ID Read the bounded output of a completed WorkflowRun
+  workflow-runs history ID Read bounded, redacted A3S Flow history
   forms list            List Form drafts in the selected project
   forms get ID          Get one Form draft
   forms create          Create a Form draft from native Form JSON

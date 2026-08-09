@@ -253,8 +253,25 @@ revision identities/digests and optional Environment identity, then compiles
 one immutable `cloud.workflow.plan.v1` revision with
 `cloud.workflow.plan-compiler.v1`. Goal list/get and Plan get return the same
 DTOs as REST. Identical semantic inputs produce identical canonical Plan bytes
-and digest; Goal and Plan identities remain distinct records. WorkflowRun and
-step execution are not exposed by this slice.
+and digest; Goal and Plan identities remain distinct records.
+
+## Minimal WorkflowRun lifecycle
+
+`a3s_cloud_workflow_runs_start` requires `projectId`, `workflowGoalId`,
+`planRevisionId`, and `idempotencyKey`; its optional `timeoutSeconds` is bounded
+from 1 through 2,592,000. `a3s_cloud_workflow_runs_cancel` requires one run ID
+and idempotency key and accepts an optional bounded reason. Both require
+`workflow:write`; cancellation is marked destructive.
+
+The five read-only tools list runs, get one run and its semantic step
+projections, wait for at most 30 seconds, return a completed run's bounded
+output, and page redacted A3S Flow history with a non-negative sequence and a
+limit from 1 through 100. All seven tools derive organization and actor from
+the authenticated principal and reuse the REST CQRS handlers, A3S ORM
+repository, Operation, A3S Flow history, audit, Outbox, and idempotency
+authority. The minimal executor supports only Workflow-local `input`,
+`transform`, `branch`, and `output`; it does not expose HumanTask,
+service/finite-task, typed capability, or compensation behavior.
 
 ## Native Form draft and release lifecycle
 
@@ -273,7 +290,7 @@ publish replay returns the historical accepted projection even after the
 aggregate advances. The adapter derives organization and actor identity from
 the principal and never accepts either as an argument. It does not compile or
 validate Form semantics itself and does not expose Form submission or
-WorkflowRun execution.
+HumanTask execution.
 
 ## Bounded observability reads
 
@@ -324,7 +341,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 52-tool administrator and 32-tool
+current expanded runner requires exact 59-tool administrator and 37-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -348,10 +365,11 @@ logs, evidence, or the PostgreSQL dump. Production persistence reaches
 PostgreSQL only through A3S ORM repositories.
 
 The expanded focused catalog, permission, Ontology migration, Workflow
-definition/Goal/Plan lifecycle, native Form lifecycle, tenant/role boundary,
-deterministic-plan, and replay tests pass. The updated clean PostgreSQL/A3S Box
-scenario and its Ontology, Workflow, and Form persistence/idempotency
-assertions must pass before these slices are verified.
+definition/Goal/Plan lifecycle, native Form lifecycle, minimal WorkflowRun,
+tenant/role boundary, deterministic-plan, strict-boundary, and replay tests
+pass. The updated clean PostgreSQL/A3S Box scenario and its Ontology, Workflow,
+Form, and WorkflowRun persistence/idempotency assertions must pass before these
+slices are verified.
 
 ## Current limits
 

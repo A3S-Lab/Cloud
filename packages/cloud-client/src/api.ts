@@ -21,6 +21,7 @@ import type {
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
+  CancelWorkflowRunInput,
   CreateApiTokenInput,
   CreateAssetInput,
   CreateAssetReleaseInput,
@@ -50,6 +51,7 @@ import type {
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
   IssueEnrollmentTokenInput,
+  ListWorkflowRunsOptions,
   McpCredential,
   McpCredentialDeliveryResult,
   McpCredentialMutationResult,
@@ -91,6 +93,7 @@ import type {
   SourceRevisionMutationResult,
   SourceWorkloadTemplate,
   StartAgentExecutionInput,
+  StartWorkflowRunInput,
   StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
@@ -103,6 +106,12 @@ import type {
   WorkflowPlanRevision,
   WorkflowRevision,
   WorkflowRevisionSummary,
+  WaitWorkflowRunOptions,
+  WorkflowRun,
+  WorkflowRunHistoryOptions,
+  WorkflowRunHistoryPage,
+  WorkflowRunMutationResult,
+  WorkflowRunOutput,
   PublishWorkflowDefinitionInput,
 } from './types';
 import {
@@ -139,9 +148,14 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.13.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.14.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
+export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
+export const MAX_WORKFLOW_RUN_LIST_LIMIT = 200;
+export const MAX_WORKFLOW_RUN_HISTORY_LIMIT = 100;
+export const MAX_WORKFLOW_RUN_WAIT_SECONDS = 30;
+export const DEFAULT_WORKFLOW_RUN_WAIT_SECONDS = 25;
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
@@ -602,6 +616,148 @@ export class CloudApi {
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/workflow-goals/${encodeURIComponent(workflowGoalId)}` +
         `/plan-revisions/${encodeURIComponent(planRevisionId)}`,
+      signal
+    );
+  }
+
+  startWorkflowRun(
+    organizationId: string,
+    projectId: string,
+    input: StartWorkflowRunInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunMutationResult> {
+    if (
+      input.timeoutSeconds !== undefined &&
+      (!Number.isSafeInteger(input.timeoutSeconds) ||
+        input.timeoutSeconds < 1 ||
+        input.timeoutSeconds > MAX_WORKFLOW_RUN_TIMEOUT_SECONDS)
+    ) {
+      throw new RangeError(
+        `WorkflowRun timeoutSeconds must be between 1 and ${MAX_WORKFLOW_RUN_TIMEOUT_SECONDS}`
+      );
+    }
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-runs`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  cancelWorkflowRun(
+    organizationId: string,
+    workflowRunId: string,
+    input: CancelWorkflowRunInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunMutationResult> {
+    if (
+      input.reason !== undefined &&
+      (input.reason.length < 1 || input.reason.length > 4_096 || /[\0\r\n]/u.test(input.reason))
+    ) {
+      throw new TypeError('WorkflowRun cancellation reason must contain between 1 and 4096 safe characters');
+    }
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/cancel`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  listWorkflowRuns(
+    organizationId: string,
+    projectId: string,
+    options: ListWorkflowRunsOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkflowRun[]> {
+    const parameters = new URLSearchParams();
+    setBoundedInteger(
+      parameters,
+      'limit',
+      options.limit,
+      1,
+      MAX_WORKFLOW_RUN_LIST_LIMIT,
+      'WorkflowRun list limit'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-runs${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  getWorkflowRun(organizationId: string, workflowRunId: string, signal?: AbortSignal): Promise<WorkflowRun> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}`,
+      signal
+    );
+  }
+
+  waitWorkflowRun(
+    organizationId: string,
+    workflowRunId: string,
+    options: WaitWorkflowRunOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkflowRun> {
+    const parameters = new URLSearchParams();
+    setBoundedInteger(
+      parameters,
+      'timeoutSeconds',
+      options.timeoutSeconds ?? DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
+      0,
+      MAX_WORKFLOW_RUN_WAIT_SECONDS,
+      'WorkflowRun wait timeoutSeconds'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/wait${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  getWorkflowRunOutput(
+    organizationId: string,
+    workflowRunId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunOutput> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/output`,
+      signal
+    );
+  }
+
+  getWorkflowRunHistory(
+    organizationId: string,
+    workflowRunId: string,
+    options: WorkflowRunHistoryOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkflowRunHistoryPage> {
+    const parameters = new URLSearchParams();
+    setBoundedInteger(
+      parameters,
+      'afterSequence',
+      options.afterSequence,
+      0,
+      Number.MAX_SAFE_INTEGER,
+      'WorkflowRun history afterSequence'
+    );
+    setBoundedInteger(
+      parameters,
+      'limit',
+      options.limit,
+      1,
+      MAX_WORKFLOW_RUN_HISTORY_LIMIT,
+      'WorkflowRun history limit'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/history${encodeQueryParameters(parameters)}`,
       signal
     );
   }
@@ -2098,4 +2254,21 @@ export class CloudApi {
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
   }
+}
+
+function setBoundedInteger(
+  parameters: URLSearchParams,
+  name: string,
+  value: number | undefined,
+  minimum: number,
+  maximum: number,
+  label: string
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new RangeError(`${label} must be between ${minimum} and ${maximum}`);
+  }
+  parameters.set(name, String(value));
 }

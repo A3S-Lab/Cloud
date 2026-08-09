@@ -234,13 +234,39 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
         && (path.ends_with("/operations")
             || path.ends_with("/build-runs")
             || path.ends_with("/agent-conversations")
-            || path.ends_with("/executions"))
+            || path.ends_with("/executions")
+            || path.ends_with("/workflow-runs"))
     {
         upsert_parameter(
             parameters,
             json!({
                 "name": "limit", "in": "query", "required": false,
                 "schema": { "type": "integer", "minimum": 1, "maximum": 200 }
+            }),
+        );
+    }
+    if method == "get" && path.ends_with("/workflow-runs/{workflow_run_id}/wait") {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "timeoutSeconds", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 0, "maximum": 30, "default": 30 }
+            }),
+        );
+    }
+    if method == "get" && path.ends_with("/workflow-runs/{workflow_run_id}/history") {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "afterSequence", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 0, "default": 0 }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 100 }
             }),
         );
     }
@@ -322,7 +348,41 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    if is_form_draft_mutation_path(path) {
+    if is_workflow_run_start_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["workflowGoalId", "planRevisionId"],
+                    "properties": {
+                        "workflowGoalId": { "type": "string", "format": "uuid" },
+                        "planRevisionId": { "type": "string", "format": "uuid" },
+                        "timeoutSeconds": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2592000,
+                            "default": 86400
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_workflow_run_cancel_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "reason": { "type": "string", "minLength": 1, "maxLength": 4096 }
+                    }
+                }
+            }),
+        );
+    } else if is_form_draft_mutation_path(path) {
         content.insert(
             "application/json".into(),
             json!({
@@ -645,6 +705,8 @@ fn asynchronous_mutation(path: &str) -> bool {
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
+        || is_workflow_run_start_path(path)
+        || is_workflow_run_cancel_path(path)
 }
 
 fn creates_resource(path: &str) -> bool {
@@ -693,7 +755,18 @@ fn is_ontology_revision_mutation_path(path: &str) -> bool {
 }
 
 fn is_workflow_mutation_path(path: &str) -> bool {
-    is_workflow_definition_mutation_path(path) || is_workflow_goal_mutation_path(path)
+    is_workflow_definition_mutation_path(path)
+        || is_workflow_goal_mutation_path(path)
+        || is_workflow_run_start_path(path)
+        || is_workflow_run_cancel_path(path)
+}
+
+fn is_workflow_run_start_path(path: &str) -> bool {
+    path.contains("/projects/{project_id}/") && path.ends_with("/workflow-runs")
+}
+
+fn is_workflow_run_cancel_path(path: &str) -> bool {
+    path.contains("/workflow-runs/{workflow_run_id}/") && path.ends_with("/cancel")
 }
 
 fn is_workflow_definition_mutation_path(path: &str) -> bool {

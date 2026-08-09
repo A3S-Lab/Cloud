@@ -1,0 +1,383 @@
+use super::{WorkflowLocalStepInput, WorkflowLocalStepResult};
+use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
+use crate::modules::workflow::domain::{
+    WorkflowDataSchema, WorkflowDataType, WorkflowStepKind, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+};
+use serde_json::Value;
+
+pub(super) fn execute_local_step(
+    input: &WorkflowLocalStepInput,
+) -> Result<WorkflowLocalStepResult, String> {
+    validate_data_schema(
+        &input.step.input_schema,
+        &input.effective_input,
+        "Workflow step input",
+    )?;
+    let (output, selected_handle) = match input.step.plan.kind {
+        WorkflowStepKind::Input => (input.workflow_input.clone(), None),
+        WorkflowStepKind::Transform => {
+            let template = input
+                .step
+                .configuration
+                .template
+                .as_deref()
+                .ok_or_else(|| "Workflow transform template is missing".to_owned())?;
+            (
+                render_template(template, &input.workflow_input, &input.steps)?,
+                None,
+            )
+        }
+        WorkflowStepKind::Branch => {
+            let selector = input
+                .step
+                .configuration
+                .selector
+                .as_deref()
+                .ok_or_else(|| "Workflow branch selector is missing".to_owned())?;
+            let selected = lookup_selector(
+                selector,
+                &input.workflow_input,
+                &input.effective_input,
+                &input.steps,
+            )?;
+            let selected_text = scalar_text(selected);
+            let handle = input
+                .step
+                .configuration
+                .routes
+                .iter()
+                .find(|route| route.equals == selected_text)
+                .map(|route| route.handle.clone())
+                .or_else(|| input.step.configuration.default_handle.clone())
+                .ok_or_else(|| "Workflow branch default handle is missing".to_owned())?;
+            (input.effective_input.clone(), Some(handle))
+        }
+        WorkflowStepKind::Output => match input.step.configuration.template.as_deref() {
+            Some(template) => (
+                render_template(template, &input.workflow_input, &input.steps)?,
+                None,
+            ),
+            None => (input.effective_input.clone(), None),
+        },
+        kind => {
+            return Err(format!(
+                "WorkflowRun local executor does not support {}",
+                kind.as_str()
+            ))
+        }
+    };
+    validate_data_schema(&input.step.output_schema, &output, "Workflow step output")?;
+    let output_digest = value_digest(&output, "Workflow step output")?;
+    let result = WorkflowLocalStepResult {
+        step_id: input.step.plan.id.clone(),
+        kind: input.step.plan.kind,
+        output,
+        output_digest,
+        selected_handle,
+    };
+    result.validate(&input.step)?;
+    Ok(result)
+}
+
+pub(super) fn validate_data_schema(
+    schema: &WorkflowDataSchema,
+    value: &Value,
+    label: &str,
+) -> Result<(), String> {
+    schema.validate()?;
+    if !matches_type(&schema.value_type, value) {
+        return Err(format!(
+            "{label} must be {}, not {}",
+            schema.value_type.as_str(),
+            json_type(value)
+        ));
+    }
+    if schema.value_type != WorkflowDataType::Object {
+        return Ok(());
+    }
+    let object = value
+        .as_object()
+        .ok_or_else(|| format!("{label} must be an object"))?;
+    for field in &schema.fields {
+        match object.get(&field.name) {
+            Some(value) if matches_type(&field.value_type, value) => {}
+            Some(value) => {
+                return Err(format!(
+                    "{label} field {:?} must be {}, not {}",
+                    field.name,
+                    field.value_type.as_str(),
+                    json_type(value)
+                ))
+            }
+            None if field.required => {
+                return Err(format!(
+                    "{label} is missing required field {:?}",
+                    field.name
+                ))
+            }
+            None => {}
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn value_digest(value: &Value, label: &str) -> Result<Sha256Digest, String> {
+    let canonical = canonical_json_bounded(value, WORKFLOW_RUN_OUTPUT_MAX_BYTES, label)?;
+    Sha256Digest::parse(sha256_digest(&canonical))
+}
+
+fn matches_type(expected: &WorkflowDataType, value: &Value) -> bool {
+    match expected {
+        WorkflowDataType::Any => true,
+        WorkflowDataType::Object => value.is_object(),
+        WorkflowDataType::Array => value.is_array(),
+        WorkflowDataType::String => value.is_string(),
+        WorkflowDataType::Number => value.is_number(),
+        WorkflowDataType::Boolean => value.is_boolean(),
+        WorkflowDataType::Null => value.is_null(),
+    }
+}
+
+fn json_type(value: &Value) -> &'static str {
+    match value {
+        Value::Null => "null",
+        Value::Bool(_) => "boolean",
+        Value::Number(_) => "number",
+        Value::String(_) => "string",
+        Value::Array(_) => "array",
+        Value::Object(_) => "object",
+    }
+}
+
+fn render_template(
+    source: &str,
+    workflow_input: &Value,
+    steps: &std::collections::BTreeMap<String, Value>,
+) -> Result<Value, String> {
+    let trimmed = source.trim();
+    if let Some(token) = whole_token(trimmed) {
+        return lookup_token(token, workflow_input, steps).cloned();
+    }
+    let mut output = String::new();
+    let mut remainder = source;
+    while let Some(start) = remainder.find("{{") {
+        output.push_str(&remainder[..start]);
+        let token_source = &remainder[start + 2..];
+        let end = token_source
+            .find("}}")
+            .ok_or_else(|| "Workflow template contains an unclosed token".to_owned())?;
+        let token = token_source[..end].trim();
+        output.push_str(&scalar_text(lookup_token(token, workflow_input, steps)?));
+        remainder = &token_source[end + 2..];
+    }
+    if remainder.contains("}}") {
+        return Err("Workflow template contains an unmatched closing token".into());
+    }
+    output.push_str(remainder);
+    Ok(Value::String(output))
+}
+
+fn whole_token(source: &str) -> Option<&str> {
+    source
+        .strip_prefix("{{")?
+        .strip_suffix("}}")
+        .map(str::trim)
+        .filter(|token| !token.is_empty() && !token.contains("}}"))
+}
+
+fn lookup_token<'a>(
+    token: &str,
+    workflow_input: &'a Value,
+    steps: &'a std::collections::BTreeMap<String, Value>,
+) -> Result<&'a Value, String> {
+    if token == "input" {
+        return Ok(workflow_input);
+    }
+    if let Some(path) = token.strip_prefix("input.") {
+        return lookup_path(workflow_input, path)
+            .ok_or_else(|| format!("Workflow template token {token:?} was not found"));
+    }
+    if let Some(path) = token.strip_prefix("steps.") {
+        let (step_id, nested) = path.split_once('.').unwrap_or((path, ""));
+        let value = steps
+            .get(step_id)
+            .ok_or_else(|| format!("Workflow template step {step_id:?} is unavailable"))?;
+        return if nested.is_empty() {
+            Ok(value)
+        } else {
+            lookup_path(value, nested)
+                .ok_or_else(|| format!("Workflow template token {token:?} was not found"))
+        };
+    }
+    Err(format!(
+        "unsupported Workflow template token {token:?}; use input or steps.<id>"
+    ))
+}
+
+fn lookup_selector<'a>(
+    selector: &str,
+    workflow_input: &'a Value,
+    effective_input: &'a Value,
+    steps: &'a std::collections::BTreeMap<String, Value>,
+) -> Result<&'a Value, String> {
+    if selector == "input" || selector.starts_with("input.") || selector.starts_with("steps.") {
+        return lookup_token(selector, workflow_input, steps)
+            .map_err(|error| error.replace("template", "branch selector"));
+    }
+    if selector == "current" {
+        return Ok(effective_input);
+    }
+    if let Some(path) = selector.strip_prefix("current.") {
+        return lookup_path(effective_input, path)
+            .ok_or_else(|| format!("Workflow branch selector {selector:?} was not found"));
+    }
+    Err(format!(
+        "unsupported Workflow branch selector {selector:?}; use input, current, or steps.<id>"
+    ))
+}
+
+fn lookup_path<'a>(mut value: &'a Value, path: &str) -> Option<&'a Value> {
+    if path.is_empty() {
+        return Some(value);
+    }
+    for segment in path.split('.') {
+        value = match value {
+            Value::Object(object) => object.get(segment)?,
+            Value::Array(values) => values.get(segment.parse::<usize>().ok()?)?,
+            _ => return None,
+        };
+    }
+    Some(value)
+}
+
+fn scalar_text(value: &Value) -> String {
+    match value {
+        Value::String(value) => value.clone(),
+        Value::Null => String::new(),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::Array(_) | Value::Object(_) => value.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::workflow::domain::{
+        WorkflowDataField, WorkflowDataType, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    };
+    use serde_json::json;
+
+    #[test]
+    fn templates_preserve_typed_whole_tokens_and_interpolate_scalars() {
+        let input = json!({"name": "Ada", "items": [1, 2]});
+        let steps = std::collections::BTreeMap::from([("draft".into(), json!({"id": 7}))]);
+        assert_eq!(
+            render_template("{{input.items}}", &input, &steps).expect("typed token"),
+            json!([1, 2])
+        );
+        assert_eq!(
+            render_template("Hello {{input.name}} #{{steps.draft.id}}", &input, &steps)
+                .expect("interpolation"),
+            json!("Hello Ada #7")
+        );
+        assert!(render_template("{{steps.missing}}", &input, &steps).is_err());
+        assert!(render_template("{{input.name", &input, &steps).is_err());
+    }
+
+    #[test]
+    fn closed_data_shape_checks_required_field_types() {
+        let schema = WorkflowDataSchema {
+            value_type: WorkflowDataType::Object,
+            fields: vec![WorkflowDataField {
+                name: "name".into(),
+                value_type: WorkflowDataType::String,
+                required: true,
+            }],
+        };
+        validate_data_schema(&schema, &json!({"name": "Ada"}), "input").expect("valid");
+        assert!(validate_data_schema(&schema, &json!({}), "input").is_err());
+        assert!(validate_data_schema(&schema, &json!({"name": 1}), "input").is_err());
+    }
+
+    #[test]
+    fn local_executor_runs_input_transform_branch_and_output_with_typed_results() {
+        let input = crate::modules::workflow::test_support::workflow_run_input()
+            .expect("WorkflowRun input");
+        let resolved = input
+            .resolved_steps()
+            .expect("resolved steps")
+            .into_iter()
+            .map(|step| (step.plan.id.clone(), step))
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let run = |step_id: &str,
+                   effective_input: Value,
+                   dependencies: std::collections::BTreeMap<String, Value>,
+                   steps: std::collections::BTreeMap<String, Value>| {
+            execute_local_step(&WorkflowLocalStepInput {
+                runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION.into(),
+                step: resolved.get(step_id).expect("resolved step").clone(),
+                workflow_input: input.goal_input.clone(),
+                effective_input,
+                dependencies,
+                steps,
+            })
+        };
+
+        let input_result = run(
+            "input",
+            input.goal_input.clone(),
+            std::collections::BTreeMap::new(),
+            std::collections::BTreeMap::new(),
+        )
+        .expect("input step");
+        assert_eq!(input_result.output, input.goal_input);
+
+        let normalize_result = run(
+            "normalize",
+            input_result.output.clone(),
+            std::collections::BTreeMap::from([("input".into(), input_result.output.clone())]),
+            std::collections::BTreeMap::from([("input".into(), input_result.output.clone())]),
+        )
+        .expect("transform step");
+        assert_eq!(normalize_result.output, input.goal_input);
+
+        let route_result = run(
+            "route",
+            normalize_result.output.clone(),
+            std::collections::BTreeMap::from([(
+                "normalize".into(),
+                normalize_result.output.clone(),
+            )]),
+            std::collections::BTreeMap::from([
+                ("input".into(), input_result.output.clone()),
+                ("normalize".into(), normalize_result.output.clone()),
+            ]),
+        )
+        .expect("branch step");
+        assert_eq!(route_result.selected_handle.as_deref(), Some("high"));
+
+        let high_result = run(
+            "high",
+            route_result.output.clone(),
+            std::collections::BTreeMap::from([("route".into(), route_result.output.clone())]),
+            std::collections::BTreeMap::from([
+                ("input".into(), input_result.output),
+                ("normalize".into(), normalize_result.output),
+                ("route".into(), route_result.output),
+            ]),
+        )
+        .expect("selected transform step");
+        assert_eq!(high_result.output, json!("HIGH T-42"));
+
+        let output_result = run(
+            "output",
+            high_result.output.clone(),
+            std::collections::BTreeMap::from([("high".into(), high_result.output.clone())]),
+            std::collections::BTreeMap::from([("high".into(), high_result.output)]),
+        )
+        .expect("output step");
+        assert_eq!(output_result.output, json!("HIGH T-42"));
+        assert!(output_result.selected_handle.is_none());
+    }
+}

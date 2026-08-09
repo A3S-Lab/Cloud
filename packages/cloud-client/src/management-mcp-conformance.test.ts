@@ -210,6 +210,7 @@ conformanceIt(
       'a3s_cloud_workloads_stop',
       'a3s_cloud_deployments_cancel',
       'a3s_cloud_build_runs_cancel',
+      'a3s_cloud_workflow_runs_cancel',
     ]);
     for (const tool of toolDefinitions(adminCatalog)) {
       expect(tool.annotations.readOnlyHint).toBe(readOnlyToolSet.has(tool.name));
@@ -643,7 +644,7 @@ workload "mcp-stop" {
     const workloadStopReplay = await callTool(
       environment,
       environment.adminToken,
-      52,
+      59,
       'a3s_cloud_workloads_stop',
       { workloadId, idempotencyKey: 'c0:mcp:workload-stop' },
       credentials,

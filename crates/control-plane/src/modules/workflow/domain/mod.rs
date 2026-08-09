@@ -11,16 +11,24 @@ mod workflow_contract;
 mod workflow_goal_contract;
 mod workflow_graph;
 mod workflow_payload;
+mod workflow_run_contract;
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
-    HumanTask, HumanTaskStatus, NewHumanTask, Ontology, OntologyRevision, PlanRevision,
-    WorkflowDecision, WorkflowDecisionOutcome, WorkflowDefinition, WorkflowGoal, WorkflowPlan,
-    WorkflowPlanStep, WorkflowRevision, ONTOLOGY_COMPILER_SCHEMA_VERSION,
-    WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
-    WORKFLOW_PLAN_SCHEMA, WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    flow_step_id, HumanTask, HumanTaskStatus, NewHumanTask, Ontology, OntologyRevision,
+    PlanRevision, WorkflowDecision, WorkflowDecisionOutcome, WorkflowDefinition, WorkflowGoal,
+    WorkflowPlan, WorkflowPlanStep, WorkflowRevision, WorkflowRun, WorkflowRunFlowState,
+    WorkflowRunStatus, WorkflowStepFlowState, WorkflowStepProjection, WorkflowStepProjectionStatus,
+    ONTOLOGY_COMPILER_SCHEMA_VERSION, WORKFLOW_COMPILER_SCHEMA_VERSION,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES, WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES,
+    WORKFLOW_STEP_RESULT_MAX_BYTES,
 };
-pub use events::{OntologyRevisionPublished, WorkflowGoalCompiled, WorkflowRevisionPublished};
+pub use events::{
+    OntologyRevisionPublished, WorkflowGoalCompiled, WorkflowRevisionPublished,
+    WorkflowRunCancellationRequested, WorkflowRunRequested,
+};
 pub use flow_resume::{
     FlowResumePayload, FlowResumeReceipt, FLOW_RESUME_PAYLOAD_API_VERSION,
     FLOW_RESUME_RECEIPT_API_VERSION,
@@ -31,15 +39,18 @@ pub use ontology_contract::{
     ONTOLOGY_SCHEMA,
 };
 pub use repositories::{
-    CreateOntologyWrite, CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite,
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository, OntologyRecord,
+    CancelWorkflowRunWrite, CreateOntologyWrite, CreateWorkflowDefinitionWrite,
+    CreateWorkflowGoalWrite, CreateWorkflowRunWrite, IOntologyRepository,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunRepository, OntologyRecord,
     ReviseOntologyWrite, ReviseWorkflowDefinitionWrite, WorkflowDefinitionRecord,
-    WorkflowGoalRecord,
+    WorkflowGoalRecord, WorkflowRunRecord,
 };
 pub use services::{
-    diff_ontology_contracts, resolve_migration_policy, CompiledWorkflowGoal, OntologyChange,
+    diff_ontology_contracts, resolve_migration_policy, CompiledWorkflowGoal, CompiledWorkflowRun,
+    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, OntologyChange,
     OntologyChangeCompatibility, OntologyChangeKind, OntologyDiff, OntologyResourceKind,
-    WorkflowPlanCompiler,
+    WorkflowPlanCompiler, WorkflowRunCompiler, WorkflowRunCoordinationError,
+    WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
 };
 pub use value_objects::{AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName};
 pub use workflow_contract::{
@@ -55,6 +66,13 @@ pub use workflow_payload::{
     WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPolicy, WorkflowPolicyCandidate,
     WorkflowPolicyMode, WorkflowStepConfiguration, WORKFLOW_CONFIGURATION_SCHEMA,
     WORKFLOW_DATA_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES, WORKFLOW_POLICY_SCHEMA,
+};
+pub use workflow_run_contract::{
+    workflow_run_timeout_seconds, ResolvedWorkflowPayload, ResolvedWorkflowRunStep,
+    WorkflowRunInput, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
 };
 
 #[cfg(test)]

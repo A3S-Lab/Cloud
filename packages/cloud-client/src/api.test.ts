@@ -5,6 +5,7 @@ import {
   CLOUD_API_MAJOR_VERSION,
   CloudApi,
   CloudApiError,
+  DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
   type CloudFetch,
   DEFAULT_CLOUD_API_BASE_PATH,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
@@ -12,6 +13,10 @@ import {
   MAX_ONTOLOGY_ACL_BYTES,
   MAX_WORKFLOW_GOAL_ACL_BYTES,
   MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
+  MAX_WORKFLOW_RUN_HISTORY_LIMIT,
+  MAX_WORKFLOW_RUN_LIST_LIMIT,
+  MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
+  MAX_WORKFLOW_RUN_WAIT_SECONDS,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 
@@ -31,7 +36,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.13.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.14.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -484,6 +489,107 @@ describe('CloudApi', () => {
         'goal:create'
       )
     ).toThrow('Workflow goal ACL must contain between');
+    expect(called).toBe(false);
+  });
+
+  it('uses bounded tenant-scoped WorkflowRun mutation, query, wait, output, and history paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, args[1]?.method === 'POST' ? 202 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.startWorkflowRun(
+      'organization / one',
+      'project / one',
+      { workflowGoalId: 'goal', planRevisionId: 'plan', timeoutSeconds: 60 },
+      'workflow-run:start'
+    );
+    await api.cancelWorkflowRun(
+      'organization / one',
+      'run / one',
+      { reason: 'operator request' },
+      'workflow-run:cancel'
+    );
+    await api.listWorkflowRuns('organization / one', 'project / one', { limit: 2 });
+    await api.getWorkflowRun('organization / one', 'run / one');
+    await api.waitWorkflowRun('organization / one', 'run / one');
+    await api.getWorkflowRunOutput('organization / one', 'run / one');
+    await api.getWorkflowRunHistory('organization / one', 'run / one', {
+      afterSequence: 7,
+      limit: 10,
+    });
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/workflow-runs',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/cancel',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/workflow-runs?limit=2',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one',
+      `/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/wait?timeoutSeconds=${DEFAULT_WORKFLOW_RUN_WAIT_SECONDS}`,
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/output',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/history?afterSequence=7&limit=10',
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'workflow-run:start' }),
+        body: JSON.stringify({
+          workflowGoalId: 'goal',
+          planRevisionId: 'plan',
+          timeoutSeconds: 60,
+        }),
+      })
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'workflow-run:cancel' }),
+        body: JSON.stringify({ reason: 'operator request' }),
+      })
+    );
+  });
+
+  it('rejects unbounded WorkflowRun options before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    const start = (timeoutSeconds: number) =>
+      api.startWorkflowRun(
+        'organization',
+        'project',
+        { workflowGoalId: 'goal', planRevisionId: 'plan', timeoutSeconds },
+        'workflow-run:start'
+      );
+
+    expect(() => start(0)).toThrow('WorkflowRun timeoutSeconds must be between');
+    expect(() => start(MAX_WORKFLOW_RUN_TIMEOUT_SECONDS + 1)).toThrow(
+      'WorkflowRun timeoutSeconds must be between'
+    );
+    expect(() =>
+      api.cancelWorkflowRun('organization', 'run', { reason: 'unsafe\nreason' }, 'workflow-run:cancel')
+    ).toThrow('WorkflowRun cancellation reason must contain');
+    expect(() => api.listWorkflowRuns('organization', 'project', { limit: 0 })).toThrow(
+      'WorkflowRun list limit must be between'
+    );
+    expect(() =>
+      api.listWorkflowRuns('organization', 'project', { limit: MAX_WORKFLOW_RUN_LIST_LIMIT + 1 })
+    ).toThrow('WorkflowRun list limit must be between');
+    expect(() =>
+      api.waitWorkflowRun('organization', 'run', { timeoutSeconds: MAX_WORKFLOW_RUN_WAIT_SECONDS + 1 })
+    ).toThrow('WorkflowRun wait timeoutSeconds must be between');
+    expect(() => api.getWorkflowRunHistory('organization', 'run', { limit: 0 })).toThrow(
+      'WorkflowRun history limit must be between'
+    );
+    expect(() =>
+      api.getWorkflowRunHistory('organization', 'run', {
+        limit: MAX_WORKFLOW_RUN_HISTORY_LIMIT + 1,
+      })
+    ).toThrow('WorkflowRun history limit must be between');
     expect(called).toBe(false);
   });
 

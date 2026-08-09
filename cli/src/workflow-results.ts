@@ -6,6 +6,10 @@ import type {
   WorkflowPlanRevision,
   WorkflowRevision,
   WorkflowRevisionSummary,
+  WorkflowRun,
+  WorkflowRunHistoryPage,
+  WorkflowRunMutationResult,
+  WorkflowRunOutput,
 } from '@a3s/cloud-client';
 import { renderTable } from './output';
 import type { CommandResult } from './results';
@@ -108,5 +112,67 @@ export function workflowPlanRevisionResult(row: WorkflowPlanRevision): CommandRe
         { header: 'CREATED AT', value: (value) => value.createdAt },
       ]
     ),
+  };
+}
+
+const WORKFLOW_RUN_COLUMNS = [
+  { header: 'ID', value: (row: WorkflowRun) => row.id },
+  { header: 'GOAL', value: (row: WorkflowRun) => row.workflowGoalId },
+  { header: 'PLAN', value: (row: WorkflowRun) => row.planRevisionId },
+  { header: 'STATUS', value: (row: WorkflowRun) => row.status },
+  { header: 'STEPS', value: (row: WorkflowRun) => row.steps.length },
+  { header: 'UPDATED AT', value: (row: WorkflowRun) => row.updatedAt },
+  { header: 'ERROR', value: (row: WorkflowRun) => row.error },
+] as const;
+
+export function workflowRunsResult(rows: WorkflowRun[]): CommandResult {
+  return { json: rows, table: renderTable(rows, WORKFLOW_RUN_COLUMNS) };
+}
+
+export function workflowRunResult(row: WorkflowRun): CommandResult {
+  return { json: row, table: renderTable([row], WORKFLOW_RUN_COLUMNS) };
+}
+
+export function workflowRunMutationResult(row: WorkflowRunMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'ID', value: (value) => value.workflowRun.id },
+        { header: 'STATUS', value: (value) => value.workflowRun.status },
+        { header: 'OPERATION', value: (value) => value.workflowRun.operationId },
+        { header: 'PLAN', value: (value) => value.workflowRun.planRevisionId },
+        { header: 'REPLAYED', value: (value) => value.replayed },
+      ]
+    ),
+  };
+}
+
+export function workflowRunOutputResult(row: WorkflowRunOutput): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'RUN', value: (value) => value.workflowRunId },
+        { header: 'DIGEST', value: (value) => value.outputDigest },
+        { header: 'FINISHED AT', value: (value) => value.finishedAt },
+        { header: 'OUTPUT', value: (value) => JSON.stringify(value.output) },
+      ]
+    ),
+  };
+}
+
+export function workflowRunHistoryResult(page: WorkflowRunHistoryPage): CommandResult {
+  return {
+    json: page,
+    table: renderTable(page.events, [
+      { header: 'SEQUENCE', value: (event) => event.sequence },
+      { header: 'EVENT', value: (event) => event.eventKey },
+      { header: 'STEP', value: (event) => event.stepId },
+      { header: 'ATTEMPT', value: (event) => event.attempt },
+      { header: 'OCCURRED AT', value: (event) => event.occurredAt },
+    ]),
   };
 }

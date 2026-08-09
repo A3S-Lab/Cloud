@@ -5,11 +5,12 @@ use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, WorkflowDefinitionId};
 use crate::modules::workflow::presentation::dto::{
-    PublishWorkflowDefinitionRequest, WorkflowDefinitionMutationResponse,
-    WorkflowGoalMutationResponse,
+    CancelWorkflowRunRequest, PublishWorkflowDefinitionRequest, StartWorkflowRunRequest,
+    WorkflowDefinitionMutationResponse, WorkflowGoalMutationResponse, WorkflowRunMutationResponse,
 };
 use crate::modules::workflow::{
-    CreateWorkflowDefinition, CreateWorkflowGoal, ReviseWorkflowDefinition,
+    CancelWorkflowRun, CreateWorkflowDefinition, CreateWorkflowGoal, ReviseWorkflowDefinition,
+    StartWorkflowRun,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -21,6 +22,8 @@ use uuid::Uuid;
 pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let create_definition_bus = Arc::clone(&bus);
     let revise_definition_bus = Arc::clone(&bus);
+    let create_goal_bus = Arc::clone(&bus);
+    let start_run_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::WORKFLOW_WRITE])?
@@ -99,7 +102,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
         .post(
             "/{organization_id}/projects/{project_id}/workflow-goals",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&create_goal_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
@@ -121,6 +124,81 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                         Ok(result) => BootResponse::json_with_status(
                             if result.replayed { 200 } else { 201 },
                             &WorkflowGoalMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/projects/{project_id}/workflow-runs",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&start_run_bus);
+                async move {
+                    let body: StartWorkflowRunRequest = request.json_with_content_type()?;
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let actor_principal_id = actor_principal_id(&request)?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(StartWorkflowRun {
+                            organization_id,
+                            project_id,
+                            workflow_goal_id:
+                                crate::modules::shared_kernel::domain::WorkflowGoalId::from_uuid(
+                                    body.workflow_goal_id,
+                                ),
+                            plan_revision_id:
+                                crate::modules::shared_kernel::domain::PlanRevisionId::from_uuid(
+                                    body.plan_revision_id,
+                                ),
+                            timeout_seconds: body.timeout_seconds,
+                            actor_principal_id,
+                            idempotency_key,
+                            request_id,
+                            requested_at: chrono::Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 202 },
+                            &WorkflowRunMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/workflow-runs/{workflow_run_id}/cancel",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&bus);
+                async move {
+                    let body: CancelWorkflowRunRequest = request.json_with_content_type()?;
+                    let organization_id =
+                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let workflow_run_id =
+                        crate::modules::shared_kernel::domain::WorkflowRunId::from_uuid(
+                            request.param_as::<Uuid>("workflow_run_id")?,
+                        );
+                    let actor_principal_id = actor_principal_id(&request)?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CancelWorkflowRun {
+                            organization_id,
+                            workflow_run_id,
+                            reason: body.reason,
+                            actor_principal_id,
+                            idempotency_key,
+                            request_id,
+                            requested_at: chrono::Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 202 },
+                            &WorkflowRunMutationResponse::from(result),
                         ),
                         Err(error) => application_error_response(error, request_id),
                     }

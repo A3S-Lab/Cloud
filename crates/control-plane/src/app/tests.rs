@@ -38,8 +38,8 @@ use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
 };
 use crate::modules::workflow::{
-    InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
-    InMemoryWorkflowGoalRepository,
+    IWorkflowRunHistoryReader, InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
+    InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, WorkflowRunHistoryPage,
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
@@ -98,6 +98,23 @@ struct TestSourceResolver;
 struct TestGithubAppAuthorization;
 
 struct UnavailableMcpRoutePolicyRepository;
+
+struct EmptyWorkflowRunHistoryReader;
+
+#[async_trait::async_trait]
+impl IWorkflowRunHistoryReader for EmptyWorkflowRunHistoryReader {
+    async fn read(
+        &self,
+        _flow_run_id: &str,
+        _after_sequence: u64,
+        _limit: usize,
+    ) -> std::result::Result<WorkflowRunHistoryPage, String> {
+        Ok(WorkflowRunHistoryPage {
+            events: Vec::new(),
+            next_sequence: None,
+        })
+    }
+}
 
 #[async_trait::async_trait]
 impl IMcpRoutePolicyRepository for UnavailableMcpRoutePolicyRepository {
@@ -858,6 +875,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ontologies: Arc::new(InMemoryOntologyRepository::new()),
             workflow_definitions: Arc::new(InMemoryWorkflowDefinitionRepository::new()),
             workflow_goals: Arc::new(InMemoryWorkflowGoalRepository::new()),
+            workflow_runs: Arc::new(InMemoryWorkflowRunRepository::new()),
+            workflow_run_history: Arc::new(EmptyWorkflowRunHistoryReader),
             forms: Arc::new(InMemoryFormRepository::new()),
             form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
             search,
