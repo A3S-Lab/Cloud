@@ -129,15 +129,19 @@ use crate::modules::sources::{
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
 use crate::modules::workflow::{
-    CreateOntologyHandler, CreateWorkflowDefinitionHandler, CreateWorkflowGoalHandler,
-    DiffOntologyRevisionsHandler, GetOntologyHandler, GetOntologyRevisionHandler,
-    GetPlanRevisionHandler, GetWorkflowDefinitionHandler, GetWorkflowGoalHandler,
-    GetWorkflowRevisionHandler, IOntologyRepository, IWorkflowDefinitionRepository,
-    IWorkflowGoalRepository, ListOntologiesHandler, ListOntologyRevisionsHandler,
-    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    CancelWorkflowRunHandler, CreateOntologyHandler, CreateWorkflowDefinitionHandler,
+    CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler, FlowWorkflowRunCoordinator,
+    GetOntologyHandler, GetOntologyRevisionHandler, GetPlanRevisionHandler,
+    GetWorkflowDefinitionHandler, GetWorkflowGoalHandler, GetWorkflowRevisionHandler,
+    GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
+    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
+    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
     PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
-    PostgresWorkflowGoalRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
-    WorkflowModule,
+    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WaitWorkflowRunHandler,
+    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -215,6 +219,8 @@ pub enum ControlPlaneStartupError {
     Execution(String),
     #[error("could not initialize Agent execution: {0}")]
     AgentExecution(String),
+    #[error("could not initialize WorkflowRun execution: {0}")]
+    WorkflowRun(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -268,6 +274,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
     let workflow_goals: Arc<dyn IWorkflowGoalRepository> =
         Arc::new(PostgresWorkflowGoalRepository::new(executor.clone()));
+    let workflow_runs: Arc<dyn IWorkflowRunRepository> =
+        Arc::new(PostgresWorkflowRunRepository::new(executor.clone()));
     let forms: Arc<dyn IFormRepository> = Arc::new(PostgresFormRepository::new(executor.clone()));
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search: Arc<dyn ISearchRepository> =
@@ -681,6 +689,7 @@ pub async fn build_application_with_source_resolver(
         Arc::new(build_runtime),
         Arc::new(execution_runtime),
         Arc::new(agent_execution_runtime),
+        Arc::new(WorkflowRunFlowRuntime),
     );
     let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
     let operation_lease = Duration::from_millis(config.operations.lease_ms);
@@ -692,6 +701,17 @@ pub async fn build_application_with_source_resolver(
             .with_lease_duration(operation_lease),
     )
     .await?;
+    let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> =
+        Arc::new(FlowWorkflowRunCoordinator::new(flow.engine()));
+    let workflow_run_history: Arc<dyn IWorkflowRunHistoryReader> =
+        Arc::new(WorkflowRunHistoryReader::new(flow.engine()));
+    let workflow_run_reconciler = WorkflowRunReconciler::new(
+        Arc::clone(&workflow_runs),
+        workflow_run_coordinator,
+        operation_interval,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::WorkflowRun)?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
@@ -836,6 +856,8 @@ pub async fn build_application_with_source_resolver(
             ontologies,
             workflow_definitions,
             workflow_goals,
+            workflow_runs,
+            workflow_run_history,
             forms,
             form_semantic_core,
             search,
@@ -889,6 +911,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(build_run_reconciler),
             run_operations.then_some(execution_reconciler),
             run_operations.then_some(agent_execution_reconciler),
+            run_operations.then_some(workflow_run_reconciler),
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
@@ -917,6 +940,8 @@ struct ApplicationDependencies {
     ontologies: Arc<dyn IOntologyRepository>,
     workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
     workflow_goals: Arc<dyn IWorkflowGoalRepository>,
+    workflow_runs: Arc<dyn IWorkflowRunRepository>,
+    workflow_run_history: Arc<dyn IWorkflowRunHistoryReader>,
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
@@ -969,6 +994,8 @@ fn build_application_with_health(
         ontologies,
         workflow_definitions,
         workflow_goals,
+        workflow_runs,
+        workflow_run_history,
         forms,
         form_semantic_core,
         search,
@@ -1032,6 +1059,15 @@ fn build_application_with_health(
     let get_workflow_goals = Arc::clone(&workflow_goals);
     let list_workflow_goals = Arc::clone(&workflow_goals);
     let get_plan_revisions = Arc::clone(&workflow_goals);
+    let start_workflow_run_goals = Arc::clone(&workflow_goals);
+    let start_workflow_run_workflows = Arc::clone(&workflow_definitions);
+    let start_workflow_runs = Arc::clone(&workflow_runs);
+    let cancel_workflow_runs = Arc::clone(&workflow_runs);
+    let get_workflow_runs = Arc::clone(&workflow_runs);
+    let list_workflow_runs = Arc::clone(&workflow_runs);
+    let wait_workflow_runs = Arc::clone(&workflow_runs);
+    let get_workflow_run_outputs = Arc::clone(&workflow_runs);
+    let get_workflow_run_history_runs = workflow_runs;
     let create_form_projects = Arc::clone(&projects);
     let create_form_drafts = Arc::clone(&forms);
     let revise_form_drafts = Arc::clone(&forms);
@@ -1320,6 +1356,16 @@ fn build_application_with_health(
                         create_goal_ontologies,
                         create_workflow_goals,
                     ),
+                )
+                .command_handler::<crate::modules::workflow::StartWorkflowRun, _>(
+                    StartWorkflowRunHandler::new(
+                        start_workflow_run_goals,
+                        start_workflow_run_workflows,
+                        start_workflow_runs,
+                    ),
+                )
+                .command_handler::<crate::modules::workflow::CancelWorkflowRun, _>(
+                    CancelWorkflowRunHandler::new(cancel_workflow_runs),
                 )
                 .command_handler::<crate::modules::forms::CreateFormDraft, _>(
                     CreateFormDraftHandler::new(create_form_projects, create_form_drafts),
@@ -1647,6 +1693,24 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::workflow::GetPlanRevision, _>(
                     GetPlanRevisionHandler::new(get_plan_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRun, _>(
+                    GetWorkflowRunHandler::new(get_workflow_runs),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowRuns, _>(
+                    ListWorkflowRunsHandler::new(list_workflow_runs),
+                )
+                .query_handler::<crate::modules::workflow::WaitWorkflowRun, _>(
+                    WaitWorkflowRunHandler::new(wait_workflow_runs),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRunOutput, _>(
+                    GetWorkflowRunOutputHandler::new(get_workflow_run_outputs),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRunHistory, _>(
+                    GetWorkflowRunHistoryHandler::new(
+                        get_workflow_run_history_runs,
+                        workflow_run_history,
+                    ),
                 )
                 .query_handler::<crate::modules::forms::GetFormDraft, _>(
                     GetFormDraftHandler::new(get_form_drafts),

@@ -48,6 +48,13 @@ pub const WORKFLOW_GOALS_CREATE: &str = "a3s_cloud_workflow_goals_create";
 pub const WORKFLOW_GOALS_GET: &str = "a3s_cloud_workflow_goals_get";
 pub const WORKFLOW_GOALS_LIST: &str = "a3s_cloud_workflow_goals_list";
 pub const WORKFLOW_PLAN_REVISIONS_GET: &str = "a3s_cloud_workflow_plan_revisions_get";
+pub const WORKFLOW_RUNS_START: &str = "a3s_cloud_workflow_runs_start";
+pub const WORKFLOW_RUNS_CANCEL: &str = "a3s_cloud_workflow_runs_cancel";
+pub const WORKFLOW_RUNS_GET: &str = "a3s_cloud_workflow_runs_get";
+pub const WORKFLOW_RUNS_LIST: &str = "a3s_cloud_workflow_runs_list";
+pub const WORKFLOW_RUNS_WAIT: &str = "a3s_cloud_workflow_runs_wait";
+pub const WORKFLOW_RUN_OUTPUT_GET: &str = "a3s_cloud_workflow_run_output_get";
+pub const WORKFLOW_RUN_HISTORY_GET: &str = "a3s_cloud_workflow_run_history_get";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
@@ -92,6 +99,13 @@ pub enum ManagementTool {
     WorkflowGoalsGet,
     WorkflowGoalsList,
     WorkflowPlanRevisionsGet,
+    WorkflowRunsStart,
+    WorkflowRunsCancel,
+    WorkflowRunsGet,
+    WorkflowRunsList,
+    WorkflowRunsWait,
+    WorkflowRunOutputGet,
+    WorkflowRunHistoryGet,
     Search,
     NodesList,
     NodesGet,
@@ -114,7 +128,7 @@ pub enum ManagementTool {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 52] = [
+    const ALL: [Self; 59] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -148,6 +162,13 @@ impl ManagementTool {
         Self::WorkflowGoalsGet,
         Self::WorkflowGoalsList,
         Self::WorkflowPlanRevisionsGet,
+        Self::WorkflowRunsStart,
+        Self::WorkflowRunsCancel,
+        Self::WorkflowRunsGet,
+        Self::WorkflowRunsList,
+        Self::WorkflowRunsWait,
+        Self::WorkflowRunOutputGet,
+        Self::WorkflowRunHistoryGet,
         Self::Search,
         Self::NodesList,
         Self::NodesGet,
@@ -229,6 +250,13 @@ impl ManagementTool {
             Self::WorkflowGoalsGet => WORKFLOW_GOALS_GET,
             Self::WorkflowGoalsList => WORKFLOW_GOALS_LIST,
             Self::WorkflowPlanRevisionsGet => WORKFLOW_PLAN_REVISIONS_GET,
+            Self::WorkflowRunsStart => WORKFLOW_RUNS_START,
+            Self::WorkflowRunsCancel => WORKFLOW_RUNS_CANCEL,
+            Self::WorkflowRunsGet => WORKFLOW_RUNS_GET,
+            Self::WorkflowRunsList => WORKFLOW_RUNS_LIST,
+            Self::WorkflowRunsWait => WORKFLOW_RUNS_WAIT,
+            Self::WorkflowRunOutputGet => WORKFLOW_RUN_OUTPUT_GET,
+            Self::WorkflowRunHistoryGet => WORKFLOW_RUN_HISTORY_GET,
             Self::Search => SEARCH,
             Self::NodesList => NODES_LIST,
             Self::NodesGet => NODES_GET,
@@ -266,7 +294,9 @@ impl ManagementTool {
             Self::OntologiesCreate | Self::OntologiesRevise => Some(ApiTokenScope::ONTOLOGY_WRITE),
             Self::WorkflowDefinitionsCreate
             | Self::WorkflowDefinitionsRevise
-            | Self::WorkflowGoalsCreate => Some(ApiTokenScope::WORKFLOW_WRITE),
+            | Self::WorkflowGoalsCreate
+            | Self::WorkflowRunsStart
+            | Self::WorkflowRunsCancel => Some(ApiTokenScope::WORKFLOW_WRITE),
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
@@ -289,6 +319,11 @@ impl ManagementTool {
             | Self::WorkflowGoalsGet
             | Self::WorkflowGoalsList
             | Self::WorkflowPlanRevisionsGet
+            | Self::WorkflowRunsGet
+            | Self::WorkflowRunsList
+            | Self::WorkflowRunsWait
+            | Self::WorkflowRunOutputGet
+            | Self::WorkflowRunHistoryGet
             | Self::Search
             | Self::NodesList
             | Self::NodesGet
@@ -517,6 +552,48 @@ impl ManagementTool {
                 workflow_plan_revision_schema(),
                 true,
             ),
+            Self::WorkflowRunsStart => (
+                "Start Workflow run",
+                "Start one exact immutable PlanRevision through the shared Operation and A3S Flow authority.",
+                start_workflow_run_schema(),
+                false,
+            ),
+            Self::WorkflowRunsCancel => (
+                "Cancel Workflow run",
+                "Request cancellation of one tenant-authorized WorkflowRun with explicit idempotency.",
+                cancel_workflow_run_schema(),
+                false,
+            ),
+            Self::WorkflowRunsGet => (
+                "Get Workflow run",
+                "Get one WorkflowRun and its current semantic step projections.",
+                uuid_id_schema("workflowRunId"),
+                true,
+            ),
+            Self::WorkflowRunsList => (
+                "List Workflow runs",
+                "List a bounded set of WorkflowRuns in one tenant-authorized project.",
+                list_workflow_runs_schema(),
+                true,
+            ),
+            Self::WorkflowRunsWait => (
+                "Wait for Workflow run",
+                "Wait for a bounded interval and return the latest WorkflowRun state.",
+                wait_workflow_run_schema(),
+                true,
+            ),
+            Self::WorkflowRunOutputGet => (
+                "Get Workflow run output",
+                "Get the bounded output and digest of one completed WorkflowRun.",
+                uuid_id_schema("workflowRunId"),
+                true,
+            ),
+            Self::WorkflowRunHistoryGet => (
+                "Get Workflow run history",
+                "Get one bounded, redacted page of the correlated A3S Flow history.",
+                workflow_run_history_schema(),
+                true,
+            ),
             Self::Search => (
                 "Search Cloud resources",
                 "Search bounded tenant-authorized resource projections in the authenticated organization.",
@@ -638,6 +715,7 @@ impl ManagementTool {
                 | Self::WorkloadsStop
                 | Self::DeploymentsCancel
                 | Self::BuildRunsCancel
+                | Self::WorkflowRunsCancel
         );
         json!({
             "name": self.name(),
@@ -1044,6 +1122,76 @@ fn workflow_plan_revision_schema() -> Value {
             "planRevisionId": {"type": "string", "format": "uuid"}
         },
         "required": ["workflowGoalId", "planRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn start_workflow_run_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "workflowGoalId": {"type": "string", "format": "uuid"},
+            "planRevisionId": {"type": "string", "format": "uuid"},
+            "timeoutSeconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2592000,
+                "default": 86400
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "workflowGoalId", "planRevisionId", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn cancel_workflow_run_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workflowRunId": {"type": "string", "format": "uuid"},
+            "reason": {"type": "string", "minLength": 1, "maxLength": 4096},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["workflowRunId", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn list_workflow_runs_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn wait_workflow_run_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workflowRunId": {"type": "string", "format": "uuid"},
+            "timeoutSeconds": {"type": "integer", "minimum": 0, "maximum": 30, "default": 30}
+        },
+        "required": ["workflowRunId"],
+        "additionalProperties": false
+    })
+}
+
+fn workflow_run_history_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "workflowRunId": {"type": "string", "format": "uuid"},
+            "afterSequence": {"type": "integer", "minimum": 0, "default": 0},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100}
+        },
+        "required": ["workflowRunId"],
         "additionalProperties": false
     })
 }

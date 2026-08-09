@@ -794,7 +794,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 79);
+    assert_eq!(applied, 80);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -809,6 +809,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "form_releases",
         "ontologies",
         "ontology_revisions",
+        "workflow_runs",
+        "workflow_step_projections",
     ] {
         let relation = database
             .fetch_one_as(
@@ -818,6 +820,26 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             )
             .await?;
         assert_eq!(relation.as_deref(), Some(table));
+    }
+    let workflow_run_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid in ('workflow_runs'::regclass, 'workflow_step_projections'::regclass) and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(workflow_run_trigger_count, 4);
+    for index in [
+        "workflow_runs_project_requested_idx",
+        "workflow_runs_reconciliation_idx",
+        "workflow_step_projections_run_status_idx",
+    ] {
+        let relation = database
+            .fetch_one_as(
+                sql_query::<Option<String>>("select to_regclass(")
+                    .bind(format!("public.{index}"))
+                    .append(")::text"),
+            )
+            .await?;
+        assert_eq!(relation.as_deref(), Some(index));
     }
     let node_command_kind_constraint = database
         .fetch_one_as(sql_query::<String>(

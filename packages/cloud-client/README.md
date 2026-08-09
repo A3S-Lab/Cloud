@@ -76,7 +76,7 @@ policy lifecycle.
 `listOntologies`, `getOntology`, `createOntologyFromAcl`,
 `listOntologyRevisions`, `getOntologyRevision`, `diffOntologyRevisions`, and
 `reviseOntologyFromAcl` expose the backend `W0.2` lifecycle through REST
-contract `1.13.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
+contract `1.14.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
 Revision requires a positive expected aggregate version and may name one
 portable migration rule ID; Cloud admits a breaking diff only when that exact
 target ACL rule has kind `migration`. The client does not parse Ontology ACL,
@@ -92,11 +92,23 @@ second product-configuration format. `listWorkflowGoals`, `getWorkflowGoal`,
 `createWorkflowGoalFromAcl`, and `getWorkflowPlanRevision` bind exact Workflow
 and Ontology revisions and read the deterministic immutable plan. The client
 validates transport bounds and optimistic version shape but does not parse
-ACL, compile plans, retain revision state, or execute Workflow steps.
+ACL, compile plans, or retain revision state.
+
+`startWorkflowRun`, `cancelWorkflowRun`, `listWorkflowRuns`,
+`getWorkflowRun`, `waitWorkflowRun`, `getWorkflowRunOutput`, and
+`getWorkflowRunHistory` expose the minimal `W0.3` run lifecycle added by REST
+contract `1.14.0`. Start binds one exact Goal and Plan revision, accepts a
+bounded optional deadline, and requires caller-owned idempotency. Cancel is
+also replay-safe; list, wait, and history enforce the server's finite bounds
+before transport. Cloud remains authoritative for the correlated Operation,
+A3S Flow run, WorkflowStepProjection state, immutable replay checks,
+cancellation, timeout, output digest, and redacted history. This client surface
+does not claim HumanTask, service/finite-task, typed capability, compensation,
+or production-recovery support.
 
 `listFormDrafts`, `getFormDraft`, `createFormDraft`, `reviseFormDraft`,
 `listFormReleases`, `getFormRelease`, and `publishFormRelease` expose the native
-Form draft and immutable release lifecycle added by REST contract `1.13.0`.
+Form draft and immutable release lifecycle added by REST contract `1.14.0`.
 Draft writes carry only a bounded `{name, description?, document}` JSON
 transport, and revise/publish require a positive expected aggregate version.
 The client validates transport shape, text bounds, canonical document size,

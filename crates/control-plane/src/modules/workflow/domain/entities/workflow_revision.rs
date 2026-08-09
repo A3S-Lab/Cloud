@@ -338,7 +338,7 @@ struct PayloadDigestEntry<'a> {
     digest: &'a str,
 }
 
-fn digest_payload_set(payloads: &[WorkflowPayload]) -> Result<Sha256Digest, String> {
+pub(crate) fn digest_payload_set(payloads: &[WorkflowPayload]) -> Result<Sha256Digest, String> {
     let entries = payloads
         .iter()
         .map(|payload| PayloadDigestEntry {

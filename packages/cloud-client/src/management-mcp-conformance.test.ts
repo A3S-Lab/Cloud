@@ -643,7 +643,7 @@ workload "mcp-stop" {
     const workloadStopReplay = await callTool(
       environment,
       environment.adminToken,
-      52,
+      59,
       'a3s_cloud_workloads_stop',
       { workloadId, idempotencyKey: 'c0:mcp:workload-stop' },
       credentials,

@@ -359,6 +359,11 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_goals_get",
             "a3s_cloud_workflow_goals_list",
             "a3s_cloud_workflow_plan_revisions_get",
+            "a3s_cloud_workflow_runs_get",
+            "a3s_cloud_workflow_runs_list",
+            "a3s_cloud_workflow_runs_wait",
+            "a3s_cloud_workflow_run_output_get",
+            "a3s_cloud_workflow_run_history_get",
             "a3s_cloud_search",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
@@ -448,6 +453,13 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_goals_get",
             "a3s_cloud_workflow_goals_list",
             "a3s_cloud_workflow_plan_revisions_get",
+            "a3s_cloud_workflow_runs_start",
+            "a3s_cloud_workflow_runs_cancel",
+            "a3s_cloud_workflow_runs_get",
+            "a3s_cloud_workflow_runs_list",
+            "a3s_cloud_workflow_runs_wait",
+            "a3s_cloud_workflow_run_output_get",
+            "a3s_cloud_workflow_run_history_get",
             "a3s_cloud_search",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
@@ -1098,6 +1110,44 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
                 "idempotencyKey": "missing-build-retry"
             }),
         ),
+        (
+            34,
+            "a3s_cloud_workflow_runs_start",
+            json!({
+                "projectId": project,
+                "workflowGoalId": missing_resource_id,
+                "planRevisionId": missing_resource_id,
+                "idempotencyKey": "missing-workflow-run-start"
+            }),
+        ),
+        (
+            35,
+            "a3s_cloud_workflow_runs_cancel",
+            json!({
+                "workflowRunId": missing_resource_id,
+                "idempotencyKey": "missing-workflow-run-cancel"
+            }),
+        ),
+        (
+            36,
+            "a3s_cloud_workflow_runs_get",
+            json!({"workflowRunId": missing_resource_id}),
+        ),
+        (
+            37,
+            "a3s_cloud_workflow_runs_wait",
+            json!({"workflowRunId": missing_resource_id, "timeoutSeconds": 0}),
+        ),
+        (
+            38,
+            "a3s_cloud_workflow_run_output_get",
+            json!({"workflowRunId": missing_resource_id}),
+        ),
+        (
+            39,
+            "a3s_cloud_workflow_run_history_get",
+            json!({"workflowRunId": missing_resource_id}),
+        ),
     ] {
         let response = app
             .call(mcp_request(
@@ -1182,6 +1232,32 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
                 "idempotencyKey": "unknown-field",
                 "organizationId": organization
             }),
+        ),
+        (
+            40,
+            "a3s_cloud_workflow_runs_start",
+            json!({
+                "projectId": project,
+                "workflowGoalId": missing_resource_id,
+                "planRevisionId": missing_resource_id,
+                "timeoutSeconds": 0,
+                "idempotencyKey": "invalid-workflow-run-start"
+            }),
+        ),
+        (
+            41,
+            "a3s_cloud_workflow_runs_list",
+            json!({"projectId": project, "limit": 201}),
+        ),
+        (
+            42,
+            "a3s_cloud_workflow_runs_wait",
+            json!({"workflowRunId": missing_resource_id, "timeoutSeconds": 31}),
+        ),
+        (
+            43,
+            "a3s_cloud_workflow_run_history_get",
+            json!({"workflowRunId": missing_resource_id, "limit": 0}),
         ),
     ] {
         let response = app
@@ -1607,6 +1683,143 @@ async fn management_mcp_reuses_the_workflow_definition_goal_and_plan_lifecycle()
             .as_array()
             .map(Vec::len),
         Some(3)
+    );
+
+    let start_arguments = json!({
+        "projectId": project,
+        "workflowGoalId": goal_id,
+        "planRevisionId": plan_revision_id,
+        "timeoutSeconds": 60,
+        "idempotencyKey": "mcp-workflow-run-start"
+    });
+    let started = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(7, "a3s_cloud_workflow_runs_start", start_arguments.clone()),
+        ))
+        .await?;
+    let started = response_json(&started)?;
+    assert_eq!(started["result"]["structuredContent"]["code"], 202);
+    let workflow_run_id = started["result"]["structuredContent"]["data"]["workflowRun"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP WorkflowRun has no ID".into()))?;
+    assert_eq!(
+        started["result"]["structuredContent"]["data"]["workflowRun"]["status"],
+        "pending"
+    );
+    let start_replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(8, "a3s_cloud_workflow_runs_start", start_arguments),
+        ))
+        .await?;
+    let start_replay = response_json(&start_replay)?;
+    assert_eq!(start_replay["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        start_replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    assert_eq!(
+        start_replay["result"]["structuredContent"]["data"]["workflowRun"]["id"],
+        workflow_run_id
+    );
+
+    let listed_runs = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                9,
+                "a3s_cloud_workflow_runs_list",
+                json!({"projectId": project, "limit": 1}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&listed_runs)?["result"]["structuredContent"]["data"][0]["id"],
+        workflow_run_id
+    );
+    for (id, name, arguments) in [
+        (
+            10,
+            "a3s_cloud_workflow_runs_get",
+            json!({"workflowRunId": workflow_run_id}),
+        ),
+        (
+            11,
+            "a3s_cloud_workflow_runs_wait",
+            json!({"workflowRunId": workflow_run_id, "timeoutSeconds": 0}),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        assert_eq!(
+            response_json(&response)?["result"]["structuredContent"]["data"]["id"],
+            workflow_run_id,
+            "{name}"
+        );
+    }
+    let history = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                12,
+                "a3s_cloud_workflow_run_history_get",
+                json!({"workflowRunId": workflow_run_id, "limit": 10}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&history)?["result"]["structuredContent"]["data"]["events"],
+        json!([])
+    );
+    let pending_output = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                13,
+                "a3s_cloud_workflow_run_output_get",
+                json!({"workflowRunId": workflow_run_id}),
+            ),
+        ))
+        .await?;
+    let pending_output = response_json(&pending_output)?;
+    assert_eq!(pending_output["result"]["structuredContent"]["code"], 409);
+    assert_eq!(pending_output["result"]["isError"], true);
+
+    let cancel_arguments = json!({
+        "workflowRunId": workflow_run_id,
+        "reason": "operator request",
+        "idempotencyKey": "mcp-workflow-run-cancel"
+    });
+    let cancelled = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                14,
+                "a3s_cloud_workflow_runs_cancel",
+                cancel_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let cancelled = response_json(&cancelled)?;
+    assert_eq!(cancelled["result"]["structuredContent"]["code"], 202);
+    assert_eq!(
+        cancelled["result"]["structuredContent"]["data"]["workflowRun"]["status"],
+        "cancelling"
+    );
+    let cancel_replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(15, "a3s_cloud_workflow_runs_cancel", cancel_arguments),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&cancel_replay)?["result"]["structuredContent"]["data"]["replayed"],
+        true
     );
     Ok(())
 }

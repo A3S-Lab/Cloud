@@ -1,4 +1,5 @@
 mod workflow_response;
+mod workflow_run_response;
 
 use crate::modules::workflow::application::queries::diff_ontology_revisions::OntologyRevisionDiff;
 use crate::modules::workflow::application::OntologyMutationResult;
@@ -13,6 +14,9 @@ pub use workflow_response::{
     PlanRevisionResponse, WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse,
     WorkflowGoalMutationResponse, WorkflowGoalResponse, WorkflowRevisionResponse,
     WorkflowRevisionSummaryResponse,
+};
+pub use workflow_run_response::{
+    WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
 };
 
 #[derive(Debug, Clone, Serialize)]
