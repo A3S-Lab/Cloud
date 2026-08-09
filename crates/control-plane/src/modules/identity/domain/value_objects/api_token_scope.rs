@@ -22,6 +22,7 @@ impl ApiTokenScope {
     pub const MCP_WRITE: &'static str = "mcp:write";
     pub const ONTOLOGY_WRITE: &'static str = "ontology:write";
     pub const WORKFLOW_WRITE: &'static str = "workflow:write";
+    pub const FORM_WRITE: &'static str = "form:write";
 
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
@@ -66,6 +67,7 @@ impl ApiTokenScope {
             Self::MCP_WRITE,
             Self::ONTOLOGY_WRITE,
             Self::WORKFLOW_WRITE,
+            Self::FORM_WRITE,
         ]
         .into_iter()
         .map(|scope| Self(scope.to_owned()))

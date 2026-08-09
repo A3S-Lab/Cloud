@@ -81,7 +81,7 @@ export function rejectIdempotencyOption(arguments_: ParsedArguments): void {
 
 export function rejectFileOption(arguments_: ParsedArguments): void {
   if (arguments_.file !== undefined) {
-    throw usageError('--file is valid only for ACL desired-state mutations');
+    throw usageError('--file is valid only for file-backed mutation commands');
   }
 }
 

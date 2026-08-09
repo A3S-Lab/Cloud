@@ -72,6 +72,12 @@ use crate::modules::fleet::{
     RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
     RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
+use crate::modules::forms::{
+    CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
+    IFormRepository, IFormSemanticCore, ListFormDraftsHandler, ListFormReleasesHandler,
+    NativeFormSemanticCore, PostgresFormRepository, PublishFormReleaseHandler,
+    ReviseFormDraftHandler,
+};
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
 };
@@ -167,7 +173,7 @@ use crate::{
 };
 use a3s_boot::{
     AuthModule, BootApplication, BootError, CqrsModule, HealthIndicatorResult, HealthModule,
-    Module, ModuleRef, ProviderDefinition, ProviderToken, Result, RouteDefinition,
+    Module, ModuleRef, ProviderDefinition, ProviderToken, QueueOptions, Result, RouteDefinition,
     AUTH_PUBLIC_METADATA,
 };
 use a3s_event::{NatsConfig, StorageType};
@@ -262,6 +268,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
     let workflow_goals: Arc<dyn IWorkflowGoalRepository> =
         Arc::new(PostgresWorkflowGoalRepository::new(executor.clone()));
+    let forms: Arc<dyn IFormRepository> = Arc::new(PostgresFormRepository::new(executor.clone()));
+    let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
@@ -674,7 +682,16 @@ pub async fn build_application_with_source_resolver(
         Arc::new(execution_runtime),
         Arc::new(agent_execution_runtime),
     );
-    let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
+    let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
+    let operation_lease = Duration::from_millis(config.operations.lease_ms);
+    let flow = crate::infrastructure::connect_flow(
+        &postgres_url,
+        Arc::new(flow_runtime),
+        QueueOptions::new()
+            .with_poll_interval(operation_interval)
+            .with_lease_duration(operation_lease),
+    )
+    .await?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
@@ -751,14 +768,14 @@ pub async fn build_application_with_source_resolver(
             operation_repository.clone(),
             operation_engine,
         )),
-        Duration::from_millis(config.operations.reconcile_interval_ms),
+        operation_interval,
         100,
     );
     let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(
         operation_reconciler,
         &flow,
-        Duration::from_millis(config.operations.reconcile_interval_ms),
-        Duration::from_millis(config.operations.lease_ms),
+        operation_interval,
+        operation_lease,
     )
     .map_err(|error| ControlPlaneStartupError::Framework(BootError::Internal(error.to_string())))?;
     let outbox_relay = OutboxRelay::new(
@@ -819,6 +836,8 @@ pub async fn build_application_with_source_resolver(
             ontologies,
             workflow_definitions,
             workflow_goals,
+            forms,
+            form_semantic_core,
             search,
             asset_catalog,
             mcp_service_profiles,
@@ -898,6 +917,8 @@ struct ApplicationDependencies {
     ontologies: Arc<dyn IOntologyRepository>,
     workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
     workflow_goals: Arc<dyn IWorkflowGoalRepository>,
+    forms: Arc<dyn IFormRepository>,
+    form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
@@ -948,6 +969,8 @@ fn build_application_with_health(
         ontologies,
         workflow_definitions,
         workflow_goals,
+        forms,
+        form_semantic_core,
         search,
         asset_catalog,
         mcp_service_profiles,
@@ -1009,6 +1032,14 @@ fn build_application_with_health(
     let get_workflow_goals = Arc::clone(&workflow_goals);
     let list_workflow_goals = Arc::clone(&workflow_goals);
     let get_plan_revisions = Arc::clone(&workflow_goals);
+    let create_form_projects = Arc::clone(&projects);
+    let create_form_drafts = Arc::clone(&forms);
+    let revise_form_drafts = Arc::clone(&forms);
+    let publish_form_releases = Arc::clone(&forms);
+    let get_form_drafts = Arc::clone(&forms);
+    let list_form_drafts = Arc::clone(&forms);
+    let get_form_releases = Arc::clone(&forms);
+    let list_form_releases = forms;
     let agent_conversation_environments = Arc::clone(&environments);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
@@ -1289,6 +1320,15 @@ fn build_application_with_health(
                         create_goal_ontologies,
                         create_workflow_goals,
                     ),
+                )
+                .command_handler::<crate::modules::forms::CreateFormDraft, _>(
+                    CreateFormDraftHandler::new(create_form_projects, create_form_drafts),
+                )
+                .command_handler::<crate::modules::forms::ReviseFormDraft, _>(
+                    ReviseFormDraftHandler::new(revise_form_drafts),
+                )
+                .command_handler::<crate::modules::forms::PublishFormRelease, _>(
+                    PublishFormReleaseHandler::new(publish_form_releases, form_semantic_core),
                 )
                 .command_handler::<crate::modules::assets::CreateAsset, _>(
                     CreateAssetHandler::new(create_assets),
@@ -1608,6 +1648,18 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::workflow::GetPlanRevision, _>(
                     GetPlanRevisionHandler::new(get_plan_revisions),
                 )
+                .query_handler::<crate::modules::forms::GetFormDraft, _>(
+                    GetFormDraftHandler::new(get_form_drafts),
+                )
+                .query_handler::<crate::modules::forms::ListFormDrafts, _>(
+                    ListFormDraftsHandler::new(list_form_drafts),
+                )
+                .query_handler::<crate::modules::forms::GetFormRelease, _>(
+                    GetFormReleaseHandler::new(get_form_releases),
+                )
+                .query_handler::<crate::modules::forms::ListFormReleases, _>(
+                    ListFormReleasesHandler::new(list_form_releases),
+                )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),
                 )
@@ -1762,6 +1814,7 @@ fn build_application_with_health(
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
         .import(WorkflowModule)
+        .import(FormsModule)
         .import(SearchModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))

@@ -147,7 +147,15 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(coordinator) = self.workers.operation_coordinator {
-            workers.push(tokio::spawn(coordinator.run(shutdown_receiver.clone())));
+            let failure_sender = failure_sender.clone();
+            let coordinator_shutdown = shutdown_receiver.clone();
+            workers.push(tokio::spawn(async move {
+                if let Err(error) = coordinator.run(coordinator_shutdown).await {
+                    let _ = failure_sender.send(BootError::Internal(format!(
+                        "operation Flow coordinator stopped: {error}"
+                    )));
+                }
+            }));
         }
         if let Some(reconciler) = self.workers.workload_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));

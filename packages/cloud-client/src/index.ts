@@ -11,6 +11,7 @@ export {
   DEFAULT_CLOUD_API_BASE_PATH,
   isValidIdempotencyKey,
   MAX_ACL_DOCUMENT_BYTES,
+  MAX_FORM_DOCUMENT_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
@@ -21,6 +22,8 @@ export {
   MAX_WORKFLOW_REVISION_PAYLOADS,
   MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
+  validateFormDraftInput,
+  validateFormVersionControl,
 } from './api';
 export * from './diagnostics';
 export * from './search';

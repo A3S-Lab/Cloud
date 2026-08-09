@@ -1,7 +1,11 @@
-use a3s_boot::HealthIndicatorResult;
+use a3s_boot::{
+    BootError, HealthIndicatorResult, ModuleRef, PostgresQueueBackend, Queue, QueueOptions,
+    QueueRetryPolicy, QueueStats,
+};
 use a3s_flow::{
-    FlowEngine, FlowError, FlowRuntime, FlowScheduler, FlowTaskQueue, FlowWorker,
-    PostgresEventStore, PostgresFlowTaskQueue, RuntimeCommand, StepInvocation, WorkflowInvocation,
+    BootFlowTaskDeduplication, BootFlowTaskManager, BootFlowTaskPolicy, FlowEngine, FlowError,
+    FlowRuntime, FlowScheduler, PostgresEventStore, RuntimeBuildCompatibility, RuntimeBuildId,
+    RuntimeCommand, StepInvocation, WorkflowInvocation,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -10,16 +14,22 @@ use tokio::sync::watch;
 use url::Url;
 
 const FLOW_SCHEMA: &str = "a3s_flow";
+const BOOT_SCHEMA: &str = "a3s_boot";
 const FLOW_QUEUE: &str = "cloud-operations";
+const FLOW_TASK_RETRIES: u32 = 3;
+const QUEUE_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(5);
+pub(crate) const CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@1";
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlowInfrastructureError {
     #[error("invalid PostgreSQL URL for A3S Flow: {0}")]
     InvalidUrl(#[from] url::ParseError),
-    #[error("the PostgreSQL URL cannot define options because Cloud owns the Flow search path")]
+    #[error("the PostgreSQL URL cannot define options because Cloud owns component search paths")]
     ConflictingOptions,
     #[error("could not initialize A3S Flow: {0}")]
     Flow(#[from] FlowError),
+    #[error("could not initialize the A3S Boot Flow task queue: {0}")]
+    Boot(#[from] BootError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -28,8 +38,18 @@ pub enum FlowCoordinatorError {
     Repository(#[from] crate::modules::shared_kernel::domain::RepositoryError),
     #[error("A3S Flow coordination failed: {0}")]
     Flow(#[from] FlowError),
-    #[error("operation Flow lease duration exceeds the supported range")]
-    InvalidLease,
+    #[error("A3S Boot Flow task queue failed: {0}")]
+    Boot(#[from] BootError),
+    #[error("operation Flow queue drain timeout must be greater than zero")]
+    InvalidDrainTimeout,
+    #[error(
+        "operation Flow queue did not drain before timeout (pending={pending}, active={active})"
+    )]
+    QueueDrainTimeout { pending: usize, active: usize },
+    #[error("{count} operation Flow task(s) exhausted queue processing: {details}")]
+    TerminalTaskFailures { count: usize, details: String },
+    #[error("operation Flow cycle failed ({cycle}); queue shutdown also failed: {shutdown}")]
+    CycleAndShutdown { cycle: String, shutdown: String },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -45,7 +65,9 @@ pub struct FlowCoordinatorReport {
 #[derive(Clone)]
 pub struct FlowInfrastructure {
     engine: FlowEngine,
-    queue: Arc<PostgresFlowTaskQueue>,
+    queue_backend: PostgresQueueBackend,
+    queue: Arc<Queue>,
+    task_manager: Arc<BootFlowTaskManager>,
 }
 
 #[derive(Clone)]
@@ -130,10 +152,15 @@ impl FlowRuntime for FlowRuntimeRouter {
 pub struct FlowOperationCoordinator {
     reconciler: crate::modules::operations::OperationReconciler,
     scheduler: FlowScheduler,
-    worker: FlowWorker,
-    queue: Arc<PostgresFlowTaskQueue>,
+    queue_backend: PostgresQueueBackend,
+    queue: Arc<Queue>,
     interval: Duration,
-    lease_duration: chrono::Duration,
+    drain_timeout: Duration,
+}
+
+struct FlowQueueCycle {
+    report: FlowCoordinatorReport,
+    stats: QueueStats,
 }
 
 impl FlowOperationCoordinator {
@@ -141,40 +168,123 @@ impl FlowOperationCoordinator {
         reconciler: crate::modules::operations::OperationReconciler,
         flow: &FlowInfrastructure,
         interval: Duration,
-        lease_duration: Duration,
+        drain_timeout: Duration,
     ) -> Result<Self, FlowCoordinatorError> {
-        let lease_duration = chrono::Duration::from_std(lease_duration)
-            .map_err(|_| FlowCoordinatorError::InvalidLease)?;
+        if drain_timeout.is_zero() {
+            return Err(FlowCoordinatorError::InvalidDrainTimeout);
+        }
         Ok(Self {
             reconciler,
-            scheduler: FlowScheduler::new(flow.engine(), flow.queue()),
-            worker: FlowWorker::new(flow.engine(), flow.queue()),
+            scheduler: FlowScheduler::new(flow.engine(), flow.task_manager()),
+            queue_backend: flow.queue_backend(),
             queue: flow.queue(),
             interval,
-            lease_duration,
+            drain_timeout,
         })
     }
 
     pub async fn run_once(&self) -> Result<FlowCoordinatorReport, FlowCoordinatorError> {
-        let recovered_tasks = self
-            .queue
-            .requeue_inflight_older_than(Utc::now() - self.lease_duration)
-            .await?;
+        let before_queue = self.queue_backend.stats_async().await?;
+        self.queue.start(ModuleRef::new()).await?;
+        let cycle = self.run_cycle(before_queue, true).await;
+        let shutdown = self.queue.shutdown().await;
+        match (cycle, shutdown) {
+            (Ok(cycle), Ok(())) => Ok(cycle.report),
+            (Err(error), Ok(())) => Err(error),
+            (Ok(_), Err(error)) => Err(error.into()),
+            (Err(cycle), Err(shutdown)) => Err(FlowCoordinatorError::CycleAndShutdown {
+                cycle: cycle.to_string(),
+                shutdown: shutdown.to_string(),
+            }),
+        }
+    }
+
+    async fn run_cycle(
+        &self,
+        before_queue: QueueStats,
+        drain_queue: bool,
+    ) -> Result<FlowQueueCycle, FlowCoordinatorError> {
         let before = self.reconciler.run_once().await?;
         let tick = self.scheduler.enqueue_due_work(Utc::now()).await?;
-        let handled_tasks = self.worker.run_until_idle().await?.len();
+        let after_queue = if drain_queue {
+            self.drain_queue().await?
+        } else {
+            self.queue_backend.stats_async().await?
+        };
+        self.reject_new_terminal_failures(before_queue, after_queue)
+            .await?;
         let after = self.reconciler.run_once().await?;
-        Ok(FlowCoordinatorReport {
-            reconciled_before_work: before.projected,
-            reconciled_after_work: after.projected,
-            reconciliation_failures: before.failures.len() + after.failures.len(),
-            recovered_tasks,
-            enqueued_tasks: tick.enqueued_tasks,
-            handled_tasks,
+        Ok(FlowQueueCycle {
+            report: FlowCoordinatorReport {
+                reconciled_before_work: before.projected,
+                reconciled_after_work: after.projected,
+                reconciliation_failures: before.failures.len() + after.failures.len(),
+                recovered_tasks: 0,
+                enqueued_tasks: tick.enqueued_tasks,
+                handled_tasks: after_queue.completed.saturating_sub(before_queue.completed),
+            },
+            stats: after_queue,
         })
     }
 
-    pub async fn run(self, mut shutdown: watch::Receiver<bool>) {
+    async fn drain_queue(&self) -> Result<QueueStats, FlowCoordinatorError> {
+        let drained = tokio::time::timeout(self.drain_timeout, async {
+            loop {
+                let stats = self.queue_backend.stats_async().await?;
+                if stats.pending == 0 && stats.active == 0 {
+                    return Ok::<QueueStats, BootError>(stats);
+                }
+                tokio::time::sleep(QUEUE_DRAIN_POLL_INTERVAL).await;
+            }
+        })
+        .await;
+        match drained {
+            Ok(result) => Ok(result?),
+            Err(_) => {
+                let stats = self.queue_backend.stats_async().await?;
+                Err(FlowCoordinatorError::QueueDrainTimeout {
+                    pending: stats.pending,
+                    active: stats.active,
+                })
+            }
+        }
+    }
+
+    async fn reject_new_terminal_failures(
+        &self,
+        before: QueueStats,
+        after: QueueStats,
+    ) -> Result<(), FlowCoordinatorError> {
+        let count = after.failed.saturating_sub(before.failed);
+        if count == 0 {
+            return Ok(());
+        }
+        let details = self
+            .queue_backend
+            .failures_async()
+            .await?
+            .into_iter()
+            .skip(before.failed)
+            .take(count)
+            .map(|failure| format!("{} [{}]: {}", failure.id, failure.name, failure.message))
+            .collect::<Vec<_>>()
+            .join("; ");
+        Err(FlowCoordinatorError::TerminalTaskFailures {
+            count,
+            details: if details.is_empty() {
+                "failure records were not retained".to_string()
+            } else {
+                details
+            },
+        })
+    }
+
+    pub async fn run(
+        self,
+        mut shutdown: watch::Receiver<bool>,
+    ) -> Result<(), FlowCoordinatorError> {
+        let mut queue_stats = self.queue_backend.stats_async().await?;
+        self.queue.start(ModuleRef::new()).await?;
         let mut ticker = tokio::time::interval(self.interval);
         ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -185,8 +295,10 @@ impl FlowOperationCoordinator {
                     }
                 }
                 _ = ticker.tick() => {
-                    match self.run_once().await {
-                        Ok(report) => {
+                    match self.run_cycle(queue_stats, false).await {
+                        Ok(cycle) => {
+                            queue_stats = cycle.stats;
+                            let report = cycle.report;
                             if report.reconciliation_failures > 0 {
                                 tracing::warn!(
                                     failures = report.reconciliation_failures,
@@ -201,11 +313,18 @@ impl FlowOperationCoordinator {
                                 "operation Flow cycle completed"
                             );
                         }
-                        Err(error) => tracing::error!(error = %error, "operation Flow cycle failed"),
+                        Err(error) => {
+                            tracing::error!(error = %error, "operation Flow cycle failed");
+                            if let Ok(current) = self.queue_backend.stats_async().await {
+                                queue_stats = current;
+                            }
+                        }
                     }
                 }
             }
         }
+        self.queue.shutdown().await?;
+        Ok(())
     }
 }
 
@@ -214,14 +333,41 @@ impl FlowInfrastructure {
         database_url: &str,
         runtime: Arc<dyn FlowRuntime>,
     ) -> Result<Self, FlowInfrastructureError> {
-        let flow_url = scoped_postgres_url(database_url)?;
+        Self::connect_with_queue_options(database_url, runtime, QueueOptions::new()).await
+    }
+
+    pub async fn connect_with_queue_options(
+        database_url: &str,
+        runtime: Arc<dyn FlowRuntime>,
+        queue_options: QueueOptions,
+    ) -> Result<Self, FlowInfrastructureError> {
+        let flow_url = scoped_postgres_url(database_url, FLOW_SCHEMA)?;
+        let boot_url = scoped_postgres_url(database_url, BOOT_SCHEMA)?;
         let store = Arc::new(PostgresEventStore::connect(flow_url.as_str()).await?);
-        let queue = Arc::new(
-            PostgresFlowTaskQueue::connect_with_queue(flow_url.as_str(), FLOW_QUEUE).await?,
+        let engine = FlowEngine::builder(runtime)
+            .with_store(store)
+            .with_runtime_build_compatibility(cloud_runtime_build_compatibility()?)
+            .build();
+        let queue_backend =
+            PostgresQueueBackend::connect(boot_url.as_str(), FLOW_QUEUE, queue_options).await?;
+        let queue = Arc::new(Queue::new(FLOW_QUEUE, queue_backend.clone()));
+        let task_policy = BootFlowTaskPolicy::new()
+            .with_retry_policy(QueueRetryPolicy::fixed(
+                FLOW_TASK_RETRIES,
+                queue_options.poll_interval,
+            ))
+            .with_max_stalled_count(1)
+            .with_deduplication(BootFlowTaskDeduplication::UntilTerminal);
+        let task_manager = Arc::new(
+            BootFlowTaskManager::new(engine.clone(), Arc::clone(&queue))
+                .with_task_policy(task_policy)?,
         );
+        task_manager.register()?;
         Ok(Self {
-            engine: FlowEngine::new(store, runtime),
+            engine,
+            queue_backend,
             queue,
+            task_manager,
         })
     }
 
@@ -229,8 +375,16 @@ impl FlowInfrastructure {
         self.engine.clone()
     }
 
-    pub fn queue(&self) -> Arc<PostgresFlowTaskQueue> {
+    fn queue_backend(&self) -> PostgresQueueBackend {
+        self.queue_backend.clone()
+    }
+
+    fn queue(&self) -> Arc<Queue> {
         Arc::clone(&self.queue)
+    }
+
+    fn task_manager(&self) -> Arc<BootFlowTaskManager> {
+        Arc::clone(&self.task_manager)
     }
 
     pub async fn health(&self) -> HealthIndicatorResult {
@@ -240,22 +394,49 @@ impl FlowInfrastructure {
                 return HealthIndicatorResult::down().with_detail_value("error", error.to_string())
             }
         };
-        match self.queue.len().await {
-            Ok(pending) => HealthIndicatorResult::up()
-                .with_detail_value("runs", runs)
-                .with_detail_value("pendingTasks", pending),
+        let stats = match self.queue_backend.stats_async().await {
+            Ok(stats) => stats,
             Err(error) => {
-                HealthIndicatorResult::down().with_detail_value("error", error.to_string())
+                return HealthIndicatorResult::down().with_detail_value("error", error.to_string())
             }
+        };
+        let worker_error = match self.queue_backend.last_worker_error() {
+            Ok(error) => error,
+            Err(error) => {
+                return HealthIndicatorResult::down().with_detail_value("error", error.to_string())
+            }
+        };
+        let health = if stats.failed > 0 || worker_error.is_some() {
+            HealthIndicatorResult::down()
+        } else {
+            HealthIndicatorResult::up()
+        }
+        .with_detail_value("runs", runs)
+        .with_detail_value("pendingTasks", stats.pending)
+        .with_detail_value("activeTasks", stats.active)
+        .with_detail_value("completedTasks", stats.completed)
+        .with_detail_value("failedTasks", stats.failed);
+        match worker_error {
+            Some(error) => health.with_detail_value("workerError", error),
+            None => health,
         }
     }
+}
+
+fn cloud_runtime_build_compatibility() -> Result<RuntimeBuildCompatibility, FlowError> {
+    Ok(
+        RuntimeBuildCompatibility::new(RuntimeBuildId::new(CLOUD_FLOW_RUNTIME_BUILD_ID)?)
+            .accept_unpinned(),
+    )
 }
 
 pub async fn connect_flow(
     database_url: &str,
     runtime: Arc<dyn FlowRuntime>,
+    queue_options: QueueOptions,
 ) -> Result<FlowInfrastructure, FlowInfrastructureError> {
-    let flow = FlowInfrastructure::connect(database_url, runtime).await?;
+    let flow = FlowInfrastructure::connect_with_queue_options(database_url, runtime, queue_options)
+        .await?;
     let retired_runs = retire_incompatible_build_workflows(&flow.engine()).await?;
     if retired_runs > 0 {
         tracing::warn!(
@@ -293,13 +474,13 @@ async fn retire_incompatible_build_workflows(engine: &FlowEngine) -> Result<usiz
     Ok(retired)
 }
 
-fn scoped_postgres_url(database_url: &str) -> Result<Url, FlowInfrastructureError> {
+fn scoped_postgres_url(database_url: &str, schema: &str) -> Result<Url, FlowInfrastructureError> {
     let mut url = Url::parse(database_url)?;
     if url.query_pairs().any(|(key, _)| key == "options") {
         return Err(FlowInfrastructureError::ConflictingOptions);
     }
     url.query_pairs_mut()
-        .append_pair("options", &format!("-csearch_path={FLOW_SCHEMA}"));
+        .append_pair("options", &format!("-csearch_path={schema}"));
     Ok(url)
 }
 
@@ -309,6 +490,21 @@ mod tests {
     use a3s_flow::{WorkflowRunStatus, WorkflowSpec};
     use chrono::{DateTime, Utc};
     use serde_json::json;
+
+    #[test]
+    fn runtime_build_policy_pins_current_runs_and_admits_legacy_histories() -> Result<(), FlowError>
+    {
+        let compatibility = cloud_runtime_build_compatibility()?;
+
+        assert_eq!(
+            compatibility.current_build_id().as_str(),
+            CLOUD_FLOW_RUNTIME_BUILD_ID
+        );
+        assert!(compatibility.accepts_unpinned());
+        assert!(compatibility.supports(Some(compatibility.current_build_id())));
+        assert!(compatibility.supports(None));
+        Ok(())
+    }
 
     #[derive(Clone, Copy)]
     struct StubRuntime(&'static str);
@@ -514,14 +710,25 @@ mod tests {
     }
 
     #[test]
-    fn flow_url_owns_an_isolated_search_path() -> Result<(), FlowInfrastructureError> {
-        let url =
-            scoped_postgres_url("postgres://user:secret@localhost/cloud?application_name=a3s")?;
-        let query = url.query().unwrap_or_default();
-        assert!(query.contains("application_name=a3s"));
-        assert!(query.contains("options=-csearch_path%3Da3s_flow"));
+    fn component_urls_own_isolated_search_paths() -> Result<(), FlowInfrastructureError> {
+        let database_url = "postgres://user:secret@localhost/cloud?application_name=a3s";
+        let flow_query = scoped_postgres_url(database_url, FLOW_SCHEMA)?
+            .query()
+            .unwrap_or_default()
+            .to_string();
+        assert!(flow_query.contains("application_name=a3s"));
+        assert!(flow_query.contains("options=-csearch_path%3Da3s_flow"));
+        let boot_query = scoped_postgres_url(database_url, BOOT_SCHEMA)?
+            .query()
+            .unwrap_or_default()
+            .to_string();
+        assert!(boot_query.contains("application_name=a3s"));
+        assert!(boot_query.contains("options=-csearch_path%3Da3s_boot"));
         assert!(matches!(
-            scoped_postgres_url("postgres://localhost/cloud?options=-cfoo%3Dbar"),
+            scoped_postgres_url(
+                "postgres://localhost/cloud?options=-cfoo%3Dbar",
+                FLOW_SCHEMA
+            ),
             Err(FlowInfrastructureError::ConflictingOptions)
         ));
         Ok(())

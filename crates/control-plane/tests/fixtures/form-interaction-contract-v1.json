@@ -1,0 +1,104 @@
+{
+  "apiVersion": "a3s.dev/form-interaction-conformance/v1",
+  "requestContentCanonical": "{\"allowedOutcomes\":[\"approve\",\"reject\"],\"apiVersion\":\"a3s.dev/form-interaction-request/v1\",\"assignment\":{\"claimedPrincipalId\":\"user-reviewer\",\"policyDigest\":\"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"policyId\":\"approval-policy\",\"policyRevision\":4},\"form\":{\"apiVersion\":\"a3s.dev/form-release-ref/v1\",\"compilerRevision\":\"a3s-form-core@0.1.0\",\"digest\":\"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"formId\":\"approval-form\",\"mode\":\"interaction\",\"organizationId\":\"org-golden\",\"projectId\":\"project-golden\",\"releaseId\":\"approval-form-r3\",\"revision\":3,\"schemaProfile\":\"a3s.dev/form-schema-profile/1\",\"uri\":\"a3s://forms/approval-form/releases/approval-form-r3\"},\"identity\":{\"flowHookId\":\"human-review-2\",\"flowRunId\":\"flow-run-golden-1\",\"humanTaskId\":\"human-task-golden-1\",\"stepAttempt\":2,\"stepId\":\"human-review\",\"workflowRunId\":\"workflow-run-golden-1\"},\"initialValue\":{\"note\":\"待审阅\",\"priority\":2},\"maxValueBytes\":4096,\"outputMapping\":{\"digest\":\"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"kind\":\"registry\",\"registryKey\":\"workflow.approval-decision\",\"revision\":3},\"requestId\":\"interaction-request-golden-1\",\"task\":{\"createdAt\":\"2026-08-09T08:00:00.000Z\",\"dueAt\":\"2026-08-09T09:00:00.000Z\",\"expiresAt\":\"2026-08-09T10:00:00.000Z\",\"version\":7}}",
+  "requestDigest": "sha256:697979439a5c8f9aee74f92f3f7f928d6e15de4b122e3ba2345bd9614ca9f338",
+  "valueCanonical": "{\"approved\":true,\"nested\":{\"a\":[1,1e-7],\"z\":null},\"note\":\"审阅完成\",\"😀\":\"unicode-key\"}",
+  "valueDigest": "sha256:b0e589b89a1726c33f3fa8577b8d0b15c99a1da7fd3b6ca7f7888e204f5cff79",
+  "request": {
+    "apiVersion": "a3s.dev/form-interaction-request/v1",
+    "requestId": "interaction-request-golden-1",
+    "identity": {
+      "workflowRunId": "workflow-run-golden-1",
+      "flowRunId": "flow-run-golden-1",
+      "stepId": "human-review",
+      "stepAttempt": 2,
+      "humanTaskId": "human-task-golden-1",
+      "flowHookId": "human-review-2"
+    },
+    "form": {
+      "apiVersion": "a3s.dev/form-release-ref/v1",
+      "organizationId": "org-golden",
+      "projectId": "project-golden",
+      "formId": "approval-form",
+      "releaseId": "approval-form-r3",
+      "uri": "a3s://forms/approval-form/releases/approval-form-r3",
+      "revision": 3,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "compilerRevision": "a3s-form-core@0.1.0",
+      "schemaProfile": "a3s.dev/form-schema-profile/1",
+      "mode": "interaction"
+    },
+    "assignment": {
+      "policyId": "approval-policy",
+      "policyRevision": 4,
+      "policyDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "claimedPrincipalId": "user-reviewer"
+    },
+    "task": {
+      "version": 7,
+      "createdAt": "2026-08-09T08:00:00.000Z",
+      "dueAt": "2026-08-09T09:00:00.000Z",
+      "expiresAt": "2026-08-09T10:00:00.000Z"
+    },
+    "allowedOutcomes": ["approve", "reject"],
+    "outputMapping": {
+      "kind": "registry",
+      "registryKey": "workflow.approval-decision",
+      "revision": 3,
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "maxValueBytes": 4096,
+    "initialValue": {
+      "note": "待审阅",
+      "priority": 2
+    },
+    "digest": "sha256:697979439a5c8f9aee74f92f3f7f928d6e15de4b122e3ba2345bd9614ca9f338"
+  },
+  "submission": {
+    "apiVersion": "a3s.dev/form-interaction-submission/v1",
+    "submissionId": "submission-golden-1",
+    "requestId": "interaction-request-golden-1",
+    "requestDigest": "sha256:697979439a5c8f9aee74f92f3f7f928d6e15de4b122e3ba2345bd9614ca9f338",
+    "identity": {
+      "workflowRunId": "workflow-run-golden-1",
+      "flowRunId": "flow-run-golden-1",
+      "stepId": "human-review",
+      "stepAttempt": 2,
+      "humanTaskId": "human-task-golden-1",
+      "flowHookId": "human-review-2"
+    },
+    "form": {
+      "apiVersion": "a3s.dev/form-release-ref/v1",
+      "organizationId": "org-golden",
+      "projectId": "project-golden",
+      "formId": "approval-form",
+      "releaseId": "approval-form-r3",
+      "uri": "a3s://forms/approval-form/releases/approval-form-r3",
+      "revision": 3,
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "compilerRevision": "a3s-form-core@0.1.0",
+      "schemaProfile": "a3s.dev/form-schema-profile/1",
+      "mode": "interaction"
+    },
+    "assignment": {
+      "policyId": "approval-policy",
+      "policyRevision": 4,
+      "policyDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "taskVersion": 7,
+    "principalId": "user-reviewer",
+    "outcome": "approve",
+    "idempotencyKey": "approve-workflow-run-golden-1-human-review-2",
+    "submittedAt": "2026-08-09T08:29:00.000Z",
+    "value": {
+      "approved": true,
+      "note": "审阅完成",
+      "nested": {
+        "z": null,
+        "a": [1, 1e-7]
+      },
+      "😀": "unicode-key"
+    },
+    "valueDigest": "sha256:b0e589b89a1726c33f3fa8577b8d0b15c99a1da7fd3b6ca7f7888e204f5cff79"
+  }
+}

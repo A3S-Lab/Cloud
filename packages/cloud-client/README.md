@@ -76,7 +76,7 @@ policy lifecycle.
 `listOntologies`, `getOntology`, `createOntologyFromAcl`,
 `listOntologyRevisions`, `getOntologyRevision`, `diffOntologyRevisions`, and
 `reviseOntologyFromAcl` expose the backend `W0.2` lifecycle through REST
-contract `1.12.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
+contract `1.13.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
 Revision requires a positive expected aggregate version and may name one
 portable migration rule ID; Cloud admits a breaking diff only when that exact
 target ACL rule has kind `migration`. The client does not parse Ontology ACL,
@@ -93,6 +93,17 @@ second product-configuration format. `listWorkflowGoals`, `getWorkflowGoal`,
 and Ontology revisions and read the deterministic immutable plan. The client
 validates transport bounds and optimistic version shape but does not parse
 ACL, compile plans, retain revision state, or execute Workflow steps.
+
+`listFormDrafts`, `getFormDraft`, `createFormDraft`, `reviseFormDraft`,
+`listFormReleases`, `getFormRelease`, and `publishFormRelease` expose the native
+Form draft and immutable release lifecycle added by REST contract `1.13.0`.
+Draft writes carry only a bounded `{name, description?, document}` JSON
+transport, and revise/publish require a positive expected aggregate version.
+The client validates transport shape, text bounds, canonical document size,
+UUIDs, and idempotency keys; Cloud calls the pinned A3S Form owner compiler and
+persists through A3S ORM. The client does not parse Form semantics, compile a
+Form plan, validate submitted values, retain revision state, or create another
+Form configuration format.
 
 `bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
 lifecycle and require caller-owned idempotency keys. A bind names one exact

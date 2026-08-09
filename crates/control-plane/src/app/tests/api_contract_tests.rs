@@ -271,6 +271,69 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         ["/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}"]
         ["get"];
     assert_eq!(workflow_plan["tags"], json!(["Workflow"]));
+    let form_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/forms"];
+    assert_eq!(form_collection["get"]["tags"], json!(["Forms"]));
+    assert_eq!(form_collection["post"]["tags"], json!(["Forms"]));
+    let form_draft_schema =
+        &form_collection["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(form_draft_schema["additionalProperties"], false);
+    assert_eq!(form_draft_schema["required"], json!(["name", "document"]));
+    assert_eq!(form_draft_schema["properties"]["name"]["maxLength"], 120);
+    assert_eq!(
+        form_draft_schema["properties"]["description"]["maxLength"],
+        4_096
+    );
+    assert_eq!(
+        form_draft_schema["properties"]["document"]["x-a3s-max-canonical-bytes"],
+        crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES
+    );
+    assert!(form_collection["post"]["responses"]["200"].is_object());
+    assert!(form_collection["post"]["responses"]["201"].is_object());
+    assert!(form_collection["post"]["responses"]["413"].is_object());
+    assert!(form_collection["post"]["responses"]["415"].is_object());
+    assert!(form_collection["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let form = &document["paths"]["/organizations/{organization_id}/forms/{form_id}"]["get"];
+    assert_eq!(form["tags"], json!(["Forms"]));
+    let form_revision = &document["paths"]
+        ["/organizations/{organization_id}/forms/{form_id}/draft-revisions"]["post"];
+    assert_eq!(form_revision["tags"], json!(["Forms"]));
+    assert_eq!(
+        &form_revision["requestBody"]["content"]["application/json"]["schema"],
+        form_draft_schema
+    );
+    assert!(form_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+                && parameter["schema"]["minimum"] == 1
+        })));
+    let form_releases =
+        &document["paths"]["/organizations/{organization_id}/forms/{form_id}/releases"];
+    assert_eq!(form_releases["get"]["tags"], json!(["Forms"]));
+    assert_eq!(form_releases["post"]["tags"], json!(["Forms"]));
+    assert!(form_releases["post"].get("requestBody").is_none());
+    assert!(form_releases["post"]["responses"]["200"].is_object());
+    assert!(form_releases["post"]["responses"]["201"].is_object());
+    assert!(form_releases["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+                && parameter["schema"]["minimum"] == 1
+        })));
+    let form_release = &document["paths"]
+        ["/organizations/{organization_id}/forms/{form_id}/releases/{release_id}"]["get"];
+    assert_eq!(form_release["tags"], json!(["Forms"]));
     let mcp_route_collection = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
     assert_eq!(mcp_route_collection["get"]["tags"], json!(["Edge"]));

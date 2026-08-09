@@ -993,7 +993,7 @@ describe('a3s-cloud CLI', () => {
     expect(unreadable.stderr()).not.toContain('private filesystem detail');
     expect(invalidUtf8.stderr()).toContain('valid UTF-8');
     expect(oversized.stderr()).toContain('between 1 and 65536');
-    expect(readOnly.stderr()).toContain('valid only for ACL desired-state mutations');
+    expect(readOnly.stderr()).toContain('valid only for file-backed mutation commands');
   });
 
   it('rejects missing, unsafe, and read-only idempotency options before the network', async () => {

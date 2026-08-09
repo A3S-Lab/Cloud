@@ -2,6 +2,8 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 pub use application::commands::create_ontology::{CreateOntology, CreateOntologyHandler};
 pub use application::commands::create_workflow_definition::{
@@ -46,27 +48,30 @@ pub use application::{
 };
 
 pub use domain::{
-    CapabilityOwner, CapabilityReference, CapabilityType, CompiledWorkflowGoal,
-    CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite, IOntologyRepository,
-    IWorkflowDefinitionRepository, IWorkflowGoalRepository, Ontology, OntologyChange,
+    AssignmentPolicyRef, CapabilityOwner, CapabilityReference, CapabilityType,
+    CompiledWorkflowGoal, CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite,
+    FlowResumePayload, FlowResumeReceipt, HumanTask, HumanTaskStatus, IOntologyRepository,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, NewHumanTask, Ontology, OntologyChange,
     OntologyChangeCompatibility, OntologyChangeKind, OntologyContract, OntologyContractQuotas,
     OntologyDiff, OntologyMigrationPolicy, OntologyName, OntologyObjectType,
     OntologyRelationCardinality, OntologyRelationType, OntologyResourceKind, OntologyRevision,
     OntologyRule, OntologyRuleKind, OntologySpec, PlanRevision, ReviseWorkflowDefinitionWrite,
     WorkflowBranchRoute, WorkflowContract, WorkflowContractQuotas, WorkflowDataField,
-    WorkflowDataSchema, WorkflowDataType, WorkflowDefinition, WorkflowDefinitionRecord,
-    WorkflowEdgeSpec, WorkflowGoal, WorkflowGoalCompiled, WorkflowGoalContract, WorkflowGoalRecord,
-    WorkflowGoalSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan,
+    WorkflowDataSchema, WorkflowDataType, WorkflowDecision, WorkflowDecisionOutcome,
+    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowEdgeSpec, WorkflowGoal,
+    WorkflowGoalCompiled, WorkflowGoalContract, WorkflowGoalRecord, WorkflowGoalSpec,
+    WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan,
     WorkflowPlanCompiler, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyCandidate,
     WorkflowPolicyMode, WorkflowRevision, WorkflowRevisionPublished, WorkflowSpec,
-    WorkflowStepConfiguration, WorkflowStepKind, WorkflowStepSpec,
-    ONTOLOGY_COMPILER_SCHEMA_VERSION, ONTOLOGY_MAX_ACL_BYTES, ONTOLOGY_SCHEMA,
-    WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_CONFIGURATION_SCHEMA, WORKFLOW_DATA_SCHEMA,
-    WORKFLOW_DEFINITION_SCHEMA, WORKFLOW_GOAL_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_INPUT_BYTES,
-    WORKFLOW_GOAL_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES, WORKFLOW_PLAN_COMPILER_REVISION,
-    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_POLICY_SCHEMA,
-    WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WorkflowStepConfiguration, WorkflowStepKind, WorkflowStepSpec, FLOW_RESUME_PAYLOAD_API_VERSION,
+    FLOW_RESUME_RECEIPT_API_VERSION, ONTOLOGY_COMPILER_SCHEMA_VERSION, ONTOLOGY_MAX_ACL_BYTES,
+    ONTOLOGY_SCHEMA, WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_CONFIGURATION_SCHEMA,
+    WORKFLOW_DATA_SCHEMA, WORKFLOW_DEFINITION_SCHEMA, WORKFLOW_GOAL_MAX_ACL_BYTES,
+    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_GOAL_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_POLICY_SCHEMA, WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
 };
+pub use infrastructure::observe_flow_resume_receipt;
 pub use infrastructure::persistence::{
     InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
     InMemoryWorkflowGoalRepository, PostgresOntologyRepository,

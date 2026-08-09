@@ -1,4 +1,5 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use a3s_boot::AuthPrincipal;
 use serde_json::{json, Value};
@@ -13,6 +14,13 @@ pub const DEPLOYMENTS_CANCEL: &str = "a3s_cloud_deployments_cancel";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
+pub const FORMS_CREATE: &str = "a3s_cloud_forms_create";
+pub const FORMS_GET: &str = "a3s_cloud_forms_get";
+pub const FORMS_LIST: &str = "a3s_cloud_forms_list";
+pub const FORMS_REVISE: &str = "a3s_cloud_forms_revise";
+pub const FORM_RELEASES_GET: &str = "a3s_cloud_form_releases_get";
+pub const FORM_RELEASES_LIST: &str = "a3s_cloud_form_releases_list";
+pub const FORM_RELEASES_PUBLISH: &str = "a3s_cloud_form_releases_publish";
 pub const MEMBERSHIPS_LIST: &str = "a3s_cloud_memberships_list";
 pub const MEMBERSHIPS_GET: &str = "a3s_cloud_memberships_get";
 pub const SERVICE_MEMBERSHIPS_CREATE: &str = "a3s_cloud_service_memberships_create";
@@ -60,6 +68,13 @@ pub enum ManagementTool {
     MembershipsRevoke,
     ProjectsCreate,
     ProjectsList,
+    FormsCreate,
+    FormsGet,
+    FormsList,
+    FormsRevise,
+    FormReleasesGet,
+    FormReleasesList,
+    FormReleasesPublish,
     OntologiesCreate,
     OntologiesGet,
     OntologiesList,
@@ -99,7 +114,7 @@ pub enum ManagementTool {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 45] = [
+    const ALL: [Self; 52] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -109,6 +124,13 @@ impl ManagementTool {
         Self::MembershipsRevoke,
         Self::ProjectsCreate,
         Self::ProjectsList,
+        Self::FormsCreate,
+        Self::FormsGet,
+        Self::FormsList,
+        Self::FormsRevise,
+        Self::FormReleasesGet,
+        Self::FormReleasesList,
+        Self::FormReleasesPublish,
         Self::OntologiesCreate,
         Self::OntologiesGet,
         Self::OntologiesList,
@@ -183,6 +205,13 @@ impl ManagementTool {
             Self::MembershipsRevoke => MEMBERSHIPS_REVOKE,
             Self::ProjectsCreate => PROJECTS_CREATE,
             Self::ProjectsList => PROJECTS_LIST,
+            Self::FormsCreate => FORMS_CREATE,
+            Self::FormsGet => FORMS_GET,
+            Self::FormsList => FORMS_LIST,
+            Self::FormsRevise => FORMS_REVISE,
+            Self::FormReleasesGet => FORM_RELEASES_GET,
+            Self::FormReleasesList => FORM_RELEASES_LIST,
+            Self::FormReleasesPublish => FORM_RELEASES_PUBLISH,
             Self::OntologiesCreate => ONTOLOGIES_CREATE,
             Self::OntologiesGet => ONTOLOGIES_GET,
             Self::OntologiesList => ONTOLOGIES_LIST,
@@ -231,6 +260,9 @@ impl ManagementTool {
             | Self::MembershipsChangeRole
             | Self::MembershipsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
+            Self::FormsCreate | Self::FormsRevise | Self::FormReleasesPublish => {
+                Some(ApiTokenScope::FORM_WRITE)
+            }
             Self::OntologiesCreate | Self::OntologiesRevise => Some(ApiTokenScope::ONTOLOGY_WRITE),
             Self::WorkflowDefinitionsCreate
             | Self::WorkflowDefinitionsRevise
@@ -241,6 +273,10 @@ impl ManagementTool {
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::EnvironmentsList
             | Self::ProjectsList
+            | Self::FormsGet
+            | Self::FormsList
+            | Self::FormReleasesGet
+            | Self::FormReleasesList
             | Self::OntologiesGet
             | Self::OntologiesList
             | Self::OntologyRevisionsGet
@@ -336,6 +372,48 @@ impl ManagementTool {
                 "List projects in the authenticated organization.",
                 empty_schema(),
                 true,
+            ),
+            Self::FormsCreate => (
+                "Create Form draft",
+                "Create one project-scoped native A3S Form draft with explicit idempotency.",
+                create_form_draft_schema(),
+                false,
+            ),
+            Self::FormsGet => (
+                "Get Form draft",
+                "Get one tenant-authorized native A3S Form draft and its latest release identity.",
+                uuid_id_schema("formId"),
+                true,
+            ),
+            Self::FormsList => (
+                "List Form drafts",
+                "List native A3S Form drafts in one tenant-authorized project.",
+                project_id_schema(),
+                true,
+            ),
+            Self::FormsRevise => (
+                "Revise Form draft",
+                "Create one immutable Form draft revision with optimistic concurrency and explicit idempotency.",
+                revise_form_draft_schema(),
+                false,
+            ),
+            Self::FormReleasesGet => (
+                "Get Form release",
+                "Get one immutable native A3S Form release including its owner-compiled plan.",
+                form_release_schema(),
+                true,
+            ),
+            Self::FormReleasesList => (
+                "List Form releases",
+                "List immutable releases for one tenant-authorized native A3S Form.",
+                uuid_id_schema("formId"),
+                true,
+            ),
+            Self::FormReleasesPublish => (
+                "Publish Form release",
+                "Compile and publish one immutable native A3S Form release with optimistic concurrency and explicit idempotency.",
+                publish_form_release_schema(),
+                false,
             ),
             Self::OntologiesCreate => (
                 "Create Ontology",
@@ -749,6 +827,76 @@ fn create_environment_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["projectId", "name", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn form_document_schema() -> Value {
+    json!({
+        "type": "object",
+        "description": "A native A3S Form document. Canonicalization and semantic validation remain owned by A3S Form.",
+        "x-a3s-max-canonical-bytes": CLOUD_FORM_DOCUMENT_MAX_BYTES
+    })
+}
+
+fn create_form_draft_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "name": {"type": "string", "minLength": 1, "maxLength": 120},
+            "description": {"type": "string", "maxLength": 4096, "default": ""},
+            "document": form_document_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "name", "document", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revise_form_draft_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "formId": {"type": "string", "format": "uuid"},
+            "name": {"type": "string", "minLength": 1, "maxLength": 120},
+            "description": {"type": "string", "maxLength": 4096, "default": ""},
+            "document": form_document_schema(),
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "formId",
+            "name",
+            "document",
+            "expectedVersion",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn form_release_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "formId": {"type": "string", "format": "uuid"},
+            "releaseId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["formId", "releaseId"],
+        "additionalProperties": false
+    })
+}
+
+fn publish_form_release_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "formId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["formId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

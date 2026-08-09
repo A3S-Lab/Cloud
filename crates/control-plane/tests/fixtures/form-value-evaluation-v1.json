@@ -1,0 +1,690 @@
+{
+  "apiVersion": "a3s.dev/form-value-evaluation-conformance/v1",
+  "cases": [
+    {
+      "name": "computed-value-and-schema-error",
+      "request": {
+        "apiVersion": "a3s.dev/form-core/evaluate-request/v1alpha1",
+        "formPlan": {
+          "apiVersion": "a3s.dev/form-plan/v1alpha1",
+          "schemaProfile": "a3s.dev/form-schema-profile/1",
+          "metadata": { "locale": "en-US" },
+          "schema": {
+            "type": "object",
+            "properties": {
+              "quantity": { "type": "number" },
+              "unitPrice": { "type": "number" },
+              "total": { "type": "number" }
+            },
+            "required": ["total"],
+            "additionalProperties": false
+          },
+          "nodes": [{ "id": "total", "kind": "field", "valuePath": "total", "depth": 1 }],
+          "nodeById": {
+            "total": { "id": "total", "kind": "field", "valuePath": "total", "depth": 1 }
+          },
+          "rules": [
+            {
+              "id": "derive-total",
+              "target": "total",
+              "kind": "computed",
+              "expression": {
+                "op": "multiply",
+                "left": { "op": "field", "path": "quantity" },
+                "right": { "op": "field", "path": "unitPrice" }
+              }
+            }
+          ],
+          "ruleDependencies": { "derive-total": ["quantity", "unitPrice"] },
+          "expressionOperationLimit": 256,
+          "dependencyOrder": ["total"]
+        },
+        "value": { "quantity": 2, "unitPrice": 4, "extra": true },
+        "options": { "includeValues": true }
+      },
+      "response": {
+        "apiVersion": "a3s.dev/form-core/evaluate-response/v1alpha1",
+        "compilerRevision": "a3s-form-core@0.1.0",
+        "ok": false,
+        "value": { "quantity": 2, "unitPrice": 4, "extra": true, "total": 8 },
+        "trace": [
+          {
+            "ruleId": "derive-total",
+            "target": "total",
+            "path": "total",
+            "dependencies": ["quantity", "unitPrice"],
+            "status": "set",
+            "nextValue": 8
+          }
+        ],
+        "errors": [
+          {
+            "path": "extra",
+            "code": "additionalProperties",
+            "message": "Additional properties are not allowed."
+          }
+        ]
+      }
+    },
+    {
+      "name": "row-scoped-computation-and-failure-propagation",
+      "request": {
+        "apiVersion": "a3s.dev/form-core/evaluate-request/v1alpha1",
+        "formPlan": {
+          "apiVersion": "a3s.dev/form-plan/v1alpha1",
+          "schemaProfile": "a3s.dev/form-schema-profile/1",
+          "metadata": { "locale": "zh-CN" },
+          "schema": {
+            "type": "object",
+            "properties": {
+              "lines": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "quantity": { "type": "number" },
+                    "unitPrice": { "type": "number" },
+                    "total": { "type": "number" },
+                    "display": { "type": "string" }
+                  },
+                  "required": ["total"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "nodes": [
+            {
+              "id": "line-total",
+              "kind": "field",
+              "valuePathTemplate": "lines.*.total",
+              "depth": 2
+            },
+            {
+              "id": "line-display",
+              "kind": "field",
+              "valuePathTemplate": "lines.*.display",
+              "depth": 2
+            }
+          ],
+          "nodeById": {
+            "line-total": {
+              "id": "line-total",
+              "kind": "field",
+              "valuePathTemplate": "lines.*.total",
+              "depth": 2
+            },
+            "line-display": {
+              "id": "line-display",
+              "kind": "field",
+              "valuePathTemplate": "lines.*.display",
+              "depth": 2
+            }
+          },
+          "rules": [
+            {
+              "id": "derive-line-total",
+              "target": "line-total",
+              "kind": "computed",
+              "scope": "row",
+              "expression": {
+                "op": "multiply",
+                "left": { "op": "field", "path": "lines.*.quantity" },
+                "right": { "op": "field", "path": "lines.*.unitPrice" }
+              }
+            },
+            {
+              "id": "derive-line-display",
+              "target": "line-display",
+              "kind": "computed",
+              "scope": "row",
+              "expression": {
+                "op": "concat",
+                "values": [
+                  { "op": "literal", "value": "$" },
+                  { "op": "field", "path": "lines.*.total" }
+                ]
+              }
+            }
+          ],
+          "ruleDependencies": {
+            "derive-line-total": ["lines.*.quantity", "lines.*.unitPrice"],
+            "derive-line-display": ["lines.*.total"]
+          },
+          "expressionOperationLimit": 256,
+          "dependencyOrder": ["line-total", "line-display"]
+        },
+        "value": {
+          "lines": [
+            { "quantity": 2, "unitPrice": 3 },
+            { "quantity": "bad", "unitPrice": 4, "total": 99, "display": "stale" }
+          ]
+        },
+        "options": { "includeValues": true }
+      },
+      "response": {
+        "apiVersion": "a3s.dev/form-core/evaluate-response/v1alpha1",
+        "compilerRevision": "a3s-form-core@0.1.0",
+        "ok": false,
+        "value": {
+          "lines": [
+            { "quantity": 2, "unitPrice": 3, "total": 6, "display": "$6" },
+            { "quantity": "bad", "unitPrice": 4 }
+          ]
+        },
+        "trace": [
+          {
+            "ruleId": "derive-line-total",
+            "target": "line-total",
+            "path": "lines.0.total",
+            "dependencies": ["lines.0.quantity", "lines.0.unitPrice"],
+            "status": "set",
+            "nextValue": 6
+          },
+          {
+            "ruleId": "derive-line-total",
+            "target": "line-total",
+            "path": "lines.1.total",
+            "dependencies": ["lines.1.quantity", "lines.1.unitPrice"],
+            "status": "error",
+            "previousValue": 99,
+            "error": "TypeError: Expression multiply operands must be finite numbers."
+          },
+          {
+            "ruleId": "derive-line-display",
+            "target": "line-display",
+            "path": "lines.0.display",
+            "dependencies": ["lines.0.total"],
+            "status": "set",
+            "nextValue": "$6"
+          },
+          {
+            "ruleId": "derive-line-display",
+            "target": "line-display",
+            "path": "lines.1.display",
+            "dependencies": ["lines.1.total"],
+            "status": "skipped",
+            "previousValue": "stale",
+            "error": "Computed rule derive-line-display was skipped because a dependency failed."
+          }
+        ],
+        "errors": [
+          {
+            "path": "lines.1.total",
+            "code": "rule.derive-line-total.evaluation",
+            "message": "TypeError: Expression multiply operands must be finite numbers."
+          },
+          {
+            "path": "lines.1.display",
+            "code": "rule.derive-line-display.dependency",
+            "message": "Computed rule derive-line-display was skipped because a dependency failed."
+          },
+          {
+            "path": "lines.1.total",
+            "code": "required",
+            "message": "此项为必填项。"
+          },
+          {
+            "path": "lines.1.quantity",
+            "code": "type",
+            "message": "值类型必须是 number。"
+          }
+        ]
+      }
+    },
+    {
+      "name": "validation-rule-and-locale-override",
+      "request": {
+        "apiVersion": "a3s.dev/form-core/evaluate-request/v1alpha1",
+        "formPlan": {
+          "apiVersion": "a3s.dev/form-plan/v1alpha1",
+          "schemaProfile": "a3s.dev/form-schema-profile/1",
+          "metadata": { "locale": "zh-CN" },
+          "schema": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "email": { "type": "string", "format": "email" },
+              "age": { "type": "integer" }
+            },
+            "required": ["name"],
+            "additionalProperties": false
+          },
+          "nodes": [
+            { "id": "name", "kind": "field", "valuePath": "name", "depth": 1 },
+            { "id": "email", "kind": "field", "valuePath": "email", "depth": 1 },
+            { "id": "age", "kind": "field", "valuePath": "age", "depth": 1 }
+          ],
+          "nodeById": {
+            "name": { "id": "name", "kind": "field", "valuePath": "name", "depth": 1 },
+            "email": { "id": "email", "kind": "field", "valuePath": "email", "depth": 1 },
+            "age": { "id": "age", "kind": "field", "valuePath": "age", "depth": 1 }
+          },
+          "rules": [
+            {
+              "id": "adult",
+              "target": "age",
+              "kind": "validate",
+              "expression": {
+                "op": "gte",
+                "left": { "op": "field", "path": "age" },
+                "right": { "op": "literal", "value": 21 }
+              }
+            }
+          ],
+          "ruleDependencies": { "adult": ["age"] },
+          "expressionOperationLimit": 256,
+          "dependencyOrder": []
+        },
+        "value": { "email": "bad", "age": 20 },
+        "options": {
+          "locale": "en-US",
+          "localeCatalog": {
+            "apiVersion": "a3s.dev/form-locale-catalog/v1",
+            "messages": {
+              "validationRequired": "REQ",
+              "validationFormat": "FMT {format}",
+              "validationRule": "RULE"
+            }
+          }
+        }
+      },
+      "response": {
+        "apiVersion": "a3s.dev/form-core/evaluate-response/v1alpha1",
+        "compilerRevision": "a3s-form-core@0.1.0",
+        "ok": false,
+        "value": { "email": "bad", "age": 20 },
+        "trace": [],
+        "errors": [
+          { "path": "name", "code": "required", "message": "REQ" },
+          { "path": "email", "code": "format.email", "message": "FMT email" },
+          { "path": "age", "code": "rule.adult", "message": "RULE" }
+        ]
+      }
+    },
+    {
+      "name": "hidden-wizard-page-errors-are-filtered",
+      "request": {
+        "apiVersion": "a3s.dev/form-core/evaluate-request/v1alpha1",
+        "formPlan": {
+          "apiVersion": "a3s.dev/form-plan/v1alpha1",
+          "schemaProfile": "a3s.dev/form-schema-profile/1",
+          "metadata": { "locale": "en-US" },
+          "schema": {
+            "type": "object",
+            "properties": {
+              "kind": { "type": "string" },
+              "personal": {
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "required": ["name"]
+              },
+              "company": {
+                "type": "object",
+                "properties": { "name": { "type": "string" } },
+                "required": ["name"]
+              }
+            }
+          },
+          "nodes": [
+            {
+              "id": "wizard",
+              "kind": "section",
+              "layout": "wizard",
+              "children": ["personal-page", "company-page"],
+              "depth": 0
+            },
+            {
+              "id": "personal-page",
+              "kind": "section",
+              "layout": "page",
+              "children": ["personal-name"],
+              "depth": 1
+            },
+            {
+              "id": "company-page",
+              "kind": "section",
+              "layout": "page",
+              "children": ["company-name"],
+              "depth": 1
+            },
+            { "id": "personal-name", "kind": "field", "valuePath": "personal.name", "depth": 2 },
+            { "id": "company-name", "kind": "field", "valuePath": "company.name", "depth": 2 }
+          ],
+          "nodeById": {
+            "wizard": {
+              "id": "wizard",
+              "kind": "section",
+              "layout": "wizard",
+              "children": ["personal-page", "company-page"],
+              "depth": 0
+            },
+            "personal-page": {
+              "id": "personal-page",
+              "kind": "section",
+              "layout": "page",
+              "children": ["personal-name"],
+              "depth": 1
+            },
+            "company-page": {
+              "id": "company-page",
+              "kind": "section",
+              "layout": "page",
+              "children": ["company-name"],
+              "depth": 1
+            },
+            "personal-name": {
+              "id": "personal-name",
+              "kind": "field",
+              "valuePath": "personal.name",
+              "depth": 2
+            },
+            "company-name": {
+              "id": "company-name",
+              "kind": "field",
+              "valuePath": "company.name",
+              "depth": 2
+            }
+          },
+          "rules": [
+            {
+              "id": "show-personal",
+              "target": "personal-page",
+              "kind": "visible",
+              "expression": {
+                "op": "eq",
+                "left": { "op": "field", "path": "kind" },
+                "right": { "op": "literal", "value": "personal" }
+              }
+            },
+            {
+              "id": "show-company",
+              "target": "company-page",
+              "kind": "visible",
+              "expression": {
+                "op": "eq",
+                "left": { "op": "field", "path": "kind" },
+                "right": { "op": "literal", "value": "company" }
+              }
+            }
+          ],
+          "ruleDependencies": {
+            "show-personal": ["kind"],
+            "show-company": ["kind"]
+          },
+          "expressionOperationLimit": 256,
+          "dependencyOrder": []
+        },
+        "value": { "kind": "personal", "personal": {}, "company": {} }
+      },
+      "response": {
+        "apiVersion": "a3s.dev/form-core/evaluate-response/v1alpha1",
+        "compilerRevision": "a3s-form-core@0.1.0",
+        "ok": false,
+        "value": { "kind": "personal", "personal": {}, "company": {} },
+        "trace": [],
+        "errors": [
+          {
+            "path": "personal.name",
+            "code": "required",
+            "message": "This field is required."
+          }
+        ]
+      }
+    },
+    {
+      "name": "complete-expression-operator-coverage",
+      "request": {
+        "apiVersion": "a3s.dev/form-core/evaluate-request/v1alpha1",
+        "formPlan": {
+          "apiVersion": "a3s.dev/form-plan/v1alpha1",
+          "schemaProfile": "a3s.dev/form-schema-profile/1",
+          "metadata": { "locale": "en-US" },
+          "schema": { "type": "object" },
+          "nodes": [
+            { "id": "arithmetic", "kind": "field", "valuePath": "arithmetic", "depth": 1 },
+            { "id": "label", "kind": "field", "valuePath": "label", "depth": 1 },
+            { "id": "structural", "kind": "field", "valuePath": "structural", "depth": 1 },
+            { "id": "contains", "kind": "field", "valuePath": "contains", "depth": 1 },
+            { "id": "membership", "kind": "field", "valuePath": "membership", "depth": 1 },
+            { "id": "checks", "kind": "field", "valuePath": "checks", "depth": 1 }
+          ],
+          "nodeById": {
+            "arithmetic": {
+              "id": "arithmetic",
+              "kind": "field",
+              "valuePath": "arithmetic",
+              "depth": 1
+            },
+            "label": { "id": "label", "kind": "field", "valuePath": "label", "depth": 1 },
+            "structural": {
+              "id": "structural",
+              "kind": "field",
+              "valuePath": "structural",
+              "depth": 1
+            },
+            "contains": { "id": "contains", "kind": "field", "valuePath": "contains", "depth": 1 },
+            "membership": {
+              "id": "membership",
+              "kind": "field",
+              "valuePath": "membership",
+              "depth": 1
+            },
+            "checks": { "id": "checks", "kind": "field", "valuePath": "checks", "depth": 1 }
+          },
+          "rules": [
+            {
+              "id": "derive-arithmetic",
+              "target": "arithmetic",
+              "kind": "computed",
+              "expression": {
+                "op": "divide",
+                "left": {
+                  "op": "subtract",
+                  "left": {
+                    "op": "multiply",
+                    "left": {
+                      "op": "add",
+                      "left": { "op": "field", "path": "left" },
+                      "right": { "op": "literal", "value": 2 }
+                    },
+                    "right": { "op": "literal", "value": 3 }
+                  },
+                  "right": { "op": "literal", "value": 6 }
+                },
+                "right": { "op": "literal", "value": 2 }
+              }
+            },
+            {
+              "id": "derive-label",
+              "target": "label",
+              "kind": "computed",
+              "expression": {
+                "op": "if",
+                "condition": {
+                  "op": "all",
+                  "values": [
+                    {
+                      "op": "gte",
+                      "left": { "op": "field", "path": "age" },
+                      "right": { "op": "literal", "value": 18 }
+                    },
+                    { "op": "not", "value": { "op": "field", "path": "disabled" } }
+                  ]
+                },
+                "whenTrue": {
+                  "op": "concat",
+                  "values": [
+                    { "op": "literal", "value": "role:" },
+                    { "op": "field", "path": "role" },
+                    { "op": "literal", "value": "/" },
+                    {
+                      "op": "coalesce",
+                      "values": [
+                        { "op": "field", "path": "missing" },
+                        { "op": "literal", "value": "fallback" }
+                      ]
+                    }
+                  ]
+                },
+                "whenFalse": { "op": "literal", "value": "disabled" }
+              }
+            },
+            {
+              "id": "derive-structural",
+              "target": "structural",
+              "kind": "computed",
+              "expression": {
+                "op": "eq",
+                "left": { "op": "literal", "value": { "a": 1, "b": 2 } },
+                "right": { "op": "literal", "value": { "b": 2, "a": 1 } }
+              }
+            },
+            {
+              "id": "derive-contains",
+              "target": "contains",
+              "kind": "computed",
+              "expression": {
+                "op": "contains",
+                "left": { "op": "literal", "value": [{ "id": 1 }] },
+                "right": { "op": "literal", "value": { "id": 1 } }
+              }
+            },
+            {
+              "id": "derive-membership",
+              "target": "membership",
+              "kind": "computed",
+              "expression": {
+                "op": "in",
+                "left": { "op": "field", "path": "role" },
+                "right": { "op": "literal", "value": ["member", "admin"] }
+              }
+            },
+            {
+              "id": "derive-checks",
+              "target": "checks",
+              "kind": "computed",
+              "expression": {
+                "op": "all",
+                "values": [
+                  {
+                    "op": "ne",
+                    "left": { "op": "field", "path": "role" },
+                    "right": { "op": "literal", "value": "guest" }
+                  },
+                  {
+                    "op": "gt",
+                    "left": { "op": "field", "path": "age" },
+                    "right": { "op": "literal", "value": 17 }
+                  },
+                  {
+                    "op": "gte",
+                    "left": { "op": "field", "path": "age" },
+                    "right": { "op": "literal", "value": 18 }
+                  },
+                  {
+                    "op": "lt",
+                    "left": { "op": "field", "path": "age" },
+                    "right": { "op": "literal", "value": 65 }
+                  },
+                  {
+                    "op": "lte",
+                    "left": { "op": "field", "path": "age" },
+                    "right": { "op": "literal", "value": 18 }
+                  },
+                  { "op": "exists", "value": { "op": "field", "path": "role" } },
+                  {
+                    "op": "any",
+                    "values": [
+                      { "op": "literal", "value": false },
+                      { "op": "field", "path": "enabled" }
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "expressionOperationLimit": 256,
+          "dependencyOrder": [
+            "arithmetic",
+            "label",
+            "structural",
+            "contains",
+            "membership",
+            "checks"
+          ]
+        },
+        "value": {
+          "left": 10,
+          "age": 18,
+          "disabled": false,
+          "role": "admin",
+          "enabled": true
+        }
+      },
+      "response": {
+        "apiVersion": "a3s.dev/form-core/evaluate-response/v1alpha1",
+        "compilerRevision": "a3s-form-core@0.1.0",
+        "ok": true,
+        "value": {
+          "left": 10,
+          "age": 18,
+          "disabled": false,
+          "role": "admin",
+          "enabled": true,
+          "arithmetic": 15,
+          "label": "role:admin/fallback",
+          "structural": true,
+          "contains": true,
+          "membership": true,
+          "checks": true
+        },
+        "trace": [
+          {
+            "ruleId": "derive-arithmetic",
+            "target": "arithmetic",
+            "path": "arithmetic",
+            "dependencies": ["left"],
+            "status": "set"
+          },
+          {
+            "ruleId": "derive-label",
+            "target": "label",
+            "path": "label",
+            "dependencies": ["age", "disabled", "missing", "role"],
+            "status": "set"
+          },
+          {
+            "ruleId": "derive-structural",
+            "target": "structural",
+            "path": "structural",
+            "dependencies": [],
+            "status": "set"
+          },
+          {
+            "ruleId": "derive-contains",
+            "target": "contains",
+            "path": "contains",
+            "dependencies": [],
+            "status": "set"
+          },
+          {
+            "ruleId": "derive-membership",
+            "target": "membership",
+            "path": "membership",
+            "dependencies": ["role"],
+            "status": "set"
+          },
+          {
+            "ruleId": "derive-checks",
+            "target": "checks",
+            "path": "checks",
+            "dependencies": ["age", "enabled", "role"],
+            "status": "set"
+          }
+        ],
+        "errors": []
+      }
+    }
+  ]
+}

@@ -12,6 +12,9 @@ const MCP_WORKLOAD_TOKEN: &str =
     "a3s_1111111111111111111111111111111111111111111111111111111111111111";
 const MCP_BUILD_TOKEN: &str =
     "a3s_2222222222222222222222222222222222222222222222222222222222222222";
+const MCP_FORM_TOKEN: &str = "a3s_3333333333333333333333333333333333333333333333333333333333333333";
+const MCP_FORM_MEMBER_TOKEN: &str =
+    "a3s_4444444444444444444444444444444444444444444444444444444444444444";
 const MCP_ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/w0.1/ontology.acl"
@@ -299,6 +302,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         None,
     )
     .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "mcp-form-writer",
+        "MCP Form writer",
+        MCP_FORM_TOKEN,
+        &[ApiTokenScope::CLOUD_READ, ApiTokenScope::FORM_WRITE],
+        None,
+    )
+    .await?;
     let read_only = app
         .call(post_json_as(
             format!("/api/v1/organizations/{organization}/api-tokens"),
@@ -330,6 +343,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         vec![
             "a3s_cloud_environments_list",
             "a3s_cloud_projects_list",
+            "a3s_cloud_forms_get",
+            "a3s_cloud_forms_list",
+            "a3s_cloud_form_releases_get",
+            "a3s_cloud_form_releases_list",
             "a3s_cloud_ontologies_get",
             "a3s_cloud_ontologies_list",
             "a3s_cloud_ontology_revisions_get",
@@ -384,7 +401,17 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
     assert!(!tool_names(&build_writer_tools).contains(&"a3s_cloud_workloads_stop"));
 
-    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 5).await?;
+    let form_writer_tools = list_tools(&app, MCP_FORM_TOKEN, 5).await?;
+    for name in [
+        "a3s_cloud_forms_create",
+        "a3s_cloud_forms_revise",
+        "a3s_cloud_form_releases_publish",
+    ] {
+        assert!(tool_names(&form_writer_tools).contains(&name), "{name}");
+    }
+    assert!(!tool_names(&form_writer_tools).contains(&"a3s_cloud_ontologies_create"));
+
+    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 6).await?;
     assert_eq!(
         tool_names(&administrator_tools),
         vec![
@@ -397,6 +424,13 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_memberships_revoke",
             "a3s_cloud_projects_create",
             "a3s_cloud_projects_list",
+            "a3s_cloud_forms_create",
+            "a3s_cloud_forms_get",
+            "a3s_cloud_forms_list",
+            "a3s_cloud_forms_revise",
+            "a3s_cloud_form_releases_get",
+            "a3s_cloud_form_releases_list",
+            "a3s_cloud_form_releases_publish",
             "a3s_cloud_ontologies_create",
             "a3s_cloud_ontologies_get",
             "a3s_cloud_ontologies_list",
@@ -434,6 +468,21 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_build_runs_cancel",
             "a3s_cloud_build_runs_retry",
         ]
+    );
+    let create_form = administrator_tools["result"]["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|tool| tool["name"] == "a3s_cloud_forms_create")
+        .ok_or_else(|| BootError::Internal("Form create tool is missing".into()))?;
+    assert_eq!(create_form["inputSchema"]["additionalProperties"], false);
+    assert_eq!(
+        create_form["inputSchema"]["properties"]["document"]["type"],
+        "object"
+    );
+    assert_eq!(
+        create_form["inputSchema"]["properties"]["document"]["x-a3s-max-canonical-bytes"],
+        4 * 1024 * 1024
     );
 
     let hidden_call = app
@@ -580,6 +629,91 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
         3
     );
     assert!(revoked_body["result"]["structuredContent"]["data"]["revokedAt"].is_string());
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-form-role", "Acme").await?;
+
+    let member = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_service_memberships_create",
+                json!({
+                    "name": "Form author",
+                    "role": "member",
+                    "idempotencyKey": "mcp-form-member-create"
+                }),
+            ),
+        ))
+        .await?;
+    let member = response_json(&member)?;
+    let membership_id = member["result"]["structuredContent"]["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP membership response has no ID".into()))?;
+    let principal_id = member["result"]["structuredContent"]["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP membership response has no principal ID".into()))?;
+    let token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "mcp-form-member-token",
+            json!({
+                "name": "Form author",
+                "token": MCP_FORM_MEMBER_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::FORM_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(token.status(), 201);
+
+    let member_tools = list_tools(&app, MCP_FORM_MEMBER_TOKEN, 2).await?;
+    assert!(tool_names(&member_tools).contains(&"a3s_cloud_forms_create"));
+    assert!(tool_names(&member_tools).contains(&"a3s_cloud_form_releases_publish"));
+    assert!(!tool_names(&member_tools).contains(&"a3s_cloud_memberships_list"));
+    assert!(!tool_names(&member_tools).contains(&"a3s_cloud_memberships_change_role"));
+
+    let restricted = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_memberships_change_role",
+                json!({
+                    "membershipId": membership_id,
+                    "role": "restricted",
+                    "expectedVersion": 1,
+                    "idempotencyKey": "mcp-form-member-restrict"
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&restricted)?["result"]["structuredContent"]["code"],
+        200
+    );
+
+    let restricted_tools = list_tools(&app, MCP_FORM_MEMBER_TOKEN, 4).await?;
+    assert!(tool_names(&restricted_tools).is_empty());
+    let denied = app
+        .call(mcp_request(
+            Some(MCP_FORM_MEMBER_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_forms_list",
+                json!({"projectId": Uuid::new_v4()}),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&denied)?["error"]["code"], -32602);
     Ok(())
 }
 
@@ -1473,6 +1607,388 @@ async fn management_mcp_reuses_the_workflow_definition_goal_and_plan_lifecycle()
             .as_array()
             .map(Vec::len),
         Some(3)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_the_form_draft_and_release_lifecycle() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-form", "Acme").await?;
+    let project = create_project(&app, &organization, "mcp-form-project", "Forms").await?;
+
+    let mut create_arguments =
+        super::forms_tests::form_draft("Approval", "Manager approval", false);
+    let create_arguments_object = create_arguments
+        .as_object_mut()
+        .ok_or_else(|| BootError::Internal("Form draft fixture is not an object".into()))?;
+    create_arguments_object.insert("projectId".into(), json!(project));
+    create_arguments_object.insert("idempotencyKey".into(), json!("mcp-form-create"));
+
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(1, "a3s_cloud_forms_create", create_arguments.clone()),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        created["result"]["structuredContent"]["data"]["form"]["aggregateVersion"],
+        1
+    );
+    let form_id = created["result"]["structuredContent"]["data"]["form"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Form response has no ID".into()))?
+        .to_owned();
+
+    let replayed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_forms_create", create_arguments.clone()),
+        ))
+        .await?;
+    let replayed = response_json(&replayed)?;
+    assert_eq!(replayed["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replayed["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    assert_eq!(
+        replayed["result"]["structuredContent"]["data"]["form"]["id"],
+        form_id
+    );
+
+    let mut changed_create_arguments = create_arguments;
+    changed_create_arguments
+        .as_object_mut()
+        .expect("Form draft fixture object")
+        .insert("name".into(), json!("Changed intent"));
+    let changed_replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(3, "a3s_cloud_forms_create", changed_create_arguments),
+        ))
+        .await?;
+    let changed_replay = response_json(&changed_replay)?;
+    assert_eq!(changed_replay["result"]["structuredContent"]["code"], 409);
+    assert_eq!(changed_replay["result"]["isError"], true);
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(4, "a3s_cloud_forms_list", json!({"projectId": project})),
+        ))
+        .await?;
+    let listed = response_json(&listed)?;
+    assert_eq!(
+        listed["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        listed["result"]["structuredContent"]["data"][0]["id"],
+        form_id
+    );
+
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(5, "a3s_cloud_forms_get", json!({"formId": form_id})),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&fetched)?["result"]["structuredContent"]["data"]["name"],
+        "Approval"
+    );
+
+    let unknown_argument = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_forms_get",
+                json!({"formId": form_id, "organizationId": organization}),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&unknown_argument)?["error"]["code"], -32602);
+    let invalid_document = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_forms_create",
+                json!({
+                    "projectId": project,
+                    "name": "Invalid",
+                    "document": [],
+                    "idempotencyKey": "mcp-form-invalid-document"
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&invalid_document)?["error"]["code"], -32602);
+
+    let mut revise_arguments = super::forms_tests::form_draft(
+        "Approval request",
+        "Manager approval with a required reason",
+        true,
+    );
+    let revise_arguments_object = revise_arguments
+        .as_object_mut()
+        .ok_or_else(|| BootError::Internal("Form revision fixture is not an object".into()))?;
+    revise_arguments_object.insert("formId".into(), json!(form_id));
+    revise_arguments_object.insert("expectedVersion".into(), json!(1));
+    revise_arguments_object.insert("idempotencyKey".into(), json!("mcp-form-revise"));
+    let revised = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(7, "a3s_cloud_forms_revise", revise_arguments.clone()),
+        ))
+        .await?;
+    let revised = response_json(&revised)?;
+    assert_eq!(revised["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        revised["result"]["structuredContent"]["data"]["form"]["aggregateVersion"],
+        2
+    );
+
+    let mut stale_arguments = revise_arguments.clone();
+    stale_arguments
+        .as_object_mut()
+        .expect("Form revision fixture object")
+        .insert("idempotencyKey".into(), json!("mcp-form-revise-stale"));
+    let stale = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(8, "a3s_cloud_forms_revise", stale_arguments),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&stale)?["result"]["structuredContent"]["code"],
+        409
+    );
+
+    let invalid_version = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                9,
+                "a3s_cloud_forms_revise",
+                json!({
+                    "formId": form_id,
+                    "name": "Invalid version",
+                    "document": {},
+                    "expectedVersion": 0,
+                    "idempotencyKey": "mcp-form-zero-version"
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&invalid_version)?["error"]["code"], -32602);
+
+    let publish_arguments = json!({
+        "formId": form_id,
+        "expectedVersion": 2,
+        "idempotencyKey": "mcp-form-publish"
+    });
+    let published = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                10,
+                "a3s_cloud_form_releases_publish",
+                publish_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let published = response_json(&published)?;
+    assert_eq!(published["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        published["result"]["structuredContent"]["data"]["form"]["aggregateVersion"],
+        3
+    );
+    assert_eq!(
+        published["result"]["structuredContent"]["data"]["release"]["sourceDraftVersion"],
+        2
+    );
+    let release_id = published["result"]["structuredContent"]["data"]["release"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Form release has no ID".into()))?
+        .to_owned();
+
+    let publish_replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(11, "a3s_cloud_form_releases_publish", publish_arguments),
+        ))
+        .await?;
+    let publish_replay = response_json(&publish_replay)?;
+    assert_eq!(publish_replay["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        publish_replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    assert_eq!(
+        publish_replay["result"]["structuredContent"]["data"]["release"]["id"],
+        release_id
+    );
+
+    let historical_revise_replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(12, "a3s_cloud_forms_revise", revise_arguments),
+        ))
+        .await?;
+    let historical_revise_replay = response_json(&historical_revise_replay)?;
+    assert_eq!(
+        historical_revise_replay["result"]["structuredContent"]["data"]["form"]["aggregateVersion"],
+        2
+    );
+    assert_eq!(
+        historical_revise_replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let releases = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                13,
+                "a3s_cloud_form_releases_list",
+                json!({"formId": form_id}),
+            ),
+        ))
+        .await?;
+    let releases = response_json(&releases)?;
+    assert_eq!(
+        releases["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        releases["result"]["structuredContent"]["data"][0]["id"],
+        release_id
+    );
+
+    let release = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                14,
+                "a3s_cloud_form_releases_get",
+                json!({"formId": form_id, "releaseId": release_id}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&release)?["result"]["structuredContent"]["data"]["id"],
+        release_id
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_form_tools_do_not_cross_tenant_boundaries() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let acme = bootstrap_organization(&app, "mcp-form-tenant", "Acme").await?;
+    let beta = create_organization(&app, "mcp-form-tenant-beta", "Beta").await?;
+    let acme_project = create_project(&app, &acme, "mcp-form-acme-project", "Acme Forms").await?;
+    let beta_project = create_project(&app, &beta, "mcp-form-beta-project", "Beta Forms").await?;
+    create_api_token(
+        &app,
+        &acme,
+        "mcp-form-tenant-token",
+        "Acme Form author",
+        MCP_FORM_TOKEN,
+        &[ApiTokenScope::CLOUD_READ, ApiTokenScope::FORM_WRITE],
+        None,
+    )
+    .await?;
+
+    let beta_form = app
+        .call(post_json(
+            format!("/api/v1/organizations/{beta}/projects/{beta_project}/forms"),
+            "mcp-form-beta-create",
+            super::forms_tests::form_draft("Beta approval", "Foreign Form", false),
+        ))
+        .await?;
+    assert_eq!(beta_form.status(), 201);
+    let beta_form = response_json(&beta_form)?;
+    let beta_form_id = beta_form["data"]["form"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("foreign Form response has no ID".into()))?;
+
+    let hidden_get = app
+        .call(mcp_request(
+            Some(MCP_FORM_TOKEN),
+            tool_call(1, "a3s_cloud_forms_get", json!({"formId": beta_form_id})),
+        ))
+        .await?;
+    let hidden_get = response_json(&hidden_get)?;
+    assert_eq!(hidden_get["result"]["structuredContent"]["code"], 404);
+    assert!(!hidden_get.to_string().contains("Beta approval"));
+
+    let hidden_list = app
+        .call(mcp_request(
+            Some(MCP_FORM_TOKEN),
+            tool_call(
+                2,
+                "a3s_cloud_forms_list",
+                json!({"projectId": beta_project}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&hidden_list)?["result"]["structuredContent"]["data"],
+        json!([])
+    );
+
+    let mut cross_tenant_create =
+        super::forms_tests::form_draft("Injected", "Must not commit", false);
+    let cross_tenant_create = cross_tenant_create
+        .as_object_mut()
+        .ok_or_else(|| BootError::Internal("Form draft fixture is not an object".into()))?;
+    cross_tenant_create.insert("projectId".into(), json!(beta_project));
+    cross_tenant_create.insert(
+        "idempotencyKey".into(),
+        json!("mcp-form-cross-tenant-create"),
+    );
+    let denied_create = app
+        .call(mcp_request(
+            Some(MCP_FORM_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_forms_create",
+                Value::Object(cross_tenant_create.clone()),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&denied_create)?["result"]["structuredContent"]["code"],
+        404
+    );
+
+    let acme_forms = app
+        .call(mcp_request(
+            Some(MCP_FORM_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_forms_list",
+                json!({"projectId": acme_project}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&acme_forms)?["result"]["structuredContent"]["data"],
+        json!([])
     );
     Ok(())
 }

@@ -165,6 +165,18 @@ export type {
 
 export type { SearchResourceKind, SearchResult } from './search';
 
+export type {
+  FormDraft,
+  FormDraftInput,
+  FormDraftMutationResult,
+  FormPublicationMutationResult,
+  FormRelease,
+  FormReleaseRef,
+  FormReleaseSummary,
+  PublishFormReleaseOptions,
+  ReviseFormDraftOptions,
+} from './form';
+
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Operation {

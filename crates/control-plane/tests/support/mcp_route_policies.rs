@@ -1053,7 +1053,7 @@ pub async fn exercise(
             .state,
         GatewayCertificateState::Provisioning
     );
-    let renewal_failed_at = renewal_at + Duration::milliseconds(1);
+    let renewal_failed_at = renewal.publication.command_not_after + Duration::milliseconds(1);
     let unavailable_renewal = desired_edge
         .mark_mcp_gateway_snapshot_unavailable(
             scope.organization_id,
@@ -1130,6 +1130,18 @@ pub async fn exercise(
             .await?,
         vec![revoked]
     );
+    let node_aggregation_at = desired_edge
+        .pending_mcp_gateway_snapshots(100)
+        .await?
+        .into_iter()
+        .filter(|target| {
+            target.gateway_scope_id == scope.id && target.publication.node_id == scope.node_id
+        })
+        .max_by_key(|target| target.publication.revision)
+        .ok_or("MCP node aggregation fixture expected the pending cleanup snapshot")?
+        .publication
+        .command_not_after
+        + Duration::milliseconds(1);
     node_aggregation::exercise(node_aggregation::Fixture {
         executor,
         edge: &edge,
@@ -1146,7 +1158,7 @@ pub async fn exercise(
         profile_binding: &profile_binding,
         workload_id,
         workload_revision: &revision,
-        observed_at: rotated_at + Duration::minutes(3),
+        observed_at: node_aggregation_at,
     })
     .await?;
 
