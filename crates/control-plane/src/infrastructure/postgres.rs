@@ -683,6 +683,22 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/076_workflow_definitions_goals_and_plans.sql"
             )),
         ),
+        Migration::new(
+            "077",
+            "cleanup-aware Flow operation cancellation",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/077_flow_operation_cancelling.sql"
+            )),
+        ),
+        Migration::new(
+            "078",
+            "Boot Flow task queue schema",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/078_boot_flow_task_queue_schema.sql"
+            )),
+        ),
     ]
 }
 

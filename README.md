@@ -133,6 +133,18 @@ human decisions, service/finite-task dispatch, and recovery remain unfinished
 `W0.3` work and will use the existing Operations/A3S Flow path; this slice
 adds no Workflow engine, scheduler, queue, Runtime provider, or frontend.
 
+The shared Operations execution foundation now pins A3S Flow `0.11.0`, A3S
+Boot `0.1.4` with its PostgreSQL queue, and the A3S ORM-backed PostgreSQL
+stores. Flow history and Boot jobs remain isolated in the `a3s_flow` and
+`a3s_boot` schemas. New Cloud Operation runs carry runtime build identity
+`a3s-cloud-workflows@1`; legacy unpinned histories remain replayable, while
+new unpinned Operation runs are not created. Queue retry exhaustion is surfaced
+as a coordinator and readiness failure, shutdown drains the worker, and Flow's
+non-terminal cancellation state projects as `cancelling`. The real PostgreSQL
+queue gate and the existing nine-boundary Build Flow `SIGKILL` matrix pass on
+this dependency set. This is the reusable `F0` durability substrate, not a
+claim that WorkflowRun, A3S Form, or HumanTask execution is complete.
+
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one
 `owner`, `admin`, `member`, or fail-closed `restricted` organization role. API
@@ -296,7 +308,7 @@ current Box-only provider contract.
 | `BX0` | Sole A3S Box execution/build path and re-certification of the complete baseline | In progress |
 | `PW0` | Immutable ACL-native Power Service profile and inference boundary | Planned |
 | `R0` | Universal Runtime Task and Service contract | Historical; Box re-certification pending |
-| `F0` | Boot API, PostgreSQL, tenancy, identity, Flow, Outbox, and projections | **Verified** |
+| `F0` | Boot API and PostgreSQL task queue, tenancy, identity, ORM-backed Flow history, Outbox, and projections | **Verified**; Flow `0.11.0` compatibility refresh tested, root lock publication pending |
 | `N0` | Enrollment, outbound mTLS, commands, observations, journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` | Digest-pinned Workloads, scheduling, activation, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` | TLS, Gateway snapshots, Secrets, logs, update, rollback, and clean-host recovery | Historical; Box re-certification pending |

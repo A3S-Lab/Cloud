@@ -289,14 +289,14 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-08-06:
+Status as of 2026-08-09:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
-| F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
+| F0 | Verified; compatibility publication pending | Isolated PostgreSQL migrations, tenancy, idempotency, local/NATS outbox, A3S Flow `0.11.0` history, A3S Boot `0.1.4` PostgreSQL task management, queue-failure readiness, and the nine-boundary persistent Build Flow `SIGKILL` gates pass. The exact root compatibility lock remains to be published |
 | N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
@@ -628,10 +628,32 @@ commit and query tenant-scoped desired state.
   and audit tables.
 - Implement Identity and Projects aggregates, repositories, commands, queries,
   tenant guards, API tokens, and the shared API response/error interceptors.
-- Integrate A3S Flow with a separate PostgreSQL schema and add an idempotent
-  operation starter plus projection rebuilder.
+- Integrate A3S Flow with an isolated ORM-backed PostgreSQL schema, execute its
+  durable tasks through A3S Boot's isolated PostgreSQL queue, and add an
+  idempotent runtime-build-pinned Operation starter plus projection rebuilder.
 - Add the first web shell: sign-in, organization/project/environment selection,
   operation drawer, and reconnecting SSE client.
+
+### Current compatibility evidence
+
+- Cloud pins A3S Flow `0.11.0`, A3S Boot `0.1.4` with `queue-postgres`, and the
+  A3S ORM-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot task
+  state lives in `a3s_boot`; Cloud business tables remain separately owned.
+- New Operation histories pin runtime build `a3s-cloud-workflows@1`. Legacy
+  unpinned histories remain replayable for compatibility, but Cloud does not
+  create new unpinned Operation runs.
+- The coordinator drains the Boot queue on bounded one-shot execution, reports
+  retry exhaustion instead of silently succeeding, exposes terminal queue
+  failure through readiness, and shuts the worker down cleanly. Flow
+  `cancelling` remains non-terminal until cleanup reaches a terminal outcome.
+- The focused PostgreSQL gate proves successful scheduling, task completion,
+  schema isolation, four-attempt retry exhaustion, terminal failure surfacing,
+  and unhealthy readiness. The persistent Build Flow gate passes all nine
+  Fleet completion-event `SIGKILL` boundaries on the same Flow baseline.
+
+This refresh supplies the shared durable execution substrate. It does not
+complete the `W0.3` WorkflowRun aggregate, Form lifecycle, HumanTask,
+Submission, Decision, or Flow-resume product contracts.
 
 ### Exit gate
 
@@ -2808,6 +2830,12 @@ Management MCP tools reuse the same commands and queries. WorkflowRun,
 human/service/finite-task execution through one Operation/A3S Flow, recovery
 projections, and clean real-PostgreSQL conformance remain open; no frontend was
 added.
+
+The shared Operations adapter has moved to A3S Flow `0.11.0` with A3S Boot
+PostgreSQL task management, isolated ORM-backed stores, runtime-build-pinned
+new runs, and process-death regression evidence. That closes the dependency
+upgrade portion of the execution foundation only; it does not make a persisted
+PlanRevision executable or change the remaining `W0.3` claim boundary above.
 
 `WaaS` is the resulting product profile. It does not add a Runtime unit type;
 only executable steps create existing Runtime Tasks or Services. The complete

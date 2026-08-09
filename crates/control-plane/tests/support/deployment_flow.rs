@@ -135,7 +135,18 @@ pub async fn exercise_deployment_flow(
     let scheduled = workload_repository
         .find_deployment(organization_id, deployment_id)
         .await?;
-    assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
+    if scheduled.status != DeploymentStatus::Scheduled {
+        let snapshot = flow.engine().snapshot(&operation_id.to_string()).await?;
+        return Err(format!(
+            "deployment did not reach scheduled before resource preparation; deployment_status={}; flow_status={:?}; flow_sequence={}; waits={:?}; steps={:?}",
+            scheduled.status.as_str(),
+            snapshot.status,
+            snapshot.last_sequence,
+            snapshot.waits,
+            snapshot.steps
+        )
+        .into());
+    }
     for _ in 0..16 {
         tokio::time::sleep(Duration::from_millis(6)).await;
         coordinator.run_once().await?;

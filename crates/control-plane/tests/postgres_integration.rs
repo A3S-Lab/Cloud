@@ -1,4 +1,4 @@
-use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod, QueueOptions};
 use a3s_cloud_control_plane::app::build_application_with_source_resolver;
 use a3s_cloud_control_plane::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
@@ -6,7 +6,7 @@ use a3s_cloud_control_plane::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
-use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
+use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, ClaimAssetGitWriteRecovery,
@@ -17,9 +17,9 @@ use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    FlowOperationEngine, IOperationRepository, OperationRequest, OperationStatus, OperationSubject,
-    PostgresOperationRepository, RebuildOperationProjectionsHandler, ReconcileOperationsHandler,
-    WorkflowIdentity,
+    FlowOperationEngine, IOperationRepository, OperationReconciler, OperationRequest,
+    OperationStatus, OperationSubject, PostgresOperationRepository,
+    RebuildOperationProjectionsHandler, ReconcileOperationsHandler, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, IdempotencyRequest, OperationId, OrganizationId, ProjectId, ResourceName,
@@ -32,8 +32,13 @@ use a3s_cloud_control_plane::{
     build_application, infrastructure::connect_and_migrate, CloudConfig,
 };
 use a3s_event::{NatsConfig, StorageType};
-use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
-use a3s_orm::{sql_query, Database, Migration, Migrator, PostgresDialect, PostgresExecutor};
+use a3s_flow::{
+    FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation, WorkflowRunStatus,
+    WorkflowSpec,
+};
+use a3s_orm::{
+    sql_query, Database, Migration, Migrator, PostgresDialect, PostgresError, PostgresExecutor,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use futures_util::FutureExt;
@@ -223,6 +228,16 @@ async fn postgres_hosted_draft_recovery_is_atomic() {
         .expect("hosted draft recovery PostgreSQL gate");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_boot_flow_task_manager_drains_and_surfaces_terminal_failures() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_boot_flow_task_manager)
+        .await
+        .expect("Boot-backed Flow task manager PostgreSQL gate");
+}
+
 async fn run_isolated_postgres<F, Fut>(
     admin_url: &str,
     exercise: F,
@@ -257,6 +272,171 @@ where
             std::panic::resume_unwind(panic_payload)
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct ScheduledBootRuntime;
+
+#[async_trait]
+impl FlowRuntime for ScheduledBootRuntime {
+    async fn run_workflow(
+        &self,
+        invocation: WorkflowInvocation,
+    ) -> a3s_flow::Result<RuntimeCommand> {
+        let context = invocation.context();
+        if context.wait_completed("boot-due") {
+            return Ok(context.complete(json!({"queue": "a3s-boot"})));
+        }
+        Ok(context.wait_until("boot-due", Utc::now() - chrono::Duration::seconds(1)))
+    }
+
+    async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<Value> {
+        Err(FlowError::Runtime(format!(
+            "scheduled Boot test does not execute step {}",
+            invocation.step_name
+        )))
+    }
+}
+
+async fn exercise_boot_flow_task_manager(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let queue_options = QueueOptions::new()
+        .with_poll_interval(Duration::from_millis(5))
+        .with_lease_duration(Duration::from_millis(200));
+    let flow = FlowInfrastructure::connect_with_queue_options(
+        &url,
+        Arc::new(ScheduledBootRuntime),
+        queue_options,
+    )
+    .await?;
+    let run_id = "cloud-boot-flow-success";
+    flow.engine()
+        .start_with_id(
+            run_id,
+            WorkflowSpec::rust_embedded("cloud.boot-flow-test", "1", "cloud", "run"),
+            json!({}),
+        )
+        .await?;
+    assert_eq!(
+        flow.engine().snapshot(run_id).await?.status,
+        WorkflowRunStatus::Suspended
+    );
+    let coordinator = boot_flow_coordinator(&executor, &flow)?;
+    let report = coordinator.run_once().await?;
+    assert_eq!(report.enqueued_tasks, 1);
+    assert_eq!(report.handled_tasks, 1);
+    let completed = flow.engine().snapshot(run_id).await?;
+    assert_eq!(completed.status, WorkflowRunStatus::Completed);
+    assert_eq!(completed.output, Some(json!({"queue": "a3s-boot"})));
+    assert!(flow.health().await.is_up());
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    for relation in [
+        "a3s_flow.a3s_orm_migrations",
+        "a3s_flow.flow_events",
+        "a3s_boot.a3s_orm_migrations",
+        "a3s_boot.boot_queue_jobs",
+    ] {
+        let registered = database
+            .fetch_one_as(
+                sql_query::<Option<String>>("select to_regclass(")
+                    .bind(relation)
+                    .append(")::text"),
+            )
+            .await?;
+        assert_eq!(registered.as_deref(), Some(relation));
+    }
+
+    let failing_run_id = "cloud-boot-flow-failure";
+    flow.engine()
+        .start_with_id(
+            failing_run_id,
+            WorkflowSpec::rust_embedded("cloud.boot-flow-failure", "1", "cloud", "run"),
+            json!({}),
+        )
+        .await?;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "create function reject_boot_flow_wait_completion() returns trigger language plpgsql as $$
+               begin
+                 if new.run_id = 'cloud-boot-flow-failure'
+                    and new.event_json::jsonb ->> 'type' = 'wait_completed' then
+                   raise exception 'injected Boot Flow terminal failure';
+                 end if;
+                 return new;
+               end
+             $$;
+             create trigger reject_boot_flow_wait_completion
+               before insert on a3s_flow.flow_events
+               for each row execute function reject_boot_flow_wait_completion();",
+        )
+        .await?;
+    let failure = boot_flow_coordinator(&executor, &flow)?
+        .run_once()
+        .await
+        .expect_err("retry exhaustion must fail the coordinator cycle");
+    assert!(matches!(
+        &failure,
+        a3s_cloud_control_plane::infrastructure::FlowCoordinatorError::TerminalTaskFailures {
+            count: 1,
+            ..
+        }
+    ));
+    assert!(
+        failure
+            .to_string()
+            .contains("A3S Flow task handling failed"),
+        "unexpected terminal task failure: {failure}"
+    );
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "drop trigger reject_boot_flow_wait_completion on a3s_flow.flow_events;
+             drop function reject_boot_flow_wait_completion();",
+        )
+        .await?;
+    let queue_states = database
+        .fetch_one_as(sql_query::<(i64, i64, i64, i64)>(
+            "select count(*) filter (where state = 'pending'), \
+                    count(*) filter (where state = 'active'), \
+                    count(*) filter (where state = 'failed'), \
+                    coalesce(max(attempts_made) filter (where state = 'failed'), 0) \
+             from a3s_boot.boot_queue_jobs \
+             where queue_name = 'cloud-operations'",
+        ))
+        .await?;
+    assert_eq!(queue_states, (0, 0, 1, 4));
+    let health = flow.health().await;
+    assert!(!health.is_up());
+    assert_eq!(health.details["failedTasks"], 1);
+    Ok(())
+}
+
+fn boot_flow_coordinator(
+    executor: &PostgresExecutor,
+    flow: &FlowInfrastructure,
+) -> Result<FlowOperationCoordinator, Box<dyn std::error::Error>> {
+    let operations: Arc<dyn IOperationRepository> =
+        Arc::new(PostgresOperationRepository::new(executor.clone()));
+    let reconciler = OperationReconciler::new(
+        Arc::new(ReconcileOperationsHandler::new(
+            operations,
+            Arc::new(FlowOperationEngine::new(flow.engine())),
+        )),
+        Duration::from_millis(5),
+        100,
+    );
+    Ok(FlowOperationCoordinator::new(
+        reconciler,
+        flow,
+        Duration::from_millis(5),
+        Duration::from_secs(2),
+    )?)
 }
 
 async fn exercise_identity_migration_backfill(
@@ -512,6 +692,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop schema if exists a3s_boot cascade;
              drop table if exists resource_slot_leases cascade;
              drop table if exists resource_claim_slots cascade;
              drop table if exists resource_claims cascade;
@@ -598,7 +779,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 75);
+    assert_eq!(applied, 78);
+    let boot_schema = database
+        .fetch_one_as(sql_query::<Option<String>>(
+            "select to_regnamespace('a3s_boot')::text",
+        ))
+        .await?;
+    assert_eq!(boot_schema.as_deref(), Some("a3s_boot"));
     for table in [
         "agent_conversations",
         "agent_executions",
@@ -1804,9 +1991,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 .bind(Uuid::parse_str(&ontology_id)?),
         )
         .await;
-    assert!(immutable_revision.err().is_some_and(|error| error
-        .to_string()
-        .contains("Ontology revisions are immutable")));
+    let immutable_revision = immutable_revision.expect_err("Ontology revision update must fail");
+    assert!(matches!(
+        immutable_revision,
+        a3s_orm::DatabaseError::Execute(PostgresError::Database(ref error))
+            if error
+                .as_db_error()
+                .is_some_and(|error| error.message() == "Ontology revisions are immutable")
+    ));
 
     let environment_path =
         format!("/api/v1/organizations/{organization_id}/projects/{project_id}/environments");
@@ -2425,8 +2617,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 38);
-    assert_eq!(idempotency_records, 28);
+    assert_eq!((outbox_events, idempotency_records), (55, 41));
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
@@ -2548,8 +2739,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )
         .await?;
     let lost_ack = relay.run_once().await?;
-    assert_eq!(lost_ack.claimed, 1);
-    assert_eq!(lost_ack.published, 0);
+    assert_eq!(lost_ack.claimed, 2);
+    assert_eq!(lost_ack.published, 1);
     assert_eq!(lost_ack.failures.len(), 1);
     executor
         .pool()
@@ -2563,12 +2754,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     tokio::time::sleep(Duration::from_millis(5)).await;
     assert_eq!(relay.run_once().await?.published, 1);
     let local_events = memory_bus.list_events(None, 100).await?;
-    assert_eq!(local_events.len(), initial_event_count + 2);
+    assert_eq!(local_events.len(), initial_event_count + 3);
     let unique_event_ids = local_events
         .iter()
         .map(|event| event.id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(unique_event_ids.len(), initial_event_count + 1);
+    assert_eq!(unique_event_ids.len(), initial_event_count + 2);
 
     if let Ok(nats_url) = std::env::var("A3S_CLOUD_TEST_NATS_URL") {
         let nats_created = app

@@ -17,6 +17,7 @@ use a3s_cloud_control_plane::modules::edge::{
     IGatewayObservationQueue, PostgresEdgeRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     GatewayRolloutId, GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, RepositoryError,
@@ -36,6 +37,11 @@ pub async fn exercise_gateway_replica_recovery(
     let now = Utc::now();
     let nodes = (0..4).map(|_| NodeId::new()).collect::<Vec<_>>();
     let mut agents = BTreeMap::new();
+    let capabilities = NodeCapabilities::new(
+        "test-runtime",
+        "gateway-recovery-test",
+        serde_json::json!({}),
+    )?;
     for (ordinal, node_id) in nodes.iter().enumerate() {
         let agent_instance_id = Uuid::now_v7();
         agents.insert(*node_id, agent_instance_id);
@@ -54,9 +60,9 @@ pub async fn exercise_gateway_replica_recovery(
                 .append(", 'ready', ")
                 .bind(agent_instance_id)
                 .append(", 'test', 'test-runtime', 'gateway-recovery-test', ")
-                .bind(format!("sha256:{}", "a".repeat(64)))
+                .bind(capabilities.digest())
                 .append(", ")
-                .bind(serde_json::json!({}))
+                .bind(capabilities.document().clone())
                 .append(", ")
                 .bind(now)
                 .append(", ")

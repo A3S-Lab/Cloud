@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-08-06.**
+**Status as of 2026-08-09.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -135,7 +135,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
 | `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
 | `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real provider conformance | Historical; Box re-certification pending |
-| `F0` — Foundation | Boot control plane, PostgreSQL, tenancy, identity, Flow operations, outbox, projections, API, and web shell | Verified |
+| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, API, and web shell | Verified; Flow `0.11.0` compatibility refresh tested, root lock publication pending |
 | `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Historical; Box re-certification pending |
@@ -1361,6 +1361,16 @@ Operations remains the only durable orchestration mechanism.
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
+The shared execution substrate now pins A3S Flow `0.11.0`, A3S Boot `0.1.4`
+with `queue-postgres`, and the A3S ORM-backed PostgreSQL stores. Flow events and
+Boot tasks use isolated `a3s_flow` and `a3s_boot` schemas. New Cloud Operation
+runs pin runtime build `a3s-cloud-workflows@1`, while legacy unpinned histories
+remain replayable. PostgreSQL tests cover queue draining, bounded retries,
+terminal-failure readiness, and the existing nine Build Flow `SIGKILL`
+boundaries. Publishing the exact root compatibility lock remains open. This
+removes an execution-infrastructure blocker for `W0.3`; it does not implement
+WorkflowRun, Form lifecycle, human decisions, or `W0.4` provider steps.
+
 Workflow connectors call owning application ports. They cannot write Agent,
 MCP, Inference, Use, Workloads, Fleet, or Operations tables, publish provider
 commands, or start Runtime units directly. `WaaS` is this product composition,
@@ -1457,10 +1467,10 @@ The default portfolio priority is:
    saga and `C0.3` authorization/audit are ready; keep executable and
    multi-host surfaces behind `U0.4` and `U0.5`;
 10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
-    and `W0.3` definition/goal/deterministic-plan slice; close their
-    real-PostgreSQL and expanded cross-surface evidence, then finish WorkflowRun
-    execution on Operations and A3S Flow without waiting for every external
-    step provider;
+    and `W0.3` definition/goal/deterministic-plan slice; publish the exact Flow
+    `0.11.0`/Boot/ORM compatibility lock, close their real-PostgreSQL and
+    expanded cross-surface evidence, then finish WorkflowRun execution on
+    Operations and A3S Flow without waiting for every external step provider;
 11. add `W0.4` only as its selected `A1.3`, `MCP0.5`, `I0.2`, and `U0.4`
     provider contracts pass, then close `W0.5` through multi-day recovery,
     migration, compensation, tenant, scale, and operator evidence;

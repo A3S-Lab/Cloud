@@ -167,7 +167,7 @@ use crate::{
 };
 use a3s_boot::{
     AuthModule, BootApplication, BootError, CqrsModule, HealthIndicatorResult, HealthModule,
-    Module, ModuleRef, ProviderDefinition, ProviderToken, Result, RouteDefinition,
+    Module, ModuleRef, ProviderDefinition, ProviderToken, QueueOptions, Result, RouteDefinition,
     AUTH_PUBLIC_METADATA,
 };
 use a3s_event::{NatsConfig, StorageType};
@@ -674,7 +674,16 @@ pub async fn build_application_with_source_resolver(
         Arc::new(execution_runtime),
         Arc::new(agent_execution_runtime),
     );
-    let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
+    let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
+    let operation_lease = Duration::from_millis(config.operations.lease_ms);
+    let flow = crate::infrastructure::connect_flow(
+        &postgres_url,
+        Arc::new(flow_runtime),
+        QueueOptions::new()
+            .with_poll_interval(operation_interval)
+            .with_lease_duration(operation_lease),
+    )
+    .await?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
@@ -751,14 +760,14 @@ pub async fn build_application_with_source_resolver(
             operation_repository.clone(),
             operation_engine,
         )),
-        Duration::from_millis(config.operations.reconcile_interval_ms),
+        operation_interval,
         100,
     );
     let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(
         operation_reconciler,
         &flow,
-        Duration::from_millis(config.operations.reconcile_interval_ms),
-        Duration::from_millis(config.operations.lease_ms),
+        operation_interval,
+        operation_lease,
     )
     .map_err(|error| ControlPlaneStartupError::Framework(BootError::Internal(error.to_string())))?;
     let outbox_relay = OutboxRelay::new(

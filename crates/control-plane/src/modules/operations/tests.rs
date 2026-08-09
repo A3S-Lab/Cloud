@@ -1,7 +1,9 @@
 use super::*;
+use crate::infrastructure::CLOUD_FLOW_RUNTIME_BUILD_ID;
 use crate::modules::shared_kernel::domain::{OperationId, OrganizationId};
 use a3s_flow::{
-    FlowEngine, FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation,
+    FlowEngine, FlowError, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId, RuntimeCommand,
+    StepInvocation, WorkflowInvocation, WorkflowSpec,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -44,6 +46,15 @@ fn operation_request(
     ))
 }
 
+fn flow_engine() -> Result<FlowEngine, FlowError> {
+    Ok(FlowEngine::builder(Arc::new(CompletingRuntime))
+        .with_runtime_build_compatibility(
+            RuntimeBuildCompatibility::new(RuntimeBuildId::new(CLOUD_FLOW_RUNTIME_BUILD_ID)?)
+                .accept_unpinned(),
+        )
+        .build())
+}
+
 #[tokio::test]
 async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -59,7 +70,7 @@ async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
         .await;
     assert!(conflicting.is_err());
 
-    let engine = FlowEngine::in_memory(Arc::new(CompletingRuntime));
+    let engine = flow_engine()?;
     let operation_engine = Arc::new(FlowOperationEngine::new(engine.clone()));
     let handler = ReconcileOperationsHandler::new(repository.clone(), operation_engine.clone());
     let (left, right) = tokio::join!(handler.execute(10), handler.execute(10));
@@ -70,6 +81,16 @@ async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
     assert!(left.projected + right.projected >= 1);
     assert_eq!(engine.list_run_ids().await?, vec![operation_id.to_string()]);
     assert_eq!(engine.history(&operation_id.to_string()).await?.len(), 3);
+    assert_eq!(
+        engine
+            .snapshot(&operation_id.to_string())
+            .await?
+            .spec
+            .runtime_build_id
+            .as_ref()
+            .map(RuntimeBuildId::as_str),
+        Some(CLOUD_FLOW_RUNTIME_BUILD_ID)
+    );
     let projection = repository
         .find_projection(operation_id)
         .await?
@@ -93,5 +114,51 @@ async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
             .status,
         OperationStatus::Succeeded
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn operation_engine_replays_legacy_unpinned_history_without_creating_new_unpinned_runs(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let operation_id = OperationId::new();
+    let input = json!({"generation": 1});
+    let request = operation_request(operation_id, input.clone())?;
+    let engine = flow_engine()?;
+    engine
+        .start_with_id(
+            operation_id.to_string(),
+            WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main"),
+            input,
+        )
+        .await?;
+
+    let projection = FlowOperationEngine::new(engine.clone())
+        .ensure(&request)
+        .await?;
+
+    assert_eq!(projection.status, OperationStatus::Succeeded);
+    assert_eq!(
+        engine
+            .snapshot(&operation_id.to_string())
+            .await?
+            .spec
+            .runtime_build_id,
+        None
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn operation_engine_rejects_start_without_runtime_build_policy(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let operation_id = OperationId::new();
+    let engine = FlowEngine::in_memory(Arc::new(CompletingRuntime));
+    let error = FlowOperationEngine::new(engine.clone())
+        .ensure(&operation_request(operation_id, json!({"generation": 1}))?)
+        .await
+        .expect_err("operation start must require a runtime build policy");
+
+    assert!(matches!(error, OperationEngineError::Unavailable(_)));
+    assert!(engine.list_run_ids().await?.is_empty());
     Ok(())
 }

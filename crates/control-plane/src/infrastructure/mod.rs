@@ -6,6 +6,8 @@ mod postgres;
 mod postgres_schema;
 mod vault_client;
 
+#[cfg(test)]
+pub(crate) use flow::CLOUD_FLOW_RUNTIME_BUILD_ID;
 pub use flow::{
     connect_flow, FlowCoordinatorError, FlowCoordinatorReport, FlowInfrastructure,
     FlowInfrastructureError, FlowOperationCoordinator, FlowRuntimeRouter,
