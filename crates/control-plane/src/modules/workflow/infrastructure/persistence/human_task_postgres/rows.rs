@@ -419,6 +419,22 @@ pub(super) struct ResumeDeliveryClaimRow {
     pub(super) lease_expires_at: DateTime<Utc>,
 }
 
+pub(super) struct ResumeDeliveryClaimSelection;
+
+impl Selection for ResumeDeliveryClaimSelection {
+    type Output = ResumeDeliveryClaimRow;
+
+    fn expressions(self) -> Vec<a3s_orm::Expression> {
+        vec![
+            WorkflowResumeOutbox::organization_id().expression(),
+            WorkflowResumeOutbox::workflow_decision_id().expression(),
+            WorkflowResumeOutbox::attempt_count().expression(),
+            WorkflowResumeOutbox::updated_at().expression(),
+            WorkflowResumeOutbox::lease_expires_at().expression(),
+        ]
+    }
+}
+
 impl FromRow for ResumeDeliveryClaimRow {
     fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
         Ok(Self {

@@ -120,6 +120,13 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct WorkflowResumeCandidates => "workflow_resume_candidates" {
+        organization_id: Uuid => "organization_id",
+        workflow_decision_id: Uuid => "workflow_decision_id",
+    }
+}
+
+orm_table! {
     pub(super) struct WorkflowResumeReceipts => "workflow_resume_receipts" {
         organization_id: Uuid => "organization_id",
         project_id: Uuid => "project_id",

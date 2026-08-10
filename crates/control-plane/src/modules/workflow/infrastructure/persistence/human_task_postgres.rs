@@ -5,9 +5,9 @@ mod writes;
 use self::rows::{
     decode_decision_record, decode_task, find_decision_row, find_task_identity_collisions,
     find_task_row, hook_inbox_matches, load_decision_record, load_task, task_authority_exists,
-    task_select, HumanTaskRow, ResumeDeliveryClaimRow,
+    task_select, HumanTaskRow, ResumeDeliveryClaimRow, ResumeDeliveryClaimSelection,
 };
-use self::schema::HumanTasks;
+use self::schema::{HumanTasks, WorkflowResumeCandidates, WorkflowResumeOutbox};
 use self::writes::{
     conflict_resume_delivery, insert_decision, insert_hook_inbox, insert_resume_outbox,
     insert_resume_receipt, insert_task, lock_resume_outbox, mark_resume_delivered, persist_task,
@@ -30,7 +30,7 @@ use crate::modules::workflow::domain::{
     HumanTaskDecisionRecord, HumanTaskRecord, HumanTaskResumeDelivery, HumanTaskStatus,
     IHumanTaskRepository,
 };
-use a3s_orm::{sql_query, OrderDirection, PostgresExecutor};
+use a3s_orm::{select_from, update_table, OrderDirection, PostgresExecutor};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::time::Duration;
@@ -339,6 +339,11 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                 "Workflow resume delivery requires a valid owner and positive lease".into(),
             ));
         }
+        let limit = u64::try_from(limit).map_err(|_| {
+            RepositoryError::Conflict(
+                "Workflow resume delivery limit exceeds the supported range".into(),
+            )
+        })?;
         let claimed_at = canonical_timestamp(claimed_at);
         let lease_millis = i64::try_from(lease_duration.as_millis()).map_err(|_| {
             RepositoryError::Conflict(
@@ -355,24 +360,52 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    // A3S ORM's typed AST does not currently express an UPDATE driven by a
-                    // locking CTE. Keep this reviewed statement as the single raw-SQL escape
-                    // hatch so candidate selection and lease acquisition remain atomic.
+                    let candidates = select_from::<WorkflowResumeOutbox>()
+                        .select((
+                            WorkflowResumeOutbox::organization_id(),
+                            WorkflowResumeOutbox::workflow_decision_id(),
+                        ))
+                        .filter(WorkflowResumeOutbox::available_at().lte(claimed_at))
+                        .filter(
+                            WorkflowResumeOutbox::state().eq("pending").or(
+                                WorkflowResumeOutbox::state()
+                                    .eq("delivering")
+                                    .and(WorkflowResumeOutbox::lease_expires_at().lte(claimed_at)),
+                            ),
+                        )
+                        .order_by(WorkflowResumeOutbox::available_at(), OrderDirection::Asc)
+                        .order_by(WorkflowResumeOutbox::created_at(), OrderDirection::Asc)
+                        .order_by(
+                            WorkflowResumeOutbox::workflow_decision_id(),
+                            OrderDirection::Asc,
+                        )
+                        .limit(limit)
+                        .for_update_of::<WorkflowResumeOutbox>()
+                        .skip_locked()
+                        .as_cte::<WorkflowResumeCandidates>();
                     let rows = fetch_all::<ResumeDeliveryClaimRow, _>(
                         transaction,
-                        sql_query::<ResumeDeliveryClaimRow>("with candidates as (select organization_id, workflow_decision_id from workflow_resume_outbox where available_at <= ")
-                            .bind(claimed_at)
-                            .append(" and (state = 'pending' or (state = 'delivering' and lease_expires_at <= ")
-                            .bind(claimed_at)
-                            .append(")) order by available_at asc, created_at asc, workflow_decision_id asc for update skip locked limit ")
-                            .bind(limit)
-                            .append(") update workflow_resume_outbox as delivery set state = 'delivering', attempt_count = delivery.attempt_count + 1, lease_owner = ")
-                            .bind(owner)
-                            .append(", lease_expires_at = ")
-                            .bind(lease_expires_at)
-                            .append(", last_error = null, updated_at = ")
-                            .bind(claimed_at)
-                            .append(" from candidates where delivery.organization_id = candidates.organization_id and delivery.workflow_decision_id = candidates.workflow_decision_id returning delivery.organization_id, delivery.workflow_decision_id, delivery.attempt_count, delivery.updated_at, delivery.lease_expires_at"),
+                        update_table::<WorkflowResumeOutbox>()
+                            .with(candidates)
+                            .set(WorkflowResumeOutbox::state(), "delivering")
+                            .set_expression(
+                                WorkflowResumeOutbox::attempt_count(),
+                                WorkflowResumeOutbox::attempt_count() + 1,
+                            )
+                            .set(WorkflowResumeOutbox::lease_owner(), owner)
+                            .set(WorkflowResumeOutbox::lease_expires_at(), lease_expires_at)
+                            .set(WorkflowResumeOutbox::last_error(), None::<String>)
+                            .set(WorkflowResumeOutbox::updated_at(), claimed_at)
+                            .from::<WorkflowResumeCandidates>()
+                            .filter(
+                                WorkflowResumeOutbox::organization_id()
+                                    .eq_column(WorkflowResumeCandidates::organization_id()),
+                            )
+                            .filter(
+                                WorkflowResumeOutbox::workflow_decision_id()
+                                    .eq_column(WorkflowResumeCandidates::workflow_decision_id()),
+                            )
+                            .returning(ResumeDeliveryClaimSelection),
                     )
                     .await?;
                     let mut deliveries = Vec::with_capacity(rows.len());

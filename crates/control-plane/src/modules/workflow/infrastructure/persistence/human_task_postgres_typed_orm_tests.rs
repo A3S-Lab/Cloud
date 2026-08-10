@@ -1,6 +1,10 @@
 #[test]
-fn postgres_human_task_persistence_limits_raw_sql_to_atomic_lease_claiming() {
+fn postgres_human_task_persistence_uses_only_typed_a3s_orm_queries() {
     for (name, source) in [
+        (
+            "human_task_postgres.rs",
+            include_str!("human_task_postgres.rs"),
+        ),
         ("rows.rs", include_str!("human_task_postgres/rows.rs")),
         ("writes.rs", include_str!("human_task_postgres/writes.rs")),
         (
@@ -17,17 +21,12 @@ fn postgres_human_task_persistence_limits_raw_sql_to_atomic_lease_claiming() {
     }
 
     let repository = include_str!("human_task_postgres.rs");
-    assert_eq!(
-        repository.matches("sql_query::<").count(),
-        1,
-        "HumanTask persistence permits one reviewed raw SQL escape hatch"
-    );
-    assert!(repository.contains("sql_query::<ResumeDeliveryClaimRow>"));
-    assert!(repository.contains("for update skip locked"));
-    assert!(repository.contains("update workflow_resume_outbox as delivery"));
-    for forbidden in ["sqlx::", "tokio_postgres"] {
-        assert!(!repository.contains(forbidden));
-    }
+    assert!(repository.contains("select_from::<WorkflowResumeOutbox>()"));
+    assert!(repository.contains(".for_update_of::<WorkflowResumeOutbox>()"));
+    assert!(repository.contains(".skip_locked()"));
+    assert!(repository.contains("update_table::<WorkflowResumeOutbox>()"));
+    assert!(repository.contains(".from::<WorkflowResumeCandidates>()"));
+    assert!(repository.contains(".returning(ResumeDeliveryClaimSelection)"));
 
     let schema = include_str!("human_task_postgres/schema.rs");
     for table in [
@@ -35,6 +34,7 @@ fn postgres_human_task_persistence_limits_raw_sql_to_atomic_lease_claiming() {
         "WorkflowDecisions",
         "WorkflowHumanTaskInbox",
         "WorkflowResumeOutbox",
+        "WorkflowResumeCandidates",
         "WorkflowResumeReceipts",
     ] {
         assert!(schema.contains(&format!("struct {table}")));
