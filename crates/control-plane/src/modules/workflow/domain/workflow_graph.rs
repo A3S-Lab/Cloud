@@ -101,8 +101,8 @@ fn validate_capability_binding(
         WorkflowStepKind::Input
         | WorkflowStepKind::Output
         | WorkflowStepKind::Transform
-        | WorkflowStepKind::Branch
-        | WorkflowStepKind::HumanDecision => &[],
+        | WorkflowStepKind::Branch => &[],
+        WorkflowStepKind::HumanDecision => &[CapabilityType::FormRelease],
         WorkflowStepKind::Execution => &[CapabilityType::ExecutionTemplate],
         WorkflowStepKind::Agent => &[CapabilityType::AgentRelease],
         WorkflowStepKind::Mcp => &[CapabilityType::McpServiceProfile],

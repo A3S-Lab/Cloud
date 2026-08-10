@@ -121,7 +121,8 @@ Search index authoritative.
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
 `W0.1`, the backend implementation of `W0.2`, and the planning/persistence plus
-minimal Workflow-local execution portions of `W0.3` are now present. Migration
+internal Workflow-local and HumanTask execution portions of `W0.3` are now
+present. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
 and deterministic diff are exposed through REST `1.14.0`, the maintained
@@ -147,16 +148,25 @@ REST, OpenAPI, client, CLI, and MCP lifecycle tests pass without copying the
 Form compiler or validator. Migration `080` atomically stores the exact
 Goal/Plan-bound WorkflowRun, correlated Operation, WorkflowStepProjection
 records, idempotency, audit, and Outbox through A3S ORM. One A3S Flow run
-executes Workflow-local `input`, `transform`, `branch`, and `output` steps; the
-reconciler verifies immutable plan/input/payload authority, rejects replay
-drift, and projects cancellation, deadlines, terminal output, and bounded
-redacted history. REST `1.14.0`, the maintained client, CLI, and seven
-additional Management MCP tools expose start, cancel, list, get, wait, output,
-and history through the same CQRS handlers. Focused PostgreSQL 17, domain,
-REST, OpenAPI, client, CLI, MCP, replay, cancellation, and timeout tests pass.
-Protected Form submission, HumanTask, human/service/finite-task dispatch,
-typed capability steps, compensation, expanded cross-surface evidence, and
-public Workflow availability remain open.
+executes Workflow-local `input`, `transform`, `branch`, `human_decision`, and
+`output` steps; the reconciler verifies immutable plan/input/payload authority,
+rejects replay drift, and projects cancellation, deadlines, waiting, terminal
+output, and bounded redacted history. Migration `081` stores immutable accepted
+FormSubmission records, optimistic HumanTasks, immutable WorkflowDecisions,
+hook-event Inbox evidence, and leased resume Outbox/receipt records through
+typed A3S ORM queries. Worker-role coordination validates the exact published
+interaction-mode FormRelease and Flow hook authority, creates and activates the
+task, and resumes the same hook from the immutable decision with retry,
+lease-takeover, conflict, and commit-before-ack recovery. A real PostgreSQL plus
+A3S Flow test covers concurrent coordinators, tenant scope, atomic
+submission/decision storage, replay, and receipt evidence. REST `1.14.0`, the
+maintained client, CLI, and seven additional Management MCP tools continue to
+expose start, cancel, list, get, wait, output, and history through the same CQRS
+handlers. Public protected submission and HumanTask commands/APIs/client/CLI/
+MCP, Resource Grant evaluation, expiry/cancellation coordination,
+human/service/finite-task dispatch beyond the internal coordinator, typed
+capability steps, compensation, expanded cross-surface evidence, and public
+Workflow availability remain open.
 
 ### 4.3 Compiler rules
 

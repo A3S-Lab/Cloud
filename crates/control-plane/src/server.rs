@@ -10,7 +10,9 @@ use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
-use crate::modules::workflow::WorkflowRunReconciler;
+use crate::modules::workflow::{
+    HumanTaskCoordinator, HumanTaskResumeWorker, WorkflowRunReconciler,
+};
 use crate::modules::workloads::{SecretRotationRestartReconciler, WorkloadRuntimeReconciler};
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
 use std::net::SocketAddr;
@@ -25,6 +27,8 @@ pub(crate) struct ControlPlaneWorkers {
     execution_reconciler: Option<ExecutionReconciler>,
     agent_execution_reconciler: Option<AgentExecutionReconciler>,
     workflow_run_reconciler: Option<WorkflowRunReconciler>,
+    human_task_coordinator: Option<HumanTaskCoordinator>,
+    human_task_resume_worker: Option<HumanTaskResumeWorker>,
     github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
     operation_coordinator: Option<FlowOperationCoordinator>,
     gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
@@ -49,6 +53,8 @@ impl ControlPlaneWorkers {
         execution_reconciler: Option<ExecutionReconciler>,
         agent_execution_reconciler: Option<AgentExecutionReconciler>,
         workflow_run_reconciler: Option<WorkflowRunReconciler>,
+        human_task_coordinator: Option<HumanTaskCoordinator>,
+        human_task_resume_worker: Option<HumanTaskResumeWorker>,
         github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
         operation_coordinator: Option<FlowOperationCoordinator>,
         gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
@@ -70,6 +76,8 @@ impl ControlPlaneWorkers {
             execution_reconciler,
             agent_execution_reconciler,
             workflow_run_reconciler,
+            human_task_coordinator,
+            human_task_resume_worker,
             github_authority_reconciler,
             operation_coordinator,
             gateway_certificate_reconciler,
@@ -125,6 +133,12 @@ impl ControlPlane {
         }
         if let Some(reconciler) = self.workers.workflow_run_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(coordinator) = self.workers.human_task_coordinator {
+            workers.push(tokio::spawn(coordinator.run(shutdown_receiver.clone())));
+        }
+        if let Some(worker) = self.workers.human_task_resume_worker {
+            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.github_authority_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));

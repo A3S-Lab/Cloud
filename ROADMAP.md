@@ -146,7 +146,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
-| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan, native Form draft/release, and minimal Workflow-local run lifecycle are implemented; protected submission, HumanTask, service/finite-task dispatch, typed capability steps, compensation, expanded cross-surface verification, and `W0.4`-`W0.5` remain) |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun, and internal authority-bound HumanTask decision loop are implemented; public protected submission/task surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded cross-surface verification, and `W0.4`-`W0.5` remain) |
 | `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Planned |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
@@ -1359,7 +1359,7 @@ Operations remains the only durable orchestration mechanism.
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
 | `W0.2` | Implemented; verification pending | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.14.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests pass; clean real-PostgreSQL and expanded cross-surface evidence remain required |
-| `W0.3` | In progress; planning, native Form draft/release, and minimal WorkflowRun implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. Migration `079` adds project-scoped canonical Form draft heads and immutable owner-compiled releases through A3S ORM. Migration `080` atomically persists one exact Goal/Plan-bound WorkflowRun, correlated Operation, semantic step projections, idempotency, audit, and Outbox through A3S ORM. One A3S Flow run executes Workflow-local `input`, `transform`, `branch`, and `output` steps; reconciliation verifies immutable input/payload/plan authority, rejects replay drift, and projects cancellation, deadlines, output, and bounded history. REST `1.14.0`, the maintained client, CLI, and 24 planning/Form/run Management MCP tools reuse the same CQRS lifecycle. Focused PostgreSQL 17, domain, REST, OpenAPI, client, CLI, MCP, replay, cancellation, and timeout tests pass. Protected Form submission, HumanTask commands/APIs, service/finite-task dispatch, typed capability steps, compensation, expanded clean cross-surface evidence, and public availability remain required |
+| `W0.3` | In progress; planning, native Form draft/release, minimal WorkflowRun, and internal HumanTask loop implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. Migration `079` adds project-scoped canonical Form draft heads and immutable owner-compiled releases. Migration `080` atomically persists one exact Goal/Plan-bound WorkflowRun, correlated Operation, semantic step projections, idempotency, audit, and Outbox. Migration `081` adds immutable accepted FormSubmission records, optimistic HumanTask aggregates, immutable WorkflowDecision records, hook Inbox evidence, and leased resume Outbox/receipt records through typed A3S ORM queries. One A3S Flow run executes Workflow-local `input`, `transform`, `branch`, `human_decision`, and `output` steps. Worker-role coordination validates exact FormRelease and hook authority, creates and activates the task, and resumes the same Flow hook with lease/retry/conflict recovery only after an immutable decision. A real PostgreSQL plus Flow test covers concurrent coordinators, tenant scoping, submission/decision atomicity, lease takeover, commit-before-ack recovery, receipt evidence, and replay. REST `1.14.0`, the maintained client, CLI, and 24 planning/Form/run Management MCP tools retain the existing non-task lifecycle. Public protected submission and HumanTask commands/APIs/client/CLI/MCP, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded clean cross-surface evidence, and public availability remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
@@ -1370,17 +1370,20 @@ runs pin runtime build `a3s-cloud-workflows@1`, while legacy unpinned histories
 remain replayable. PostgreSQL tests cover queue draining, bounded retries,
 terminal-failure readiness, and the existing nine Build Flow `SIGKILL`
 boundaries. Publishing the exact root compatibility lock remains open. This
-supports the minimal WorkflowRun execution slice; it does not implement
-protected submission, HumanTask product surfaces, service/finite-task
-dispatch, compensation, or `W0.4` provider steps. The native Form integration
+supports the minimal WorkflowRun and internal HumanTask execution slices; it
+does not implement public protected submission or HumanTask product surfaces,
+Resource Grant evaluation, expiry/cancellation coordination,
+service/finite-task dispatch, compensation, or `W0.4` provider steps. The
+native Form integration
 pins `a3s-form-core` `0.1.0` at
 revision `8d73dba5e88ded0de7ae0e1c7b1e599a5d9134de`, consumes its byte-identical
 interaction and submitted-value evaluation fixtures, and verifies
 exact/conflicting Flow hook redelivery. Cloud calls the owner compiler and
 evaluator through one application port. Migration `079`, the REST/client/CLI/
-Management MCP surfaces, and focused PostgreSQL evidence now close draft and
-release persistence, but they are not submission, worker, or end-to-end
-Workflow availability evidence.
+Management MCP surfaces, and focused PostgreSQL evidence close draft and
+release persistence. Migration `081` and the worker-role coordinator now close
+the internal accepted-submission-to-Flow-resume loop, but they do not expose a
+public task product or establish end-to-end Workflow availability.
 
 Workflow connectors call owning application ports. They cannot write Agent,
 MCP, Inference, Use, Workloads, Fleet, or Operations tables, publish provider

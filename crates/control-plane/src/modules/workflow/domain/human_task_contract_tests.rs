@@ -1,11 +1,12 @@
 use super::{
-    FlowResumePayload, FlowResumeReceipt, HumanTaskStatus, WorkflowDecision,
-    WorkflowDecisionOutcome,
+    FlowResumePayload, FlowResumeReceipt, HumanTaskInteractionSpec, HumanTaskRecord,
+    HumanTaskStatus, WorkflowDecision, WorkflowDecisionOutcome,
 };
 use crate::modules::shared_kernel::domain::{PrincipalId, WorkflowDecisionId};
 use crate::modules::workflow::test_support::{
     accepted_submission, authorization_reference, claimed_task, pending_task, timestamp,
 };
+use a3s_form_core::parse_json;
 use serde_json::json;
 use uuid::Uuid;
 
@@ -34,6 +35,59 @@ fn enforces_activation_claim_release_and_optimistic_versions() {
     assert_eq!(task.claimed_by, None);
     assert_eq!(task.aggregate_version, 4);
     task.validate().expect("task should remain valid");
+}
+
+#[test]
+fn binds_the_form_request_to_the_exact_claim_generation() {
+    let (task, principal_id) = pending_task();
+    let interaction = HumanTaskInteractionSpec::approval(
+        "Approve this change?",
+        Some("Review the exact proposed values.".into()),
+        Some(parse_json(br#"{"approved":false,"note":""}"#).expect("initial value")),
+    )
+    .expect("interaction spec");
+    let mut record =
+        HumanTaskRecord::create(task, interaction, 7, Uuid::now_v7()).expect("HumanTask record");
+
+    record.activate(1, timestamp(8, 1)).expect("activation");
+    record
+        .claim(2, principal_id, timestamp(8, 2))
+        .expect("claim");
+    let request = record
+        .interaction_request
+        .clone()
+        .expect("claim should create request");
+    assert_eq!(request.task.version, 3);
+    assert_eq!(
+        request.assignment.claimed_principal_id,
+        principal_id.to_string()
+    );
+    record.validate().expect("claimed record");
+
+    let mut drifted = record.clone();
+    drifted
+        .interaction_request
+        .as_mut()
+        .expect("request")
+        .max_value_bytes += 1;
+    assert!(drifted.validate().is_err());
+
+    record
+        .release(3, principal_id, timestamp(8, 3))
+        .expect("release");
+    assert!(record.interaction_request.is_none());
+    record
+        .claim(4, principal_id, timestamp(8, 4))
+        .expect("second claim");
+    assert_eq!(
+        record
+            .interaction_request
+            .as_ref()
+            .expect("second request")
+            .task
+            .version,
+        5
+    );
 }
 
 #[test]

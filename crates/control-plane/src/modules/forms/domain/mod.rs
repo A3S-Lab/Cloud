@@ -16,8 +16,8 @@ pub use entities::{
 };
 pub use events::{FormDraftChanged, FormReleasePublished};
 pub use repositories::{
-    CreateFormDraftWrite, FormPublicationRecord, IFormRepository, PublishFormReleaseWrite,
-    ReviseFormDraftWrite,
+    CreateFormDraftWrite, FormPublicationRecord, IFormRepository, IFormSubmissionRepository,
+    PublishFormReleaseWrite, ReviseFormDraftWrite,
 };
 pub use services::{FormSemanticCoreError, IFormSemanticCore};
 pub use value_objects::{
