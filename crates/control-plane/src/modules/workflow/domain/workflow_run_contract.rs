@@ -6,8 +6,8 @@ use super::{
     WORKFLOW_PLAN_MAX_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, sha256_digest, OrganizationId, PlanRevisionId, ProjectId, Sha256Digest,
-    WorkflowGoalId, WorkflowRunId,
+    canonical_json_bounded, sha256_digest, FormId, FormReleaseId, OrganizationId, PlanRevisionId,
+    ProjectId, Sha256Digest, WorkflowGoalId, WorkflowRunId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,8 @@ pub const WORKFLOW_RUN_INPUT_MAX_BYTES: usize = 8 * 1024 * 1024;
 pub const WORKFLOW_RUN_OUTPUT_MAX_BYTES: usize = 256 * 1024;
 pub const WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
 pub const WORKFLOW_RUN_MAX_TIMEOUT_SECONDS: u64 = 30 * 24 * 60 * 60;
+pub const WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA: &str = "cloud.workflow.human-decision-hook.v1";
+pub const WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT: u64 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -74,6 +76,94 @@ pub struct ResolvedWorkflowRunStep {
     pub policy: Option<WorkflowPolicy>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkflowHumanDecisionHookMetadata {
+    pub schema: String,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub workflow_run_id: WorkflowRunId,
+    pub plan_revision_id: PlanRevisionId,
+    pub plan_digest: Sha256Digest,
+    pub step_id: String,
+    pub step_attempt: u64,
+    pub configuration_digest: Sha256Digest,
+    pub form_id: FormId,
+    pub form_release_id: FormReleaseId,
+    pub form_release_digest: Sha256Digest,
+}
+
+impl WorkflowHumanDecisionHookMetadata {
+    pub fn from_run_step(
+        input: &WorkflowRunInput,
+        step: &ResolvedWorkflowRunStep,
+    ) -> Result<Self, String> {
+        if step.plan.kind != WorkflowStepKind::HumanDecision {
+            return Err("Workflow hook metadata requires a human-decision step".into());
+        }
+        let capability = step
+            .plan
+            .capability
+            .as_ref()
+            .ok_or_else(|| "Workflow human-decision step lost its FormRelease".to_owned())?;
+        capability.validate()?;
+        if capability.capability_type != super::CapabilityType::FormRelease {
+            return Err("Workflow human-decision step has the wrong capability type".into());
+        }
+        let form_release_id = uuid::Uuid::parse_str(&capability.revision)
+            .map(FormReleaseId::from_uuid)
+            .map_err(|error| format!("Workflow FormRelease identity is invalid: {error}"))?;
+        let value = Self {
+            schema: WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA.into(),
+            organization_id: input.organization_id,
+            project_id: input.project_id,
+            workflow_run_id: input.workflow_run_id,
+            plan_revision_id: input.plan_revision_id,
+            plan_digest: input.plan_digest.clone(),
+            step_id: step.plan.id.clone(),
+            step_attempt: WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT,
+            configuration_digest: step.plan.configuration_digest.clone(),
+            form_id: FormId::from_uuid(capability.resource_id),
+            form_release_id,
+            form_release_digest: capability.digest.clone(),
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.schema != WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA
+            || self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.workflow_run_id.as_uuid().is_nil()
+            || self.plan_revision_id.as_uuid().is_nil()
+            || self.form_id.as_uuid().is_nil()
+            || self.form_release_id.as_uuid().is_nil()
+            || self.step_attempt != WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT
+            || self.step_id.is_empty()
+            || self.step_id.len() > 96
+            || !self
+                .step_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err("Workflow human-decision hook metadata is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn flow_hook_id(&self) -> String {
+        format!("workflow-human:{}:{}", self.step_id, self.step_attempt)
+    }
+
+    pub fn flow_hook_token(&self) -> String {
+        format!(
+            "workflow-human:{}:{}:{}",
+            self.workflow_run_id, self.step_id, self.step_attempt
+        )
+    }
+}
+
 impl WorkflowRunInput {
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
         canonical_json_bounded(self, WORKFLOW_RUN_INPUT_MAX_BYTES, "WorkflowRun input")
@@ -118,10 +208,11 @@ impl WorkflowRunInput {
                 WorkflowStepKind::Input
                     | WorkflowStepKind::Transform
                     | WorkflowStepKind::Branch
+                    | WorkflowStepKind::HumanDecision
                     | WorkflowStepKind::Output
             ) {
                 return Err(format!(
-                    "WorkflowRun Phase 2 does not execute {} step {:?}",
+                    "WorkflowRun runtime does not execute {} step {:?}",
                     step.plan.kind.as_str(),
                     step.plan.id
                 ));
@@ -132,7 +223,7 @@ impl WorkflowRunInput {
                 .is_some_and(|policy| policy.mode != WorkflowPolicyMode::Static)
             {
                 return Err(format!(
-                    "WorkflowRun Phase 2 rejects recorded-choice policy on step {:?}",
+                    "WorkflowRun rejects recorded-choice policy on step {:?}",
                     step.plan.id
                 ));
             }
@@ -311,7 +402,9 @@ pub fn workflow_run_timeout_seconds(value: Option<u64>) -> Result<u64, String> {
 mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest};
-    use crate::modules::workflow::test_support::workflow_run_input;
+    use crate::modules::workflow::test_support::{
+        human_decision_workflow_run_input, workflow_run_input, TEST_HUMAN_STEP_ID,
+    };
 
     #[test]
     fn immutable_run_input_rejects_plan_input_payload_and_branch_drift() {
@@ -347,6 +440,35 @@ mod tests {
     }
 
     #[test]
+    fn human_decision_run_requires_an_exact_form_release_binding() {
+        let input = human_decision_workflow_run_input().expect("valid human-decision input");
+        input.validate().expect("human-decision input");
+
+        let mut missing = input.clone();
+        missing
+            .plan
+            .steps
+            .iter_mut()
+            .find(|step| step.id == TEST_HUMAN_STEP_ID)
+            .expect("human-decision step")
+            .capability = None;
+        refresh_plan_digest(&mut missing);
+        assert!(missing.validate().is_err());
+
+        let mut floating_release = input;
+        floating_release
+            .plan
+            .steps
+            .iter_mut()
+            .find(|step| step.id == TEST_HUMAN_STEP_ID)
+            .and_then(|step| step.capability.as_mut())
+            .expect("FormRelease capability")
+            .revision = "latest".into();
+        refresh_plan_digest(&mut floating_release);
+        assert!(floating_release.validate().is_err());
+    }
+
+    #[test]
     fn workflow_run_timeout_is_strictly_bounded() {
         assert_eq!(
             workflow_run_timeout_seconds(None).expect("default timeout"),
@@ -359,5 +481,17 @@ mod tests {
         );
         assert!(workflow_run_timeout_seconds(Some(0)).is_err());
         assert!(workflow_run_timeout_seconds(Some(WORKFLOW_RUN_MAX_TIMEOUT_SECONDS + 1)).is_err());
+    }
+
+    fn refresh_plan_digest(input: &mut WorkflowRunInput) {
+        input.plan_digest = Sha256Digest::parse(sha256_digest(
+            &canonical_json_bounded(
+                &input.plan,
+                WORKFLOW_PLAN_MAX_BYTES,
+                "WorkflowRun test plan",
+            )
+            .expect("canonical plan"),
+        ))
+        .expect("plan digest");
     }
 }

@@ -134,11 +134,12 @@ use crate::modules::workflow::{
     GetOntologyHandler, GetOntologyRevisionHandler, GetPlanRevisionHandler,
     GetWorkflowDefinitionHandler, GetWorkflowGoalHandler, GetWorkflowRevisionHandler,
     GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
+    HumanTaskCoordinator, HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository,
     IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
     IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
     ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
     ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
-    PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
+    PostgresHumanTaskRepository, PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
     PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
     ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WaitWorkflowRunHandler,
     WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
@@ -221,6 +222,8 @@ pub enum ControlPlaneStartupError {
     AgentExecution(String),
     #[error("could not initialize WorkflowRun execution: {0}")]
     WorkflowRun(String),
+    #[error("could not initialize HumanTask workers: {0}")]
+    HumanTask(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -277,6 +280,8 @@ pub async fn build_application_with_source_resolver(
     let workflow_runs: Arc<dyn IWorkflowRunRepository> =
         Arc::new(PostgresWorkflowRunRepository::new(executor.clone()));
     let forms: Arc<dyn IFormRepository> = Arc::new(PostgresFormRepository::new(executor.clone()));
+    let human_tasks: Arc<dyn IHumanTaskRepository> =
+        Arc::new(PostgresHumanTaskRepository::new(executor.clone()));
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
@@ -712,6 +717,30 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::WorkflowRun)?;
+    let human_task_coordinator = HumanTaskCoordinator::new(
+        Arc::clone(&workflow_runs),
+        Arc::clone(&forms),
+        Arc::clone(&human_tasks),
+        flow.engine(),
+        Duration::from_millis(config.human_tasks.coordination_poll_interval_ms),
+        config.human_tasks.coordination_batch_size,
+    )
+    .map_err(ControlPlaneStartupError::HumanTask)?;
+    let human_task_resume_worker = HumanTaskResumeWorker::new(
+        human_tasks,
+        flow.engine(),
+        HumanTaskResumeWorkerConfig {
+            batch_size: config.human_tasks.resume_batch_size,
+            poll_interval: Duration::from_millis(config.human_tasks.resume_poll_interval_ms),
+            lease_duration: Duration::from_millis(config.human_tasks.resume_lease_ms),
+            flow_operation_timeout: Duration::from_millis(
+                config.human_tasks.flow_operation_timeout_ms,
+            ),
+            initial_backoff: Duration::from_millis(config.human_tasks.retry_initial_ms),
+            maximum_backoff: Duration::from_millis(config.human_tasks.retry_max_ms),
+        },
+    )
+    .map_err(ControlPlaneStartupError::HumanTask)?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
@@ -912,6 +941,8 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(execution_reconciler),
             run_operations.then_some(agent_execution_reconciler),
             run_operations.then_some(workflow_run_reconciler),
+            run_operations.then_some(human_task_coordinator),
+            run_operations.then_some(human_task_resume_worker),
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),

@@ -519,7 +519,11 @@ mod tests {
             owner: capability_type.owner(),
             capability_type,
             resource_id: Uuid::now_v7(),
-            revision: "revision-1".into(),
+            revision: if capability_type == CapabilityType::FormRelease {
+                Uuid::now_v7().to_string()
+            } else {
+                "revision-1".into()
+            },
             digest: digest('d'),
             capability: "workflow.test".into(),
         }
@@ -623,6 +627,7 @@ mod tests {
     #[test]
     fn every_external_step_requires_its_exact_owning_capability_type() {
         let cases = [
+            (WorkflowStepKind::HumanDecision, CapabilityType::FormRelease),
             (
                 WorkflowStepKind::Execution,
                 CapabilityType::ExecutionTemplate,
@@ -655,6 +660,42 @@ mod tests {
         let mut local = fixture();
         local.steps[1].capability = Some(capability(CapabilityType::ExecutionTemplate));
         assert!(local.validate(Default::default()).is_err());
+    }
+
+    #[test]
+    fn human_decision_form_release_binding_round_trips_through_closed_acl() {
+        let form_id = Uuid::now_v7();
+        let release_id = Uuid::now_v7().to_string();
+        let form_digest = digest('f');
+        let mut spec = fixture();
+        spec.steps[1].kind = WorkflowStepKind::HumanDecision;
+        spec.steps[1].capability = Some(CapabilityReference {
+            owner: CapabilityOwner::Forms,
+            capability_type: CapabilityType::FormRelease,
+            resource_id: form_id,
+            revision: release_id.clone(),
+            digest: form_digest.clone(),
+            capability: "form.interact".into(),
+        });
+
+        let contract = WorkflowContract::from_spec(spec).expect("human-decision contract");
+        assert!(contract.canonical_acl().contains("owner = \"forms\""));
+        assert!(contract.canonical_acl().contains("type = \"form_release\""));
+
+        let restored = WorkflowContract::parse_acl(contract.canonical_acl()).expect("restore");
+        let binding = restored
+            .spec()
+            .steps
+            .iter()
+            .find(|step| step.id == "transform")
+            .and_then(|step| step.capability.as_ref())
+            .expect("FormRelease binding");
+        assert_eq!(binding.owner, CapabilityOwner::Forms);
+        assert_eq!(binding.capability_type, CapabilityType::FormRelease);
+        assert_eq!(binding.resource_id, form_id);
+        assert_eq!(binding.revision, release_id);
+        assert_eq!(binding.digest, form_digest);
+        assert_eq!(binding.capability, "form.interact");
     }
 
     #[test]

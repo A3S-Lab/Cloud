@@ -399,7 +399,7 @@ may retain private in-process state and source events but cannot add a
 Cloud-visible run store, scheduler, command queue, approval authority, or
 second semantic history.
 
-### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and minimal `W0.3` execution implemented)
+### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 
 Owns ontology revisions, Workflow definitions and revisions, goals,
 deterministic plan revisions, Workflow runs, human decisions, and semantic step
@@ -424,14 +424,19 @@ Supporting immutable records:
 - `WorkflowDecision`
 - `FormSubmission`
 
-The Phase 0 interaction boundary reuses A3S Form's exact `FormReleaseRef`,
-request, submission, canonicalization, and digest contracts. Forms owns an
-immutable accepted `FormSubmission`; Workflow owns the optimistically versioned
-HumanTask and immutable WorkflowDecision. Flow owns hook history. Cloud creates
-a resume receipt only after observing the exact matching `HookReceived` event,
-never from Outbox delivery alone. Draft/release persistence, commands, APIs,
-and tasklist projections remain later slices and are not implied by these
-domain records.
+The interaction boundary reuses A3S Form's exact `FormReleaseRef`, request,
+submission, canonicalization, and digest contracts. Forms owns an immutable
+accepted `FormSubmission`; Workflow owns the optimistically versioned
+HumanTask and immutable WorkflowDecision. Migration `081` persists those
+authorities, a deduplicating Flow-hook Inbox, and a leased resume Outbox through
+typed A3S ORM queries. Flow remains the sole hook-history authority. Cloud
+creates a resume receipt only after observing the exact matching
+`HookReceived` event, never from Outbox delivery alone. Worker-role coordination
+validates the exact interaction-mode FormRelease and hook metadata before task
+creation, and recovers a resume committed before receipt acknowledgement.
+Draft/release commands and APIs are implemented; public protected submission,
+HumanTask/tasklist surfaces, Resource Grant evaluation, and expiry/cancellation
+coordination remain later slices.
 
 The first closed Workflow contract uses these semantic step kinds:
 
@@ -1157,13 +1162,16 @@ contexts' tables.
   bounded history use the same run and never create a planner-specific
   execution history. Immutable Plan, input, payload, branch, and replay drift
   fail closed.
-- The implemented executor admits only Workflow-local `input`, `transform`,
-  `branch`, and `output` steps. Each result is digest-bound and projected from
-  the correlated A3S Flow history; unselected branch steps become `skipped`.
-- HumanTask, service/finite-task, Agent, MCP, model, Tool, memory, and
-  subworkflow dispatch remain future gates. When admitted, each child stores
-  one exact owning-context identity so ambiguous dispatch can be adopted
-  without creating a second child.
+- The implemented executor admits Workflow-local `input`, `transform`,
+  `branch`, `human_decision`, and `output` steps. Each deterministic result is
+  digest-bound and projected from the correlated A3S Flow history; unselected
+  branch steps become `skipped`. A human decision suspends the same Flow run on
+  an authority-bound hook and resumes it only from the immutable decision.
+- Internal HumanTask dispatch and resume recovery are implemented. Public task
+  commands and authorization, service/finite-task, Agent, MCP, model, Tool,
+  memory, and subworkflow dispatch remain future gates. When admitted, each
+  child stores one exact owning-context identity so ambiguous dispatch can be
+  adopted without creating a second child.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
   decision, and evidence. It cannot hide non-deterministic mutation inside
   Flow replay.
@@ -1608,9 +1616,10 @@ Operation ID, and A3S Flow run ID before any step work starts. Terminal output
 exists only for `completed`; an error exists only for `failed` or `timed_out`;
 all terminal states are immutable. A cancellation request preserves
 `cancelling` until the correlated Flow history reaches `cancelled`. `waiting`
-is reserved for later external/HumanTask steps. Pause/resume, compensation,
-capability blocking, and replanning remain gated work and cannot be inferred
-from the minimal lifecycle.
+is now projected while an admitted `human_decision` hook awaits its exact
+WorkflowDecision. General pause/resume, service/capability blocking,
+compensation, and replanning remain gated work and cannot be inferred from this
+lifecycle.
 
 ### Evolution experiment and promotion state (planned EV0)
 

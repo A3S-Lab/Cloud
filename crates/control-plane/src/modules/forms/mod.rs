@@ -22,9 +22,12 @@ pub use domain::{
     AcceptedFormSubmission, CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged,
     FormPublicationRecord, FormRelease, FormReleaseContent, FormReleasePublished,
     FormReleaseSummary, FormSemanticCoreError, FormSubmission, IFormRepository, IFormSemanticCore,
-    PublishFormReleaseWrite, ReviseFormDraftWrite, CLOUD_FORM_DOCUMENT_MAX_BYTES,
-    CLOUD_FORM_RELEASE_MAX_DOCUMENT_BYTES, CLOUD_FORM_RELEASE_MAX_PLAN_BYTES,
-    CLOUD_FORM_SUBMISSION_MAX_VALUE_BYTES,
+    IFormSubmissionRepository, PublishFormReleaseWrite, ReviseFormDraftWrite,
+    CLOUD_FORM_DOCUMENT_MAX_BYTES, CLOUD_FORM_RELEASE_MAX_DOCUMENT_BYTES,
+    CLOUD_FORM_RELEASE_MAX_PLAN_BYTES, CLOUD_FORM_SUBMISSION_MAX_VALUE_BYTES,
 };
-pub use infrastructure::{InMemoryFormRepository, NativeFormSemanticCore, PostgresFormRepository};
+pub use infrastructure::{
+    InMemoryFormRepository, NativeFormSemanticCore, PostgresFormRepository,
+    PostgresFormSubmissionRepository,
+};
 pub use presentation::FormsModule;

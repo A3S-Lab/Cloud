@@ -57,6 +57,17 @@ operations {
   lease_ms = 30000
 }
 
+human_tasks {
+  coordination_poll_interval_ms = 1000
+  coordination_batch_size = 100
+  resume_poll_interval_ms = 250
+  resume_batch_size = 100
+  resume_lease_ms = 30000
+  flow_operation_timeout_ms = 5000
+  retry_initial_ms = 500
+  retry_max_ms = 30000
+}
+
 deployments {
   reconcile_interval_ms = 30000
   command_ttl_ms = 180000

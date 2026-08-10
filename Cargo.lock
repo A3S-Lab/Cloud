@@ -459,8 +459,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-orm"
-version = "0.2.0"
-source = "git+https://github.com/A3S-Lab/ORM.git?rev=a09b4db0f55c29cff3cb7963f2d45125ed7b3936#a09b4db0f55c29cff3cb7963f2d45125ed7b3936"
+version = "0.2.1"
+source = "git+https://github.com/A3S-Lab/ORM.git?rev=9cb0d77210539b2c4f3f38b7cb127bf9f176815b#9cb0d77210539b2c4f3f38b7cb127bf9f176815b"
 dependencies = [
  "async-trait",
  "bytes",
@@ -6025,7 +6025,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -6934,7 +6934,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

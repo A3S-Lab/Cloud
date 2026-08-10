@@ -1,8 +1,8 @@
 use super::*;
 use crate::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
-    EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
-    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
+    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use crate::modules::agents::InMemoryAgentRepository;
@@ -398,6 +398,16 @@ fn config() -> CloudConfig {
         operations: OperationsConfig {
             reconcile_interval_ms: 1_000,
             lease_ms: 5_000,
+        },
+        human_tasks: HumanTasksConfig {
+            coordination_poll_interval_ms: 100,
+            coordination_batch_size: 100,
+            resume_poll_interval_ms: 100,
+            resume_batch_size: 100,
+            resume_lease_ms: 5_000,
+            flow_operation_timeout_ms: 1_000,
+            retry_initial_ms: 100,
+            retry_max_ms: 5_000,
         },
         deployments: DeploymentsConfig {
             reconcile_interval_ms: 1_000,

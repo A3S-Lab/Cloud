@@ -715,6 +715,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/080_workflow_runs.sql"
             )),
         ),
+        Migration::new(
+            "081",
+            "Human tasks, Form submissions, and durable Flow resume delivery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/081_human_tasks_and_form_submissions.sql"
+            )),
+        ),
     ]
 }
 

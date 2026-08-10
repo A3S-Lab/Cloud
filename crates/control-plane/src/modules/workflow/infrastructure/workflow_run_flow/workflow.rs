@@ -2,7 +2,8 @@ use super::{
     decode_input, WorkflowLocalStepInput, WorkflowLocalStepResult, WORKFLOW_RUN_STEP_NAME,
 };
 use crate::modules::workflow::domain::{
-    flow_step_id, ResolvedWorkflowRunStep, WorkflowEdgeSpec, WorkflowRunInput, WorkflowStepKind,
+    flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep, WorkflowEdgeSpec,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepKind,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowInvocation};
@@ -64,6 +65,27 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             resolved.insert(step.plan.id.clone(), ResolvedState::Inactive);
             continue;
         };
+        if step.plan.kind == WorkflowStepKind::HumanDecision {
+            let metadata = WorkflowHumanDecisionHookMetadata::from_run_step(&input, step)
+                .map_err(FlowError::InvalidWorkflow)?;
+            let hook_id = metadata.flow_hook_id();
+            if context.hook_disposed(&hook_id) {
+                return Ok(context.fail(format!(
+                    "Workflow human-decision hook for step {:?} was disposed",
+                    step.plan.id
+                )));
+            }
+            if let Some(payload) = context.hook_payload(&hook_id) {
+                let result = human_decision_result(&invocation.run_id, &hook_id, step, payload)?;
+                resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                continue;
+            }
+            return Ok(context.create_hook(
+                hook_id,
+                metadata.flow_hook_token(),
+                serde_json::to_value(metadata)?,
+            ));
+        }
         let durable_step_id = flow_step_id(&step.plan.id);
         if let Some(error) = context.step_failed(&durable_step_id) {
             return Ok(context.fail(format!("Workflow step {:?} failed: {error}", step.plan.id)));
@@ -112,6 +134,47 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
         Ok(context.fail("WorkflowRun graph stalled before its output completed"))
     } else {
         Ok(context.schedule_steps(ready))
+    }
+}
+
+pub(super) fn human_decision_result(
+    run_id: &str,
+    hook_id: &str,
+    step: &ResolvedWorkflowRunStep,
+    observed: &Value,
+) -> Result<WorkflowLocalStepResult, FlowError> {
+    let payload = serde_json::from_value::<FlowResumePayload>(observed.clone())
+        .map_err(|_| human_decision_payload_drift(run_id, &step.plan.id))?;
+    payload
+        .validate()
+        .map_err(|_| human_decision_payload_drift(run_id, &step.plan.id))?;
+    if payload.workflow_run_id.to_string() != run_id
+        || payload.flow_run_id != run_id
+        || payload.flow_hook_id != hook_id
+    {
+        return Err(human_decision_payload_drift(run_id, &step.plan.id));
+    }
+    let output = serde_json::to_value(&payload.output)
+        .map_err(|_| human_decision_payload_drift(run_id, &step.plan.id))?;
+    let result = WorkflowLocalStepResult {
+        step_id: step.plan.id.clone(),
+        kind: WorkflowStepKind::HumanDecision,
+        output,
+        output_digest: payload.output_digest,
+        selected_handle: None,
+    };
+    result
+        .validate(step)
+        .map_err(|_| human_decision_payload_drift(run_id, &step.plan.id))?;
+    Ok(result)
+}
+
+fn human_decision_payload_drift(run_id: &str, step_id: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow human-decision step {step_id:?} received an invalid authority-bound payload"
+        ),
     }
 }
 

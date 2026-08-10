@@ -2,8 +2,8 @@ use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod, QueueOptions};
 use a3s_cloud_control_plane::app::build_application_with_source_resolver;
 use a3s_cloud_control_plane::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
-    EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
-    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
+    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
@@ -80,6 +80,8 @@ mod gateway_replica_recovery_support;
 mod gateway_rollouts_support;
 #[path = "support/github_connection.rs"]
 mod github_connection_support;
+#[path = "support/human_tasks.rs"]
+mod human_tasks_support;
 #[path = "support/mcp_route_policies.rs"]
 mod mcp_route_policies_support;
 #[path = "support/postgres_fixture.rs"]
@@ -218,6 +220,32 @@ async fn postgres_form_lifecycle_is_atomic_tenant_scoped_and_replay_safe() {
     run_isolated_postgres(&admin_url, forms_support::exercise_form_persistence)
         .await
         .expect("PostgreSQL Form lifecycle gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_human_task_lifecycle_is_atomic_tenant_scoped_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        human_tasks_support::exercise_human_task_persistence,
+    )
+    .await
+    .expect("PostgreSQL HumanTask lifecycle gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_human_task_flow_closes_the_authority_bound_decision_loop() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        human_tasks_support::exercise_human_task_flow_end_to_end,
+    )
+    .await
+    .expect("PostgreSQL + A3S Flow HumanTask decision-loop gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -760,6 +788,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
              drop table if exists identity_principals cascade;
+             drop table if exists workflow_resume_receipts cascade;
+             drop table if exists workflow_resume_outbox cascade;
+             drop table if exists workflow_human_task_inbox cascade;
+             drop table if exists workflow_decisions cascade;
+             drop table if exists human_tasks cascade;
+             drop table if exists form_submissions cascade;
              drop table if exists form_releases cascade;
              drop table if exists form_drafts cascade;
              drop table if exists ontology_revisions cascade;
@@ -782,6 +816,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists a3s_orm_migrations cascade;
              drop function if exists reject_cloud_outbox() cascade;
              drop function if exists reject_outbox_ack() cascade;
+             drop function if exists reject_human_task_immutable_mutation() cascade;
+             drop function if exists protect_human_task_authority() cascade;
+             drop function if exists protect_workflow_resume_outbox_authority() cascade;
              drop function if exists reject_form_release_mutation() cascade;
              drop function if exists reject_ontology_revision_mutation() cascade;",
         )
@@ -794,7 +831,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 80);
+    assert_eq!(applied, 81);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -807,8 +844,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "agent_execution_events",
         "form_drafts",
         "form_releases",
+        "form_submissions",
+        "human_tasks",
         "ontologies",
         "ontology_revisions",
+        "workflow_decisions",
+        "workflow_human_task_inbox",
+        "workflow_resume_outbox",
+        "workflow_resume_receipts",
         "workflow_runs",
         "workflow_step_projections",
     ] {
@@ -827,10 +870,26 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(workflow_run_trigger_count, 4);
+    let immutable_human_record_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid in ('form_submissions'::regclass, 'workflow_decisions'::regclass, 'workflow_human_task_inbox'::regclass, 'workflow_resume_receipts'::regclass) and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(immutable_human_record_trigger_count, 4);
+    let protected_human_task_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid in ('human_tasks'::regclass, 'workflow_resume_outbox'::regclass) and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(protected_human_task_trigger_count, 4);
     for index in [
         "workflow_runs_project_requested_idx",
         "workflow_runs_reconciliation_idx",
         "workflow_step_projections_run_status_idx",
+        "human_tasks_project_status_idx",
+        "human_tasks_run_step_idx",
+        "workflow_resume_outbox_delivery_idx",
+        "workflow_human_task_inbox_observed_idx",
     ] {
         let relation = database
             .fetch_one_as(
@@ -841,6 +900,18 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .await?;
         assert_eq!(relation.as_deref(), Some(index));
     }
+    let workflow_step_kind_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'workflow_step_projections'::regclass and conname = 'workflow_step_projections_kind_check'",
+        ))
+        .await?;
+    assert!(workflow_step_kind_constraint.contains("'human_decision'"));
+    let decision_submission_foreign_key = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'workflow_decisions'::regclass and conname = 'workflow_decisions_submission_fk'",
+        ))
+        .await?;
+    assert_eq!(decision_submission_foreign_key, 1);
     let node_command_kind_constraint = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'node_commands'::regclass and conname = 'node_commands_command_kind_check'",
