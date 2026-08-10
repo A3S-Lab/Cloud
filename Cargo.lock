@@ -29,9 +29,9 @@ dependencies = [
 
 [[package]]
 name = "a3s-boot"
-version = "0.1.4"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99a48fd62e6c11e73ea4836de3d74c7498076b8a6eb9440e53ca90036314f8ca"
+checksum = "41bf7da33603a96362fb9265ee68b8412e654959cbe781c9ab081c0f6c1988b2"
 dependencies = [
  "a3s-lane",
  "a3s-orm",
@@ -168,7 +168,7 @@ dependencies = [
  "a3s-cloud-contracts",
  "a3s-cloud-node-agent",
  "a3s-event",
- "a3s-flow",
+ "a3s-flow 0.12.0",
  "a3s-form-core",
  "a3s-orm",
  "a3s-runtime",
@@ -271,7 +271,7 @@ source = "git+https://github.com/A3S-Lab/Code.git?rev=e0b385b0db667add293f038cd1
 dependencies = [
  "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-common",
- "a3s-flow",
+ "a3s-flow 0.11.0",
  "a3s-lane",
  "a3s-memory",
  "a3s-search",
@@ -363,6 +363,22 @@ dependencies = [
 name = "a3s-flow"
 version = "0.11.0"
 source = "git+https://github.com/A3S-Lab/Flow.git?rev=280e470563996203b176a4fb5a2fdf7e96a7b1f2#280e470563996203b176a4fb5a2fdf7e96a7b1f2"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "a3s-flow"
+version = "0.12.0"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=0650f598a1d31e0036ea94b218d5db41031ec042#0650f598a1d31e0036ea94b218d5db41031ec042"
 dependencies = [
  "a3s-boot",
  "a3s-orm",
@@ -459,8 +475,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-orm"
-version = "0.2.1"
-source = "git+https://github.com/A3S-Lab/ORM.git?rev=9cb0d77210539b2c4f3f38b7cb127bf9f176815b#9cb0d77210539b2c4f3f38b7cb127bf9f176815b"
+version = "0.3.0"
+source = "git+https://github.com/A3S-Lab/ORM.git?rev=b04ab197deeebe23acbd5dd922f734032622368f#b04ab197deeebe23acbd5dd922f734032622368f"
 dependencies = [
  "async-trait",
  "bytes",
@@ -2989,7 +3005,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tokio",
  "tower-service",
  "tracing",
@@ -4602,7 +4618,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4640,7 +4656,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.5.10",
+ "socket2 0.6.5",
  "tracing",
  "windows-sys 0.61.2",
 ]
@@ -6025,7 +6041,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",
@@ -6934,7 +6950,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
