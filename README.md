@@ -154,10 +154,15 @@ new unpinned Operation runs are not created. Queue retry exhaustion is surfaced
 as a coordinator and readiness failure, shutdown drains the worker, and Flow's
 non-terminal cancellation state projects as `cancelling`. The real PostgreSQL
 queue gate and the existing nine-boundary Build Flow `SIGKILL` matrix pass on
-this dependency set. This is the reusable `F0` durability substrate used by
-the WorkflowRun and internal HumanTask slices, not a claim that public A3S Form
-submission, the HumanTask product, typed capability execution, or production
-Workflow recovery is complete.
+this dependency set. A separate four-boundary PostgreSQL WorkflowRun
+`SIGKILL` matrix now verifies API commit-before-response replay, terminal Flow
+adoption before Operation projection, terminal-history adoption before
+WorkflowRun projection, and committed cancellation before Flow delivery. Each
+restart preserves one WorkflowRun, Operation, Flow run, terminal history, and
+monotonic projection version. This is the reusable `F0` durability substrate
+used by the WorkflowRun and internal HumanTask slices, not a claim that public
+A3S Form submission, the HumanTask product, typed capability execution, or
+production Workflow recovery is complete.
 
 The Form integration pins native `a3s-form-core` `0.1.0` at revision
 `8d73dba5e88ded0de7ae0e1c7b1e599a5d9134de` and consumes the owner

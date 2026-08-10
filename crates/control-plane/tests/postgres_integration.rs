@@ -92,6 +92,8 @@ mod resource_claims_support;
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
 mod source_subscription_support;
+#[path = "support/workflow_run_process_death.rs"]
+mod workflow_run_process_death_support;
 #[path = "support/workload_rollback.rs"]
 mod workload_rollback_support;
 #[path = "support/workloads.rs"]
@@ -153,6 +155,14 @@ async fn build_flow_postgres_process_death_probe() {
         .expect("run persistent Build Flow process-death probe");
 }
 
+#[tokio::test]
+#[ignore = "private subprocess used only by the WorkflowRun process-death gate"]
+async fn workflow_run_postgres_process_death_probe() {
+    workflow_run_process_death_support::run_probe()
+        .await
+        .expect("run WorkflowRun process-death probe");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_boundary() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -164,6 +174,19 @@ async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_bo
     )
     .await
     .expect("persistent Build Flow process-death gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_workflow_run_survives_api_and_worker_process_death() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        workflow_run_process_death_support::exercise_process_death_matrix,
+    )
+    .await
+    .expect("WorkflowRun API and worker process-death gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

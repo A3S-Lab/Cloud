@@ -1,3 +1,11 @@
+mod rows;
+mod schema;
+
+use self::rows::{
+    decode_run, decode_step, WorkflowRunRow, WorkflowRunSelection, WorkflowStepRow,
+    WorkflowStepSelection,
+};
+use self::schema::{OperationRequests, WorkflowRuns, WorkflowStepProjections};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
     is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
@@ -6,24 +14,16 @@ use crate::infrastructure::{
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OperationId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
-    RepositoryError, Sha256Digest, WorkflowGoalId, WorkflowRunId,
+    IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError, WorkflowRunId,
 };
 use crate::modules::workflow::domain::repositories::WorkflowRunWriteReference;
 use crate::modules::workflow::domain::{
     CancelWorkflowRunWrite, CreateWorkflowRunWrite, IWorkflowRunRepository, WorkflowRun,
-    WorkflowRunInput, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepKind,
-    WorkflowStepProjection, WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME,
-    WORKFLOW_RUN_FLOW_VERSION,
+    WorkflowRunRecord, WorkflowStepProjection, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
 };
-use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
+use a3s_orm::{insert_into, select_from, update_table, OrderDirection, PostgresExecutor};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use serde_json::Value;
 use uuid::Uuid;
-
-const SELECT_RUNS: &str = "select r.organization_id, r.project_id, r.id, r.workflow_goal_id, r.plan_revision_id, r.plan_digest, r.operation_id, r.flow_run_id, r.flow_runtime_build_id, r.execution_input, r.execution_input_digest, r.status, r.last_flow_sequence, r.output, r.output_digest, r.error, r.aggregate_version, r.requested_by, r.requested_at, r.updated_at, r.started_at, r.cancellation_requested_at, r.cancellation_reason, r.finished_at from workflow_runs r";
-const SELECT_STEPS: &str = "select organization_id, project_id, workflow_run_id, step_id, kind, status, flow_step_id, attempt_generation, selected_handle, result, result_digest, error, evidence_references, last_flow_sequence, updated_at from workflow_step_projections";
 
 #[derive(Clone)]
 pub struct PostgresWorkflowRunRepository {
@@ -143,13 +143,12 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
                 Box::pin(async move {
                     let rows = fetch_all::<WorkflowRunRow, _>(
                         transaction,
-                        sql_query::<WorkflowRunRow>(SELECT_RUNS)
-                            .append(" where r.organization_id = ")
-                            .bind(organization_id.as_uuid())
-                            .append(" and r.project_id = ")
-                            .bind(project_id.as_uuid())
-                            .append(" order by r.requested_at desc, r.id desc limit ")
-                            .bind(limit),
+                        run_select()
+                            .filter(WorkflowRuns::organization_id().eq(organization_id.as_uuid()))
+                            .filter(WorkflowRuns::project_id().eq(project_id.as_uuid()))
+                            .order_by(WorkflowRuns::requested_at(), OrderDirection::Desc)
+                            .order_by(WorkflowRuns::id(), OrderDirection::Desc)
+                            .limit(limit as u64),
                     )
                     .await?;
                     let mut records = Vec::with_capacity(rows.len());
@@ -237,9 +236,14 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
                 Box::pin(async move {
                     let rows = fetch_all::<WorkflowRunRow, _>(
                         transaction,
-                        sql_query::<WorkflowRunRow>(SELECT_RUNS)
-                            .append(" where r.status not in ('completed', 'failed', 'cancelled', 'timed_out') order by r.requested_at asc, r.id asc limit ")
-                            .bind(limit),
+                        run_select()
+                            .filter(WorkflowRuns::status().ne("completed"))
+                            .filter(WorkflowRuns::status().ne("failed"))
+                            .filter(WorkflowRuns::status().ne("cancelled"))
+                            .filter(WorkflowRuns::status().ne("timed_out"))
+                            .order_by(WorkflowRuns::requested_at(), OrderDirection::Asc)
+                            .order_by(WorkflowRuns::id(), OrderDirection::Asc)
+                            .limit(limit as u64),
                     )
                     .await?;
                     let mut records = Vec::with_capacity(rows.len());
@@ -330,23 +334,24 @@ async fn insert_operation(
         "WorkflowRun Operation",
         execute(
             transaction,
-            sql_query::<()>("insert into operation_requests (operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at) values (")
-                .bind(operation.id.as_uuid())
-                .append(", ")
-                .bind(operation.organization_id.as_uuid())
-                .append(", ")
-                .bind(operation.subject.kind())
-                .append(", ")
-                .bind(operation.subject.id())
-                .append(", ")
-                .bind(operation.workflow.name())
-                .append(", ")
-                .bind(operation.workflow.version())
-                .append(", ")
-                .bind(operation.input)
-                .append(", ")
-                .bind(operation.requested_at)
-                .append(")"),
+            insert_into::<OperationRequests>()
+                .value(OperationRequests::operation_id(), operation.id.as_uuid())
+                .value(
+                    OperationRequests::organization_id(),
+                    operation.organization_id.as_uuid(),
+                )
+                .value(OperationRequests::subject_kind(), operation.subject.kind())
+                .value(OperationRequests::subject_id(), operation.subject.id())
+                .value(
+                    OperationRequests::workflow_name(),
+                    operation.workflow.name(),
+                )
+                .value(
+                    OperationRequests::workflow_version(),
+                    operation.workflow.version(),
+                )
+                .value(OperationRequests::input(), operation.input)
+                .value(OperationRequests::requested_at(), operation.requested_at),
         )
         .await?,
     )
@@ -366,55 +371,57 @@ async fn insert_run(
         "WorkflowRun",
         execute(
             transaction,
-            sql_query::<()>("insert into workflow_runs (organization_id, project_id, id, workflow_goal_id, plan_revision_id, plan_digest, operation_id, flow_run_id, flow_runtime_build_id, execution_input, execution_input_digest, status, last_flow_sequence, output, output_digest, error, aggregate_version, requested_by, requested_at, updated_at, started_at, cancellation_requested_at, cancellation_reason, finished_at) values (")
-                .bind(run.organization_id.as_uuid())
-                .append(", ")
-                .bind(run.project_id.as_uuid())
-                .append(", ")
-                .bind(run.id.as_uuid())
-                .append(", ")
-                .bind(run.workflow_goal_id.as_uuid())
-                .append(", ")
-                .bind(run.plan_revision_id.as_uuid())
-                .append(", ")
-                .bind(run.plan_digest.as_str())
-                .append(", ")
-                .bind(run.operation_id.as_uuid())
-                .append(", ")
-                .bind(run.flow_run_id.as_str())
-                .append(", ")
-                .bind(run.flow_runtime_build_id.as_deref())
-                .append(", ")
-                .bind(execution_input)
-                .append(", ")
-                .bind(run.execution_input_digest.as_str())
-                .append(", ")
-                .bind(run.status.as_str())
-                .append(", ")
-                .bind(run.last_flow_sequence)
-                .append(", ")
-                .bind(run.output.clone())
-                .append(", ")
-                .bind(run.output_digest.as_ref().map(Sha256Digest::as_str))
-                .append(", ")
-                .bind(run.error.as_deref())
-                .append(", ")
-                .bind(run.aggregate_version)
-                .append(", ")
-                .bind(run.requested_by.as_uuid())
-                .append(", ")
-                .bind(run.requested_at)
-                .append(", ")
-                .bind(run.updated_at)
-                .append(", ")
-                .bind(run.started_at)
-                .append(", ")
-                .bind(run.cancellation_requested_at)
-                .append(", ")
-                .bind(run.cancellation_reason.as_deref())
-                .append(", ")
-                .bind(run.finished_at)
-                .append(")"),
+            insert_into::<WorkflowRuns>()
+                .value(
+                    WorkflowRuns::organization_id(),
+                    run.organization_id.as_uuid(),
+                )
+                .value(WorkflowRuns::project_id(), run.project_id.as_uuid())
+                .value(WorkflowRuns::id(), run.id.as_uuid())
+                .value(
+                    WorkflowRuns::workflow_goal_id(),
+                    run.workflow_goal_id.as_uuid(),
+                )
+                .value(
+                    WorkflowRuns::plan_revision_id(),
+                    run.plan_revision_id.as_uuid(),
+                )
+                .value(WorkflowRuns::plan_digest(), run.plan_digest.as_str())
+                .value(WorkflowRuns::operation_id(), run.operation_id.as_uuid())
+                .value(WorkflowRuns::flow_run_id(), run.flow_run_id.as_str())
+                .value(
+                    WorkflowRuns::flow_runtime_build_id(),
+                    run.flow_runtime_build_id.clone(),
+                )
+                .value(WorkflowRuns::execution_input(), execution_input)
+                .value(
+                    WorkflowRuns::execution_input_digest(),
+                    run.execution_input_digest.as_str(),
+                )
+                .value(WorkflowRuns::status(), run.status.as_str())
+                .value(WorkflowRuns::last_flow_sequence(), run.last_flow_sequence)
+                .value(WorkflowRuns::output(), run.output.clone())
+                .value(
+                    WorkflowRuns::output_digest(),
+                    run.output_digest
+                        .as_ref()
+                        .map(|digest| digest.as_str().to_owned()),
+                )
+                .value(WorkflowRuns::error(), run.error.clone())
+                .value(WorkflowRuns::aggregate_version(), run.aggregate_version)
+                .value(WorkflowRuns::requested_by(), run.requested_by.as_uuid())
+                .value(WorkflowRuns::requested_at(), run.requested_at)
+                .value(WorkflowRuns::updated_at(), run.updated_at)
+                .value(WorkflowRuns::started_at(), run.started_at)
+                .value(
+                    WorkflowRuns::cancellation_requested_at(),
+                    run.cancellation_requested_at,
+                )
+                .value(
+                    WorkflowRuns::cancellation_reason(),
+                    run.cancellation_reason.clone(),
+                )
+                .value(WorkflowRuns::finished_at(), run.finished_at),
         )
         .await?,
     )
@@ -428,37 +435,51 @@ async fn insert_step(
         "WorkflowStepProjection",
         execute(
             transaction,
-            sql_query::<()>("insert into workflow_step_projections (organization_id, project_id, workflow_run_id, step_id, kind, status, flow_step_id, attempt_generation, selected_handle, result, result_digest, error, evidence_references, last_flow_sequence, updated_at) values (")
-                .bind(step.organization_id.as_uuid())
-                .append(", ")
-                .bind(step.project_id.as_uuid())
-                .append(", ")
-                .bind(step.workflow_run_id.as_uuid())
-                .append(", ")
-                .bind(step.step_id.as_str())
-                .append(", ")
-                .bind(step.kind.as_str())
-                .append(", ")
-                .bind(step.status.as_str())
-                .append(", ")
-                .bind(step.flow_step_id.as_str())
-                .append(", ")
-                .bind(step.attempt_generation)
-                .append(", ")
-                .bind(step.selected_handle.as_deref())
-                .append(", ")
-                .bind(step.result.clone())
-                .append(", ")
-                .bind(step.result_digest.as_ref().map(Sha256Digest::as_str))
-                .append(", ")
-                .bind(step.error.as_deref())
-                .append(", ")
-                .bind(serde_json::to_value(&step.evidence_references)?)
-                .append(", ")
-                .bind(step.last_flow_sequence)
-                .append(", ")
-                .bind(step.updated_at)
-                .append(")"),
+            insert_into::<WorkflowStepProjections>()
+                .value(
+                    WorkflowStepProjections::organization_id(),
+                    step.organization_id.as_uuid(),
+                )
+                .value(
+                    WorkflowStepProjections::project_id(),
+                    step.project_id.as_uuid(),
+                )
+                .value(
+                    WorkflowStepProjections::workflow_run_id(),
+                    step.workflow_run_id.as_uuid(),
+                )
+                .value(WorkflowStepProjections::step_id(), step.step_id.as_str())
+                .value(WorkflowStepProjections::kind(), step.kind.as_str())
+                .value(WorkflowStepProjections::status(), step.status.as_str())
+                .value(
+                    WorkflowStepProjections::flow_step_id(),
+                    step.flow_step_id.as_str(),
+                )
+                .value(
+                    WorkflowStepProjections::attempt_generation(),
+                    step.attempt_generation,
+                )
+                .value(
+                    WorkflowStepProjections::selected_handle(),
+                    step.selected_handle.clone(),
+                )
+                .value(WorkflowStepProjections::result(), step.result.clone())
+                .value(
+                    WorkflowStepProjections::result_digest(),
+                    step.result_digest
+                        .as_ref()
+                        .map(|digest| digest.as_str().to_owned()),
+                )
+                .value(WorkflowStepProjections::error(), step.error.clone())
+                .value(
+                    WorkflowStepProjections::evidence_references(),
+                    serde_json::to_value(&step.evidence_references)?,
+                )
+                .value(
+                    WorkflowStepProjections::last_flow_sequence(),
+                    step.last_flow_sequence,
+                )
+                .value(WorkflowStepProjections::updated_at(), step.updated_at),
         )
         .await?,
     )
@@ -471,36 +492,36 @@ async fn persist_run(
 ) -> Result<(), PostgresPersistenceError> {
     let rows = execute(
         transaction,
-        sql_query::<()>("update workflow_runs set flow_runtime_build_id = ")
-            .bind(run.flow_runtime_build_id.as_deref())
-            .append(", status = ")
-            .bind(run.status.as_str())
-            .append(", last_flow_sequence = ")
-            .bind(run.last_flow_sequence)
-            .append(", output = ")
-            .bind(run.output.clone())
-            .append(", output_digest = ")
-            .bind(run.output_digest.as_ref().map(Sha256Digest::as_str))
-            .append(", error = ")
-            .bind(run.error.as_deref())
-            .append(", aggregate_version = ")
-            .bind(run.aggregate_version)
-            .append(", updated_at = ")
-            .bind(run.updated_at)
-            .append(", started_at = ")
-            .bind(run.started_at)
-            .append(", cancellation_requested_at = ")
-            .bind(run.cancellation_requested_at)
-            .append(", cancellation_reason = ")
-            .bind(run.cancellation_reason.as_deref())
-            .append(", finished_at = ")
-            .bind(run.finished_at)
-            .append(" where organization_id = ")
-            .bind(run.organization_id.as_uuid())
-            .append(" and id = ")
-            .bind(run.id.as_uuid())
-            .append(" and aggregate_version = ")
-            .bind(expected_version),
+        update_table::<WorkflowRuns>()
+            .set(
+                WorkflowRuns::flow_runtime_build_id(),
+                run.flow_runtime_build_id.clone(),
+            )
+            .set(WorkflowRuns::status(), run.status.as_str())
+            .set(WorkflowRuns::last_flow_sequence(), run.last_flow_sequence)
+            .set(WorkflowRuns::output(), run.output.clone())
+            .set(
+                WorkflowRuns::output_digest(),
+                run.output_digest
+                    .as_ref()
+                    .map(|digest| digest.as_str().to_owned()),
+            )
+            .set(WorkflowRuns::error(), run.error.clone())
+            .set(WorkflowRuns::aggregate_version(), run.aggregate_version)
+            .set(WorkflowRuns::updated_at(), run.updated_at)
+            .set(WorkflowRuns::started_at(), run.started_at)
+            .set(
+                WorkflowRuns::cancellation_requested_at(),
+                run.cancellation_requested_at,
+            )
+            .set(
+                WorkflowRuns::cancellation_reason(),
+                run.cancellation_reason.clone(),
+            )
+            .set(WorkflowRuns::finished_at(), run.finished_at)
+            .filter(WorkflowRuns::organization_id().eq(run.organization_id.as_uuid()))
+            .filter(WorkflowRuns::id().eq(run.id.as_uuid()))
+            .filter(WorkflowRuns::aggregate_version().eq(expected_version)),
     )
     .await?;
     match rows {
@@ -518,30 +539,36 @@ async fn persist_step(
 ) -> Result<(), PostgresPersistenceError> {
     let rows = execute(
         transaction,
-        sql_query::<()>("update workflow_step_projections set status = ")
-            .bind(step.status.as_str())
-            .append(", attempt_generation = ")
-            .bind(step.attempt_generation)
-            .append(", selected_handle = ")
-            .bind(step.selected_handle.as_deref())
-            .append(", result = ")
-            .bind(step.result.clone())
-            .append(", result_digest = ")
-            .bind(step.result_digest.as_ref().map(Sha256Digest::as_str))
-            .append(", error = ")
-            .bind(step.error.as_deref())
-            .append(", evidence_references = ")
-            .bind(serde_json::to_value(&step.evidence_references)?)
-            .append(", last_flow_sequence = ")
-            .bind(step.last_flow_sequence)
-            .append(", updated_at = ")
-            .bind(step.updated_at)
-            .append(" where organization_id = ")
-            .bind(step.organization_id.as_uuid())
-            .append(" and workflow_run_id = ")
-            .bind(step.workflow_run_id.as_uuid())
-            .append(" and step_id = ")
-            .bind(step.step_id.as_str()),
+        update_table::<WorkflowStepProjections>()
+            .set(WorkflowStepProjections::status(), step.status.as_str())
+            .set(
+                WorkflowStepProjections::attempt_generation(),
+                step.attempt_generation,
+            )
+            .set(
+                WorkflowStepProjections::selected_handle(),
+                step.selected_handle.clone(),
+            )
+            .set(WorkflowStepProjections::result(), step.result.clone())
+            .set(
+                WorkflowStepProjections::result_digest(),
+                step.result_digest
+                    .as_ref()
+                    .map(|digest| digest.as_str().to_owned()),
+            )
+            .set(WorkflowStepProjections::error(), step.error.clone())
+            .set(
+                WorkflowStepProjections::evidence_references(),
+                serde_json::to_value(&step.evidence_references)?,
+            )
+            .set(
+                WorkflowStepProjections::last_flow_sequence(),
+                step.last_flow_sequence,
+            )
+            .set(WorkflowStepProjections::updated_at(), step.updated_at)
+            .filter(WorkflowStepProjections::organization_id().eq(step.organization_id.as_uuid()))
+            .filter(WorkflowStepProjections::workflow_run_id().eq(step.workflow_run_id.as_uuid()))
+            .filter(WorkflowStepProjections::step_id().eq(step.step_id.as_str())),
     )
     .await?;
     require_one_row("WorkflowStepProjection", rows)
@@ -553,15 +580,17 @@ async fn find_run_row(
     workflow_run_id: WorkflowRunId,
     for_update: bool,
 ) -> Result<Option<WorkflowRunRow>, PostgresPersistenceError> {
-    let mut query = sql_query::<WorkflowRunRow>(SELECT_RUNS)
-        .append(" where r.organization_id = ")
-        .bind(organization_id.as_uuid())
-        .append(" and r.id = ")
-        .bind(workflow_run_id.as_uuid());
+    let mut query = run_select()
+        .filter(WorkflowRuns::organization_id().eq(organization_id.as_uuid()))
+        .filter(WorkflowRuns::id().eq(workflow_run_id.as_uuid()));
     if for_update {
-        query = query.append(" for update");
+        query = query.for_update();
     }
     fetch_optional(transaction, query).await
+}
+
+fn run_select() -> a3s_orm::query::SelectQuery<WorkflowRuns, WorkflowRunRow> {
+    select_from::<WorkflowRuns>().select(WorkflowRunSelection)
 }
 
 async fn load_record(
@@ -585,11 +614,10 @@ async fn decode_record(
     let run = decode_run(row)?;
     let rows = fetch_all::<WorkflowStepRow, _>(
         transaction,
-        sql_query::<WorkflowStepRow>(SELECT_STEPS)
-            .append(" where organization_id = ")
-            .bind(run.organization_id.as_uuid())
-            .append(" and workflow_run_id = ")
-            .bind(run.id.as_uuid()),
+        select_from::<WorkflowStepProjections>()
+            .select(WorkflowStepSelection)
+            .filter(WorkflowStepProjections::organization_id().eq(run.organization_id.as_uuid()))
+            .filter(WorkflowStepProjections::workflow_run_id().eq(run.id.as_uuid())),
     )
     .await?;
     let mut by_id = rows
@@ -616,88 +644,6 @@ async fn decode_record(
         PostgresPersistenceError::Invariant(format!("stored WorkflowRun is invalid: {error}"))
     })?;
     Ok(record)
-}
-
-fn decode_run(row: WorkflowRunRow) -> Result<WorkflowRun, PostgresPersistenceError> {
-    let execution_input = serde_json::from_str::<WorkflowRunInput>(&row.execution_input)?;
-    let canonical = String::from_utf8(
-        execution_input
-            .canonical_bytes()
-            .map_err(PostgresPersistenceError::Invariant)?,
-    )
-    .map_err(|_| {
-        PostgresPersistenceError::Invariant("stored WorkflowRun input was not UTF-8".into())
-    })?;
-    if canonical != row.execution_input {
-        return Err(PostgresPersistenceError::Invariant(
-            "stored WorkflowRun input is not canonical".into(),
-        ));
-    }
-    WorkflowRun {
-        organization_id: OrganizationId::from_uuid(row.organization_id),
-        project_id: ProjectId::from_uuid(row.project_id),
-        id: WorkflowRunId::from_uuid(row.id),
-        workflow_goal_id: WorkflowGoalId::from_uuid(row.workflow_goal_id),
-        plan_revision_id: PlanRevisionId::from_uuid(row.plan_revision_id),
-        plan_digest: parse_digest(row.plan_digest, "plan")?,
-        operation_id: OperationId::from_uuid(row.operation_id),
-        flow_run_id: row.flow_run_id,
-        flow_runtime_build_id: row.flow_runtime_build_id,
-        execution_input,
-        execution_input_digest: parse_digest(row.execution_input_digest, "input")?,
-        status: WorkflowRunStatus::parse(&row.status)
-            .map_err(PostgresPersistenceError::Invariant)?,
-        last_flow_sequence: row.last_flow_sequence,
-        output: row.output,
-        output_digest: row
-            .output_digest
-            .map(|value| parse_digest(value, "output"))
-            .transpose()?,
-        error: row.error,
-        aggregate_version: row.aggregate_version,
-        requested_by: PrincipalId::from_uuid(row.requested_by),
-        requested_at: row.requested_at,
-        updated_at: row.updated_at,
-        started_at: row.started_at,
-        cancellation_requested_at: row.cancellation_requested_at,
-        cancellation_reason: row.cancellation_reason,
-        finished_at: row.finished_at,
-    }
-    .restore()
-    .map_err(|error| {
-        PostgresPersistenceError::Invariant(format!("stored WorkflowRun is invalid: {error}"))
-    })
-}
-
-fn decode_step(row: WorkflowStepRow) -> Result<WorkflowStepProjection, PostgresPersistenceError> {
-    let evidence_references = serde_json::from_value::<Vec<String>>(row.evidence_references)?;
-    WorkflowStepProjection {
-        organization_id: OrganizationId::from_uuid(row.organization_id),
-        project_id: ProjectId::from_uuid(row.project_id),
-        workflow_run_id: WorkflowRunId::from_uuid(row.workflow_run_id),
-        step_id: row.step_id,
-        kind: WorkflowStepKind::parse(&row.kind).map_err(PostgresPersistenceError::Invariant)?,
-        status: WorkflowStepProjectionStatus::parse(&row.status)
-            .map_err(PostgresPersistenceError::Invariant)?,
-        flow_step_id: row.flow_step_id,
-        attempt_generation: row.attempt_generation,
-        selected_handle: row.selected_handle,
-        result: row.result,
-        result_digest: row
-            .result_digest
-            .map(|value| parse_digest(value, "step result"))
-            .transpose()?,
-        error: row.error,
-        evidence_references,
-        last_flow_sequence: row.last_flow_sequence,
-        updated_at: row.updated_at,
-    }
-    .restore()
-    .map_err(|error| {
-        PostgresPersistenceError::Invariant(format!(
-            "stored Workflow step projection is invalid: {error}"
-        ))
-    })
 }
 
 fn validate_cancellation_transition(
@@ -823,118 +769,4 @@ async fn store_run_audit(
         },
     )
     .await
-}
-
-fn parse_digest(value: String, label: &str) -> Result<Sha256Digest, PostgresPersistenceError> {
-    Sha256Digest::parse(value).map_err(|error| {
-        PostgresPersistenceError::Invariant(format!(
-            "stored WorkflowRun {label} digest is invalid: {error}"
-        ))
-    })
-}
-
-struct WorkflowRunRow {
-    organization_id: Uuid,
-    project_id: Uuid,
-    id: Uuid,
-    workflow_goal_id: Uuid,
-    plan_revision_id: Uuid,
-    plan_digest: String,
-    operation_id: Uuid,
-    flow_run_id: String,
-    flow_runtime_build_id: Option<String>,
-    execution_input: String,
-    execution_input_digest: String,
-    status: String,
-    last_flow_sequence: u64,
-    output: Option<Value>,
-    output_digest: Option<String>,
-    error: Option<String>,
-    aggregate_version: u64,
-    requested_by: Uuid,
-    requested_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-    started_at: Option<DateTime<Utc>>,
-    cancellation_requested_at: Option<DateTime<Utc>>,
-    cancellation_reason: Option<String>,
-    finished_at: Option<DateTime<Utc>>,
-}
-
-impl FromRow for WorkflowRunRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            organization_id: decode(row, 0)?,
-            project_id: decode(row, 1)?,
-            id: decode(row, 2)?,
-            workflow_goal_id: decode(row, 3)?,
-            plan_revision_id: decode(row, 4)?,
-            plan_digest: decode(row, 5)?,
-            operation_id: decode(row, 6)?,
-            flow_run_id: decode(row, 7)?,
-            flow_runtime_build_id: decode(row, 8)?,
-            execution_input: decode(row, 9)?,
-            execution_input_digest: decode(row, 10)?,
-            status: decode(row, 11)?,
-            last_flow_sequence: decode(row, 12)?,
-            output: decode(row, 13)?,
-            output_digest: decode(row, 14)?,
-            error: decode(row, 15)?,
-            aggregate_version: decode(row, 16)?,
-            requested_by: decode(row, 17)?,
-            requested_at: decode(row, 18)?,
-            updated_at: decode(row, 19)?,
-            started_at: decode(row, 20)?,
-            cancellation_requested_at: decode(row, 21)?,
-            cancellation_reason: decode(row, 22)?,
-            finished_at: decode(row, 23)?,
-        })
-    }
-}
-
-struct WorkflowStepRow {
-    organization_id: Uuid,
-    project_id: Uuid,
-    workflow_run_id: Uuid,
-    step_id: String,
-    kind: String,
-    status: String,
-    flow_step_id: String,
-    attempt_generation: u32,
-    selected_handle: Option<String>,
-    result: Option<Value>,
-    result_digest: Option<String>,
-    error: Option<String>,
-    evidence_references: Value,
-    last_flow_sequence: u64,
-    updated_at: DateTime<Utc>,
-}
-
-impl FromRow for WorkflowStepRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            organization_id: decode(row, 0)?,
-            project_id: decode(row, 1)?,
-            workflow_run_id: decode(row, 2)?,
-            step_id: decode(row, 3)?,
-            kind: decode(row, 4)?,
-            status: decode(row, 5)?,
-            flow_step_id: decode(row, 6)?,
-            attempt_generation: decode(row, 7)?,
-            selected_handle: decode(row, 8)?,
-            result: decode(row, 9)?,
-            result_digest: decode(row, 10)?,
-            error: decode(row, 11)?,
-            evidence_references: decode(row, 12)?,
-            last_flow_sequence: decode(row, 13)?,
-            updated_at: decode(row, 14)?,
-        })
-    }
-}
-
-fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
-    T::from_value(
-        row.value(index)
-            .ok_or(DecodeError::MissingColumn { index })?,
-        index,
-    )
 }
