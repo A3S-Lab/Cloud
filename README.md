@@ -145,8 +145,8 @@ commands, service/finite-task dispatch, typed capability steps, compensation,
 and production recovery remain open; no second engine, scheduler, queue,
 Runtime provider, or frontend was added.
 
-The shared Operations execution foundation now pins A3S Flow `0.11.0`, A3S
-Boot `0.1.4` with its PostgreSQL queue, and the A3S ORM-backed PostgreSQL
+The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
+Boot `0.2.0` with its PostgreSQL queue, and A3S ORM `0.3.0`-backed PostgreSQL
 stores. Flow history and Boot jobs remain isolated in the `a3s_flow` and
 `a3s_boot` schemas. New Cloud Operation runs carry runtime build identity
 `a3s-cloud-workflows@1`; legacy unpinned histories remain replayable, while
@@ -363,7 +363,7 @@ current Box-only provider contract.
 | `BX0` | Sole A3S Box execution/build path and re-certification of the complete baseline | In progress |
 | `PW0` | Immutable ACL-native Power Service profile and inference boundary | Planned |
 | `R0` | Universal Runtime Task and Service contract | Historical; Box re-certification pending |
-| `F0` | Boot API and PostgreSQL task queue, tenancy, identity, ORM-backed Flow history, Outbox, and projections | **Verified**; Flow `0.11.0` compatibility refresh tested, root lock publication pending |
+| `F0` | Boot API and PostgreSQL task queue, tenancy, identity, ORM-backed Flow history, Outbox, and projections | **Verified**; Flow `0.12.0`, Boot `0.2.0`, and ORM `0.3.0` compatibility refresh tested, root lock publication pending |
 | `N0` | Enrollment, outbound mTLS, commands, observations, journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` | Digest-pinned Workloads, scheduling, activation, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` | TLS, Gateway snapshots, Secrets, logs, update, rollback, and clean-host recovery | Historical; Box re-certification pending |

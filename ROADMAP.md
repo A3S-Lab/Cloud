@@ -135,7 +135,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
 | `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
 | `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real provider conformance | Historical; Box re-certification pending |
-| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, API, and web shell | Verified; Flow `0.11.0` compatibility refresh tested, root lock publication pending |
+| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, API, and web shell | Verified; Flow `0.12.0`, Boot `0.2.0`, and ORM `0.3.0` compatibility refresh tested, root lock publication pending |
 | `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Historical; Box re-certification pending |
@@ -1363,8 +1363,8 @@ Operations remains the only durable orchestration mechanism.
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
-The shared execution substrate now pins A3S Flow `0.11.0`, A3S Boot `0.1.4`
-with `queue-postgres`, and the A3S ORM-backed PostgreSQL stores. Flow events and
+The shared execution substrate now pins A3S Flow `0.12.0`, A3S Boot `0.2.0`
+with `queue-postgres`, and A3S ORM `0.3.0`-backed PostgreSQL stores. Flow events and
 Boot tasks use isolated `a3s_flow` and `a3s_boot` schemas. New Cloud Operation
 runs pin runtime build `a3s-cloud-workflows@1`, while legacy unpinned histories
 remain replayable. PostgreSQL tests cover queue draining, bounded retries,
@@ -1483,7 +1483,7 @@ The default portfolio priority is:
 10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
     and `W0.3` definition/goal/deterministic-plan plus interaction-contract
     slices plus the Form draft/release lifecycle; publish the exact Form/Flow
-    `0.11.0`/Boot/ORM compatibility lock, retain native submitted-value parity,
+    `0.12.0`/Boot `0.2.0`/ORM `0.3.0` compatibility lock, retain native submitted-value parity,
     close expanded real-PostgreSQL cross-surface evidence, then finish protected
     submission and WorkflowRun execution on Operations and A3S Flow without
     waiting for every external step provider;

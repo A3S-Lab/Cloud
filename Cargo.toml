@@ -16,7 +16,7 @@ repository = "https://github.com/A3S-Lab/Cloud"
 
 [workspace.dependencies]
 a3s-acl = "=0.3.0"
-a3s-boot = { version = "=0.1.4", default-features = false, features = [
+a3s-boot = { version = "=0.2.0", default-features = false, features = [
     "auth",
     "axum",
     "cqrs",
@@ -30,9 +30,9 @@ a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git",
 a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "9ee75351ed1c5b5648639476e664c97825879f89", default-features = false, features = ["build", "vm"] }
 a3s-code-core = { version = "=6.8.1", git = "https://github.com/A3S-Lab/Code.git", rev = "e0b385b0db667add293f038cd1d4c3213560302a", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
-a3s-flow = { version = "=0.11.0", git = "https://github.com/A3S-Lab/Flow.git", rev = "280e470563996203b176a4fb5a2fdf7e96a7b1f2", default-features = false, features = ["boot", "postgres"] }
+a3s-flow = { version = "=0.12.0", git = "https://github.com/A3S-Lab/Flow.git", rev = "0650f598a1d31e0036ea94b218d5db41031ec042", default-features = false, features = ["boot", "postgres"] }
 a3s-form-core = { version = "=0.1.0", git = "https://github.com/A3S-Lab/Form.git", rev = "8d73dba5e88ded0de7ae0e1c7b1e599a5d9134de" }
-a3s-orm = { version = "=0.2.1", git = "https://github.com/A3S-Lab/ORM.git", rev = "9cb0d77210539b2c4f3f38b7cb127bf9f176815b", default-features = false, features = ["postgres"] }
+a3s-orm = { version = "=0.3.0", git = "https://github.com/A3S-Lab/ORM.git", rev = "b04ab197deeebe23acbd5dd922f734032622368f", default-features = false, features = ["postgres"] }
 a3s-runtime = { version = "=0.2.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "061cde95e16eb4cbd9f58724e6cbb60de6ace77e" }
 a3s-use-core = { version = "=0.2.1", git = "https://github.com/A3S-Lab/Use.git", rev = "a15cb412b26d83040ab491386baff2dda90264b1" }
 aes-gcm = "0.10"
@@ -91,7 +91,7 @@ url = "2"
 zeroize = "1"
 
 [patch.crates-io]
-a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "9cb0d77210539b2c4f3f38b7cb127bf9f176815b" }
+a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "b04ab197deeebe23acbd5dd922f734032622368f" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

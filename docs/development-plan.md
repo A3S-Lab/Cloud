@@ -296,7 +296,7 @@ Status as of 2026-08-10:
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
-| F0 | Verified; compatibility publication pending | Isolated PostgreSQL migrations, tenancy, idempotency, local/NATS outbox, A3S Flow `0.11.0` history, A3S Boot `0.1.4` PostgreSQL task management, queue-failure readiness, and the nine-boundary persistent Build Flow `SIGKILL` gates pass. The exact root compatibility lock remains to be published |
+| F0 | Verified; compatibility publication pending | Isolated PostgreSQL migrations, tenancy, idempotency, local/NATS outbox, A3S Flow `0.12.0` history, A3S Boot `0.2.0` PostgreSQL task management, A3S ORM `0.3.0`, queue-failure readiness, and the nine-boundary persistent Build Flow `SIGKILL` gates pass. The exact root compatibility lock remains to be published |
 | N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
@@ -636,8 +636,8 @@ commit and query tenant-scoped desired state.
 
 ### Current compatibility evidence
 
-- Cloud pins A3S Flow `0.11.0`, A3S Boot `0.1.4` with `queue-postgres`, and the
-  A3S ORM-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot task
+- Cloud pins A3S Flow `0.12.0`, A3S Boot `0.2.0` with `queue-postgres`, and
+  A3S ORM `0.3.0`-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot task
   state lives in `a3s_boot`; Cloud business tables remain separately owned.
 - Cloud pins native `a3s-form-core` `0.1.0` at exact revision
   `8d73dba5e88ded0de7ae0e1c7b1e599a5d9134de`, consumes the owner repository's
@@ -2875,7 +2875,7 @@ service/finite-task execution, typed capability dispatch, compensation,
 expanded clean cross-surface conformance, and public availability remain open;
 no frontend was added.
 
-The shared Operations adapter has moved to A3S Flow `0.11.0` with A3S Boot
+The shared Operations adapter has moved to A3S Flow `0.12.0` with A3S Boot `0.2.0`
 PostgreSQL task management, isolated ORM-backed stores, runtime-build-pinned
 new runs, and process-death regression evidence. The minimal WorkflowRun slice
 and internal HumanTask loop now consume that foundation; public task
