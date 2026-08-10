@@ -368,8 +368,7 @@ pub async fn exercise_process_death_matrix(postgres_url: String) -> TestResult {
     }
 
     println!(
-        "A3S_CLOUD_WORKFLOW_RUN_PROCESS_DEATH_CERTIFIED boundaries=4 sigkills=4 workflow_runs=2 operations=2 flow_runs=2 terminal_version={} cancellation_version={}",
-        stable_terminal_version, stable_cancelled_version,
+        "A3S_CLOUD_WORKFLOW_RUN_PROCESS_DEATH_CERTIFIED boundaries=4 sigkills=4 workflow_runs=2 operations=2 flow_runs=2 terminal_version={stable_terminal_version} cancellation_version={stable_cancelled_version}",
     );
     Ok(())
 }
