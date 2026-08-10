@@ -9,6 +9,8 @@ mod workflow_goal_in_memory;
 mod workflow_goal_postgres;
 mod workflow_run_in_memory;
 mod workflow_run_postgres;
+#[cfg(test)]
+mod workflow_run_postgres_typed_orm_tests;
 
 pub use human_task_postgres::PostgresHumanTaskRepository;
 pub use in_memory::InMemoryOntologyRepository;
