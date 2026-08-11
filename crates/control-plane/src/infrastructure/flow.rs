@@ -54,6 +54,7 @@ pub struct FlowRuntimeRouter {
     builds: Arc<dyn FlowRuntime>,
     executions: Arc<dyn FlowRuntime>,
     agent_executions: Arc<dyn FlowRuntime>,
+    workflow_runs: Arc<dyn FlowRuntime>,
 }
 
 impl FlowRuntimeRouter {
@@ -62,12 +63,14 @@ impl FlowRuntimeRouter {
         builds: Arc<dyn FlowRuntime>,
         executions: Arc<dyn FlowRuntime>,
         agent_executions: Arc<dyn FlowRuntime>,
+        workflow_runs: Arc<dyn FlowRuntime>,
     ) -> Self {
         Self {
             deployments,
             builds,
             executions,
             agent_executions,
+            workflow_runs,
         }
     }
 }
@@ -90,6 +93,7 @@ impl FlowRuntime for FlowRuntimeRouter {
             LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
             STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
         };
+        use crate::modules::workflow::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
 
         let runtime = match (
             invocation.spec.name.as_str(),
@@ -100,6 +104,7 @@ impl FlowRuntime for FlowRuntimeRouter {
             (AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION) => {
                 &self.agent_executions
             }
+            (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION) => &self.workflow_runs,
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
@@ -121,6 +126,10 @@ impl FlowRuntime for FlowRuntimeRouter {
             self.agent_executions.run_step(invocation).await
         } else if invocation.step_name.starts_with("execution_") {
             self.executions.run_step(invocation).await
+        } else if invocation.step_name
+            == crate::modules::workflow::infrastructure::WORKFLOW_LOCAL_STEP_NAME
+        {
+            self.workflow_runs.run_step(invocation).await
         } else {
             self.deployments.run_step(invocation).await
         }

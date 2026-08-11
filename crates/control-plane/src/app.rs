@@ -126,12 +126,14 @@ use crate::modules::workflow::{
     CreateOntologyHandler, CreateWorkflowDefinitionHandler, CreateWorkflowGoalHandler,
     DiffOntologyRevisionsHandler, GetOntologyHandler, GetOntologyRevisionHandler,
     GetPlanRevisionHandler, GetWorkflowDefinitionHandler, GetWorkflowGoalHandler,
-    GetWorkflowRevisionHandler, IOntologyRepository, IWorkflowDefinitionRepository,
-    IWorkflowGoalRepository, ListOntologiesHandler, ListOntologyRevisionsHandler,
-    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    GetWorkflowRevisionHandler, GetWorkflowRunHandler, IOntologyRepository,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunRepository,
+    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
+    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
     PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
-    PostgresWorkflowGoalRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
-    WorkflowModule,
+    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WorkflowModule,
+    WorkflowRunFlowRuntime,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -262,6 +264,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
     let workflow_goals: Arc<dyn IWorkflowGoalRepository> =
         Arc::new(PostgresWorkflowGoalRepository::new(executor.clone()));
+    let workflow_runs: Arc<dyn IWorkflowRunRepository> =
+        Arc::new(PostgresWorkflowRunRepository::new(executor.clone()));
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
@@ -668,11 +672,17 @@ pub async fn build_application_with_source_resolver(
             .agent_execution_flow_config()
             .map_err(ControlPlaneStartupError::AgentExecution)?,
     );
+    let workflow_run_runtime = WorkflowRunFlowRuntime::new(
+        Arc::clone(&workflow_runs),
+        Arc::clone(&workflow_goals),
+        Arc::clone(&workflow_definitions),
+    );
     let flow_runtime = FlowRuntimeRouter::new(
         Arc::new(deployment_runtime),
         Arc::new(build_runtime),
         Arc::new(execution_runtime),
         Arc::new(agent_execution_runtime),
+        Arc::new(workflow_run_runtime),
     );
     let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
@@ -819,6 +829,7 @@ pub async fn build_application_with_source_resolver(
             ontologies,
             workflow_definitions,
             workflow_goals,
+            workflow_runs,
             search,
             asset_catalog,
             mcp_service_profiles,
@@ -898,6 +909,7 @@ struct ApplicationDependencies {
     ontologies: Arc<dyn IOntologyRepository>,
     workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
     workflow_goals: Arc<dyn IWorkflowGoalRepository>,
+    workflow_runs: Arc<dyn IWorkflowRunRepository>,
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
@@ -948,6 +960,7 @@ fn build_application_with_health(
         ontologies,
         workflow_definitions,
         workflow_goals,
+        workflow_runs,
         search,
         asset_catalog,
         mcp_service_profiles,
@@ -1009,6 +1022,12 @@ fn build_application_with_health(
     let get_workflow_goals = Arc::clone(&workflow_goals);
     let list_workflow_goals = Arc::clone(&workflow_goals);
     let get_plan_revisions = Arc::clone(&workflow_goals);
+    let start_workflow_run_goals = Arc::clone(&workflow_goals);
+    let start_workflow_runs = Arc::clone(&workflow_runs);
+    let get_workflow_runs = Arc::clone(&workflow_runs);
+    let list_workflow_runs = Arc::clone(&workflow_runs);
+    let get_workflow_run_operations = Arc::clone(&operations);
+    let list_workflow_run_operations = Arc::clone(&operations);
     let agent_conversation_environments = Arc::clone(&environments);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
@@ -1289,6 +1308,9 @@ fn build_application_with_health(
                         create_goal_ontologies,
                         create_workflow_goals,
                     ),
+                )
+                .command_handler::<crate::modules::workflow::StartWorkflowRun, _>(
+                    StartWorkflowRunHandler::new(start_workflow_run_goals, start_workflow_runs),
                 )
                 .command_handler::<crate::modules::assets::CreateAsset, _>(
                     CreateAssetHandler::new(create_assets),
@@ -1607,6 +1629,18 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::workflow::GetPlanRevision, _>(
                     GetPlanRevisionHandler::new(get_plan_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRun, _>(
+                    GetWorkflowRunHandler::new(
+                        get_workflow_runs,
+                        get_workflow_run_operations,
+                    ),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowRuns, _>(
+                    ListWorkflowRunsHandler::new(
+                        list_workflow_runs,
+                        list_workflow_run_operations,
+                    ),
                 )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),

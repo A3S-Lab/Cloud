@@ -683,6 +683,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/076_workflow_definitions_goals_and_plans.sql"
             )),
         ),
+        Migration::new(
+            "077",
+            "Workflow runs and atomic Operations bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/077_workflow_runs.sql"
+            )),
+        ),
     ]
 }
 

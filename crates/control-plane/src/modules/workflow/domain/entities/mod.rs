@@ -4,6 +4,7 @@ mod plan_revision;
 mod workflow_definition;
 mod workflow_goal;
 mod workflow_revision;
+mod workflow_run;
 
 pub use ontology::Ontology;
 pub use ontology_revision::{OntologyRevision, ONTOLOGY_COMPILER_SCHEMA_VERSION};
@@ -17,3 +18,4 @@ pub use workflow_revision::{
     WorkflowRevision, WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_REVISION_MAX_PAYLOADS,
     WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
 };
+pub use workflow_run::WorkflowRun;

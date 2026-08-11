@@ -14,11 +14,14 @@ mod workflow_payload;
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
     Ontology, OntologyRevision, PlanRevision, WorkflowDefinition, WorkflowGoal, WorkflowPlan,
-    WorkflowPlanStep, WorkflowRevision, ONTOLOGY_COMPILER_SCHEMA_VERSION,
+    WorkflowPlanStep, WorkflowRevision, WorkflowRun, ONTOLOGY_COMPILER_SCHEMA_VERSION,
     WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
     WORKFLOW_PLAN_SCHEMA, WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
 };
-pub use events::{OntologyRevisionPublished, WorkflowGoalCompiled, WorkflowRevisionPublished};
+pub use events::{
+    OntologyRevisionPublished, WorkflowGoalCompiled, WorkflowRevisionPublished,
+    WorkflowRunRequested,
+};
 pub use ontology_contract::{
     OntologyContract, OntologyContractQuotas, OntologyObjectType, OntologyRelationCardinality,
     OntologyRelationType, OntologyRule, OntologyRuleKind, OntologySpec, ONTOLOGY_MAX_ACL_BYTES,
@@ -26,14 +29,14 @@ pub use ontology_contract::{
 };
 pub use repositories::{
     CreateOntologyWrite, CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite,
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository, OntologyRecord,
-    ReviseOntologyWrite, ReviseWorkflowDefinitionWrite, WorkflowDefinitionRecord,
-    WorkflowGoalRecord,
+    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunRepository, OntologyRecord, ReviseOntologyWrite, ReviseWorkflowDefinitionWrite,
+    StartWorkflowRunWrite, WorkflowDefinitionRecord, WorkflowGoalRecord,
 };
 pub use services::{
     diff_ontology_contracts, resolve_migration_policy, CompiledWorkflowGoal, OntologyChange,
     OntologyChangeCompatibility, OntologyChangeKind, OntologyDiff, OntologyResourceKind,
-    WorkflowPlanCompiler,
+    validate_locally_executable_plan, WorkflowPlanCompiler,
 };
 pub use value_objects::{OntologyMigrationPolicy, OntologyName};
 pub use workflow_contract::{

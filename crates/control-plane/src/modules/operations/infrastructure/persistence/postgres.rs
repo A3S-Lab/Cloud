@@ -55,62 +55,7 @@ impl IOperationRepository for PostgresOperationRepository {
     ) -> Result<IdempotentWrite<OperationRequest>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
-                Box::pin(async move {
-                    lock_operation(transaction, request.id).await?;
-                    if let Some(existing) = find_request_in_transaction(transaction, request.id).await?
-                    {
-                        if !existing.has_same_definition(&request) {
-                            return Err(RepositoryError::Conflict(
-                                "operation ID was reused with a different request".into(),
-                            )
-                            .into());
-                        }
-                        return Ok(IdempotentWrite {
-                            value: existing,
-                            replayed: true,
-                        });
-                    }
-                    let inserted = execute(
-                        transaction,
-                        sql_query::<()>(
-                            "insert into operation_requests (operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at) values (",
-                        )
-                        .bind(request.id.as_uuid())
-                        .append(", ")
-                        .bind(request.organization_id.as_uuid())
-                        .append(", ")
-                        .bind(request.subject.kind())
-                        .append(", ")
-                        .bind(request.subject.id())
-                        .append(", ")
-                        .bind(request.workflow.name())
-                        .append(", ")
-                        .bind(request.workflow.version())
-                        .append(", ")
-                        .bind(request.input.clone())
-                        .append(", ")
-                        .bind(request.requested_at)
-                        .append(")"),
-                    )
-                    .await;
-                    match inserted {
-                        Ok(1) => Ok(IdempotentWrite {
-                            value: request,
-                            replayed: false,
-                        }),
-                        Ok(rows) => Err(PostgresPersistenceError::Invariant(format!(
-                            "enqueueing operation affected {rows} rows"
-                        ))),
-                        Err(error) if is_foreign_key_violation(&error) => {
-                            Err(RepositoryError::NotFound.into())
-                        }
-                        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
-                            "operation ID is already in use".into(),
-                        )
-                        .into()),
-                        Err(error) => Err(error),
-                    }
-                })
+                Box::pin(async move { enqueue_operation(transaction, request).await })
             })
             .await
             .map_err(transaction_error)
@@ -258,6 +203,66 @@ impl IOperationRepository for PostgresOperationRepository {
                 request,
             })
             .collect())
+    }
+}
+
+/// Enqueue the canonical Operations request inside an existing Cloud
+/// transaction. Owning contexts use this only when their aggregate and its
+/// one Operation must become visible atomically; Operations remains the sole
+/// schema and reconciliation authority.
+pub(crate) async fn enqueue_operation(
+    transaction: &a3s_orm::PostgresTransaction,
+    request: OperationRequest,
+) -> Result<IdempotentWrite<OperationRequest>, PostgresPersistenceError> {
+    lock_operation(transaction, request.id).await?;
+    if let Some(existing) = find_request_in_transaction(transaction, request.id).await? {
+        if !existing.has_same_definition(&request) {
+            return Err(RepositoryError::Conflict(
+                "operation ID was reused with a different request".into(),
+            )
+            .into());
+        }
+        return Ok(IdempotentWrite {
+            value: existing,
+            replayed: true,
+        });
+    }
+    let inserted = execute(
+        transaction,
+        sql_query::<()>(
+            "insert into operation_requests (operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at) values (",
+        )
+        .bind(request.id.as_uuid())
+        .append(", ")
+        .bind(request.organization_id.as_uuid())
+        .append(", ")
+        .bind(request.subject.kind())
+        .append(", ")
+        .bind(request.subject.id())
+        .append(", ")
+        .bind(request.workflow.name())
+        .append(", ")
+        .bind(request.workflow.version())
+        .append(", ")
+        .bind(request.input.clone())
+        .append(", ")
+        .bind(request.requested_at)
+        .append(")"),
+    )
+    .await;
+    match inserted {
+        Ok(1) => Ok(IdempotentWrite {
+            value: request,
+            replayed: false,
+        }),
+        Ok(rows) => Err(PostgresPersistenceError::Invariant(format!(
+            "enqueueing operation affected {rows} rows"
+        ))),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) if is_unique_violation(&error) => {
+            Err(RepositoryError::Conflict("operation ID is already in use".into()).into())
+        }
+        Err(error) => Err(error),
     }
 }
 

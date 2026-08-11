@@ -253,6 +253,57 @@ impl WorkflowDataSchema {
         }
         Ok(())
     }
+
+    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), String> {
+        validate_value_type("Workflow value", &self.value_type, value)?;
+        if self.value_type != WorkflowDataType::Object {
+            return Ok(());
+        }
+        let object = value
+            .as_object()
+            .ok_or_else(|| "Workflow object value is not an object".to_owned())?;
+        for field in &self.fields {
+            match object.get(&field.name) {
+                Some(value) => validate_value_type(
+                    &format!("Workflow field {:?}", field.name),
+                    &field.value_type,
+                    value,
+                )?,
+                None if field.required => {
+                    return Err(format!(
+                        "Workflow value is missing required field {:?}",
+                        field.name
+                    ))
+                }
+                None => {}
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_value_type(
+    label: &str,
+    expected: &WorkflowDataType,
+    value: &serde_json::Value,
+) -> Result<(), String> {
+    let valid = match expected {
+        WorkflowDataType::Any => true,
+        WorkflowDataType::Object => value.is_object(),
+        WorkflowDataType::Array => value.is_array(),
+        WorkflowDataType::String => value.is_string(),
+        WorkflowDataType::Number => value.is_number(),
+        WorkflowDataType::Boolean => value.is_boolean(),
+        WorkflowDataType::Null => value.is_null(),
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err(format!(
+            "{label} does not match the {} schema type",
+            expected.as_str()
+        ))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

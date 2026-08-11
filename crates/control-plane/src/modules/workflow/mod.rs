@@ -14,6 +14,7 @@ pub use application::commands::revise_ontology::{ReviseOntology, ReviseOntologyH
 pub use application::commands::revise_workflow_definition::{
     ReviseWorkflowDefinition, ReviseWorkflowDefinitionHandler,
 };
+pub use application::commands::start_workflow_run::{StartWorkflowRun, StartWorkflowRunHandler};
 pub use application::queries::diff_ontology_revisions::{
     DiffOntologyRevisions, DiffOntologyRevisionsHandler, OntologyRevisionDiff,
 };
@@ -29,6 +30,7 @@ pub use application::queries::get_workflow_goal::{GetWorkflowGoal, GetWorkflowGo
 pub use application::queries::get_workflow_revision::{
     GetWorkflowRevision, GetWorkflowRevisionHandler,
 };
+pub use application::queries::get_workflow_run::{GetWorkflowRun, GetWorkflowRunHandler};
 pub use application::queries::list_ontologies::{ListOntologies, ListOntologiesHandler};
 pub use application::queries::list_ontology_revisions::{
     ListOntologyRevisions, ListOntologyRevisionsHandler,
@@ -40,25 +42,28 @@ pub use application::queries::list_workflow_goals::{ListWorkflowGoals, ListWorkf
 pub use application::queries::list_workflow_revisions::{
     ListWorkflowRevisions, ListWorkflowRevisionsHandler,
 };
+pub use application::queries::list_workflow_runs::{ListWorkflowRuns, ListWorkflowRunsHandler};
 pub use application::{
     OntologyMutationResult, WorkflowDefinitionMutationResult, WorkflowGoalMutationResult,
-    WorkflowPayloadAcl,
+    WorkflowPayloadAcl, WorkflowRunMutationResult, WorkflowRunOperationInput, WorkflowRunView,
+    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_SCHEMA,
 };
 
 pub use domain::{
     CapabilityOwner, CapabilityReference, CapabilityType, CompiledWorkflowGoal,
     CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite, IOntologyRepository,
-    IWorkflowDefinitionRepository, IWorkflowGoalRepository, Ontology, OntologyChange,
-    OntologyChangeCompatibility, OntologyChangeKind, OntologyContract, OntologyContractQuotas,
-    OntologyDiff, OntologyMigrationPolicy, OntologyName, OntologyObjectType,
-    OntologyRelationCardinality, OntologyRelationType, OntologyResourceKind, OntologyRevision,
-    OntologyRule, OntologyRuleKind, OntologySpec, PlanRevision, ReviseWorkflowDefinitionWrite,
-    WorkflowBranchRoute, WorkflowContract, WorkflowContractQuotas, WorkflowDataField,
-    WorkflowDataSchema, WorkflowDataType, WorkflowDefinition, WorkflowDefinitionRecord,
-    WorkflowEdgeSpec, WorkflowGoal, WorkflowGoalCompiled, WorkflowGoalContract, WorkflowGoalRecord,
-    WorkflowGoalSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan,
-    WorkflowPlanCompiler, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyCandidate,
-    WorkflowPolicyMode, WorkflowRevision, WorkflowRevisionPublished, WorkflowSpec,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunRepository, Ontology,
+    OntologyChange, OntologyChangeCompatibility, OntologyChangeKind, OntologyContract,
+    OntologyContractQuotas, OntologyDiff, OntologyMigrationPolicy, OntologyName,
+    OntologyObjectType, OntologyRelationCardinality, OntologyRelationType, OntologyResourceKind,
+    OntologyRevision, OntologyRule, OntologyRuleKind, OntologySpec, PlanRevision,
+    ReviseWorkflowDefinitionWrite, WorkflowBranchRoute, WorkflowContract, WorkflowContractQuotas,
+    WorkflowDataField, WorkflowDataSchema, WorkflowDataType, WorkflowDefinition,
+    WorkflowDefinitionRecord, WorkflowEdgeSpec, WorkflowGoal, WorkflowGoalCompiled,
+    WorkflowGoalContract, WorkflowGoalRecord, WorkflowGoalSpec, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanCompiler,
+    WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyCandidate, WorkflowPolicyMode,
+    WorkflowRevision, WorkflowRevisionPublished, WorkflowRun, WorkflowRunRequested, WorkflowSpec,
     WorkflowStepConfiguration, WorkflowStepKind, WorkflowStepSpec,
     ONTOLOGY_COMPILER_SCHEMA_VERSION, ONTOLOGY_MAX_ACL_BYTES, ONTOLOGY_SCHEMA,
     WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_CONFIGURATION_SCHEMA, WORKFLOW_DATA_SCHEMA,
@@ -69,7 +74,9 @@ pub use domain::{
 };
 pub use infrastructure::persistence::{
     InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
-    InMemoryWorkflowGoalRepository, PostgresOntologyRepository,
+    InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, PostgresOntologyRepository,
     PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
+    PostgresWorkflowRunRepository,
 };
+pub use infrastructure::{WorkflowLocalStepResult, WorkflowRunFlowRuntime, WorkflowRunOutput};
 pub use presentation::WorkflowModule;
