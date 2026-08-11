@@ -236,6 +236,78 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_replica_set_foundation_is_migrated_atomic_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_postgres_replica_set_foundation)
+        .await
+        .expect("PostgreSQL Workload replica-set foundation gate");
+}
+
+async fn exercise_postgres_replica_set_foundation(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (left, right) = tokio::join!(connect_and_migrate(&url, 4), connect_and_migrate(&url, 4));
+    let executor = left?;
+    right?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let migration_state = database
+        .fetch_one_as(sql_query::<(i64, String)>(
+            "select count(*), max(version) from a3s_orm_migrations",
+        ))
+        .await?;
+    assert_eq!(migration_state, (86, "086".into()));
+
+    let organization_id = Uuid::now_v7();
+    let project_id = Uuid::now_v7();
+    let environment_id = Uuid::now_v7();
+    let created_at = Utc::now();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", 'Replica-set tenant', 'replica-set-tenant', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", 'Replica-set project', 'replica-set-project', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", ")
+            .bind(environment_id)
+            .append(", 'Replica-set environment', 'replica-set-environment', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+
+    workloads_support::exercise_replica_set(&executor, organization_id, project_id, environment_id)
+        .await
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_form_lifecycle_is_atomic_tenant_scoped_and_replay_safe() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;

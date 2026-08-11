@@ -51,7 +51,7 @@ alter table workload_replica_members
         check (node_id is null or placement_generation > 0);
 
 alter table deployment_replica_bindings
-    drop constraint deployment_replica_bindings_workload_id_revision_id_runtime_generation_fkey,
+    drop constraint deployment_replica_bindings_workload_id_revision_id_runtim_fkey,
     drop constraint deployment_replica_bindings_check1;
 
 alter table deployment_replica_bindings

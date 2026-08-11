@@ -54,7 +54,7 @@ jobs:
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
-          postgres_foundation_is_migrated_atomic_and_idempotent
+          postgres_replica_set_foundation_is_migrated_atomic_and_replay_safe
           -- --exact --nocapture --test-threads=1
 
   rust:
