@@ -1,0 +1,31 @@
+ontology {
+  schema = "cloud.workflow.ontology.v1"
+  name = "Support"
+  description = "Deterministic W0.1 Ontology contract fixture"
+
+  object_type "ticket" {
+    label = "Ticket"
+    schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    key_fields = ["id"]
+  }
+
+  object_type "principal" {
+    label = "Principal"
+    schema_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    key_fields = ["id"]
+  }
+
+  relation_type "assigned_to" {
+    label = "Assigned to"
+    source_object = "ticket"
+    target_object = "principal"
+    cardinality = "many_to_one"
+    schema_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+
+  rule "assignee_is_active" {
+    label = "Assignee is active"
+    kind = "constraint"
+    expression_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

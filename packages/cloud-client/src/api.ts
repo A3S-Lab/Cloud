@@ -21,6 +21,7 @@ import type {
   BuildRunLogsPage,
   CancelBuildRunResult,
   CancelDeploymentResult,
+  CancelWorkflowRunInput,
   CreateApiTokenInput,
   CreateAssetInput,
   CreateAssetReleaseInput,
@@ -28,6 +29,7 @@ import type {
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
   CreateMcpCredentialInput,
+  CreateServiceMembershipInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
@@ -36,6 +38,11 @@ import type {
   EnvironmentMutationResult,
   Execution,
   ExecutionMutationResult,
+  FormDraft,
+  FormDraftInput,
+  FormDraftMutationResult,
+  FormPublicationMutationResult,
+  FormRelease,
   GatewayCertificate,
   GatewayScope,
   GatewayScopeMutationResult,
@@ -44,18 +51,35 @@ import type {
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
   IssueEnrollmentTokenInput,
+  ListWorkflowRunsOptions,
   McpCredential,
   McpCredentialDeliveryResult,
   McpCredentialMutationResult,
+  McpRoutePolicy,
+  McpRoutePolicyMutationResult,
+  McpServiceProfile,
+  McpServiceProfileMutationResult,
+  Membership,
+  MembershipMutationResult,
+  MembershipRole,
   Node,
+  Ontology,
+  OntologyDiff,
+  OntologyMutationResult,
+  OntologyRevision,
+  OntologyRevisionSummary,
   Operation,
   Organization,
   OrganizationMutationResult,
   Project,
   ProjectMutationResult,
+  PublishFormReleaseOptions,
   PublishRouteInput,
   ResolveSourceRevisionInput,
   RetryBuildRunResult,
+  ReviseFormDraftOptions,
+  ReviseOntologyOptions,
+  ReviseWorkflowDefinitionOptions,
   RevokeMcpCredentialInput,
   RotateMcpCredentialInput,
   Route,
@@ -69,19 +93,46 @@ import type {
   SourceRevisionMutationResult,
   SourceWorkloadTemplate,
   StartAgentExecutionInput,
+  StartWorkflowRunInput,
   StopWorkloadResult,
   Workload,
   WorkloadDeploymentResult,
   WorkloadLogStreamFilter,
   WorkloadLogsPage,
+  WorkflowDefinition,
+  WorkflowDefinitionMutationResult,
+  WorkflowGoal,
+  WorkflowGoalMutationResult,
+  WorkflowPlanRevision,
+  WorkflowRevision,
+  WorkflowRevisionSummary,
+  WaitWorkflowRunOptions,
+  WorkflowRun,
+  WorkflowRunHistoryOptions,
+  WorkflowRunHistoryPage,
+  WorkflowRunMutationResult,
+  WorkflowRunOutput,
+  PublishWorkflowDefinitionInput,
 } from './types';
 import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
   validateExpectedMcpCredentialVersion,
+  validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
+  validateFormDraftInput,
+  validateFormVersionControl,
   validateMcpCredentialExpiry,
+  validateMcpRoutePolicyAcl,
+  validateMcpServiceProfileAcl,
+  validateMembershipRole,
+  validateOntologyAcl,
+  validateOntologyRevisionControl,
+  validateWorkflowDefinitionPublication,
+  validateWorkflowGoalAcl,
+  validateWorkflowRevisionControl,
   validateSecretValue,
+  validateServiceMembershipInput,
   validateWorkloadAcl,
 } from './validation';
 
@@ -97,12 +148,32 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.7.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.14.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
+export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
+export const MAX_WORKFLOW_RUN_LIST_LIMIT = 200;
+export const MAX_WORKFLOW_RUN_HISTORY_LIMIT = 100;
+export const MAX_WORKFLOW_RUN_WAIT_SECONDS = 30;
+export const DEFAULT_WORKFLOW_RUN_WAIT_SECONDS = 25;
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
-export { MAX_SECRET_VALUE_BYTES, MAX_WORKLOAD_ACL_BYTES } from './validation';
+export {
+  MAX_ACL_DOCUMENT_BYTES,
+  MAX_FORM_DOCUMENT_BYTES,
+  MAX_MCP_ROUTE_POLICY_ACL_BYTES,
+  MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
+  MAX_ONTOLOGY_ACL_BYTES,
+  MAX_WORKFLOW_DEFINITION_ACL_BYTES,
+  MAX_WORKFLOW_GOAL_ACL_BYTES,
+  MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
+  MAX_WORKFLOW_REVISION_PAYLOAD_BYTES,
+  MAX_WORKFLOW_REVISION_PAYLOADS,
+  MAX_SECRET_VALUE_BYTES,
+  MAX_WORKLOAD_ACL_BYTES,
+  validateFormDraftInput,
+  validateFormVersionControl,
+} from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
   return /^[A-Za-z0-9._~:/-]{1,255}$/.test(value);
@@ -209,6 +280,66 @@ export class CloudApi {
     );
   }
 
+  listMemberships(organizationId: string, signal?: AbortSignal): Promise<Membership[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/memberships`, signal);
+  }
+
+  getMembership(organizationId: string, membershipId: string, signal?: AbortSignal): Promise<Membership> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}`,
+      signal
+    );
+  }
+
+  createServiceMembership(
+    organizationId: string,
+    input: CreateServiceMembershipInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipMutationResult> {
+    validateServiceMembershipInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  changeMembershipRole(
+    organizationId: string,
+    membershipId: string,
+    role: MembershipRole,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipMutationResult> {
+    validateMembershipRole(role);
+    validateExpectedMembershipVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/role`,
+      idempotencyKey,
+      { role, expectedVersion },
+      signal
+    );
+  }
+
+  revokeMembership(
+    organizationId: string,
+    membershipId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipMutationResult> {
+    validateExpectedMembershipVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
   listProjects(organizationId: string, signal?: AbortSignal): Promise<Project[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/projects`, signal);
   }
@@ -247,6 +378,489 @@ export class CloudApi {
       idempotencyKey,
       { name },
       signal
+    );
+  }
+
+  listOntologies(organizationId: string, projectId: string, signal?: AbortSignal): Promise<Ontology[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/ontologies`,
+      signal
+    );
+  }
+
+  getOntology(organizationId: string, ontologyId: string, signal?: AbortSignal): Promise<Ontology> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/ontologies/${encodeURIComponent(ontologyId)}`,
+      signal
+    );
+  }
+
+  createOntologyFromAcl(
+    organizationId: string,
+    projectId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OntologyMutationResult> {
+    validateOntologyAcl(acl);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/ontologies`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
+  listOntologyRevisions(
+    organizationId: string,
+    ontologyId: string,
+    signal?: AbortSignal
+  ): Promise<OntologyRevisionSummary[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}/revisions`,
+      signal
+    );
+  }
+
+  getOntologyRevision(
+    organizationId: string,
+    ontologyId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<OntologyRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  diffOntologyRevisions(
+    organizationId: string,
+    ontologyId: string,
+    fromRevisionId: string,
+    toRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<OntologyDiff> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}` +
+        `/revisions/${encodeURIComponent(fromRevisionId)}` +
+        `/diff/${encodeURIComponent(toRevisionId)}`,
+      signal
+    );
+  }
+
+  reviseOntologyFromAcl(
+    organizationId: string,
+    ontologyId: string,
+    acl: string,
+    options: ReviseOntologyOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OntologyMutationResult> {
+    validateOntologyAcl(acl);
+    validateOntologyRevisionControl(options.expectedVersion, options.migrationRuleId);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/ontologies/${encodeURIComponent(ontologyId)}/revisions`,
+      idempotencyKey,
+      acl,
+      signal,
+      {
+        'x-a3s-expected-version': String(options.expectedVersion),
+        ...(options.migrationRuleId === undefined ? {} : { 'x-a3s-migration-rule': options.migrationRuleId }),
+      }
+    );
+  }
+
+  listWorkflowDefinitions(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinition[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-definitions`,
+      signal
+    );
+  }
+
+  getWorkflowDefinition(
+    organizationId: string,
+    workflowDefinitionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinition> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}`,
+      signal
+    );
+  }
+
+  createWorkflowDefinitionFromAcl(
+    organizationId: string,
+    projectId: string,
+    input: PublishWorkflowDefinitionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinitionMutationResult> {
+    validateWorkflowDefinitionPublication(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-definitions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  listWorkflowRevisions(
+    organizationId: string,
+    workflowDefinitionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRevisionSummary[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}/revisions`,
+      signal
+    );
+  }
+
+  getWorkflowRevision(
+    organizationId: string,
+    workflowDefinitionId: string,
+    workflowRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}` +
+        `/revisions/${encodeURIComponent(workflowRevisionId)}`,
+      signal
+    );
+  }
+
+  reviseWorkflowDefinitionFromAcl(
+    organizationId: string,
+    workflowDefinitionId: string,
+    input: PublishWorkflowDefinitionInput,
+    options: ReviseWorkflowDefinitionOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowDefinitionMutationResult> {
+    validateWorkflowDefinitionPublication(input);
+    validateWorkflowRevisionControl(options.expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-definitions/${encodeURIComponent(workflowDefinitionId)}/revisions`,
+      idempotencyKey,
+      input,
+      signal,
+      { 'x-a3s-expected-version': String(options.expectedVersion) }
+    );
+  }
+
+  listWorkflowGoals(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowGoal[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-goals`,
+      signal
+    );
+  }
+
+  getWorkflowGoal(
+    organizationId: string,
+    workflowGoalId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowGoal> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-goals/${encodeURIComponent(workflowGoalId)}`,
+      signal
+    );
+  }
+
+  createWorkflowGoalFromAcl(
+    organizationId: string,
+    projectId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowGoalMutationResult> {
+    validateWorkflowGoalAcl(acl);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-goals`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
+  getWorkflowPlanRevision(
+    organizationId: string,
+    workflowGoalId: string,
+    planRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowPlanRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-goals/${encodeURIComponent(workflowGoalId)}` +
+        `/plan-revisions/${encodeURIComponent(planRevisionId)}`,
+      signal
+    );
+  }
+
+  startWorkflowRun(
+    organizationId: string,
+    projectId: string,
+    input: StartWorkflowRunInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunMutationResult> {
+    if (
+      input.timeoutSeconds !== undefined &&
+      (!Number.isSafeInteger(input.timeoutSeconds) ||
+        input.timeoutSeconds < 1 ||
+        input.timeoutSeconds > MAX_WORKFLOW_RUN_TIMEOUT_SECONDS)
+    ) {
+      throw new RangeError(
+        `WorkflowRun timeoutSeconds must be between 1 and ${MAX_WORKFLOW_RUN_TIMEOUT_SECONDS}`
+      );
+    }
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-runs`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  cancelWorkflowRun(
+    organizationId: string,
+    workflowRunId: string,
+    input: CancelWorkflowRunInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunMutationResult> {
+    if (
+      input.reason !== undefined &&
+      (input.reason.length < 1 || input.reason.length > 4_096 || /[\0\r\n]/u.test(input.reason))
+    ) {
+      throw new TypeError('WorkflowRun cancellation reason must contain between 1 and 4096 safe characters');
+    }
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/cancel`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  listWorkflowRuns(
+    organizationId: string,
+    projectId: string,
+    options: ListWorkflowRunsOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkflowRun[]> {
+    const parameters = new URLSearchParams();
+    setBoundedInteger(
+      parameters,
+      'limit',
+      options.limit,
+      1,
+      MAX_WORKFLOW_RUN_LIST_LIMIT,
+      'WorkflowRun list limit'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/workflow-runs${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  getWorkflowRun(organizationId: string, workflowRunId: string, signal?: AbortSignal): Promise<WorkflowRun> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}`,
+      signal
+    );
+  }
+
+  waitWorkflowRun(
+    organizationId: string,
+    workflowRunId: string,
+    options: WaitWorkflowRunOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkflowRun> {
+    const parameters = new URLSearchParams();
+    setBoundedInteger(
+      parameters,
+      'timeoutSeconds',
+      options.timeoutSeconds ?? DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
+      0,
+      MAX_WORKFLOW_RUN_WAIT_SECONDS,
+      'WorkflowRun wait timeoutSeconds'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/wait${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  getWorkflowRunOutput(
+    organizationId: string,
+    workflowRunId: string,
+    signal?: AbortSignal
+  ): Promise<WorkflowRunOutput> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/output`,
+      signal
+    );
+  }
+
+  getWorkflowRunHistory(
+    organizationId: string,
+    workflowRunId: string,
+    options: WorkflowRunHistoryOptions = {},
+    signal?: AbortSignal
+  ): Promise<WorkflowRunHistoryPage> {
+    const parameters = new URLSearchParams();
+    setBoundedInteger(
+      parameters,
+      'afterSequence',
+      options.afterSequence,
+      0,
+      Number.MAX_SAFE_INTEGER,
+      'WorkflowRun history afterSequence'
+    );
+    setBoundedInteger(
+      parameters,
+      'limit',
+      options.limit,
+      1,
+      MAX_WORKFLOW_RUN_HISTORY_LIMIT,
+      'WorkflowRun history limit'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/workflow-runs/${encodeURIComponent(workflowRunId)}/history${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  listFormDrafts(organizationId: string, projectId: string, signal?: AbortSignal): Promise<FormDraft[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/forms`,
+      signal
+    );
+  }
+
+  getFormDraft(organizationId: string, formId: string, signal?: AbortSignal): Promise<FormDraft> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/forms/${encodeURIComponent(formId)}`,
+      signal
+    );
+  }
+
+  createFormDraft(
+    organizationId: string,
+    projectId: string,
+    input: FormDraftInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<FormDraftMutationResult> {
+    validateFormDraftInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/forms`,
+      idempotencyKey,
+      {
+        name: input.name,
+        description: input.description ?? '',
+        document: input.document,
+      },
+      signal
+    );
+  }
+
+  reviseFormDraft(
+    organizationId: string,
+    formId: string,
+    input: FormDraftInput,
+    options: ReviseFormDraftOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<FormDraftMutationResult> {
+    validateFormDraftInput(input);
+    validateFormVersionControl(options.expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}/draft-revisions`,
+      idempotencyKey,
+      {
+        name: input.name,
+        description: input.description ?? '',
+        document: input.document,
+      },
+      signal,
+      { 'x-a3s-expected-version': String(options.expectedVersion) }
+    );
+  }
+
+  listFormReleases(organizationId: string, formId: string, signal?: AbortSignal): Promise<FormRelease[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}/releases`,
+      signal
+    );
+  }
+
+  getFormRelease(
+    organizationId: string,
+    formId: string,
+    releaseId: string,
+    signal?: AbortSignal
+  ): Promise<FormRelease> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}` +
+        `/releases/${encodeURIComponent(releaseId)}`,
+      signal
+    );
+  }
+
+  publishFormRelease(
+    organizationId: string,
+    formId: string,
+    options: PublishFormReleaseOptions,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<FormPublicationMutationResult> {
+    validateFormVersionControl(options.expectedVersion);
+    return this.request(
+      'POST',
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/forms/${encodeURIComponent(formId)}/releases`,
+      {
+        idempotencyKey,
+        signal,
+        additionalHeaders: { 'x-a3s-expected-version': String(options.expectedVersion) },
+      }
     );
   }
 
@@ -352,6 +966,38 @@ export class CloudApi {
         `/assets/${encodeURIComponent(assetId)}` +
         `/releases/${encodeURIComponent(assetReleaseId)}/yank`,
       idempotencyKey,
+      signal
+    );
+  }
+
+  getMcpServiceProfile(
+    organizationId: string,
+    assetId: string,
+    assetReleaseId: string,
+    signal?: AbortSignal
+  ): Promise<McpServiceProfile> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/mcp-service-profile`,
+      signal
+    );
+  }
+
+  bindMcpServiceProfileFromAcl(
+    organizationId: string,
+    assetId: string,
+    assetReleaseId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpServiceProfileMutationResult> {
+    return this.postMcpServiceProfileAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/assets/${encodeURIComponent(assetId)}` +
+        `/releases/${encodeURIComponent(assetReleaseId)}/mcp-service-profile`,
+      idempotencyKey,
+      acl,
       signal
     );
   }
@@ -882,6 +1528,62 @@ export class CloudApi {
     );
   }
 
+  listMcpRoutePolicies(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<McpRoutePolicy[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-route-policies`,
+      signal
+    );
+  }
+
+  getMcpRoutePolicy(organizationId: string, routeId: string, signal?: AbortSignal): Promise<McpRoutePolicy> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-route-policies/${encodeURIComponent(routeId)}`,
+      signal
+    );
+  }
+
+  createMcpRoutePolicyFromAcl(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpRoutePolicyMutationResult> {
+    return this.postMcpRoutePolicyAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/mcp-route-policies`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
+  reviseMcpRoutePolicyFromAcl(
+    organizationId: string,
+    routeId: string,
+    acl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<McpRoutePolicyMutationResult> {
+    return this.postMcpRoutePolicyAcl(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/mcp-route-policies/${encodeURIComponent(routeId)}/revisions`,
+      idempotencyKey,
+      acl,
+      signal
+    );
+  }
+
   listSecrets(
     organizationId: string,
     projectId: string,
@@ -1061,7 +1763,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/projects/${encodeURIComponent(projectId)}` +
         `/environments/${encodeURIComponent(environmentId)}/workloads`,
@@ -1078,7 +1780,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}/workloads/${encodeURIComponent(workloadId)}/deployments`,
       idempotencyKey,
       manifest,
@@ -1095,7 +1797,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/projects/${encodeURIComponent(projectId)}` +
         `/environments/${encodeURIComponent(environmentId)}` +
@@ -1116,7 +1818,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/projects/${encodeURIComponent(projectId)}` +
         `/environments/${encodeURIComponent(environmentId)}` +
@@ -1137,7 +1839,7 @@ export class CloudApi {
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<WorkloadDeploymentResult> {
-    return this.postAcl(
+    return this.postWorkloadAcl(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/workloads/${encodeURIComponent(workloadId)}` +
         `/assets/${encodeURIComponent(assetId)}` +
@@ -1422,27 +2124,65 @@ export class CloudApi {
     return this.request('POST', path, { idempotencyKey, signal });
   }
 
-  private postJson<T>(path: string, idempotencyKey: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  private postJson<T>(
+    path: string,
+    idempotencyKey: string,
+    body: unknown,
+    signal?: AbortSignal,
+    additionalHeaders?: Readonly<Record<string, string>>
+  ): Promise<T> {
     return this.request('POST', path, {
       body: JSON.stringify(body),
       contentType: 'application/json',
       idempotencyKey,
       signal,
+      additionalHeaders,
     });
   }
 
-  private postAcl<T>(
+  private postWorkloadAcl<T>(
     path: string,
     idempotencyKey: string,
     manifest: string,
     signal?: AbortSignal
   ): Promise<T> {
     validateWorkloadAcl(manifest);
+    return this.postAcl(path, idempotencyKey, manifest, signal);
+  }
+
+  private postMcpServiceProfileAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    acl: string,
+    signal?: AbortSignal
+  ): Promise<T> {
+    validateMcpServiceProfileAcl(acl);
+    return this.postAcl(path, idempotencyKey, acl, signal);
+  }
+
+  private postMcpRoutePolicyAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    acl: string,
+    signal?: AbortSignal
+  ): Promise<T> {
+    validateMcpRoutePolicyAcl(acl);
+    return this.postAcl(path, idempotencyKey, acl, signal);
+  }
+
+  private postAcl<T>(
+    path: string,
+    idempotencyKey: string,
+    acl: string,
+    signal?: AbortSignal,
+    additionalHeaders?: Readonly<Record<string, string>>
+  ): Promise<T> {
     return this.request('POST', path, {
-      body: manifest,
+      body: acl,
       contentType: A3S_ACL_MEDIA_TYPE,
       idempotencyKey,
       signal,
+      additionalHeaders,
     });
   }
 
@@ -1455,6 +2195,7 @@ export class CloudApi {
       healthResponse?: boolean;
       idempotencyKey?: string;
       signal?: AbortSignal;
+      additionalHeaders?: Readonly<Record<string, string>>;
     }
   ): Promise<T> {
     if (options.idempotencyKey !== undefined && !isValidIdempotencyKey(options.idempotencyKey)) {
@@ -1485,6 +2226,9 @@ export class CloudApi {
     if (options.body !== undefined) {
       headers['Content-Type'] = options.contentType as string;
     }
+    for (const [name, value] of Object.entries(options.additionalHeaders ?? {})) {
+      headers[name] = value;
+    }
 
     try {
       const response = await this.fetcher(`${this.baseUrl}${path}`, {
@@ -1510,4 +2254,21 @@ export class CloudApi {
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
   }
+}
+
+function setBoundedInteger(
+  parameters: URLSearchParams,
+  name: string,
+  value: number | undefined,
+  minimum: number,
+  maximum: number,
+  label: string
+): void {
+  if (value === undefined) {
+    return;
+  }
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw new RangeError(`${label} must be between ${minimum} and ${maximum}`);
+  }
+  parameters.set(name, String(value));
 }

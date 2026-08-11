@@ -12,7 +12,8 @@ pub use entities::{
     GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
     GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
     GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, McpCredential,
-    McpCredentialDeliveryReceipt, McpRoutePolicy, McpRoutePolicySpec, Route, RouteState,
+    McpCredentialDeliveryReceipt, McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec,
+    Route, RouteState, MCP_ROUTE_POLICY_MAX_ACL_BYTES,
 };
 pub use value_objects::{
     DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,

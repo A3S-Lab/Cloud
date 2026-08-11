@@ -1,7 +1,7 @@
 use crate::modules::identity::domain::entities::ApiToken;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::shared_kernel::application::ApplicationResult;
-use crate::modules::shared_kernel::domain::OrganizationId;
+use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::Command;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -11,6 +11,9 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct CreateApiToken {
     pub organization_id: OrganizationId,
+    pub principal_id: PrincipalId,
+    pub issuer_principal_id: PrincipalId,
+    pub issuer_is_platform_admin: bool,
     pub name: String,
     pub token_secret: String,
     pub scopes: Vec<String>,

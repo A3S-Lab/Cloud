@@ -5,8 +5,18 @@ import {
   CLOUD_API_MAJOR_VERSION,
   CloudApi,
   CloudApiError,
+  DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
   type CloudFetch,
   DEFAULT_CLOUD_API_BASE_PATH,
+  MAX_MCP_ROUTE_POLICY_ACL_BYTES,
+  MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
+  MAX_ONTOLOGY_ACL_BYTES,
+  MAX_WORKFLOW_GOAL_ACL_BYTES,
+  MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
+  MAX_WORKFLOW_RUN_HISTORY_LIMIT,
+  MAX_WORKFLOW_RUN_LIST_LIMIT,
+  MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
+  MAX_WORKFLOW_RUN_WAIT_SECONDS,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 
@@ -26,7 +36,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.7.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.14.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -262,6 +272,405 @@ describe('CloudApi', () => {
         undefined,
       ],
     ]);
+  });
+
+  it('uses one ACL-native versioned Ontology lifecycle with explicit revision headers', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'ontology { schema = "cloud.workflow.ontology.v1" }';
+
+    await api.listOntologies('organization', 'project');
+    await api.getOntology('organization', 'ontology');
+    await api.createOntologyFromAcl('organization', 'project', acl, 'ontology:create');
+    await api.listOntologyRevisions('organization', 'ontology');
+    await api.getOntologyRevision('organization', 'ontology', 'revision-one');
+    await api.diffOntologyRevisions('organization', 'ontology', 'revision-one', 'revision-two');
+    await api.reviseOntologyFromAcl(
+      'organization',
+      'ontology',
+      acl,
+      { expectedVersion: 2, migrationRuleId: 'migrate_ticket_v2' },
+      'ontology:revise'
+    );
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization/projects/project/ontologies',
+      '/api/v1/organizations/organization/ontologies/ontology',
+      '/api/v1/organizations/organization/projects/project/ontologies',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions/revision-one',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions/revision-one/diff/revision-two',
+      '/api/v1/organizations/organization/ontologies/ontology/revisions',
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: acl,
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'ontology:create',
+        }),
+      })
+    );
+    expect(calls[6]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: acl,
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'ontology:revise',
+          'x-a3s-expected-version': '2',
+          'x-a3s-migration-rule': 'migrate_ticket_v2',
+        }),
+      })
+    );
+  });
+
+  it('rejects invalid Ontology ACL and revision controls before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() => api.createOntologyFromAcl('organization', 'project', '', 'ontology:create')).toThrow();
+    expect(() =>
+      api.createOntologyFromAcl(
+        'organization',
+        'project',
+        'x'.repeat(MAX_ONTOLOGY_ACL_BYTES + 1),
+        'ontology:create'
+      )
+    ).toThrow();
+    expect(() =>
+      api.reviseOntologyFromAcl('organization', 'ontology', 'acl', { expectedVersion: 0 }, 'ontology:revise')
+    ).toThrow('expected Ontology version must be a positive safe integer');
+    expect(() =>
+      api.reviseOntologyFromAcl(
+        'organization',
+        'ontology',
+        'acl',
+        { expectedVersion: 1, migrationRuleId: 'not/a/rule' },
+        'ontology:revise'
+      )
+    ).toThrow('Ontology migration rule must be a portable rule ID');
+    expect(called).toBe(false);
+  });
+
+  it('uses one versioned Workflow definition, goal, and deterministic plan lifecycle', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const publication = {
+      definitionAcl: 'workflow { schema = "cloud.workflow.definition.v1" }',
+      payloads: [
+        {
+          kind: 'configuration' as const,
+          acl: 'configuration { schema = "cloud.workflow.configuration.v1" }',
+        },
+      ],
+    };
+    const goalAcl = 'goal { schema = "cloud.workflow.goal.v1" }';
+
+    await api.listWorkflowDefinitions('organization', 'project');
+    await api.getWorkflowDefinition('organization', 'definition');
+    await api.createWorkflowDefinitionFromAcl('organization', 'project', publication, 'workflow:create');
+    await api.listWorkflowRevisions('organization', 'definition');
+    await api.getWorkflowRevision('organization', 'definition', 'revision');
+    await api.reviseWorkflowDefinitionFromAcl(
+      'organization',
+      'definition',
+      publication,
+      { expectedVersion: 2 },
+      'workflow:revise'
+    );
+    await api.listWorkflowGoals('organization', 'project');
+    await api.getWorkflowGoal('organization', 'goal');
+    await api.createWorkflowGoalFromAcl('organization', 'project', goalAcl, 'goal:create');
+    await api.getWorkflowPlanRevision('organization', 'goal', 'plan');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization/projects/project/workflow-definitions',
+      '/api/v1/organizations/organization/workflow-definitions/definition',
+      '/api/v1/organizations/organization/projects/project/workflow-definitions',
+      '/api/v1/organizations/organization/workflow-definitions/definition/revisions',
+      '/api/v1/organizations/organization/workflow-definitions/definition/revisions/revision',
+      '/api/v1/organizations/organization/workflow-definitions/definition/revisions',
+      '/api/v1/organizations/organization/projects/project/workflow-goals',
+      '/api/v1/organizations/organization/workflow-goals/goal',
+      '/api/v1/organizations/organization/projects/project/workflow-goals',
+      '/api/v1/organizations/organization/workflow-goals/goal/plan-revisions/plan',
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(publication),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'workflow:create',
+        }),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'x-a3s-expected-version': '2',
+        }),
+      })
+    );
+    expect(calls[8]?.[1]).toEqual(
+      expect.objectContaining({
+        body: goalAcl,
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'goal:create',
+        }),
+      })
+    );
+  });
+
+  it('rejects invalid Workflow publication, revision, and goal inputs before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() =>
+      api.createWorkflowDefinitionFromAcl(
+        'organization',
+        'project',
+        { definitionAcl: 'workflow {}', payloads: [] },
+        'workflow:create'
+      )
+    ).toThrow('Workflow revision must contain between');
+    expect(() =>
+      api.createWorkflowDefinitionFromAcl(
+        'organization',
+        'project',
+        {
+          definitionAcl: 'workflow {}',
+          payloads: [
+            {
+              kind: 'configuration',
+              acl: 'x'.repeat(MAX_WORKFLOW_PAYLOAD_ACL_BYTES + 1),
+            },
+          ],
+        },
+        'workflow:create'
+      )
+    ).toThrow('Workflow payload ACL must contain between');
+    expect(() =>
+      api.reviseWorkflowDefinitionFromAcl(
+        'organization',
+        'definition',
+        {
+          definitionAcl: 'workflow {}',
+          payloads: [{ kind: 'configuration', acl: 'configuration {}' }],
+        },
+        { expectedVersion: 0 },
+        'workflow:revise'
+      )
+    ).toThrow('expected WorkflowDefinition version must be a positive safe integer');
+    expect(() =>
+      api.createWorkflowGoalFromAcl(
+        'organization',
+        'project',
+        'x'.repeat(MAX_WORKFLOW_GOAL_ACL_BYTES + 1),
+        'goal:create'
+      )
+    ).toThrow('Workflow goal ACL must contain between');
+    expect(called).toBe(false);
+  });
+
+  it('uses bounded tenant-scoped WorkflowRun mutation, query, wait, output, and history paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({}, args[1]?.method === 'POST' ? 202 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.startWorkflowRun(
+      'organization / one',
+      'project / one',
+      { workflowGoalId: 'goal', planRevisionId: 'plan', timeoutSeconds: 60 },
+      'workflow-run:start'
+    );
+    await api.cancelWorkflowRun(
+      'organization / one',
+      'run / one',
+      { reason: 'operator request' },
+      'workflow-run:cancel'
+    );
+    await api.listWorkflowRuns('organization / one', 'project / one', { limit: 2 });
+    await api.getWorkflowRun('organization / one', 'run / one');
+    await api.waitWorkflowRun('organization / one', 'run / one');
+    await api.getWorkflowRunOutput('organization / one', 'run / one');
+    await api.getWorkflowRunHistory('organization / one', 'run / one', {
+      afterSequence: 7,
+      limit: 10,
+    });
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/workflow-runs',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/cancel',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/workflow-runs?limit=2',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one',
+      `/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/wait?timeoutSeconds=${DEFAULT_WORKFLOW_RUN_WAIT_SECONDS}`,
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/output',
+      '/api/v1/organizations/organization%20%2F%20one/workflow-runs/run%20%2F%20one/history?afterSequence=7&limit=10',
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'workflow-run:start' }),
+        body: JSON.stringify({
+          workflowGoalId: 'goal',
+          planRevisionId: 'plan',
+          timeoutSeconds: 60,
+        }),
+      })
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'workflow-run:cancel' }),
+        body: JSON.stringify({ reason: 'operator request' }),
+      })
+    );
+  });
+
+  it('rejects unbounded WorkflowRun options before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    const start = (timeoutSeconds: number) =>
+      api.startWorkflowRun(
+        'organization',
+        'project',
+        { workflowGoalId: 'goal', planRevisionId: 'plan', timeoutSeconds },
+        'workflow-run:start'
+      );
+
+    expect(() => start(0)).toThrow('WorkflowRun timeoutSeconds must be between');
+    expect(() => start(MAX_WORKFLOW_RUN_TIMEOUT_SECONDS + 1)).toThrow(
+      'WorkflowRun timeoutSeconds must be between'
+    );
+    expect(() =>
+      api.cancelWorkflowRun('organization', 'run', { reason: 'unsafe\nreason' }, 'workflow-run:cancel')
+    ).toThrow('WorkflowRun cancellation reason must contain');
+    expect(() => api.listWorkflowRuns('organization', 'project', { limit: 0 })).toThrow(
+      'WorkflowRun list limit must be between'
+    );
+    expect(() =>
+      api.listWorkflowRuns('organization', 'project', { limit: MAX_WORKFLOW_RUN_LIST_LIMIT + 1 })
+    ).toThrow('WorkflowRun list limit must be between');
+    expect(() =>
+      api.waitWorkflowRun('organization', 'run', { timeoutSeconds: MAX_WORKFLOW_RUN_WAIT_SECONDS + 1 })
+    ).toThrow('WorkflowRun wait timeoutSeconds must be between');
+    expect(() => api.getWorkflowRunHistory('organization', 'run', { limit: 0 })).toThrow(
+      'WorkflowRun history limit must be between'
+    );
+    expect(() =>
+      api.getWorkflowRunHistory('organization', 'run', {
+        limit: MAX_WORKFLOW_RUN_HISTORY_LIMIT + 1,
+      })
+    ).toThrow('WorkflowRun history limit must be between');
+    expect(called).toBe(false);
+  });
+
+  it('reads and binds an immutable MCP Service Profile as raw A3S ACL', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'service { endpoint_path = "/mcp" runtime_port = "mcp" }';
+
+    await api.getMcpServiceProfile('organization / one', 'asset', 'release');
+    await api.bindMcpServiceProfileFromAcl('organization / one', 'asset', 'release', acl, 'profile:bind-1');
+
+    expect(calls[0]).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/assets/asset/releases/release/mcp-service-profile',
+      expect.objectContaining({ method: 'GET' }),
+    ]);
+    expect(calls[1]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/assets/asset/releases/release/mcp-service-profile'
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': A3S_ACL_MEDIA_TYPE,
+          'Idempotency-Key': 'profile:bind-1',
+        }),
+        body: acl,
+      })
+    );
+  });
+
+  it('reads, creates, and revises MCP route policy desired state as raw A3S ACL', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'mcp_route_policy "route" { policy_revision = 1 }';
+
+    await api.listMcpRoutePolicies('organization / one', 'project', 'environment');
+    await api.getMcpRoutePolicy('organization / one', 'route');
+    await api.createMcpRoutePolicyFromAcl(
+      'organization / one',
+      'project',
+      'environment',
+      acl,
+      'mcp-route:create-1'
+    );
+    await api.reviseMcpRoutePolicyFromAcl('organization / one', 'route', acl, 'mcp-route:revise-1');
+
+    expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/mcp-route-policies',
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/mcp-route-policies/route', 'GET'],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/mcp-route-policies',
+        'POST',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/mcp-route-policies/route/revisions', 'POST'],
+    ]);
+    for (const [call, key] of [
+      [calls[2], 'mcp-route:create-1'],
+      [calls[3], 'mcp-route:revise-1'],
+    ] as const) {
+      expect(call?.[1]).toEqual(
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Content-Type': A3S_ACL_MEDIA_TYPE,
+            'Idempotency-Key': key,
+          }),
+          body: acl,
+        })
+      );
+    }
   });
 
   it('uses the shared transport for finite Execution lifecycle operations', async () => {
@@ -1061,6 +1470,29 @@ describe('CloudApi', () => {
         'cli:update-1'
       )
     ).toThrow('workload ACL must contain between');
+    expect(() =>
+      api.bindMcpServiceProfileFromAcl('organization', 'asset', 'release', '', 'profile:bind-1')
+    ).toThrow('MCP Service profile ACL must contain between');
+    expect(() =>
+      api.bindMcpServiceProfileFromAcl(
+        'organization',
+        'asset',
+        'release',
+        '茅'.repeat(MAX_MCP_SERVICE_PROFILE_ACL_BYTES),
+        'profile:bind-2'
+      )
+    ).toThrow('MCP Service profile ACL must contain between');
+    expect(() =>
+      api.createMcpRoutePolicyFromAcl('organization', 'project', 'environment', '', 'mcp-route:create-1')
+    ).toThrow('MCP route policy ACL must contain between');
+    expect(() =>
+      api.reviseMcpRoutePolicyFromAcl(
+        'organization',
+        'route',
+        '茅'.repeat(MAX_MCP_ROUTE_POLICY_ACL_BYTES),
+        'mcp-route:revise-1'
+      )
+    ).toThrow('MCP route policy ACL must contain between');
     expect(called).toBe(false);
   });
 
@@ -1108,6 +1540,7 @@ describe('CloudApi', () => {
         name: 'automation',
         token: credential,
         scopes: ['project:write', 'build:write'],
+        principalId: '019c0000-0000-7000-8000-000000000010',
         expiresAt: '2027-01-02T03:04:05.000Z',
       },
       'client:token-create'
@@ -1128,6 +1561,7 @@ describe('CloudApi', () => {
           name: 'automation',
           token: credential,
           scopes: ['project:write', 'build:write'],
+          principalId: '019c0000-0000-7000-8000-000000000010',
           expiresAt: '2027-01-02T03:04:05.000Z',
         }),
       })
@@ -1179,6 +1613,74 @@ describe('CloudApi', () => {
         'client:token-invalid-calendar-expiry'
       )
     ).toThrow('API token expiry must be an RFC 3339 timestamp');
+    expect(called).toBe(false);
+  });
+
+  it('exposes one tenant-scoped membership lifecycle with optimistic concurrency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+
+    await api.listMemberships('organization / one');
+    await api.getMembership('organization / one', 'membership / one');
+    await api.createServiceMembership(
+      'organization / one',
+      { name: 'release automation', role: 'member' },
+      'client:membership-create'
+    );
+    await api.changeMembershipRole(
+      'organization / one',
+      'membership / one',
+      'restricted',
+      2,
+      'client:membership-role'
+    );
+    await api.revokeMembership('organization / one', 'membership / one', 3, 'client:membership-revoke');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/memberships',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/memberships',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one/role',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one/revocation',
+    ]);
+    expect(calls.slice(2).map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-create' }),
+        body: JSON.stringify({ name: 'release automation', role: 'member' }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-role' }),
+        body: JSON.stringify({ role: 'restricted', expectedVersion: 2 }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-revoke' }),
+        body: JSON.stringify({ expectedVersion: 3 }),
+      }),
+    ]);
+  });
+
+  it('rejects invalid membership input before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createServiceMembership('organization', { name: '', role: 'member' }, 'client:membership-name')
+    ).toThrow('service principal name must contain 1 to 63 visible characters');
+    expect(() =>
+      api.changeMembershipRole('organization', 'membership', 'member', 0, 'client:membership-version')
+    ).toThrow('expected membership version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

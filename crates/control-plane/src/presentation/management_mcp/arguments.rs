@@ -199,6 +199,17 @@ where
     Ok(key)
 }
 
+pub(super) fn deserialize_expected_version<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let version = u64::deserialize(deserializer)?;
+    if version == 0 {
+        return Err(D::Error::custom("expected version must be positive"));
+    }
+    Ok(version)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +272,20 @@ mod tests {
         ] {
             assert!(parse::<Arguments>(json!({"idempotencyKey": idempotency_key})).is_err());
         }
+    }
+
+    #[test]
+    fn expected_versions_are_positive() {
+        #[derive(Debug, Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Arguments {
+            #[serde(deserialize_with = "deserialize_expected_version")]
+            expected_version: u64,
+        }
+
+        let arguments =
+            parse::<Arguments>(json!({"expectedVersion": 1})).expect("positive expected version");
+        assert_eq!(arguments.expected_version, 1);
+        assert!(parse::<Arguments>(json!({"expectedVersion": 0})).is_err());
     }
 }

@@ -7,8 +7,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, AUTH_SCOPES_METADATA,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -67,18 +66,4 @@ pub fn routes_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
         )
 }
 
-fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
-    let idempotency_key = request
-        .header("idempotency-key")
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| BootError::BadRequest("idempotency-key header is required".into()))?
-        .to_owned();
-    let request_id = request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })?;
-    Ok((idempotency_key, request_id))
-}
+use super::request::request_identity;

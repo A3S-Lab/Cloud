@@ -1,4 +1,11 @@
-import type { Asset, AssetMutationResult, AssetRelease, AssetReleaseMutationResult } from '@a3s/cloud-client';
+import type {
+  Asset,
+  AssetMutationResult,
+  AssetRelease,
+  AssetReleaseMutationResult,
+  McpServiceProfile,
+  McpServiceProfileMutationResult,
+} from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
 import type { CommandResult } from './results';
 
@@ -18,6 +25,15 @@ const RELEASE_COLUMNS: readonly TableColumn<AssetRelease>[] = [
   { header: 'COMMIT', value: (row) => row.commitSha },
   { header: 'ARTIFACT', value: (row) => row.artifact?.digest ?? '' },
   { header: 'UPDATED AT', value: (row) => row.updatedAt },
+];
+
+const MCP_SERVICE_PROFILE_COLUMNS: readonly TableColumn<McpServiceProfile>[] = [
+  { header: 'ASSET', value: (row) => row.assetId },
+  { header: 'RELEASE', value: (row) => row.assetReleaseId },
+  { header: 'DIGEST', value: (row) => row.profileDigest },
+  { header: 'ENDPOINT', value: (row) => row.spec.endpointPath },
+  { header: 'PORT', value: (row) => row.spec.runtimePort },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
 ];
 
 export function assetsResult(rows: Asset[]): CommandResult {
@@ -42,6 +58,17 @@ export function assetReleaseResult(row: AssetRelease): CommandResult {
 
 export function assetReleaseMutationResult(row: AssetReleaseMutationResult): CommandResult {
   return singleResult(row, [...RELEASE_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]);
+}
+
+export function mcpServiceProfileResult(row: McpServiceProfile): CommandResult {
+  return singleResult(row, MCP_SERVICE_PROFILE_COLUMNS);
+}
+
+export function mcpServiceProfileMutationResult(row: McpServiceProfileMutationResult): CommandResult {
+  return singleResult(row, [
+    ...MCP_SERVICE_PROFILE_COLUMNS,
+    { header: 'REPLAYED', value: (value) => value.replayed },
+  ]);
 }
 
 function listResult<T>(rows: T[], columns: readonly TableColumn<T>[]): CommandResult {

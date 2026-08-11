@@ -4,6 +4,7 @@ pub mod assets;
 pub mod edge;
 pub mod executions;
 pub mod fleet;
+pub mod forms;
 pub mod identity;
 pub mod integration_events;
 pub mod operations;
@@ -13,6 +14,7 @@ pub mod search;
 pub mod secrets;
 pub mod shared_kernel;
 pub mod sources;
+pub mod workflow;
 pub mod workloads;
 
 pub use platform::PlatformModule;

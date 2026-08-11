@@ -113,6 +113,18 @@ pub struct OperationsConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HumanTasksConfig {
+    pub coordination_poll_interval_ms: u64,
+    pub coordination_batch_size: usize,
+    pub resume_poll_interval_ms: u64,
+    pub resume_batch_size: usize,
+    pub resume_lease_ms: u64,
+    pub flow_operation_timeout_ms: u64,
+    pub retry_initial_ms: u64,
+    pub retry_max_ms: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeploymentsConfig {
     pub reconcile_interval_ms: u64,
     pub command_ttl_ms: u64,
@@ -324,6 +336,7 @@ pub struct CloudConfig {
     pub auth: AuthConfig,
     pub events: EventsConfig,
     pub operations: OperationsConfig,
+    pub human_tasks: HumanTasksConfig,
     pub deployments: DeploymentsConfig,
     pub executions: ExecutionsConfig,
     pub builds: BuildsConfig,
@@ -404,6 +417,20 @@ impl CloudConfig {
         )?;
         let operations = one_block(&document, "operations")?;
         validate_block(operations, &["reconcile_interval_ms", "lease_ms"])?;
+        let human_tasks = one_block(&document, "human_tasks")?;
+        validate_block(
+            human_tasks,
+            &[
+                "coordination_poll_interval_ms",
+                "coordination_batch_size",
+                "resume_poll_interval_ms",
+                "resume_batch_size",
+                "resume_lease_ms",
+                "flow_operation_timeout_ms",
+                "retry_initial_ms",
+                "retry_max_ms",
+            ],
+        )?;
         let deployments = one_block(&document, "deployments")?;
         validate_block(
             deployments,
@@ -622,6 +649,19 @@ impl CloudConfig {
             operations: OperationsConfig {
                 reconcile_interval_ms: integer(operations, "reconcile_interval_ms")?,
                 lease_ms: integer(operations, "lease_ms")?,
+            },
+            human_tasks: HumanTasksConfig {
+                coordination_poll_interval_ms: integer(
+                    human_tasks,
+                    "coordination_poll_interval_ms",
+                )?,
+                coordination_batch_size: integer(human_tasks, "coordination_batch_size")?,
+                resume_poll_interval_ms: integer(human_tasks, "resume_poll_interval_ms")?,
+                resume_batch_size: integer(human_tasks, "resume_batch_size")?,
+                resume_lease_ms: integer(human_tasks, "resume_lease_ms")?,
+                flow_operation_timeout_ms: integer(human_tasks, "flow_operation_timeout_ms")?,
+                retry_initial_ms: integer(human_tasks, "retry_initial_ms")?,
+                retry_max_ms: integer(human_tasks, "retry_max_ms")?,
             },
             deployments: DeploymentsConfig {
                 reconcile_interval_ms: integer(deployments, "reconcile_interval_ms")?,
@@ -965,6 +1005,23 @@ impl CloudConfig {
         {
             return Err(ConfigError::Invalid(
                 "operations.lease_ms must exceed a positive reconcile interval".into(),
+            ));
+        }
+        if self.human_tasks.coordination_poll_interval_ms == 0
+            || self.human_tasks.coordination_batch_size == 0
+            || self.human_tasks.coordination_batch_size > 10_000
+            || self.human_tasks.resume_poll_interval_ms == 0
+            || self.human_tasks.resume_batch_size == 0
+            || self.human_tasks.resume_batch_size > 10_000
+            || self.human_tasks.flow_operation_timeout_ms == 0
+            || self.human_tasks.resume_lease_ms
+                <= self.human_tasks.flow_operation_timeout_ms.saturating_mul(2)
+            || self.human_tasks.retry_initial_ms == 0
+            || self.human_tasks.retry_max_ms < self.human_tasks.retry_initial_ms
+        {
+            return Err(ConfigError::Invalid(
+                "human_tasks requires positive polling, batches of 1 to 10000, a resume lease longer than two Flow operations, and ordered retry bounds"
+                    .into(),
             ));
         }
         if [
@@ -1501,6 +1558,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "executions",
         "edge",
         "fleet",
+        "human_tasks",
         "logs",
         "node_control",
         "operations",
@@ -1794,6 +1852,16 @@ events {
   retry_max_ms = 30000
 }
 operations { reconcile_interval_ms = 5000 lease_ms = 30000 }
+human_tasks {
+  coordination_poll_interval_ms = 1000
+  coordination_batch_size = 100
+  resume_poll_interval_ms = 250
+  resume_batch_size = 100
+  resume_lease_ms = 30000
+  flow_operation_timeout_ms = 5000
+  retry_initial_ms = 500
+  retry_max_ms = 30000
+}
 deployments {
   reconcile_interval_ms = 30000
   command_ttl_ms = 180000
@@ -1934,6 +2002,8 @@ security {
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.human_tasks.coordination_batch_size, 100);
+        assert_eq!(config.human_tasks.flow_operation_timeout_ms, 5_000);
         assert_eq!(config.builds.cache_max_bytes, 536_870_912);
         assert_eq!(config.builds.output_max_entries, 100_000);
         assert_eq!(config.sources.allowed_repositories.len(), 1);
@@ -1988,6 +2058,7 @@ security {
             8080
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.human_tasks.resume_lease_ms, 30_000);
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
         assert_eq!(config.sources.github_authority_poll_interval_ms, 300_000);
@@ -2031,6 +2102,16 @@ security {
         assert!(CloudConfig::parse(
             &VALID.replace("publish_timeout_ms = 3000", "publish_timeout_ms = 10000")
         )
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "flow_operation_timeout_ms = 5000",
+            "flow_operation_timeout_ms = 15000"
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&VALID.replace(
+            "coordination_batch_size = 100",
+            "coordination_batch_size = 0"
+        ))
         .is_err());
         assert!(CloudConfig::parse(&VALID.replace(
             "domain_verification_timeout_ms = 5000",

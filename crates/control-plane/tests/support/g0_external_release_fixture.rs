@@ -10,6 +10,7 @@ use a3s_cloud_control_plane::modules::artifacts::{
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{BuildRunId, NodeCommandId, NodeId};
 use a3s_cloud_control_plane::modules::sources::domain::{BuildRecipe, ExternalSourceRevision};
@@ -523,6 +524,11 @@ pub(super) async fn enqueue_box_commands(
 ) -> TestResult<(NodeId, NodeCommandId, NodeCommandId)> {
     let node_id = NodeId::from_uuid(handoff.commands[0].node_id);
     let database = Database::new(PostgresDialect, executor.clone());
+    let capabilities = NodeCapabilities::new(
+        "a3s-box",
+        box_revision,
+        serde_json::json!({"boxBuild": true}),
+    )?;
     database
         .execute(
             sql_query::<()>(
@@ -536,9 +542,9 @@ pub(super) async fn enqueue_box_commands(
             .append(", 'g0-conformance', 'a3s-box', ")
             .bind(box_revision)
             .append(", ")
-            .bind(format!("sha256:{}", "f".repeat(64)))
+            .bind(capabilities.digest())
             .append(", ")
-            .bind(serde_json::json!({"boxBuild": true}))
+            .bind(capabilities.document().clone())
             .append(", ")
             .bind(handoff.commands[0].issued_at)
             .append(", ")

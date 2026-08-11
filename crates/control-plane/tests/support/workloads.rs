@@ -162,9 +162,11 @@ pub async fn exercise_workloads(
 
     let node_uuid = database
         .fetch_one_as(
-            sql_query::<Uuid>("select id from nodes where organization_id = ")
+            sql_query::<Uuid>(
+                "select nodes.id from nodes join node_resource_inventory_heads on node_resource_inventory_heads.organization_id = nodes.organization_id and node_resource_inventory_heads.node_id = nodes.id where nodes.organization_id = ",
+            )
                 .bind(organization_uuid)
-                .append(" order by id asc limit 1"),
+                .append(" order by nodes.id asc limit 1"),
         )
         .await?;
     let node_id = NodeId::from_uuid(node_uuid);

@@ -54,8 +54,13 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     assert_eq!(
         fixture
             .edge
-            .update_mcp_route_policy(first_policy.clone(), fixture.policy.policy_revision())
-            .await?,
+            .mutate_mcp_route_policy(policy_write(
+                &first_policy,
+                McpRoutePolicyMutationKind::Revise,
+                "postgres-mcp-route-policy-first-credential",
+            )?)
+            .await?
+            .policy,
         first_policy
     );
 
@@ -112,8 +117,13 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     assert_eq!(
         fixture
             .edge
-            .create_mcp_route_policy(second_policy.clone())
-            .await?,
+            .mutate_mcp_route_policy(policy_write(
+                &second_policy,
+                McpRoutePolicyMutationKind::Create,
+                "postgres-mcp-route-policy-second-scope",
+            )?)
+            .await?
+            .policy,
         second_policy
     );
 
@@ -237,6 +247,217 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
             .map(|scope_id| (scope_id.as_uuid(), 1))
             .collect::<Vec<_>>()
     );
+
+    let pending = fixture
+        .edge
+        .pending_mcp_gateway_snapshots(100)
+        .await?
+        .into_iter()
+        .find(|target| {
+            target.publication.node_id == fixture.scope.node_id
+                && target.publication.revision == gateway_revision
+        })
+        .ok_or("node-wide MCP publication was not pending")?;
+    let node_wide_failed_at = pending.publication.command_not_after + Duration::milliseconds(1);
+    fixture
+        .edge
+        .mark_mcp_gateway_snapshot_unavailable(
+            pending.organization_id,
+            pending.gateway_scope_id,
+            pending.publication.node_id,
+            pending.publication.revision,
+            pending.publication.command_id,
+            "complete node-wide staging before ordinary composition",
+            node_wide_failed_at,
+        )
+        .await?;
+
+    let shared_edge = Arc::new((*fixture.edge).clone());
+    let managed_repository: Arc<dyn IMcpGatewaySnapshotRepository> = shared_edge.clone();
+    let route_repository: Arc<dyn IEdgeRepository> = shared_edge.clone();
+    let inputs = Arc::new(McpRouteProjectionInputReader::new(
+        shared_edge.clone(),
+        shared_edge.clone(),
+        Arc::new((*fixture.assets).clone()),
+        Arc::new((*fixture.workloads).clone()),
+    ));
+    let target_reader = FixtureRouteTargetReader::single(fixture.workload_id)
+        .with_revision(second_workload.revision_id, second_workload.workload_id);
+    let route_projection_planner =
+        McpRouteProjectionPlanner::new(Arc::new(target_reader), McpRouteTargetProjectionCompiler);
+    let scope_projection_planner = Arc::new(McpGatewayProjectionSetPlanner::new(
+        inputs,
+        McpGatewayProjectionPlanner::new(route_projection_planner, shared_edge),
+        McpGatewayProjectionAssembler,
+    ));
+    let node_projection_planner = Arc::new(McpGatewayNodeProjectionPlanner::new(
+        scope_projection_planner,
+        McpGatewayProjectionAssembler,
+    ));
+    let desired_state =
+        GatewayNodeDesiredStatePlanner::new(managed_repository.clone(), node_projection_planner);
+    let ordinary_planner = GatewayRouteRolloutPlanner::new_managed(
+        route_repository,
+        Arc::new(FixtureRouteTargetReader::single(fixture.workload_id)),
+        GatewayRouteRolloutCompiler::new(
+            fixture_gateway_snapshot_compiler()?,
+            Duration::minutes(5),
+            Duration::hours(24),
+        )?,
+        desired_state,
+    );
+    let ordinary_at = node_wide_failed_at + Duration::milliseconds(1);
+    let domain_claim = fixture
+        .edge
+        .find_domain_claim(fixture.organization_id, first_policy.spec().domain_claim_id)
+        .await?;
+    let route_id = RouteId::new();
+    let rollout_id = GatewayRolloutId::new();
+    let correlation_id = Uuid::now_v7();
+    let ordinary_hostname = first_policy.spec().hostname.clone();
+    let ordinary_path = RoutePath::parse("/ordinary")?;
+    let ordinary_port = RoutePortName::parse("mcp")?;
+    let plan_request = |issued_at| PlanManagedGatewayRouteRollout {
+        scope: (*fixture.scope).clone(),
+        rollout_id,
+        generation: 1,
+        correlation_id,
+        route_id,
+        workload_revision_id: fixture.workload_revision.id,
+        hostname: ordinary_hostname.clone(),
+        path_prefix: ordinary_path.clone(),
+        port_name: ordinary_port.clone(),
+        domain_claim: domain_claim.clone(),
+        issued_at,
+    };
+    let stale_planned = ordinary_planner
+        .plan_managed(plan_request(ordinary_at))
+        .await?;
+    let stale_stage = managed_primary_route_stage(
+        &stale_planned,
+        (*fixture.scope).clone(),
+        idempotency(
+            fixture.organization_id,
+            "routes",
+            "postgres-managed-ordinary-route",
+            b"postgres-managed-ordinary-route",
+        )?,
+    )?;
+    let stale_command_id = stale_stage.ordinary().publication.command_id;
+
+    let mut concurrent_policy = first_policy.clone();
+    let mut concurrent_spec = concurrent_policy.spec().clone();
+    concurrent_spec.max_response_bytes /= 2;
+    concurrent_spec.expires_at += Duration::minutes(1);
+    concurrent_policy.revise(
+        concurrent_spec,
+        fixture.profile,
+        ordinary_at + Duration::milliseconds(1),
+    )?;
+    fixture
+        .edge
+        .mutate_mcp_route_policy(policy_write(
+            &concurrent_policy,
+            McpRoutePolicyMutationKind::Revise,
+            "postgres-mcp-route-policy-concurrent-publication",
+        )?)
+        .await?;
+    assert!(matches!(
+        managed_repository
+            .stage_managed_route_publication(stale_stage)
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from gateway_publications where command_id = ")
+                    .bind(stale_command_id.as_uuid()),
+            )
+            .await?,
+        0
+    );
+
+    let current_planned = ordinary_planner
+        .plan_managed(plan_request(ordinary_at + Duration::milliseconds(2)))
+        .await?;
+    let current_stage = managed_primary_route_stage(
+        &current_planned,
+        (*fixture.scope).clone(),
+        idempotency(
+            fixture.organization_id,
+            "routes",
+            "postgres-managed-ordinary-route",
+            b"postgres-managed-ordinary-route",
+        )?,
+    )?;
+    let composition = current_stage.composition();
+    let mcp_expires_at = composition
+        .candidate()
+        .mcp()
+        .projection()
+        .ok_or("ordinary publication lost node-wide MCP projection")?
+        .projection()
+        .expires_at;
+    assert_eq!(
+        composition
+            .candidate()
+            .mcp()
+            .projection()
+            .ok_or("ordinary publication lost node-wide MCP projection")?
+            .projection()
+            .routes
+            .len(),
+        2
+    );
+    assert_eq!(
+        current_stage.ordinary().publication.snapshot_expires_at,
+        mcp_expires_at
+    );
+    assert!(current_stage
+        .ordinary()
+        .publication
+        .acl
+        .contains("\nmcp {\n"));
+    assert!(current_stage
+        .ordinary()
+        .publication
+        .acl
+        .contains(second_hostname.as_str()));
+    let expected_desired_digest = composition.candidate().desired_state_digest().clone();
+    let staged_ordinary = managed_repository
+        .stage_managed_route_publication(current_stage)
+        .await?;
+    let stored_owner = database
+        .fetch_one_as(
+            sql_query::<String>(
+                "select publication_owner from mcp_gateway_snapshot_publications where gateway_command_id = ",
+            )
+            .bind(staged_ordinary.publication.command_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(stored_owner, "ordinary");
+    assert!(managed_repository
+        .pending_mcp_gateway_snapshots(100)
+        .await?
+        .iter()
+        .all(|target| target.publication.command_id != staged_ordinary.publication.command_id));
+    let ordinary_state = managed_repository
+        .mcp_gateway_snapshot_reconciliation_state(fixture.scope.node_id)
+        .await?;
+    assert!(ordinary_state.pending_publication);
+    let latest_ordinary = ordinary_state
+        .latest_mcp_snapshot
+        .ok_or("ordinary composition marker was not visible to MCP reconciliation")?;
+    assert_eq!(
+        latest_ordinary.publication.command_id,
+        staged_ordinary.publication.command_id
+    );
+    assert_eq!(
+        latest_ordinary.desired_state_digest,
+        expected_desired_digest
+    );
+    assert_eq!(latest_ordinary.mcp_route_count, 2);
     Ok(())
 }
 
@@ -249,6 +470,9 @@ async fn fail_pending_snapshot(fixture: &Fixture<'_>) -> TestResult {
         .filter(|target| target.publication.node_id == fixture.scope.node_id)
         .max_by_key(|target| target.publication.revision)
         .ok_or("MCP node aggregation fixture expected the pending cleanup snapshot")?;
+    let observed_at = fixture
+        .observed_at
+        .max(pending.publication.command_not_after + Duration::milliseconds(1));
     fixture
         .edge
         .mark_mcp_gateway_snapshot_unavailable(
@@ -258,7 +482,7 @@ async fn fail_pending_snapshot(fixture: &Fixture<'_>) -> TestResult {
             pending.publication.revision,
             pending.publication.command_id,
             "complete the single-scope fixture before node aggregation",
-            fixture.observed_at,
+            observed_at,
         )
         .await?;
     Ok(())

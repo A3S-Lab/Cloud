@@ -26,6 +26,11 @@ describe('a3s-cloud Asset commands', () => {
       `/organizations/${ORGANIZATION_ID}/assets/${ASSET_ID}/release-selection?version=2.0.0-alpha.1`,
       release(),
     ],
+    [
+      ['asset-releases', 'mcp-profile', ASSET_ID, RELEASE_ID],
+      `/organizations/${ORGANIZATION_ID}/assets/${ASSET_ID}/releases/${RELEASE_ID}/mcp-service-profile`,
+      mcpServiceProfile(),
+    ],
   ] as const)('queries the organization Asset catalog %#', async (command, path, response) => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
@@ -97,6 +102,82 @@ describe('a3s-cloud Asset commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('binds an MCP Service Profile from the shared bounded ACL file path', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const acl = 'service { endpoint_path = "/mcp" runtime_port = "mcp" }';
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope({ ...mcpServiceProfile(), replayed: false }, 201);
+    };
+    const output = capture();
+
+    const exitCode = await runCli(
+      [
+        'asset-releases',
+        'bind-mcp-profile',
+        ASSET_ID,
+        RELEASE_ID,
+        '--file=service-profile.acl',
+        '--idempotency-key=cli:profile-bind-1',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        fetch: fetcher,
+        readFile: async (path) => {
+          expect(path).toBe('service-profile.acl');
+          return new TextEncoder().encode(acl);
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/assets/${ASSET_ID}/releases/${RELEASE_ID}/mcp-service-profile`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'cli:profile-bind-1',
+        }),
+        body: acl,
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects an oversized MCP Service Profile ACL before transport', async () => {
+    let called = false;
+    const output = capture();
+
+    const exitCode = await runCli(
+      [
+        'asset-releases',
+        'bind-mcp-profile',
+        ASSET_ID,
+        RELEASE_ID,
+        '--file=service-profile.acl',
+        '--idempotency-key=cli:profile-bind-2',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        fetch: async () => {
+          called = true;
+          return envelope({});
+        },
+        readFile: async () => new Uint8Array(65_537),
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Usage);
+    expect(called).toBe(false);
+    expect(output.stderr()).toContain('MCP Service profile ACL must contain between');
+  });
+
   it('rejects a shortened release commit before transport', async () => {
     let called = false;
     const output = capture();
@@ -153,6 +234,29 @@ function release() {
     updatedAt: '2026-08-04T00:01:00.000Z',
     publishedAt: '2026-08-04T00:01:00.000Z',
     yankedAt: null,
+  };
+}
+
+function mcpServiceProfile() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    assetId: ASSET_ID,
+    assetReleaseId: RELEASE_ID,
+    profileDigest: `sha256:${'d'.repeat(64)}`,
+    acl: 'service { endpoint_path = "/mcp" runtime_port = "mcp" }',
+    spec: {
+      endpointPath: '/mcp',
+      runtimePort: 'mcp',
+      healthPath: '/health',
+      requestSse: true,
+      subscriptions: true,
+      serverDiscover: true,
+      expectedCapabilities: ['tools'],
+      maxRequestBytes: 1_048_576,
+      maxResponseBytes: 1_048_576,
+      maxStreamSeconds: 300,
+    },
+    createdAt: '2026-08-04T00:01:00.000Z',
   };
 }
 

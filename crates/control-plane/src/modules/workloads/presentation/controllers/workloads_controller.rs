@@ -14,9 +14,9 @@ use crate::modules::workloads::presentation::dto::{
     parse_source_workload_manifest, parse_workload_manifest, CancelDeploymentResponse,
     CreateSourceWorkloadRequest, CreateWorkloadRequest, RollbackWorkloadRequest,
     UpdateAgentWorkloadRequest, UpdateWorkloadRequest, WorkloadDeploymentResponse,
-    WorkloadStopResponse, A3S_ACL_MEDIA_TYPE,
+    WorkloadStopResponse,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{application_error_response, A3S_ACL_MEDIA_TYPE};
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
     AUTH_SCOPES_METADATA,

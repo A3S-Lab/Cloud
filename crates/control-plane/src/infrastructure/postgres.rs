@@ -651,6 +651,78 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/072_mcp_gateway_node_scope_evidence.sql"
             )),
         ),
+        Migration::new(
+            "073",
+            "unified Gateway snapshot publication ownership",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/073_gateway_snapshot_publication_owners.sql"
+            )),
+        ),
+        Migration::new(
+            "074",
+            "Identity principals and organization memberships",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/074_identity_principals_and_memberships.sql"
+            )),
+        ),
+        Migration::new(
+            "075",
+            "versioned Workflow Ontologies",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/075_versioned_ontologies.sql"
+            )),
+        ),
+        Migration::new(
+            "076",
+            "versioned Workflow definitions, goals, and plans",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/076_workflow_definitions_goals_and_plans.sql"
+            )),
+        ),
+        Migration::new(
+            "077",
+            "cleanup-aware Flow operation cancellation",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/077_flow_operation_cancelling.sql"
+            )),
+        ),
+        Migration::new(
+            "078",
+            "Boot Flow task queue schema",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/078_boot_flow_task_queue_schema.sql"
+            )),
+        ),
+        Migration::new(
+            "079",
+            "Form drafts and immutable releases",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/079_form_drafts_and_releases.sql"
+            )),
+        ),
+        Migration::new(
+            "080",
+            "Workflow runs and semantic step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/080_workflow_runs.sql"
+            )),
+        ),
+        Migration::new(
+            "081",
+            "Human tasks, Form submissions, and durable Flow resume delivery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/081_human_tasks_and_form_submissions.sql"
+            )),
+        ),
     ]
 }
 

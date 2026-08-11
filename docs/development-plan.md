@@ -289,22 +289,22 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-08-06:
+Status as of 2026-08-10:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
-| F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, Flow recovery, and local/NATS outbox gates pass |
+| F0 | Verified; compatibility publication pending | Isolated PostgreSQL migrations, tenancy, idempotency, local/NATS outbox, A3S Flow `0.12.0` history, A3S Boot `0.2.0` PostgreSQL task management, A3S ORM `0.3.0`, queue-failure readiness, and the nine-boundary persistent Build Flow `SIGKILL` gates pass. The exact root compatibility lock remains to be published |
 | N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
 | G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. The manual external-provider workflow now binds a private GitHub revision and production input to that exact Box output, an operator HTTPS Registry graph, a locally verified Vault Transit signature, a restart-restored PostgreSQL BuildRun, and one `cloud.deployment@3` Workload handoff. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Retained successful executions of both operator gates still block G0 verification |
-| C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and the standalone CLI. Validated envelopes, bounded transport failures, environment-only token handling, safe URL/context resolution, table/JSON output, stable exit codes, tenant and operational reads, signed evidence, paged logs, explicit idempotent operational mutations, Cloud-admitted A3S ACL Workload create/update/source deployment, core tenant creation, version-checked node transitions, public administrative diagnostics, replay-aware DomainClaim/Gateway-scope/Route mutation parity, Source revision/GitHub connection/repository-subscription parity, stdin-only Secret metadata/version lifecycle parity, stdin-only API-token metadata/lifecycle parity, stdin-only checksum-verified node bootstrap, organization-scoped authorized search, and the versioned OpenAPI compatibility/deprecation gate pass focused tests. A real PostgreSQL gate proves raw REST, the Web client import, and the compiled CLI preserve replay, errors, tenant denial, revocation, digest-only A3S ORM persistence, and credential-free evidence. `C0.2` established the sessionless management MCP, per-request token/scope discovery, core Project/Environment/search tools, ten operational Node/Operation/Workload/Deployment/Route/BuildRun queries, bounded paged Workload logs, explicit BuildRun-log unavailability, signed BuildRun evidence, five replay-safe operational commands, cross-surface idempotency, tenant-context derivation, and immediate revocation. Its dedicated real PostgreSQL gate proves exact 23-tool administrator and 16-tool read-only catalogs, strict arguments and annotations, operational query and command dispatch, hidden-mutation zero-write, Project and Workload replay, foreign-resource non-disclosure, next-request revocation, expected A3S ORM state, and credential-free evidence. `C0.2m` replaces only the legacy adapter with `2026-07-28` per-request metadata, matching transport headers, complete results, and `server/discover`; focused conformance and the clean real PostgreSQL/A3S Box gate pass. `C0.3` and `C0.4` remain planned. |
+| C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and CLI; the versioned OpenAPI envelope, bounded transport, safe token handling, tenant/operational reads, replay-safe mutations, evidence, logs, diagnostics, Search, Workload/Source/Secret/Identity/Fleet/Edge parity, and compatibility checks pass focused tests. The verified pre-extension Management MCP gate proved exact 23-tool administrator and 16-tool read-only catalogs. The current 59-tool administrator and 37-tool read-only catalogs retain those tools and add five Identity, seven `W0.2` Ontology, ten `W0.3` Workflow definition/goal/plan, seven native Form lifecycle, and seven WorkflowRun lifecycle tools; focused catalog, permission, strict-argument, lifecycle, deterministic-plan, WorkflowRun, tenant, role, and replay conformance passes, while the expanded clean real-PostgreSQL/A3S Box rerun remains open. `C0.2m` uses the `2026-07-28` sessionless protocol with per-request metadata and `server/discover`. The backend-only `C0.3` slice implements stable human/service Principals, Membership roles, Principal-bound credentials, immediate role/revocation enforcement, last-owner protection, A3S ORM/Outbox/audit writes, REST `1.14.0`, client, CLI, and Management MCP. Resource Grants, invitations, OIDC, attribution, notifications, security investigation, audit-query interfaces, and role-focused frontend projections remain planned; `C0.3` is in progress and `C0.4` remains planned. |
 | A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI/Web management projections. `A0.4` has immutable exact Agent release-to-Workload binding, server-side OCI injection, lifecycle reuse, migration 066 persistence, and REST/client/CLI/Web projections. `A0.5` now publishes exact hosted Git archives as immutable Skill bundles and binds them to Agent Workload revisions through migration 067, read-only Runtime Artifact mounts, rollback-safe revision history, and REST/client/CLI/Web surfaces. Retained external-provider and real PostgreSQL/Box evidence still blocks `A0.3` through `A0.5` verification. |
 | A1 | In progress | `A1.0` is verified and `A1.1` implements the durable conversation/execution foundation. The local `A1.2` native Code provider pins the Code-owned protocol, persists exact Workload/Runtime/run delivery identity through migration 069, reconciles the reserved Operation through the existing Flow runtime, forwards commands through Fleet and the node journal, settles Code pages through the shared outbound-batch primitive, derives only bounded semantic output/terminal facts, and implements the root `a3s code harness` HTTP entrypoint. Dependency publication, cancel/recover orchestration, and clean Linux PostgreSQL/Runtime recovery evidence remain open; provider-neutral `A1.3` and `A1.4` through `A1.6` remain planned. |
-| W0 | Planned | Workflow/Ontology authority, deterministic plan compilation, typed capability steps, and Flow-backed recovery are specified in `workflow-evolution-plan.md`; no Workflow tables, API, or public availability exists yet. |
+| W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology contract foundation, exact capability references, deterministic graph validation, the ten-node outcome mapping, and architectural guards against duplicate execution mechanisms. Backend `W0.2` adds immutable Ontology revisions, deterministic migration/diff policy, and authorized Search. The `W0.3` planning slice adds immutable Workflow definitions/revisions, exact closed ACL payloads, Goals, and deterministic Plan revisions. Migration `079` adds project-scoped canonical Form drafts and immutable native owner-compiled releases. Migration `080` adds an A3S ORM-backed WorkflowRun bound to one exact Goal/Plan and correlated Operation/A3S Flow run. Migration `081` adds typed A3S ORM persistence for immutable FormSubmission and WorkflowDecision records, optimistic HumanTasks, hook Inbox evidence, and leased resume Outbox/receipts. Workflow-local `input`, `transform`, `branch`, `human_decision`, and `output` execution, immutable replay validation, worker-role task coordination, lease/retry/conflict resume recovery, cancellation, deadline timeout, output, and history share the same Flow authority. Real PostgreSQL plus Flow gates cover concurrency, atomic submission/decision storage, lease takeover, commit-before-ack recovery, replay, tenant isolation, and four API/worker `SIGKILL` boundaries without duplicating WorkflowRun, Operation, Flow history, terminal projection, or cancellation. Existing REST `1.14.0`, maintained client, CLI, and Management MCP surfaces expose only the non-task lifecycle. Public protected submission/HumanTask surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded clean cross-surface conformance, `W0.4`-`W0.5`, and public availability remain planned. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
 | U0 | In progress; unavailable | `U0.1` pins the canonical A3S Use host contract and adds explicit capabilities, plan, apply, enablement, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. Root compatibility locking, production Manager composition, and every Plugins module/schema/API remain open; no user-facing capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
@@ -628,10 +628,43 @@ commit and query tenant-scoped desired state.
   and audit tables.
 - Implement Identity and Projects aggregates, repositories, commands, queries,
   tenant guards, API tokens, and the shared API response/error interceptors.
-- Integrate A3S Flow with a separate PostgreSQL schema and add an idempotent
-  operation starter plus projection rebuilder.
+- Integrate A3S Flow with an isolated ORM-backed PostgreSQL schema, execute its
+  durable tasks through A3S Boot's isolated PostgreSQL queue, and add an
+  idempotent runtime-build-pinned Operation starter plus projection rebuilder.
 - Add the first web shell: sign-in, organization/project/environment selection,
   operation drawer, and reconnecting SSE client.
+
+### Current compatibility evidence
+
+- Cloud pins A3S Flow `0.12.0`, A3S Boot `0.2.0` with `queue-postgres`, and
+  A3S ORM `0.3.0`-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot task
+  state lives in `a3s_boot`; Cloud business tables remain separately owned.
+- Cloud pins native `a3s-form-core` `0.1.0` at exact revision
+  `8d73dba5e88ded0de7ae0e1c7b1e599a5d9134de`, consumes the owner repository's
+  byte-identical interaction and submitted-value evaluation fixtures, reuses
+  its `FormReleaseRef`, request, submission, canonicalization, and digest types,
+  and calls its compiler and evaluator through one application port without a
+  Cloud copy.
+- New Operation histories pin runtime build `a3s-cloud-workflows@1`. Legacy
+  unpinned histories remain replayable for compatibility, but Cloud does not
+  create new unpinned Operation runs.
+- The coordinator drains the Boot queue on bounded one-shot execution, reports
+  retry exhaustion instead of silently succeeding, exposes terminal queue
+  failure through readiness, and shuts the worker down cleanly. Flow
+  `cancelling` remains non-terminal until cleanup reaches a terminal outcome.
+- The focused PostgreSQL gate proves successful scheduling, task completion,
+  schema isolation, four-attempt retry exhaustion, terminal failure surfacing,
+  and unhealthy readiness. The persistent Build Flow gate passes all nine
+  Fleet completion-event `SIGKILL` boundaries on the same Flow baseline.
+
+This refresh supplies the shared durable execution substrate. Migrations `079`
+through `081` now add Form draft/release persistence, the minimal WorkflowRun,
+and typed A3S ORM persistence for HumanTask, accepted Submission, immutable
+Decision, Flow-hook Inbox, and leased resume Outbox/receipt records. Worker-role
+coordination closes the internal A3S Form-to-Flow decision loop with real
+PostgreSQL/Flow recovery evidence. It does not add public protected submission
+or HumanTask APIs, Resource Grant evaluation, expiry/cancellation coordination,
+or an end-to-end human workflow product surface.
 
 ### Exit gate
 
@@ -1518,7 +1551,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin contract `1.7.0`. Focused tests regenerate the
+  and every API response pin the current contract `1.14.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -1532,8 +1565,8 @@ packages:
   digests through A3S ORM, and zero plaintext credentials in responses, logs,
   evidence, or the PostgreSQL dump.
 
-`C0.1`, `C0.2`, and `C0.2m` are verified. The broader `C0` milestone remains in
-progress. The modern management MCP adapter passes focused conformance and its
+`C0.1`, `C0.2`, and `C0.2m` are verified. `C0.3` is in progress, and the broader
+`C0` milestone remains in progress. The modern management MCP adapter passes focused conformance and its
 clean real PostgreSQL/A3S Box gate. It runs through the same application
 commands and queries. Core-resource tools, ten operational resource reads, two
 bounded paged-log reads, one signed-evidence read, and five replay-safe
@@ -1589,10 +1622,14 @@ node.
   key, derives the organization from the authenticated principal, invokes the
   existing CommandBus handler with the REST response DTO, and exposes no
   repository, Redis, object-store, or node path. Focused tests prove exact
-  replay and strict argument rejection. The real PostgreSQL gate proves the
-  23-tool administrator and 16-tool read-only catalogs, annotations, all five
-  missing-resource command boundaries, a durable Workload-stop replay, A3S ORM
-  state, and credential-free evidence. `C0.2` is verified.
+  replay and strict argument rejection. The verified pre-extension real
+  PostgreSQL gate proves the 23-tool administrator and 16-tool read-only
+  catalogs, all five missing-resource command boundaries, durable
+  Workload-stop replay, A3S ORM state, and credential-free evidence. Focused
+  tests prove the current 59-tool administrator and 37-tool read-only catalogs,
+  including Identity, Ontology, Workflow planning, native Form lifecycle, and
+  WorkflowRun lifecycle extensions; their
+  expanded real-PostgreSQL rerun remains open. `C0.2` itself is verified.
 - Implemented for `C0.2m`: the same presentation adapter now uses modern
   `2026-07-28` MCP. It removes `initialize`, requires per-request version/client
   metadata and matching `MCP-Protocol-Version`, `Mcp-Method`, and applicable
@@ -1609,6 +1646,18 @@ node.
 - Start MCP authentication with bounded API tokens. Add OAuth 2.1 discovery,
   dynamic client registration, PKCE, consent, and revocation only after the
   token-scoped tool contract and confused-deputy tests pass.
+- Implemented as the first backend-only `C0.3` slice: one stable human or
+  service Principal owns scoped credentials, while one organization Membership
+  assigns `owner`, `admin`, `member`, or `restricted`. API tokens bind to the
+  Principal, cannot exceed issuer scopes, and ordinary members cannot bind a
+  credential to another Principal. Role changes and revocation take effect on
+  the next request, restricted memberships fail closed until Resource Grants
+  exist, and the last active owner is protected. Migration `074` backfills the
+  same authority through A3S ORM. New membership writes atomically commit
+  idempotency, Outbox facts, and shared audit records. REST/OpenAPI `1.14.0`,
+  the maintained client, CLI, and five administrator-only Management MCP tools
+  reuse the same commands, queries, guards, and DTOs. No frontend identity
+  surface, second RBAC evaluator, identity store, or audit path is introduced.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1616,10 +1665,11 @@ node.
   grants. Just-in-time access requires an explicit invitation or closed
   organization policy and can never infer owner or platform-administrator
   authority from an email address or provider claim.
-- Add organization membership with `owner`, `admin`, `member`, and `restricted`
-  roles, invitations, and explicit project/environment/node grants. Platform
-  administration remains a separate role and cannot be inferred from
-  organization ownership.
+- Add invitations and one explicit Resource Grant evaluator for
+  project/environment/node access on top of the implemented Membership roles.
+  Platform administration remains a separate role and cannot be inferred from
+  organization ownership. OIDC links and invitations must resolve the existing
+  Principal/Membership authority rather than introduce provider-owned roles.
 - Add one tenant-authorized global-search command/query and REST/client/CLI/MCP
   interface over registered resource projections. Retain grant-derived console
   modes for consumers, project stewards, and platform operators as a deferred
@@ -1806,7 +1856,7 @@ draft and yanked visibility for management and pinned deployments. New-binding
 selection accepts an optional exact semantic version or otherwise chooses the
 highest stable published version by semantic precedence; it excludes drafts,
 yanked releases, prereleases by default, and every release of an archived
-Asset. The same contract is exposed by OpenAPI `1.7.0`, the shared TypeScript
+Asset. The same contract is exposed by OpenAPI `1.9.0`, the shared TypeScript
 client, the standalone CLI, and the Web catalog summary.
 
 Migration 066 stores one optional immutable Agent binding on each Workload
@@ -1837,7 +1887,7 @@ read-only Artifact mount per Skill under `/a3s/skills/{asset_id}`; callers
 cannot inject mount names or paths, and Skills never become standalone Runtime
 units. Replay resolves the committed revision before fresh release admission,
 while rollback, Agent release updates, and Secret restarts preserve the exact
-Skill set. OpenAPI `1.7.0`, the shared client, CLI, and Web expose the same
+Skill set. OpenAPI `1.9.0`, the shared client, CLI, and Web expose the same
 tenant-authorized lifecycle.
 
 ### Remaining A0 work
@@ -1880,7 +1930,7 @@ request carries version/client metadata, and the server implements
 ### Current state
 
 `MCP0` foundation development is in progress, but the product remains
-unavailable. As of 2026-08-06:
+unavailable. As of 2026-08-07:
 
 - `MCP0.1` has closed A3S ACL contract values, stable errors, digest bindings,
   and frozen Runtime/Gateway fixtures with focused cross-repository tests;
@@ -1888,11 +1938,11 @@ unavailable. As of 2026-08-06:
   or profile evidence, while real Linux Box hosting and recovery remain the
   `MCP0.2` gate;
 - Cloud admits one canonical immutable Service-profile ACL, binds it to a
-  published MCP AssetRelease through migration 052, and stores a separately
-  revisioned, expiring Edge route-policy ACL through migration 053. Each policy
+  published MCP AssetRelease through migration 053, and stores a separately
+  revisioned, expiring Edge route-policy ACL through migration 054. Each policy
   now pins an exact tenant-qualified DomainClaim; candidates require its
   verified hostname coverage and retain its aggregate version for publication
-  CAS. Migration 054 binds an ordinary WorkloadRevision to the exact tenant,
+  CAS. Migration 055 binds an ordinary WorkloadRevision to the exact tenant,
   AssetRelease, OCI artifact digest/media type, and profile digest; the ordinary
   Runtime projection now inherits that opaque digest automatically. These paths
   use typed A3S ORM, and route desired state contains authorization references
@@ -1919,27 +1969,36 @@ unavailable. As of 2026-08-06:
   remain in the same complete snapshot. The candidate retains exact policy,
   DomainClaim, Workload/active-revision, and credential generation,
   aggregate-version, and observed lifecycle-state evidence even for removed
-  routes. The complete-snapshot composer joins
-  this candidate with every ordinary active Route and verified DomainClaim,
-  preserves ordinary traffic, rejects prefix bypass, unions certificate
-  authority, emits exact MCP routers/targets, and removes stale MCP policy when
-  the active set becomes empty. Durable staging then locks the physical Node,
-  exact logical membership, physical scope, complete ordinary and MCP route
-  sets, every Claim, Workload revision, and credential generation before
-  atomically writing the pending publication, optional certificate, scope
-  advance, immutable MCP publication-kind marker, and one secret-free Outbox
-  event. Policy mutations take the same logical-scope lock, closing the
-  concurrent active-policy insertion gap. Migration 057 binds each marker to
-  its exact tenant, logical scope, receiving node, revision, command, and
-  digest. Migration 058 corrects secondary-member scope binding and adds a
-  stable logical desired-state digest plus exact MCP route count. A registered
-  cursor-fair worker discovers scopes with active or previously published MCP
-  state, defers any physical pending publication, replans the complete scope,
-  rereads all ordinary Route inputs, and feeds only changed, due-retry,
-  displaced, or empty-removal candidates into the atomic stage. Physical
-  revision, command/certificate identity, ordinary acknowledgement binding,
-  and observation time cannot create churn. A successful zero-route marker
-  releases later ordinary-only changes back to their existing owner.
+  routes. The complete-snapshot composer aggregates every active or previously
+  published logical MCP scope for one physical Gateway, then joins that
+  node-wide projection with every ordinary active Route and verified
+  DomainClaim. It preserves ordinary traffic, rejects prefix bypass, unions
+  certificate authority, emits exact MCP routers/targets, and removes stale MCP
+  policy when an active set becomes empty. Durable staging locks the physical
+  Node, the exact logical scope set and membership generations, physical scope,
+  complete ordinary and MCP route sets, every Claim, Workload revision, and
+  credential generation before atomically writing the pending publication,
+  optional certificate, scope advance, immutable composition marker, and one
+  secret-free Outbox event. Policy mutations take the same logical-scope lock,
+  closing the concurrent active-policy insertion gap. Migrations 057 and 058
+  bind each marker to its exact tenant, receiving node, revision, command,
+  digest, stable desired-state identity, and route count. Migration 072 adds
+  sorted node-wide logical-scope evidence, and migration 073 assigns exactly one
+  durable dispatcher to each composed publication.
+
+  One node desired-state planner and complete snapshot compiler now serve MCP
+  reconciliation plus ordinary Route publication, deployment cutover, rollout,
+  exact rollback, and certificate convergence. The originating ordinary flow
+  dispatches ordinary-owned publications; the MCP worker scans only
+  MCP-reconciler-owned markers. Both owners persist the same complete scope-set
+  CAS and acknowledgement evidence, so an ordinary change cannot erase MCP
+  routes and the MCP worker cannot duplicate an ordinary dispatch. The
+  registered cursor-fair worker discovers scopes with active or previously
+  published MCP state, defers any physical pending publication, replans the
+  complete node, rereads all ordinary Route inputs, and feeds only changed,
+  due-retry, displaced, or empty-removal candidates into the same atomic stage.
+  Physical revision, command/certificate identity, ordinary acknowledgement
+  binding, and observation time cannot create churn.
 
   The separate bounded dispatch reconciler scans durable pending markers,
   idempotently dispatches the existing Fleet Gateway command, survives queue
@@ -1965,12 +2024,16 @@ unavailable. As of 2026-08-06:
   fresh complete snapshot through the existing atomic publication path when
   shared renewal policy reaches its threshold or certificate evidence is
   missing, failed, or revoked. Mixed-route certificates remain solely owned by
-  the ordinary certificate reconciler. Node-wide aggregation for physical
-  Gateways shared by active logical MCP scopes,
-  unified composition in every ordinary publication path, retained clean-host
-  PostgreSQL lifecycle execution, and joint real-process recovery remain
-  `MCP0.3`; Web lifecycle views remain intentionally deferred until backend
-  conformance; and
+  the ordinary certificate reconciler. Retained clean-host PostgreSQL lifecycle
+  execution and joint real-process recovery remain `MCP0.3`. The tenant-guarded
+  backend now exposes the immutable release-owned Service profile through raw
+  A3S ACL REST/OpenAPI `1.9.0`, the maintained TypeScript client, and CLI. One
+  Asset repository transaction reuses migration 053 and atomically stores the
+  binding, caller idempotency, one secret-free Outbox event, and control-plane
+  audit; canonical-equivalent ACL is the same digest and an identical binding
+  is a no-op. Web lifecycle views remain intentionally deferred until backend
+  conformance; no profile table, parser, scheduler, or publication mechanism is
+  duplicated; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
   JSON/notification/SSE/subscription/cancellation evidence. Snapshot swaps
@@ -2093,7 +2156,8 @@ never become its state store.
    from acknowledged traffic before Runtime stop.
 9. Expose deployment, health, logs, update, rollback, stop, route readiness,
    and bounded protocol diagnostics through the existing API, client, CLI,
-   Web, Operation, and control-plane audit paths.
+   Operation, and control-plane audit paths. Defer Web lifecycle views until
+   backend conformance is complete.
 10. Recover every commit-before-dispatch and apply-before-acknowledgement gap
    through Flow, Fleet journals, Runtime inspection, Gateway exact readiness,
    and deterministic reconciliation.
@@ -2114,6 +2178,21 @@ This reuses the existing Secret encryption provider and common
 idempotency/audit authorities and does not add TokenHub, another credential
 store, or another Gateway publication path. Web views remain planned and
 intentionally deferred during this phase.
+
+The current backend-first route-policy slice exposes create, list, get, and
+revision writes through REST/OpenAPI `1.9.0`, the maintained TypeScript client,
+and `mcp-routes` CLI commands. Requests carry only a bounded raw A3S ACL
+document; Cloud parses and canonicalizes it once with `a3s-acl`, admits it
+against the exact immutable Service profile and current policy revision, and
+uses the existing migration 054 table and Edge repository. One transaction
+stores desired state, a full historical idempotency response snapshot,
+changed-only Outbox event, and audit record. Exact-key replay resolves before
+current-expiry and revision checks, so a committed historical response remains
+recoverable after later revisions. The same route policy continues into the
+existing node desired-state planner, complete snapshot compiler, MCP
+reconciler, Fleet command, and Gateway acknowledgement path. No second policy
+store, ACL parser, scheduler, publication worker, or frontend implementation is
+introduced.
 
 MCP-only certificate renewal is also owned by that existing desired-state
 worker. When no ordinary Route owns the installed certificate, reconciliation
@@ -2588,7 +2667,7 @@ Current `A1.1` implementation:
 - event content is canonical bounded inline JSON of at most 64 KiB with a
   stored SHA-256 digest; immutable-object references begin only when a later
   gate admits larger content;
-- REST, OpenAPI `1.7.0`, the shared TypeScript client, CLI, and Web expose
+- REST, OpenAPI `1.9.0`, the shared TypeScript client, CLI, and Web expose
   conversation creation/list/get, execution start/list/get, paged event reads,
   and the shared resumable SSE stream; and
 - domain, application, concurrency, controller, contract, client, CLI, Web,
@@ -2733,21 +2812,89 @@ queue, graph database authority, object client, or provider launcher.
 
 Deliver `W0.1` through `W0.5` in order:
 
-1. freeze the Workflow/Ontology domain, closed ACL, authority, quota, and
-   capability-reference contracts;
+1. retain the implemented Workflow/Ontology closed ACL, canonical digest,
+   bounded DAG/ontology validation, authority, quota, federated capability
+   reference, standalone-node migration map, and duplicate-mechanism guards;
 2. persist immutable ontologies through A3S ORM and rebuild authorized Search
    and vector projections;
-3. compile immutable plan revisions and execute human, service, and finite-task
-   steps through one Operation and A3S Flow;
+3. persist Workflow definitions, exact canonical step payloads, and goals;
+   compile immutable plan revisions; execute human, service, and finite-task
+   steps through one Operation and A3S Flow; and expose authorized lifecycle,
+   history, evidence, tracing, and statistics projections;
 4. add typed Agent, MCP, model, Tool, and business-service steps only through
    their verified owning application ports; and
 5. close migration, pause/resume, replay, cancellation, compensation,
-   multi-day recovery, tenant, scale, and operator evidence.
+   history/tracing/statistics integrity, multi-day recovery, tenant, scale,
+   and operator evidence.
+
+Items 1 and 2 plus the planning/persistence and minimal Workflow-local
+execution portions of item 3 are implemented in the backend. `W0.2` uses
+migration `075`,
+one A3S ORM repository, immutable canonical ACL revisions, optimistic aggregate
+heads, deterministic structural diffs, target-rule validation for breaking
+changes, one authorized Search projection, REST `1.14.0`, the maintained
+client, CLI, and seven Management MCP tools. Focused domain, REST, OpenAPI,
+client, CLI, MCP catalog/permission, lifecycle, and historical-replay tests
+pass. Migration `076` adds immutable Workflow definitions/revisions, atomically
+owned canonical configuration/data-schema/policy payloads, immutable Goals,
+and deterministic Plans through the same A3S ORM, idempotency, audit, and
+Outbox mechanisms. REST `1.14.0`, the maintained client, CLI, and ten additional
+Management MCP tools reuse the same commands and queries. Migration `079`
+persists canonical native Form draft heads and immutable owner-compiled
+releases through A3S ORM. REST `1.14.0`, the maintained client, CLI, and seven
+Management MCP tools reuse the same create/list/get/revise/publish commands and
+queries, `form:write` scope, tenant boundary, optimistic versions, and
+historical idempotency replay. Focused PostgreSQL 17, REST, OpenAPI, client,
+CLI, and MCP role/tenant/lifecycle tests pass without copying the Form compiler
+or validator. Migration `080` persists the exact Goal/Plan-bound WorkflowRun,
+correlated Operation, semantic step projections, idempotency, audit, and Outbox
+atomically through A3S ORM. Migration `081` persists immutable accepted
+FormSubmission records, optimistic HumanTasks, immutable WorkflowDecisions,
+hook Inbox evidence, and a leased resume Outbox with immutable receipts through
+typed A3S ORM queries. The existing worker and reconciler execute Workflow-local
+`input`, `transform`, `branch`, `human_decision`, and `output` steps through one
+A3S Flow run. They verify immutable plan, input, payload, FormRelease, and hook
+authority during replay, reject drift, create and activate the task, and resume
+the same hook from the immutable decision with lease/retry/conflict recovery.
+REST `1.14.0`, the maintained client,
+`workflow-runs` CLI commands, and seven additional Management MCP tools expose
+start, cancel, list, get, wait, output, and history through the same CQRS
+handlers. Focused PostgreSQL 17, domain, REST, OpenAPI, client, CLI, MCP,
+replay, cancellation, and timeout tests pass. A real PostgreSQL plus Flow test
+also covers concurrent HumanTask coordinators, claim/submission/decision,
+expired-lease takeover, Flow commit before receipt acknowledgement, replay,
+and tenant-scoped reads. A separate four-boundary PostgreSQL `SIGKILL` matrix
+kills the API after start commit, the worker after terminal Flow commit, the
+worker after terminal observation but before WorkflowRun projection, and the
+API after cancellation commit but before Flow delivery. Restart preserves one
+WorkflowRun, Operation, Flow run, terminal event sequence, cancellation event
+pair, and monotonic aggregate version at every boundary. Public protected Form
+submission and HumanTask
+commands/APIs/client/CLI/MCP, Resource Grants, expiry/cancellation coordination,
+service/finite-task execution, typed capability dispatch, compensation,
+expanded clean cross-surface conformance, and public availability remain open;
+no frontend was added.
+
+The shared Operations adapter has moved to A3S Flow `0.12.0` with A3S Boot `0.2.0`
+PostgreSQL task management, isolated ORM-backed stores, runtime-build-pinned
+new runs, and process-death regression evidence. The minimal WorkflowRun slice
+and internal HumanTask loop now consume that foundation; public task
+authorization/surfaces, service/finite-task dispatch, compensation, multi-day
+recovery, and the remaining `W0.3`/`W0.4` claim boundaries stay open.
 
 `WaaS` is the resulting product profile. It does not add a Runtime unit type;
 only executable steps create existing Runtime Tasks or Services. The complete
 aggregate, dependency, security, crash, and exit contracts are authoritative
 in [`workflow-evolution-plan.md`](workflow-evolution-plan.md).
+
+The former standalone feature inventory is acceptance input, not a source
+tree to embed. `input`, `transform`, `branch`, `output`, and decision
+coordination remain deterministic Workflow semantics. Agent, MCP, model, Tool,
+memory, finite execution, subworkflow, and business-service steps bind exact
+owning-context capability and policy digests. REST, maintained client, CLI,
+and Management MCP must expose one Cloud lifecycle before the separate
+`a3s-workflow` CLI/Skill contract is considered replaced. Designer delivery
+remains deferred by the backend-first freeze.
 
 ### Exit gate
 
@@ -3261,7 +3408,7 @@ Later gates extend the same fault-injection discipline:
 | 24 | Some placement-group members prepare before another rejects | `I0.4` | The complete group converges to all ready or no committed claims and no Gateway target |
 | 25 | Gateway usage batch send before contiguous ingestion acknowledgement | `I0.2c` | Replay records one request/attempt fact; interruption or loss remains an explicit gap rather than zero |
 | 26 | A3S Use capability generation publication before Cloud host observation | `U0.3` | Fleet redelivery and the Use operation journal return the same receipt and visible generation; Cloud never repeats apply, infers success, or exposes a partial generation |
-| 27 | Ontology revision bytes written before revision commit | `W0.2` | Reconciliation verifies and adopts the exact digest or removes the orphan; no partial ontology becomes current |
+| 27 | Ontology revision transaction interrupted before the aggregate-head update commits | `W0.2` | One A3S ORM transaction plus the deferred current-revision foreign key rolls back the head, immutable revision, idempotency record, audit, and Outbox fact together; no partial Ontology becomes current |
 | 28 | Workflow plan compiled before WorkflowRun/Operation commit | `W0.3` | Replay selects the same PlanRevision digest and creates one WorkflowRun and Operation |
 | 29 | Child capability command accepted before Workflow step receipt | `W0.4` | The parent adopts the exact child identity and never creates a second Agent, MCP, model, Tool, or finite Task step |
 | 30 | Evaluation result object written before result projection | `EV0.2` | Replay verifies and imports the exact result once or removes the orphan; no missing evidence becomes success |

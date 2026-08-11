@@ -1,6 +1,7 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
-import type { ParsedArguments } from './arguments';
+import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import { executeAgentCommand } from './agent-commands';
+import type { ParsedArguments } from './arguments';
 import { executeAssetCommand } from './asset-commands';
 import {
   positionalResourceName,
@@ -11,7 +12,6 @@ import {
   rejectIdempotencyOption,
   rejectLogOptions,
   requireArity,
-  requireIdempotencyKey,
   requireListCommand,
   requireMutationCommand,
   requireReadCommand,
@@ -27,8 +27,11 @@ import {
 } from './context';
 import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
+import { executeFormCommand } from './form-commands';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
+import { executeOntologyCommand } from './ontology-commands';
+import { executeWorkflowCommand } from './workflow-commands';
 import {
   buildEvidenceResult,
   buildRunLogsResult,
@@ -77,6 +80,9 @@ export async function executeCommand(
     throw usageError('a command and action are required; run a3s-cloud --help');
   }
   const command = `${positionals[0]} ${positionals[1]}`;
+  if (arguments_.migrationRuleId !== undefined && command !== 'ontologies revise') {
+    throw usageError('--migration-rule is valid only for ontologies revise');
+  }
   rejectMisplacedSourceRecipeOptions(command, arguments_);
   rejectMisplacedSecretValueOption(command, arguments_);
   rejectMisplacedIdentityOptions(command, arguments_);
@@ -116,7 +122,27 @@ export async function executeCommand(
   if (searchResult !== undefined) {
     return searchResult;
   }
-  const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi);
+  const ontologyResult = await executeOntologyCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (ontologyResult !== undefined) {
+    return ontologyResult;
+  }
+  const workflowResult = await executeWorkflowCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (workflowResult !== undefined) {
+    return workflowResult;
+  }
+  const formResult = await executeFormCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (formResult !== undefined) {
+    return formResult;
+  }
+  const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
   if (edgeResult !== undefined) {
     return edgeResult;
   }
@@ -146,7 +172,9 @@ export async function executeCommand(
   if (agentResult !== undefined) {
     return agentResult;
   }
-  const assetResult = await executeAssetCommand(command, arguments_, context, cloudApi);
+  const assetResult = await executeAssetCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
   if (assetResult !== undefined) {
     return assetResult;
   }
@@ -225,7 +253,11 @@ export async function executeCommand(
       const projectId = requireProject(context);
       const environmentId = requireEnvironment(context);
       const api = cloudApi();
-      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      const manifest = await readAclDocument(
+        mutation.file,
+        { label: 'workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
+        dependencies.readFile
+      );
       return workloadDeploymentResult(
         await api.createWorkloadFromAcl(
           organizationId,
@@ -241,7 +273,11 @@ export async function executeCommand(
       const organizationId = requireOrganization(context);
       const workloadId = positionalUuid(positionals, 2, 'workload ID');
       const api = cloudApi();
-      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      const manifest = await readAclDocument(
+        mutation.file,
+        { label: 'workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
+        dependencies.readFile
+      );
       return workloadDeploymentResult(
         await api.updateWorkloadFromAcl(organizationId, workloadId, manifest, mutation.idempotencyKey)
       );
@@ -253,7 +289,11 @@ export async function executeCommand(
         'asset-releases deploy <asset-id> <release-id>'
       );
       const api = cloudApi();
-      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      const manifest = await readAclDocument(
+        mutation.file,
+        { label: 'workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
+        dependencies.readFile
+      );
       return workloadDeploymentResult(
         await api.deployAgentReleaseFromAcl(
           requireOrganization(context),
@@ -273,7 +313,11 @@ export async function executeCommand(
         'asset-releases update <workload-id> <asset-id> <release-id>'
       );
       const api = cloudApi();
-      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      const manifest = await readAclDocument(
+        mutation.file,
+        { label: 'workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
+        dependencies.readFile
+      );
       return workloadDeploymentResult(
         await api.updateAgentReleaseFromAcl(
           requireOrganization(context),
@@ -346,7 +390,11 @@ export async function executeCommand(
       const environmentId = requireEnvironment(context);
       const sourceRevisionId = positionalUuid(positionals, 2, 'source revision ID');
       const api = cloudApi();
-      const manifest = await readAclManifest(mutation.file, dependencies.readFile);
+      const manifest = await readAclDocument(
+        mutation.file,
+        { label: 'workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
+        dependencies.readFile
+      );
       return workloadDeploymentResult(
         await api.deploySourceRevisionFromAcl(
           organizationId,
@@ -452,50 +500,6 @@ function requireNamedMutationCommand(
   const idempotencyKey = requireMutationCommand(arguments_, 3, usage);
   const name = positionalResourceName(arguments_.positionals, 2);
   return { idempotencyKey, name };
-}
-
-function requireAclMutationCommand(
-  arguments_: ParsedArguments,
-  arity: number,
-  usage: string
-): { idempotencyKey: string; file: string } {
-  requireArity(arguments_.positionals, arity, usage);
-  rejectLogOptions(arguments_);
-  const idempotencyKey = requireIdempotencyKey(arguments_);
-  rejectExpectedVersionOption(arguments_);
-  rejectGatewayRolloutOptions(arguments_);
-  const file = arguments_.file;
-  if (file === undefined) {
-    throw usageError('--file is required for ACL desired-state mutations');
-  }
-  if (file.length > 4_096 || /[\0\r\n]/.test(file)) {
-    throw usageError('ACL file path is invalid');
-  }
-  return { idempotencyKey, file };
-}
-
-async function readAclManifest(
-  path: string,
-  readFile: (path: string) => Promise<Uint8Array> = readLocalFile
-): Promise<string> {
-  let bytes: Uint8Array;
-  try {
-    bytes = await readFile(path);
-  } catch {
-    throw usageError('unable to read the A3S ACL file');
-  }
-  if (bytes.byteLength < 1 || bytes.byteLength > MAX_WORKLOAD_ACL_BYTES) {
-    throw usageError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
-  }
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    throw usageError('workload ACL must be valid UTF-8');
-  }
-}
-
-async function readLocalFile(path: string): Promise<Uint8Array> {
-  return Bun.file(path).bytes();
 }
 
 function parseLogQuery(arguments_: ParsedArguments): CloudLogQuery {

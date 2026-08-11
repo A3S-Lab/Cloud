@@ -3,7 +3,7 @@ use crate::modules::edge::presentation::dto::RouteResponse;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId, RouteId};
 use crate::presentation::application_error_response;
-use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -65,12 +65,4 @@ pub fn route_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
         )
 }
 
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
-}
+use super::request::request_id;

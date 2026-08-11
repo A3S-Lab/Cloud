@@ -11,8 +11,6 @@ use a3s_boot::{BootError, Result};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
-pub(crate) const A3S_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.acl";
-
 const MANIFEST_VERSION: u64 = 1;
 const MANIFEST_MAX_BYTES: usize = 64 * 1024;
 const MANIFEST_MAX_NESTING_DEPTH: usize = 16;

@@ -112,6 +112,40 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 && parameter["in"] == "header"
                 && parameter["required"] == true
         })));
+    let memberships = &document["paths"]["/organizations/{organization_id}/memberships"];
+    assert_eq!(memberships["get"]["tags"], json!(["Identity"]));
+    assert!(memberships["get"]["responses"]["200"].is_object());
+    assert_eq!(memberships["post"]["tags"], json!(["Identity"]));
+    assert!(memberships["post"]["requestBody"]["content"]["application/json"].is_object());
+    assert!(memberships["post"]["responses"]["200"].is_object());
+    assert!(memberships["post"]["responses"]["201"].is_object());
+    assert!(memberships["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let membership =
+        &document["paths"]["/organizations/{organization_id}/memberships/{membership_id}"];
+    assert_eq!(membership["get"]["tags"], json!(["Identity"]));
+    assert!(membership["get"]["responses"]["200"].is_object());
+    for path in [
+        "/organizations/{organization_id}/memberships/{membership_id}/role",
+        "/organizations/{organization_id}/memberships/{membership_id}/revocation",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Identity"]));
+        assert!(operation["requestBody"]["content"]["application/json"].is_object());
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            })));
+    }
     let log_stream = &document["paths"]
         ["/organizations/{organization_id}/build-runs/{build_run_id}/logs/stream"]["get"];
     assert_eq!(
@@ -130,6 +164,211 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .and_then(|body| body.get("content"))
         .and_then(|content| content.get("application/vnd.a3s.acl"))
         .is_some());
+    let mcp_profile = &document["paths"]
+        ["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/mcp-service-profile"];
+    assert!(mcp_profile["get"]["responses"]["200"].is_object());
+    assert!(mcp_profile["get"]["responses"].get("413").is_none());
+    assert!(mcp_profile["get"]["responses"].get("415").is_none());
+    assert!(mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"].is_object());
+    assert_eq!(
+        mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        65_536
+    );
+    assert!(mcp_profile["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert!(mcp_profile["post"]["responses"]["200"].is_object());
+    assert!(mcp_profile["post"]["responses"]["201"].is_object());
+    assert!(mcp_profile["post"]["responses"]["413"].is_object());
+    assert!(mcp_profile["post"]["responses"]["415"].is_object());
+    let ontology_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/ontologies"];
+    assert_eq!(ontology_collection["get"]["tags"], json!(["Workflow"]));
+    assert_eq!(ontology_collection["post"]["tags"], json!(["Workflow"]));
+    assert_eq!(
+        ontology_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        1_048_576
+    );
+    assert!(ontology_collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert!(ontology_collection["post"]["responses"]["201"].is_object());
+    assert!(ontology_collection["post"]["responses"]["413"].is_object());
+    assert!(ontology_collection["post"]["responses"]["415"].is_object());
+    let ontology_revision = &document["paths"]
+        ["/organizations/{organization_id}/ontologies/{ontology_id}/revisions"]["post"];
+    assert_eq!(ontology_revision["tags"], json!(["Workflow"]));
+    assert!(ontology_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    assert!(ontology_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-migration-rule"
+                && parameter["in"] == "header"
+                && parameter["required"] == false
+        })));
+    let workflow_definition_collection = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/workflow-definitions"];
+    assert_eq!(
+        workflow_definition_collection["get"]["tags"],
+        json!(["Workflow"])
+    );
+    assert_eq!(
+        workflow_definition_collection["post"]["tags"],
+        json!(["Workflow"])
+    );
+    let workflow_publication = &workflow_definition_collection["post"]["requestBody"]["content"]
+        ["application/json"]["schema"];
+    assert_eq!(workflow_publication["additionalProperties"], false);
+    assert_eq!(
+        workflow_publication["properties"]["definitionAcl"]["maxLength"],
+        1_048_576
+    );
+    assert_eq!(
+        workflow_publication["properties"]["payloads"]["maxItems"],
+        2_048
+    );
+    assert!(
+        workflow_definition_collection["post"]["requestBody"]["content"]
+            .get("application/vnd.a3s.acl")
+            .is_none()
+    );
+    assert!(workflow_definition_collection["post"]["responses"]["201"].is_object());
+    assert!(workflow_definition_collection["post"]["responses"]["413"].is_object());
+    assert!(workflow_definition_collection["post"]["responses"]["415"].is_object());
+    let workflow_revision = &document["paths"]
+        ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"]
+        ["post"];
+    assert!(workflow_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let workflow_goal_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-goals"];
+    assert_eq!(
+        workflow_goal_collection["post"]["tags"],
+        json!(["Workflow"])
+    );
+    assert_eq!(
+        workflow_goal_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]
+            ["schema"]["maxLength"],
+        262_144
+    );
+    assert!(workflow_goal_collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    let workflow_plan = &document["paths"]
+        ["/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}"]
+        ["get"];
+    assert_eq!(workflow_plan["tags"], json!(["Workflow"]));
+    let form_collection =
+        &document["paths"]["/organizations/{organization_id}/projects/{project_id}/forms"];
+    assert_eq!(form_collection["get"]["tags"], json!(["Forms"]));
+    assert_eq!(form_collection["post"]["tags"], json!(["Forms"]));
+    let form_draft_schema =
+        &form_collection["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(form_draft_schema["additionalProperties"], false);
+    assert_eq!(form_draft_schema["required"], json!(["name", "document"]));
+    assert_eq!(form_draft_schema["properties"]["name"]["maxLength"], 120);
+    assert_eq!(
+        form_draft_schema["properties"]["description"]["maxLength"],
+        4_096
+    );
+    assert_eq!(
+        form_draft_schema["properties"]["document"]["x-a3s-max-canonical-bytes"],
+        crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES
+    );
+    assert!(form_collection["post"]["responses"]["200"].is_object());
+    assert!(form_collection["post"]["responses"]["201"].is_object());
+    assert!(form_collection["post"]["responses"]["413"].is_object());
+    assert!(form_collection["post"]["responses"]["415"].is_object());
+    assert!(form_collection["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let form = &document["paths"]["/organizations/{organization_id}/forms/{form_id}"]["get"];
+    assert_eq!(form["tags"], json!(["Forms"]));
+    let form_revision = &document["paths"]
+        ["/organizations/{organization_id}/forms/{form_id}/draft-revisions"]["post"];
+    assert_eq!(form_revision["tags"], json!(["Forms"]));
+    assert_eq!(
+        &form_revision["requestBody"]["content"]["application/json"]["schema"],
+        form_draft_schema
+    );
+    assert!(form_revision["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+                && parameter["schema"]["minimum"] == 1
+        })));
+    let form_releases =
+        &document["paths"]["/organizations/{organization_id}/forms/{form_id}/releases"];
+    assert_eq!(form_releases["get"]["tags"], json!(["Forms"]));
+    assert_eq!(form_releases["post"]["tags"], json!(["Forms"]));
+    assert!(form_releases["post"].get("requestBody").is_none());
+    assert!(form_releases["post"]["responses"]["200"].is_object());
+    assert!(form_releases["post"]["responses"]["201"].is_object());
+    assert!(form_releases["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "x-a3s-expected-version"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+                && parameter["schema"]["minimum"] == 1
+        })));
+    let form_release = &document["paths"]
+        ["/organizations/{organization_id}/forms/{form_id}/releases/{release_id}"]["get"];
+    assert_eq!(form_release["tags"], json!(["Forms"]));
+    let mcp_route_collection = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
+    assert_eq!(mcp_route_collection["get"]["tags"], json!(["Edge"]));
+    assert!(mcp_route_collection["get"]["responses"]["200"].is_object());
+    assert!(mcp_route_collection["get"]["responses"]
+        .get("413")
+        .is_none());
+    assert!(mcp_route_collection["get"]["responses"]
+        .get("415")
+        .is_none());
+    assert_eq!(
+        mcp_route_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        524_288
+    );
+    assert!(mcp_route_collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    for path in [
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies",
+        "/organizations/{organization_id}/mcp-route-policies/{route_id}/revisions",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Edge"]));
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["responses"]["201"].is_object());
+        assert!(operation["responses"]["413"].is_object());
+        assert!(operation["responses"]["415"].is_object());
+    }
+    let mcp_route =
+        &document["paths"]["/organizations/{organization_id}/mcp-route-policies/{route_id}"]["get"];
+    assert_eq!(mcp_route["tags"], json!(["Edge"]));
+    assert!(mcp_route["responses"]["200"].is_object());
+    assert!(mcp_route["responses"].get("413").is_none());
+    assert!(mcp_route["responses"].get("415").is_none());
     for path in [
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/assets/{asset_id}/releases/{asset_release_id}/workloads",
         "/organizations/{organization_id}/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",

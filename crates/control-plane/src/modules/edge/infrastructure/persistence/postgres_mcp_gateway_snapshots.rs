@@ -22,11 +22,15 @@ use crate::infrastructure::{
     PostgresPersistenceError,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::GatewayScopeState;
 use crate::modules::edge::infrastructure::{
-    CompiledMcpGatewaySnapshot, IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope,
-    McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
-    McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
-    McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus, StageMcpGatewaySnapshot,
+    GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
+    IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
+    McpGatewaySnapshotInputs, McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
+    McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus,
+    StageManagedGatewayCertificateConvergence, StageManagedGatewayRollout,
+    StageManagedGatewayRolloutRollback, StageManagedGatewayRouteCutover,
+    StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
@@ -107,34 +111,9 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    let (candidate, publication, certificate, event) = stage.into_parts();
-                    let scope = candidate.mcp().primary_scope();
-                    let organization_id = fetch_optional::<Uuid, _>(
-                        transaction,
-                        select_from::<Nodes>()
-                            .select(Nodes::organization_id())
-                            .filter(Nodes::id().eq(publication.node_id.as_uuid()))
-                            .for_update(),
-                    )
-                    .await?
-                    .ok_or(RepositoryError::NotFound)?;
-                    if organization_id != scope.organization_id.as_uuid() {
-                        return Err(RepositoryError::NotFound.into());
-                    }
-
-                    lock_logical_scopes(transaction, &candidate).await?;
-                    execute(
-                        transaction,
-                        lock_table::<McpRoutePolicies>(PostgresTableLockMode::Share),
-                    )
-                    .await?;
-                    execute(
-                        transaction,
-                        lock_table::<GatewayScopeMembers>(PostgresTableLockMode::Share),
-                    )
-                    .await?;
-                    lock_node_scope_set(transaction, &candidate).await?;
-                    let physical_scope = lock_physical_scope(transaction, &candidate).await?;
+                    let (composition, publication, certificate) = stage.into_parts();
+                    let physical_scope =
+                        lock_managed_composition(transaction, &composition).await?;
                     if fetch_optional::<u64, _>(
                         transaction,
                         select_from::<GatewayPublications>()
@@ -154,20 +133,12 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
                         .into());
                     }
 
-                    lock_ordinary_routes(transaction, &candidate).await?;
-                    lock_mcp_policies(transaction, &candidate).await?;
-                    lock_domain_claims(transaction, &candidate).await?;
-                    lock_workloads(transaction, &candidate).await?;
-                    lock_credentials(transaction, &candidate).await?;
-
                     insert_publication(transaction, &publication).await?;
                     if let Some(certificate) = &certificate {
                         insert_certificate(transaction, certificate).await?;
                     }
-                    insert_marker(transaction, &candidate, &publication).await?;
-                    insert_scope_evidence(transaction, &candidate, &publication).await?;
+                    persist_managed_composition(transaction, &composition, &publication).await?;
                     advance_physical_scope(transaction, &physical_scope, &publication).await?;
-                    store_outbox(transaction, &event).await?;
                     Ok(McpGatewaySnapshotStageResult {
                         publication,
                         certificate,
@@ -176,6 +147,54 @@ impl IMcpGatewaySnapshotRepository for PostgresEdgeRepository {
             })
             .await
             .map_err(transaction_error)
+    }
+
+    async fn stage_managed_route_publication(
+        &self,
+        stage: StageManagedRoutePublication,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::EdgeRoutePublicationResult,
+        RepositoryError,
+    > {
+        super::postgres::stage_managed_route_publication(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_route_cutover(
+        &self,
+        stage: StageManagedGatewayRouteCutover,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayRouteCutoverResult,
+        RepositoryError,
+    > {
+        super::postgres_cutovers::stage_managed(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_certificate_convergence(
+        &self,
+        stage: StageManagedGatewayCertificateConvergence,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayCertificateConvergenceResult,
+        RepositoryError,
+    > {
+        super::postgres_certificate_convergence::stage_managed(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_rollout(
+        &self,
+        stage: StageManagedGatewayRollout,
+    ) -> Result<crate::modules::edge::domain::repositories::GatewayRolloutResult, RepositoryError>
+    {
+        super::postgres_rollouts::stage_managed(&self.executor, stage).await
+    }
+
+    async fn stage_managed_gateway_rollout_rollback(
+        &self,
+        stage: StageManagedGatewayRolloutRollback,
+    ) -> Result<
+        crate::modules::edge::domain::repositories::GatewayRolloutRollbackResult,
+        RepositoryError,
+    > {
+        super::postgres_rollouts::stage_managed_rollback(&self.executor, stage).await
     }
 
     async fn pending_mcp_gateway_snapshots(
@@ -221,6 +240,7 @@ pub(super) struct McpGatewaySnapshotMarker {
     pub(super) snapshot_digest: String,
     pub(super) desired_state_digest: crate::modules::shared_kernel::domain::Sha256Digest,
     pub(super) mcp_route_count: u32,
+    pub(super) publication_owner: GatewaySnapshotPublicationOwner,
     pub(super) staged_at: DateTime<Utc>,
     pub(super) scope_statuses: Vec<McpGatewaySnapshotScopeStatus>,
 }
@@ -280,6 +300,11 @@ impl McpGatewaySnapshotMarker {
     ) -> Result<McpGatewaySnapshotDispatchTarget, RepositoryError> {
         self.validate_for(&publication)
             .map_err(RepositoryError::Storage)?;
+        if self.publication_owner != GatewaySnapshotPublicationOwner::McpReconciler {
+            return Err(RepositoryError::Storage(
+                "ordinary Gateway publication cannot be dispatched by the MCP reconciler".into(),
+            ));
+        }
         let target = McpGatewaySnapshotDispatchTarget {
             organization_id: self.organization_id,
             project_id: self.project_id,
@@ -303,6 +328,7 @@ struct McpGatewaySnapshotMarkerRow {
     snapshot_digest: String,
     desired_state_digest: String,
     mcp_route_count: u32,
+    publication_owner: String,
     staged_at: DateTime<Utc>,
 }
 
@@ -323,6 +349,7 @@ impl Selection for McpGatewaySnapshotMarkerSelection {
             McpGatewaySnapshotPublications::snapshot_digest().expression(),
             McpGatewaySnapshotPublications::desired_state_digest().expression(),
             McpGatewaySnapshotPublications::mcp_route_count().expression(),
+            McpGatewaySnapshotPublications::publication_owner().expression(),
             McpGatewaySnapshotPublications::staged_at().expression(),
         ]
     }
@@ -347,7 +374,8 @@ impl McpGatewaySnapshotMarkerRow {
             snapshot_digest: decode(row, offset + 7)?,
             desired_state_digest: decode(row, offset + 8)?,
             mcp_route_count: decode(row, offset + 9)?,
-            staged_at: decode(row, offset + 10)?,
+            publication_owner: decode(row, offset + 10)?,
+            staged_at: decode(row, offset + 11)?,
         })
     }
 
@@ -369,6 +397,8 @@ impl McpGatewaySnapshotMarkerRow {
             )
             .map_err(RepositoryError::Storage)?,
             mcp_route_count: self.mcp_route_count,
+            publication_owner: GatewaySnapshotPublicationOwner::parse(&self.publication_owner)
+                .map_err(RepositoryError::Storage)?,
             staged_at: self.staged_at,
             scope_statuses,
         })
@@ -512,11 +542,67 @@ async fn reconciliation_state(
     Ok(state)
 }
 
-async fn insert_marker(
+pub(super) async fn lock_managed_composition(
     transaction: &PostgresTransaction,
-    candidate: &CompiledMcpGatewaySnapshot,
+    composition: &GatewayManagedSnapshotComposition,
+) -> Result<GatewayScopeState, PostgresPersistenceError> {
+    lock_managed_composition_node(transaction, composition).await?;
+    let candidate = composition.candidate();
+    lock_logical_scopes(transaction, candidate).await?;
+    execute(
+        transaction,
+        lock_table::<McpRoutePolicies>(PostgresTableLockMode::Share),
+    )
+    .await?;
+    execute(
+        transaction,
+        lock_table::<GatewayScopeMembers>(PostgresTableLockMode::Share),
+    )
+    .await?;
+    lock_node_scope_set(
+        transaction,
+        candidate,
+        composition.owner() == GatewaySnapshotPublicationOwner::Ordinary,
+    )
+    .await?;
+    let physical_scope = lock_physical_scope(transaction, candidate).await?;
+    lock_ordinary_routes(transaction, candidate).await?;
+    lock_mcp_policies(transaction, candidate).await?;
+    lock_domain_claims(transaction, candidate).await?;
+    lock_workloads(transaction, candidate).await?;
+    lock_credentials(transaction, candidate).await?;
+    Ok(physical_scope)
+}
+
+pub(super) async fn lock_managed_composition_node(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
+) -> Result<(), PostgresPersistenceError> {
+    let candidate = composition.candidate();
+    let organization_id = fetch_optional::<Uuid, _>(
+        transaction,
+        select_from::<Nodes>()
+            .select(Nodes::organization_id())
+            .filter(Nodes::id().eq(candidate.physical_scope().node_id.as_uuid()))
+            .for_update(),
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    if organization_id != candidate.mcp().primary_scope().organization_id.as_uuid() {
+        return Err(RepositoryError::NotFound.into());
+    }
+    Ok(())
+}
+
+pub(super) async fn persist_managed_composition(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
     publication: &crate::modules::edge::domain::GatewayPublication,
 ) -> Result<(), PostgresPersistenceError> {
+    composition
+        .validate_for(publication)
+        .map_err(RepositoryError::Conflict)?;
+    let candidate = composition.candidate();
     let scope = candidate.mcp().primary_scope();
     let mcp_route_count = u32::try_from(
         candidate
@@ -576,12 +662,18 @@ async fn insert_marker(
                     mcp_route_count,
                 )
                 .value(
+                    McpGatewaySnapshotPublications::publication_owner(),
+                    composition.owner().as_str(),
+                )
+                .value(
                     McpGatewaySnapshotPublications::staged_at(),
                     publication.command_issued_at,
                 ),
         )
         .await?,
     )?;
+    insert_scope_evidence(transaction, candidate, publication).await?;
+    store_outbox(transaction, composition.event()).await?;
     Ok(())
 }
 
@@ -610,6 +702,7 @@ async fn pending(
                 )
                 .select(McpGatewaySnapshotDispatchSelection)
                 .filter(GatewayPublications::state().eq("pending"))
+                .filter(McpGatewaySnapshotPublications::publication_owner().eq("mcp-reconciler"))
                 .order_by(
                     McpGatewaySnapshotPublications::staged_at(),
                     OrderDirection::Asc,
@@ -666,6 +759,89 @@ pub(super) async fn lock_marker_by_gateway_identity(
     ))
 }
 
+pub(super) async fn validate_stored_managed_composition(
+    transaction: &PostgresTransaction,
+    composition: &GatewayManagedSnapshotComposition,
+    publication: &crate::modules::edge::domain::GatewayPublication,
+) -> Result<(), PostgresPersistenceError> {
+    composition
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    let marker = lock_marker_by_gateway_identity(
+        transaction,
+        publication.node_id.as_uuid(),
+        publication.revision,
+        publication.command_id.as_uuid(),
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "managed Gateway publication lost its immutable composition marker".into(),
+        )
+    })?;
+    marker
+        .validate_for(publication)
+        .map_err(PostgresPersistenceError::Invariant)?;
+
+    let candidate = composition.candidate();
+    let primary_scope = candidate.mcp().primary_scope();
+    let expected_scope_statuses = candidate
+        .mcp()
+        .scope_sets()
+        .iter()
+        .map(|planned| {
+            let scope = planned.scope();
+            let mcp_route_count = u32::try_from(
+                planned
+                    .projection()
+                    .map(|projection| projection.projection().routes.len())
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| {
+                PostgresPersistenceError::Invariant(
+                    "managed Gateway logical scope route count exceeds durable bounds".into(),
+                )
+            })?;
+            Ok(McpGatewaySnapshotScopeStatus {
+                organization_id: scope.organization_id,
+                project_id: scope.project_id,
+                environment_id: scope.environment_id,
+                gateway_scope_id: scope.id,
+                scope_aggregate_version: scope.aggregate_version,
+                membership_generation: scope.membership_generation,
+                receiving_member: scope.contains_member(publication.node_id),
+                mcp_route_count,
+            })
+        })
+        .collect::<Result<Vec<_>, PostgresPersistenceError>>()?;
+    let expected_route_count = u32::try_from(
+        candidate
+            .mcp()
+            .projection()
+            .map(|projection| projection.projection().routes.len())
+            .unwrap_or_default(),
+    )
+    .map_err(|_| {
+        PostgresPersistenceError::Invariant(
+            "managed Gateway complete route count exceeds durable bounds".into(),
+        )
+    })?;
+    if marker.organization_id != primary_scope.organization_id
+        || marker.project_id != primary_scope.project_id
+        || marker.environment_id != primary_scope.environment_id
+        || marker.gateway_scope_id != primary_scope.id
+        || marker.desired_state_digest != *candidate.desired_state_digest()
+        || marker.scope_statuses != expected_scope_statuses
+        || marker.mcp_route_count != expected_route_count
+        || marker.publication_owner != composition.owner()
+    {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored managed Gateway composition changed".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn mark_unavailable(
     executor: &PostgresExecutor,
@@ -713,6 +889,13 @@ async fn mark_unavailable(
                 marker
                     .validate_for(&publication)
                     .map_err(PostgresPersistenceError::Invariant)?;
+                if marker.publication_owner != GatewaySnapshotPublicationOwner::McpReconciler {
+                    return Err(RepositoryError::Conflict(
+                        "ordinary Gateway publication is owned by its originating reconciler"
+                            .into(),
+                    )
+                    .into());
+                }
                 let mut certificates = fetch_all::<CertificateRow, _>(
                     transaction,
                     select_from::<GatewayCertificates>()

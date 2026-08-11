@@ -1,5 +1,6 @@
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::shared_kernel::domain::PrincipalId;
 use a3s_boot::Command;
 use serde::Serialize;
 use uuid::Uuid;
@@ -7,6 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct CreateOrganization {
     pub name: String,
+    pub actor_principal_id: PrincipalId,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }

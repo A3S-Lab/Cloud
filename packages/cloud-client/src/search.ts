@@ -1,5 +1,6 @@
 export type SearchResourceKind =
   | 'project'
+  | 'ontology'
   | 'environment'
   | 'node'
   | 'workload'

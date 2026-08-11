@@ -19,6 +19,9 @@ use crate::modules::edge::domain::{
     GatewayCertificateState, GatewayPublicationState, GatewayRouteVersion, GatewayScopeState,
     Route, RouteState,
 };
+use crate::modules::edge::infrastructure::{
+    GatewayManagedSnapshotComposition, StageManagedGatewayCertificateConvergence,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeCommandId, NodeId,
     OrganizationId, RepositoryError, RouteId,
@@ -425,10 +428,41 @@ pub(super) async fn stage(
     executor: &PostgresExecutor,
     bundle: StageGatewayCertificateConvergence,
 ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+    stage_inner(executor, bundle, None).await
+}
+
+pub(super) async fn stage_managed(
+    executor: &PostgresExecutor,
+    bundle: StageManagedGatewayCertificateConvergence,
+) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+    let (ordinary, composition, previous_certificate) = bundle.into_parts();
+    stage_inner(
+        executor,
+        ordinary,
+        Some((composition, previous_certificate)),
+    )
+    .await
+}
+
+async fn stage_inner(
+    executor: &PostgresExecutor,
+    bundle: StageGatewayCertificateConvergence,
+    managed: Option<(GatewayManagedSnapshotComposition, GatewayCertificate)>,
+) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
     bundle.validate().map_err(RepositoryError::Conflict)?;
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
+                let managed_scope = match &managed {
+                    Some((composition, _)) => Some(
+                        super::postgres_mcp_gateway_snapshots::lock_managed_composition(
+                            transaction,
+                            composition,
+                        )
+                        .await?,
+                    ),
+                    None => None,
+                };
                 let convergence = &bundle.convergence;
                 let organization_id = fetch_optional::<Uuid, _>(
                     transaction,
@@ -467,6 +501,16 @@ pub(super) async fn stage(
                     aggregate_version,
                 };
                 validate_scope(&scope)?;
+                if managed_scope
+                    .as_ref()
+                    .is_some_and(|expected| expected != &scope)
+                {
+                    return Err(RepositoryError::Conflict(
+                        "managed Gateway scope changed while compiling certificate convergence"
+                            .into(),
+                    )
+                    .into());
+                }
                 if scope.aggregate_version != bundle.expected_scope_version
                     || scope.installed_revision != bundle.publication.expected_revision
                     || bundle.publication.revision
@@ -518,6 +562,15 @@ pub(super) async fn stage(
                     )
                     .into());
                 }
+                if managed
+                    .as_ref()
+                    .is_some_and(|(_, expected)| expected != &previous)
+                {
+                    return Err(RepositoryError::Conflict(
+                        "managed Gateway previous certificate changed during convergence".into(),
+                    )
+                    .into());
+                }
                 let projected_route = exists(
                     select_from::<GatewayRouteProjections>()
                         .select(GatewayRouteProjections::route_id())
@@ -544,7 +597,9 @@ pub(super) async fn stage(
                 active.sort_by_key(|route| route.id);
                 validate_convergence_routes(transaction, convergence, &active).await?;
                 validate_active_certificate(previous.id, &active)?;
-                if convergence.reason == GatewayCertificateConvergenceReason::SnapshotRenewal {
+                if convergence.reason == GatewayCertificateConvergenceReason::SnapshotRenewal
+                    && managed.is_none()
+                {
                     let current_publication = fetch_optional::<PublicationRow, _>(
                         transaction,
                         select_from::<GatewayPublications>()
@@ -584,8 +639,17 @@ pub(super) async fn stage(
                         .into());
                     }
                 }
-                if let Some(certificate) = &bundle.certificate {
-                    validate_replacement_claims(convergence, certificate, &active)?;
+                if managed.is_none() {
+                    if let Some(certificate) = &bundle.certificate {
+                        validate_replacement_claims(convergence, certificate, &active)?;
+                    }
+                } else if convergence.reason == GatewayCertificateConvergenceReason::SnapshotRenewal
+                    && bundle.publication.certificate_request.is_some()
+                {
+                    return Err(RepositoryError::Conflict(
+                        "managed Gateway snapshot renewal requested replacement material".into(),
+                    )
+                    .into());
                 }
 
                 insert_publication(transaction, &bundle.publication).await?;
@@ -620,6 +684,14 @@ pub(super) async fn stage(
                     )
                     .await?,
                 )?;
+                if let Some((composition, _)) = &managed {
+                    super::postgres_mcp_gateway_snapshots::persist_managed_composition(
+                        transaction,
+                        composition,
+                        &bundle.publication,
+                    )
+                    .await?;
+                }
                 store_outbox(transaction, &bundle.event).await?;
                 Ok(GatewayCertificateConvergenceResult {
                     convergence: bundle.convergence,

@@ -993,7 +993,7 @@ describe('a3s-cloud CLI', () => {
     expect(unreadable.stderr()).not.toContain('private filesystem detail');
     expect(invalidUtf8.stderr()).toContain('valid UTF-8');
     expect(oversized.stderr()).toContain('between 1 and 65536');
-    expect(readOnly.stderr()).toContain('valid only for ACL desired-state mutations');
+    expect(readOnly.stderr()).toContain('valid only for file-backed mutation commands');
   });
 
   it('rejects missing, unsafe, and read-only idempotency options before the network', async () => {
@@ -1062,7 +1062,7 @@ describe('a3s-cloud CLI', () => {
     expect(invalidLimit.stderr()).toContain('log limit must be between 1 and 256');
   });
 
-  it('rejects missing, invalid, and misplaced node versions before the network', async () => {
+  it('rejects missing, invalid, and misplaced optimistic versions before the network', async () => {
     let called = false;
     const fetcher: CloudFetch = async () => {
       called = true;
@@ -1096,7 +1096,7 @@ describe('a3s-cloud CLI', () => {
     expect(called).toBe(false);
     expect(missing.stderr()).toContain('--expected-version is required');
     expect(invalid.stderr()).toContain('positive safe integer');
-    expect(misplaced.stderr()).toContain('valid only for node lifecycle mutations');
+    expect(misplaced.stderr()).toContain('valid only for versioned mutation commands');
   });
 
   it('fails before the network when required context is absent', async () => {

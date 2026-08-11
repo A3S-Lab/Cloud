@@ -1,7 +1,7 @@
 use super::{CreateApiToken, CreateApiTokenResult};
 use crate::modules::identity::domain::entities::ApiToken;
 use crate::modules::identity::domain::events::ApiTokenCreated;
-use crate::modules::identity::domain::repositories::IApiTokenRepository;
+use crate::modules::identity::domain::repositories::{CreateApiTokenWrite, IApiTokenRepository};
 use crate::modules::identity::domain::value_objects::{
     ApiTokenName, ApiTokenScope, ApiTokenSecret,
 };
@@ -67,6 +67,7 @@ impl CommandHandler<CreateApiToken> for CreateApiTokenHandler {
             let digest = secret.digest();
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
+                "principalId": command.principal_id,
                 "name": name.as_str(),
                 "tokenDigest": digest.as_str(),
                 "scopes": scopes,
@@ -84,6 +85,7 @@ impl CommandHandler<CreateApiToken> for CreateApiTokenHandler {
             let token = match ApiToken::issue(
                 ApiTokenId::new(),
                 command.organization_id,
+                command.principal_id,
                 name,
                 scopes,
                 Utc::now(),
@@ -94,7 +96,17 @@ impl CommandHandler<CreateApiToken> for CreateApiTokenHandler {
             };
             let event = ApiTokenCreated::envelope(&token, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
-            let result = match repository.create(token, digest, event, idempotency).await {
+            let result = match repository
+                .create(CreateApiTokenWrite {
+                    token,
+                    digest,
+                    event,
+                    issuer_principal_id: command.issuer_principal_id,
+                    issuer_is_platform_admin: command.issuer_is_platform_admin,
+                    idempotency,
+                })
+                .await
+            {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error.into())),
             };

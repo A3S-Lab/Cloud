@@ -4,15 +4,12 @@ use crate::modules::assets::application::queries::{
 use crate::modules::assets::presentation::dto::{AssetReleaseResponse, AssetResponse};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
-use crate::modules::shared_kernel::domain::{AssetId, AssetReleaseId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use uuid::Uuid;
 
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -32,8 +29,7 @@ pub fn asset_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
         .get("/{organization_id}/assets", move |request: BootRequest| {
             let bus = Arc::clone(&list_assets);
             async move {
-                let organization_id =
-                    OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                let organization_id = organization_id(&request)?;
                 let request_id = request_id(&request)?;
                 match bus.execute(ListAssets { organization_id }).await? {
                     Ok(assets) => BootResponse::json(
@@ -96,9 +92,8 @@ pub fn asset_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
             move |request: BootRequest| {
                 let bus = Arc::clone(&get_releases);
                 async move {
-                    let (organization_id, asset_id) = asset_ids(&request)?;
-                    let asset_release_id =
-                        AssetReleaseId::from_uuid(request.param_as::<Uuid>("asset_release_id")?);
+                    let (organization_id, asset_id, asset_release_id) =
+                        asset_release_ids(&request)?;
                     let request_id = request_id(&request)?;
                     match bus
                         .execute(GetAssetRelease {
@@ -137,20 +132,4 @@ pub fn asset_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
             },
         )
 }
-
-fn asset_ids(request: &BootRequest) -> Result<(OrganizationId, AssetId)> {
-    Ok((
-        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?),
-        AssetId::from_uuid(request.param_as::<Uuid>("asset_id")?),
-    ))
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
-}
+use super::asset_request::{asset_ids, asset_release_ids, organization_id, request_id};

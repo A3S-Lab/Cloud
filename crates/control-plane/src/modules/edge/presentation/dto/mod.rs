@@ -9,5 +9,6 @@ pub use request::{
 pub use response::{
     DomainClaimMutationResponse, DomainClaimResponse, GatewayCertificateResponse,
     GatewayScopeMutationResponse, GatewayScopeResponse, McpCredentialDeliveryResponse,
-    McpCredentialMutationResponse, McpCredentialResponse, RoutePublicationResponse, RouteResponse,
+    McpCredentialMutationResponse, McpCredentialResponse, McpRoutePolicyMutationResponse,
+    McpRoutePolicyResponse, RoutePublicationResponse, RouteResponse,
 };

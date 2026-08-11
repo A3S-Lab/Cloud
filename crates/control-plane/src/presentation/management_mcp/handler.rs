@@ -8,7 +8,7 @@ use super::protocol::{
     JSON_RPC_UNSUPPORTED_PROTOCOL_VERSION,
 };
 use super::MANAGEMENT_MCP_PROTOCOL_VERSION;
-use crate::modules::shared_kernel::domain::OrganizationId;
+use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{AuthPrincipal, BootError, BootRequest, BootResponse, CommandBus, QueryBus, Result};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -233,14 +233,31 @@ impl ManagementMcpHandler {
                 );
             }
         };
+        let actor_principal_id = match principal_id(&principal) {
+            Ok(principal_id) => principal_id,
+            Err(error) => {
+                tracing::error!(%request_id, %error, "management MCP principal is invalid");
+                return protocol::error_response(
+                    200,
+                    id,
+                    JSON_RPC_INTERNAL_ERROR,
+                    "Internal error",
+                );
+            }
+        };
+        let actor_is_platform_admin = principal.has_role("platform_admin");
         let arguments = call.arguments.unwrap_or_else(|| json!({}));
         let Some(result) = dispatch::execute(
             tool,
             Arc::clone(&self.command_bus),
             Arc::clone(&self.query_bus),
-            organization_id,
+            dispatch::ManagementExecutionContext::new(
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                request_id,
+            ),
             arguments,
-            request_id,
         )
         .await
         else {
@@ -296,6 +313,16 @@ fn organization_id(principal: &AuthPrincipal) -> Result<OrganizationId> {
                         "authenticated organization claim is invalid: {error}"
                     ))
                 })
+        })
+}
+
+fn principal_id(principal: &AuthPrincipal) -> Result<PrincipalId> {
+    Uuid::parse_str(principal.subject())
+        .map(PrincipalId::from_uuid)
+        .map_err(|error| {
+            BootError::Internal(format!(
+                "authenticated principal identity is invalid: {error}"
+            ))
         })
 }
 

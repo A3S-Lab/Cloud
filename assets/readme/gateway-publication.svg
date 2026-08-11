@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Cloud unified Gateway publication path</title>
+  <desc id="desc">Ordinary Route and hosted MCP changes enter one node desired-state planner and one complete snapshot compiler. Atomic staging records a durable publication owner, then one Fleet command reaches A3S Gateway and only an exact acknowledgement advances installed state.</desc>
+
+  <defs>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#67b7ff"/>
+    </marker>
+    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#b7f56a"/>
+    </marker>
+    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 10 5 0 10Z" fill="#f2c66d"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="440" rx="24" fill="#0a0f0c"/>
+  <rect x="1" y="1" width="1198" height="438" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
+
+  <text x="48" y="54" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="34" font-weight="760">One Gateway publication path.</text>
+  <text x="48" y="84" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">ORDINARY ROUTES AND HOSTED MCP COMPILE TOGETHER; ONE DURABLE OWNER DISPATCHES</text>
+
+  <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+    <rect x="48" y="116" width="224" height="98" rx="13" fill="#101812" stroke="#3e6e8d" stroke-width="1.5"/>
+    <text x="68" y="146" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">ORDINARY CHANGE</text>
+    <text x="68" y="177" fill="#eff7f1" font-size="21" font-weight="700">Route lifecycle</text>
+    <text x="68" y="201" fill="#96a99e" font-size="18">Deploy &#183; rollout &#183; TLS</text>
+
+    <rect x="48" y="230" width="224" height="98" rx="13" fill="#101812" stroke="#5f8541" stroke-width="1.5"/>
+    <text x="68" y="260" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">HOSTED MCP CHANGE</text>
+    <text x="68" y="291" fill="#eff7f1" font-size="21" font-weight="700">Policy lifecycle</text>
+    <text x="68" y="315" fill="#96a99e" font-size="18">Scope &#183; credential &#183; expiry</text>
+
+    <rect x="334" y="132" width="238" height="180" rx="14" fill="#101812" stroke="#47755c" stroke-width="1.5"/>
+    <text x="356" y="164" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">READ + PLAN</text>
+    <text x="356" y="198" fill="#eff7f1" font-size="23" font-weight="700">Node desired state</text>
+    <text x="356" y="232" fill="#96a99e" font-size="18">Every ordinary Route</text>
+    <text x="356" y="260" fill="#96a99e" font-size="18">Every logical MCP scope</text>
+    <text x="356" y="291" fill="#d7ff9f" font-size="18" font-weight="700">Reject partial input</text>
+
+    <rect x="608" y="132" width="238" height="180" rx="14" fill="#101812" stroke="#47755c" stroke-width="1.5"/>
+    <text x="630" y="164" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">COMPILE</text>
+    <text x="630" y="198" fill="#eff7f1" font-size="23" font-weight="700">Complete snapshot</text>
+    <text x="630" y="232" fill="#96a99e" font-size="18">Routes + exact targets</text>
+    <text x="630" y="260" fill="#96a99e" font-size="18">Certificates + expiry</text>
+    <text x="630" y="291" fill="#d7ff9f" font-size="18" font-weight="700">One canonical digest</text>
+
+    <rect x="882" y="116" width="270" height="212" rx="14" fill="#101812" stroke="#6f663c" stroke-width="1.5"/>
+    <text x="904" y="146" fill="#f2c66d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">ATOMIC PUBLICATION</text>
+    <text x="904" y="180" fill="#eff7f1" font-size="23" font-weight="700">Snapshot + owner</text>
+    <text x="904" y="214" fill="#96a99e" font-size="18">Scope-set CAS</text>
+    <text x="904" y="242" fill="#96a99e" font-size="18">Revision + command</text>
+    <rect x="904" y="265" width="104" height="38" rx="8" fill="#142019" stroke="#3e6e8d"/>
+    <text x="956" y="290" fill="#9fd1ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" text-anchor="middle">ORDINARY</text>
+    <rect x="1018" y="265" width="112" height="38" rx="8" fill="#142019" stroke="#5f8541"/>
+    <text x="1074" y="290" fill="#d7ff9f" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" text-anchor="middle">MCP</text>
+  </g>
+
+  <path d="M272 165h28v44h34M272 279h28v-44h34" fill="none" stroke="#607368" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M572 222h36M846 222h36" fill="none" stroke="#67b7ff" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+
+  <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+    <rect x="334" y="350" width="238" height="54" rx="11" fill="#142019" stroke="#47755c"/>
+    <text x="453" y="384" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">One Fleet command</text>
+    <rect x="608" y="350" width="238" height="54" rx="11" fill="#142019" stroke="#47755c"/>
+    <text x="727" y="384" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">A3S Gateway</text>
+    <rect x="882" y="350" width="270" height="54" rx="11" fill="#182017" stroke="#6f663c"/>
+    <text x="1017" y="384" fill="#f8d98e" font-size="20" font-weight="700" text-anchor="middle">Matching applied ACK</text>
+  </g>
+
+  <path d="M1017 328v13H453v9" fill="none" stroke="#b7f56a" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <path d="M572 377h36M846 377h36" fill="none" stroke="#f2c66d" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
+  <text x="743" y="431" fill="#8faf7b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" text-anchor="middle">ACKNOWLEDGED REVISION IS THE ONLY INSTALLED-STATE AUTHORITY</text>
+</svg>

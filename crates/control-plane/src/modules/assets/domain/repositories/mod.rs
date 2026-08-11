@@ -12,4 +12,7 @@ pub use asset_repository::{
     CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, TransitionAssetReleaseWrite,
     TransitionAssetWrite,
 };
-pub use mcp_service_profile_repository::{IMcpServiceProfileRepository, McpServiceProfileBinding};
+pub use mcp_service_profile_repository::{
+    BindMcpServiceProfileWrite, IMcpServiceProfileRepository, McpServiceProfileBinding,
+    McpServiceProfileWrite, McpServiceProfileWriteReference,
+};

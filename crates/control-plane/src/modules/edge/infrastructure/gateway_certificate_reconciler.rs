@@ -1,4 +1,10 @@
-use super::GatewaySnapshotMetadata;
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
+use super::{
+    CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
+    GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
+    IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
+    StageManagedGatewayCertificateConvergence,
+};
 use crate::modules::edge::domain::events::GatewayCertificateConvergenceStaged;
 use crate::modules::edge::domain::repositories::{
     GatewayCertificateConvergenceResult, GatewayCertificateConvergenceTarget, IEdgeRepository,
@@ -48,6 +54,8 @@ pub struct GatewayCertificateReconciliationReport {
 
 pub struct GatewayCertificateReconciler {
     repository: Arc<dyn IEdgeRepository>,
+    managed_repository: Option<Arc<dyn IMcpGatewaySnapshotRepository>>,
+    desired_state: Option<GatewayNodeDesiredStatePlanner>,
     commands: Arc<dyn IGatewayCommandQueue>,
     certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     compiler: super::GatewaySnapshotCompiler,
@@ -86,6 +94,8 @@ impl GatewayCertificateReconciler {
         }
         Ok(Self {
             repository,
+            managed_repository: None,
+            desired_state: None,
             commands,
             certificate_authority,
             compiler,
@@ -95,6 +105,36 @@ impl GatewayCertificateReconciler {
             command_ttl,
             batch_size,
         })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_managed(
+        repository: Arc<dyn IEdgeRepository>,
+        managed_repository: Arc<dyn IMcpGatewaySnapshotRepository>,
+        desired_state: GatewayNodeDesiredStatePlanner,
+        commands: Arc<dyn IGatewayCommandQueue>,
+        certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
+        compiler: super::GatewaySnapshotCompiler,
+        interval: Duration,
+        renewal_window: ChronoDuration,
+        snapshot_renewal_window: ChronoDuration,
+        command_ttl: ChronoDuration,
+        batch_size: usize,
+    ) -> Result<Self, String> {
+        let mut reconciler = Self::new(
+            repository,
+            commands,
+            certificate_authority,
+            compiler,
+            interval,
+            renewal_window,
+            snapshot_renewal_window,
+            command_ttl,
+            batch_size,
+        )?;
+        reconciler.managed_repository = Some(managed_repository);
+        reconciler.desired_state = Some(desired_state);
+        Ok(reconciler)
     }
 
     pub async fn run_once(
@@ -176,12 +216,10 @@ impl GatewayCertificateReconciler {
         for target in targets {
             let node_id = target.scope.node_id;
             let certificate_id = target.certificate.id;
-            let bundle = match self.compile_convergence(
-                target,
-                now,
-                certificate_renew_before,
-                snapshot_renew_before,
-            ) {
+            let bundle = match self
+                .compile_target(target, now, certificate_renew_before, snapshot_renew_before)
+                .await
+            {
                 Ok(bundle) => bundle,
                 Err(_) => {
                     report.failures.push(failure(
@@ -193,11 +231,7 @@ impl GatewayCertificateReconciler {
                     continue;
                 }
             };
-            let staged = match self
-                .repository
-                .stage_gateway_certificate_convergence(bundle)
-                .await
-            {
+            let staged = match self.stage(bundle).await {
                 Ok(staged) => staged,
                 Err(_) => {
                     report.failures.push(failure(
@@ -222,6 +256,54 @@ impl GatewayCertificateReconciler {
             self.revoke_obsolete(certificate, now, &mut report).await;
         }
         Ok(report)
+    }
+
+    async fn compile_target(
+        &self,
+        target: GatewayCertificateConvergenceTarget,
+        now: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
+    ) -> Result<CompiledGatewayCertificateConvergence, RepositoryError> {
+        match &self.desired_state {
+            Some(desired_state) => self
+                .compile_managed_convergence(
+                    target,
+                    desired_state,
+                    now,
+                    certificate_renew_before,
+                    snapshot_renew_before,
+                )
+                .await
+                .map(|bundle| CompiledGatewayCertificateConvergence::Managed(Box::new(bundle))),
+            None => self
+                .compile_convergence(target, now, certificate_renew_before, snapshot_renew_before)
+                .map(|bundle| CompiledGatewayCertificateConvergence::Ordinary(Box::new(bundle))),
+        }
+    }
+
+    async fn stage(
+        &self,
+        bundle: CompiledGatewayCertificateConvergence,
+    ) -> Result<GatewayCertificateConvergenceResult, RepositoryError> {
+        match bundle {
+            CompiledGatewayCertificateConvergence::Ordinary(bundle) => {
+                self.repository
+                    .stage_gateway_certificate_convergence(*bundle)
+                    .await
+            }
+            CompiledGatewayCertificateConvergence::Managed(bundle) => {
+                self.managed_repository
+                    .as_ref()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "managed Gateway certificate repository is unavailable".into(),
+                        )
+                    })?
+                    .stage_managed_gateway_certificate_convergence(*bundle)
+                    .await
+            }
+        }
     }
 
     pub async fn run(self, mut shutdown: watch::Receiver<bool>) {
@@ -421,6 +503,244 @@ impl GatewayCertificateReconciler {
         })
     }
 
+    async fn compile_managed_convergence(
+        &self,
+        target: GatewayCertificateConvergenceTarget,
+        desired_state: &GatewayNodeDesiredStatePlanner,
+        now: DateTime<Utc>,
+        certificate_renew_before: DateTime<Utc>,
+        snapshot_renew_before: DateTime<Utc>,
+    ) -> Result<StageManagedGatewayCertificateConvergence, RepositoryError> {
+        target.validate().map_err(RepositoryError::Storage)?;
+        if target.certificate.updated_at > now
+            || target
+                .routes
+                .iter()
+                .any(|status| status.route.updated_at > now)
+        {
+            return Err(RepositoryError::Conflict(
+                "Gateway certificate reconciliation time predates its target".into(),
+            ));
+        }
+        let revision = target
+            .scope
+            .next_revision()
+            .map_err(RepositoryError::Conflict)?;
+        let command_id = deterministic_command_id(target.scope.node_id, revision);
+        let mut retained_routes = Vec::new();
+        let mut retained_versions = Vec::new();
+        let mut rejected_versions = Vec::new();
+        for status in &target.routes {
+            let version = GatewayRouteVersion::new(status.route.id, status.route.aggregate_version)
+                .map_err(RepositoryError::Conflict)?;
+            if status.domain_claim_state == DomainClaimState::Verified {
+                retained_routes.push(status.route.clone());
+                retained_versions.push(version);
+            } else {
+                rejected_versions.push(version);
+            }
+        }
+        let mut reason = convergence_reason(
+            &target,
+            certificate_renew_before,
+            snapshot_renew_before,
+            !rejected_versions.is_empty(),
+        )?;
+        let fallback_route = target.routes.first().ok_or_else(|| {
+            RepositoryError::Storage(
+                "managed Gateway certificate target omitted its anchor Route".into(),
+            )
+        })?;
+        let fallback_scope = self
+            .repository
+            .find_gateway_scope(
+                fallback_route.route.organization_id,
+                fallback_route.route.gateway_scope_id,
+            )
+            .await?;
+        if fallback_scope.project_id != fallback_route.route.project_id
+            || fallback_scope.environment_id != fallback_route.route.environment_id
+            || !fallback_scope.contains_member(target.scope.node_id)
+        {
+            return Err(RepositoryError::Conflict(
+                "managed Gateway certificate fallback scope changed".into(),
+            ));
+        }
+        let desired_state = desired_state
+            .plan(PlanGatewayNodeDesiredState {
+                gateway_node_id: target.scope.node_id,
+                fallback_scope,
+                observed_at: now,
+            })
+            .await?;
+        if desired_state.physical_scope() != &target.scope {
+            return Err(RepositoryError::Conflict(
+                "Gateway scope changed while planning certificate convergence".into(),
+            ));
+        }
+        let has_traffic =
+            !retained_routes.is_empty() || !desired_state.mcp().ingress_routes().is_empty();
+        let desired_command_not_after =
+            now.checked_add_signed(self.command_ttl).ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway certificate convergence command expiry exceeds supported time".into(),
+                )
+            })?;
+        let default_snapshot_expires_at = now
+            .checked_add_signed(ChronoDuration::hours(24))
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway certificate convergence snapshot expiry exceeds supported time".into(),
+                )
+            })?;
+        let snapshot_expires_at =
+            managed_snapshot_expires_at(desired_state.mcp(), now, default_snapshot_expires_at)
+                .map_err(RepositoryError::Conflict)?;
+        let command_not_after = desired_command_not_after.min(snapshot_expires_at);
+        if command_not_after <= now {
+            return Err(RepositoryError::Conflict(
+                "Gateway certificate convergence MCP policy expires before dispatch".into(),
+            ));
+        }
+        let metadata = GatewaySnapshotMetadata::new(
+            target.scope.node_id,
+            revision,
+            target.scope.installed_revision,
+            now,
+            snapshot_expires_at,
+        );
+        let previous_certificate = target.certificate.clone();
+        let reuse = reason == GatewayCertificateConvergenceReason::SnapshotRenewal;
+        let mut replacement_certificate_id = (!reuse && has_traffic)
+            .then(|| deterministic_certificate_id(target.scope.node_id, revision));
+        let candidate = if reuse {
+            match self
+                .compiler
+                .compile_managed_certificate_convergence_snapshot(
+                    CompileManagedGatewayCertificateConvergenceSnapshot {
+                        metadata,
+                        desired_state: desired_state.clone(),
+                        certificate_id: Some(target.certificate.id),
+                        reused_certificate_request: Some(target.certificate.request.clone()),
+                        retained_routes: retained_versions.clone(),
+                        rejected_routes: rejected_versions.clone(),
+                    },
+                ) {
+                Ok(candidate)
+                    if candidate
+                        .certificate_domain_claim_ids()
+                        .iter()
+                        .all(|claim_id| target.certificate.domain_claim_ids.contains(claim_id)) =>
+                {
+                    candidate
+                }
+                Ok(_) | Err(_) if has_traffic => {
+                    reason = GatewayCertificateConvergenceReason::ProjectionRepair;
+                    let certificate_id =
+                        deterministic_certificate_id(target.scope.node_id, revision);
+                    replacement_certificate_id = Some(certificate_id);
+                    self.compiler
+                        .compile_managed_certificate_convergence_snapshot(
+                            CompileManagedGatewayCertificateConvergenceSnapshot {
+                                metadata,
+                                desired_state,
+                                certificate_id: Some(certificate_id),
+                                reused_certificate_request: None,
+                                retained_routes: retained_versions.clone(),
+                                rejected_routes: rejected_versions.clone(),
+                            },
+                        )
+                        .map_err(RepositoryError::Conflict)?
+                }
+                Ok(_) => {
+                    return Err(RepositoryError::Conflict(
+                        "empty Gateway snapshot cannot reuse certificate material".into(),
+                    ))
+                }
+                Err(error) => return Err(RepositoryError::Conflict(error)),
+            }
+        } else {
+            self.compiler
+                .compile_managed_certificate_convergence_snapshot(
+                    CompileManagedGatewayCertificateConvergenceSnapshot {
+                        metadata,
+                        desired_state,
+                        certificate_id: replacement_certificate_id,
+                        reused_certificate_request: None,
+                        retained_routes: retained_versions.clone(),
+                        rejected_routes: rejected_versions.clone(),
+                    },
+                )
+                .map_err(RepositoryError::Conflict)?
+        };
+        let publication = GatewayPublication::stage(
+            target.scope.node_id,
+            command_id,
+            command_id.as_uuid(),
+            candidate.snapshot().clone(),
+            now,
+            command_not_after,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        let domain_claim_ids = candidate.certificate_domain_claim_ids().to_vec();
+        let certificate = match (
+            replacement_certificate_id,
+            publication.certificate_request.clone(),
+        ) {
+            (Some(certificate_id), Some(request)) => Some(
+                GatewayCertificate::provision(
+                    certificate_id,
+                    target.certificate.organization_id,
+                    target.scope.node_id,
+                    domain_claim_ids,
+                    revision,
+                    command_id,
+                    publication.snapshot_digest.clone(),
+                    request,
+                    now,
+                )
+                .map_err(RepositoryError::Conflict)?,
+            ),
+            (None, None) => None,
+            _ => {
+                return Err(RepositoryError::Storage(
+                    "managed Gateway convergence certificate request is inconsistent".into(),
+                ))
+            }
+        };
+        let convergence = GatewayCertificateConvergence::stage(
+            target.certificate.organization_id,
+            target.scope.node_id,
+            revision,
+            command_id,
+            target.certificate.id,
+            replacement_certificate_id,
+            publication.snapshot_digest.clone(),
+            retained_versions,
+            rejected_versions,
+            reason,
+            now,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        let event = GatewayCertificateConvergenceStaged::envelope(&convergence, &publication)
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+        let ordinary = StageGatewayCertificateConvergence {
+            convergence,
+            certificate,
+            publication,
+            expected_scope_version: target.scope.aggregate_version,
+            event,
+        };
+        let composition = GatewayManagedSnapshotComposition::new(
+            candidate,
+            &ordinary.publication,
+            GatewaySnapshotPublicationOwner::Ordinary,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        StageManagedGatewayCertificateConvergence::new(ordinary, composition, previous_certificate)
+            .map_err(RepositoryError::Conflict)
+    }
+
     async fn revoke_obsolete(
         &self,
         certificate: GatewayCertificate,
@@ -461,6 +781,11 @@ impl GatewayCertificateReconciler {
             )),
         }
     }
+}
+
+enum CompiledGatewayCertificateConvergence {
+    Ordinary(Box<StageGatewayCertificateConvergence>),
+    Managed(Box<StageManagedGatewayCertificateConvergence>),
 }
 
 fn convergence_reason(

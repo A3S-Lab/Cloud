@@ -1,6 +1,7 @@
 use super::build_artifact::validate_sha256;
 use super::oci_publication::PublishedOciArtifact;
 use super::BuildSubject;
+use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest as digest};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, OperationId, SourceRevisionId,
 };
@@ -10,8 +11,6 @@ use base64::Engine;
 use chrono::{DateTime, Utc};
 use ring::signature::{UnparsedPublicKey, ED25519};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const BUILD_EVIDENCE_SCHEMA: &str = "a3s.cloud.build-evidence.v1";
@@ -804,19 +803,15 @@ pub struct SlsaRunMetadata {
 }
 
 pub fn canonical_json<T: Serialize>(value: &T) -> Result<Vec<u8>, String> {
-    let value = serde_json::to_value(value)
-        .map_err(|error| format!("could not project canonical JSON value: {error}"))?;
-    let value = sort_json(value);
-    let encoded = serde_json::to_vec(&value)
-        .map_err(|error| format!("could not encode canonical JSON document: {error}"))?;
-    if encoded.len() > MAX_CANONICAL_DOCUMENT_BYTES {
-        return Err("canonical JSON document exceeds its byte bound".into());
-    }
-    Ok(encoded)
+    canonical_json_bounded(
+        value,
+        MAX_CANONICAL_DOCUMENT_BYTES,
+        "canonical JSON document",
+    )
 }
 
 pub fn sha256_digest(value: &[u8]) -> String {
-    format!("sha256:{:x}", Sha256::digest(value))
+    digest(value)
 }
 
 pub fn dsse_pae(payload_type: &str, payload: &[u8]) -> Result<Vec<u8>, String> {
@@ -905,24 +900,6 @@ fn digest_hex(value: &str) -> Result<&str, String> {
         .strip_prefix("sha256:")
         .filter(|digest| valid_hex_sha256(digest))
         .ok_or_else(|| "build evidence digest is not canonical SHA-256".into())
-}
-
-fn sort_json(value: Value) -> Value {
-    match value {
-        Value::Array(values) => Value::Array(values.into_iter().map(sort_json).collect()),
-        Value::Object(values) => {
-            let sorted = values
-                .into_iter()
-                .map(|(key, value)| (key, sort_json(value)))
-                .collect::<BTreeMap<_, _>>();
-            let mut object = Map::new();
-            for (key, value) in sorted {
-                object.insert(key, value);
-            }
-            Value::Object(object)
-        }
-        value => value,
-    }
 }
 
 #[cfg(test)]

@@ -39,6 +39,8 @@ macro_rules! identifier {
 }
 
 identifier!(OrganizationId);
+identifier!(PrincipalId);
+identifier!(MembershipId);
 identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(EnvironmentId);
@@ -69,3 +71,15 @@ identifier!(AssetId);
 identifier!(AssetReleaseId);
 identifier!(AgentConversationId);
 identifier!(AgentExecutionId);
+identifier!(OntologyId);
+identifier!(OntologyRevisionId);
+identifier!(WorkflowDefinitionId);
+identifier!(WorkflowRevisionId);
+identifier!(WorkflowGoalId);
+identifier!(PlanRevisionId);
+identifier!(WorkflowRunId);
+identifier!(HumanTaskId);
+identifier!(FormId);
+identifier!(FormReleaseId);
+identifier!(FormSubmissionId);
+identifier!(WorkflowDecisionId);

@@ -11,9 +11,10 @@ mod typed_orm_tests;
 use crate::modules::assets::domain::{
     AcquireAssetGitWriteLease, Asset, AssetGitRepositoryControlError, AssetGitWriteJournal,
     AssetGitWriteLease, AssetGitWriteRecovery, AssetRelease, AssetReleaseWrite, AssetWrite,
-    ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease, CreateAssetReleaseWrite,
-    CreateAssetWrite, IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
-    McpServiceProfileBinding, TransitionAssetReleaseWrite, TransitionAssetWrite,
+    BindMcpServiceProfileWrite, ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease,
+    CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepositoryControl, IAssetRepository,
+    IMcpServiceProfileRepository, McpServiceProfileBinding, McpServiceProfileWrite,
+    TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
@@ -138,9 +139,9 @@ impl IAssetGitRepositoryControl for PostgresAssetRepository {
 impl IMcpServiceProfileRepository for PostgresAssetRepository {
     async fn bind_mcp_service_profile(
         &self,
-        binding: McpServiceProfileBinding,
-    ) -> Result<McpServiceProfileBinding, RepositoryError> {
-        mcp_profiles::bind(&self.executor, binding).await
+        bundle: BindMcpServiceProfileWrite,
+    ) -> Result<McpServiceProfileWrite, RepositoryError> {
+        mcp_profiles::bind(&self.executor, bundle).await
     }
 
     async fn find_mcp_service_profile(

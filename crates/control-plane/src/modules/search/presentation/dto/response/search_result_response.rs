@@ -45,6 +45,15 @@ fn search_href(result: &SearchResult) -> String {
         SearchResourceKind::Project => {
             format!("{organization_root}/projects/{}", result.id)
         }
+        SearchResourceKind::Ontology => result.project_id.map_or_else(
+            || format!("{organization_root}/ontologies/{}", result.id),
+            |project_id| {
+                format!(
+                    "{organization_root}/projects/{project_id}/ontologies/{}",
+                    result.id
+                )
+            },
+        ),
         SearchResourceKind::Environment => {
             context_root(result).map_or(organization_root, |root| root)
         }

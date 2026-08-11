@@ -6,13 +6,19 @@ use crate::modules::edge::domain::{
     GatewayRolloutRollbackState, GatewayRolloutState, GatewayScope, GatewayScopeState, Route,
     RouteState,
 };
-use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
+use crate::modules::edge::infrastructure::{
+    CompileManagedGatewayRetainedSnapshot, GatewayManagedSnapshotComposition,
+    GatewaySnapshotCompiler, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
+    PlannedGatewayNodeDesiredState, StageManagedGatewayRolloutRollback,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeCommandId, NodeId,
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
+
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 
 const COMMAND_ID_NAME: &[u8] = b"a3s-cloud.gateway-rollout.rollback.command.v1";
 const CERTIFICATE_ID_NAME: &[u8] = b"a3s-cloud.gateway-rollout.rollback.certificate.v1";
@@ -34,6 +40,21 @@ pub struct CompileGatewayRolloutRollback {
 }
 
 #[derive(Debug, Clone)]
+pub struct ManagedGatewayRollbackMemberSnapshotContext {
+    pub desired_state: PlannedGatewayNodeDesiredState,
+    pub reusable_certificate: Option<GatewayCertificate>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompileManagedGatewayRolloutRollback {
+    pub scope: GatewayScope,
+    pub failed_rollout: GatewayRollout,
+    pub rollback: GatewayRolloutRollback,
+    pub member_contexts: Vec<ManagedGatewayRollbackMemberSnapshotContext>,
+    pub issued_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
 pub struct CompiledGatewayRolloutRollback {
     pub scope: GatewayScope,
     pub failed_rollout: GatewayRollout,
@@ -43,6 +64,7 @@ pub struct CompiledGatewayRolloutRollback {
     pub certificates: Vec<GatewayCertificate>,
     pub reused_certificates: Vec<GatewayCertificate>,
     pub expected_scope_versions: BTreeMap<NodeId, u64>,
+    pub managed_compositions: BTreeMap<NodeId, GatewayManagedSnapshotComposition>,
 }
 
 impl CompiledGatewayRolloutRollback {
@@ -66,6 +88,13 @@ impl CompiledGatewayRolloutRollback {
         };
         bundle.validate()?;
         Ok(bundle)
+    }
+
+    pub fn managed_stage_bundle(&self) -> Result<StageManagedGatewayRolloutRollback, String> {
+        StageManagedGatewayRolloutRollback::new(
+            self.stage_bundle()?,
+            self.managed_compositions.clone(),
+        )
     }
 }
 
@@ -221,6 +250,204 @@ impl GatewayRolloutRollbackCompiler {
             certificates,
             reused_certificates,
             expected_scope_versions,
+            managed_compositions: BTreeMap::new(),
+        })
+    }
+
+    pub fn compile_managed(
+        &self,
+        request: CompileManagedGatewayRolloutRollback,
+    ) -> Result<CompiledGatewayRolloutRollback, String> {
+        request.scope.validate()?;
+        request.failed_rollout.validate()?;
+        request.rollback.validate()?;
+        validate_source(&request.scope, &request.failed_rollout, &request.rollback)?;
+        let desired_nodes = request
+            .scope
+            .member_node_ids
+            .iter()
+            .copied()
+            .collect::<BTreeSet<_>>();
+        let contexts = canonical_managed_contexts(request.member_contexts, &desired_nodes)?;
+        let issued_at = canonical_timestamp(request.issued_at);
+        if issued_at < request.rollback.required_at {
+            return Err("Gateway rollback issue time predates its durable requirement".into());
+        }
+        let default_command_not_after = issued_at
+            .checked_add_signed(self.command_ttl)
+            .ok_or_else(|| "Gateway rollback command expiry exceeds supported time".to_string())?;
+        let default_snapshot_expires_at = issued_at
+            .checked_add_signed(self.snapshot_ttl)
+            .ok_or_else(|| "Gateway rollback snapshot expiry exceeds supported time".to_string())?;
+
+        let mut publications = Vec::with_capacity(contexts.len());
+        let mut certificates = Vec::new();
+        let mut reused_certificates = Vec::new();
+        let mut expected_scope_versions = BTreeMap::new();
+        let mut managed_compositions = BTreeMap::new();
+        for context in contexts {
+            validate_managed_member_context(&request.scope, &request.failed_rollout, &context)?;
+            let node_id = context.desired_state.physical_scope().node_id;
+            let revision = context.desired_state.physical_scope().next_revision()?;
+            let expected_scope_version = context.desired_state.physical_scope().aggregate_version;
+            let snapshot_expires_at = managed_snapshot_expires_at(
+                context.desired_state.mcp(),
+                issued_at,
+                default_snapshot_expires_at,
+            )?;
+            let command_not_after = default_command_not_after.min(snapshot_expires_at);
+            let metadata = GatewaySnapshotMetadata::new(
+                node_id,
+                revision,
+                context.desired_state.physical_scope().installed_revision,
+                issued_at,
+                snapshot_expires_at,
+            );
+            let has_traffic = !context.desired_state.active_routes().is_empty()
+                || !context.desired_state.mcp().route_versions().is_empty();
+            let reusable = context.reusable_certificate.filter(|certificate| {
+                reusable_material_is_current(
+                    certificate,
+                    request.scope.organization_id,
+                    node_id,
+                    issued_at,
+                )
+            });
+            let reused_candidate = reusable.as_ref().and_then(|certificate| {
+                let candidate = self
+                    .snapshots
+                    .compile_managed_retained_snapshot(CompileManagedGatewayRetainedSnapshot {
+                        metadata,
+                        desired_state: context.desired_state.clone(),
+                        certificate_id: Some(certificate.id),
+                        reused_certificate_request: Some(certificate.request.clone()),
+                    })
+                    .ok()?;
+                let expected_claims = candidate
+                    .certificate_domain_claim_ids()
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>();
+                let stored_claims = certificate
+                    .domain_claim_ids
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>();
+                expected_claims
+                    .is_subset(&stored_claims)
+                    .then_some(candidate)
+            });
+            let (candidate, reused_certificate, replacement_certificate_id) =
+                match (has_traffic, reused_candidate, reusable) {
+                    (false, _, _) => (
+                        self.snapshots.compile_managed_retained_snapshot(
+                            CompileManagedGatewayRetainedSnapshot {
+                                metadata,
+                                desired_state: context.desired_state,
+                                certificate_id: None,
+                                reused_certificate_request: None,
+                            },
+                        )?,
+                        None,
+                        None,
+                    ),
+                    (true, Some(candidate), Some(certificate)) => {
+                        (candidate, Some(certificate), None)
+                    }
+                    (true, _, _) => {
+                        let certificate_id =
+                            GatewayCertificateId::from_uuid(deterministic_member_id(
+                                request.rollback.rollback_rollout_id.as_uuid(),
+                                node_id,
+                                CERTIFICATE_ID_NAME,
+                            ));
+                        (
+                            self.snapshots.compile_managed_retained_snapshot(
+                                CompileManagedGatewayRetainedSnapshot {
+                                    metadata,
+                                    desired_state: context.desired_state,
+                                    certificate_id: Some(certificate_id),
+                                    reused_certificate_request: None,
+                                },
+                            )?,
+                            None,
+                            Some(certificate_id),
+                        )
+                    }
+                };
+            let command_id = deterministic_member_id(
+                request.rollback.rollback_rollout_id.as_uuid(),
+                node_id,
+                COMMAND_ID_NAME,
+            );
+            let publication = GatewayPublication::stage(
+                node_id,
+                NodeCommandId::from_uuid(command_id),
+                request.rollback.rollback_rollout_id.as_uuid(),
+                candidate.snapshot().clone(),
+                issued_at,
+                command_not_after,
+            )?;
+            if let Some(reused) = reused_certificate {
+                validate_managed_reusable_certificate(
+                    &reused,
+                    &publication,
+                    &candidate,
+                    issued_at,
+                )?;
+                reused_certificates.push(reused);
+            } else if let Some(certificate_id) = replacement_certificate_id {
+                let certificate_request =
+                    publication.certificate_request.clone().ok_or_else(|| {
+                        "managed Gateway rollback TLS snapshot omitted its certificate request"
+                            .to_string()
+                    })?;
+                let domain_claim_ids = candidate.certificate_domain_claim_ids().to_vec();
+                let certificate = GatewayCertificate::provision(
+                    certificate_id,
+                    request.scope.organization_id,
+                    node_id,
+                    domain_claim_ids,
+                    revision,
+                    NodeCommandId::from_uuid(command_id),
+                    publication.snapshot_digest.clone(),
+                    certificate_request,
+                    issued_at,
+                )?;
+                certificates.push(certificate);
+            }
+            let composition = GatewayManagedSnapshotComposition::new(
+                candidate,
+                &publication,
+                GatewaySnapshotPublicationOwner::Ordinary,
+            )?;
+            expected_scope_versions.insert(node_id, expected_scope_version);
+            managed_compositions.insert(node_id, composition);
+            publications.push(publication);
+        }
+
+        publications.sort_by_key(|publication| publication.node_id);
+        certificates.sort_by_key(|certificate| certificate.node_id);
+        reused_certificates.sort_by_key(|certificate| certificate.node_id);
+        let rollout = GatewayRollout::stage_rollback(
+            request.rollback.rollback_rollout_id,
+            &request.scope,
+            request.rollback.rollback_generation,
+            &publications,
+            issued_at,
+        )?;
+        let mut rollback = request.rollback;
+        rollback.stage(&rollout)?;
+        Ok(CompiledGatewayRolloutRollback {
+            scope: request.scope,
+            failed_rollout: request.failed_rollout,
+            rollback,
+            rollout,
+            publications,
+            certificates,
+            reused_certificates,
+            expected_scope_versions,
+            managed_compositions,
         })
     }
 
@@ -403,6 +630,126 @@ fn canonical_contexts(
         );
     }
     Ok(contexts)
+}
+
+fn canonical_managed_contexts(
+    mut contexts: Vec<ManagedGatewayRollbackMemberSnapshotContext>,
+    desired_nodes: &BTreeSet<NodeId>,
+) -> Result<Vec<ManagedGatewayRollbackMemberSnapshotContext>, String> {
+    contexts.sort_by_key(|context| context.desired_state.physical_scope().node_id);
+    if contexts.len() != desired_nodes.len()
+        || contexts.windows(2).any(|contexts| {
+            contexts[0].desired_state.physical_scope().node_id
+                == contexts[1].desired_state.physical_scope().node_id
+        })
+        || contexts
+            .iter()
+            .map(|context| context.desired_state.physical_scope().node_id)
+            .collect::<BTreeSet<_>>()
+            != *desired_nodes
+    {
+        return Err(
+            "managed Gateway rollback contexts must cover every desired member exactly once".into(),
+        );
+    }
+    Ok(contexts)
+}
+
+fn validate_managed_member_context(
+    scope: &GatewayScope,
+    failed: &GatewayRollout,
+    context: &ManagedGatewayRollbackMemberSnapshotContext,
+) -> Result<(), String> {
+    let physical_scope = context.desired_state.physical_scope();
+    let replica = failed
+        .replicas
+        .iter()
+        .find(|replica| replica.node_id == physical_scope.node_id)
+        .ok_or_else(|| "managed Gateway rollback context has no failed member".to_string())?;
+    let observed_revision = match replica.state {
+        GatewayReplicaRolloutState::Applied => Some(replica.revision),
+        GatewayReplicaRolloutState::Rejected => physical_scope.installed_revision,
+        GatewayReplicaRolloutState::Unavailable => replica
+            .recovery
+            .as_ref()
+            .and_then(|recovery| recovery.observation.as_ref())
+            .and_then(|observation| observation.applied.as_ref())
+            .map(|applied| applied.revision),
+        GatewayReplicaRolloutState::Pending => {
+            return Err("managed Gateway rollback member remains pending".into())
+        }
+    };
+    if physical_scope.last_issued_revision != replica.revision
+        || physical_scope.installed_revision != observed_revision
+        || context.desired_state.mcp().primary_scope().organization_id != scope.organization_id
+        || context.desired_state.active_routes().iter().any(|input| {
+            input.route.organization_id != scope.organization_id
+                || input.route.gateway_node_id != physical_scope.node_id
+                || input.route.state != RouteState::Active
+                || input.route.failure.is_some()
+                || input.route.validate_target_binding().is_err()
+        })
+    {
+        return Err(
+            "managed Gateway rollback context does not match exact observed physical state".into(),
+        );
+    }
+    Ok(())
+}
+
+fn reusable_material_is_current(
+    certificate: &GatewayCertificate,
+    organization_id: crate::modules::shared_kernel::domain::OrganizationId,
+    node_id: NodeId,
+    issued_at: DateTime<Utc>,
+) -> bool {
+    certificate.state == GatewayCertificateState::Ready
+        && certificate.organization_id == organization_id
+        && certificate.node_id == node_id
+        && certificate.request.certificate_id == certificate.id.as_uuid()
+        && certificate.material.as_ref().is_some_and(|material| {
+            material.validate().is_ok()
+                && material.issued_at <= issued_at
+                && material.expires_at > issued_at
+        })
+}
+
+fn validate_managed_reusable_certificate(
+    certificate: &GatewayCertificate,
+    publication: &GatewayPublication,
+    candidate: &crate::modules::edge::infrastructure::CompiledMcpGatewaySnapshot,
+    issued_at: DateTime<Utc>,
+) -> Result<(), String> {
+    let request = publication.certificate_request.as_ref().ok_or_else(|| {
+        "managed reused Gateway certificate publication omitted its request".to_string()
+    })?;
+    let expected_claims = candidate
+        .certificate_domain_claim_ids()
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let stored_claims = certificate
+        .domain_claim_ids
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if certificate.id.as_uuid() != request.certificate_id
+        || certificate.node_id != publication.node_id
+        || &certificate.request != request
+        || !expected_claims.is_subset(&stored_claims)
+        || !reusable_material_is_current(
+            certificate,
+            candidate.mcp().primary_scope().organization_id,
+            publication.node_id,
+            issued_at,
+        )
+    {
+        return Err(
+            "reused managed Gateway rollback certificate is not valid for its exact snapshot"
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 fn validate_reusable_certificate(

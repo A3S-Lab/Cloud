@@ -1,4 +1,5 @@
-import type { AssetKind, CloudApi } from '@a3s/cloud-client';
+import { type AssetKind, type CloudApi, MAX_MCP_SERVICE_PROFILE_ACL_BYTES } from '@a3s/cloud-client';
+import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import type { ParsedArguments } from './arguments';
 import {
   positionalResourceName,
@@ -22,14 +23,21 @@ import {
   assetReleasesResult,
   assetResult,
   assetsResult,
+  mcpServiceProfileMutationResult,
+  mcpServiceProfileResult,
 } from './asset-results';
 import type { CommandResult } from './results';
+
+interface AssetCommandDependencies {
+  readFile?: (path: string) => Promise<Uint8Array>;
+}
 
 export async function executeAssetCommand(
   command: string,
   arguments_: ParsedArguments,
   context: CloudContext,
-  cloudApi: () => CloudApi
+  cloudApi: () => CloudApi,
+  dependencies: AssetCommandDependencies = {}
 ): Promise<CommandResult | undefined> {
   const { positionals } = arguments_;
   const organizationId = () => requireOrganization(context);
@@ -79,6 +87,15 @@ export async function executeAssetCommand(
           positionalUuid(positionals, 3, 'Asset release ID')
         )
       );
+    case 'asset-releases mcp-profile':
+      requireAssetRead(arguments_, [4], 'asset-releases mcp-profile <asset-id> <release-id>');
+      return mcpServiceProfileResult(
+        await cloudApi().getMcpServiceProfile(
+          organizationId(),
+          positionalUuid(positionals, 2, 'Asset ID'),
+          positionalUuid(positionals, 3, 'Asset release ID')
+        )
+      );
     case 'asset-releases select':
       requireAssetRead(arguments_, [3, 4], 'asset-releases select <asset-id> [version]');
       return assetReleaseResult(
@@ -118,6 +135,30 @@ export async function executeAssetCommand(
           positionalUuid(positionals, 2, 'Asset ID'),
           positionalUuid(positionals, 3, 'Asset release ID'),
           idempotencyKey
+        )
+      );
+    }
+    case 'asset-releases bind-mcp-profile': {
+      const mutation = requireAclMutationCommand(
+        arguments_,
+        4,
+        'asset-releases bind-mcp-profile <asset-id> <release-id>'
+      );
+      const acl = await readAclDocument(
+        mutation.file,
+        {
+          label: 'MCP Service profile ACL',
+          maximumBytes: MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
+        },
+        dependencies.readFile
+      );
+      return mcpServiceProfileMutationResult(
+        await cloudApi().bindMcpServiceProfileFromAcl(
+          organizationId(),
+          positionalUuid(positionals, 2, 'Asset ID'),
+          positionalUuid(positionals, 3, 'Asset release ID'),
+          acl,
+          mutation.idempotencyKey
         )
       );
     }

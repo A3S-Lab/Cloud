@@ -54,6 +54,69 @@ release locally. Cloud admits the exact hosted Git commit, excludes draft and
 yanked releases from new bindings, and keeps exact yanked identities available
 to existing pinned deployments.
 
+`getMcpServiceProfile` and `bindMcpServiceProfileFromAcl` expose the one
+immutable Service-profile binding owned by a published MCP OCI
+`AssetRelease`. Binding sends one nonempty A3S ACL document of at most 64 KiB
+as `application/vnd.a3s.acl` with a caller-owned idempotency key. Cloud parses
+and canonicalizes the document, so semantically equivalent ACL produces the
+same profile digest and an identical binding is a replay/no-op. The client
+does not create another profile store, route policy, deployment path, or MCP
+scheduler.
+
+`listMcpRoutePolicies`, `getMcpRoutePolicy`,
+`createMcpRoutePolicyFromAcl`, and `reviseMcpRoutePolicyFromAcl` expose the
+separately mutable Edge desired-state policy. Writes send one nonempty UTF-8
+A3S ACL document of at most 512 KiB through the shared ACL transport with a
+caller-owned idempotency key. Cloud alone canonicalizes the policy, validates
+its exact Service profile, release, domain, Workload, Gateway scope, grants,
+revision, limits, and expiry, and commits audit/Outbox evidence. The client
+does not publish a Gateway snapshot, derive targets, or create a second MCP
+policy lifecycle.
+
+`listOntologies`, `getOntology`, `createOntologyFromAcl`,
+`listOntologyRevisions`, `getOntologyRevision`, `diffOntologyRevisions`, and
+`reviseOntologyFromAcl` expose the backend `W0.2` lifecycle through REST
+contract `1.14.0`. Writes transport at most 1 MiB of closed A3S ACL unchanged.
+Revision requires a positive expected aggregate version and may name one
+portable migration rule ID; Cloud admits a breaking diff only when that exact
+target ACL rule has kind `migration`. The client does not parse Ontology ACL,
+infer migration policy, maintain revision state, or create a graph index.
+
+`listWorkflowDefinitions`, `getWorkflowDefinition`,
+`createWorkflowDefinitionFromAcl`, `listWorkflowRevisions`,
+`getWorkflowRevision`, and `reviseWorkflowDefinitionFromAcl` expose the
+`W0.3` planning lifecycle. Publication uses a bounded JSON transport envelope
+only to carry the canonical closed Workflow ACL and every exact typed
+configuration, data-schema, and policy ACL payload atomically; JSON is not a
+second product-configuration format. `listWorkflowGoals`, `getWorkflowGoal`,
+`createWorkflowGoalFromAcl`, and `getWorkflowPlanRevision` bind exact Workflow
+and Ontology revisions and read the deterministic immutable plan. The client
+validates transport bounds and optimistic version shape but does not parse
+ACL, compile plans, or retain revision state.
+
+`startWorkflowRun`, `cancelWorkflowRun`, `listWorkflowRuns`,
+`getWorkflowRun`, `waitWorkflowRun`, `getWorkflowRunOutput`, and
+`getWorkflowRunHistory` expose the minimal `W0.3` run lifecycle added by REST
+contract `1.14.0`. Start binds one exact Goal and Plan revision, accepts a
+bounded optional deadline, and requires caller-owned idempotency. Cancel is
+also replay-safe; list, wait, and history enforce the server's finite bounds
+before transport. Cloud remains authoritative for the correlated Operation,
+A3S Flow run, WorkflowStepProjection state, immutable replay checks,
+cancellation, timeout, output digest, and redacted history. This client surface
+does not claim HumanTask, service/finite-task, typed capability, compensation,
+or production-recovery support.
+
+`listFormDrafts`, `getFormDraft`, `createFormDraft`, `reviseFormDraft`,
+`listFormReleases`, `getFormRelease`, and `publishFormRelease` expose the native
+Form draft and immutable release lifecycle added by REST contract `1.14.0`.
+Draft writes carry only a bounded `{name, description?, document}` JSON
+transport, and revise/publish require a positive expected aggregate version.
+The client validates transport shape, text bounds, canonical document size,
+UUIDs, and idempotency keys; Cloud calls the pinned A3S Form owner compiler and
+persists through A3S ORM. The client does not parse Form semantics, compile a
+Form plan, validate submitted values, retain revision state, or create another
+Form configuration format.
+
 `bindSkillRelease` and `unbindSkillRelease` use the tenant-scoped Workload
 lifecycle and require caller-owned idempotency keys. A bind names one exact
 published Skill AssetRelease; an unbind names the Skill Asset already present

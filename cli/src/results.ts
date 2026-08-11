@@ -15,6 +15,8 @@ import type {
   McpCredential,
   McpCredentialDeliveryResult,
   McpCredentialMutationResult,
+  McpRoutePolicy,
+  McpRoutePolicyMutationResult,
   Node,
   Operation,
   Organization,
@@ -277,6 +279,41 @@ export function gatewayScopeMutationResult(row: GatewayScopeMutationResult): Com
     ...GATEWAY_SCOPE_COLUMNS,
     { header: 'REPLAYED', value: (value) => value.replayed },
   ]);
+}
+
+const MCP_ROUTE_POLICY_COLUMNS: readonly TableColumn<McpRoutePolicy>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'HOST', value: (row) => `${row.hostname}${row.path}` },
+  { header: 'REVISION', value: (row) => row.policyRevision },
+  { header: 'PROFILE', value: (row) => row.profileDigest },
+  { header: 'GRANTS', value: (row) => row.grants.length },
+  { header: 'EXPIRES AT', value: (row) => row.expiresAt },
+  { header: 'UPDATED AT', value: (row) => row.updatedAt },
+];
+
+export function mcpRoutePoliciesResult(rows: McpRoutePolicy[]): CommandResult {
+  return listResult(rows, MCP_ROUTE_POLICY_COLUMNS);
+}
+
+export function mcpRoutePolicyResult(row: McpRoutePolicy): CommandResult {
+  return singleResult(row, MCP_ROUTE_POLICY_COLUMNS);
+}
+
+export function mcpRoutePolicyMutationResult(row: McpRoutePolicyMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'ID', value: (value) => value.policy.id },
+        { header: 'HOST', value: (value) => `${value.policy.hostname}${value.policy.path}` },
+        { header: 'REVISION', value: (value) => value.policy.policyRevision },
+        { header: 'PROFILE', value: (value) => value.policy.profileDigest },
+        { header: 'EXPIRES AT', value: (value) => value.policy.expiresAt },
+        { header: 'REPLAYED', value: (value) => value.replayed },
+      ]
+    ),
+  };
 }
 
 const MCP_CREDENTIAL_COLUMNS: readonly TableColumn<McpCredential>[] = [

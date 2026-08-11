@@ -16,6 +16,9 @@ use crate::modules::edge::domain::{
     GatewayScope, GatewayScopeState, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
     RouteTarget, UpstreamEndpoint,
 };
+use crate::modules::edge::infrastructure::{
+    GatewayManagedSnapshotComposition, StageManagedRoutePublication,
+};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId,
     GatewayScopeId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId, OrganizationId,
@@ -204,172 +207,7 @@ impl IEdgeRepository for PostgresEdgeRepository {
         &self,
         bundle: StageRoutePublication,
     ) -> Result<EdgeRoutePublicationResult, RepositoryError> {
-        bundle.validate().map_err(RepositoryError::Conflict)?;
-        self.executor
-            .transaction(move |transaction| {
-                Box::pin(async move {
-                    if let Some(mut replay) = idempotency_replay::<EdgeRoutePublicationResult>(
-                        transaction,
-                        &bundle.idempotency,
-                    )
-                    .await?
-                    {
-                        replay.value.replayed = true;
-                        return Ok(replay.value);
-                    }
-                    postgres_gateway_scopes::validate_route_binding(
-                        transaction,
-                        &bundle.gateway_scope,
-                        &bundle.route,
-                    )
-                    .await?;
-                    let organization_id = fetch_optional::<Uuid, _>(
-                        transaction,
-                        select_from::<Nodes>()
-                            .select(Nodes::organization_id())
-                            .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
-                            .for_update(),
-                    )
-                    .await?
-                    .ok_or(RepositoryError::NotFound)?;
-                    if organization_id != bundle.route.organization_id.as_uuid() {
-                        return Err(RepositoryError::NotFound.into());
-                    }
-                    let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
-                        transaction,
-                        select_from::<GatewayScopes>()
-                            .select((
-                                GatewayScopes::last_issued_revision(),
-                                GatewayScopes::installed_revision(),
-                                GatewayScopes::aggregate_version(),
-                            ))
-                            .filter(
-                                GatewayScopes::node_id().eq(bundle.publication.node_id.as_uuid()),
-                            )
-                            .for_update(),
-                    )
-                    .await?;
-                    let current = match scope {
-                        Some((last, installed, version)) => {
-                            validate_scope(last, installed, version)?;
-                            GatewayScopeState {
-                                node_id: bundle.publication.node_id,
-                                last_issued_revision: last,
-                                installed_revision: installed,
-                                aggregate_version: version,
-                            }
-                        }
-                        None => GatewayScopeState::empty(bundle.publication.node_id),
-                    };
-                    if current.aggregate_version != bundle.expected_scope_version {
-                        return Err(RepositoryError::Conflict(
-                            "Gateway scope changed while compiling the complete snapshot".into(),
-                        )
-                        .into());
-                    }
-                    let pending = fetch_optional::<u64, _>(
-                        transaction,
-                        select_from::<GatewayPublications>()
-                            .select(GatewayPublications::revision())
-                            .filter(
-                                GatewayPublications::node_id()
-                                    .eq(bundle.publication.node_id.as_uuid()),
-                            )
-                            .filter(GatewayPublications::state().eq("pending"))
-                            .for_update(),
-                    )
-                    .await?;
-                    if pending.is_some() {
-                        return Err(RepositoryError::Conflict(
-                            "Gateway scope already has a pending complete snapshot".into(),
-                        )
-                        .into());
-                    }
-                    if bundle.publication.revision
-                        != current.next_revision().map_err(RepositoryError::Conflict)?
-                        || bundle.publication.expected_revision != current.installed_revision
-                    {
-                        return Err(RepositoryError::Conflict(
-                            "Gateway publication does not advance the authoritative scope revision"
-                                .into(),
-                        )
-                        .into());
-                    }
-                    insert_publication(transaction, &bundle.publication).await?;
-                    insert_certificate(transaction, &bundle.certificate).await?;
-                    insert_route(transaction, &bundle.route).await?;
-                    if current.aggregate_version == 0 {
-                        require_one_row(
-                            "Gateway scope",
-                            execute(
-                                transaction,
-                                insert_into::<GatewayScopes>()
-                                    .value(
-                                        GatewayScopes::node_id(),
-                                        bundle.publication.node_id.as_uuid(),
-                                    )
-                                    .value(
-                                        GatewayScopes::last_issued_revision(),
-                                        bundle.publication.revision,
-                                    )
-                                    .value(
-                                        GatewayScopes::installed_revision(),
-                                        current.installed_revision,
-                                    )
-                                    .value(GatewayScopes::aggregate_version(), 1_u64)
-                                    .value(
-                                        GatewayScopes::updated_at(),
-                                        bundle.publication.command_issued_at,
-                                    ),
-                            )
-                            .await?,
-                        )?;
-                    } else {
-                        let next_version =
-                            current.aggregate_version.checked_add(1).ok_or_else(|| {
-                                PostgresPersistenceError::Invariant(
-                                    "Gateway scope aggregate version overflowed".into(),
-                                )
-                            })?;
-                        require_one_row(
-                            "Gateway scope",
-                            execute(
-                                transaction,
-                                update_table::<GatewayScopes>()
-                                    .set(
-                                        GatewayScopes::last_issued_revision(),
-                                        bundle.publication.revision,
-                                    )
-                                    .set(GatewayScopes::aggregate_version(), next_version)
-                                    .set(
-                                        GatewayScopes::updated_at(),
-                                        bundle.publication.command_issued_at,
-                                    )
-                                    .filter(
-                                        GatewayScopes::node_id()
-                                            .eq(bundle.publication.node_id.as_uuid()),
-                                    )
-                                    .filter(
-                                        GatewayScopes::aggregate_version()
-                                            .eq(current.aggregate_version),
-                                    ),
-                            )
-                            .await?,
-                        )?;
-                    }
-                    let result = EdgeRoutePublicationResult {
-                        route: bundle.route,
-                        certificate: bundle.certificate,
-                        publication: bundle.publication,
-                        replayed: false,
-                    };
-                    store_outbox(transaction, &bundle.event).await?;
-                    store_idempotency(transaction, &bundle.idempotency, &result).await?;
-                    Ok(result)
-                })
-            })
-            .await
-            .map_err(transaction_error)
+        stage_route_publication_impl(&self.executor, bundle, None).await
     }
 
     async fn replay_gateway_route_cutover(
@@ -684,6 +522,215 @@ impl IEdgeRepository for PostgresEdgeRepository {
     ) -> Result<bool, RepositoryError> {
         super::postgres_acknowledgement::project(&self.executor, acknowledgement, received_at).await
     }
+}
+
+pub(super) async fn stage_managed_route_publication(
+    executor: &PostgresExecutor,
+    stage: StageManagedRoutePublication,
+) -> Result<EdgeRoutePublicationResult, RepositoryError> {
+    let (ordinary, composition) = stage.into_parts();
+    stage_route_publication_impl(executor, ordinary, Some(composition)).await
+}
+
+async fn stage_route_publication_impl(
+    executor: &PostgresExecutor,
+    bundle: StageRoutePublication,
+    composition: Option<GatewayManagedSnapshotComposition>,
+) -> Result<EdgeRoutePublicationResult, RepositoryError> {
+    bundle.validate().map_err(RepositoryError::Conflict)?;
+    if let Some(composition) = &composition {
+        composition
+            .validate_for(&bundle.publication)
+            .map_err(RepositoryError::Conflict)?;
+    }
+    executor
+        .transaction(move |transaction| {
+            Box::pin(async move {
+                if let Some(mut replay) = idempotency_replay::<EdgeRoutePublicationResult>(
+                    transaction,
+                    &bundle.idempotency,
+                )
+                .await?
+                {
+                    replay.value.replayed = true;
+                    return Ok(replay.value);
+                }
+                let managed_scope = match &composition {
+                    Some(composition) => Some(
+                        super::postgres_mcp_gateway_snapshots::lock_managed_composition(
+                            transaction,
+                            composition,
+                        )
+                        .await?,
+                    ),
+                    None => None,
+                };
+                postgres_gateway_scopes::validate_route_binding(
+                    transaction,
+                    &bundle.gateway_scope,
+                    &bundle.route,
+                )
+                .await?;
+                let current = match managed_scope {
+                    Some(current) => current,
+                    None => {
+                        let organization_id = fetch_optional::<Uuid, _>(
+                            transaction,
+                            select_from::<Nodes>()
+                                .select(Nodes::organization_id())
+                                .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
+                                .for_update(),
+                        )
+                        .await?
+                        .ok_or(RepositoryError::NotFound)?;
+                        if organization_id != bundle.route.organization_id.as_uuid() {
+                            return Err(RepositoryError::NotFound.into());
+                        }
+                        let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
+                            transaction,
+                            select_from::<GatewayScopes>()
+                                .select((
+                                    GatewayScopes::last_issued_revision(),
+                                    GatewayScopes::installed_revision(),
+                                    GatewayScopes::aggregate_version(),
+                                ))
+                                .filter(
+                                    GatewayScopes::node_id()
+                                        .eq(bundle.publication.node_id.as_uuid()),
+                                )
+                                .for_update(),
+                        )
+                        .await?;
+                        match scope {
+                            Some((last, installed, version)) => {
+                                validate_scope(last, installed, version)?;
+                                GatewayScopeState {
+                                    node_id: bundle.publication.node_id,
+                                    last_issued_revision: last,
+                                    installed_revision: installed,
+                                    aggregate_version: version,
+                                }
+                            }
+                            None => GatewayScopeState::empty(bundle.publication.node_id),
+                        }
+                    }
+                };
+                if current.aggregate_version != bundle.expected_scope_version {
+                    return Err(RepositoryError::Conflict(
+                        "Gateway scope changed while compiling the complete snapshot".into(),
+                    )
+                    .into());
+                }
+                let pending = fetch_optional::<u64, _>(
+                    transaction,
+                    select_from::<GatewayPublications>()
+                        .select(GatewayPublications::revision())
+                        .filter(
+                            GatewayPublications::node_id().eq(bundle.publication.node_id.as_uuid()),
+                        )
+                        .filter(GatewayPublications::state().eq("pending"))
+                        .for_update(),
+                )
+                .await?;
+                if pending.is_some() {
+                    return Err(RepositoryError::Conflict(
+                        "Gateway scope already has a pending complete snapshot".into(),
+                    )
+                    .into());
+                }
+                if bundle.publication.revision
+                    != current.next_revision().map_err(RepositoryError::Conflict)?
+                    || bundle.publication.expected_revision != current.installed_revision
+                {
+                    return Err(RepositoryError::Conflict(
+                        "Gateway publication does not advance the authoritative scope revision"
+                            .into(),
+                    )
+                    .into());
+                }
+                insert_publication(transaction, &bundle.publication).await?;
+                insert_certificate(transaction, &bundle.certificate).await?;
+                insert_route(transaction, &bundle.route).await?;
+                if let Some(composition) = &composition {
+                    super::postgres_mcp_gateway_snapshots::persist_managed_composition(
+                        transaction,
+                        composition,
+                        &bundle.publication,
+                    )
+                    .await?;
+                }
+                if current.aggregate_version == 0 {
+                    require_one_row(
+                        "Gateway scope",
+                        execute(
+                            transaction,
+                            insert_into::<GatewayScopes>()
+                                .value(
+                                    GatewayScopes::node_id(),
+                                    bundle.publication.node_id.as_uuid(),
+                                )
+                                .value(
+                                    GatewayScopes::last_issued_revision(),
+                                    bundle.publication.revision,
+                                )
+                                .value(
+                                    GatewayScopes::installed_revision(),
+                                    current.installed_revision,
+                                )
+                                .value(GatewayScopes::aggregate_version(), 1_u64)
+                                .value(
+                                    GatewayScopes::updated_at(),
+                                    bundle.publication.command_issued_at,
+                                ),
+                        )
+                        .await?,
+                    )?;
+                } else {
+                    let next_version =
+                        current.aggregate_version.checked_add(1).ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "Gateway scope aggregate version overflowed".into(),
+                            )
+                        })?;
+                    require_one_row(
+                        "Gateway scope",
+                        execute(
+                            transaction,
+                            update_table::<GatewayScopes>()
+                                .set(
+                                    GatewayScopes::last_issued_revision(),
+                                    bundle.publication.revision,
+                                )
+                                .set(GatewayScopes::aggregate_version(), next_version)
+                                .set(
+                                    GatewayScopes::updated_at(),
+                                    bundle.publication.command_issued_at,
+                                )
+                                .filter(
+                                    GatewayScopes::node_id()
+                                        .eq(bundle.publication.node_id.as_uuid()),
+                                )
+                                .filter(
+                                    GatewayScopes::aggregate_version()
+                                        .eq(current.aggregate_version),
+                                ),
+                        )
+                        .await?,
+                    )?;
+                }
+                let result = EdgeRoutePublicationResult {
+                    route: bundle.route,
+                    certificate: bundle.certificate,
+                    publication: bundle.publication,
+                    replayed: false,
+                };
+                store_outbox(transaction, &bundle.event).await?;
+                store_idempotency(transaction, &bundle.idempotency, &result).await?;
+                Ok(result)
+            })
+        })
+        .await
+        .map_err(transaction_error)
 }
 
 pub(super) async fn insert_publication(

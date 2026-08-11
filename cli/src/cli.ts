@@ -22,10 +22,46 @@ Commands:
   api-tokens get ID     Get one API token metadata record
   api-tokens create NAME Create an API token from standard input idempotently
   api-tokens revoke ID  Revoke one API token idempotently
+  memberships list      List organization memberships
+  memberships get ID    Get one organization membership
+  memberships create-service NAME ROLE Create a service principal membership idempotently
+  memberships change-role ID ROLE Change one membership role with optimistic concurrency
+  memberships revoke ID Revoke one membership with optimistic concurrency
   projects list        List projects in the selected organization
   projects create NAME Create a project idempotently
   environments list    List environments in the selected project
   environments create NAME Create an environment idempotently
+  ontologies list       List Ontologies in the selected project
+  ontologies get ID     Get one Ontology aggregate
+  ontologies create     Create an Ontology from A3S ACL
+  ontologies revisions ID List immutable Ontology revision summaries
+  ontologies revision ID REV Get one immutable Ontology revision and canonical ACL
+  ontologies diff ID FROM TO Diff two revisions deterministically
+  ontologies revise ID  Publish a version-checked Ontology revision from A3S ACL
+  workflow-definitions list List Workflow definitions in the selected project
+  workflow-definitions get ID Get one WorkflowDefinition aggregate
+  workflow-definitions create Publish a Workflow definition and exact ACL payload bundle
+  workflow-definitions revisions ID List immutable Workflow revision summaries
+  workflow-definitions revision ID REV Get one immutable Workflow revision and ACL payloads
+  workflow-definitions revise ID Publish a version-checked Workflow revision
+  workflow-goals list    List compiled Workflow goals in the selected project
+  workflow-goals get ID  Get one exact WorkflowGoal
+  workflow-goals create  Compile a WorkflowGoal from A3S ACL
+  workflow-goals plan ID REV Get one immutable deterministic PlanRevision
+  workflow-runs list     List recent WorkflowRuns in the selected project
+  workflow-runs get ID   Get one WorkflowRun and its step projections
+  workflow-runs start GOAL PLAN Start one exact PlanRevision idempotently
+  workflow-runs wait ID  Wait up to a bounded interval for terminal state
+  workflow-runs cancel ID Request WorkflowRun cancellation idempotently
+  workflow-runs output ID Read the bounded output of a completed WorkflowRun
+  workflow-runs history ID Read bounded, redacted A3S Flow history
+  forms list            List Form drafts in the selected project
+  forms get ID          Get one Form draft
+  forms create          Create a Form draft from native Form JSON
+  forms revise ID       Revise a Form draft with optimistic concurrency
+  form-releases list FORM List immutable releases for one Form
+  form-releases get FORM ID Get one immutable Form release
+  form-releases publish FORM Publish the current Form draft immutably
   assets list           List Assets in the selected organization
   assets get ID         Get one Asset
   assets create NAME KIND Create an Agent, MCP, or Skill Asset idempotently
@@ -35,6 +71,8 @@ Commands:
   asset-releases select ASSET [VERSION] Select one published release for a new binding
   asset-releases create ASSET VERSION COMMIT Create a hosted release draft idempotently
   asset-releases yank ASSET ID Yank one published release idempotently
+  asset-releases mcp-profile ASSET ID Read the immutable MCP Service Profile binding
+  asset-releases bind-mcp-profile ASSET ID Bind an MCP Service Profile from A3S ACL
   asset-releases deploy ASSET RELEASE Deploy one published Agent release from A3S ACL
   asset-releases update WORKLOAD ASSET RELEASE Update an Agent workload to one published release
   skill-bindings bind WORKLOAD SKILL RELEASE Bind one exact Skill release to an Agent workload
@@ -88,6 +126,10 @@ Commands:
   mcp-credentials create Create and print one recoverable hosted MCP bearer credential
   mcp-credentials rotate ID Rotate and print one hosted MCP bearer credential
   mcp-credentials revoke ID Revoke one hosted MCP credential idempotently
+  mcp-routes list        List MCP route policies in the selected environment
+  mcp-routes get ID      Get one MCP route policy and canonical ACL
+  mcp-routes create      Create one MCP route policy from A3S ACL
+  mcp-routes revise ID   Revise one MCP route policy from A3S ACL
   routes list           List routes in the selected environment
   routes get ID         Get one route
   routes publish SCOPE REV CLAIM HOST PATH PORT Publish one managed route idempotently
@@ -109,8 +151,9 @@ Global options:
   --limit <n>             Search, log, or Agent event page limit
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
-  --file <path>             A3S ACL file for a desired-state mutation
-  --expected-version <n>    Current aggregate version for a node or MCP credential mutation
+  --file <path>             A3S ACL or native Form JSON input file
+  --expected-version <n>    Current aggregate version for a versioned mutation
+  --migration-rule <id>     Target ACL migration rule for a breaking Ontology revision
   --min-ready <n>           Required ready members for gateway-scopes create
   --max-unavailable <n>     Allowed unavailable members for gateway-scopes create
   --context-path <path>      Repository context for a Source build recipe
@@ -121,6 +164,7 @@ Global options:
   --token-stdin              Read a new API token credential from standard input
   --enrollment-token-stdin   Read a node enrollment credential from standard input
   --scopes <csv>             API token scopes for api-tokens create
+  --principal <uuid>         Principal bound to a newly created API token
   --expires-at <timestamp>   RFC 3339 credential expiry
   --agent-release-url <url>  HTTPS node-agent release binary for nodes bootstrap
   --agent-release-sha256 <digest> SHA-256 of the node-agent release binary

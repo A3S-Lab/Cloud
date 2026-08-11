@@ -1,16 +1,19 @@
 use super::{
-    CompileGatewayRouteRollout, GatewayMemberSnapshotContext, GatewayRouteRolloutCompiler,
-    GatewayRouteRolloutPlanner, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    PlanGatewayRouteRollout,
+    CompileGatewayRouteRollout, CompileManagedGatewayRouteRollout, GatewayMemberSnapshotContext,
+    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GatewaySnapshotPublicationOwner, PlanGatewayRouteRollout,
+    PlannedGatewayNodeDesiredState, PlannedMcpGatewayNodeProjection,
+    PlannedMcpGatewayProjectionSet,
 };
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::{
     IRouteTargetReader, ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 use crate::modules::edge::domain::{
-    DomainNamePattern, GatewayRolloutPolicy, GatewayScope, GatewayScopeState, Route, RouteHostname,
-    RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    DomainClaim, DomainNamePattern, GatewayRolloutPolicy, GatewayScope, GatewayScopeState, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
+use crate::modules::edge::infrastructure::GatewaySnapshotRouteInput;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayRolloutId, GatewayScopeId,
     IdempotencyRequest, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, WorkloadId,
@@ -310,6 +313,143 @@ fn compiles_one_exact_complete_snapshot_for_every_desired_member() {
 }
 
 #[test]
+fn managed_rollout_composes_every_ordinary_route_under_one_publication_owner() {
+    let issued_at = Utc::now();
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let members = [NodeId::new(), NodeId::new()];
+    let scope = GatewayScope::create_replicated(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        members[0],
+        members.to_vec(),
+        GatewayRolloutPolicy::new(1, 1, members.len()).expect("rollout policy"),
+        issued_at,
+    )
+    .expect("Gateway scope");
+    let workload_id = WorkloadId::new();
+    let revision_id = WorkloadRevisionId::new();
+    let retained_route = active_route(
+        organization_id,
+        project_id,
+        environment_id,
+        members[1],
+        workload_id,
+        revision_id,
+        "retained.example.com",
+        49200,
+        issued_at,
+    );
+    let retained_claim = verified_claim_for_route(&retained_route, issued_at);
+    let mut member_desired_states = Vec::new();
+    for (index, node_id) in members.into_iter().enumerate() {
+        let mcp = PlannedMcpGatewayNodeProjection::single(
+            PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, issued_at)
+                .expect("empty MCP scope projection"),
+        )
+        .expect("empty node MCP projection");
+        let active_routes = if index == 1 {
+            vec![GatewaySnapshotRouteInput {
+                route: retained_route.clone(),
+                domain_claim: retained_claim.clone(),
+            }]
+        } else {
+            Vec::new()
+        };
+        member_desired_states.push(
+            PlannedGatewayNodeDesiredState::new(
+                GatewayScopeState {
+                    node_id,
+                    last_issued_revision: u64::try_from(index).expect("member index") + 2,
+                    installed_revision: Some(u64::try_from(index).expect("member index") + 2),
+                    aggregate_version: u64::try_from(index).expect("member index") + 5,
+                },
+                active_routes,
+                mcp,
+            )
+            .expect("member desired state"),
+        );
+    }
+    let hostname = RouteHostname::parse("api.example.com").expect("hostname");
+    let domain_claim_id = DomainClaimId::new();
+    let mut domain_claim = DomainClaim::create(
+        domain_claim_id,
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse("api.example.com").expect("domain pattern"),
+        format!("a3s-cloud-verification={domain_claim_id}"),
+        issued_at,
+    )
+    .expect("DomainClaim");
+    domain_claim
+        .verify(issued_at)
+        .expect("verified DomainClaim");
+    let rollout_id = GatewayRolloutId::new();
+    let compiled = compiler()
+        .compile_managed(CompileManagedGatewayRouteRollout {
+            scope: scope.clone(),
+            rollout_id,
+            generation: 3,
+            correlation_id: Uuid::now_v7(),
+            route_id: RouteId::new(),
+            hostname,
+            path_prefix: RoutePath::parse("/v1").expect("path"),
+            domain_claim,
+            target_set: target_set(workload_id, revision_id, &members, issued_at),
+            member_desired_states,
+            issued_at,
+        })
+        .expect("managed rollout");
+
+    assert_eq!(compiled.managed_compositions.len(), members.len());
+    for publication in &compiled.publications {
+        let composition = compiled
+            .managed_compositions
+            .get(&publication.node_id)
+            .expect("member composition");
+        composition
+            .validate_for(publication)
+            .expect("exact managed composition");
+        assert_eq!(
+            composition.owner(),
+            GatewaySnapshotPublicationOwner::Ordinary
+        );
+        assert!(composition.candidate().mcp().projection().is_none());
+        assert_eq!(
+            composition.candidate().ordinary_route_ids().len(),
+            if publication.node_id == members[1] {
+                2
+            } else {
+                1
+            }
+        );
+        let certificate = compiled
+            .certificates
+            .iter()
+            .find(|certificate| certificate.node_id == publication.node_id)
+            .expect("member certificate");
+        assert_eq!(
+            certificate.domain_claim_ids,
+            composition.candidate().certificate_domain_claim_ids()
+        );
+    }
+    compiled
+        .managed_stage_bundle(
+            IdempotencyRequest::new(
+                format!("gateway-scopes/{}/rollouts", scope.id),
+                "managed-rollout",
+                rollout_id.to_string().as_bytes(),
+            )
+            .expect("rollout idempotency"),
+        )
+        .expect("managed rollout stage bundle");
+}
+
+#[test]
 fn rejects_partial_targets_contexts_and_cross_organization_routes() {
     let issued_at = Utc::now();
     let organization_id = OrganizationId::new();
@@ -457,6 +597,22 @@ fn active_route(
     .expect("route");
     route.state = RouteState::Active;
     route
+}
+
+fn verified_claim_for_route(route: &Route, verified_at: chrono::DateTime<Utc>) -> DomainClaim {
+    let claim_id = route.domain_claim_id.expect("route DomainClaim");
+    let mut claim = DomainClaim::create(
+        claim_id,
+        route.organization_id,
+        route.project_id,
+        route.environment_id,
+        route.domain_pattern.clone().expect("route domain pattern"),
+        format!("a3s-cloud-verification={claim_id}"),
+        verified_at,
+    )
+    .expect("DomainClaim");
+    claim.verify(verified_at).expect("verified DomainClaim");
+    claim
 }
 
 fn route_target(

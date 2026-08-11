@@ -7,7 +7,12 @@ use crate::modules::edge::domain::{
     GatewayCertificate, GatewayPublication, GatewayRouteCutover, GatewayRouteCutoverState,
     RouteState, RouteTarget,
 };
-use crate::modules::edge::infrastructure::{GatewaySnapshotCompiler, GatewaySnapshotMetadata};
+use crate::modules::edge::infrastructure::{
+    CompileManagedGatewayRouteSnapshot, GatewayManagedSnapshotComposition,
+    GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
+    GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
+    StageManagedGatewayRouteCutover,
+};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, IdempotencyRequest, NodeCommandId, RepositoryError,
@@ -23,6 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::runtime_http_upstream::gateway_http_upstream;
 
 pub struct EdgeDeploymentRouteUpdater {
@@ -31,6 +37,12 @@ pub struct EdgeDeploymentRouteUpdater {
     commands: Arc<dyn IGatewayCommandQueue>,
     compiler: GatewaySnapshotCompiler,
     command_ttl: Duration,
+    managed: Option<ManagedGatewayRouteCutover>,
+}
+
+struct ManagedGatewayRouteCutover {
+    snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
+    desired_state: GatewayNodeDesiredStatePlanner,
 }
 
 impl EdgeDeploymentRouteUpdater {
@@ -50,6 +62,32 @@ impl EdgeDeploymentRouteUpdater {
             commands,
             compiler,
             command_ttl,
+            managed: None,
+        })
+    }
+
+    pub fn new_managed(
+        routes: Arc<dyn IEdgeRepository>,
+        snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
+        observations: Arc<dyn INodeControlRepository>,
+        commands: Arc<dyn IGatewayCommandQueue>,
+        compiler: GatewaySnapshotCompiler,
+        desired_state: GatewayNodeDesiredStatePlanner,
+        command_ttl: Duration,
+    ) -> Result<Self, String> {
+        if command_ttl <= Duration::zero() {
+            return Err("deployment Gateway publication command TTL must be positive".into());
+        }
+        Ok(Self {
+            routes,
+            observations,
+            commands,
+            compiler,
+            command_ttl,
+            managed: Some(ManagedGatewayRouteCutover {
+                snapshots,
+                desired_state,
+            }),
         })
     }
 
@@ -165,10 +203,68 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             });
         }
 
-        let (scope, active_routes) = tokio::try_join!(
-            self.routes.gateway_scope(request.node_id),
-            self.routes.active_routes(request.node_id)
-        )?;
+        let (scope, active_routes, managed_desired_state) = match &self.managed {
+            Some(managed) => {
+                let fallback_scope_id = workload_routes
+                    .iter()
+                    .map(|route| route.gateway_scope_id)
+                    .min()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "managed Gateway route cutover omitted its fallback scope".into(),
+                        )
+                    })?;
+                let fallback_scope = self
+                    .routes
+                    .find_gateway_scope(request.organization_id, fallback_scope_id)
+                    .await?;
+                if fallback_scope.project_id != request.project_id
+                    || fallback_scope.environment_id != request.environment_id
+                    || !fallback_scope.contains_member(request.node_id)
+                {
+                    return Err(RepositoryError::Conflict(
+                        "managed Gateway route cutover fallback scope changed".into(),
+                    ));
+                }
+                let mut desired_state = managed
+                    .desired_state
+                    .plan(PlanGatewayNodeDesiredState {
+                        gateway_node_id: request.node_id,
+                        fallback_scope: fallback_scope.clone(),
+                        observed_at: now,
+                    })
+                    .await?;
+                let required_observation = desired_state
+                    .active_routes()
+                    .iter()
+                    .map(|input| input.route.updated_at)
+                    .fold(now, DateTime::<Utc>::max);
+                if required_observation > desired_state.mcp().observed_at() {
+                    desired_state = managed
+                        .desired_state
+                        .plan(PlanGatewayNodeDesiredState {
+                            gateway_node_id: request.node_id,
+                            fallback_scope,
+                            observed_at: required_observation,
+                        })
+                        .await?;
+                }
+                let scope = desired_state.physical_scope().clone();
+                let active_routes = desired_state
+                    .active_routes()
+                    .iter()
+                    .map(|input| input.route.clone())
+                    .collect();
+                (scope, active_routes, Some(desired_state))
+            }
+            None => {
+                let (scope, active_routes) = tokio::try_join!(
+                    self.routes.gateway_scope(request.node_id),
+                    self.routes.active_routes(request.node_id)
+                )?;
+                (scope, active_routes, None)
+            }
+        };
         let expected_route_ids = workload_routes
             .iter()
             .map(|route| route.id)
@@ -191,6 +287,32 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             .iter()
             .map(|route| route.updated_at)
             .fold(now, DateTime::<Utc>::max);
+        if managed_desired_state
+            .as_ref()
+            .is_some_and(|desired_state| desired_state.mcp().observed_at() != issued_at)
+        {
+            return Ok(DeploymentRouteStage::Blocked {
+                reason:
+                    "Gateway scope changed while fixing the managed cutover observation boundary"
+                        .into(),
+            });
+        }
+        let default_snapshot_expires_at = issued_at
+            .checked_add_signed(Duration::hours(24))
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Gateway route cutover snapshot expiry exceeds supported time".into(),
+                )
+            })?;
+        let snapshot_expires_at = match managed_desired_state.as_ref() {
+            Some(desired_state) => managed_snapshot_expires_at(
+                desired_state.mcp(),
+                issued_at,
+                default_snapshot_expires_at,
+            )
+            .map_err(RepositoryError::Conflict)?,
+            None => default_snapshot_expires_at,
+        };
         let command_not_after = issued_at
             .checked_add_signed(self.command_ttl)
             .ok_or_else(|| {
@@ -198,19 +320,13 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                     "Gateway route cutover command expiry exceeds supported time".into(),
                 )
             })?
-            .min(request.convergence_deadline);
+            .min(request.convergence_deadline)
+            .min(snapshot_expires_at);
         if command_not_after <= issued_at {
             return Ok(DeploymentRouteStage::Failed {
                 reason: "Gateway route cutover command expired before staging".into(),
             });
         }
-        let snapshot_expires_at = issued_at
-            .checked_add_signed(Duration::hours(24))
-            .ok_or_else(|| {
-                RepositoryError::Conflict(
-                    "Gateway route cutover snapshot expiry exceeds supported time".into(),
-                )
-            })?;
         let certificate_id = GatewayCertificateId::from_uuid(Uuid::new_v5(
             &request.deployment_id.as_uuid(),
             b"gateway-route-cutover-certificate",
@@ -252,20 +368,34 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             .map(|route| candidates_by_id.get(&route.id).cloned().unwrap_or(route))
             .collect::<Vec<_>>();
         let gateway_revision = scope.next_revision().map_err(RepositoryError::Conflict)?;
-        let snapshot = self
-            .compiler
-            .compile(
-                GatewaySnapshotMetadata::new(
-                    request.node_id,
-                    gateway_revision,
-                    scope.installed_revision,
-                    issued_at,
-                    snapshot_expires_at,
-                ),
-                certificate_id,
-                &complete_routes,
-            )
-            .map_err(RepositoryError::Conflict)?;
+        let metadata = GatewaySnapshotMetadata::new(
+            request.node_id,
+            gateway_revision,
+            scope.installed_revision,
+            issued_at,
+            snapshot_expires_at,
+        );
+        let (snapshot, managed_candidate) = match managed_desired_state {
+            Some(desired_state) => {
+                let candidate = self
+                    .compiler
+                    .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
+                        metadata,
+                        desired_state,
+                        certificate_id,
+                        snapshot_routes: complete_routes.clone(),
+                        additional_domain_claims: Vec::new(),
+                    })
+                    .map_err(RepositoryError::Conflict)?;
+                (candidate.snapshot().clone(), Some(candidate))
+            }
+            None => (
+                self.compiler
+                    .compile(metadata, certificate_id, &complete_routes)
+                    .map_err(RepositoryError::Conflict)?,
+                None,
+            ),
+        };
         for route in &mut candidates {
             route
                 .stage(
@@ -290,10 +420,13 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                 "Gateway route cutover publication omitted its certificate request".into(),
             )
         })?;
-        let mut domain_claim_ids = complete_routes
-            .iter()
-            .filter_map(|route| route.domain_claim_id)
-            .collect::<Vec<_>>();
+        let mut domain_claim_ids = match &managed_candidate {
+            Some(candidate) => candidate.certificate_domain_claim_ids().to_vec(),
+            None => complete_routes
+                .iter()
+                .filter_map(|route| route.domain_claim_id)
+                .collect::<Vec<_>>(),
+        };
         domain_claim_ids.sort();
         domain_claim_ids.dedup();
         let certificate = GatewayCertificate::provision(
@@ -328,18 +461,35 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
         .map_err(RepositoryError::Conflict)?;
         let event = GatewayRouteCutoverStaged::envelope(&cutover, &publication)
             .map_err(RepositoryError::Conflict)?;
-        let result = match self
-            .routes
-            .stage_gateway_route_cutover(StageGatewayRouteCutover {
-                cutover,
-                certificate,
-                publication,
-                expected_scope_version: scope.aggregate_version,
-                idempotency,
-                event,
-            })
-            .await
-        {
+        let ordinary = StageGatewayRouteCutover {
+            cutover,
+            certificate,
+            publication,
+            expected_scope_version: scope.aggregate_version,
+            idempotency,
+            event,
+        };
+        let staged_result = match (&self.managed, managed_candidate) {
+            (Some(managed), Some(candidate)) => {
+                let composition = GatewayManagedSnapshotComposition::new(
+                    candidate,
+                    &ordinary.publication,
+                    GatewaySnapshotPublicationOwner::Ordinary,
+                )
+                .map_err(RepositoryError::Conflict)?;
+                let stage = StageManagedGatewayRouteCutover::new(ordinary, composition)
+                    .map_err(RepositoryError::Conflict)?;
+                managed
+                    .snapshots
+                    .stage_managed_gateway_route_cutover(stage)
+                    .await
+            }
+            (None, None) => self.routes.stage_gateway_route_cutover(ordinary).await,
+            _ => Err(RepositoryError::Storage(
+                "managed Gateway route cutover dependencies became inconsistent".into(),
+            )),
+        };
+        let result = match staged_result {
             Ok(result) => result,
             Err(RepositoryError::Conflict(reason)) => {
                 return Ok(DeploymentRouteStage::Blocked { reason })

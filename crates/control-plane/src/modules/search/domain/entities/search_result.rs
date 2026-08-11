@@ -5,6 +5,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SearchResourceKind {
     Project,
+    Ontology,
     Environment,
     Node,
     Workload,
@@ -22,6 +23,7 @@ impl SearchResourceKind {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "project" => Ok(Self::Project),
+            "ontology" => Ok(Self::Ontology),
             "environment" => Ok(Self::Environment),
             "node" => Ok(Self::Node),
             "workload" => Ok(Self::Workload),
@@ -40,6 +42,7 @@ impl SearchResourceKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Project => "project",
+            Self::Ontology => "ontology",
             Self::Environment => "environment",
             Self::Node => "node",
             Self::Workload => "workload",
@@ -82,6 +85,9 @@ impl SearchResult {
         match self.kind {
             SearchResourceKind::Project if self.project_id != Some(self.id) => {
                 Err("project search projection must identify its project".into())
+            }
+            SearchResourceKind::Ontology if self.project_id.is_none() => {
+                Err("Ontology search projection is missing its project context".into())
             }
             SearchResourceKind::Environment if self.environment_id != Some(self.id) => {
                 Err("environment search projection must identify its environment".into())

@@ -1,8 +1,18 @@
-import type { CreateApiTokenInput } from './identity';
+import type { CreateApiTokenInput, CreateServiceMembershipInput, MembershipRole } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
-export const MAX_WORKLOAD_ACL_BYTES = 64 * 1024;
+export const MAX_ACL_DOCUMENT_BYTES = 64 * 1024;
+export const MAX_MCP_SERVICE_PROFILE_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
+export const MAX_MCP_ROUTE_POLICY_ACL_BYTES = 512 * 1024;
+export const MAX_ONTOLOGY_ACL_BYTES = 1024 * 1024;
+export const MAX_WORKFLOW_DEFINITION_ACL_BYTES = 1024 * 1024;
+export const MAX_WORKFLOW_PAYLOAD_ACL_BYTES = 256 * 1024;
+export const MAX_WORKFLOW_REVISION_PAYLOAD_BYTES = 8 * 1024 * 1024;
+export const MAX_WORKFLOW_REVISION_PAYLOADS = 2048;
+export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
+export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
+export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
   if (!/^a3s_[0-9a-f]{64}$/.test(input.token)) {
@@ -23,6 +33,35 @@ export function validateApiTokenInput(input: CreateApiTokenInput): void {
   }
   if (input.expiresAt !== undefined && input.expiresAt !== null && !isRfc3339Timestamp(input.expiresAt)) {
     throw new TypeError('API token expiry must be an RFC 3339 timestamp');
+  }
+}
+
+export function validateServiceMembershipInput(input: CreateServiceMembershipInput): void {
+  validateResourceName(input.name, 'service principal name');
+  validateMembershipRole(input.role);
+}
+
+export function validateMembershipRole(role: MembershipRole): void {
+  if (!['owner', 'admin', 'member', 'restricted'].includes(role)) {
+    throw new TypeError('membership role must be owner, admin, member, or restricted');
+  }
+}
+
+export function validateExpectedMembershipVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('expected membership version must be a positive safe integer');
+  }
+}
+
+function validateResourceName(value: string, label: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.trim() !== value ||
+    [...value].length < 1 ||
+    [...value].length > 63 ||
+    /[\0\r\n]/.test(value)
+  ) {
+    throw new TypeError(`${label} must contain 1 to 63 visible characters`);
   }
 }
 
@@ -72,9 +111,125 @@ export function validateSecretValue(value: string): void {
 }
 
 export function validateWorkloadAcl(manifest: string): void {
-  const bytes = new TextEncoder().encode(manifest).byteLength;
-  if (bytes < 1 || bytes > MAX_WORKLOAD_ACL_BYTES) {
-    throw new RangeError(`workload ACL must contain between 1 and ${MAX_WORKLOAD_ACL_BYTES} UTF-8 bytes`);
+  validateAclBytes(manifest, MAX_WORKLOAD_ACL_BYTES, 'workload ACL');
+}
+
+export function validateMcpServiceProfileAcl(acl: string): void {
+  validateAclBytes(acl, MAX_MCP_SERVICE_PROFILE_ACL_BYTES, 'MCP Service profile ACL');
+}
+
+export function validateMcpRoutePolicyAcl(acl: string): void {
+  validateAclBytes(acl, MAX_MCP_ROUTE_POLICY_ACL_BYTES, 'MCP route policy ACL');
+}
+
+export function validateOntologyAcl(acl: string): void {
+  validateAclBytes(acl, MAX_ONTOLOGY_ACL_BYTES, 'Ontology ACL');
+}
+
+export function validateOntologyRevisionControl(expectedVersion: number, migrationRuleId?: string): void {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new RangeError('expected Ontology version must be a positive safe integer');
+  }
+  if (migrationRuleId !== undefined && !/^[A-Za-z0-9_-]{1,96}$/.test(migrationRuleId)) {
+    throw new TypeError('Ontology migration rule must be a portable rule ID');
+  }
+}
+
+export function validateWorkflowDefinitionPublication(input: {
+  definitionAcl: string;
+  payloads: ReadonlyArray<{ kind: string; acl: string }>;
+}): void {
+  validateAclBytes(input.definitionAcl, MAX_WORKFLOW_DEFINITION_ACL_BYTES, 'Workflow definition ACL');
+  if (
+    !Array.isArray(input.payloads) ||
+    input.payloads.length < 1 ||
+    input.payloads.length > MAX_WORKFLOW_REVISION_PAYLOADS
+  ) {
+    throw new RangeError(
+      `Workflow revision must contain between 1 and ${MAX_WORKFLOW_REVISION_PAYLOADS} payloads`
+    );
+  }
+  let totalBytes = 0;
+  for (const payload of input.payloads) {
+    if (!['configuration', 'data_schema', 'policy'].includes(payload.kind)) {
+      throw new TypeError('Workflow payload kind must be configuration, data_schema, or policy');
+    }
+    validateAclBytes(payload.acl, MAX_WORKFLOW_PAYLOAD_ACL_BYTES, 'Workflow payload ACL');
+    totalBytes += new TextEncoder().encode(payload.acl).byteLength;
+  }
+  if (totalBytes > MAX_WORKFLOW_REVISION_PAYLOAD_BYTES) {
+    throw new RangeError(
+      `Workflow revision payloads must contain at most ${MAX_WORKFLOW_REVISION_PAYLOAD_BYTES} UTF-8 bytes`
+    );
+  }
+}
+
+export function validateWorkflowRevisionControl(expectedVersion: number): void {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new RangeError('expected WorkflowDefinition version must be a positive safe integer');
+  }
+}
+
+export function validateWorkflowGoalAcl(acl: string): void {
+  validateAclBytes(acl, MAX_WORKFLOW_GOAL_ACL_BYTES, 'Workflow goal ACL');
+}
+
+export function validateFormDraftInput(input: {
+  name: string;
+  description?: string;
+  document: unknown;
+}): void {
+  validateFormText(input.name, 'Form name', 1, 120);
+  validateFormText(input.description ?? '', 'Form description', 0, 4_096);
+  if (typeof input.document !== 'object' || input.document === null || Array.isArray(input.document)) {
+    throw new TypeError('Form document must be a JSON object');
+  }
+  let encoded: string | undefined;
+  try {
+    encoded = JSON.stringify(input.document);
+  } catch {
+    throw new TypeError('Form document must be JSON serializable');
+  }
+  if (encoded === undefined) {
+    throw new TypeError('Form document must serialize to a JSON object');
+  }
+  const transported = JSON.parse(encoded) as unknown;
+  if (typeof transported !== 'object' || transported === null || Array.isArray(transported)) {
+    throw new TypeError('Form document must serialize to a JSON object');
+  }
+  if (new TextEncoder().encode(encoded).byteLength > MAX_FORM_DOCUMENT_BYTES) {
+    throw new RangeError(`Form document must contain at most ${MAX_FORM_DOCUMENT_BYTES} UTF-8 bytes`);
+  }
+}
+
+export function validateFormVersionControl(expectedVersion: number): void {
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw new RangeError('expected Form draft version must be a positive safe integer');
+  }
+}
+
+function validateFormText(
+  value: string,
+  label: string,
+  minimumTrimmedCharacters: number,
+  maximumCharacters: number
+): void {
+  if (
+    typeof value !== 'string' ||
+    [...value.trim()].length < minimumTrimmedCharacters ||
+    [...value].length > maximumCharacters ||
+    value.includes('\0')
+  ) {
+    throw new TypeError(
+      `${label} must contain between ${minimumTrimmedCharacters} and ${maximumCharacters} characters`
+    );
+  }
+}
+
+function validateAclBytes(value: string, maximumBytes: number, label: string): void {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value).byteLength : 0;
+  if (bytes < 1 || bytes > maximumBytes) {
+    throw new RangeError(`${label} must contain between 1 and ${maximumBytes} UTF-8 bytes`);
   }
 }
 

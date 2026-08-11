@@ -13,4 +13,6 @@ pub use asset_release_artifact::{
 };
 pub use asset_release_provenance::AssetReleaseProvenance;
 pub use asset_release_version::AssetReleaseVersion;
-pub use mcp_service_profile::{McpServiceProfile, McpServiceProfileSpec};
+pub use mcp_service_profile::{
+    McpServiceProfile, McpServiceProfileSpec, MCP_SERVICE_PROFILE_MAX_ACL_BYTES,
+};

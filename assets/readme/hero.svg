@@ -1,69 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
-  <title id="title">A3S Cloud — intent in, exact state out</title>
-  <desc id="desc">A technical overview showing A3S Cloud committing intent, coordinating durable work, converging nodes, and returning exact evidence.</desc>
-  <defs>
-    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
-      <path d="M32 0H0V32" fill="none" stroke="#26352b" stroke-width="1" opacity="0.42"/>
-    </pattern>
-    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#72b7ff"/>
-    </marker>
-    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#b8f36b"/>
-    </marker>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">A3S Cloud turns intent into exact applied state</title>
+  <desc id="desc">A self-hosted Cloud control plane with one durable loop from PostgreSQL commit through Flow, Workloads, Fleet, Runtime, Box, and Gateway evidence.</desc>
 
-  <rect width="1200" height="440" rx="24" fill="#0b100d"/>
-  <rect x="1" y="1" width="1198" height="438" rx="23" fill="none" stroke="#354b3d" stroke-width="2"/>
-  <rect x="1" y="1" width="1198" height="438" rx="23" fill="url(#grid)"/>
+  <rect width="1200" height="420" rx="24" fill="#0a0f0c"/>
+  <rect x="1" y="1" width="1198" height="418" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
 
-  <g transform="translate(58 42)">
-    <path d="M9 28h28a10 10 0 0 0 1.7-19.8A17 17 0 0 0 6.3 5.1 12 12 0 0 0 9 28Z" fill="none" stroke="#b8f36b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="m14 18 8-8 8 8M22 10v13" fill="none" stroke="#72b7ff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="58" y="14" fill="#e9f1eb" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="19" font-weight="700" letter-spacing="3">A3S CLOUD</text>
-    <text x="58" y="37" fill="#91a398" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" letter-spacing="2">DURABLE CONTROL PLANE</text>
+  <g transform="translate(56 45)">
+    <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 24h26a9 9 0 0 0 1.5-17.8A15 15 0 0 0 3.9 3.4 11 11 0 0 0 5 24Z" stroke="#b7f56a" stroke-width="2.4"/>
+      <path d="m10 16 8-8 8 8M18 8v13" stroke="#67b7ff" stroke-width="2.2"/>
+    </g>
+    <text x="48" y="10" fill="#eff7f1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="2.4">A3S CLOUD</text>
+    <text x="48" y="34" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" letter-spacing="1.5">SELF-HOSTED CONTROL PLANE</text>
   </g>
 
-  <text x="58" y="164" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="72" font-weight="760" letter-spacing="-3">INTENT IN.</text>
-  <text x="58" y="238" fill="#b8f36b" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="72" font-weight="760" letter-spacing="-3">EXACT STATE OUT.</text>
-  <text x="61" y="286" fill="#b8c5bd" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="20">Self-hosted orchestration for applications, Agents, MCP,</text>
-  <text x="61" y="316" fill="#b8c5bd" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="20">Workflows, model services, and the infrastructure beneath them.</text>
+  <g transform="translate(56 118)">
+    <text x="0" y="56" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="66" font-weight="760" letter-spacing="-2.5">Intent becomes</text>
+    <text x="0" y="126" fill="#b7f56a" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="66" font-weight="760" letter-spacing="-2.5">exact applied state.</text>
+    <text x="3" y="174" fill="#b9c7bf" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">Applications, Agents, MCP, Workflows, and model services</text>
+    <text x="3" y="205" fill="#b9c7bf" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">on infrastructure you own.</text>
 
-  <g font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="13" font-weight="700" letter-spacing="1.5">
-    <rect x="58" y="356" width="142" height="38" rx="8" fill="#111914" stroke="#354b3d"/>
-    <text x="77" y="380" fill="#d0ff91">SELF-HOSTED</text>
-    <rect x="214" y="356" width="136" height="38" rx="8" fill="#111914" stroke="#354b3d"/>
-    <text x="234" y="380" fill="#d0ff91">ACL-NATIVE</text>
-    <rect x="364" y="356" width="164" height="38" rx="8" fill="#111914" stroke="#354b3d"/>
-    <text x="383" y="380" fill="#d0ff91">BACKEND-FIRST</text>
+    <g transform="translate(0 240)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700">
+      <rect width="148" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
+      <text x="74" y="27" fill="#d7ff9f" text-anchor="middle">ACL-NATIVE</text>
+      <rect x="162" width="182" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
+      <text x="253" y="27" fill="#d7ff9f" text-anchor="middle">BACKEND-FIRST</text>
+      <rect x="358" width="176" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
+      <text x="446" y="27" fill="#d7ff9f" text-anchor="middle">FAIL-CLOSED</text>
+    </g>
   </g>
 
-  <g transform="translate(688 42)">
-    <rect width="454" height="352" rx="18" fill="#111914" stroke="#354b3d" stroke-width="1.5"/>
-    <text x="26" y="34" fill="#91a398" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="2">ONE CONTROL LOOP</text>
-    <line x1="26" y1="50" x2="428" y2="50" stroke="#26352b"/>
+  <g transform="translate(684 36)">
+    <rect width="460" height="348" rx="18" fill="#101812" stroke="#344b3c" stroke-width="1.5"/>
+    <text x="26" y="34" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" letter-spacing="1.5">ONE DURABLE CONTROL LOOP</text>
+    <line x1="26" y1="51" x2="434" y2="51" stroke="#2d4035"/>
 
     <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
-      <rect x="26" y="72" width="188" height="68" rx="10" fill="#162019" stroke="#72b7ff" stroke-opacity="0.72"/>
-      <text x="44" y="96" fill="#72b7ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">01 / COMMIT</text>
-      <text x="44" y="122" fill="#e9f1eb" font-size="18" font-weight="650">PostgreSQL + ORM</text>
+      <circle cx="44" cy="91" r="16" fill="#14261d" stroke="#67b7ff" stroke-width="2"/>
+      <text x="44" y="98" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">1</text>
+      <text x="76" y="86" fill="#eff7f1" font-size="21" font-weight="700">Commit intent</text>
+      <text x="76" y="111" fill="#96a99e" font-size="18">PostgreSQL + A3S ORM</text>
 
-      <rect x="240" y="72" width="188" height="68" rx="10" fill="#162019" stroke="#72b7ff" stroke-opacity="0.72"/>
-      <text x="258" y="96" fill="#72b7ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">02 / COORDINATE</text>
-      <text x="258" y="122" fill="#e9f1eb" font-size="18" font-weight="650">Flow + Operations</text>
+      <circle cx="44" cy="157" r="16" fill="#14261d" stroke="#67b7ff" stroke-width="2"/>
+      <text x="44" y="164" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">2</text>
+      <text x="76" y="152" fill="#eff7f1" font-size="21" font-weight="700">Coordinate work</text>
+      <text x="76" y="177" fill="#96a99e" font-size="18">Flow + Operations</text>
 
-      <rect x="26" y="174" width="188" height="68" rx="10" fill="#162019" stroke="#72b7ff" stroke-opacity="0.72"/>
-      <text x="44" y="198" fill="#72b7ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">03 / CONVERGE</text>
-      <text x="44" y="224" fill="#e9f1eb" font-size="18" font-weight="650">Workloads + Fleet</text>
+      <circle cx="44" cy="223" r="16" fill="#14261d" stroke="#67b7ff" stroke-width="2"/>
+      <text x="44" y="230" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">3</text>
+      <text x="76" y="218" fill="#eff7f1" font-size="21" font-weight="700">Converge nodes</text>
+      <text x="76" y="243" fill="#96a99e" font-size="18">Workloads + Fleet</text>
 
-      <rect x="240" y="174" width="188" height="68" rx="10" fill="#162019" stroke="#b8f36b" stroke-opacity="0.72"/>
-      <text x="258" y="198" fill="#b8f36b" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.5">04 / APPLY</text>
-      <text x="258" y="224" fill="#e9f1eb" font-size="16" font-weight="650">Runtime · Box · Gateway</text>
+      <circle cx="44" cy="289" r="16" fill="#1d2b17" stroke="#b7f56a" stroke-width="2"/>
+      <text x="44" y="296" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">4</text>
+      <text x="76" y="284" fill="#eff7f1" font-size="21" font-weight="700">Apply exact state</text>
+      <text x="76" y="309" fill="#96a99e" font-size="18">Runtime + Box + Gateway</text>
     </g>
 
-    <path d="M214 106h26M334 140v17H120v17M214 208h26" fill="none" stroke="#72b7ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
-    <path d="M334 242v44H120v-44" fill="none" stroke="#b8f36b" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-green)"/>
-    <text x="142" y="309" fill="#b8f36b" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="12" font-weight="700" letter-spacing="1.3">EXACT OBSERVATIONS + RECEIPTS</text>
-    <text x="26" y="335" fill="#65766c" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="11">NO SECOND SCHEDULER · QUEUE · STATE STORE · NODE CHANNEL</text>
+    <path d="M44 107v34M44 173v34M44 239v34" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="5 5"/>
+    <path d="M418 290v35H44v-20" fill="none" stroke="#b7f56a" stroke-width="2" stroke-dasharray="6 5"/>
+    <text x="404" y="339" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" text-anchor="end">EXACT EVIDENCE RETURNS</text>
   </g>
 </svg>

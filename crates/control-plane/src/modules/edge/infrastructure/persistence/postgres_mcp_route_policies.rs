@@ -1,14 +1,17 @@
 use super::postgres::PostgresEdgeRepository;
 use super::postgres_schema::{GatewayRouteScopes, McpRoutePolicies, McpServiceProfiles};
 use crate::infrastructure::{
-    execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
-    transaction_error, PostgresPersistenceError,
+    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
+    require_one_row, store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
+    PostgresPersistenceError,
 };
 use crate::modules::assets::domain::McpServiceProfile;
+use crate::modules::edge::domain::events::{McpRoutePolicyChanged, McpRoutePolicyMutationKind};
 use crate::modules::edge::domain::repositories::{
-    IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    IMcpRoutePolicyRepository, McpRoutePolicyWrite, McpRoutePolicyWriteSnapshot,
+    MutateMcpRoutePolicyWrite, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
-use crate::modules::edge::domain::McpRoutePolicy;
+use crate::modules::edge::domain::{McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, OrganizationId,
     ProjectId, RepositoryError, RouteId,
@@ -24,19 +27,11 @@ use uuid::Uuid;
 
 #[async_trait]
 impl IMcpRoutePolicyRepository for PostgresEdgeRepository {
-    async fn create_mcp_route_policy(
+    async fn mutate_mcp_route_policy(
         &self,
-        policy: McpRoutePolicy,
-    ) -> Result<McpRoutePolicy, RepositoryError> {
-        create(&self.executor, policy).await
-    }
-
-    async fn update_mcp_route_policy(
-        &self,
-        policy: McpRoutePolicy,
-        expected_policy_revision: u64,
-    ) -> Result<McpRoutePolicy, RepositoryError> {
-        update(&self.executor, policy, expected_policy_revision).await
+        write: MutateMcpRoutePolicyWrite,
+    ) -> Result<McpRoutePolicyWrite, RepositoryError> {
+        mutate(&self.executor, write).await
     }
 
     async fn find_mcp_route_policy(
@@ -76,221 +71,351 @@ impl IMcpRoutePolicyRepository for PostgresEdgeRepository {
     }
 }
 
-async fn create(
+async fn mutate(
     executor: &PostgresExecutor,
-    policy: McpRoutePolicy,
-) -> Result<McpRoutePolicy, RepositoryError> {
-    if policy.policy_revision() != 1 || policy.created_at() != policy.updated_at() {
-        return Err(RepositoryError::Conflict(
-            "new MCP route policy is not at its initial revision".into(),
-        ));
-    }
+    write: MutateMcpRoutePolicyWrite,
+) -> Result<McpRoutePolicyWrite, RepositoryError> {
+    write.validate().map_err(RepositoryError::Conflict)?;
     executor
         .transaction(move |transaction| {
             Box::pin(async move {
-                lock_policy_scope(transaction, &policy).await?;
-                let profile = load_profile(
-                    transaction,
-                    policy.spec().organization_id,
-                    policy.spec().asset_id,
-                    policy.spec().asset_release_id,
-                    policy.spec().profile_digest.as_str(),
-                )
-                .await?
-                .ok_or(RepositoryError::NotFound)?;
-                validate_supplied(&policy, &profile)?;
-                let result = execute(
-                    transaction,
-                    insert_into::<McpRoutePolicies>()
-                        .value(McpRoutePolicies::id(), policy.spec().route_id.as_uuid())
-                        .value(
-                            McpRoutePolicies::organization_id(),
-                            policy.spec().organization_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::project_id(),
-                            policy.spec().project_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::environment_id(),
-                            policy.spec().environment_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::gateway_scope_id(),
-                            policy.spec().gateway_scope_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::domain_claim_id(),
-                            policy.spec().domain_claim_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::workload_id(),
-                            policy.spec().workload_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::asset_id(),
-                            policy.spec().asset_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::asset_release_id(),
-                            policy.spec().asset_release_id.as_uuid(),
-                        )
-                        .value(
-                            McpRoutePolicies::profile_digest(),
-                            policy.spec().profile_digest.as_str(),
-                        )
-                        .value(
-                            McpRoutePolicies::hostname(),
-                            policy.spec().hostname.as_str(),
-                        )
-                        .value(McpRoutePolicies::path(), policy.spec().path.as_str())
-                        .value(
-                            McpRoutePolicies::policy_revision(),
-                            policy.policy_revision(),
-                        )
-                        .value(
-                            McpRoutePolicies::policy_digest(),
-                            policy.policy_digest().as_str(),
-                        )
-                        .value(McpRoutePolicies::acl(), policy.canonical_acl())
-                        .value(McpRoutePolicies::expires_at(), policy.spec().expires_at)
-                        .value(McpRoutePolicies::created_at(), policy.created_at())
-                        .value(McpRoutePolicies::updated_at(), policy.updated_at()),
-                )
-                .await;
-                match result {
-                    Ok(rows) => require_one_row("MCP route policy", rows)?,
-                    Err(error) if is_unique_violation(&error) => {
-                        return Err(RepositoryError::Conflict(
-                            "MCP route identity or exact Gateway route is already in use".into(),
-                        )
-                        .into())
-                    }
-                    Err(error) if is_foreign_key_violation(&error) => {
-                        return Err(RepositoryError::NotFound.into())
-                    }
-                    Err(error) => return Err(error),
+                if let Some(replay) = replay(transaction, &write).await? {
+                    return Ok(replay);
                 }
-                Ok(policy)
+                let (policy, changed) = match write.kind {
+                    McpRoutePolicyMutationKind::Create => {
+                        create_in_transaction(transaction, &write).await?
+                    }
+                    McpRoutePolicyMutationKind::Revise => {
+                        revise_in_transaction(transaction, &write).await?
+                    }
+                };
+                if changed {
+                    let event = McpRoutePolicyChanged::envelope(
+                        &policy,
+                        write.kind,
+                        write.request_id,
+                        write.requested_at,
+                    )
+                    .map_err(|error| {
+                        PostgresPersistenceError::Invariant(format!(
+                            "could not build MCP route policy event: {error}"
+                        ))
+                    })?;
+                    store_outbox(transaction, &event).await?;
+                }
+                store_policy_audit(transaction, &policy, &write, changed).await?;
+                store_idempotency(
+                    transaction,
+                    &write.idempotency,
+                    &McpRoutePolicyWriteSnapshot::from(&policy),
+                )
+                .await?;
+                Ok(McpRoutePolicyWrite {
+                    policy,
+                    replayed: !changed,
+                })
             })
         })
         .await
         .map_err(transaction_error)
 }
 
-async fn update(
-    executor: &PostgresExecutor,
-    policy: McpRoutePolicy,
-    expected_policy_revision: u64,
-) -> Result<McpRoutePolicy, RepositoryError> {
-    if expected_policy_revision == 0
-        || expected_policy_revision.checked_add(1) != Some(policy.policy_revision())
+async fn create_in_transaction(
+    transaction: &PostgresTransaction,
+    write: &MutateMcpRoutePolicyWrite,
+) -> Result<(McpRoutePolicy, bool), PostgresPersistenceError> {
+    let document = &write.document;
+    lock_policy_scope(transaction, document.spec()).await?;
+    if let Some(existing) = find_in_transaction(
+        transaction,
+        document.spec().organization_id,
+        document.spec().route_id,
+    )
+    .await?
     {
+        if matches_document(&existing, document) {
+            return Ok((existing, false));
+        }
         return Err(RepositoryError::Conflict(
-            "MCP route policy revision transition is invalid".into(),
+            "MCP route policy identity is already in use".into(),
+        )
+        .into());
+    }
+    let profile = load_document_profile(transaction, document).await?;
+    let policy = document
+        .materialize(write.requested_at, write.requested_at, &profile)
+        .map_err(|error| {
+            RepositoryError::Conflict(format!("invalid MCP route policy write: {error}"))
+        })?;
+    validate_supplied(&policy, &profile)?;
+    insert_policy(transaction, &policy).await?;
+    Ok((policy, true))
+}
+
+async fn revise_in_transaction(
+    transaction: &PostgresTransaction,
+    write: &MutateMcpRoutePolicyWrite,
+) -> Result<(McpRoutePolicy, bool), PostgresPersistenceError> {
+    let document = &write.document;
+    lock_policy_scope(transaction, document.spec()).await?;
+    let existing = find_in_transaction(
+        transaction,
+        document.spec().organization_id,
+        document.spec().route_id,
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    if matches_document(&existing, document) {
+        return Ok((existing, false));
+    }
+    let expected_policy_revision = document
+        .policy_revision()
+        .checked_sub(1)
+        .ok_or_else(|| RepositoryError::Conflict("MCP route policy revision is invalid".into()))?;
+    let profile = load_document_profile(transaction, document).await?;
+    let policy = document
+        .materialize(existing.created_at(), write.requested_at, &profile)
+        .map_err(|error| {
+            RepositoryError::Conflict(format!("invalid MCP route policy write: {error}"))
+        })?;
+    validate_transition(&existing, &policy, expected_policy_revision)?;
+    validate_supplied(&policy, &profile)?;
+    update_policy(transaction, &policy, expected_policy_revision).await?;
+    Ok((policy, true))
+}
+
+async fn replay(
+    transaction: &PostgresTransaction,
+    write: &MutateMcpRoutePolicyWrite,
+) -> Result<Option<McpRoutePolicyWrite>, PostgresPersistenceError> {
+    let Some(replay) =
+        idempotency_replay::<McpRoutePolicyWriteSnapshot>(transaction, &write.idempotency).await?
+    else {
+        return Ok(None);
+    };
+    let policy = restore_snapshot(transaction, replay.value).await?;
+    if !matches_document(&policy, &write.document) {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored MCP route policy idempotency response does not match the request".into(),
         ));
     }
-    executor
-        .transaction(move |transaction| {
-            Box::pin(async move {
-                lock_policy_scope(transaction, &policy).await?;
-                let row = fetch_optional::<McpRoutePolicyRow, _>(
-                    transaction,
-                    policy_query(policy.spec().organization_id, policy.spec().route_id)
-                        .for_update(),
-                )
-                .await?
-                .ok_or(RepositoryError::NotFound)?;
-                let existing_profile = load_profile(
-                    transaction,
-                    OrganizationId::from_uuid(row.organization_id),
-                    AssetId::from_uuid(row.asset_id),
-                    AssetReleaseId::from_uuid(row.asset_release_id),
-                    &row.profile_digest,
-                )
-                .await?
-                .ok_or_else(|| {
-                    PostgresPersistenceError::Invariant(
-                        "stored MCP route policy lost its Service profile".into(),
-                    )
-                })?;
-                let existing = row.policy(&existing_profile)?;
-                validate_transition(&existing, &policy, expected_policy_revision)?;
-                let profile = load_profile(
-                    transaction,
-                    policy.spec().organization_id,
-                    policy.spec().asset_id,
-                    policy.spec().asset_release_id,
-                    policy.spec().profile_digest.as_str(),
-                )
-                .await?
-                .ok_or(RepositoryError::NotFound)?;
-                validate_supplied(&policy, &profile)?;
+    Ok(Some(McpRoutePolicyWrite {
+        policy,
+        replayed: true,
+    }))
+}
 
-                let result = execute(
-                    transaction,
-                    update_table::<McpRoutePolicies>()
-                        .set(
-                            McpRoutePolicies::asset_release_id(),
-                            policy.spec().asset_release_id.as_uuid(),
-                        )
-                        .set(
-                            McpRoutePolicies::profile_digest(),
-                            policy.spec().profile_digest.as_str(),
-                        )
-                        .set(
-                            McpRoutePolicies::domain_claim_id(),
-                            policy.spec().domain_claim_id.as_uuid(),
-                        )
-                        .set(
-                            McpRoutePolicies::hostname(),
-                            policy.spec().hostname.as_str(),
-                        )
-                        .set(McpRoutePolicies::path(), policy.spec().path.as_str())
-                        .set(
-                            McpRoutePolicies::policy_revision(),
-                            policy.policy_revision(),
-                        )
-                        .set(
-                            McpRoutePolicies::policy_digest(),
-                            policy.policy_digest().as_str(),
-                        )
-                        .set(McpRoutePolicies::acl(), policy.canonical_acl())
-                        .set(McpRoutePolicies::expires_at(), policy.spec().expires_at)
-                        .set(McpRoutePolicies::updated_at(), policy.updated_at())
-                        .filter(
-                            McpRoutePolicies::organization_id()
-                                .eq(policy.spec().organization_id.as_uuid()),
-                        )
-                        .filter(McpRoutePolicies::id().eq(policy.spec().route_id.as_uuid()))
-                        .filter(McpRoutePolicies::policy_revision().eq(expected_policy_revision)),
-                )
-                .await;
-                match result {
-                    Ok(rows) => require_one_row("MCP route policy update", rows)?,
-                    Err(error) if is_unique_violation(&error) => {
-                        return Err(RepositoryError::Conflict(
-                            "MCP exact Gateway route is already in use".into(),
-                        )
-                        .into())
-                    }
-                    Err(error) if is_foreign_key_violation(&error) => {
-                        return Err(RepositoryError::NotFound.into())
-                    }
-                    Err(error) => return Err(error),
-                }
-                Ok(policy)
-            })
-        })
-        .await
-        .map_err(transaction_error)
+async fn restore_snapshot(
+    transaction: &PostgresTransaction,
+    snapshot: McpRoutePolicyWriteSnapshot,
+) -> Result<McpRoutePolicy, PostgresPersistenceError> {
+    let document = McpRoutePolicy::parse_acl(&snapshot.canonical_acl).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored MCP route policy idempotency ACL is invalid: {error}"
+        ))
+    })?;
+    if document.policy_digest().as_str() != snapshot.policy_digest {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored MCP route policy idempotency digest is invalid".into(),
+        ));
+    }
+    let profile = load_document_profile(transaction, &document).await?;
+    McpRoutePolicy::restore(
+        &snapshot.canonical_acl,
+        &snapshot.policy_digest,
+        snapshot.created_at,
+        snapshot.updated_at,
+        &profile,
+    )
+    .map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored MCP route policy idempotency response is invalid: {error}"
+        ))
+    })
+}
+
+async fn load_document_profile(
+    transaction: &PostgresTransaction,
+    document: &McpRoutePolicyDocument,
+) -> Result<McpServiceProfile, PostgresPersistenceError> {
+    let spec = document.spec();
+    load_profile(
+        transaction,
+        spec.organization_id,
+        spec.asset_id,
+        spec.asset_release_id,
+        spec.profile_digest.as_str(),
+    )
+    .await?
+    .ok_or_else(|| RepositoryError::NotFound.into())
+}
+
+fn matches_document(policy: &McpRoutePolicy, document: &McpRoutePolicyDocument) -> bool {
+    policy.spec() == document.spec()
+        && policy.policy_revision() == document.policy_revision()
+        && policy.canonical_acl() == document.canonical_acl()
+        && policy.policy_digest() == document.policy_digest()
+}
+
+async fn store_policy_audit(
+    transaction: &PostgresTransaction,
+    policy: &McpRoutePolicy,
+    write: &MutateMcpRoutePolicyWrite,
+    changed: bool,
+) -> Result<(), PostgresPersistenceError> {
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            organization_id: policy.spec().organization_id.as_uuid(),
+            actor_id: None,
+            action: write.kind.action(),
+            aggregate_id: policy.spec().route_id.as_uuid(),
+            occurred_at: write.requested_at,
+            request_id: write.request_id,
+            details: serde_json::json!({
+                "projectId": policy.spec().project_id,
+                "environmentId": policy.spec().environment_id,
+                "policyRevision": policy.policy_revision(),
+                "policyDigest": policy.policy_digest().as_str(),
+                "changed": changed,
+            }),
+        },
+    )
+    .await
+}
+
+async fn insert_policy(
+    transaction: &PostgresTransaction,
+    policy: &McpRoutePolicy,
+) -> Result<(), PostgresPersistenceError> {
+    let result = execute(
+        transaction,
+        insert_into::<McpRoutePolicies>()
+            .value(McpRoutePolicies::id(), policy.spec().route_id.as_uuid())
+            .value(
+                McpRoutePolicies::organization_id(),
+                policy.spec().organization_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::project_id(),
+                policy.spec().project_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::environment_id(),
+                policy.spec().environment_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::gateway_scope_id(),
+                policy.spec().gateway_scope_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::domain_claim_id(),
+                policy.spec().domain_claim_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::workload_id(),
+                policy.spec().workload_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::asset_id(),
+                policy.spec().asset_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::asset_release_id(),
+                policy.spec().asset_release_id.as_uuid(),
+            )
+            .value(
+                McpRoutePolicies::profile_digest(),
+                policy.spec().profile_digest.as_str(),
+            )
+            .value(
+                McpRoutePolicies::hostname(),
+                policy.spec().hostname.as_str(),
+            )
+            .value(McpRoutePolicies::path(), policy.spec().path.as_str())
+            .value(
+                McpRoutePolicies::policy_revision(),
+                policy.policy_revision(),
+            )
+            .value(
+                McpRoutePolicies::policy_digest(),
+                policy.policy_digest().as_str(),
+            )
+            .value(McpRoutePolicies::acl(), policy.canonical_acl())
+            .value(McpRoutePolicies::expires_at(), policy.spec().expires_at)
+            .value(McpRoutePolicies::created_at(), policy.created_at())
+            .value(McpRoutePolicies::updated_at(), policy.updated_at()),
+    )
+    .await;
+    match result {
+        Ok(rows) => require_one_row("MCP route policy", rows),
+        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
+            "MCP route identity or exact Gateway route is already in use".into(),
+        )
+        .into()),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
+    }
+}
+
+async fn update_policy(
+    transaction: &PostgresTransaction,
+    policy: &McpRoutePolicy,
+    expected_policy_revision: u64,
+) -> Result<(), PostgresPersistenceError> {
+    let result = execute(
+        transaction,
+        update_table::<McpRoutePolicies>()
+            .set(
+                McpRoutePolicies::asset_release_id(),
+                policy.spec().asset_release_id.as_uuid(),
+            )
+            .set(
+                McpRoutePolicies::profile_digest(),
+                policy.spec().profile_digest.as_str(),
+            )
+            .set(
+                McpRoutePolicies::domain_claim_id(),
+                policy.spec().domain_claim_id.as_uuid(),
+            )
+            .set(
+                McpRoutePolicies::hostname(),
+                policy.spec().hostname.as_str(),
+            )
+            .set(McpRoutePolicies::path(), policy.spec().path.as_str())
+            .set(
+                McpRoutePolicies::policy_revision(),
+                policy.policy_revision(),
+            )
+            .set(
+                McpRoutePolicies::policy_digest(),
+                policy.policy_digest().as_str(),
+            )
+            .set(McpRoutePolicies::acl(), policy.canonical_acl())
+            .set(McpRoutePolicies::expires_at(), policy.spec().expires_at)
+            .set(McpRoutePolicies::updated_at(), policy.updated_at())
+            .filter(McpRoutePolicies::organization_id().eq(policy.spec().organization_id.as_uuid()))
+            .filter(McpRoutePolicies::id().eq(policy.spec().route_id.as_uuid()))
+            .filter(McpRoutePolicies::policy_revision().eq(expected_policy_revision)),
+    )
+    .await;
+    match result {
+        Ok(rows) => require_one_row("MCP route policy update", rows),
+        Err(error) if is_unique_violation(&error) => Err(RepositoryError::Conflict(
+            "MCP exact Gateway route is already in use".into(),
+        )
+        .into()),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
+    }
 }
 
 async fn lock_policy_scope(
     transaction: &PostgresTransaction,
-    policy: &McpRoutePolicy,
+    spec: &McpRoutePolicySpec,
 ) -> Result<(), PostgresPersistenceError> {
-    let spec = policy.spec();
     let owner = fetch_optional::<(Uuid, Uuid, Uuid), _>(
         transaction,
         select_from::<GatewayRouteScopes>()
@@ -314,6 +439,35 @@ async fn lock_policy_scope(
         return Err(RepositoryError::NotFound.into());
     }
     Ok(())
+}
+
+async fn find_in_transaction(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    route_id: RouteId,
+) -> Result<Option<McpRoutePolicy>, PostgresPersistenceError> {
+    let Some(row) = fetch_optional::<McpRoutePolicyRow, _>(
+        transaction,
+        policy_query(organization_id, route_id).for_update(),
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    let profile = load_profile(
+        transaction,
+        OrganizationId::from_uuid(row.organization_id),
+        AssetId::from_uuid(row.asset_id),
+        AssetReleaseId::from_uuid(row.asset_release_id),
+        &row.profile_digest,
+    )
+    .await?
+    .ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "stored MCP route policy lost its Service profile".into(),
+        )
+    })?;
+    row.policy(&profile).map(Some).map_err(Into::into)
 }
 
 async fn find(

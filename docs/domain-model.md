@@ -19,10 +19,11 @@ engine, scheduler, node channel, provider-specific controller, or event-log
 authority. A3S Code is the native provider rather than the only admissible
 Harness.
 
-Planned W0 adds versioned ontologies, Workflow definitions, goals,
-deterministic plan revisions, Workflow runs, and human decisions. It compiles
-semantic intent to the existing Operations and A3S Flow path; it does not add
-another workflow engine, scheduler, graph database authority, or task queue.
+W0 adds versioned ontologies, Workflow definitions, goals, deterministic plan
+revisions, Workflow runs, and human decisions. `W0.1` implements their closed
+contract foundation; later gates compile semantic intent to the existing
+Operations and A3S Flow path. W0 does not add another workflow engine,
+scheduler, graph database authority, or task queue.
 
 Planned EV0 adds authorized evidence-dataset manifests, evaluation suites,
 experiments, candidate revisions, promotion decisions, and rollback evidence.
@@ -107,17 +108,20 @@ are different facts.
 
 ### 3.1 Identity and access
 
-Owns users, organizations, memberships, roles, API tokens, optional external
-OIDC subject links under `C0.3`, and tenant context. It answers who may issue a
-command. It does not decide runtime placement, treat an identity-provider
-session as Cloud authority, or store asset collaborator data in an unvalidated
-metadata document.
+Owns stable human and service Principals, organizations, Membership roles,
+Principal-bound API credentials, revocation, planned Resource Grants, optional
+external OIDC subject links under `C0.3`, and tenant context. It answers who may
+issue a command. It does not decide runtime placement, treat a credential as a
+role, treat an identity-provider session as Cloud authority, or store asset
+collaborator data in an unvalidated metadata document.
 
 Primary aggregates:
 
+- `IdentityPrincipal`
 - `Organization`
 - `Membership`
 - `ApiToken`
+- `ResourceGrant` (next `C0.3` slice)
 - `ExternalIdentityLink` (planned `C0.3`)
 
 ### 3.2 Projects
@@ -395,7 +399,7 @@ may retain private in-process state and source events but cannot add a
 Cloud-visible run store, scheduler, command queue, approval authority, or
 second semantic history.
 
-### 3.14 Workflow and ontology (planned W0)
+### 3.14 Workflow, forms, and ontology (`W0.1`, backend `W0.2`, and internal `W0.3` execution implemented)
 
 Owns ontology revisions, Workflow definitions and revisions, goals,
 deterministic plan revisions, Workflow runs, human decisions, and semantic step
@@ -409,6 +413,7 @@ Primary aggregates:
 - `WorkflowDefinition`
 - `WorkflowGoal`
 - `WorkflowRun`
+- `HumanTask`
 
 Supporting immutable records:
 
@@ -417,6 +422,47 @@ Supporting immutable records:
 - `PlanRevision`
 - `WorkflowStepProjection`
 - `WorkflowDecision`
+- `FormSubmission`
+
+The interaction boundary reuses A3S Form's exact `FormReleaseRef`, request,
+submission, canonicalization, and digest contracts. Forms owns an immutable
+accepted `FormSubmission`; Workflow owns the optimistically versioned
+HumanTask and immutable WorkflowDecision. Migration `081` persists those
+authorities, a deduplicating Flow-hook Inbox, and a leased resume Outbox through
+typed A3S ORM queries. Flow remains the sole hook-history authority. Cloud
+creates a resume receipt only after observing the exact matching
+`HookReceived` event, never from Outbox delivery alone. Worker-role coordination
+validates the exact interaction-mode FormRelease and hook metadata before task
+creation, and recovers a resume committed before receipt acknowledgement.
+Draft/release commands and APIs are implemented; public protected submission,
+HumanTask/tasklist surfaces, Resource Grant evaluation, and expiry/cancellation
+coordination remain later slices.
+
+The first closed Workflow contract uses these semantic step kinds:
+
+| Step kind | Authority and execution rule |
+| --- | --- |
+| `input`, `transform`, `branch`, `output` | Workflow-local deterministic plan semantics; no Runtime Task is created only to copy, transform, select, or return data |
+| `human_decision` | WorkflowDecision plus Identity/Resource Grants, coordinated by the same Operation/Flow run |
+| `execution` | Exact Executions-owned template and the ordinary finite Task path |
+| `agent` | Exact Assets release and Agents provider profile |
+| `mcp` | Exact admitted MCP Service profile and existing MCP/Gateway path |
+| `model` | Exact Inference model/route revision |
+| `tool`, `memory` | Exact A3S Use package capability; Workflow owns no Tool or Memory registry/store |
+| `service` | Exact Workflow connector revision with bounded schema, egress policy, and Secret identities |
+| `subworkflow` | Exact immutable WorkflowRevision; recursion and depth are compiler-bounded |
+
+The standalone node names map as `start -> input`, `template -> transform`,
+`llm -> model`, `router -> branch`, `http -> service`, and
+`approval -> human_decision`; `agent`, `tool`, `memory`, and `output` retain
+their semantic names. The map preserves outcomes, not the former standalone
+wire, queue, provider, or node-runner contracts.
+
+One `WorkflowStepDescriptor` supplies typed ports, closed configuration schema,
+allowed CapabilityReference kinds, presentation keys, and policy requirements
+to CLI, Management MCP, and the deferred Designer. Presentation layout has a
+separate digest and cannot change the semantic WorkflowRevision or a running
+PlanRevision.
 
 Ontology and Workflow definitions use closed A3S ACL parsed only through
 `a3s-acl`. PostgreSQL through A3S ORM owns objects, relationships, rules,
@@ -424,6 +470,16 @@ constraints, lineage, and current revision. Search and vector indexes are
 rebuildable projections. The context calls typed Agents, MCP, Inference, Use,
 Identity, Executions, and connector ports; it writes none of their tables and
 never starts Runtime work directly.
+
+The implemented `W0.2` persistence model keeps exactly one mutable aggregate
+head per project/name and immutable canonical `OntologyRevision` rows. The
+head points to its current revision through a deferred foreign key so one A3S
+ORM transaction can insert the revision and advance the head atomically.
+Compatible migration policy is inferred from a deterministic structural diff;
+breaking changes must bind an exact `migration` rule already present in the
+target ACL. Idempotency stores only the organization/Ontology/revision
+identity, and replay reconstructs the aggregate snapshot at that revision.
+Search reads one disposable current-head view and cannot revise an Ontology.
 
 ### 3.15 Governed evolution (planned EV0)
 
@@ -491,8 +547,18 @@ contexts' tables.
 
 - Every tenant-owned aggregate carries `organization_id`.
 - Cross-organization references are rejected before persistence.
+- A Principal is stable across credentials and may be `human` or `service`.
+- One active Membership assigns exactly one `owner`, `admin`, `member`, or
+  `restricted` role to a Principal in an organization; a credential never owns
+  the role.
 - The last organization owner cannot be removed.
-- API token scopes cannot exceed the issuing member's effective permissions.
+- API token scopes cannot exceed the issuer's effective scopes. An ordinary
+  member may issue only for its own Principal; cross-Principal issuance reuses
+  the Membership role matrix, so an `admin` cannot issue an owner credential
+  and only an owner or platform administrator can manage owner credentials.
+- Membership restriction and revocation affect every bound credential on the
+  next request. `restricted` fails closed on tenant resources until the shared
+  Resource Grant evaluator is implemented.
 
 ### Project and Environment
 
@@ -1076,22 +1142,36 @@ contexts' tables.
   Harness plus exact A3S Runtime and Box checkpoint contracts pass crash,
   integrity, compatibility, adoption, and cleanup certification.
 
-### Workflow, ontology, and plan execution (planned W0)
+### Workflow, ontology, and plan execution (`W0.1`, backend `W0.2`, and minimal `W0.3` execution implemented)
 
 - An OntologyRevision is immutable and binds one closed ACL digest, compiler
   schema version, parent revision, migration policy, and canonical semantic
   content digest.
+- A breaking structural diff is invalid unless the target revision contains
+  the exact named `migration` rule; no parallel migration-policy store exists.
+- Replaying an accepted historical create or revise identity returns the
+  aggregate snapshot at that exact revision, even after later revisions are
+  current.
 - Search, vector, and materialized graph projections may lag or rebuild; they
   cannot accept writes or become current-revision authority.
 - A PlanRevision binds exact OntologyRevision, WorkflowRevision, policy,
   capability, compiler, and input digests. Identical inputs must compile to the
   same plan digest.
-- A WorkflowRun binds one PlanRevision and one Operation/Flow identity. Retry,
-  pause, cancellation, compensation, and process death resume the same run;
-  they never create a planner-specific execution history.
-- Each child Agent, MCP, model, Tool, human, service, or finite-task step stores
-  one exact owning-context identity. Ambiguous dispatch is adopted by that
-  identity and cannot create a second child.
+- A WorkflowRun binds one exact Goal and PlanRevision to one Operation/Flow
+  identity. Start, cancellation, deadline timeout, reconciliation, output, and
+  bounded history use the same run and never create a planner-specific
+  execution history. Immutable Plan, input, payload, branch, and replay drift
+  fail closed.
+- The implemented executor admits Workflow-local `input`, `transform`,
+  `branch`, `human_decision`, and `output` steps. Each deterministic result is
+  digest-bound and projected from the correlated A3S Flow history; unselected
+  branch steps become `skipped`. A human decision suspends the same Flow run on
+  an authority-bound hook and resumes it only from the immutable decision.
+- Internal HumanTask dispatch and resume recovery are implemented. Public task
+  commands and authorization, service/finite-task, Agent, MCP, model, Tool,
+  memory, and subworkflow dispatch remain future gates. When admitted, each
+  child stores one exact owning-context identity so ambiguous dispatch can be
+  adopted without creating a second child.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
   decision, and evidence. It cannot hide non-deterministic mutation inside
   Flow replay.
@@ -1505,23 +1585,41 @@ exact `PluginHostObservation` matches the desired assignment generation, the
 computed assignment status is `pending`, `blocked`, or `unavailable`, never
 partially installed or optimistically active.
 
-### Workflow run state (planned W0)
+### Workflow planning authority (implemented `W0.3` slice)
+
+`WorkflowDefinition` is the mutable optimistic head for an immutable
+`WorkflowRevision` lineage. Each revision atomically owns its exact canonical
+definition ACL plus every referenced closed configuration, data-schema, and
+policy ACL payload. `WorkflowGoal` is immutable and binds exact Workflow and
+Ontology revision identities and digests, optional Environment identity, and
+canonical input. It points to one immutable `PlanRevision` compiled by
+`cloud.workflow.plan-compiler.v1`; identical semantic inputs produce identical
+canonical plan bytes and digest even though Goal and Plan identities differ.
+
+PostgreSQL through A3S ORM is the sole authority for these records. REST,
+client, CLI, and Management MCP are adapters over the same commands and
+queries. Search, Flow history, external payload locations, and presentation
+JSON are not alternate Workflow stores.
+
+### Workflow run state (minimal `W0.3` lifecycle implemented)
 
 ```text
-draft -> compiled -> queued -> running -> succeeded
-                   \-> blocked -> running
-                   \-> paused -> running
-                   \-> compensating -> compensated
-                   \-> cancelling -> cancelled
-                   \-> failed
+pending -> running -> completed
+              |  \-> failed
+              |  \-> timed_out
+              \-> waiting -> running
+pending | running | waiting -> cancelling -> cancelled
 ```
 
-`compiled` binds one immutable PlanRevision before any child work starts.
-`blocked` names an unavailable capability, approval, policy, or external
-dependency and never hides it as retry. `running`, compensation, cancellation,
-and recovery are projections of the same Operation/Flow identity; a replan
-creates a new PlanRevision and explicit transition rather than mutating the
-running plan.
+Creation binds the immutable Goal, PlanRevision, canonical execution input,
+Operation ID, and A3S Flow run ID before any step work starts. Terminal output
+exists only for `completed`; an error exists only for `failed` or `timed_out`;
+all terminal states are immutable. A cancellation request preserves
+`cancelling` until the correlated Flow history reaches `cancelled`. `waiting`
+is now projected while an admitted `human_decision` hook awaits its exact
+WorkflowDecision. General pause/resume, service/capability blocking,
+compensation, and replanning remain gated work and cannot be inferred from this
+lifecycle.
 
 ### Evolution experiment and promotion state (planned EV0)
 

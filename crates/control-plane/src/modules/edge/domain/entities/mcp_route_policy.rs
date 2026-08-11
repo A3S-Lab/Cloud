@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 const POLICY_BLOCK: &str = "mcp_route_policy";
 const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
-const MAX_POLICY_ACL_BYTES: usize = 512 * 1024;
+pub const MCP_ROUTE_POLICY_MAX_ACL_BYTES: usize = 512 * 1024;
 const MAX_HEADER_BYTES: u64 = 128 * 1024;
 const MAX_TELEMETRY_EVENTS_PER_MINUTE: u64 = 10_000_000;
 const MAX_POLICY_LIFETIME_HOURS: i64 = 24;
@@ -81,6 +81,58 @@ pub struct McpRoutePolicySpec {
     pub grants: Vec<McpGrantProjection>,
 }
 
+/// Parsed, canonical desired-state input for one MCP route policy mutation.
+///
+/// Parsing and canonicalization do not depend on persistence timestamps or on
+/// the referenced immutable Service profile. The repository can therefore
+/// resolve an idempotent replay before revalidating an expired historical
+/// request against the current clock.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpRoutePolicyDocument {
+    spec: McpRoutePolicySpec,
+    policy_revision: u64,
+    canonical_acl: String,
+    policy_digest: Sha256Digest,
+}
+
+impl McpRoutePolicyDocument {
+    pub const fn spec(&self) -> &McpRoutePolicySpec {
+        &self.spec
+    }
+
+    pub const fn policy_revision(&self) -> u64 {
+        self.policy_revision
+    }
+
+    pub fn canonical_acl(&self) -> &str {
+        &self.canonical_acl
+    }
+
+    pub const fn policy_digest(&self) -> &Sha256Digest {
+        &self.policy_digest
+    }
+
+    pub fn materialize(
+        &self,
+        created_at: DateTime<Utc>,
+        updated_at: DateTime<Utc>,
+        profile: &McpServiceProfile,
+    ) -> Result<McpRoutePolicy, String> {
+        let policy = McpRoutePolicy::build(
+            self.spec.clone(),
+            self.policy_revision,
+            canonical_timestamp(created_at),
+            canonical_timestamp(updated_at),
+            profile,
+        )?;
+        if policy.canonical_acl != self.canonical_acl || policy.policy_digest != self.policy_digest
+        {
+            return Err("MCP route policy document changed during admission".into());
+        }
+        Ok(policy)
+    }
+}
+
 /// Mutable Edge desired state. Each accepted mutation advances the policy
 /// revision and therefore its canonical digest. Runtime targets and verifier
 /// hashes are deliberately absent and are resolved only during reconciliation.
@@ -95,6 +147,36 @@ pub struct McpRoutePolicy {
 }
 
 impl McpRoutePolicy {
+    pub fn parse_acl(acl: &str) -> Result<McpRoutePolicyDocument, String> {
+        if acl.is_empty() || acl.len() > MCP_ROUTE_POLICY_MAX_ACL_BYTES {
+            return Err("MCP route policy ACL size is invalid".into());
+        }
+        let document =
+            parse_acl(acl).map_err(|error| format!("MCP route policy ACL is invalid: {error}"))?;
+        let (mut spec, policy_revision) = parse_policy_document(&document)?;
+        normalize_spec(&mut spec)?;
+        if policy_revision == 0 || policy_revision > MAX_SAFE_ACL_INTEGER {
+            return Err("MCP route policy revision is invalid".into());
+        }
+        let canonical_document = policy_document(&spec, policy_revision)?;
+        let canonical_acl = generate_acl(&canonical_document);
+        if canonical_acl.len() > MCP_ROUTE_POLICY_MAX_ACL_BYTES {
+            return Err("MCP route policy ACL exceeds its storage bound".into());
+        }
+        let canonical_document = parse_acl(&canonical_acl)
+            .map_err(|error| format!("generated MCP route policy ACL is invalid: {error}"))?;
+        let policy_digest = Sha256Digest::parse(
+            canonical_digest(&canonical_document)
+                .map_err(|error| format!("MCP route policy is not canonicalizable: {error}"))?,
+        )?;
+        Ok(McpRoutePolicyDocument {
+            spec,
+            policy_revision,
+            canonical_acl,
+            policy_digest,
+        })
+    }
+
     pub fn create(
         spec: McpRoutePolicySpec,
         profile: &McpServiceProfile,
@@ -144,7 +226,7 @@ impl McpRoutePolicy {
         updated_at: DateTime<Utc>,
         profile: &McpServiceProfile,
     ) -> Result<Self, String> {
-        if acl.is_empty() || acl.len() > MAX_POLICY_ACL_BYTES {
+        if acl.is_empty() || acl.len() > MCP_ROUTE_POLICY_MAX_ACL_BYTES {
             return Err("stored MCP route policy ACL size is invalid".into());
         }
         let document =
@@ -174,7 +256,7 @@ impl McpRoutePolicy {
         validate_spec(&spec, policy_revision, created_at, updated_at, profile)?;
         let document = policy_document(&spec, policy_revision)?;
         let canonical_acl = generate_acl(&document);
-        if canonical_acl.len() > MAX_POLICY_ACL_BYTES {
+        if canonical_acl.len() > MCP_ROUTE_POLICY_MAX_ACL_BYTES {
             return Err("MCP route policy ACL exceeds its storage bound".into());
         }
         let reparsed = parse_acl(&canonical_acl)
@@ -746,6 +828,18 @@ mod tests {
     fn canonical_policy_round_trips_and_projects_without_credentials_or_targets() {
         let profile = profile();
         let policy = McpRoutePolicy::create(spec(&profile), &profile, now()).expect("policy");
+        let parsed = McpRoutePolicy::parse_acl(&format!("\n{}\n", policy.canonical_acl()))
+            .expect("parsed document");
+        assert_eq!(parsed.spec(), policy.spec());
+        assert_eq!(parsed.policy_revision(), policy.policy_revision());
+        assert_eq!(parsed.canonical_acl(), policy.canonical_acl());
+        assert_eq!(parsed.policy_digest(), policy.policy_digest());
+        assert_eq!(
+            parsed
+                .materialize(policy.created_at(), policy.updated_at(), &profile)
+                .expect("materialized document"),
+            policy
+        );
         let restored = McpRoutePolicy::restore(
             policy.canonical_acl(),
             policy.policy_digest().as_str(),
@@ -759,6 +853,22 @@ mod tests {
         assert_eq!(projection.profile_digest, profile.digest().as_str());
         assert!(projection.targets.is_empty());
         assert_eq!(projection.grants.len(), 1);
+    }
+
+    #[test]
+    fn historical_document_parses_before_current_time_admission() {
+        let profile = profile();
+        let policy = McpRoutePolicy::create(spec(&profile), &profile, now()).expect("policy");
+        let parsed = McpRoutePolicy::parse_acl(policy.canonical_acl()).expect("parsed document");
+
+        assert!(parsed
+            .materialize(
+                policy.created_at(),
+                policy.spec().expires_at + Duration::seconds(1),
+                &profile,
+            )
+            .is_err());
+        assert_eq!(parsed.policy_digest(), policy.policy_digest());
     }
 
     #[test]

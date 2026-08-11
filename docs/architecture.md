@@ -97,8 +97,9 @@ scheduler, event log, identity store, or data plane.
 
 | Reference outcome worth retaining | A3S-owned outcome | Owning gate and current boundary | Deliberately not copied |
 | --- | --- | --- | --- |
+| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1`, backend `W0.2`, and the `W0.3` immutable definition/payload/goal/deterministic-plan, minimal WorkflowRun, and internal authority-bound HumanTask decision loop are implemented; public task authorization/surfaces, provider binding, typed capability steps, compensation, production recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and route-health diagnostics | Inference owns immutable model, Provider, route, and policy revisions; Edge owns route intent; Gateway applies the typed protocol/data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` protocol/provider expansion | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style consumer, project-steward, and platform-operator workspaces with project/environment keys, enterprise sign-in, RBAC, quotas, and concurrency policy | Identity owns external OIDC subject links, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | `C0.1`/`C0.2` foundations are verified; external OIDC federation and role-focused surfaces are planned in `C0.3`; model/key self-service is planned in `I0.2e` | Browser-only filtering, another user/key store, plaintext credential recovery, or UI modes as authorization |
+| TokenHub-style consumer, project-steward, and platform-operator workspaces with project/environment keys, enterprise sign-in, RBAC, quotas, and concurrency policy | Identity owns Principals, external OIDC subject links, Memberships, Resource Grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential foundation is implemented; Resource Grants, invitations, external OIDC federation, and role-focused surfaces remain planned; model/key self-service is planned in `I0.2e` | Browser-only filtering, another user/key store, plaintext credential recovery, credential-owned roles, or UI modes as authorization |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; Project attribution and authorized views belong to `C0` | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts or responses in management telemetry, commercial balance/invoice/settlement authority, or client-side usage truth |
 | TokenHub-style protocol and Provider breadth, including Responses, Anthropic Messages, media generation/editing, custom upstreams, and approved subscription-backed channels | Each protocol is a separately versioned `InferenceProtocolProfile`; each Provider/channel is a credential-isolated adapter behind the same Inference, Edge, Gateway, usage, and Secret boundaries | Optional post-production `I0.6`; every profile remains unavailable until its real protocol, terms, credential, usage, failure, and recovery conformance gate passes | A generic untyped byte proxy, capability claims inferred from a template, browser-held upstream credentials, or implied support for every vendor |
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider` contract selects immutable providers; Workloads, Fleet, Runtime, and Box provide placement, delivery, isolation, and lifecycle | `A1.1` is implemented, native Code `A1.2` is in progress, and provider-neutral/non-Code `A1.3` is planned | AX server/controller deployment, AX configuration or wire compatibility, provider-specific schedulers, run stores, or direct clients |
@@ -191,6 +192,7 @@ second entry in an authority row must be redesigned before implementation.
 | Concern | Sole authority | Prohibited duplicate |
 | --- | --- | --- |
 | Business desired state | PostgreSQL | Redis, event streams, node journals, or local files as product truth |
+| Principal identity, organization roles, credentials, and revocation | Identity Principals, Memberships, Resource Grants, and scoped credentials | Credential-owned roles, a console-local identity store, a second RBAC evaluator, or presentation-only authorization |
 | External human identity federation | Identity context through `C0.3` OIDC issuer/subject links and ordinary memberships/grants | Provider sessions as user truth, a console-local identity store, automatic organization ownership, or unverified email-domain trust |
 | Tenant plugin registry enrollment and desired assignment | Cloud Plugins context in PostgreSQL | Asset kinds, node-local receipts, catalog caches, or Use capability snapshots as tenant intent |
 | Plugin catalog, package trust, immutable generation, grant, binding, and capability lifecycle | Shared A3S Use Plugin Manager and its canonical contracts | Cloud installer, TUF implementation, package/grant/binding tables, capability registry, surface reconciler, or universal plugin action RPC |
@@ -352,8 +354,8 @@ not business ownership or convenience wrappers.
 | Secrets | Immutable Secret versions, bindings, authorization, and materialization policy | Current |
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
-| Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current foundation; new projections planned by their owning gates |
-| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, human decisions, and semantic step projections | Planned `W0` |
+| Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
+| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, HumanTasks, human decisions, and semantic step projections | `W0.1`, backend `W0.2`, and the `W0.3` planning/persistence/API plus `input`/`transform`/`branch`/`human_decision`/`output` execution and the internal HumanTask resume loop are implemented; public task surfaces/authorization, expiry/cancellation coordination, service/finite-task and typed capability execution, compensation, expanded conformance, and `W0.4`-`W0.5` remain |
 | Evolution | Authorized evidence-dataset manifests, evaluation suites, experiments, candidate revisions, promotion decisions, and rollback evidence | Planned `EV0` |
 | Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
 | Agents | Conversations, heterogeneous-provider Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented; the `A1.2` native Code provider is implemented locally with publication and Linux recovery verification pending; provider-neutral `A1.3` and `A1.4` through `A1.6` are planned |
@@ -838,6 +840,28 @@ step projections. Closed ontology and Workflow ACL is parsed only through
 relations, rules, constraints, lineage, and current revisions; Search and
 vector indexes are disposable projections rather than another knowledge-graph
 authority.
+
+The implemented backend `W0.2` slice stores one mutable Ontology aggregate
+head and immutable canonical `OntologyRevision` lineage in that authority.
+Create and revise commands share Cloud idempotency, audit, Outbox, tenant, and
+optimistic-concurrency mechanisms. Deterministic structural diffs infer
+compatible migration policy; a breaking change is admitted only when the
+caller names a target ACL rule whose kind is `migration`. REST, the maintained
+client, CLI, and Management MCP call the same command/query handlers, while
+Search projects only the current aggregate. There is no parallel graph store,
+migration registry, revision-byte store, or surface-specific lifecycle.
+
+The implemented `W0.3` planning slice adds migration `076` to the same
+PostgreSQL/A3S ORM authority. A `WorkflowDefinition` is only the optimistic
+aggregate head; immutable `WorkflowRevision` rows atomically own the canonical
+definition ACL and the exact closed configuration, data-schema, and policy
+payloads referenced by digest. An immutable `WorkflowGoal` binds exact
+Workflow and Ontology revisions, optional Environment identity, and canonical
+input. Compiler `cloud.workflow.plan-compiler.v1` emits one content-addressed
+`PlanRevision` with deterministic topological order. REST, client, CLI, and
+Management MCP reuse the same CQRS lifecycle and historical replay. No Flow
+history, Search row, external payload, or presentation transport becomes
+semantic authority.
 
 Workflow planning and Workflow execution are separate responsibilities. The
 planner compiles exact ontology, Workflow, policy, capability, and input

@@ -61,6 +61,12 @@ Node `ready`, `drain`, and `revoke` additionally require
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale
 versions instead of applying a blind lifecycle transition.
 
+`ontologies revise` also requires a positive `--expected-version`. A breaking
+object, relation, or rule change additionally requires
+`--migration-rule=<target-rule-id>` naming an exact rule of kind `migration`
+inside the submitted target ACL. The flag does not create a CLI migration
+policy or another configuration document.
+
 Hosted MCP credential `create` requires an RFC 3339 `--expires-at` no more
 than 365 days in the future. `rotate` additionally requires the current
 `--expected-version`; `revoke` requires the same optimistic precondition.
@@ -127,12 +133,37 @@ error. API-token list/get and create/revoke results are projected onto safe
 metadata; Cloud stores only the credential digest through its A3S ORM-backed
 Identity repository.
 
-Desired-state commands additionally require `--file=<path>` and accept only a
-nonempty UTF-8 A3S ACL document of at most 64 KiB. The CLI sends those exact
-bytes as `application/vnd.a3s.acl`; Cloud parses them with `a3s-acl`, applies
-bounded closed-schema validation, and dispatches the existing application
-command. The CLI does not parse ACL, accept JSON/TOML manifests, or place
-manifest content in command arguments.
+Desired-state commands additionally require `--file=<path>`. Workload and MCP
+Service-profile commands accept a nonempty UTF-8 A3S ACL document of at most
+64 KiB; MCP route-policy create/revise accepts at most 512 KiB; Ontology
+create/revise accepts at most 1 MiB. The CLI sends those exact bytes as
+`application/vnd.a3s.acl`; Cloud parses them with
+`a3s-acl`, applies bounded closed-schema validation, and dispatches the
+existing application command. The CLI does not parse ACL, accept JSON/TOML
+manifests, or place manifest content in command arguments.
+
+Workflow Goal creation also accepts one bounded closed A3S ACL file unchanged.
+Workflow definition create/revise accepts a bounded JSON publication envelope
+containing only `definitionAcl` and typed `{kind, acl}` payload entries so the
+canonical Workflow/configuration/data-schema/policy ACL documents are committed
+atomically. This envelope is transport packaging, not a JSON configuration
+authority; Cloud alone parses ACL, verifies every digest/binding, persists the
+immutable revision, and compiles Goals into deterministic Plans.
+
+WorkflowRun start binds one exact Goal and Plan revision and accepts an
+optional `--run-timeout-seconds` value from 1 through 2,592,000. Wait accepts
+`--wait-seconds` from 0 through 30; list and history use the shared bounded
+`--limit`, while history uses `--cursor` as the last observed Flow sequence.
+Start and cancel require a caller-owned idempotency key. The CLI never executes
+steps locally or infers completion from transport, logs, or process state.
+
+Form draft create/revise accepts a bounded native Form JSON transport file
+containing only `name`, optional `description`, and the Form `document` object.
+Revise and release publication require a positive `--expected-version`. Cloud
+canonicalizes the document, delegates semantic compilation to the pinned A3S
+Form owner, and persists drafts/releases through A3S ORM; the CLI does not
+compile or validate Form semantics and does not treat JSON as general Cloud
+product configuration.
 
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
@@ -152,6 +183,37 @@ projects list
 projects create <name>
 environments list
 environments create <name>
+ontologies list
+ontologies get <ontology-id>
+ontologies create --file=<path>
+ontologies revisions <ontology-id>
+ontologies revision <ontology-id> <revision-id>
+ontologies diff <ontology-id> <from-revision-id> <to-revision-id>
+ontologies revise <ontology-id> --file=<path> --expected-version=<version> [--migration-rule=<rule-id>]
+workflow-definitions list
+workflow-definitions get <workflow-definition-id>
+workflow-definitions create --file=<publication.json>
+workflow-definitions revisions <workflow-definition-id>
+workflow-definitions revision <workflow-definition-id> <workflow-revision-id>
+workflow-definitions revise <workflow-definition-id> --file=<publication.json> --expected-version=<version>
+workflow-goals list
+workflow-goals get <workflow-goal-id>
+workflow-goals create --file=<goal.acl>
+workflow-goals plan <workflow-goal-id> <plan-revision-id>
+workflow-runs list [--limit=<1..200>]
+workflow-runs get <workflow-run-id>
+workflow-runs start <workflow-goal-id> <plan-revision-id> [--run-timeout-seconds=<1..2592000>]
+workflow-runs wait <workflow-run-id> [--wait-seconds=<0..30>]
+workflow-runs cancel <workflow-run-id> [--reason=<text>]
+workflow-runs output <workflow-run-id>
+workflow-runs history <workflow-run-id> [--cursor=<sequence>] [--limit=<1..100>]
+forms list
+forms get <form-id>
+forms create --file=<form.json>
+forms revise <form-id> --file=<form.json> --expected-version=<version>
+form-releases list <form-id>
+form-releases get <form-id> <release-id>
+form-releases publish <form-id> --expected-version=<version>
 assets list
 assets get <asset-id>
 assets create <name> <agent|mcp|skill>
@@ -161,6 +223,8 @@ asset-releases get <asset-id> <release-id>
 asset-releases select <asset-id> [version]
 asset-releases create <asset-id> <version> <commit-sha>
 asset-releases yank <asset-id> <release-id>
+asset-releases mcp-profile <asset-id> <release-id>
+asset-releases bind-mcp-profile <asset-id> <release-id> --file=<path>
 asset-releases deploy <asset-id> <release-id> --file=<path>
 asset-releases update <workload-id> <asset-id> <release-id> --file=<path>
 skill-bindings bind <workload-id> <skill-asset-id> <skill-release-id>
@@ -213,6 +277,10 @@ mcp-credentials get <credential-id>
 mcp-credentials create --expires-at=<timestamp>
 mcp-credentials rotate <credential-id> --expires-at=<timestamp> --expected-version=<version>
 mcp-credentials revoke <credential-id> --expected-version=<version>
+mcp-routes list
+mcp-routes get <route-id>
+mcp-routes create --file=<path>
+mcp-routes revise <route-id> --file=<path>
 routes list
 routes get <route-id>
 routes publish <gateway-scope-id> <workload-revision-id> <domain-claim-id> <hostname> <path-prefix> <port-name>
@@ -233,6 +301,53 @@ version when no version is supplied. Draft and yanked releases are never
 selected, while `asset-releases get` retains exact access to yanked identities
 for pinned deployments. Skill releases publish the exact reachable hosted-Git
 commit as an immutable content-addressed bundle without a BuildRun.
+
+`asset-releases bind-mcp-profile` binds one canonical immutable MCP Service
+Profile to an exact published MCP OCI release. It requires `--file` plus a
+caller-owned idempotency key and sends the bounded UTF-8 bytes unchanged as
+`application/vnd.a3s.acl`; Cloud remains the sole parser and canonical digest
+authority. `asset-releases mcp-profile` reads the resulting profile. An
+identical canonical binding is a replay/no-op, while a different profile for
+the same release is rejected as immutable.
+
+`mcp-routes create` and `mcp-routes revise` submit the separately mutable Edge
+route-policy ACL with a caller-owned idempotency key. List/get expose the
+canonical policy and revision. Cloud remains authoritative for Service-profile
+admission, tenancy, grant generations, domain and Workload identity, audit,
+Outbox, reconciliation, and the single complete Gateway publication path; the
+CLI does not compile or publish Gateway state.
+
+The `ontologies` commands expose the one Workflow-owned, project-scoped
+Ontology lifecycle. Create and revise submit bounded closed A3S ACL with a
+caller-owned idempotency key; list/get and revision list/get/diff read the
+authoritative aggregate or immutable lineage. Cloud computes deterministic
+diffs, infers compatible migration policy, validates explicit breaking
+migrations against the target ACL, and persists through A3S ORM. The CLI does
+not parse Ontology ACL, store revisions, maintain a graph index, or define a
+second migration mechanism.
+
+`workflow-definitions` creates, revises, lists, and reads the project-scoped
+aggregate and immutable revision lineage, including exact canonical payloads.
+`workflow-goals` creates one immutable Goal from closed ACL and lists/reads the
+Goal and deterministic Plan revision. Cloud owns digest validation,
+compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
+persistence. `workflow-runs` starts and cancels the exact Plan idempotently,
+lists and reads current semantic step projections, waits for bounded terminal
+progress, returns completed output, and pages redacted A3S Flow history. The
+minimal runtime supports Workflow-local `input`, `transform`, `branch`, and
+`output`; HumanTask, service/finite-task, typed capability, and compensation
+surfaces remain unavailable. The CLI does not retain a graph, compile or run a
+plan locally, start a provider, or recreate the retired standalone Workflow
+control plane.
+
+`forms` creates, revises, lists, and reads project-scoped canonical native Form
+drafts. `form-releases` publishes, lists, and reads immutable releases carrying
+the exact normalized document, owner-compiled plan, compiler/schema identity,
+content digest, and portable release reference. Writes require a caller-owned
+idempotency key; revise and publish also require the current aggregate version.
+Cloud owns tenancy, compilation, optimistic concurrency, audit, Outbox, and
+A3S ORM persistence. The CLI does not retain a draft store, compile a Form,
+validate submissions, or create a second Form authority.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing

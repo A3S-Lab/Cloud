@@ -1,0 +1,39 @@
+workflow {
+  schema = "cloud.workflow.definition.v1"
+  name = "Support triage"
+  description = "Deterministic W0.1 Workflow contract fixture"
+
+  step "input" {
+    label = "Input"
+    kind = "input"
+    configuration_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    input_schema_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    output_schema_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+
+  step "triage" {
+    label = "Triage"
+    kind = "transform"
+    configuration_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    input_schema_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    output_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  }
+
+  step "output" {
+    label = "Output"
+    kind = "output"
+    configuration_digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    input_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    output_schema_digest = "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+  }
+
+  edge "input-triage" {
+    source = "input"
+    target = "triage"
+  }
+
+  edge "triage-output" {
+    source = "triage"
+    target = "output"
+  }
+}

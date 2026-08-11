@@ -12,6 +12,10 @@ pub(super) const PROJECT_TOKEN: &str =
     "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 pub(super) const EXPIRING_TOKEN: &str =
     "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+pub(super) const SERVICE_MEMBER_TOKEN: &str =
+    "a3s_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+pub(super) const PRIVILEGE_ESCALATION_TOKEN: &str =
+    "a3s_0000000000000000000000000000000000000000000000000000000000000000";
 
 pub(super) struct EnvironmentOverride {
     name: &'static str,
@@ -232,6 +236,16 @@ pub(super) fn config() -> CloudConfig {
         operations: OperationsConfig {
             reconcile_interval_ms: 1_000,
             lease_ms: 5_000,
+        },
+        human_tasks: HumanTasksConfig {
+            coordination_poll_interval_ms: 100,
+            coordination_batch_size: 100,
+            resume_poll_interval_ms: 100,
+            resume_batch_size: 100,
+            resume_lease_ms: 5_000,
+            flow_operation_timeout_ms: 1_000,
+            retry_initial_ms: 100,
+            retry_max_ms: 5_000,
         },
         deployments: DeploymentsConfig {
             reconcile_interval_ms: 1_000,

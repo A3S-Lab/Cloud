@@ -187,9 +187,9 @@ impl IBuildSourceResolver for PostgresBuildSourceResolver {
 fn map_source_repository_error(error: RepositoryError) -> BuildSourceResolutionError {
     match error {
         RepositoryError::NotFound => BuildSourceResolutionError::NotFound,
-        RepositoryError::Conflict(_) | RepositoryError::IdempotencyConflict => {
-            BuildSourceResolutionError::Conflict
-        }
+        RepositoryError::Conflict(_)
+        | RepositoryError::Forbidden(_)
+        | RepositoryError::IdempotencyConflict => BuildSourceResolutionError::Conflict,
         RepositoryError::Storage(message) => BuildSourceResolutionError::Storage(message),
     }
 }

@@ -4,6 +4,7 @@ mod gateway_certificate_response;
 mod gateway_scope_mutation_response;
 mod gateway_scope_response;
 mod mcp_credential_response;
+mod mcp_route_policy_response;
 mod route_response;
 
 pub use domain_claim_mutation_response::DomainClaimMutationResponse;
@@ -14,4 +15,5 @@ pub use gateway_scope_response::GatewayScopeResponse;
 pub use mcp_credential_response::{
     McpCredentialDeliveryResponse, McpCredentialMutationResponse, McpCredentialResponse,
 };
+pub use mcp_route_policy_response::{McpRoutePolicyMutationResponse, McpRoutePolicyResponse};
 pub use route_response::{RoutePublicationResponse, RouteResponse};

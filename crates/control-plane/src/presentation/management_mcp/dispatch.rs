@@ -5,26 +5,77 @@ use super::arguments::{
 };
 use super::artifacts::BuildRunMutationArguments;
 use super::catalog::ManagementTool;
+use super::forms::{
+    CreateFormDraftArguments, FormDraftArguments, FormReleaseArguments, ListFormDraftsArguments,
+    PublishFormReleaseArguments, ReviseFormDraftArguments,
+};
+use super::identity::{
+    ChangeMembershipRoleArguments, CreateServiceMembershipArguments, MembershipArguments,
+    RevokeMembershipArguments,
+};
+use super::ontology::{
+    CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
+    OntologyRevisionArguments, ReviseOntologyArguments,
+};
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
+use super::workflow::{
+    CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
+    ListProjectWorkflowArguments, ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments,
+    StartWorkflowRunArguments, WaitWorkflowRunArguments, WorkflowDefinitionArguments,
+    WorkflowGoalArguments, WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
+    WorkflowRunArguments, WorkflowRunHistoryArguments,
+};
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
-use super::{artifacts, edge, nodes, operations, projects, search, workloads};
-use crate::modules::shared_kernel::domain::OrganizationId;
+use super::{
+    artifacts, edge, forms, identity, nodes, ontology, operations, projects, search, workflow,
+    workloads,
+};
+use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ManagementExecutionContext {
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    actor_is_platform_admin: bool,
+    request_id: Uuid,
+}
+
+impl ManagementExecutionContext {
+    pub(super) const fn new(
+        organization_id: OrganizationId,
+        actor_principal_id: PrincipalId,
+        actor_is_platform_admin: bool,
+        request_id: Uuid,
+    ) -> Self {
+        Self {
+            organization_id,
+            actor_principal_id,
+            actor_is_platform_admin,
+            request_id,
+        }
+    }
+}
+
 pub async fn execute(
     tool: ManagementTool,
     command_bus: Arc<CommandBus>,
     query_bus: Arc<QueryBus>,
-    organization_id: OrganizationId,
+    context: ManagementExecutionContext,
     arguments: Value,
-    request_id: Uuid,
 ) -> Option<Result<Value>> {
+    let ManagementExecutionContext {
+        organization_id,
+        actor_principal_id,
+        actor_is_platform_admin,
+        request_id,
+    } = context;
     let result = match tool {
         ManagementTool::EnvironmentsCreate => {
             let arguments = arguments::parse::<CreateEnvironmentArguments>(arguments).ok()?;
@@ -34,6 +85,50 @@ pub async fn execute(
             let arguments = arguments::parse::<ProjectArguments>(arguments).ok()?;
             projects::list_environments(query_bus, organization_id, arguments, request_id).await
         }
+        ManagementTool::MembershipsList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            identity::list_memberships(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::MembershipsGet => {
+            let arguments = arguments::parse::<MembershipArguments>(arguments).ok()?;
+            identity::get_membership(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::ServiceMembershipsCreate => {
+            let arguments = arguments::parse::<CreateServiceMembershipArguments>(arguments).ok()?;
+            identity::create_service_membership(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipsChangeRole => {
+            let arguments = arguments::parse::<ChangeMembershipRoleArguments>(arguments).ok()?;
+            identity::change_membership_role(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipsRevoke => {
+            let arguments = arguments::parse::<RevokeMembershipArguments>(arguments).ok()?;
+            identity::revoke_membership(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::ProjectsCreate => {
             let arguments = arguments::parse::<CreateProjectArguments>(arguments).ok()?;
             projects::create_project(command_bus, organization_id, arguments, request_id).await
@@ -41,6 +136,202 @@ pub async fn execute(
         ManagementTool::ProjectsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
             projects::list_projects(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::FormsCreate => {
+            let arguments = arguments::parse::<CreateFormDraftArguments>(arguments).ok()?;
+            forms::create_draft(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::FormsRevise => {
+            let arguments = arguments::parse::<ReviseFormDraftArguments>(arguments).ok()?;
+            forms::revise_draft(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::FormsList => {
+            let arguments = arguments::parse::<ListFormDraftsArguments>(arguments).ok()?;
+            forms::list_drafts(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::FormsGet => {
+            let arguments = arguments::parse::<FormDraftArguments>(arguments).ok()?;
+            forms::get_draft(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::FormReleasesList => {
+            let arguments = arguments::parse::<FormDraftArguments>(arguments).ok()?;
+            forms::list_releases(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::FormReleasesGet => {
+            let arguments = arguments::parse::<FormReleaseArguments>(arguments).ok()?;
+            forms::get_release(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::FormReleasesPublish => {
+            let arguments = arguments::parse::<PublishFormReleaseArguments>(arguments).ok()?;
+            forms::publish_release(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::OntologiesCreate => {
+            let arguments = arguments::parse::<CreateOntologyArguments>(arguments).ok()?;
+            ontology::create_ontology(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::OntologiesRevise => {
+            let arguments = arguments::parse::<ReviseOntologyArguments>(arguments).ok()?;
+            ontology::revise_ontology(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::OntologiesList => {
+            let arguments = arguments::parse::<ListOntologiesArguments>(arguments).ok()?;
+            ontology::list_ontologies(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologiesGet => {
+            let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
+            ontology::get_ontology(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologyRevisionsList => {
+            let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
+            ontology::list_revisions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologyRevisionsGet => {
+            let arguments = arguments::parse::<OntologyRevisionArguments>(arguments).ok()?;
+            ontology::get_revision(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::OntologyRevisionsDiff => {
+            let arguments = arguments::parse::<OntologyDiffArguments>(arguments).ok()?;
+            ontology::diff_revisions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowDefinitionsCreate => {
+            let arguments =
+                arguments::parse::<CreateWorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::create_definition(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowDefinitionsRevise => {
+            let arguments =
+                arguments::parse::<ReviseWorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::revise_definition(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowDefinitionsList => {
+            let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
+            workflow::list_definitions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowDefinitionsGet => {
+            let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::get_definition(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRevisionsList => {
+            let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
+            workflow::list_revisions(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRevisionsGet => {
+            let arguments = arguments::parse::<WorkflowRevisionArguments>(arguments).ok()?;
+            workflow::get_revision(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowGoalsCreate => {
+            let arguments = arguments::parse::<CreateWorkflowGoalArguments>(arguments).ok()?;
+            workflow::create_goal(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowGoalsList => {
+            let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
+            workflow::list_goals(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowGoalsGet => {
+            let arguments = arguments::parse::<WorkflowGoalArguments>(arguments).ok()?;
+            workflow::get_goal(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowPlanRevisionsGet => {
+            let arguments = arguments::parse::<WorkflowPlanRevisionArguments>(arguments).ok()?;
+            workflow::get_plan_revision(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunsStart => {
+            let arguments = arguments::parse::<StartWorkflowRunArguments>(arguments).ok()?;
+            workflow::start_run(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowRunsCancel => {
+            let arguments = arguments::parse::<CancelWorkflowRunArguments>(arguments).ok()?;
+            workflow::cancel_run(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::WorkflowRunsList => {
+            let arguments = arguments::parse::<ListWorkflowRunsArguments>(arguments).ok()?;
+            workflow::list_runs(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunsGet => {
+            let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
+            workflow::get_run(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunsWait => {
+            let arguments = arguments::parse::<WaitWorkflowRunArguments>(arguments).ok()?;
+            workflow::wait_run(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunOutputGet => {
+            let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
+            workflow::get_run_output(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::WorkflowRunHistoryGet => {
+            let arguments = arguments::parse::<WorkflowRunHistoryArguments>(arguments).ok()?;
+            workflow::get_run_history(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;

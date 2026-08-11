@@ -3,14 +3,18 @@ mod artifacts;
 mod catalog;
 mod dispatch;
 mod edge;
+mod forms;
 mod handler;
+mod identity;
 mod module;
 mod nodes;
+mod ontology;
 mod operations;
 mod projects;
 mod protocol;
 mod search;
 mod tool_result;
+mod workflow;
 mod workloads;
 
 pub use module::ManagementMcpModule;

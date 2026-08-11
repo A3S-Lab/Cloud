@@ -1,5 +1,6 @@
 use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use a3s_boot::{BootError, Result};
 use serde_json::{json, Map, Value};
 
@@ -98,6 +99,57 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             }),
         );
     }
+    if method == "post" && is_ontology_revision_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current Ontology aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-migration-rule",
+                "in": "header",
+                "required": false,
+                "description": "Target ACL migration-rule ID. Required only for a breaking structural diff.",
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 96,
+                    "pattern": "^[A-Za-z0-9_-]+$"
+                }
+            }),
+        );
+    }
+    if method == "post" && is_workflow_revision_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current WorkflowDefinition aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
+    if method == "post" && is_form_version_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current Form draft aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
     if path == "/webhooks/github" {
         for name in ["x-github-event", "x-github-delivery", "x-hub-signature-256"] {
             upsert_parameter(
@@ -182,13 +234,39 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
         && (path.ends_with("/operations")
             || path.ends_with("/build-runs")
             || path.ends_with("/agent-conversations")
-            || path.ends_with("/executions"))
+            || path.ends_with("/executions")
+            || path.ends_with("/workflow-runs"))
     {
         upsert_parameter(
             parameters,
             json!({
                 "name": "limit", "in": "query", "required": false,
                 "schema": { "type": "integer", "minimum": 1, "maximum": 200 }
+            }),
+        );
+    }
+    if method == "get" && path.ends_with("/workflow-runs/{workflow_run_id}/wait") {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "timeoutSeconds", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 0, "maximum": 30, "default": 30 }
+            }),
+        );
+    }
+    if method == "get" && path.ends_with("/workflow-runs/{workflow_run_id}/history") {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "afterSequence", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 0, "default": 0 }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 100 }
             }),
         );
     }
@@ -270,15 +348,162 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    content.insert(
-        "application/json".into(),
-        json!({ "schema": { "type": "object", "additionalProperties": true } }),
-    );
-    if accepts_acl(path) {
+    if is_workflow_run_start_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["workflowGoalId", "planRevisionId"],
+                    "properties": {
+                        "workflowGoalId": { "type": "string", "format": "uuid" },
+                        "planRevisionId": { "type": "string", "format": "uuid" },
+                        "timeoutSeconds": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 2592000,
+                            "default": 86400
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_workflow_run_cancel_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "reason": { "type": "string", "minLength": 1, "maxLength": 4096 }
+                    }
+                }
+            }),
+        );
+    } else if is_form_draft_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "document"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                        },
+                        "description": {
+                            "type": "string",
+                            "maxLength": 4096,
+                            "default": ""
+                        },
+                        "document": {
+                            "type": "object",
+                            "description": "A native A3S Form document. Canonicalization and semantic validation remain owned by A3S Form.",
+                            "x-a3s-max-canonical-bytes": CLOUD_FORM_DOCUMENT_MAX_BYTES
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_workflow_goal_mutation_path(path) {
         content.insert(
             "application/vnd.a3s.acl".into(),
-            json!({ "schema": { "type": "string", "minLength": 1 } }),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 262144
+                }
+            }),
         );
+    } else if is_workflow_definition_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["definitionAcl", "payloads"],
+                    "properties": {
+                        "definitionAcl": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 1048576
+                        },
+                        "payloads": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2048,
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["kind", "acl"],
+                                "properties": {
+                                    "kind": {
+                                        "type": "string",
+                                        "enum": ["configuration", "data_schema", "policy"]
+                                    },
+                                    "acl": {
+                                        "type": "string",
+                                        "minLength": 1,
+                                        "maxLength": 262144
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_ontology_mutation_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1048576
+                }
+            }),
+        );
+    } else if is_mcp_service_profile_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 65536
+                }
+            }),
+        );
+    } else if is_mcp_route_policy_mutation_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 524288
+                }
+            }),
+        );
+    } else {
+        content.insert(
+            "application/json".into(),
+            json!({ "schema": { "type": "object", "additionalProperties": true } }),
+        );
+        if accepts_acl(path) {
+            content.insert(
+                "application/vnd.a3s.acl".into(),
+                json!({ "schema": { "type": "string", "minLength": 1 } }),
+            );
+        }
     }
     operation.insert(
         "requestBody".into(),
@@ -304,7 +529,14 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         responses.insert(status.to_string(), response_ref(&component));
     }
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
-    if asset_git_request_media_type(path).is_some() {
+    if asset_git_request_media_type(path).is_some()
+        || (method == "post"
+            && (is_ontology_mutation_path(path)
+                || is_workflow_mutation_path(path)
+                || is_form_draft_mutation_path(path)
+                || is_mcp_service_profile_path(path)
+                || is_mcp_route_policy_mutation_path(path)))
+    {
         error_statuses.extend([413, 415]);
     }
     for status in error_statuses {
@@ -388,7 +620,10 @@ fn operation_id(method: &str, path: &str) -> String {
 fn operation_tag(path: &str) -> &'static str {
     if path.starts_with("/health") || path == "/platform" {
         "Platform"
-    } else if path.starts_with("/bootstrap") || path.contains("api-tokens") {
+    } else if path.starts_with("/bootstrap")
+        || path.contains("api-tokens")
+        || path.contains("memberships")
+    {
         "Identity"
     } else if path.starts_with("/node-control")
         || path.contains("/nodes")
@@ -413,10 +648,15 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("domain-claims")
         || path.contains("gateway-")
         || path.contains("mcp-credentials")
+        || path.contains("mcp-route-policies")
     {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
         "Workloads"
+    } else if path.contains("ontologies") || path.contains("workflow-") {
+        "Workflow"
+    } else if path.contains("/forms") {
+        "Forms"
     } else if path.contains("projects") || path.contains("environments") {
         "Projects"
     } else if path.contains("operations") {
@@ -449,6 +689,7 @@ fn request_has_no_body(path: &str) -> bool {
         || path.ends_with("/agent-conversations")
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || path.ends_with("/source-connections/github")
+        || is_form_release_mutation_path(path)
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
 }
 
@@ -464,6 +705,8 @@ fn asynchronous_mutation(path: &str) -> bool {
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
+        || is_workflow_run_start_path(path)
+        || is_workflow_run_cancel_path(path)
 }
 
 fn creates_resource(path: &str) -> bool {
@@ -472,12 +715,21 @@ fn creates_resource(path: &str) -> bool {
         || path == "/organizations"
         || path.ends_with("/projects")
         || path.ends_with("/environments")
+        || path.ends_with("/ontologies")
+        || is_ontology_revision_mutation_path(path)
+        || path.ends_with("/workflow-definitions")
+        || is_workflow_revision_mutation_path(path)
+        || path.ends_with("/workflow-goals")
+        || is_form_mutation_path(path)
         || path.ends_with("/api-tokens")
+        || path.ends_with("/memberships")
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")
         || path.ends_with("/mcp-credentials")
         || (path.contains("/mcp-credentials/") && path.ends_with("/rotate"))
+        || path.ends_with("/mcp-route-policies")
+        || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
         || path.ends_with("/source-revisions")
@@ -485,7 +737,71 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/source-connections/github")
         || path.ends_with("/assets")
         || path.ends_with("/releases")
+        || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
+}
+
+fn is_mcp_service_profile_path(path: &str) -> bool {
+    path.ends_with("/mcp-service-profile")
+        && path.contains("/assets/{asset_id}/releases/{asset_release_id}/")
+}
+
+fn is_ontology_mutation_path(path: &str) -> bool {
+    path.ends_with("/ontologies") || is_ontology_revision_mutation_path(path)
+}
+
+fn is_ontology_revision_mutation_path(path: &str) -> bool {
+    path.contains("/ontologies/{ontology_id}/") && path.ends_with("/revisions")
+}
+
+fn is_workflow_mutation_path(path: &str) -> bool {
+    is_workflow_definition_mutation_path(path)
+        || is_workflow_goal_mutation_path(path)
+        || is_workflow_run_start_path(path)
+        || is_workflow_run_cancel_path(path)
+}
+
+fn is_workflow_run_start_path(path: &str) -> bool {
+    path.contains("/projects/{project_id}/") && path.ends_with("/workflow-runs")
+}
+
+fn is_workflow_run_cancel_path(path: &str) -> bool {
+    path.contains("/workflow-runs/{workflow_run_id}/") && path.ends_with("/cancel")
+}
+
+fn is_workflow_definition_mutation_path(path: &str) -> bool {
+    path.ends_with("/workflow-definitions") || is_workflow_revision_mutation_path(path)
+}
+
+fn is_workflow_revision_mutation_path(path: &str) -> bool {
+    path.contains("/workflow-definitions/{workflow_definition_id}/") && path.ends_with("/revisions")
+}
+
+fn is_workflow_goal_mutation_path(path: &str) -> bool {
+    path.ends_with("/workflow-goals")
+}
+
+fn is_form_mutation_path(path: &str) -> bool {
+    is_form_draft_mutation_path(path) || is_form_release_mutation_path(path)
+}
+
+fn is_form_draft_mutation_path(path: &str) -> bool {
+    path.ends_with("/forms")
+        || (path.contains("/forms/{form_id}/") && path.ends_with("/draft-revisions"))
+}
+
+fn is_form_release_mutation_path(path: &str) -> bool {
+    path.contains("/forms/{form_id}/") && path.ends_with("/releases")
+}
+
+fn is_form_version_mutation_path(path: &str) -> bool {
+    (path.contains("/forms/{form_id}/") && path.ends_with("/draft-revisions"))
+        || is_form_release_mutation_path(path)
+}
+
+fn is_mcp_route_policy_mutation_path(path: &str) -> bool {
+    path.ends_with("/mcp-route-policies")
+        || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
 }
 
 fn is_asset_git_path(path: &str) -> bool {

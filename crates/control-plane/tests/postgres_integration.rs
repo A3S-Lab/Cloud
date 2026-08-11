@@ -1,12 +1,12 @@
-use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod, QueueOptions};
 use a3s_cloud_control_plane::app::build_application_with_source_resolver;
 use a3s_cloud_control_plane::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
-    EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
-    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
+    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
-use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
+use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, ClaimAssetGitWriteRecovery,
@@ -17,9 +17,9 @@ use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    FlowOperationEngine, IOperationRepository, OperationRequest, OperationStatus, OperationSubject,
-    PostgresOperationRepository, RebuildOperationProjectionsHandler, ReconcileOperationsHandler,
-    WorkflowIdentity,
+    FlowOperationEngine, IOperationRepository, OperationReconciler, OperationRequest,
+    OperationStatus, OperationSubject, PostgresOperationRepository,
+    RebuildOperationProjectionsHandler, ReconcileOperationsHandler, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, IdempotencyRequest, OperationId, OrganizationId, ProjectId, ResourceName,
@@ -32,8 +32,13 @@ use a3s_cloud_control_plane::{
     build_application, infrastructure::connect_and_migrate, CloudConfig,
 };
 use a3s_event::{NatsConfig, StorageType};
-use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
-use a3s_orm::{sql_query, Database, Migration, Migrator, PostgresDialect, PostgresExecutor};
+use a3s_flow::{
+    FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation, WorkflowRunStatus,
+    WorkflowSpec,
+};
+use a3s_orm::{
+    sql_query, Database, Migration, Migrator, PostgresDialect, PostgresError, PostgresExecutor,
+};
 use async_trait::async_trait;
 use chrono::Utc;
 use futures_util::FutureExt;
@@ -65,6 +70,8 @@ mod edge_support;
 mod executions_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
+#[path = "support/forms.rs"]
+mod forms_support;
 #[path = "support/g0_external_release.rs"]
 mod g0_external_release_support;
 #[path = "support/gateway_replica_recovery.rs"]
@@ -73,6 +80,8 @@ mod gateway_replica_recovery_support;
 mod gateway_rollouts_support;
 #[path = "support/github_connection.rs"]
 mod github_connection_support;
+#[path = "support/human_tasks.rs"]
+mod human_tasks_support;
 #[path = "support/mcp_route_policies.rs"]
 mod mcp_route_policies_support;
 #[path = "support/postgres_fixture.rs"]
@@ -83,12 +92,33 @@ mod resource_claims_support;
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
 mod source_subscription_support;
+#[path = "support/workflow_run_process_death.rs"]
+mod workflow_run_process_death_support;
 #[path = "support/workload_rollback.rs"]
 mod workload_rollback_support;
 #[path = "support/workloads.rs"]
 mod workloads_support;
 
 use postgres_fixture::*;
+
+const ONTOLOGY_ACL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/w0.1/ontology.acl"
+));
+
+fn integration_breaking_ontology_acl(compatible_acl: &str) -> String {
+    let changed = compatible_acl.replacen(
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        1,
+    );
+    let body = changed
+        .strip_suffix("}\n")
+        .expect("public Ontology fixture must end with its root block");
+    format!(
+        "{body}\n  rule \"migrate_ticket_v2\" {{\n    label = \"Migrate ticket v2\"\n    kind = \"migration\"\n    expression_digest = \"sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"\n  }}\n}}\n"
+    )
+}
 
 struct OfflineCommitSourceResolver;
 
@@ -125,6 +155,14 @@ async fn build_flow_postgres_process_death_probe() {
         .expect("run persistent Build Flow process-death probe");
 }
 
+#[tokio::test]
+#[ignore = "private subprocess used only by the WorkflowRun process-death gate"]
+async fn workflow_run_postgres_process_death_probe() {
+    workflow_run_process_death_support::run_probe()
+        .await
+        .expect("run WorkflowRun process-death probe");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_boundary() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -136,6 +174,19 @@ async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_bo
     )
     .await
     .expect("persistent Build Flow process-death gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_workflow_run_survives_api_and_worker_process_death() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        workflow_run_process_death_support::exercise_process_death_matrix,
+    )
+    .await
+    .expect("WorkflowRun API and worker process-death gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -184,6 +235,52 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
     run_isolated_postgres(&admin_url, exercise_postgres_foundation).await
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_form_lifecycle_is_atomic_tenant_scoped_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, forms_support::exercise_form_persistence)
+        .await
+        .expect("PostgreSQL Form lifecycle gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_human_task_lifecycle_is_atomic_tenant_scoped_and_replay_safe() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        human_tasks_support::exercise_human_task_persistence,
+    )
+    .await
+    .expect("PostgreSQL HumanTask lifecycle gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_human_task_flow_closes_the_authority_bound_decision_loop() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        human_tasks_support::exercise_human_task_flow_end_to_end,
+    )
+    .await
+    .expect("PostgreSQL + A3S Flow HumanTask decision-loop gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn identity_migration_backfills_legacy_credentials_and_ownerless_organizations() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_identity_migration_backfill)
+        .await
+        .expect("legacy Identity migration gate");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_hosted_draft_recovery_is_atomic() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -192,6 +289,16 @@ async fn postgres_hosted_draft_recovery_is_atomic() {
     run_isolated_postgres(&admin_url, exercise_postgres_hosted_draft_recovery)
         .await
         .expect("hosted draft recovery PostgreSQL gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_boot_flow_task_manager_drains_and_surfaces_terminal_failures() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_boot_flow_task_manager)
+        .await
+        .expect("Boot-backed Flow task manager PostgreSQL gate");
 }
 
 async fn run_isolated_postgres<F, Fut>(
@@ -228,6 +335,376 @@ where
             std::panic::resume_unwind(panic_payload)
         }
     }
+}
+
+#[derive(Clone, Copy)]
+struct ScheduledBootRuntime;
+
+#[async_trait]
+impl FlowRuntime for ScheduledBootRuntime {
+    async fn run_workflow(
+        &self,
+        invocation: WorkflowInvocation,
+    ) -> a3s_flow::Result<RuntimeCommand> {
+        let context = invocation.context();
+        if context.wait_completed("boot-due") {
+            return Ok(context.complete(json!({"queue": "a3s-boot"})));
+        }
+        Ok(context.wait_until("boot-due", Utc::now() - chrono::Duration::seconds(1)))
+    }
+
+    async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<Value> {
+        Err(FlowError::Runtime(format!(
+            "scheduled Boot test does not execute step {}",
+            invocation.step_name
+        )))
+    }
+}
+
+async fn exercise_boot_flow_task_manager(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let queue_options = QueueOptions::new()
+        .with_poll_interval(Duration::from_millis(5))
+        .with_lease_duration(Duration::from_millis(200));
+    let flow = FlowInfrastructure::connect_with_queue_options(
+        &url,
+        Arc::new(ScheduledBootRuntime),
+        queue_options,
+    )
+    .await?;
+    let run_id = "cloud-boot-flow-success";
+    flow.engine()
+        .start_with_id(
+            run_id,
+            WorkflowSpec::rust_embedded("cloud.boot-flow-test", "1", "cloud", "run"),
+            json!({}),
+        )
+        .await?;
+    assert_eq!(
+        flow.engine().snapshot(run_id).await?.status,
+        WorkflowRunStatus::Suspended
+    );
+    let coordinator = boot_flow_coordinator(&executor, &flow)?;
+    let report = coordinator.run_once().await?;
+    assert_eq!(report.enqueued_tasks, 1);
+    assert_eq!(report.handled_tasks, 1);
+    let completed = flow.engine().snapshot(run_id).await?;
+    assert_eq!(completed.status, WorkflowRunStatus::Completed);
+    assert_eq!(completed.output, Some(json!({"queue": "a3s-boot"})));
+    assert!(flow.health().await.is_up());
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    for relation in [
+        "a3s_flow.a3s_orm_migrations",
+        "a3s_flow.flow_events",
+        "a3s_boot.a3s_orm_migrations",
+        "a3s_boot.boot_queue_jobs",
+    ] {
+        let registered = database
+            .fetch_one_as(
+                sql_query::<Option<String>>("select to_regclass(")
+                    .bind(relation)
+                    .append(")::text"),
+            )
+            .await?;
+        assert_eq!(registered.as_deref(), Some(relation));
+    }
+
+    let failing_run_id = "cloud-boot-flow-failure";
+    flow.engine()
+        .start_with_id(
+            failing_run_id,
+            WorkflowSpec::rust_embedded("cloud.boot-flow-failure", "1", "cloud", "run"),
+            json!({}),
+        )
+        .await?;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "create function reject_boot_flow_wait_completion() returns trigger language plpgsql as $$
+               begin
+                 if new.run_id = 'cloud-boot-flow-failure'
+                    and new.event_json::jsonb ->> 'type' = 'wait_completed' then
+                   raise exception 'injected Boot Flow terminal failure';
+                 end if;
+                 return new;
+               end
+             $$;
+             create trigger reject_boot_flow_wait_completion
+               before insert on a3s_flow.flow_events
+               for each row execute function reject_boot_flow_wait_completion();",
+        )
+        .await?;
+    let failure = boot_flow_coordinator(&executor, &flow)?
+        .run_once()
+        .await
+        .expect_err("retry exhaustion must fail the coordinator cycle");
+    assert!(matches!(
+        &failure,
+        a3s_cloud_control_plane::infrastructure::FlowCoordinatorError::TerminalTaskFailures {
+            count: 1,
+            ..
+        }
+    ));
+    assert!(
+        failure
+            .to_string()
+            .contains("A3S Flow task handling failed"),
+        "unexpected terminal task failure: {failure}"
+    );
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(
+            "drop trigger reject_boot_flow_wait_completion on a3s_flow.flow_events;
+             drop function reject_boot_flow_wait_completion();",
+        )
+        .await?;
+    let queue_states = database
+        .fetch_one_as(sql_query::<(i64, i64, i64, i64)>(
+            "select count(*) filter (where state = 'pending'), \
+                    count(*) filter (where state = 'active'), \
+                    count(*) filter (where state = 'failed'), \
+                    coalesce(max(attempts_made) filter (where state = 'failed'), 0) \
+             from a3s_boot.boot_queue_jobs \
+             where queue_name = 'cloud-operations'",
+        ))
+        .await?;
+    assert_eq!(queue_states, (0, 0, 1, 4));
+    let health = flow.health().await;
+    assert!(!health.is_up());
+    assert_eq!(health.details["failedTasks"], 1);
+    Ok(())
+}
+
+fn boot_flow_coordinator(
+    executor: &PostgresExecutor,
+    flow: &FlowInfrastructure,
+) -> Result<FlowOperationCoordinator, Box<dyn std::error::Error>> {
+    let operations: Arc<dyn IOperationRepository> =
+        Arc::new(PostgresOperationRepository::new(executor.clone()));
+    let reconciler = OperationReconciler::new(
+        Arc::new(ReconcileOperationsHandler::new(
+            operations,
+            Arc::new(FlowOperationEngine::new(flow.engine())),
+        )),
+        Duration::from_millis(5),
+        100,
+    );
+    Ok(FlowOperationCoordinator::new(
+        reconciler,
+        flow,
+        Duration::from_millis(5),
+        Duration::from_secs(2),
+    )?)
+}
+
+async fn exercise_identity_migration_backfill(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = PostgresExecutor::connect_no_tls(&url, 2)?;
+    executor
+        .pool()
+        .get()
+        .await?
+        .batch_execute(concat!(
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/001_foundation.sql"
+            )),
+            "\n",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/004_api_tokens.sql"
+            ))
+        ))
+        .await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let platform_organization_id = Uuid::now_v7();
+    let delegated_organization_id = Uuid::now_v7();
+    let ownerless_organization_id = Uuid::now_v7();
+    let created_at = Utc::now();
+    for (id, name, name_key) in [
+        (platform_organization_id, "Platform", "platform"),
+        (delegated_organization_id, "Delegated", "delegated"),
+        (ownerless_organization_id, "Ownerless", "ownerless"),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+                )
+                .bind(id)
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name_key)
+                .append(", 1, ")
+                .bind(created_at)
+                .append(")"),
+            )
+            .await?;
+    }
+
+    let expired_platform_token_id = Uuid::now_v7();
+    let platform_token_id = Uuid::now_v7();
+    let delegated_owner_token_id = Uuid::now_v7();
+    let delegated_admin_token_id = Uuid::now_v7();
+    let delegated_member_token_id = Uuid::now_v7();
+    for (
+        id,
+        organization_id,
+        name,
+        name_key,
+        token_hash,
+        scopes,
+        token_created_at,
+        expires_at,
+        revoked_at,
+    ) in [
+        (
+            expired_platform_token_id,
+            platform_organization_id,
+            "Expired platform administrator",
+            "expired-platform-administrator",
+            "legacy-expired-platform-token-digest",
+            json!(["platform:write", "token:write"]),
+            created_at - chrono::Duration::seconds(2),
+            Some(created_at - chrono::Duration::seconds(1)),
+            None,
+        ),
+        (
+            platform_token_id,
+            platform_organization_id,
+            "Platform administrator",
+            "platform-administrator",
+            "legacy-platform-token-digest",
+            json!(["platform:write", "token:write"]),
+            created_at,
+            None,
+            None,
+        ),
+        (
+            delegated_owner_token_id,
+            delegated_organization_id,
+            "Delegated owner",
+            "delegated-owner",
+            "legacy-delegated-owner-token-digest",
+            json!(["token:write"]),
+            created_at,
+            None,
+            Some(created_at + chrono::Duration::seconds(1)),
+        ),
+        (
+            delegated_admin_token_id,
+            delegated_organization_id,
+            "Delegated administrator",
+            "delegated-administrator",
+            "legacy-delegated-administrator-token-digest",
+            json!(["token:write"]),
+            created_at + chrono::Duration::seconds(2),
+            None,
+            None,
+        ),
+        (
+            delegated_member_token_id,
+            delegated_organization_id,
+            "Delegated member",
+            "delegated-member",
+            "legacy-delegated-member-token-digest",
+            json!(["cloud:read"]),
+            created_at + chrono::Duration::seconds(3),
+            None,
+            None,
+        ),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into api_tokens (id, organization_id, name, name_key, token_hash, scopes, aggregate_version, created_at, expires_at, revoked_at) values (",
+                )
+                .bind(id)
+                .append(", ")
+                .bind(organization_id)
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name_key)
+                .append(", ")
+                .bind(token_hash)
+                .append(", ")
+                .bind(scopes)
+                .append(", 1, ")
+                .bind(token_created_at)
+                .append(", ")
+                .bind(expires_at)
+                .append(", ")
+                .bind(revoked_at)
+                .append(")"),
+            )
+            .await?;
+    }
+
+    Migrator::new(executor.clone())
+        .run([Migration::new(
+            "074",
+            "Identity principals and organization memberships",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/074_identity_principals_and_memberships.sql"
+            )),
+        )])
+        .await?;
+
+    let authority_counts = database
+        .fetch_one_as(sql_query::<(i64, i64, i64)>(
+            "select (select count(*) from identity_principals), (select count(*) from organization_memberships), (select count(*) from api_tokens where principal_id = id)",
+        ))
+        .await?;
+    assert_eq!(authority_counts, (5, 6, 5));
+    let delegated_roles = database
+        .fetch_one_as(
+            sql_query::<(String, String, String)>(
+                "select (select role from organization_memberships where principal_id = ",
+            )
+            .bind(delegated_owner_token_id)
+            .append("), (select role from organization_memberships where principal_id = ")
+            .bind(delegated_admin_token_id)
+            .append("), (select role from organization_memberships where principal_id = ")
+            .bind(delegated_member_token_id)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(
+        delegated_roles,
+        ("admin".into(), "owner".into(), "member".into())
+    );
+    let ownerless_owner = database
+        .fetch_one_as(
+            sql_query::<Uuid>(
+                "select principal_id from organization_memberships where organization_id = ",
+            )
+            .bind(ownerless_organization_id)
+            .append(" and role = 'owner' and revoked_at is null"),
+        )
+        .await?;
+    assert_eq!(ownerless_owner, platform_token_id);
+    let scope_counts = database
+        .fetch_one_as(sql_query::<(i64, i64)>(
+            "select count(*) filter (where scopes ? 'identity:write'), count(*) filter (where not scopes ? 'identity:write') from api_tokens",
+        ))
+        .await?;
+    assert_eq!(scope_counts, (4, 1));
+    let organizations_without_owner = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from organizations organization where not exists (select 1 from organization_memberships membership where membership.organization_id = organization.id and membership.role = 'owner' and membership.revoked_at is null)",
+        ))
+        .await?;
+    assert_eq!(organizations_without_owner, 0);
+    Ok(())
 }
 
 async fn exercise_postgres_hosted_draft_recovery(
@@ -278,6 +755,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?
         .batch_execute(
             "drop schema if exists a3s_flow cascade;
+             drop schema if exists a3s_boot cascade;
              drop table if exists resource_slot_leases cascade;
              drop table if exists resource_claim_slots cascade;
              drop table if exists resource_claims cascade;
@@ -330,7 +808,19 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists node_enrollment_reservations cascade;
              drop table if exists nodes cascade;
              drop table if exists enrollment_tokens cascade;
+             drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
+             drop table if exists identity_principals cascade;
+             drop table if exists workflow_resume_receipts cascade;
+             drop table if exists workflow_resume_outbox cascade;
+             drop table if exists workflow_human_task_inbox cascade;
+             drop table if exists workflow_decisions cascade;
+             drop table if exists human_tasks cascade;
+             drop table if exists form_submissions cascade;
+             drop table if exists form_releases cascade;
+             drop table if exists form_drafts cascade;
+             drop table if exists ontology_revisions cascade;
+             drop table if exists ontologies cascade;
              drop table if exists operation_projections cascade;
              drop table if exists operation_requests cascade;
              drop table if exists audit_records cascade;
@@ -348,7 +838,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists a3s_orm_rollback_probe cascade;
              drop table if exists a3s_orm_migrations cascade;
              drop function if exists reject_cloud_outbox() cascade;
-             drop function if exists reject_outbox_ack() cascade;",
+             drop function if exists reject_outbox_ack() cascade;
+             drop function if exists reject_human_task_immutable_mutation() cascade;
+             drop function if exists protect_human_task_authority() cascade;
+             drop function if exists protect_workflow_resume_outbox_authority() cascade;
+             drop function if exists reject_form_release_mutation() cascade;
+             drop function if exists reject_ontology_revision_mutation() cascade;",
         )
         .await?;
 
@@ -359,11 +854,29 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 68);
+    assert_eq!(applied, 81);
+    let boot_schema = database
+        .fetch_one_as(sql_query::<Option<String>>(
+            "select to_regnamespace('a3s_boot')::text",
+        ))
+        .await?;
+    assert_eq!(boot_schema.as_deref(), Some("a3s_boot"));
     for table in [
         "agent_conversations",
         "agent_executions",
         "agent_execution_events",
+        "form_drafts",
+        "form_releases",
+        "form_submissions",
+        "human_tasks",
+        "ontologies",
+        "ontology_revisions",
+        "workflow_decisions",
+        "workflow_human_task_inbox",
+        "workflow_resume_outbox",
+        "workflow_resume_receipts",
+        "workflow_runs",
+        "workflow_step_projections",
     ] {
         let relation = database
             .fetch_one_as(
@@ -374,6 +887,54 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .await?;
         assert_eq!(relation.as_deref(), Some(table));
     }
+    let workflow_run_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid in ('workflow_runs'::regclass, 'workflow_step_projections'::regclass) and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(workflow_run_trigger_count, 4);
+    let immutable_human_record_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid in ('form_submissions'::regclass, 'workflow_decisions'::regclass, 'workflow_human_task_inbox'::regclass, 'workflow_resume_receipts'::regclass) and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(immutable_human_record_trigger_count, 4);
+    let protected_human_task_trigger_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid in ('human_tasks'::regclass, 'workflow_resume_outbox'::regclass) and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(protected_human_task_trigger_count, 4);
+    for index in [
+        "workflow_runs_project_requested_idx",
+        "workflow_runs_reconciliation_idx",
+        "workflow_step_projections_run_status_idx",
+        "human_tasks_project_status_idx",
+        "human_tasks_run_step_idx",
+        "workflow_resume_outbox_delivery_idx",
+        "workflow_human_task_inbox_observed_idx",
+    ] {
+        let relation = database
+            .fetch_one_as(
+                sql_query::<Option<String>>("select to_regclass(")
+                    .bind(format!("public.{index}"))
+                    .append(")::text"),
+            )
+            .await?;
+        assert_eq!(relation.as_deref(), Some(index));
+    }
+    let workflow_step_kind_constraint = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'workflow_step_projections'::regclass and conname = 'workflow_step_projections_kind_check'",
+        ))
+        .await?;
+    assert!(workflow_step_kind_constraint.contains("'human_decision'"));
+    let decision_submission_foreign_key = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'workflow_decisions'::regclass and conname = 'workflow_decisions_submission_fk'",
+        ))
+        .await?;
+    assert_eq!(decision_submission_foreign_key, 1);
     let node_command_kind_constraint = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_constraintdef(oid) from pg_constraint where conrelid = 'node_commands'::regclass and conname = 'node_commands_command_kind_check'",
@@ -401,6 +962,36 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         search_projection.as_deref(),
         Some("authorized_search_projections")
     );
+    let ontology_search_projection = database
+        .fetch_one_as(sql_query::<String>(
+            "select pg_get_viewdef('authorized_search_projections'::regclass, true)",
+        ))
+        .await?;
+    assert!(ontology_search_projection.contains("'ontology'::text"));
+    let immutable_revision_trigger = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid = 'ontology_revisions'::regclass and tgname = 'ontology_revisions_immutable' and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(immutable_revision_trigger, 1);
+    let immutable_form_release_trigger = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_trigger where tgrelid = 'form_releases'::regclass and tgname = 'form_releases_immutable' and not tgisinternal",
+        ))
+        .await?;
+    assert_eq!(immutable_form_release_trigger, 1);
+    let latest_form_release_foreign_key = database
+        .fetch_one_as(sql_query::<(bool, bool)>(
+            "select condeferrable, condeferred from pg_constraint where conrelid = 'form_drafts'::regclass and conname = 'form_drafts_latest_release_fk'",
+        ))
+        .await?;
+    assert_eq!(latest_form_release_foreign_key, (true, true));
+    let form_release_uniqueness = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from pg_constraint where conrelid = 'form_releases'::regclass and conname in ('form_releases_revision_unique', 'form_releases_source_draft_version_unique')",
+        ))
+        .await?;
+    assert_eq!(form_release_uniqueness, 2);
     assert_route_target_migration_backfills_legacy_projection(&executor).await?;
     assert_logical_gateway_scope_migration_backfills_legacy_projection(&executor).await?;
     assert_gateway_management_protocol_migration_preserves_legacy_acknowledgements(&executor)
@@ -1230,7 +1821,193 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     assert_eq!(changed.status(), 409);
 
+    let memberships_path = format!("/api/v1/organizations/{organization_id}/memberships");
+    let initial_memberships = app.call(get_as(&memberships_path, ADMIN_TOKEN)).await?;
+    assert_eq!(initial_memberships.status(), 200);
+    let owner_membership_id = response_json(&initial_memberships)?["data"][0]["id"]
+        .as_str()
+        .ok_or("bootstrap membership has no ID")?
+        .to_owned();
+    let owner_principal_id = response_json(&initial_memberships)?["data"][0]["principalId"]
+        .as_str()
+        .ok_or("bootstrap membership has no principal ID")?
+        .to_owned();
+    let service_membership = app
+        .call(post_json(
+            &memberships_path,
+            "membership-service-automation",
+            json!({"name": "service automation", "role": "member"}),
+        ))
+        .await?;
+    let service_membership_replay = app
+        .call(post_json(
+            &memberships_path,
+            "membership-service-automation",
+            json!({"name": "service automation", "role": "member"}),
+        ))
+        .await?;
+    assert_eq!(service_membership.status(), 201);
+    assert_eq!(service_membership_replay.status(), 200);
+    let service_membership_data = response_json(&service_membership)?["data"].clone();
+    let service_membership_id = service_membership_data["id"]
+        .as_str()
+        .ok_or("service membership has no ID")?
+        .to_owned();
+    let service_principal_id = service_membership_data["principalId"]
+        .as_str()
+        .ok_or("service membership has no principal ID")?
+        .to_owned();
+    assert_eq!(
+        response_json(&service_membership_replay)?["data"]["id"],
+        service_membership_id
+    );
+    let stored_membership_authority = database
+        .fetch_one_as(
+            sql_query::<(i64, i64)>(
+                "select (select count(*) from identity_principals), (select count(*) from organization_memberships where organization_id = ",
+            )
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(stored_membership_authority, (2, 2));
+
+    let service_token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization_id}/api-tokens"),
+            "membership-service-token",
+            json!({
+                "name": "service automation",
+                "token": SERVICE_MEMBER_TOKEN,
+                "scopes": ["project:write", "identity:write", "token:write"],
+                "principalId": service_principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(service_token.status(), 201);
+    assert_eq!(
+        response_json(&service_token)?["data"]["principalId"],
+        service_principal_id
+    );
+    let privilege_escalation = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization_id}/api-tokens"),
+            "membership-privilege-escalation",
+            json!({
+                "name": "forged owner credential",
+                "token": PRIVILEGE_ESCALATION_TOKEN,
+                "scopes": ["cloud:read"],
+                "principalId": owner_principal_id,
+                "expiresAt": null
+            }),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(privilege_escalation.status(), 403);
+
     let project_path = format!("/api/v1/organizations/{organization_id}/projects");
+    let service_role_path = format!("{memberships_path}/{service_membership_id}/role");
+    let promoted = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-promote-admin",
+            json!({"role": "admin", "expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(promoted.status(), 200);
+    let admin_privilege_escalation = app
+        .call(post_json_as(
+            format!("/api/v1/organizations/{organization_id}/api-tokens"),
+            "membership-admin-privilege-escalation",
+            json!({
+                "name": "forged owner credential",
+                "token": PRIVILEGE_ESCALATION_TOKEN,
+                "scopes": ["cloud:read"],
+                "principalId": owner_principal_id,
+                "expiresAt": null
+            }),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(admin_privilege_escalation.status(), 403);
+    let returned_to_member = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-return-to-member",
+            json!({"role": "member", "expectedVersion": 2}),
+        ))
+        .await?;
+    assert_eq!(returned_to_member.status(), 200);
+
+    let service_project = app
+        .call(post_json_as(
+            &project_path,
+            "membership-service-project",
+            json!({"name": "Service Project"}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(service_project.status(), 201);
+    let restricted = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-restrict",
+            json!({"role": "restricted", "expectedVersion": 3}),
+        ))
+        .await?;
+    assert_eq!(restricted.status(), 200);
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        403
+    );
+    let restored = app
+        .call(post_json(
+            &service_role_path,
+            "membership-service-restore",
+            json!({"role": "member", "expectedVersion": 4}),
+        ))
+        .await?;
+    assert_eq!(restored.status(), 200);
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        200
+    );
+    let revoked_membership = app
+        .call(post_json(
+            format!("{memberships_path}/{service_membership_id}/revocation"),
+            "membership-service-revoke",
+            json!({"expectedVersion": 5}),
+        ))
+        .await?;
+    assert_eq!(revoked_membership.status(), 200);
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        401
+    );
+    let last_owner = app
+        .call(post_json(
+            format!("{memberships_path}/{owner_membership_id}/revocation"),
+            "membership-last-owner",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(last_owner.status(), 409);
+    let membership_audits = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from audit_records where aggregate_id = ")
+                .bind(Uuid::parse_str(&service_membership_id)?)
+                .append(" and action like 'identity.membership.%'"),
+        )
+        .await?;
+    assert_eq!(membership_audits, 6);
+
     let project = app
         .call(post_json(
             &project_path,
@@ -1249,6 +2026,130 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(project_replay.status(), 200);
     assert_eq!(response_id(&project)?, response_id(&project_replay)?);
     let project_id = response_id(&project)?;
+
+    let ontology_path =
+        format!("/api/v1/organizations/{organization_id}/projects/{project_id}/ontologies");
+    let create_ontology = || {
+        BootRequest::new(HttpMethod::Post, &ontology_path)
+            .with_header("content-type", "application/vnd.a3s.acl")
+            .with_header("idempotency-key", "ontology-support")
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+            .with_body(ONTOLOGY_ACL.as_bytes().to_vec())
+    };
+    let ontology = app.call(create_ontology()).await?;
+    let ontology_replay = app.call(create_ontology()).await?;
+    assert_eq!(ontology.status(), 201);
+    assert_eq!(ontology_replay.status(), 200);
+    let ontology_body = response_json(&ontology)?;
+    let ontology_id = ontology_body["data"]["ontology"]["id"]
+        .as_str()
+        .ok_or("Ontology response has no ID")?
+        .to_owned();
+    assert_eq!(
+        response_json(&ontology_replay)?["data"]["ontology"]["id"],
+        ontology_id
+    );
+    let ontology_root = format!("/api/v1/organizations/{organization_id}/ontologies/{ontology_id}");
+    let compatible_acl = ONTOLOGY_ACL.replace(
+        "Deterministic W0.1 Ontology contract fixture",
+        "PostgreSQL-compatible description revision",
+    );
+    let compatible_revision_request = || {
+        BootRequest::new(HttpMethod::Post, format!("{ontology_root}/revisions"))
+            .with_header("content-type", "application/vnd.a3s.acl")
+            .with_header("idempotency-key", "ontology-support-compatible")
+            .with_header("x-a3s-expected-version", "1")
+            .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+            .with_body(compatible_acl.as_bytes().to_vec())
+    };
+    let compatible_revision = app.call(compatible_revision_request()).await?;
+    assert_eq!(compatible_revision.status(), 201);
+
+    let breaking_acl = integration_breaking_ontology_acl(&compatible_acl);
+    let breaking_without_migration = app
+        .call(
+            BootRequest::new(HttpMethod::Post, format!("{ontology_root}/revisions"))
+                .with_header("content-type", "application/vnd.a3s.acl")
+                .with_header("idempotency-key", "ontology-support-breaking-rejected")
+                .with_header("x-a3s-expected-version", "2")
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+                .with_body(breaking_acl.as_bytes().to_vec()),
+        )
+        .await?;
+    assert_eq!(breaking_without_migration.status(), 422);
+    let explicit_migration = app
+        .call(
+            BootRequest::new(HttpMethod::Post, format!("{ontology_root}/revisions"))
+                .with_header("content-type", "application/vnd.a3s.acl")
+                .with_header("idempotency-key", "ontology-support-breaking")
+                .with_header("x-a3s-expected-version", "2")
+                .with_header("x-a3s-migration-rule", "migrate_ticket_v2")
+                .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+                .with_body(breaking_acl.as_bytes().to_vec()),
+        )
+        .await?;
+    assert_eq!(explicit_migration.status(), 201);
+    assert_eq!(
+        response_json(&explicit_migration)?["data"]["revision"]["migrationPolicy"]["kind"],
+        "explicit"
+    );
+    let historical_create_replay = app.call(create_ontology()).await?;
+    assert_eq!(historical_create_replay.status(), 200);
+    assert_eq!(
+        response_json(&historical_create_replay)?["data"]["ontology"]["currentRevisionNumber"],
+        1
+    );
+    let historical_revision_replay = app.call(compatible_revision_request()).await?;
+    assert_eq!(historical_revision_replay.status(), 200);
+    let historical_revision_replay = response_json(&historical_revision_replay)?;
+    assert_eq!(
+        historical_revision_replay["data"]["ontology"]["currentRevisionNumber"],
+        2
+    );
+    assert_eq!(
+        historical_revision_replay["data"]["revision"]["revisionNumber"],
+        2
+    );
+    let ontology_storage = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64)>(
+                "select (select count(*) from ontologies where organization_id = ",
+            )
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append(" and aggregate_version = 3), (select count(*) from ontology_revisions where organization_id = ")
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and ontology_id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append("), (select count(*) from audit_records where organization_id = ")
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and aggregate_id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append(" and action in ('workflow.ontology.created', 'workflow.ontology.revised')), (select count(*) from authorized_search_projections where organization_id = ")
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(" and resource_kind = 'ontology' and resource_id = ")
+            .bind(Uuid::parse_str(&ontology_id)?)
+            .append(")"),
+        )
+        .await?;
+    assert_eq!(ontology_storage, (1, 3, 3, 1));
+    let immutable_revision = database
+        .execute(
+            sql_query::<()>("update ontology_revisions set canonical_acl = canonical_acl where organization_id = ")
+                .bind(Uuid::parse_str(&organization_id)?)
+                .append(" and ontology_id = ")
+                .bind(Uuid::parse_str(&ontology_id)?),
+        )
+        .await;
+    let immutable_revision = immutable_revision.expect_err("Ontology revision update must fail");
+    assert!(matches!(
+        immutable_revision,
+        a3s_orm::DatabaseError::Execute(PostgresError::Database(ref error))
+            if error
+                .as_db_error()
+                .is_some_and(|error| error.message() == "Ontology revisions are immutable")
+    ));
 
     let environment_path =
         format!("/api/v1/organizations/{organization_id}/projects/{project_id}/environments");
@@ -1801,7 +2702,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(plaintext_token_rows, 0);
-    assert_eq!(hashed_token_rows, 2);
+    assert_eq!(hashed_token_rows, 3);
 
     let own_project = app
         .call(post_json_as(
@@ -1867,8 +2768,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let idempotency_records = database
         .fetch_one_as(sql_query::<i64>("select count(*) from idempotency_records"))
         .await?;
-    assert_eq!(outbox_events, 38);
-    assert_eq!(idempotency_records, 28);
+    assert_eq!((outbox_events, idempotency_records), (55, 41));
 
     let operation_id = OperationId::new();
     let operation_request = OperationRequest::new(
@@ -1990,8 +2890,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )
         .await?;
     let lost_ack = relay.run_once().await?;
-    assert_eq!(lost_ack.claimed, 1);
-    assert_eq!(lost_ack.published, 0);
+    assert_eq!(lost_ack.claimed, 2);
+    assert_eq!(lost_ack.published, 1);
     assert_eq!(lost_ack.failures.len(), 1);
     executor
         .pool()
@@ -2005,12 +2905,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     tokio::time::sleep(Duration::from_millis(5)).await;
     assert_eq!(relay.run_once().await?.published, 1);
     let local_events = memory_bus.list_events(None, 100).await?;
-    assert_eq!(local_events.len(), initial_event_count + 2);
+    assert_eq!(local_events.len(), initial_event_count + 3);
     let unique_event_ids = local_events
         .iter()
         .map(|event| event.id.as_str())
         .collect::<std::collections::BTreeSet<_>>();
-    assert_eq!(unique_event_ids.len(), initial_event_count + 1);
+    assert_eq!(unique_event_ids.len(), initial_event_count + 2);
 
     if let Ok(nats_url) = std::env::var("A3S_CLOUD_TEST_NATS_URL") {
         let nats_created = app

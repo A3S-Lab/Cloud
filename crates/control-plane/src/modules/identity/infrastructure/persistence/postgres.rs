@@ -1,19 +1,26 @@
+use super::postgres_memberships::{load_active_membership_for_update, lock_membership_set};
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_unique_violation, store_idempotency,
-    store_outbox, transaction_error, PostgresPersistenceError,
+    execute, fetch_optional, idempotency_replay, is_unique_violation, store_audit,
+    store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
-use crate::modules::identity::domain::entities::{ApiToken, IdentityBootstrap, Organization};
+use crate::modules::identity::domain::entities::{
+    ApiToken, AuthenticatedApiToken, IdentityBootstrap, IdentityPrincipal, IdentityPrincipalKind,
+    Membership, Organization,
+};
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IOrganizationRepository,
+    CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
 };
 use crate::modules::identity::domain::value_objects::{
-    ApiTokenDigest, ApiTokenName, ApiTokenScope, OrganizationName,
+    ApiTokenDigest, ApiTokenName, ApiTokenScope, MembershipRole, OrganizationName,
 };
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, IdempotentWrite, OrganizationId, RepositoryError,
+    ApiTokenId, IdempotencyRequest, IdempotentWrite, MembershipId, OrganizationId, PrincipalId,
+    RepositoryError, ResourceName,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
-use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_orm::{
+    sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
@@ -21,7 +28,7 @@ use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct PostgresIdentityRepository {
-    executor: PostgresExecutor,
+    pub(super) executor: PostgresExecutor,
 }
 
 impl PostgresIdentityRepository {
@@ -34,17 +41,48 @@ impl PostgresIdentityRepository {
 impl IOrganizationRepository for PostgresIdentityRepository {
     async fn create(
         &self,
-        organization: Organization,
-        event: DomainEventEnvelope,
-        idempotency: IdempotencyRequest,
+        write: CreateOrganizationWrite,
     ) -> Result<IdempotentWrite<Organization>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
+                    let CreateOrganizationWrite {
+                        organization,
+                        owner_membership,
+                        events,
+                        actor_principal_id,
+                        request_id,
+                        idempotency,
+                    } = write;
                     if let Some(replayed) =
                         idempotency_replay::<Organization>(transaction, &idempotency).await?
                     {
                         return Ok(replayed);
+                    }
+                    if owner_membership.organization_id != organization.id
+                        || owner_membership.principal_id != actor_principal_id
+                        || owner_membership.role != MembershipRole::Owner
+                        || !owner_membership.is_active()
+                    {
+                        return Err(PostgresPersistenceError::Invariant(
+                            "organization owner membership does not bind its creator".into(),
+                        ));
+                    }
+                    let actor_exists = fetch_optional::<i32, _>(
+                        transaction,
+                        sql_query::<i32>(
+                            "select 1 from identity_principals where id = ",
+                        )
+                        .bind(actor_principal_id.as_uuid())
+                        .append(" and disabled_at is null"),
+                    )
+                    .await?
+                    .is_some();
+                    if !actor_exists {
+                        return Err(RepositoryError::Forbidden(
+                            "organization creator is not an active identity principal".into(),
+                        )
+                        .into());
                     }
                     let inserted = execute(
                         transaction,
@@ -78,7 +116,27 @@ impl IOrganizationRepository for PostgresIdentityRepository {
                         }
                         Err(error) => return Err(error),
                     }
-                    store_outbox(transaction, &event).await?;
+                    insert_membership(transaction, &owner_membership).await?;
+                    for event in &events {
+                        store_outbox(transaction, event).await?;
+                    }
+                    store_audit(
+                        transaction,
+                        &AuditWrite {
+                            audit_id: Uuid::now_v7(),
+                            organization_id: organization.id.as_uuid(),
+                            actor_id: Some(actor_principal_id.as_uuid()),
+                            action: "identity.organization.created",
+                            aggregate_id: organization.id.as_uuid(),
+                            occurred_at: organization.created_at,
+                            request_id,
+                            details: serde_json::json!({
+                                "ownerMembershipId": owner_membership.id,
+                                "ownerPrincipalId": owner_membership.principal_id,
+                            }),
+                        },
+                    )
+                    .await?;
                     store_idempotency(transaction, &idempotency, &organization).await?;
                     Ok(IdempotentWrite {
                         value: organization,
@@ -143,24 +201,47 @@ impl IOrganizationRepository for PostgresIdentityRepository {
     }
 }
 
-type ApiTokenRow = (
-    Uuid,
-    Uuid,
-    String,
-    serde_json::Value,
-    u64,
-    DateTime<Utc>,
-    Option<DateTime<Utc>>,
-    Option<DateTime<Utc>>,
-);
+struct ApiTokenRow {
+    id: Uuid,
+    organization_id: Uuid,
+    principal_id: Uuid,
+    name: String,
+    scopes: serde_json::Value,
+    aggregate_version: u64,
+    created_at: DateTime<Utc>,
+    expires_at: Option<DateTime<Utc>>,
+    revoked_at: Option<DateTime<Utc>>,
+}
+
+impl FromRow for ApiTokenRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            id: decode_column(row, 0)?,
+            organization_id: decode_column(row, 1)?,
+            principal_id: decode_column(row, 2)?,
+            name: decode_column(row, 3)?,
+            scopes: decode_column(row, 4)?,
+            aggregate_version: decode_column(row, 5)?,
+            created_at: decode_column(row, 6)?,
+            expires_at: decode_column(row, 7)?,
+            revoked_at: decode_column(row, 8)?,
+        })
+    }
+}
+
+fn decode_column<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
+    T::from_value(
+        row.value(index)
+            .ok_or(DecodeError::MissingColumn { index })?,
+        index,
+    )
+}
 
 fn decode_token(row: ApiTokenRow) -> Result<ApiToken, RepositoryError> {
-    let (id, organization_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at) =
-        row;
-    let name = ApiTokenName::parse(name).map_err(|error| {
+    let name = ApiTokenName::parse(row.name).map_err(|error| {
         RepositoryError::Storage(format!("stored API token name is invalid: {error}"))
     })?;
-    let scopes = serde_json::from_value::<Vec<String>>(scopes)
+    let scopes = serde_json::from_value::<Vec<String>>(row.scopes)
         .map_err(|error| {
             RepositoryError::Storage(format!("stored API token scopes are invalid: {error}"))
         })?
@@ -171,15 +252,147 @@ fn decode_token(row: ApiTokenRow) -> Result<ApiToken, RepositoryError> {
             RepositoryError::Storage(format!("stored API token scope is invalid: {error}"))
         })?;
     Ok(ApiToken {
-        id: ApiTokenId::from_uuid(id),
-        organization_id: OrganizationId::from_uuid(organization_id),
+        id: ApiTokenId::from_uuid(row.id),
+        organization_id: OrganizationId::from_uuid(row.organization_id),
+        principal_id: PrincipalId::from_uuid(row.principal_id),
         name,
         scopes,
+        aggregate_version: row.aggregate_version,
+        created_at: row.created_at,
+        expires_at: row.expires_at,
+        revoked_at: row.revoked_at,
+    })
+}
+
+pub(super) type PrincipalRow = (
+    Uuid,
+    String,
+    String,
+    u64,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
+
+pub(super) fn decode_principal(row: PrincipalRow) -> Result<IdentityPrincipal, RepositoryError> {
+    let (id, kind, name, aggregate_version, created_at, disabled_at) = row;
+    Ok(IdentityPrincipal {
+        id: PrincipalId::from_uuid(id),
+        kind: IdentityPrincipalKind::parse(&kind).map_err(|error| {
+            RepositoryError::Storage(format!(
+                "stored identity principal kind is invalid: {error}"
+            ))
+        })?,
+        name: ResourceName::parse(name).map_err(|error| {
+            RepositoryError::Storage(format!(
+                "stored identity principal name is invalid: {error}"
+            ))
+        })?,
         aggregate_version,
         created_at,
-        expires_at,
+        disabled_at,
+    })
+}
+
+pub(super) type MembershipRow = (
+    Uuid,
+    Uuid,
+    Uuid,
+    String,
+    u64,
+    DateTime<Utc>,
+    DateTime<Utc>,
+    Option<DateTime<Utc>>,
+);
+
+pub(super) fn decode_membership(row: MembershipRow) -> Result<Membership, RepositoryError> {
+    let (
+        id,
+        organization_id,
+        principal_id,
+        role,
+        aggregate_version,
+        created_at,
+        updated_at,
+        revoked_at,
+    ) = row;
+    Ok(Membership {
+        id: MembershipId::from_uuid(id),
+        organization_id: OrganizationId::from_uuid(organization_id),
+        principal_id: PrincipalId::from_uuid(principal_id),
+        role: MembershipRole::parse(&role).map_err(|error| {
+            RepositoryError::Storage(format!("stored membership role is invalid: {error}"))
+        })?,
+        aggregate_version,
+        created_at,
+        updated_at,
         revoked_at,
     })
+}
+
+pub(super) async fn insert_principal(
+    transaction: &a3s_orm::PostgresTransaction,
+    principal: &IdentityPrincipal,
+) -> Result<(), PostgresPersistenceError> {
+    let rows = execute(
+        transaction,
+        sql_query::<()>(
+            "insert into identity_principals (id, kind, name, aggregate_version, created_at, disabled_at) values (",
+        )
+        .bind(principal.id.as_uuid())
+        .append(", ")
+        .bind(principal.kind.as_str())
+        .append(", ")
+        .bind(principal.name.as_str())
+        .append(", ")
+        .bind(principal.aggregate_version)
+        .append(", ")
+        .bind(principal.created_at)
+        .append(", ")
+        .bind(principal.disabled_at)
+        .append(")"),
+    )
+    .await?;
+    if rows != 1 {
+        return Err(PostgresPersistenceError::Invariant(format!(
+            "creating identity principal affected {rows} rows"
+        )));
+    }
+    Ok(())
+}
+
+pub(super) async fn insert_membership(
+    transaction: &a3s_orm::PostgresTransaction,
+    membership: &Membership,
+) -> Result<(), PostgresPersistenceError> {
+    let rows = execute(
+        transaction,
+        sql_query::<()>(
+            "insert into organization_memberships (id, organization_id, principal_id, role, aggregate_version, created_at, updated_at, revoked_at) values (",
+        )
+        .bind(membership.id.as_uuid())
+        .append(", ")
+        .bind(membership.organization_id.as_uuid())
+        .append(", ")
+        .bind(membership.principal_id.as_uuid())
+        .append(", ")
+        .bind(membership.role.as_str())
+        .append(", ")
+        .bind(membership.aggregate_version)
+        .append(", ")
+        .bind(membership.created_at)
+        .append(", ")
+        .bind(membership.updated_at)
+        .append(", ")
+        .bind(membership.revoked_at)
+        .append(")"),
+    )
+    .await?;
+    if rows != 1 {
+        return Err(PostgresPersistenceError::Invariant(format!(
+            "creating organization membership affected {rows} rows"
+        )));
+    }
+    Ok(())
 }
 
 async fn insert_token(
@@ -190,11 +403,13 @@ async fn insert_token(
     let rows = execute(
         transaction,
         sql_query::<()>(
-            "insert into api_tokens (id, organization_id, name, name_key, token_hash, scopes, aggregate_version, created_at, expires_at, revoked_at) values (",
+            "insert into api_tokens (id, organization_id, principal_id, name, name_key, token_hash, scopes, aggregate_version, created_at, expires_at, revoked_at) values (",
         )
         .bind(token.id.as_uuid())
         .append(", ")
         .bind(token.organization_id.as_uuid())
+        .append(", ")
+        .bind(token.principal_id.as_uuid())
         .append(", ")
         .bind(token.name.as_str())
         .append(", ")
@@ -228,7 +443,7 @@ impl IApiTokenRepository for PostgresIdentityRepository {
         &self,
         bootstrap: IdentityBootstrap,
         digest: ApiTokenDigest,
-        events: [DomainEventEnvelope; 2],
+        events: [DomainEventEnvelope; 4],
         idempotency: IdempotencyRequest,
     ) -> Result<IdempotentWrite<IdentityBootstrap>, RepositoryError> {
         self.executor
@@ -266,6 +481,16 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                         .into());
                     }
                     let organization = &bootstrap.organization;
+                    if bootstrap.membership.organization_id != organization.id
+                        || bootstrap.membership.principal_id != bootstrap.principal.id
+                        || bootstrap.membership.role != MembershipRole::Owner
+                        || bootstrap.api_token.organization_id != organization.id
+                        || bootstrap.api_token.principal_id != bootstrap.principal.id
+                    {
+                        return Err(PostgresPersistenceError::Invariant(
+                            "identity bootstrap does not bind one owner principal".into(),
+                        ));
+                    }
                     let organization_rows = execute(
                         transaction,
                         sql_query::<()>(
@@ -288,6 +513,8 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                             "bootstrapping organization affected {organization_rows} rows"
                         )));
                     }
+                    insert_principal(transaction, &bootstrap.principal).await?;
+                    insert_membership(transaction, &bootstrap.membership).await?;
                     insert_token(transaction, &bootstrap.api_token, &digest).await?;
                     for event in &events {
                         store_outbox(transaction, event).await?;
@@ -305,14 +532,51 @@ impl IApiTokenRepository for PostgresIdentityRepository {
 
     async fn create(
         &self,
-        token: ApiToken,
-        digest: ApiTokenDigest,
-        event: DomainEventEnvelope,
-        idempotency: IdempotencyRequest,
+        write: CreateApiTokenWrite,
     ) -> Result<IdempotentWrite<ApiToken>, RepositoryError> {
+        let CreateApiTokenWrite {
+            token,
+            digest,
+            event,
+            issuer_principal_id,
+            issuer_is_platform_admin,
+            idempotency,
+        } = write;
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
+                    lock_membership_set(transaction, token.organization_id).await?;
+                    let target_membership = load_active_membership_for_update(
+                        transaction,
+                        token.organization_id,
+                        token.principal_id,
+                    )
+                    .await?;
+                    let Some(target_membership) = target_membership else {
+                        return Err(RepositoryError::Forbidden(
+                            "API token principal is not an active organization member".into(),
+                        )
+                        .into());
+                    };
+                    if token.principal_id != issuer_principal_id && !issuer_is_platform_admin {
+                        let issuer = load_active_membership_for_update(
+                            transaction,
+                            token.organization_id,
+                            issuer_principal_id,
+                        )
+                        .await?;
+                        if !issuer.is_some_and(|membership| {
+                            membership.is_active()
+                                && membership.role.can_manage_memberships()
+                                && membership.role.can_manage_role(target_membership.role)
+                        }) {
+                            return Err(RepositoryError::Forbidden(
+                                "issuer role cannot manage credentials for the target membership"
+                                    .into(),
+                            )
+                            .into());
+                        }
+                    }
                     if let Some(replayed) =
                         idempotency_replay::<ApiToken>(transaction, &idempotency).await?
                     {
@@ -327,6 +591,24 @@ impl IApiTokenRepository for PostgresIdentityRepository {
                     .is_some();
                     if !organization_exists {
                         return Err(RepositoryError::NotFound.into());
+                    }
+                    let membership_exists = fetch_optional::<i32, _>(
+                        transaction,
+                        sql_query::<i32>(
+                            "select 1 from identity_principals p join organization_memberships m on m.principal_id = p.id where p.id = ",
+                        )
+                        .bind(token.principal_id.as_uuid())
+                        .append(" and p.disabled_at is null and m.organization_id = ")
+                        .bind(token.organization_id.as_uuid())
+                        .append(" and m.revoked_at is null"),
+                    )
+                    .await?
+                    .is_some();
+                    if !membership_exists {
+                        return Err(RepositoryError::Forbidden(
+                            "API token principal is not an active organization member".into(),
+                        )
+                        .into());
                     }
                     match insert_token(transaction, &token, &digest).await {
                         Ok(()) => {}
@@ -358,7 +640,7 @@ impl IApiTokenRepository for PostgresIdentityRepository {
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_optional_as(
                 sql_query::<ApiTokenRow>(
-                    "select id, organization_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where organization_id = ",
+                    "select id, organization_id, principal_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where organization_id = ",
                 )
                 .bind(organization_id.as_uuid())
                 .append(" and id = ")
@@ -377,7 +659,7 @@ impl IApiTokenRepository for PostgresIdentityRepository {
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
                 sql_query::<ApiTokenRow>(
-                    "select id, organization_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where organization_id = ",
+                    "select id, organization_id, principal_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where organization_id = ",
                 )
                 .bind(organization_id.as_uuid())
                 .append(" order by created_at asc, id asc"),
@@ -394,11 +676,11 @@ impl IApiTokenRepository for PostgresIdentityRepository {
         &self,
         digest: &ApiTokenDigest,
         now: DateTime<Utc>,
-    ) -> Result<Option<ApiToken>, RepositoryError> {
-        Database::new(PostgresDialect, self.executor.clone())
+    ) -> Result<Option<AuthenticatedApiToken>, RepositoryError> {
+        let token = Database::new(PostgresDialect, self.executor.clone())
             .fetch_optional_as(
                 sql_query::<ApiTokenRow>(
-                    "select id, organization_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where token_hash = ",
+                    "select id, organization_id, principal_id, name, scopes, aggregate_version, created_at, expires_at, revoked_at from api_tokens where token_hash = ",
                 )
                 .bind(digest.as_str())
                 .append(" and revoked_at is null and (expires_at is null or expires_at > ")
@@ -408,7 +690,51 @@ impl IApiTokenRepository for PostgresIdentityRepository {
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
             .map(decode_token)
-            .transpose()
+            .transpose()?;
+        let Some(api_token) = token else {
+            return Ok(None);
+        };
+        let principal = Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<PrincipalRow>(
+                    "select id, kind, name, aggregate_version, created_at, disabled_at from identity_principals where id = ",
+                )
+                .bind(api_token.principal_id.as_uuid())
+                .append(" and disabled_at is null"),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .map(decode_principal)
+            .transpose()?;
+        let Some(principal) = principal else {
+            return Ok(None);
+        };
+        let membership = Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<MembershipRow>(
+                    "select id, organization_id, principal_id, role, aggregate_version, created_at, updated_at, revoked_at from organization_memberships where organization_id = ",
+                )
+                .bind(api_token.organization_id.as_uuid())
+                .append(" and principal_id = ")
+                .bind(api_token.principal_id.as_uuid())
+                .append(" and revoked_at is null"),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .map(decode_membership)
+            .transpose()?;
+        let is_platform_token = api_token
+            .scopes
+            .iter()
+            .any(|scope| scope.as_str() == ApiTokenScope::PLATFORM_WRITE);
+        if membership.is_none() && !is_platform_token {
+            return Ok(None);
+        }
+        Ok(Some(AuthenticatedApiToken {
+            api_token,
+            principal,
+            membership,
+        }))
     }
 
     async fn revoke(

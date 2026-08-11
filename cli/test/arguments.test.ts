@@ -90,6 +90,25 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses an explicit Ontology migration rule', () => {
+    expect(
+      parseArguments([
+        'ontologies',
+        'revise',
+        '019c0000-0000-7000-8000-000000000004',
+        '--migration-rule=migrate_ticket_v2',
+        '--expected-version=2',
+        '--file=ontology.acl',
+        '--idempotency-key=ontology:revise:2',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        migrationRuleId: 'migrate_ticket_v2',
+        expectedVersion: '2',
+      })
+    );
+  });
+
   it('parses explicit node bootstrap credential and release options', () => {
     expect(
       parseArguments([

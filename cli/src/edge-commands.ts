@@ -1,4 +1,5 @@
-import type { CloudApi } from '@a3s/cloud-client';
+import { type CloudApi, MAX_MCP_ROUTE_POLICY_ACL_BYTES } from '@a3s/cloud-client';
+import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
@@ -26,6 +27,9 @@ import {
   mcpCredentialMutationResult,
   mcpCredentialResult,
   mcpCredentialsResult,
+  mcpRoutePoliciesResult,
+  mcpRoutePolicyMutationResult,
+  mcpRoutePolicyResult,
   routePublicationResult,
 } from './results';
 import { parseRfc3339Timestamp } from './timestamp';
@@ -33,11 +37,16 @@ import { parseRfc3339Timestamp } from './timestamp';
 const MAX_GATEWAY_SCOPE_MEMBERS = 100;
 const MAX_U32 = 4_294_967_295;
 
+interface EdgeCommandDependencies {
+  readFile?: (path: string) => Promise<Uint8Array>;
+}
+
 export async function executeEdgeCommand(
   command: string,
   arguments_: ParsedArguments,
   context: CloudContext,
-  cloudApi: () => CloudApi
+  cloudApi: () => CloudApi,
+  dependencies: EdgeCommandDependencies = {}
 ): Promise<CommandResult | undefined> {
   const { positionals } = arguments_;
   switch (command) {
@@ -182,6 +191,47 @@ export async function executeEdgeCommand(
         )
       );
     }
+    case 'mcp-routes list': {
+      requireListCommand(arguments_);
+      const scope = requireEnvironmentScope(context);
+      return mcpRoutePoliciesResult(
+        await cloudApi().listMcpRoutePolicies(scope.organizationId, scope.projectId, scope.environmentId)
+      );
+    }
+    case 'mcp-routes get':
+      requireReadCommand(arguments_, 'mcp-routes get <route-id>');
+      return mcpRoutePolicyResult(
+        await cloudApi().getMcpRoutePolicy(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'MCP route policy ID')
+        )
+      );
+    case 'mcp-routes create': {
+      const mutation = requireAclMutationCommand(arguments_, 2, 'mcp-routes create');
+      const scope = requireEnvironmentScope(context);
+      const acl = await readMcpRoutePolicyAcl(mutation.file, dependencies.readFile);
+      return mcpRoutePolicyMutationResult(
+        await cloudApi().createMcpRoutePolicyFromAcl(
+          scope.organizationId,
+          scope.projectId,
+          scope.environmentId,
+          acl,
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'mcp-routes revise': {
+      const mutation = requireAclMutationCommand(arguments_, 3, 'mcp-routes revise <route-id>');
+      const acl = await readMcpRoutePolicyAcl(mutation.file, dependencies.readFile);
+      return mcpRoutePolicyMutationResult(
+        await cloudApi().reviseMcpRoutePolicyFromAcl(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'MCP route policy ID'),
+          acl,
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'routes publish': {
       const idempotencyKey = requireMutationCommand(
         arguments_,
@@ -209,6 +259,20 @@ export async function executeEdgeCommand(
     default:
       return undefined;
   }
+}
+
+function readMcpRoutePolicyAcl(
+  path: string,
+  readFile?: (path: string) => Promise<Uint8Array>
+): Promise<string> {
+  return readAclDocument(
+    path,
+    {
+      label: 'MCP route policy ACL',
+      maximumBytes: MAX_MCP_ROUTE_POLICY_ACL_BYTES,
+    },
+    readFile
+  );
 }
 
 function requireMcpCredentialVersionedMutation(

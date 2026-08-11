@@ -20,15 +20,16 @@ use crate::modules::artifacts::{
 use crate::modules::assets::{
     AdmitAssetManifestHandler, AdvertiseAssetGitRepositoryHandler, ArchiveAssetHandler,
     AssetCatalogApplicationService, AssetGitApplicationService, AssetGitApplicationServiceOptions,
-    AssetsModule, BackupAssetGitRepositoryHandler, CreateAssetHandler, CreateAssetReleaseHandler,
-    GetAssetHandler, GetAssetReleaseHandler, IAssetGitRepository, IAssetGitRepositoryControl,
-    IAssetRepository, IMcpServiceProfileRepository, ListAssetReleasesHandler, ListAssetsHandler,
-    LocalAssetGitRepository, PostgresAssetRepository, ReceiveAssetGitPackHandler,
-    RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler, UploadAssetGitPackHandler,
-    YankAssetReleaseHandler,
+    AssetsModule, BackupAssetGitRepositoryHandler, BindMcpServiceProfileHandler,
+    CreateAssetHandler, CreateAssetReleaseHandler, GetAssetHandler, GetAssetReleaseHandler,
+    GetMcpServiceProfileHandler, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
+    IMcpServiceProfileRepository, ListAssetReleasesHandler, ListAssetsHandler,
+    LocalAssetGitRepository, McpServiceProfileApplicationService, PostgresAssetRepository,
+    ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler,
+    UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
 use crate::modules::edge::domain::repositories::{
-    IEdgeRepository, IMcpCredentialLifecycleRepository,
+    IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
 };
 use crate::modules::edge::domain::services::{
     IDomainOwnershipVerifier, IGatewayCertificateAuthority, IGatewayCommandQueue,
@@ -36,18 +37,20 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
-    DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
-    EdgeModule, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
-    GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
-    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler, GetRouteHandler,
+    CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
+    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
+    FleetGatewayObservationQueue, GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner,
+    GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
+    GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    GetDomainClaimHandler, GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler,
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
-    ListMcpCredentialsHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
-    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, PostgresEdgeRepository, PublishRouteHandler,
+    ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
+    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    PostgresEdgeRepository, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
     RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
     VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
@@ -69,14 +72,23 @@ use crate::modules::fleet::{
     RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
     RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
 };
-use crate::modules::identity::domain::repositories::IApiTokenRepository;
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
+use crate::modules::forms::{
+    CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
+    IFormRepository, IFormSemanticCore, ListFormDraftsHandler, ListFormReleasesHandler,
+    NativeFormSemanticCore, PostgresFormRepository, PublishFormReleaseHandler,
+    ReviseFormDraftHandler,
+};
+use crate::modules::identity::domain::repositories::{
+    IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
+};
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
-    BootstrapIdentityHandler, CreateApiTokenHandler, CreateOrganizationHandler, GetApiTokenHandler,
-    IdentityModule, ListApiTokensHandler, ListOrganizationsHandler, PostgresIdentityRepository,
-    RevokeApiTokenHandler,
+    BootstrapIdentityHandler, ChangeMembershipRoleHandler, CreateApiTokenHandler,
+    CreateOrganizationHandler, CreateServiceMembershipHandler, GetApiTokenHandler,
+    GetMembershipHandler, IdentityModule, ListApiTokensHandler, ListMembershipsHandler,
+    ListOrganizationsHandler, PostgresIdentityRepository, RevokeApiTokenHandler,
+    RevokeMembershipHandler,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
@@ -116,6 +128,22 @@ use crate::modules::sources::{
     PrepareGithubConnectionOauthHandler, ReconcileGithubConnectionLifecycleHandler,
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
+use crate::modules::workflow::{
+    CancelWorkflowRunHandler, CreateOntologyHandler, CreateWorkflowDefinitionHandler,
+    CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler, FlowWorkflowRunCoordinator,
+    GetOntologyHandler, GetOntologyRevisionHandler, GetPlanRevisionHandler,
+    GetWorkflowDefinitionHandler, GetWorkflowGoalHandler, GetWorkflowRevisionHandler,
+    GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
+    HumanTaskCoordinator, HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository,
+    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
+    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
+    PostgresHumanTaskRepository, PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
+    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WaitWorkflowRunHandler,
+    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+};
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
@@ -150,7 +178,7 @@ use crate::{
 };
 use a3s_boot::{
     AuthModule, BootApplication, BootError, CqrsModule, HealthIndicatorResult, HealthModule,
-    Module, ModuleRef, ProviderDefinition, ProviderToken, Result, RouteDefinition,
+    Module, ModuleRef, ProviderDefinition, ProviderToken, QueueOptions, Result, RouteDefinition,
     AUTH_PUBLIC_METADATA,
 };
 use a3s_event::{NatsConfig, StorageType};
@@ -192,6 +220,10 @@ pub enum ControlPlaneStartupError {
     Execution(String),
     #[error("could not initialize Agent execution: {0}")]
     AgentExecution(String),
+    #[error("could not initialize WorkflowRun execution: {0}")]
+    WorkflowRun(String),
+    #[error("could not initialize HumanTask workers: {0}")]
+    HumanTask(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -236,8 +268,21 @@ pub async fn build_application_with_source_resolver(
         .map_err(ControlPlaneStartupError::Auth)?;
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
-    let api_tokens: Arc<dyn IApiTokenRepository> = identity;
+    let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
+    let memberships: Arc<dyn IMembershipRepository> = identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let ontologies: Arc<dyn IOntologyRepository> =
+        Arc::new(PostgresOntologyRepository::new(executor.clone()));
+    let workflow_definitions: Arc<dyn IWorkflowDefinitionRepository> =
+        Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone()));
+    let workflow_goals: Arc<dyn IWorkflowGoalRepository> =
+        Arc::new(PostgresWorkflowGoalRepository::new(executor.clone()));
+    let workflow_runs: Arc<dyn IWorkflowRunRepository> =
+        Arc::new(PostgresWorkflowRunRepository::new(executor.clone()));
+    let forms: Arc<dyn IFormRepository> = Arc::new(PostgresFormRepository::new(executor.clone()));
+    let human_tasks: Arc<dyn IHumanTaskRepository> =
+        Arc::new(PostgresHumanTaskRepository::new(executor.clone()));
+    let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
@@ -265,12 +310,20 @@ pub async fn build_application_with_source_resolver(
     let edge_repository = Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let routes: Arc<dyn IEdgeRepository> = edge_repository.clone();
     let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge_repository.clone();
+    let mcp_route_policy_repository: Arc<dyn IMcpRoutePolicyRepository> = edge_repository.clone();
     let mcp_gateway_snapshots: Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository> =
         edge_repository.clone();
     let asset_repository = Arc::new(PostgresAssetRepository::new(executor.clone()));
     let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
     let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
+    let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(Arc::clone(
+        &mcp_profiles,
+    )));
+    let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
+        mcp_route_policy_repository,
+        Arc::clone(&mcp_profiles),
+    ));
     let asset_backup_objects =
         ImmutableObjectClient::local(&config.artifacts.store_dir, "asset-git-backups")
             .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
@@ -465,18 +518,6 @@ pub async fn build_application_with_source_resolver(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
-    let gateway_certificate_reconciler = GatewayCertificateReconciler::new(
-        Arc::clone(&routes),
-        Arc::clone(&route_commands),
-        Arc::clone(&gateway_certificate_authority),
-        deployment_route_compiler.clone(),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        chrono_duration(config.edge.certificate_renewal_window_ms)?,
-        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
-        chrono_duration(config.edge.command_ttl_ms)?,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         edge_repository.clone(),
         Arc::clone(&routes),
@@ -492,10 +533,30 @@ pub async fn build_application_with_source_resolver(
         McpGatewayProjectionPlanner::new(mcp_route_planner, edge_repository),
         McpGatewayProjectionAssembler,
     ));
-    let mcp_node_projection_planner = Arc::new(McpGatewayNodeProjectionPlanner::new(
+    let mcp_node_projection_planner: Arc<
+        dyn crate::modules::edge::IMcpGatewayNodeProjectionPlanner,
+    > = Arc::new(McpGatewayNodeProjectionPlanner::new(
         mcp_projection_set_planner,
         McpGatewayProjectionAssembler,
     ));
+    let gateway_node_desired_state_planner = GatewayNodeDesiredStatePlanner::new(
+        Arc::clone(&mcp_gateway_snapshots),
+        Arc::clone(&mcp_node_projection_planner),
+    );
+    let gateway_certificate_reconciler = GatewayCertificateReconciler::new_managed(
+        Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
+        Arc::clone(&route_commands),
+        Arc::clone(&gateway_certificate_authority),
+        deployment_route_compiler.clone(),
+        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+        chrono_duration(config.edge.certificate_renewal_window_ms)?,
+        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
+        chrono_duration(config.edge.command_ttl_ms)?,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::Edge)?;
     let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
         Arc::clone(&mcp_gateway_snapshots),
         mcp_node_projection_planner,
@@ -536,8 +597,10 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::Edge)?;
-    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new(
+    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new_managed(
         Arc::clone(&routes),
+        Arc::clone(&mcp_gateway_snapshots),
+        gateway_node_desired_state_planner.clone(),
         GatewayRolloutRollbackCompiler::new(
             deployment_route_compiler.clone(),
             chrono_duration(config.edge.command_ttl_ms)?,
@@ -549,11 +612,13 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::Edge)?;
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
-        EdgeDeploymentRouteUpdater::new(
+        EdgeDeploymentRouteUpdater::new_managed(
             Arc::clone(&routes),
+            Arc::clone(&mcp_gateway_snapshots),
             Arc::clone(&node_control),
             Arc::clone(&route_commands),
             deployment_route_compiler,
+            gateway_node_desired_state_planner.clone(),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
@@ -629,8 +694,53 @@ pub async fn build_application_with_source_resolver(
         Arc::new(build_runtime),
         Arc::new(execution_runtime),
         Arc::new(agent_execution_runtime),
+        Arc::new(WorkflowRunFlowRuntime),
     );
-    let flow = crate::infrastructure::connect_flow(&postgres_url, Arc::new(flow_runtime)).await?;
+    let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
+    let operation_lease = Duration::from_millis(config.operations.lease_ms);
+    let flow = crate::infrastructure::connect_flow(
+        &postgres_url,
+        Arc::new(flow_runtime),
+        QueueOptions::new()
+            .with_poll_interval(operation_interval)
+            .with_lease_duration(operation_lease),
+    )
+    .await?;
+    let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> =
+        Arc::new(FlowWorkflowRunCoordinator::new(flow.engine()));
+    let workflow_run_history: Arc<dyn IWorkflowRunHistoryReader> =
+        Arc::new(WorkflowRunHistoryReader::new(flow.engine()));
+    let workflow_run_reconciler = WorkflowRunReconciler::new(
+        Arc::clone(&workflow_runs),
+        workflow_run_coordinator,
+        operation_interval,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::WorkflowRun)?;
+    let human_task_coordinator = HumanTaskCoordinator::new(
+        Arc::clone(&workflow_runs),
+        Arc::clone(&forms),
+        Arc::clone(&human_tasks),
+        flow.engine(),
+        Duration::from_millis(config.human_tasks.coordination_poll_interval_ms),
+        config.human_tasks.coordination_batch_size,
+    )
+    .map_err(ControlPlaneStartupError::HumanTask)?;
+    let human_task_resume_worker = HumanTaskResumeWorker::new(
+        human_tasks,
+        flow.engine(),
+        HumanTaskResumeWorkerConfig {
+            batch_size: config.human_tasks.resume_batch_size,
+            poll_interval: Duration::from_millis(config.human_tasks.resume_poll_interval_ms),
+            lease_duration: Duration::from_millis(config.human_tasks.resume_lease_ms),
+            flow_operation_timeout: Duration::from_millis(
+                config.human_tasks.flow_operation_timeout_ms,
+            ),
+            initial_backoff: Duration::from_millis(config.human_tasks.retry_initial_ms),
+            maximum_backoff: Duration::from_millis(config.human_tasks.retry_max_ms),
+        },
+    )
+    .map_err(ControlPlaneStartupError::HumanTask)?;
     let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
@@ -707,14 +817,14 @@ pub async fn build_application_with_source_resolver(
             operation_repository.clone(),
             operation_engine,
         )),
-        Duration::from_millis(config.operations.reconcile_interval_ms),
+        operation_interval,
         100,
     );
     let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(
         operation_reconciler,
         &flow,
-        Duration::from_millis(config.operations.reconcile_interval_ms),
-        Duration::from_millis(config.operations.lease_ms),
+        operation_interval,
+        operation_lease,
     )
     .map_err(|error| ControlPlaneStartupError::Framework(BootError::Internal(error.to_string())))?;
     let outbox_relay = OutboxRelay::new(
@@ -769,10 +879,20 @@ pub async fn build_application_with_source_resolver(
         ApplicationDependencies {
             organizations,
             api_tokens,
+            memberships,
             projects: projects.clone(),
             environments: projects,
+            ontologies,
+            workflow_definitions,
+            workflow_goals,
+            workflow_runs,
+            workflow_run_history,
+            forms,
+            form_semantic_core,
             search,
             asset_catalog,
+            mcp_service_profiles,
+            mcp_route_policies,
             asset_git,
             assets,
             workloads,
@@ -793,6 +913,8 @@ pub async fn build_application_with_source_resolver(
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
+            mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
+            gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
             domain_verifier,
             gateway_projector,
             operations: operation_repository,
@@ -818,6 +940,9 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(build_run_reconciler),
             run_operations.then_some(execution_reconciler),
             run_operations.then_some(agent_execution_reconciler),
+            run_operations.then_some(workflow_run_reconciler),
+            run_operations.then_some(human_task_coordinator),
+            run_operations.then_some(human_task_resume_worker),
             run_operations.then_some(github_authority_reconciler),
             run_operations.then_some(operation_coordinator),
             run_operations.then_some(gateway_certificate_reconciler),
@@ -840,10 +965,20 @@ pub async fn build_application_with_source_resolver(
 struct ApplicationDependencies {
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
+    memberships: Arc<dyn IMembershipRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
+    ontologies: Arc<dyn IOntologyRepository>,
+    workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
+    workflow_goals: Arc<dyn IWorkflowGoalRepository>,
+    workflow_runs: Arc<dyn IWorkflowRunRepository>,
+    workflow_run_history: Arc<dyn IWorkflowRunHistoryReader>,
+    forms: Arc<dyn IFormRepository>,
+    form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
+    mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
+    mcp_route_policies: Arc<McpRoutePolicyApplicationService>,
     asset_git: Arc<AssetGitApplicationService>,
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
@@ -864,6 +999,8 @@ struct ApplicationDependencies {
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
+    mcp_gateway_snapshots: Option<Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository>>,
+    gateway_node_desired_state_planner: Option<GatewayNodeDesiredStatePlanner>,
     domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
@@ -882,10 +1019,20 @@ fn build_application_with_health(
     let ApplicationDependencies {
         organizations,
         api_tokens,
+        memberships,
         projects,
         environments,
+        ontologies,
+        workflow_definitions,
+        workflow_goals,
+        workflow_runs,
+        workflow_run_history,
+        forms,
+        form_semantic_core,
         search,
         asset_catalog,
+        mcp_service_profiles,
+        mcp_route_policies,
         asset_git,
         assets,
         workloads,
@@ -906,6 +1053,8 @@ fn build_application_with_health(
         secret_encryption,
         route_targets,
         route_commands,
+        mcp_gateway_snapshots,
+        gateway_node_desired_state_planner,
         domain_verifier,
         gateway_projector,
         operations,
@@ -918,6 +1067,46 @@ fn build_application_with_health(
     } = dependencies;
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
+    let create_ontology_projects = Arc::clone(&projects);
+    let create_ontologies = Arc::clone(&ontologies);
+    let revise_ontologies = Arc::clone(&ontologies);
+    let get_ontologies = Arc::clone(&ontologies);
+    let list_ontologies = Arc::clone(&ontologies);
+    let get_ontology_revisions = Arc::clone(&ontologies);
+    let list_ontology_revisions = Arc::clone(&ontologies);
+    let diff_ontology_revisions = Arc::clone(&ontologies);
+    let create_workflow_projects = Arc::clone(&projects);
+    let create_workflow_definitions = Arc::clone(&workflow_definitions);
+    let revise_workflow_definitions = Arc::clone(&workflow_definitions);
+    let get_workflow_definitions = Arc::clone(&workflow_definitions);
+    let list_workflow_definitions = Arc::clone(&workflow_definitions);
+    let get_workflow_revisions = Arc::clone(&workflow_definitions);
+    let list_workflow_revisions = Arc::clone(&workflow_definitions);
+    let create_workflow_goal_projects = Arc::clone(&projects);
+    let create_workflow_goal_environments = Arc::clone(&environments);
+    let create_goal_workflows = Arc::clone(&workflow_definitions);
+    let create_goal_ontologies = Arc::clone(&ontologies);
+    let create_workflow_goals = Arc::clone(&workflow_goals);
+    let get_workflow_goals = Arc::clone(&workflow_goals);
+    let list_workflow_goals = Arc::clone(&workflow_goals);
+    let get_plan_revisions = Arc::clone(&workflow_goals);
+    let start_workflow_run_goals = Arc::clone(&workflow_goals);
+    let start_workflow_run_workflows = Arc::clone(&workflow_definitions);
+    let start_workflow_runs = Arc::clone(&workflow_runs);
+    let cancel_workflow_runs = Arc::clone(&workflow_runs);
+    let get_workflow_runs = Arc::clone(&workflow_runs);
+    let list_workflow_runs = Arc::clone(&workflow_runs);
+    let wait_workflow_runs = Arc::clone(&workflow_runs);
+    let get_workflow_run_outputs = Arc::clone(&workflow_runs);
+    let get_workflow_run_history_runs = workflow_runs;
+    let create_form_projects = Arc::clone(&projects);
+    let create_form_drafts = Arc::clone(&forms);
+    let revise_form_drafts = Arc::clone(&forms);
+    let publish_form_releases = Arc::clone(&forms);
+    let get_form_drafts = Arc::clone(&forms);
+    let list_form_drafts = Arc::clone(&forms);
+    let get_form_releases = Arc::clone(&forms);
+    let list_form_releases = forms;
     let agent_conversation_environments = Arc::clone(&environments);
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
@@ -959,6 +1148,11 @@ fn build_application_with_health(
     let deployment_get_operations = Arc::clone(&operations);
     let list_api_tokens = Arc::clone(&api_tokens);
     let get_api_tokens = Arc::clone(&api_tokens);
+    let create_memberships = Arc::clone(&memberships);
+    let change_memberships = Arc::clone(&memberships);
+    let revoke_memberships = Arc::clone(&memberships);
+    let list_memberships = Arc::clone(&memberships);
+    let get_memberships = Arc::clone(&memberships);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
     let list_environment_projects = Arc::clone(&projects);
@@ -971,6 +1165,12 @@ fn build_application_with_health(
     let get_assets = Arc::clone(&asset_catalog);
     let list_asset_releases = Arc::clone(&asset_catalog);
     let get_asset_releases = Arc::clone(&asset_catalog);
+    let bind_mcp_service_profiles = Arc::clone(&mcp_service_profiles);
+    let get_mcp_service_profiles = mcp_service_profiles;
+    let create_mcp_route_policies = Arc::clone(&mcp_route_policies);
+    let revise_mcp_route_policies = Arc::clone(&mcp_route_policies);
+    let list_mcp_route_policies = Arc::clone(&mcp_route_policies);
+    let get_mcp_route_policies = mcp_route_policies;
     let agent_create_assets = Arc::clone(&assets);
     let agent_update_assets = Arc::clone(&assets);
     let agent_execution_assets = Arc::clone(&assets);
@@ -1101,13 +1301,27 @@ fn build_application_with_health(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(BootError::Internal)?;
-    let publish_route_handler = PublishRouteHandler::new(
-        publish_routes,
-        route_targets,
-        route_commands,
-        route_compiler,
-        chrono_duration(config.edge.command_ttl_ms)?,
-    )
+    let publish_route_handler = match (mcp_gateway_snapshots, gateway_node_desired_state_planner) {
+        (Some(mcp_gateway_snapshots), Some(gateway_node_desired_state_planner)) => {
+            PublishRouteHandler::new_managed(
+                publish_routes,
+                mcp_gateway_snapshots,
+                route_targets,
+                route_commands,
+                route_compiler,
+                gateway_node_desired_state_planner,
+                chrono_duration(config.edge.command_ttl_ms)?,
+            )
+        }
+        (None, None) => PublishRouteHandler::new(
+            publish_routes,
+            route_targets,
+            route_commands,
+            route_compiler,
+            chrono_duration(config.edge.command_ttl_ms)?,
+        ),
+        _ => Err("managed Gateway publication dependencies are incomplete".into()),
+    }
     .map_err(BootError::Internal)?;
     BootApplication::builder()
         .import(PublicHealthModule::new(
@@ -1135,11 +1349,63 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::identity::CreateOrganization, _>(
                     CreateOrganizationHandler::new(organizations),
                 )
+                .command_handler::<crate::modules::identity::CreateServiceMembership, _>(
+                    CreateServiceMembershipHandler::new(create_memberships),
+                )
+                .command_handler::<crate::modules::identity::ChangeMembershipRole, _>(
+                    ChangeMembershipRoleHandler::new(change_memberships),
+                )
+                .command_handler::<crate::modules::identity::RevokeMembership, _>(
+                    RevokeMembershipHandler::new(revoke_memberships),
+                )
                 .command_handler::<crate::modules::projects::CreateProject, _>(
                     CreateProjectHandler::new(project_organizations, projects),
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
+                )
+                .command_handler::<crate::modules::workflow::CreateOntology, _>(
+                    CreateOntologyHandler::new(create_ontology_projects, create_ontologies),
+                )
+                .command_handler::<crate::modules::workflow::ReviseOntology, _>(
+                    ReviseOntologyHandler::new(revise_ontologies),
+                )
+                .command_handler::<crate::modules::workflow::CreateWorkflowDefinition, _>(
+                    CreateWorkflowDefinitionHandler::new(
+                        create_workflow_projects,
+                        create_workflow_definitions,
+                    ),
+                )
+                .command_handler::<crate::modules::workflow::ReviseWorkflowDefinition, _>(
+                    ReviseWorkflowDefinitionHandler::new(revise_workflow_definitions),
+                )
+                .command_handler::<crate::modules::workflow::CreateWorkflowGoal, _>(
+                    CreateWorkflowGoalHandler::new(
+                        create_workflow_goal_projects,
+                        create_workflow_goal_environments,
+                        create_goal_workflows,
+                        create_goal_ontologies,
+                        create_workflow_goals,
+                    ),
+                )
+                .command_handler::<crate::modules::workflow::StartWorkflowRun, _>(
+                    StartWorkflowRunHandler::new(
+                        start_workflow_run_goals,
+                        start_workflow_run_workflows,
+                        start_workflow_runs,
+                    ),
+                )
+                .command_handler::<crate::modules::workflow::CancelWorkflowRun, _>(
+                    CancelWorkflowRunHandler::new(cancel_workflow_runs),
+                )
+                .command_handler::<crate::modules::forms::CreateFormDraft, _>(
+                    CreateFormDraftHandler::new(create_form_projects, create_form_drafts),
+                )
+                .command_handler::<crate::modules::forms::ReviseFormDraft, _>(
+                    ReviseFormDraftHandler::new(revise_form_drafts),
+                )
+                .command_handler::<crate::modules::forms::PublishFormRelease, _>(
+                    PublishFormReleaseHandler::new(publish_form_releases, form_semantic_core),
                 )
                 .command_handler::<crate::modules::assets::CreateAsset, _>(
                     CreateAssetHandler::new(create_assets),
@@ -1149,6 +1415,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::assets::CreateAssetRelease, _>(
                     CreateAssetReleaseHandler::new(create_asset_releases),
+                )
+                .command_handler::<crate::modules::assets::BindMcpServiceProfile, _>(
+                    BindMcpServiceProfileHandler::new(bind_mcp_service_profiles),
                 )
                 .command_handler::<crate::modules::assets::YankAssetRelease, _>(
                     YankAssetReleaseHandler::new(yank_asset_releases),
@@ -1345,6 +1614,12 @@ fn build_application_with_health(
                         create_mcp_credential_encryption,
                     ),
                 )
+                .command_handler::<crate::modules::edge::CreateMcpRoutePolicy, _>(
+                    CreateMcpRoutePolicyHandler::new(create_mcp_route_policies),
+                )
+                .command_handler::<crate::modules::edge::ReviseMcpRoutePolicy, _>(
+                    ReviseMcpRoutePolicyHandler::new(revise_mcp_route_policies),
+                )
                 .command_handler::<crate::modules::edge::RotateMcpCredential, _>(
                     RotateMcpCredentialHandler::new(
                         rotate_mcp_credentials,
@@ -1402,11 +1677,83 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::identity::GetApiToken, _>(
                     GetApiTokenHandler::new(get_api_tokens),
                 )
+                .query_handler::<crate::modules::identity::ListMemberships, _>(
+                    ListMembershipsHandler::new(list_memberships),
+                )
+                .query_handler::<crate::modules::identity::GetMembership, _>(
+                    GetMembershipHandler::new(get_memberships),
+                )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),
                 )
                 .query_handler::<crate::modules::projects::ListEnvironments, _>(
                     ListEnvironmentsHandler::new(list_environment_projects, query_environments),
+                )
+                .query_handler::<crate::modules::workflow::GetOntology, _>(
+                    GetOntologyHandler::new(get_ontologies),
+                )
+                .query_handler::<crate::modules::workflow::ListOntologies, _>(
+                    ListOntologiesHandler::new(list_ontologies),
+                )
+                .query_handler::<crate::modules::workflow::GetOntologyRevision, _>(
+                    GetOntologyRevisionHandler::new(get_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::ListOntologyRevisions, _>(
+                    ListOntologyRevisionsHandler::new(list_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::DiffOntologyRevisions, _>(
+                    DiffOntologyRevisionsHandler::new(diff_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowDefinition, _>(
+                    GetWorkflowDefinitionHandler::new(get_workflow_definitions),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowDefinitions, _>(
+                    ListWorkflowDefinitionsHandler::new(list_workflow_definitions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRevision, _>(
+                    GetWorkflowRevisionHandler::new(get_workflow_revisions),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowRevisions, _>(
+                    ListWorkflowRevisionsHandler::new(list_workflow_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowGoal, _>(
+                    GetWorkflowGoalHandler::new(get_workflow_goals),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowGoals, _>(
+                    ListWorkflowGoalsHandler::new(list_workflow_goals),
+                )
+                .query_handler::<crate::modules::workflow::GetPlanRevision, _>(
+                    GetPlanRevisionHandler::new(get_plan_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRun, _>(
+                    GetWorkflowRunHandler::new(get_workflow_runs),
+                )
+                .query_handler::<crate::modules::workflow::ListWorkflowRuns, _>(
+                    ListWorkflowRunsHandler::new(list_workflow_runs),
+                )
+                .query_handler::<crate::modules::workflow::WaitWorkflowRun, _>(
+                    WaitWorkflowRunHandler::new(wait_workflow_runs),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRunOutput, _>(
+                    GetWorkflowRunOutputHandler::new(get_workflow_run_outputs),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRunHistory, _>(
+                    GetWorkflowRunHistoryHandler::new(
+                        get_workflow_run_history_runs,
+                        workflow_run_history,
+                    ),
+                )
+                .query_handler::<crate::modules::forms::GetFormDraft, _>(
+                    GetFormDraftHandler::new(get_form_drafts),
+                )
+                .query_handler::<crate::modules::forms::ListFormDrafts, _>(
+                    ListFormDraftsHandler::new(list_form_drafts),
+                )
+                .query_handler::<crate::modules::forms::GetFormRelease, _>(
+                    GetFormReleaseHandler::new(get_form_releases),
+                )
+                .query_handler::<crate::modules::forms::ListFormReleases, _>(
+                    ListFormReleasesHandler::new(list_form_releases),
                 )
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),
@@ -1422,6 +1769,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::assets::GetAssetRelease, _>(
                     GetAssetReleaseHandler::new(get_asset_releases),
+                )
+                .query_handler::<crate::modules::assets::GetMcpServiceProfile, _>(
+                    GetMcpServiceProfileHandler::new(get_mcp_service_profiles),
                 )
                 .query_handler::<crate::modules::assets::SelectAssetRelease, _>(
                     SelectAssetReleaseHandler::new(select_asset_releases),
@@ -1545,6 +1895,12 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::edge::GetMcpCredential, _>(
                     GetMcpCredentialHandler::new(get_mcp_credentials),
                 )
+                .query_handler::<crate::modules::edge::ListMcpRoutePolicies, _>(
+                    ListMcpRoutePoliciesHandler::new(list_mcp_route_policies),
+                )
+                .query_handler::<crate::modules::edge::GetMcpRoutePolicy, _>(
+                    GetMcpRoutePolicyHandler::new(get_mcp_route_policies),
+                )
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,
                 ))
@@ -1552,6 +1908,8 @@ fn build_application_with_health(
         )
         .import(IdentityModule::new(bootstrap_credential))
         .import(ProjectsModule)
+        .import(WorkflowModule)
+        .import(FormsModule)
         .import(SearchModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))

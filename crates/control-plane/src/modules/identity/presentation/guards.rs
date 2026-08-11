@@ -58,7 +58,36 @@ impl Guard for OrganizationTenantGuard {
                     "authenticated token cannot access another organization".to_string(),
                 ));
             }
+            if principal
+                .claim("organization_role")
+                .and_then(serde_json::Value::as_str)
+                == Some("restricted")
+            {
+                return Err(BootError::Forbidden(
+                    "restricted membership requires an explicit resource grant".to_string(),
+                ));
+            }
             Ok(true)
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OrganizationAdministratorGuard;
+
+impl Guard for OrganizationAdministratorGuard {
+    fn can_activate(&self, context: ExecutionContext) -> BoxFuture<'static, Result<bool>> {
+        Box::pin(async move {
+            let principal = context.request.require_auth_principal()?;
+            if principal.has_role("platform_admin")
+                || principal.has_role("organization_owner")
+                || principal.has_role("organization_admin")
+            {
+                return Ok(true);
+            }
+            Err(BootError::Forbidden(
+                "organization membership administration requires owner or admin role".into(),
+            ))
         })
     }
 }

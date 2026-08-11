@@ -301,6 +301,7 @@ orm_table! {
         snapshot_digest: String => "snapshot_digest",
         desired_state_digest: String => "desired_state_digest",
         mcp_route_count: u32 => "mcp_route_count",
+        publication_owner: String => "publication_owner",
         staged_at: DateTime<Utc> => "staged_at",
     }
 }

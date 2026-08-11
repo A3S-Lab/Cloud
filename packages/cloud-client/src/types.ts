@@ -116,7 +116,44 @@ export interface AssetReleaseMutationResult extends AssetRelease {
   replayed: boolean;
 }
 
-export type { ApiToken, ApiTokenMutationResult, CreateApiTokenInput } from './identity';
+export interface McpServiceProfileSpec {
+  protocolVersions: string[];
+  endpointPath: string;
+  runtimePort: string;
+  healthPath: string;
+  requestSse: boolean;
+  subscriptions: boolean;
+  serverDiscover: boolean;
+  expectedCapabilities: string[];
+  maxRequestBytes: number;
+  maxResponseBytes: number;
+  maxStreamSeconds: number;
+}
+
+export interface McpServiceProfile {
+  organizationId: string;
+  assetId: string;
+  assetReleaseId: string;
+  profileDigest: string;
+  acl: string;
+  spec: McpServiceProfileSpec;
+  createdAt: string;
+}
+
+export interface McpServiceProfileMutationResult extends McpServiceProfile {
+  replayed: boolean;
+}
+
+export type {
+  ApiToken,
+  ApiTokenMutationResult,
+  CreateApiTokenInput,
+  CreateServiceMembershipInput,
+  IdentityPrincipalKind,
+  Membership,
+  MembershipMutationResult,
+  MembershipRole,
+} from './identity';
 
 export type {
   EnrollmentToken,
@@ -127,6 +164,18 @@ export type {
 } from './node';
 
 export type { SearchResourceKind, SearchResult } from './search';
+
+export type {
+  FormDraft,
+  FormDraftInput,
+  FormDraftMutationResult,
+  FormPublicationMutationResult,
+  FormRelease,
+  FormReleaseRef,
+  FormReleaseSummary,
+  PublishFormReleaseOptions,
+  ReviseFormDraftOptions,
+} from './form';
 
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -745,6 +794,10 @@ export type {
   McpCredentialDeliveryResult,
   McpCredentialMutationResult,
   McpCredentialState,
+  McpRoutePolicy,
+  McpRoutePolicyGrant,
+  McpRoutePolicyLimit,
+  McpRoutePolicyMutationResult,
   PublishRouteInput,
   RevokeMcpCredentialInput,
   RotateMcpCredentialInput,
@@ -752,6 +805,54 @@ export type {
   RoutePublicationResult,
   RouteState,
 } from './edge';
+export type {
+  Ontology,
+  OntologyChange,
+  OntologyChangeCompatibility,
+  OntologyChangeKind,
+  OntologyDiff,
+  OntologyMigrationPolicy,
+  OntologyMigrationPolicyKind,
+  OntologyMutationResult,
+  OntologyResourceKind,
+  OntologyRevision,
+  OntologyRevisionSummary,
+  ReviseOntologyOptions,
+} from './ontology';
+export type {
+  CancelWorkflowRunInput,
+  ListWorkflowRunsOptions,
+  PublishWorkflowDefinitionInput,
+  ReviseWorkflowDefinitionOptions,
+  StartWorkflowRunInput,
+  WaitWorkflowRunOptions,
+  WorkflowCapabilityOwner,
+  WorkflowCapabilityReference,
+  WorkflowCapabilityType,
+  WorkflowDefinition,
+  WorkflowDefinitionMutationResult,
+  WorkflowGoal,
+  WorkflowGoalMutationResult,
+  WorkflowPayload,
+  WorkflowPayloadAclInput,
+  WorkflowPayloadKind,
+  WorkflowPlan,
+  WorkflowPlanEdge,
+  WorkflowPlanRevision,
+  WorkflowPlanStep,
+  WorkflowRevision,
+  WorkflowRevisionSummary,
+  WorkflowRun,
+  WorkflowRunHistoryEvent,
+  WorkflowRunHistoryOptions,
+  WorkflowRunHistoryPage,
+  WorkflowRunMutationResult,
+  WorkflowRunOutput,
+  WorkflowRunStatus,
+  WorkflowStepProjection,
+  WorkflowStepProjectionStatus,
+  WorkflowStepKind,
+} from './workflow';
 export type {
   Secret,
   SecretDetails,
