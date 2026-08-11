@@ -8,11 +8,14 @@ mod registry_credential;
 mod resource;
 
 pub use a3s_code_core::{
-    AgentEventTypeV1, AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1,
-    AgentProtocolCommandV1, AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1,
-    AgentProtocolEventRecordV1, AgentProtocolRunCancelV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunRecoverV1, AgentProtocolRunStartV1, AgentProtocolRunStateV1,
+    AgentEventTypeV1, AgentProtocolChangeSetRequestV1, AgentProtocolChangeSetV1,
+    AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
+    AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1, AgentProtocolEventRecordV1,
+    AgentProtocolRunCancelV1, AgentProtocolRunIdentityV1, AgentProtocolRunRecoverV1,
+    AgentProtocolRunStartV1, AgentProtocolRunStateV1, AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1,
+    AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_CHANGE_SET_HTTP_PATH_V1,
     AGENT_PROTOCOL_COMMAND_HTTP_PATH_V1, AGENT_PROTOCOL_EVENT_PAGE_HTTP_PATH_V1,
+    AGENT_PROTOCOL_MAX_CHANGE_SET_BYTES, AGENT_PROTOCOL_MAX_CHANGE_SET_RESPONSE_BYTES,
     AGENT_PROTOCOL_MAX_EVENTS_PER_PAGE, AGENT_PROTOCOL_MAX_EVENT_PAGE_BYTES,
     AGENT_PROTOCOL_MAX_EVENT_RECORD_BYTES, AGENT_PROTOCOL_V1,
 };

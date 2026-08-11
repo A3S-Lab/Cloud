@@ -267,7 +267,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "6.8.1"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=e0b385b0db667add293f038cd1d4c3213560302a#e0b385b0db667add293f038cd1d4c3213560302a"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=ab3abc831c686db37f084c2f12bd7e1c571c9f7a#ab3abc831c686db37f084c2f12bd7e1c571c9f7a"
 dependencies = [
  "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-common",
@@ -3005,7 +3005,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -4618,7 +4618,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4656,7 +4656,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]

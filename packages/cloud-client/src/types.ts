@@ -472,6 +472,39 @@ export interface AgentExecutionMutationResult {
   replayed: boolean;
 }
 
+export type AgentProtocolTerminalRunState = 'completed' | 'failed' | 'cancelled';
+
+export interface AgentProtocolRunIdentityV1 {
+  schema: string;
+  protocol: string;
+  agent_release_identity: string;
+  session_id: string;
+  run_id: string;
+}
+
+export interface AgentProtocolChangeSetV1 {
+  schema: 'a3s.code.agent-change-set.v1';
+  identity: AgentProtocolRunIdentityV1;
+  state: AgentProtocolTerminalRunState;
+  format: 'git_unified_diff_v1';
+  encoding: 'base64';
+  base_tree: string;
+  result_tree: string;
+  patch_digest: string;
+  patch_bytes: number;
+  patch_base64: string;
+  observed_at_ms: number;
+}
+
+export interface AgentExecutionChangeSet {
+  organizationId: string;
+  executionId: string;
+  batchId: string;
+  nodeId: string;
+  changeSet: AgentProtocolChangeSetV1;
+  recordedAt: string;
+}
+
 export type AgentExecutionEventKind =
   | 'execution_requested'
   | 'model_output'

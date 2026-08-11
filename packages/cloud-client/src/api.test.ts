@@ -743,6 +743,7 @@ describe('CloudApi', () => {
     await api.createAgentConversation('organization / one', 'project', 'environment', 'conversation:create');
     await api.listAgentExecutions('organization / one', 'conversation');
     await api.getAgentExecution('organization / one', 'execution');
+    await api.getAgentExecutionChangeSet('organization / one', 'execution');
     await api.startAgentExecution('organization / one', 'conversation', input, 'agent-execution:start');
     await api.cancelAgentExecution('organization / one', 'execution', 'agent-execution:cancel');
     await api.getAgentExecutionEvents('organization / one', 'conversation', {
@@ -768,6 +769,7 @@ describe('CloudApi', () => {
         undefined,
       ],
       ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution', 'GET', undefined],
+      ['/api/v1/organizations/organization%20%2F%20one/agent-executions/execution/changes', 'GET', undefined],
       [
         '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/executions',
         'POST',
@@ -782,13 +784,13 @@ describe('CloudApi', () => {
     ]);
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('conversation:create');
     expect((calls[2]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
-    expect((calls[5]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+    expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       'agent-execution:start'
     );
-    expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+    expect((calls[7]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
       'agent-execution:cancel'
     );
-    expect((calls[6]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((calls[7]?.[1]?.headers as Record<string, string>)['Content-Type']).toBeUndefined();
     expect(api.agentExecutionEventStreamUrl('organization / one', 'conversation')).toBe(
       '/api/v1/organizations/organization%20%2F%20one/agent-conversations/conversation/events/stream?limit=16'
     );

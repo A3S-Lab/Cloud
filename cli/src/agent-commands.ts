@@ -19,6 +19,7 @@ import {
   agentConversationResult,
   agentConversationsResult,
   agentExecutionEventsResult,
+  agentExecutionChangeSetResult,
   agentExecutionMutationResult,
   agentExecutionResult,
   agentExecutionsResult,
@@ -84,6 +85,14 @@ export async function executeAgentCommand(
       requireReadCommand(arguments_, 'agent-executions get <execution-id>');
       return agentExecutionResult(
         await cloudApi().getAgentExecution(
+          organizationId(),
+          positionalUuid(positionals, 2, 'Agent execution ID')
+        )
+      );
+    case 'agent-executions changes':
+      requireReadCommand(arguments_, 'agent-executions changes <execution-id>');
+      return agentExecutionChangeSetResult(
+        await cloudApi().getAgentExecutionChangeSet(
           organizationId(),
           positionalUuid(positionals, 2, 'Agent execution ID')
         )

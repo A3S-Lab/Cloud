@@ -1,6 +1,6 @@
 use crate::modules::agents::domain::{
-    AgentCodeRunBinding, AgentConversation, AgentExecution, AgentExecutionEvent,
-    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
+    AgentCodeRunBinding, AgentConversation, AgentExecution, AgentExecutionChangeSet,
+    AgentExecutionEvent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
     MAX_AGENT_EVENTS_PER_APPEND,
 };
 use crate::modules::shared_kernel::domain::{
@@ -335,6 +335,12 @@ pub trait IAgentRepository: Send + Sync {
         organization_id: OrganizationId,
         execution_id: AgentExecutionId,
     ) -> Result<Option<AgentExecution>, RepositoryError>;
+
+    async fn find_execution_change_set(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentExecutionChangeSet>, RepositoryError>;
 
     async fn pending_operation_starts(
         &self,

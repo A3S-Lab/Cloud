@@ -1,9 +1,10 @@
 use crate::modules::agents::application::{
-    GetAgentConversation, GetAgentExecution, GetAgentExecutionEvents, ListAgentConversations,
-    ListAgentExecutions,
+    GetAgentConversation, GetAgentExecution, GetAgentExecutionChangeSet, GetAgentExecutionEvents,
+    ListAgentConversations, ListAgentExecutions,
 };
 use crate::modules::agents::presentation::dto::{
-    AgentConversationResponse, AgentExecutionEventPageResponse, AgentExecutionResponse,
+    AgentConversationResponse, AgentExecutionChangeSetResponse, AgentExecutionEventPageResponse,
+    AgentExecutionResponse,
 };
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
@@ -25,6 +26,7 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
     let get_conversation_bus = Arc::clone(&bus);
     let list_executions_bus = Arc::clone(&bus);
     let get_execution_bus = Arc::clone(&bus);
+    let get_change_set_bus = Arc::clone(&bus);
     let get_events_bus = Arc::clone(&bus);
     let stream_events_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
@@ -141,6 +143,31 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                         Ok(execution) => {
                             BootResponse::json(&AgentExecutionResponse::from(execution))
                         }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            "/{organization_id}/agent-executions/{execution_id}/changes",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_change_set_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetAgentExecutionChangeSet {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            execution_id: AgentExecutionId::from_uuid(
+                                request.param_as::<Uuid>("execution_id")?,
+                            ),
+                        })
+                        .await?
+                    {
+                        Ok(change_set) => BootResponse::json(
+                            &AgentExecutionChangeSetResponse::from(change_set),
+                        ),
                         Err(error) => application_error_response(error, request_id),
                     }
                 }

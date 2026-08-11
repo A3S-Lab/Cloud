@@ -1506,6 +1506,74 @@
         "x-a3s-stability": "stable"
       }
     },
+    "/organizations/{organization_id}/agent-executions/{execution_id}/changes": {
+      "get": {
+        "operationId": "get_organizations_by_organization_id_agent_executions_by_execution_id_changes",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "GET /organizations/{organization_id}/agent-executions/{execution_id}/changes",
+        "tags": [
+          "Agents"
+        ],
+        "x-a3s-api-contract-version": "1.14.0",
+        "x-a3s-stability": "stable"
+      }
+    },
     "/organizations/{organization_id}/api-tokens": {
       "get": {
         "operationId": "get_organizations_by_organization_id_api_tokens",

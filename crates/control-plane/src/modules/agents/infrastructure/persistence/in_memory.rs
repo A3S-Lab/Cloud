@@ -1,10 +1,11 @@
 use crate::modules::agents::domain::{
     AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversation, AgentConversationStatus,
-    AgentConversationWrite, AgentConversationWriteReference, AgentExecution, AgentExecutionEvent,
-    AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionEventsWrite,
-    AgentExecutionEventsWriteReference, AgentExecutionWrite, AgentExecutionWriteReference,
-    AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
-    IAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
+    AgentConversationWrite, AgentConversationWriteReference, AgentExecution,
+    AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventDraft,
+    AgentExecutionEventKind, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
+    AgentExecutionWrite, AgentExecutionWriteReference, AppendAgentExecutionEventsWrite,
+    BindAgentCodeRunWrite, CreateAgentConversationWrite, IAgentRepository,
+    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -24,6 +25,7 @@ pub struct InMemoryAgentRepository {
 struct State {
     conversations: BTreeMap<(OrganizationId, AgentConversationId), AgentConversation>,
     executions: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecution>,
+    change_sets: BTreeMap<(OrganizationId, AgentExecutionId), AgentExecutionChangeSet>,
     events: BTreeMap<(OrganizationId, AgentConversationId, u64), AgentExecutionEvent>,
     idempotency: BTreeMap<(String, String), IdempotencyEntry>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
@@ -505,10 +507,49 @@ impl IAgentRepository for InMemoryAgentRepository {
             .validate_for(&write.batch)
             .map_err(|error| corrupt(format!("Code Agent event receipt is invalid: {error}")))?;
 
+        let change_set = write
+            .batch
+            .change_set
+            .clone()
+            .map(|change_set| {
+                AgentExecutionChangeSet::new(
+                    write.organization_id,
+                    execution.id,
+                    write.batch.batch_id,
+                    write.authenticated_node_id,
+                    change_set,
+                    write.accepted_at,
+                )
+                .map_err(invalid_repository_write)
+            })
+            .transpose()?;
+        if let Some(change_set) = &change_set {
+            if execution.code.as_ref().map(|binding| binding.identity())
+                != Some(&change_set.change_set.identity)
+                || !execution.status.is_terminal()
+            {
+                return Err(RepositoryError::Conflict(
+                    "Code Agent change set does not match its terminal execution".into(),
+                ));
+            }
+            if state
+                .change_sets
+                .get(&execution_key)
+                .is_some_and(|existing| existing != change_set)
+            {
+                return Err(RepositoryError::Conflict(
+                    "Agent execution change set is immutable".into(),
+                ));
+            }
+        }
+
         if !events.is_empty() {
             state.conversations.insert(conversation_key, conversation);
         }
         state.executions.insert(execution_key, execution);
+        if let Some(change_set) = change_set {
+            state.change_sets.insert(execution_key, change_set);
+        }
         for event in events {
             state.events.insert(
                 (event.organization_id, event.conversation_id, event.sequence),
@@ -612,6 +653,20 @@ impl IAgentRepository for InMemoryAgentRepository {
             .read()
             .await
             .executions
+            .get(&(organization_id, execution_id))
+            .cloned())
+    }
+
+    async fn find_execution_change_set(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentExecutionChangeSet>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .change_sets
             .get(&(organization_id, execution_id))
             .cloned())
     }

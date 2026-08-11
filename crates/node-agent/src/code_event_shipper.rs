@@ -3,8 +3,8 @@ use crate::outbound_batch::{DurableOutboundBatch, OutboundBatchError, OutboundBa
 use crate::state_file::{self, StateLock};
 use crate::{NodeControlClientError, NodeControlTransport};
 use a3s_cloud_contracts::{
-    AgentProtocolEventPageRequestV1, AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1,
-    NodeCodeAgentEventReceiptV1, NodeCodeAgentRuntimeBindingV1,
+    AgentProtocolChangeSetRequestV1, AgentProtocolEventPageRequestV1, AgentProtocolRunStateV1,
+    NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1, NodeCodeAgentRuntimeBindingV1,
 };
 use a3s_runtime::RuntimeClient;
 use chrono::Utc;
@@ -408,13 +408,29 @@ impl CodeEventShipper {
             if page.events.is_empty() && !changed {
                 continue;
             }
+            let change_set = if page.state.is_terminal() && !page.has_more {
+                let request = AgentProtocolChangeSetRequestV1 {
+                    schema: AgentProtocolChangeSetRequestV1::SCHEMA.into(),
+                    identity: binding.code_run_identity.clone(),
+                };
+                self.harness
+                    .change_set(&endpoint, &request, self.request_timeout)
+                    .await?
+            } else {
+                None
+            };
             let batch = NodeCodeAgentEventBatchV1 {
                 schema: NodeCodeAgentEventBatchV1::SCHEMA.into(),
                 batch_id: Uuid::now_v7(),
                 node_id: self.node_id,
                 binding: binding.clone(),
-                sent_at_ms: current_time_ms()?.max(page.observed_at_ms),
+                sent_at_ms: current_time_ms()?.max(page.observed_at_ms).max(
+                    change_set
+                        .as_ref()
+                        .map_or(0, |change_set| change_set.observed_at_ms),
+                ),
                 page,
+                change_set,
             };
             batch.validate().map_err(CodeEventShippingError::Invalid)?;
             return Ok(Some(batch));

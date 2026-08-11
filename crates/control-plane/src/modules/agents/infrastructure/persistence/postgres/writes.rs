@@ -2,18 +2,20 @@ use super::queries::{
     load_conversation_by_id, load_event_range, load_execution_by_id, lock_conversation,
     lock_execution,
 };
-use super::schema::{AgentConversations, AgentExecutionEvents, AgentExecutions};
+use super::schema::{
+    AgentConversations, AgentExecutionChangeSets, AgentExecutionEvents, AgentExecutions,
+};
 use crate::infrastructure::{
     execute, idempotency_replay, is_foreign_key_violation, is_unique_violation, require_one_row,
     store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::agents::domain::{
     AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversationStatus,
-    AgentConversationWrite, AgentConversationWriteReference, AgentExecutionEvent,
-    AgentExecutionEventDraft, AgentExecutionEventsWrite, AgentExecutionEventsWriteReference,
-    AgentExecutionWrite, AgentExecutionWriteReference, AppendAgentExecutionEventsWrite,
-    BindAgentCodeRunWrite, CreateAgentConversationWrite, RequestAgentExecutionCancellationWrite,
-    StartAgentExecutionWrite,
+    AgentConversationWrite, AgentConversationWriteReference, AgentExecutionChangeSet,
+    AgentExecutionEvent, AgentExecutionEventDraft, AgentExecutionEventsWrite,
+    AgentExecutionEventsWriteReference, AgentExecutionWrite, AgentExecutionWriteReference,
+    AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
+    RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_cloud_contracts::NodeCodeAgentEventReceiptV1;
@@ -360,6 +362,34 @@ pub(super) async fn accept_code_event_batch(
                     .accept_code_event_page(&write.batch.page, projected_at, &drafts)
                     .map_err(RepositoryError::Conflict)?;
 
+                let change_set = write
+                    .batch
+                    .change_set
+                    .clone()
+                    .map(|change_set| {
+                        AgentExecutionChangeSet::new(
+                            write.organization_id,
+                            execution.id,
+                            write.batch.batch_id,
+                            write.authenticated_node_id,
+                            change_set,
+                            write.accepted_at,
+                        )
+                        .map_err(invalid_repository_write)
+                    })
+                    .transpose()?;
+                if let Some(change_set) = &change_set {
+                    if execution.code.as_ref().map(|binding| binding.identity())
+                        != Some(&change_set.change_set.identity)
+                        || !execution.status.is_terminal()
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "Code Agent change set does not match its terminal execution".into(),
+                        )
+                        .into());
+                    }
+                }
+
                 let events = if drafts.is_empty() {
                     Vec::new()
                 } else {
@@ -386,6 +416,9 @@ pub(super) async fn accept_code_event_batch(
                 persist_execution(transaction, &execution, previous_execution_version).await?;
                 for event in &events {
                     insert_event(transaction, event).await?;
+                }
+                if let Some(change_set) = &change_set {
+                    insert_change_set(transaction, change_set).await?;
                 }
 
                 let receipt = NodeCodeAgentEventReceiptV1 {
@@ -583,6 +616,48 @@ async fn insert_event(
         Err(error) if is_unique_violation(&error) => Err(PostgresPersistenceError::Invariant(
             "Agent event sequence is already committed".into(),
         )),
+        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
+        Err(error) => Err(error),
+    }
+}
+
+async fn insert_change_set(
+    transaction: &PostgresTransaction,
+    change_set: &AgentExecutionChangeSet,
+) -> Result<(), PostgresPersistenceError> {
+    let encoded = serde_json::to_value(&change_set.change_set).map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "Agent execution change set could not be encoded: {error}"
+        ))
+    })?;
+    let inserted = execute(
+        transaction,
+        insert_into::<AgentExecutionChangeSets>()
+            .value(
+                AgentExecutionChangeSets::organization_id(),
+                change_set.organization_id.as_uuid(),
+            )
+            .value(
+                AgentExecutionChangeSets::execution_id(),
+                change_set.execution_id.as_uuid(),
+            )
+            .value(AgentExecutionChangeSets::batch_id(), change_set.batch_id)
+            .value(
+                AgentExecutionChangeSets::node_id(),
+                change_set.node_id.as_uuid(),
+            )
+            .value(AgentExecutionChangeSets::change_set(), encoded)
+            .value(
+                AgentExecutionChangeSets::recorded_at(),
+                change_set.recorded_at,
+            ),
+    )
+    .await;
+    match inserted {
+        Ok(rows) => require_one_row("Agent execution change set", rows),
+        Err(error) if is_unique_violation(&error) => {
+            Err(RepositoryError::Conflict("Agent execution change set is immutable".into()).into())
+        }
         Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
         Err(error) => Err(error),
     }

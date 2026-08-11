@@ -83,6 +83,7 @@ Commands:
   agent-conversations events ID Read one page of semantic execution events
   agent-executions list CONVERSATION List executions in one Agent conversation
   agent-executions get ID Get one Agent execution
+  agent-executions changes ID Get the immutable Git-compatible result of one terminal execution
   agent-executions start CONVERSATION AGENT RELEASE Start one exact Agent release idempotently
   agent-executions cancel ID Cancel one Agent execution through its Code-owned run
   nodes list            List nodes in the selected organization

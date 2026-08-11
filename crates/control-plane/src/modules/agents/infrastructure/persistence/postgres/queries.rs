@@ -1,7 +1,11 @@
-use super::rows::{ConversationSelection, EventSelection, ExecutionSelection};
-use super::schema::{AgentConversations, AgentExecutionEvents, AgentExecutions};
+use super::rows::{ChangeSetSelection, ConversationSelection, EventSelection, ExecutionSelection};
+use super::schema::{
+    AgentConversations, AgentExecutionChangeSets, AgentExecutionEvents, AgentExecutions,
+};
 use crate::infrastructure::{fetch_all, fetch_optional, PostgresPersistenceError};
-use crate::modules::agents::domain::{AgentConversation, AgentExecution, AgentExecutionEvent};
+use crate::modules::agents::domain::{
+    AgentConversation, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
+};
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, OrganizationId, ProjectId,
     RepositoryError,
@@ -66,6 +70,23 @@ pub(super) async fn find_execution(
         .await
         .map_err(storage)?;
     row.map(|row| row.aggregate()).transpose()
+}
+
+pub(super) async fn find_execution_change_set(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    execution_id: AgentExecutionId,
+) -> Result<Option<AgentExecutionChangeSet>, RepositoryError> {
+    let row = Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            select_from::<AgentExecutionChangeSets>()
+                .select(ChangeSetSelection)
+                .filter(AgentExecutionChangeSets::organization_id().eq(organization_id.as_uuid()))
+                .filter(AgentExecutionChangeSets::execution_id().eq(execution_id.as_uuid())),
+        )
+        .await
+        .map_err(storage)?;
+    row.map(|row| row.change_set()).transpose()
 }
 
 pub(super) async fn pending_operation_starts(

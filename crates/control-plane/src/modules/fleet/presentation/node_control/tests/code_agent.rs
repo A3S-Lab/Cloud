@@ -248,6 +248,7 @@ async fn prepare_execution(
         node_id: node_id.as_uuid(),
         binding: binding.node_runtime_binding(execution.id.as_uuid()),
         page,
+        change_set: None,
         sent_at_ms: observed_at_ms + 1,
     };
     batch.validate().expect("Code event batch");

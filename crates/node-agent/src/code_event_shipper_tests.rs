@@ -1,11 +1,13 @@
 use super::*;
 use crate::code_harness::CodeHarnessTransport;
 use a3s_cloud_contracts::{
-    AgentProtocolCommandReceiptV1, AgentProtocolCommandV1, AgentProtocolEventPageV1,
-    AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1, NodeCommandAck, NodeCommandAckReceipt,
-    NodeCommandLeaseResponse, NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch,
-    NodeLogChunkReceipt, NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
-    NodeResourceInventoryReceipt, AGENT_PROTOCOL_V1,
+    AgentProtocolChangeSetRequestV1, AgentProtocolChangeSetV1, AgentProtocolCommandReceiptV1,
+    AgentProtocolCommandV1, AgentProtocolEventPageV1, AgentProtocolEventRecordV1,
+    AgentProtocolRunIdentityV1, NodeCommandAck, NodeCommandAckReceipt, NodeCommandLeaseResponse,
+    NodeGatewayAck, NodeGatewayAckReceipt, NodeLogChunkBatch, NodeLogChunkReceipt,
+    NodeObservationBatchV2, NodeObservationReceipt, NodeResourceInventory,
+    NodeResourceInventoryReceipt, AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1,
+    AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence,
@@ -66,6 +68,8 @@ struct PageHarness {
     calls: AtomicUsize,
     requests: Mutex<Vec<AgentProtocolEventPageRequestV1>>,
     pages: Mutex<VecDeque<AgentProtocolEventPageV1>>,
+    change_requests: Mutex<Vec<AgentProtocolChangeSetRequestV1>>,
+    change_sets: Mutex<VecDeque<Option<AgentProtocolChangeSetV1>>>,
     endpoint: RuntimeServiceEndpoint,
 }
 
@@ -101,6 +105,23 @@ impl CodeHarnessTransport for PageHarness {
         assert_eq!(page.identity, request.identity);
         assert_eq!(page.after_event_sequence, request.after_event_sequence);
         Ok(page)
+    }
+
+    async fn change_set(
+        &self,
+        endpoint: &RuntimeServiceEndpoint,
+        request: &AgentProtocolChangeSetRequestV1,
+        timeout: Duration,
+    ) -> Result<Option<AgentProtocolChangeSetV1>, CodeHarnessError> {
+        assert_eq!(endpoint, &self.endpoint);
+        assert!(!timeout.is_zero());
+        request
+            .validate()
+            .map_err(|error| CodeHarnessError::Invalid(error.code().into()))?;
+        self.change_requests.lock().await.push(request.clone());
+        self.change_sets.lock().await.pop_front().ok_or_else(|| {
+            CodeHarnessError::Invalid("unexpected additional Code change-set request".into())
+        })
     }
 }
 
@@ -326,6 +347,28 @@ fn page(
     page
 }
 
+fn change_set(
+    identity: &AgentProtocolRunIdentityV1,
+    observed_at_ms: u64,
+) -> AgentProtocolChangeSetV1 {
+    let change_set = AgentProtocolChangeSetV1 {
+        schema: AgentProtocolChangeSetV1::SCHEMA.into(),
+        identity: identity.clone(),
+        state: AgentProtocolRunStateV1::Completed,
+        format: AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1.into(),
+        encoding: AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1.into(),
+        base_tree: format!("git-tree:{}", "a".repeat(40)),
+        result_tree: format!("git-tree:{}", "b".repeat(40)),
+        patch_digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            .into(),
+        patch_bytes: 0,
+        patch_base64: String::new(),
+        observed_at_ms,
+    };
+    change_set.validate().expect("Code change set");
+    change_set
+}
+
 fn shipper(
     root: &std::path::Path,
     node_id: Uuid,
@@ -408,6 +451,8 @@ async fn pending_page_replays_after_restart_before_advancing_the_code_cursor() {
             occurred_at_ms.saturating_add(1),
         )],
     );
+    let expected_change_set =
+        change_set(&binding.code_run_identity, occurred_at_ms.saturating_add(1));
     let runtime = Arc::new(EventRuntime {
         calls: AtomicUsize::new(0),
         observation,
@@ -416,6 +461,8 @@ async fn pending_page_replays_after_restart_before_advancing_the_code_cursor() {
         calls: AtomicUsize::new(0),
         requests: Mutex::new(Vec::new()),
         pages: Mutex::new(VecDeque::from([first, second])),
+        change_requests: Mutex::new(Vec::new()),
+        change_sets: Mutex::new(VecDeque::from([Some(expected_change_set.clone())])),
         endpoint,
     });
     let transport = Arc::new(EventTransport::new(1));
@@ -470,6 +517,8 @@ async fn pending_page_replays_after_restart_before_advancing_the_code_cursor() {
     assert_eq!(batches[0].batch_id, batches[1].batch_id);
     assert_ne!(batches[1].batch_id, batches[2].batch_id);
     assert_eq!(batches[2].page.after_event_sequence, Some(0));
+    assert_eq!(batches[2].change_set, Some(expected_change_set));
+    assert_eq!(harness.change_requests.lock().await.len(), 1);
 }
 
 #[tokio::test]
@@ -505,6 +554,8 @@ async fn empty_page_projects_a_state_change_once_without_fabricating_events() {
         calls: AtomicUsize::new(0),
         requests: Mutex::new(Vec::new()),
         pages: Mutex::new(VecDeque::from([first, unchanged])),
+        change_requests: Mutex::new(Vec::new()),
+        change_sets: Mutex::new(VecDeque::new()),
         endpoint,
     });
     let transport = Arc::new(EventTransport::new(0));

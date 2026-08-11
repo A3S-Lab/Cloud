@@ -1,7 +1,8 @@
 use super::{validate_lower_sha256, validate_single_line, validate_uuid};
 use a3s_code_core::{
-    AgentProtocolCommandV1, AgentProtocolEventPageV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStateV1, AGENT_PROTOCOL_MAX_EVENTS_PER_PAGE, AGENT_PROTOCOL_V1,
+    AgentProtocolChangeSetV1, AgentProtocolCommandV1, AgentProtocolEventPageV1,
+    AgentProtocolRunIdentityV1, AgentProtocolRunStateV1, AGENT_PROTOCOL_MAX_EVENTS_PER_PAGE,
+    AGENT_PROTOCOL_V1,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -79,6 +80,8 @@ pub struct NodeCodeAgentEventBatchV1 {
     pub node_id: Uuid,
     pub binding: NodeCodeAgentRuntimeBindingV1,
     pub page: AgentProtocolEventPageV1,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change_set: Option<AgentProtocolChangeSetV1>,
     pub sent_at_ms: u64,
 }
 
@@ -103,6 +106,21 @@ impl NodeCodeAgentEventBatchV1 {
             || self.sent_at_ms < self.page.observed_at_ms
         {
             return Err("A3S Code event page does not match its delivery binding".into());
+        }
+        if let Some(change_set) = &self.change_set {
+            change_set
+                .validate()
+                .map_err(|error| format!("invalid A3S Code change set ({})", error.code()))?;
+            if !self.page.state.is_terminal()
+                || self.page.has_more
+                || change_set.identity != self.binding.code_run_identity
+                || change_set.state != self.page.state
+                || self.sent_at_ms < change_set.observed_at_ms
+            {
+                return Err(
+                    "A3S Code change set does not match its terminal delivery binding".into(),
+                );
+            }
         }
         Ok(())
     }

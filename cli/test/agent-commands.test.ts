@@ -33,6 +33,11 @@ describe('a3s-cloud Agent commands', () => {
       `/organizations/${ORGANIZATION_ID}/agent-executions/${EXECUTION_ID}`,
       execution(),
     ],
+    [
+      ['agent-executions', 'changes', EXECUTION_ID],
+      `/organizations/${ORGANIZATION_ID}/agent-executions/${EXECUTION_ID}/changes`,
+      executionChangeSet(),
+    ],
   ] as const)('queries Agent resources %#', async (command, path, response) => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();
@@ -259,6 +264,35 @@ function execution() {
     startedAt: null,
     cancellationRequestedAt: null,
     finishedAt: null,
+  };
+}
+
+function executionChangeSet() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    executionId: EXECUTION_ID,
+    batchId: '019c0000-0000-7000-8000-000000000037',
+    nodeId: '019c0000-0000-7000-8000-000000000038',
+    changeSet: {
+      schema: 'a3s.code.agent-change-set.v1',
+      identity: {
+        schema: 'a3s.code.agent-run-identity.v1',
+        protocol: 'a3s.code.agent.v1',
+        agent_release_identity: `sha256:${'a'.repeat(64)}`,
+        session_id: 'conversation-1',
+        run_id: 'run-1',
+      },
+      state: 'completed',
+      format: 'git_unified_diff_v1',
+      encoding: 'base64',
+      base_tree: `git-tree:${'a'.repeat(40)}`,
+      result_tree: `git-tree:${'b'.repeat(40)}`,
+      patch_digest: 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      patch_bytes: 0,
+      patch_base64: '',
+      observed_at_ms: 1_723_000_000_000,
+    },
+    recordedAt: '2026-08-04T00:02:00.000Z',
   };
 }
 

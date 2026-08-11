@@ -2,6 +2,7 @@ import type {
   AgentConversation,
   AgentConversationMutationResult,
   AgentExecution,
+  AgentExecutionChangeSet,
   AgentExecutionEvent,
   AgentExecutionEventsPage,
   AgentExecutionMutationResult,
@@ -51,6 +52,24 @@ export function agentExecutionsResult(rows: AgentExecution[]): CommandResult {
 
 export function agentExecutionResult(row: AgentExecution): CommandResult {
   return singleResult(row, EXECUTION_COLUMNS);
+}
+
+export function agentExecutionChangeSetResult(row: AgentExecutionChangeSet): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'EXECUTION', value: (value) => value.executionId },
+        { header: 'STATE', value: (value) => value.changeSet.state },
+        { header: 'BASE TREE', value: (value) => value.changeSet.base_tree },
+        { header: 'RESULT TREE', value: (value) => value.changeSet.result_tree },
+        { header: 'PATCH BYTES', value: (value) => value.changeSet.patch_bytes },
+        { header: 'PATCH DIGEST', value: (value) => value.changeSet.patch_digest },
+        { header: 'RECORDED AT', value: (value) => value.recordedAt },
+      ]
+    ),
+  };
 }
 
 export function agentExecutionMutationResult(row: AgentExecutionMutationResult): CommandResult {
