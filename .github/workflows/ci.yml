@@ -105,6 +105,21 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --all-targets --locked
 
+      - name: Verify the real A3S Use Registry provider
+        if: matrix.toolchain == 'stable'
+        run: |
+          bash tools/use-conformance/run_registry_gate.sh \
+            "$RUNNER_TEMP/a3s-cloud-u0-provider-evidence"
+
+      - name: Upload A3S Use Registry provider evidence
+        if: always() && matrix.toolchain == 'stable'
+        uses: actions/upload-artifact@v4
+        with:
+          name: u0-use-registry-provider-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-u0-provider-evidence
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Run Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
@@ -265,6 +280,7 @@ jobs:
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
           bash -n tools/dev/run_cloud.sh
           bash -n tools/dev/test_run_cloud.sh
+          bash -n tools/use-conformance/run_registry_gate.sh
 
       - name: Test REST contract compatibility checker
         run: python3 -m unittest discover -s tools/api-contract -p 'test_*.py'

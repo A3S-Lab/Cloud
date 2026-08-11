@@ -211,8 +211,12 @@ are explicit and never fall back into each other, and catalog POST queries do
 not carry mutation idempotency. Migration `085` extends the existing authorized
 global Search view with the organization-scoped Registry name, bounded endpoint
 description, state, and detail link; it adds no catalog index or synchronization
-worker. Real PostgreSQL execution and HTTPS/TUF provider exit evidence remain
-open, so `U0.2` is implemented but not yet verified.
+worker. Stable CI now runs the production `PublicInternet` catalog adapter
+against the metadata-only signed fixture at the exact pinned Use revision. The
+gate certifies public HTTPS refresh, exact root and role versions, online and
+offline-bounded reads, root/cache drift, SSRF and cursor rejection, and the
+absence of a downloadable package target. Real PostgreSQL execution remains
+open, so `U0.2` is implemented and provider-verified but not yet complete.
 
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one

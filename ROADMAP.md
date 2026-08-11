@@ -1303,7 +1303,7 @@ lifecycle application service.
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
 | `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `7f731948`; the root compatibility lock and complete shared-manager composition still gate mutation |
-| `U0.2` | Read and Search surfaces implemented; verification pending | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with authorized global Search and REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
+| `U0.2` | Read, Search, and public HTTPS provider verified; PostgreSQL pending | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with authorized global Search and REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
@@ -1350,8 +1350,12 @@ maintained client, CLI, and six read-only Management MCP tools now reuse those
 same queries. Migration `085` extends the sole tenant-authorized global Search
 view with bounded Cloud-owned Registry metadata and an organization-level detail
 link. It creates no Search table, materialized view, catalog copy, or projection
-worker. Real PostgreSQL and HTTPS provider evidence remain open; therefore
-`U0.2` is user-visible but not yet verified.
+worker. Stable CI runs the production `PublicInternet` catalog adapter against
+the metadata-only signed fixture at the exact pinned Use revision. It verifies
+public HTTPS refresh, exact bootstrap and role versions, online and cached
+bounded reads, root/cache drift rejection, SSRF and cursor rejection, and the
+absence of a downloadable package target. Real PostgreSQL evidence remains
+open; therefore `U0.2` is provider-verified but not yet complete.
 
 The enrollment application command now normalizes the Cloud-owned name and
 endpoint, preflights active-human membership, derives bootstrap evidence only
