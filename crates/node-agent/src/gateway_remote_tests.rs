@@ -588,7 +588,8 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     if initial_upstream.request_count() != initial_request_count {
         return Err("replacement traffic reached the superseded target generation".into());
     }
-    if initial_client.get(&url).send().await.is_ok() {
+    let superseded_certificate_client = managed_tls_client(&initial_ca_bundle_pem, tls_port)?;
+    if superseded_certificate_client.get(&url).send().await.is_ok() {
         return Err("replacement snapshot continued serving the superseded certificate".into());
     }
     let replacement_status = control.readiness(&replacement_snapshot).await?;

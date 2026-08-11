@@ -179,14 +179,23 @@ jobs:
             cargo test -p a3s-cloud-node-agent --lib --locked \
               gateway::remote_tests::installed_a3s_gateway_validates_and_reloads_complete_snapshots \
               -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Rotate managed Gateway TLS and target generation
+        run: |
           A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \
             cargo test -p a3s-cloud-node-agent --lib --locked \
               gateway::remote_tests::installed_a3s_gateway_rotates_managed_tls_and_target_generation \
               -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Recover replicated Gateway member loss
+        run: |
           A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \
             cargo test -p a3s-cloud-node-agent --lib --locked \
               gateway::remote_tests::replicated_gateway_tests::installed_a3s_gateways_converge_independently_and_recover_member_loss \
               -- --ignored --exact --nocapture --test-threads=1
+
+      - name: Recover Gateway apply before acknowledgement
+        run: |
           A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \
             cargo test -p a3s-cloud-node-agent --lib --locked \
               gateway::reload_crash_tests::installed_a3s_gateway_recovers_native_apply_after_agent_process_death \
