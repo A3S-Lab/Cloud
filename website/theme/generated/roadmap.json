@@ -81,7 +81,7 @@
     {
       "code": "U0",
       "name": "A3S Use plugin assignments",
-      "outcome": "Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager",
+      "outcome": "Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager",
       "status": "In progress; unavailable",
       "statusKind": "in-progress"
     },
@@ -132,6 +132,13 @@
       "name": "Governed self-evolution",
       "outcome": "Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback",
       "status": "Planned",
+      "statusKind": "planned"
+    },
+    {
+      "code": "AR0",
+      "name": "Governed Agent Runtime experience",
+      "outcome": "One simplified projection over existing Agent, Workload, Deployment, Operation, Runtime, Box, Secret, and evidence authorities; bounded egress, brokered credentials, context-cost evidence, idle policy, and checkpoint/fork experience without a parallel lifecycle",
+      "status": "Planned; `AR0.1` waits for `A1.3` and the Box baseline",
       "statusKind": "planned"
     }
   ]
