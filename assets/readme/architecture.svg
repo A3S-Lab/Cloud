@@ -1,113 +1,73 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850" role="img" aria-labelledby="title desc">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
   <title id="title">A3S Cloud single-authority architecture</title>
-  <desc id="desc">Unified Gateway, Workflow Orchestration, and Agent Factory converge through one Cloud control plane, one outbound node execution path, and a separate Gateway request path.</desc>
+  <desc id="desc">Management surfaces commit intent to one Cloud control plane and PostgreSQL authority. Flow and Workloads drive one outbound execution path through Fleet, Node Agent, A3S Runtime, A3S Box, and A3S OCI Runtime. A3S Gateway keeps live request bytes off the Cloud control path.</desc>
   <defs>
-    <marker id="arrow-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#67b7ff"/>
-    </marker>
-    <marker id="arrow-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#b7f56a"/>
-    </marker>
-    <marker id="arrow-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10Z" fill="#f2c66d"/>
-    </marker>
+    <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8fa298" /></marker>
+    <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#b7f56a" /></marker>
+    <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#67b7ff" /></marker>
   </defs>
-
-  <rect width="1200" height="850" rx="24" fill="#0a0f0c"/>
-  <rect x="1" y="1" width="1198" height="848" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
-
-  <text x="48" y="54" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="34" font-weight="760">Three products. One operating architecture.</text>
-  <text x="48" y="84" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">PRODUCT COMPOSITIONS CONVERGE THROUGH SHARED AUTHORITIES</text>
-
-  <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
-    <rect x="48" y="112" width="342" height="124" rx="14" fill="#101812" stroke="#344b3c" stroke-width="1.5"/>
-    <text x="70" y="142" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">01 / UNIFIED GATEWAY</text>
-    <text x="70" y="174" fill="#eff7f1" font-size="22" font-weight="700">Govern intelligent ingress</text>
-    <text x="70" y="204" fill="#96a99e" font-size="18">Identity &#183; policy &#183; routing &#183; evidence</text>
-    <text x="70" y="226" fill="#6faad9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">E0  C0  H0  MCP0  I0</text>
-
-    <rect x="429" y="112" width="342" height="124" rx="14" fill="#101812" stroke="#344b3c" stroke-width="1.5"/>
-    <text x="451" y="142" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">02 / WORKFLOW</text>
-    <text x="451" y="174" fill="#eff7f1" font-size="22" font-weight="700">Compile ontology to plans</text>
-    <text x="451" y="204" fill="#96a99e" font-size="18">Goals &#183; rules &#183; Agents &#183; tools &#183; people</text>
-    <text x="451" y="226" fill="#6faad9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">W0  C0  A1  MCP0  I0</text>
-
-    <rect x="810" y="112" width="342" height="124" rx="14" fill="#101812" stroke="#344b3c" stroke-width="1.5"/>
-    <text x="832" y="142" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">03 / AGENT FACTORY</text>
-    <text x="832" y="174" fill="#eff7f1" font-size="22" font-weight="700">Ship heterogeneous Agents</text>
-    <text x="832" y="204" fill="#96a99e" font-size="18">Immutable release &#183; evaluate &#183; deploy</text>
-    <text x="832" y="226" fill="#6faad9" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">A0  A1  MCP0  I0  EV0</text>
-  </g>
-
-  <path d="M219 236v38H600M600 236v38M981 236v38H600" fill="none" stroke="#607368" stroke-width="1.8" stroke-dasharray="7 6"/>
-  <text x="600" y="265" fill="#70857a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" text-anchor="middle">COMPOSITIONS, NOT CONTROL PLANES</text>
-
-  <rect x="48" y="286" width="1104" height="206" rx="16" fill="#0f1712" stroke="#344b3c" stroke-width="1.5"/>
-  <text x="70" y="319" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">ONE CLOUD CONTROL PLANE</text>
-
-  <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
-    <rect x="70" y="344" width="196" height="112" rx="11" fill="#142019" stroke="#47755c"/>
-    <text x="88" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">INTENT</text>
-    <text x="88" y="406" fill="#eff7f1" font-size="21" font-weight="700">Identity + API</text>
-    <text x="88" y="434" fill="#96a99e" font-size="18">Tenant policy</text>
-
-    <rect x="286" y="344" width="196" height="112" rx="11" fill="#142019" stroke="#47755c"/>
-    <text x="304" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">AUTHORITY</text>
-    <text x="304" y="406" fill="#eff7f1" font-size="21" font-weight="700">PostgreSQL</text>
-    <text x="304" y="434" fill="#96a99e" font-size="18">A3S ORM + Outbox</text>
-
-    <rect x="502" y="344" width="196" height="112" rx="11" fill="#142019" stroke="#47755c"/>
-    <text x="520" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">RECOVERY</text>
-    <text x="520" y="406" fill="#eff7f1" font-size="21" font-weight="700">Flow + Ops</text>
-    <text x="520" y="434" fill="#96a99e" font-size="18">Leases, retries, timers</text>
-
-    <rect x="718" y="344" width="196" height="112" rx="11" fill="#142019" stroke="#47755c"/>
-    <text x="736" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">CONVERGENCE</text>
-    <text x="736" y="406" fill="#eff7f1" font-size="19" font-weight="700">Workloads + Fleet</text>
-    <text x="736" y="434" fill="#96a99e" font-size="18">Placement + Claims</text>
-
-    <rect x="934" y="344" width="196" height="112" rx="11" fill="#142019" stroke="#47755c"/>
-    <text x="952" y="376" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700">TRAFFIC STATE</text>
-    <text x="952" y="406" fill="#eff7f1" font-size="21" font-weight="700">Edge planner</text>
-    <text x="952" y="434" fill="#96a99e" font-size="18">Snapshot + owner</text>
-  </g>
-
-  <path d="M266 400h20M482 400h20M698 400h20M914 400h20" fill="none" stroke="#67b7ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
-
-  <rect x="48" y="526" width="1104" height="142" rx="16" fill="#0f1712" stroke="#344b3c" stroke-width="1.5"/>
-  <text x="70" y="558" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">ONE OUTBOUND NODE + EXECUTION PATH</text>
-
-  <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
-    <rect x="74" y="578" width="190" height="70" rx="10" fill="#142019" stroke="#47755c"/>
-    <text x="169" y="620" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">Node Agent</text>
-    <rect x="290" y="578" width="190" height="70" rx="10" fill="#142019" stroke="#47755c"/>
-    <text x="385" y="608" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">A3S Runtime</text>
-    <text x="385" y="633" fill="#96a99e" font-size="18" text-anchor="middle">Task / Service</text>
-    <rect x="506" y="578" width="190" height="70" rx="10" fill="#142019" stroke="#47755c"/>
-    <text x="601" y="620" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">A3S Box</text>
-    <rect x="722" y="578" width="214" height="70" rx="10" fill="#142019" stroke="#47755c"/>
-    <text x="829" y="606" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">Managed Workload</text>
-    <text x="829" y="633" fill="#96a99e" font-size="16" text-anchor="middle">App &#183; Harness &#183; MCP &#183; Power</text>
-    <rect x="962" y="578" width="166" height="70" rx="10" fill="#142019" stroke="#47755c"/>
-    <text x="1045" y="608" fill="#eff7f1" font-size="20" font-weight="700" text-anchor="middle">CPU / GPU</text>
-    <text x="1045" y="633" fill="#96a99e" font-size="18" text-anchor="middle">Host resources</text>
-  </g>
-
-  <path d="M816 456v70H169v52M264 613h26M480 613h26M696 613h26M936 613h26" fill="none" stroke="#b7f56a" stroke-width="2" marker-end="url(#arrow-green)"/>
-  <path d="M169 578V477H384V456" fill="none" stroke="#b7f56a" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-green)"/>
-  <text x="184" y="510" fill="#9bcf6b" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">EXACT RECEIPTS + OBSERVATIONS</text>
-
-  <rect x="48" y="702" width="1104" height="100" rx="16" fill="#0f1712" stroke="#344b3c" stroke-width="1.5"/>
-  <text x="70" y="734" fill="#f2c66d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700">LIVE REQUEST PATH / CLOUD STAYS OFF THE BYTE PATH</text>
-  <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="20" font-weight="700">
-    <text x="260" y="775" fill="#eff7f1" text-anchor="middle">External client</text>
-    <text x="600" y="775" fill="#eff7f1" text-anchor="middle">A3S Gateway</text>
-    <text x="946" y="775" fill="#eff7f1" text-anchor="middle">Exact healthy endpoint</text>
-  </g>
-  <path d="M338 768h166M696 768h138" fill="none" stroke="#f2c66d" stroke-width="2.5" marker-end="url(#arrow-amber)"/>
-  <path d="M1032 456v56H220v66" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
-  <path d="M169 648v42H600v66" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-blue)"/>
-
-  <text x="48" y="828" fill="#70857a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">TARGET ARCHITECTURE / ROADMAP GATES DECIDE AVAILABILITY</text>
-  <text x="1152" y="828" fill="#70857a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" text-anchor="end">ACL-ONLY / VERSIONED / FAIL-CLOSED</text>
+  <rect width="1200" height="760" rx="8" fill="#0a0f0c" />
+  <text x="48" y="52" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="600" letter-spacing="2.4">A3S CLOUD / SYSTEM ARCHITECTURE</text>
+  <text x="48" y="96" fill="#f4faf6" font-family="Georgia, Songti SC, serif" font-size="40">One authority. Three paths.</text>
+  <text x="48" y="128" fill="#a8b8af" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20">Intent is durable, execution is outbound, and request bytes stay off the control plane.</text>
+  <rect x="48" y="168" width="1104" height="144" rx="8" fill="#0e1712" stroke="#26382e" stroke-width="1" />
+  <rect x="64" y="180" width="164" height="24" rx="4" fill="#0a0f0c" />
+  <text x="76" y="197" fill="#6f8378" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="600" letter-spacing="1.6">CONTROL AUTHORITY</text>
+  <rect x="48" y="336" width="1104" height="168" rx="8" fill="#0e1712" stroke="#26382e" stroke-width="1" />
+  <rect x="64" y="348" width="156" height="24" rx="4" fill="#0a0f0c" />
+  <text x="76" y="365" fill="#6f8378" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="600" letter-spacing="1.6">DURABLE CONTROL</text>
+  <rect x="48" y="528" width="1104" height="160" rx="8" fill="#0e1712" stroke="#26382e" stroke-width="1" />
+  <rect x="64" y="540" width="176" height="24" rx="4" fill="#0a0f0c" />
+  <text x="76" y="557" fill="#6f8378" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="600" letter-spacing="1.6">NODE + REQUEST PATHS</text>
+  <path d="M292 252 H412" fill="none" stroke="#8fa298" stroke-width="2" marker-end="url(#arrow)" />
+  <path d="M740 252 H860" fill="none" stroke="#8fa298" stroke-width="2" marker-end="url(#arrow)" />
+  <path d="M520 292 V328 H216 V392" fill="none" stroke="#8fa298" stroke-width="2" marker-end="url(#arrow)" />
+  <path d="M336 436 H472" fill="none" stroke="#8fa298" stroke-width="2" marker-end="url(#arrow)" />
+  <path d="M712 436 H784" fill="none" stroke="#8fa298" stroke-width="2" marker-end="url(#arrow)" />
+  <path d="M552 480 V536 H748 V576" fill="none" stroke="#b7f56a" stroke-width="2" marker-end="url(#arrow-accent)" />
+  <path d="M696 616 H516" fill="none" stroke="#b7f56a" stroke-width="2" marker-end="url(#arrow-accent)" />
+  <path d="M852 576 V516 H648 V480" fill="none" stroke="#b7f56a" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-accent)" />
+  <path d="M1072 480 V576" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arrow-link)" />
+  <path d="M1032 640 H944 V672 H246 V656" fill="none" stroke="#67b7ff" stroke-width="2" marker-end="url(#arrow-link)" />
+  <rect x="320" y="220" width="64" height="20" rx="4" fill="#0e1712" /><text x="352" y="235" fill="#7f9288" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">INTENT</text>
+  <rect x="768" y="220" width="64" height="20" rx="4" fill="#0e1712" /><text x="800" y="235" fill="#7f9288" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">COMMIT</text>
+  <rect x="580" y="508" width="92" height="20" rx="4" fill="#0e1712" /><text x="626" y="523" fill="#9bd05d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">COMMAND</text>
+  <rect x="536" y="628" width="124" height="20" rx="4" fill="#0e1712" /><text x="598" y="643" fill="#9bd05d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">APPLY UNIT</text>
+  <rect x="1080" y="512" width="72" height="20" rx="4" fill="#0e1712" /><text x="1116" y="527" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">SNAPSHOT</text>
+  <rect x="600" y="644" width="96" height="20" rx="4" fill="#0e1712" /><text x="648" y="659" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">REQUESTS</text>
+  <rect x="80" y="212" width="212" height="80" rx="6" fill="#121c16" stroke="#53665b" stroke-width="1" />
+  <text x="96" y="240" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">Product surfaces</text>
+  <text x="96" y="268" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">REST · CLI · MCP · Web</text>
+  <rect x="412" y="204" width="328" height="88" rx="6" fill="#172118" stroke="#b7f56a" stroke-width="2" />
+  <rect x="428" y="216" width="60" height="20" rx="4" fill="#22301f" stroke="#719b46" stroke-width="1" />
+  <text x="458" y="231" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="600" text-anchor="middle">FOCAL</text>
+  <text x="428" y="264" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="24" font-weight="600">A3S Cloud control plane</text>
+  <text x="428" y="284" fill="#9dafa5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">identity · policy · desired state · audit</text>
+  <rect x="860" y="212" width="260" height="80" rx="6" fill="#111914" stroke="#53665b" stroke-width="1" />
+  <text x="876" y="240" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">PostgreSQL authority</text>
+  <text x="876" y="268" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">ORM · Outbox · projections</text>
+  <rect x="96" y="392" width="240" height="88" rx="6" fill="#121c16" stroke="#53665b" stroke-width="1" />
+  <text x="112" y="424" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">Flow + Operations</text>
+  <text x="112" y="452" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">replay · leases · recovery</text>
+  <rect x="472" y="392" width="240" height="88" rx="6" fill="#121c16" stroke="#53665b" stroke-width="1" />
+  <text x="488" y="424" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">Workloads + Fleet</text>
+  <text x="488" y="452" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">placement · claims · rollout</text>
+  <rect x="784" y="392" width="344" height="88" rx="6" fill="#121c16" stroke="#53665b" stroke-width="1" />
+  <text x="800" y="424" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">Edge snapshot planner</text>
+  <text x="800" y="452" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">routes · TLS · exact targets · CAS</text>
+  <rect x="96" y="576" width="300" height="80" rx="6" fill="#121c16" stroke="#53665b" stroke-width="1" />
+  <text x="112" y="604" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">Execution substrate</text>
+  <text x="112" y="632" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">Runtime → Box → OCI Runtime</text>
+  <rect x="696" y="576" width="208" height="80" rx="6" fill="#121c16" stroke="#53665b" stroke-width="1" />
+  <text x="712" y="604" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="20" font-weight="600">Node Agent</text>
+  <text x="712" y="632" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16">outbound mTLS · journal</text>
+  <rect x="1032" y="576" width="88" height="80" rx="6" fill="#102036" stroke="#67b7ff" stroke-width="1" />
+  <text x="1076" y="608" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="18" font-weight="600" text-anchor="middle">A3S</text>
+  <text x="1076" y="632" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="600" text-anchor="middle">GATEWAY</text>
+  <line x1="48" y1="716" x2="1152" y2="716" stroke="#26382e" stroke-width="1" />
+  <circle cx="64" cy="736" r="4" fill="#8fa298" /><text x="80" y="741" fill="#7f9288" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">CONTROL</text>
+  <circle cx="188" cy="736" r="4" fill="#b7f56a" /><text x="204" y="741" fill="#9bd05d" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">EXECUTION + RECEIPTS</text>
+  <circle cx="408" cy="736" r="4" fill="#67b7ff" /><text x="424" y="741" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12">LIVE REQUESTS / CLOUD OFF BYTE PATH</text>
+  <text x="1152" y="741" fill="#6f8378" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="end">TARGET ARCHITECTURE · ROADMAP GATES DECIDE AVAILABILITY</text>
 </svg>

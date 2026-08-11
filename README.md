@@ -53,7 +53,7 @@ execution architecture.
 ## Architecture
 
 <p align="center">
-  <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud products converging through one control, execution, and request architecture" />
+  <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud architecture showing one durable control authority, one outbound execution path through Runtime, Box, and OCI Runtime, and a separate Gateway request path" />
 </p>
 
 The current architecture separates three paths that must never be collapsed:
