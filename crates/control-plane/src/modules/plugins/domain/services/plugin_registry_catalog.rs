@@ -16,6 +16,14 @@ pub enum PluginRegistryCatalogError {
     Disabled,
     #[error(transparent)]
     TrustRoot(#[from] PluginTrustRootStoreError),
+    #[error("plugin catalog query is invalid")]
+    QueryInvalid,
+    #[error("plugin catalog cursor is stale")]
+    CursorStale,
+    #[error("plugin package is not present in the verified catalog")]
+    PackageNotFound,
+    #[error("plugin package is not compatible with the requested host")]
+    PackageIncompatible,
     #[error("A3S Use Registry operation failed ({code})")]
     Use { code: String },
     #[error("pinned plugin trust-root evidence does not match the enrolled registry")]

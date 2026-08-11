@@ -7,7 +7,10 @@ pub(crate) mod test_support;
 
 pub use application::{
     EnrollPluginRegistry, EnrollPluginRegistryHandler, EnrollPluginRegistryResult,
-    GetPluginRegistry, GetPluginRegistryHandler, ListPluginRegistries, ListPluginRegistriesHandler,
+    GetPluginRegistry, GetPluginRegistryHandler, InspectCachedPluginCatalog,
+    InspectCachedPluginCatalogHandler, InspectPluginCatalog, InspectPluginCatalogHandler,
+    ListPluginRegistries, ListPluginRegistriesHandler, SearchCachedPluginCatalog,
+    SearchCachedPluginCatalogHandler, SearchPluginCatalog, SearchPluginCatalogHandler,
 };
 
 pub use infrastructure::{

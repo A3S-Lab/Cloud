@@ -1341,9 +1341,12 @@ and verifies the returned bootstrap-root digest, version, and size before
 delegating refresh, online/cached search, and online/cached inspection to
 `a3s-use-extension`. The query and result types are the upstream types; Cloud
 stores no TUF metadata, catalog row, package target, or package byte.
-Catalog application queries, REST/client/CLI/Management MCP reads, and real
-HTTPS provider evidence remain open; therefore `U0.2` is not yet user-visible
-or verified.
+Catalog application queries now retain the exact Use host/search/page/
+inspection types, select one tenant-owned registry before calling Use, expose
+online and cached reads explicitly without fallback, and translate only the
+stable Use error boundary into Cloud application outcomes. REST/client/CLI/
+Management MCP reads and real HTTPS provider evidence remain open; therefore
+`U0.2` is not yet user-visible or verified.
 
 The enrollment application command now normalizes the Cloud-owned name and
 endpoint, preflights active-human membership, derives bootstrap evidence only
@@ -1355,8 +1358,9 @@ content-addressed root is not tenant intent by itself; only a committed
 `PluginRegistry` grants that meaning. A failed or conflicting transaction may
 therefore leave an unreferenced immutable object with no authority, and Cloud
 does not add a root-cleanup saga. Tenant-scoped get/list handlers reuse the
-existing repository and return no cross-organization result. Catalog
-search/inspection application queries and REST/client/CLI/Management MCP
+existing repository and return no cross-organization result. Catalog search/
+inspection application handlers use that same tenant fence and delegate exact
+online/cached requests to the sole Use adapter. REST/client/CLI/Management MCP
 interfaces remain open.
 
 The Cloud API has one assignment vocabulary and imports A3S Use's canonical

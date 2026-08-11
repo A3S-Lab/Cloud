@@ -167,7 +167,17 @@ fn safe_absolute_root(path: &Path) -> bool {
 }
 
 fn map_use_error(error: UseError) -> PluginRegistryCatalogError {
-    PluginRegistryCatalogError::Use { code: error.code }
+    match error.code.as_str() {
+        "use.extension.catalog_query_invalid" | "use.extension.catalog_cursor_invalid" => {
+            PluginRegistryCatalogError::QueryInvalid
+        }
+        "use.extension.catalog_cursor_stale" => PluginRegistryCatalogError::CursorStale,
+        "use.extension.catalog_package_missing" => PluginRegistryCatalogError::PackageNotFound,
+        "use.extension.catalog_package_incompatible" => {
+            PluginRegistryCatalogError::PackageIncompatible
+        }
+        _ => PluginRegistryCatalogError::Use { code: error.code },
+    }
 }
 
 #[cfg(test)]

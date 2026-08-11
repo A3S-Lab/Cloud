@@ -2383,9 +2383,11 @@ remains the final authority for aggregate, Outbox, audit, and idempotency state.
 An unreferenced content-addressed object after a failed/conflicting transaction
 has no tenant authority and does not justify a second cleanup saga. Tenant
 get/list handlers reuse the repository's organization fence. Catalog
-application queries, authorized Search projection, REST/client/CLI/Management
-MCP reads, and real-provider exit evidence remain open; the Web projection
-stays deferred by section 1.1.
+application queries now preserve the exact Use request/result contracts,
+resolve the tenant-owned Registry first, and keep online and cached reads
+explicit without fallback. Authorized Search projection, REST/client/CLI/
+Management MCP reads, and real-provider exit evidence remain open; the Web
+projection stays deferred by section 1.1.
 
 The exact catalog selection is immutable within one assignment generation.
 Cloud assignment generation, Use installed generation, and Use capability
