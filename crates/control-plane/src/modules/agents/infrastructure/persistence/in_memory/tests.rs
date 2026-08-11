@@ -461,7 +461,10 @@ async fn code_event_batch_projects_semantics_and_replays_one_receipt() {
     assert_eq!(stored_change_set.batch_id, batch.batch_id);
     assert_eq!(
         stored_change_set.change_set,
-        batch.change_set.clone().unwrap()
+        batch
+            .change_set
+            .clone()
+            .expect("fixture event batch change set")
     );
     assert_eq!(
         current
