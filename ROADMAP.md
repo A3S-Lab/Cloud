@@ -1301,7 +1301,7 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `800dc661`; the root compatibility lock and complete shared-manager composition still gate mutation |
+| `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `4510f9e0`; the root compatibility lock and complete shared-manager composition still gate mutation |
 | `U0.2` | Core persistence in progress | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
@@ -1309,7 +1309,7 @@ lifecycle application service.
 
 The current Cloud/Use lock pins `a3s-use-core` 0.2.2 and
 `a3s-use-extension` 0.3.0 to upstream revision
-`800dc66182dc57091637d974156be8d7e291914e`. Core owns the canonical
+`4510f9e0f39d166677dae29217b8935d5539c45a`. Core owns the canonical
 protocol-level-4 `PluginHostManager`, managed-scope fence, package lock,
 selected-surface evidence, and reviewed enablement-plan contracts; Extension
 owns Registry/TUF verification and the bounded catalog query types. Five
@@ -1341,9 +1341,23 @@ and verifies the returned bootstrap-root digest, version, and size before
 delegating refresh, online/cached search, and online/cached inspection to
 `a3s-use-extension`. The query and result types are the upstream types; Cloud
 stores no TUF metadata, catalog row, package target, or package byte.
-Enrollment application commands, tenant queries, REST/client/CLI/Management
-MCP reads, and real HTTPS provider evidence remain open; therefore `U0.2` is
-not yet user-visible or verified.
+Catalog application queries, REST/client/CLI/Management MCP reads, and real
+HTTPS provider evidence remain open; therefore `U0.2` is not yet user-visible
+or verified.
+
+The enrollment application command now normalizes the Cloud-owned name and
+endpoint, preflights active-human membership, derives bootstrap evidence only
+through Use's state-free inspector, admits the exact bytes through the shared
+immutable-object client, and commits the aggregate, Outbox, audit, and
+idempotency record through the existing repository transaction. PostgreSQL
+rechecks the same active-human query inside that final transaction. An admitted
+content-addressed root is not tenant intent by itself; only a committed
+`PluginRegistry` grants that meaning. A failed or conflicting transaction may
+therefore leave an unreferenced immutable object with no authority, and Cloud
+does not add a root-cleanup saga. Tenant-scoped get/list handlers reuse the
+existing repository and return no cross-organization result. Catalog
+search/inspection application queries and REST/client/CLI/Management MCP
+interfaces remain open.
 
 The Cloud API has one assignment vocabulary and imports A3S Use's canonical
 `PluginDesiredState`; it does not define a parallel lifecycle enum. The sole

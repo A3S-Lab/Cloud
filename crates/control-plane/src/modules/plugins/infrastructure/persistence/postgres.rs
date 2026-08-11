@@ -7,6 +7,9 @@ use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::repositories::{
     CreatePluginRegistryWrite, IPluginRegistryRepository,
 };
+use crate::modules::plugins::domain::services::{
+    IPluginRegistryEnrollmentAuthorizer, PluginRegistryEnrollmentAuthorizationError,
+};
 use crate::modules::plugins::domain::value_objects::{
     PluginRegistryEndpoint, PluginRegistryState, PluginTrustRoot, PluginTrustRootObjectRef,
 };
@@ -87,13 +90,7 @@ impl IPluginRegistryRepository for PostgresPluginRegistryRepository {
                 Box::pin(async move {
                     let actor_is_active_human = fetch_optional::<i32, _>(
                         transaction,
-                        sql_query::<i32>(
-                            "select 1 from identity_principals p join organization_memberships m on m.principal_id = p.id where p.id = ",
-                        )
-                        .bind(actor_id.as_uuid())
-                        .append(" and p.kind = 'human' and p.disabled_at is null and m.organization_id = ")
-                        .bind(registry.organization_id.as_uuid())
-                        .append(" and m.revoked_at is null"),
+                        active_human_member_query(registry.organization_id, actor_id),
                     )
                     .await?
                     .is_some();
@@ -232,6 +229,41 @@ impl IPluginRegistryRepository for PostgresPluginRegistryRepository {
             .map(plugin_registry_from_row)
             .collect()
     }
+}
+
+#[async_trait]
+impl IPluginRegistryEnrollmentAuthorizer for PostgresPluginRegistryRepository {
+    async fn authorize_enrollment(
+        &self,
+        organization_id: OrganizationId,
+        actor_id: PrincipalId,
+    ) -> Result<(), PluginRegistryEnrollmentAuthorizationError> {
+        let authorized = Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(active_human_member_query(organization_id, actor_id))
+            .await
+            .map_err(|error| {
+                PluginRegistryEnrollmentAuthorizationError::Unavailable(error.to_string())
+            })?
+            .is_some();
+        if authorized {
+            Ok(())
+        } else {
+            Err(PluginRegistryEnrollmentAuthorizationError::Forbidden)
+        }
+    }
+}
+
+fn active_human_member_query(
+    organization_id: OrganizationId,
+    actor_id: PrincipalId,
+) -> a3s_orm::SqlQuery<i32> {
+    sql_query::<i32>(
+        "select 1 from identity_principals p join organization_memberships m on m.principal_id = p.id where p.id = ",
+    )
+    .bind(actor_id.as_uuid())
+    .append(" and p.kind = 'human' and p.disabled_at is null and m.organization_id = ")
+    .bind(organization_id.as_uuid())
+    .append(" and m.revoked_at is null")
 }
 
 fn plugin_registry_select() -> a3s_orm::SqlQuery<PluginRegistryRow> {

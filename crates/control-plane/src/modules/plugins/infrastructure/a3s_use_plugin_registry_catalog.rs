@@ -175,6 +175,7 @@ mod tests {
     use super::*;
     use crate::modules::plugins::domain::services::IPluginTrustRootStore;
     use crate::modules::plugins::domain::value_objects::{PluginRegistryEndpoint, PluginTrustRoot};
+    use crate::modules::plugins::test_support::VALID_BOOTSTRAP_ROOT;
     use crate::modules::plugins::PluginTrustRootObjectStore;
     use crate::modules::shared_kernel::domain::{
         OrganizationId, PluginRegistryId, PrincipalId, ResourceName, Sha256Digest,
@@ -184,8 +185,6 @@ mod tests {
     use sha2::{Digest, Sha256};
     use tempfile::TempDir;
     use uuid::Uuid;
-
-    const VALID_ROOT: &[u8] = br#"{"signatures":[{"keyid":"bfe1a83869e5bf574e3ff3acbb83f840de84a990d10059f3096f0bf4f2b90c10","sig":"7a64bb9da11f93db6f1d128dfec98d43df7b7636fbc9a34953e868391b07a6c6aaa95b79c87f2096b10560b8511f02ed88dc0b7c6e691762730de9f6c79e8d06"}],"signed":{"_type":"root","consistent_snapshot":false,"expires":"2999-01-01T00:00:00Z","keys":{"bfe1a83869e5bf574e3ff3acbb83f840de84a990d10059f3096f0bf4f2b90c10":{"keytype":"ed25519","keyval":{"public":"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"},"scheme":"ed25519"}},"roles":{"root":{"keyids":["bfe1a83869e5bf574e3ff3acbb83f840de84a990d10059f3096f0bf4f2b90c10"],"threshold":1},"snapshot":{"keyids":["bfe1a83869e5bf574e3ff3acbb83f840de84a990d10059f3096f0bf4f2b90c10"],"threshold":1},"targets":{"keyids":["bfe1a83869e5bf574e3ff3acbb83f840de84a990d10059f3096f0bf4f2b90c10"],"threshold":1},"timestamp":{"keyids":["bfe1a83869e5bf574e3ff3acbb83f840de84a990d10059f3096f0bf4f2b90c10"],"threshold":1}},"spec_version":"1.0.0","version":1}}"#;
 
     fn trust_root(bytes: &[u8], version: u64) -> PluginTrustRoot {
         let digest = Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(bytes)))
@@ -231,7 +230,7 @@ mod tests {
     #[tokio::test]
     async fn pins_exact_enrolled_root_under_tenant_scoped_public_use_registry() {
         let temporary = tempfile::tempdir().expect("temporary directory");
-        let (adapter, registry) = catalog_adapter(&temporary, VALID_ROOT, 1).await;
+        let (adapter, registry) = catalog_adapter(&temporary, VALID_BOOTSTRAP_ROOT, 1).await;
 
         let trusted = adapter
             .trusted_registry(&registry)
@@ -256,7 +255,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_wrong_bootstrap_version_and_malformed_tuf_through_use() {
         let wrong_version = tempfile::tempdir().expect("temporary directory");
-        let (adapter, registry) = catalog_adapter(&wrong_version, VALID_ROOT, 2).await;
+        let (adapter, registry) = catalog_adapter(&wrong_version, VALID_BOOTSTRAP_ROOT, 2).await;
         assert!(matches!(
             adapter.trusted_registry(&registry).await,
             Err(PluginRegistryCatalogError::TrustRootEvidenceMismatch)
@@ -274,7 +273,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_disabled_registry_and_relative_metadata_authority() {
         let temporary = tempfile::tempdir().expect("temporary directory");
-        let (adapter, mut registry) = catalog_adapter(&temporary, VALID_ROOT, 1).await;
+        let (adapter, mut registry) = catalog_adapter(&temporary, VALID_BOOTSTRAP_ROOT, 1).await;
         registry.state = PluginRegistryState::Disabled;
         assert!(matches!(
             adapter.trusted_registry(&registry).await,
