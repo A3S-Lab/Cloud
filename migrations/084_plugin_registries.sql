@@ -1,3 +1,4 @@
+-- Tenant Plugin Registry enrollment retains trust anchors, not TUF metadata.
 create table plugin_registries (
     organization_id uuid not null references organizations(id) check (
         organization_id <> '00000000-0000-0000-0000-000000000000'

@@ -1316,7 +1316,7 @@ lock and production Manager composition remain open, so no registry,
 assignment, or user-facing plugin capability is claimed yet.
 
 The first `U0.2` backend slices define the tenant-scoped `PluginRegistry`
-aggregate and exact content-addressed trust-root evidence, plus migration 083
+aggregate and exact content-addressed trust-root evidence, plus migration 084
 and A3S ORM repositories with canonical row decoding, tenant-scoped
 idempotency, Outbox, and audit writes. A typed Plugins adapter now admits and
 reads exact root bytes through the shared immutable-object client, rejects

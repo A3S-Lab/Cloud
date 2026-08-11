@@ -725,18 +725,26 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "082",
-            "reviewed Plugin Host enablement plans",
+            "Agent execution change-set projections",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/082_plugin_host_enablement_plans.sql"
+                "/../../migrations/082_agent_execution_change_sets.sql"
             )),
         ),
         Migration::new(
             "083",
+            "reviewed Plugin Host enablement plans",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/083_plugin_host_enablement_plans.sql"
+            )),
+        ),
+        Migration::new(
+            "084",
             "tenant plugin registry enrollment",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/083_plugin_registries.sql"
+                "/../../migrations/084_plugin_registries.sql"
             )),
         ),
     ]

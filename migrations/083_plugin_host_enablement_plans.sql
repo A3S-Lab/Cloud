@@ -1,3 +1,4 @@
+-- Reviewed Plugin Host enablement plans replace the pre-release direct command.
 alter table node_commands
     drop constraint node_commands_command_kind_check;
 
