@@ -10,6 +10,7 @@ mod module;
 mod nodes;
 mod ontology;
 mod operations;
+mod plugins;
 mod projects;
 mod protocol;
 mod search;

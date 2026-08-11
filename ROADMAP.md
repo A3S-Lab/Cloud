@@ -813,14 +813,15 @@ authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
 
-The current catalog contains 59 administrator tools and 37 read-only tools:
+The current catalog contains 65 administrator tools and 43 read-only tools:
 the verified catalog is retained, five Identity tools come from the first
 `C0.3` slice, seven Ontology tools come from backend `W0.2`, and ten Workflow
 definition/goal/plan tools plus seven native Form lifecycle tools come from the
 `W0.3` planning slice. Seven WorkflowRun lifecycle tools add five read-only
-run/projection/history queries and two replay-safe mutations. Focused catalog,
+run/projection/history queries and two replay-safe mutations. Six `U0.2`
+Plugin Registry/catalog tools add only tenant-scoped read queries. Focused catalog,
 permission, strict-argument, lifecycle, migration, deterministic-plan,
-WorkflowRun, and historical-replay tests pass. The expanded clean real-
+WorkflowRun, plugin tenant, and historical-replay tests pass. The expanded clean real-
 PostgreSQL/A3S Box gate must rerun before these persistence slices are verified.
 
 The first backend-only `C0.3` slice adds one Identity-owned Principal,
@@ -833,7 +834,7 @@ revocation are enforced on the next request, restricted memberships fail
 closed until explicit Resource Grants exist, and the last active owner cannot
 be removed. A3S ORM migration `074` backfills existing credentials and owners;
 new writes atomically retain idempotency, Outbox facts, and audit. REST/OpenAPI
-contract `1.14.0`, the maintained client, CLI, and five administrator-only
+contract `1.15.0`, the maintained client, CLI, and five administrator-only
 Management MCP tools reuse the same application handlers. Resource Grants are
 the next slice; invitations and external OIDC issuer/subject links must attach
 to the same Principal and Membership authority. Attribution, notifications,
@@ -1301,15 +1302,15 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `4510f9e0`; the root compatibility lock and complete shared-manager composition still gate mutation |
-| `U0.2` | Core persistence in progress | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
+| `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `7f731948`; the root compatibility lock and complete shared-manager composition still gate mutation |
+| `U0.2` | Read surfaces implemented; verification pending | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
 
 The current Cloud/Use lock pins `a3s-use-core` 0.2.2 and
 `a3s-use-extension` 0.3.0 to upstream revision
-`4510f9e0f39d166677dae29217b8935d5539c45a`. Core owns the canonical
+`7f7319486b75b09f53496ac5b6884872f7242b5b`. Core owns the canonical
 protocol-level-4 `PluginHostManager`, managed-scope fence, package lock,
 selected-surface evidence, and reviewed enablement-plan contracts; Extension
 owns Registry/TUF verification and the bounded catalog query types. Five
@@ -1344,9 +1345,10 @@ stores no TUF metadata, catalog row, package target, or package byte.
 Catalog application queries now retain the exact Use host/search/page/
 inspection types, select one tenant-owned registry before calling Use, expose
 online and cached reads explicitly without fallback, and translate only the
-stable Use error boundary into Cloud application outcomes. REST/client/CLI/
-Management MCP reads and real HTTPS provider evidence remain open; therefore
-`U0.2` is not yet user-visible or verified.
+stable Use error boundary into Cloud application outcomes. REST `1.15.0`, the
+maintained client, CLI, and six read-only Management MCP tools now reuse those
+same queries. Real HTTPS provider evidence remains open; therefore `U0.2` is
+user-visible but not yet verified.
 
 The enrollment application command now normalizes the Cloud-owned name and
 endpoint, preflights active-human membership, derives bootstrap evidence only
@@ -1361,7 +1363,7 @@ does not add a root-cleanup saga. Tenant-scoped get/list handlers reuse the
 existing repository and return no cross-organization result. Catalog search/
 inspection application handlers use that same tenant fence and delegate exact
 online/cached requests to the sole Use adapter. REST/client/CLI/Management MCP
-interfaces remain open.
+interfaces are implemented without another catalog or transport authority.
 
 The Cloud API has one assignment vocabulary and imports A3S Use's canonical
 `PluginDesiredState`; it does not define a parallel lifecycle enum. The sole
@@ -1442,8 +1444,8 @@ Operations remains the only durable orchestration mechanism.
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
-| `W0.2` | Implemented; verification pending | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.14.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests pass; clean real-PostgreSQL and expanded cross-surface evidence remain required |
-| `W0.3` | In progress; planning, native Form draft/release, minimal WorkflowRun, and internal HumanTask loop implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. Migration `079` adds project-scoped canonical Form draft heads and immutable owner-compiled releases. Migration `080` atomically persists one exact Goal/Plan-bound WorkflowRun, correlated Operation, semantic step projections, idempotency, audit, and Outbox. Migration `081` adds immutable accepted FormSubmission records, optimistic HumanTask aggregates, immutable WorkflowDecision records, hook Inbox evidence, and leased resume Outbox/receipt records through typed A3S ORM queries. One A3S Flow run executes Workflow-local `input`, `transform`, `branch`, `human_decision`, and `output` steps. Worker-role coordination validates exact FormRelease and hook authority, creates and activates the task, and resumes the same Flow hook with lease/retry/conflict recovery only after an immutable decision. Real PostgreSQL plus Flow gates cover concurrent coordinators, tenant scoping, submission/decision atomicity, lease takeover, commit-before-ack recovery, receipt evidence, replay, and four API/worker `SIGKILL` boundaries with exact-once run, projection, terminal-history, and cancellation evidence. REST `1.14.0`, the maintained client, CLI, and 24 planning/Form/run Management MCP tools retain the existing non-task lifecycle. Public protected submission and HumanTask commands/APIs/client/CLI/MCP, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded clean cross-surface evidence, and public availability remain required |
+| `W0.2` | Implemented; verification pending | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.15.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests pass; clean real-PostgreSQL and expanded cross-surface evidence remain required |
+| `W0.3` | In progress; planning, native Form draft/release, minimal WorkflowRun, and internal HumanTask loop implemented | Migration `076` atomically persists WorkflowDefinition heads, immutable Workflow revisions, exact closed ACL payloads, immutable Goals, and deterministic Plan revisions through A3S ORM. Migration `079` adds project-scoped canonical Form draft heads and immutable owner-compiled releases. Migration `080` atomically persists one exact Goal/Plan-bound WorkflowRun, correlated Operation, semantic step projections, idempotency, audit, and Outbox. Migration `081` adds immutable accepted FormSubmission records, optimistic HumanTask aggregates, immutable WorkflowDecision records, hook Inbox evidence, and leased resume Outbox/receipt records through typed A3S ORM queries. One A3S Flow run executes Workflow-local `input`, `transform`, `branch`, `human_decision`, and `output` steps. Worker-role coordination validates exact FormRelease and hook authority, creates and activates the task, and resumes the same Flow hook with lease/retry/conflict recovery only after an immutable decision. Real PostgreSQL plus Flow gates cover concurrent coordinators, tenant scoping, submission/decision atomicity, lease takeover, commit-before-ack recovery, receipt evidence, replay, and four API/worker `SIGKILL` boundaries with exact-once run, projection, terminal-history, and cancellation evidence. REST `1.15.0`, the maintained client, CLI, and 24 planning/Form/run Management MCP tools retain the existing non-task lifecycle. Public protected submission and HumanTask commands/APIs/client/CLI/MCP, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded clean cross-surface evidence, and public availability remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 

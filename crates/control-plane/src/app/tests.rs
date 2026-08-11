@@ -19,6 +19,12 @@ use crate::modules::forms::{InMemoryFormRepository, NativeFormSemanticCore};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
+use crate::modules::plugins::domain::entities::PluginRegistry;
+use crate::modules::plugins::domain::services::{
+    IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, PluginRegistryCatalogError,
+    PluginRegistryEnrollmentAuthorizationError,
+};
+use crate::modules::plugins::{InMemoryPluginRegistryRepository, PluginTrustRootObjectStore};
 use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::search::{ISearchRepository, InMemorySearchRepository};
 use crate::modules::secrets::{
@@ -43,6 +49,11 @@ use crate::modules::workflow::{
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
+use a3s_use_core::PluginReleaseChannel;
+use a3s_use_extension::{
+    PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage, PluginCatalogSearch,
+    VerifiedRegistryMetadata, MAX_BOOTSTRAP_ROOT_BYTES,
+};
 use base64::engine::general_purpose::STANDARD_NO_PAD;
 use base64::Engine as _;
 use chrono::{DateTime, Utc};
@@ -62,6 +73,7 @@ mod management_mcp_tests;
 mod mcp_credential_tests;
 mod ontology_tests;
 mod platform_tests;
+mod plugin_tests;
 mod search_tests;
 mod secret_tests;
 mod source_lifecycle_tests;
@@ -100,6 +112,77 @@ struct TestGithubAppAuthorization;
 struct UnavailableMcpRoutePolicyRepository;
 
 struct EmptyWorkflowRunHistoryReader;
+
+struct TestPluginRegistryEnrollmentAuthorizer;
+
+struct UnavailablePluginRegistryCatalog;
+
+#[async_trait::async_trait]
+impl IPluginRegistryEnrollmentAuthorizer for TestPluginRegistryEnrollmentAuthorizer {
+    async fn authorize_enrollment(
+        &self,
+        _organization_id: OrganizationId,
+        _actor_id: crate::modules::shared_kernel::domain::PrincipalId,
+    ) -> std::result::Result<(), PluginRegistryEnrollmentAuthorizationError> {
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl IPluginRegistryCatalog for UnavailablePluginRegistryCatalog {
+    async fn refresh(
+        &self,
+        _registry: &PluginRegistry,
+    ) -> std::result::Result<VerifiedRegistryMetadata, PluginRegistryCatalogError> {
+        Err(unavailable_plugin_catalog())
+    }
+
+    async fn search(
+        &self,
+        _registry: &PluginRegistry,
+        _host: &PluginCatalogHost,
+        _search: &PluginCatalogSearch,
+    ) -> std::result::Result<PluginCatalogPage, PluginRegistryCatalogError> {
+        Err(unavailable_plugin_catalog())
+    }
+
+    async fn search_cached(
+        &self,
+        _registry: &PluginRegistry,
+        _host: &PluginCatalogHost,
+        _search: &PluginCatalogSearch,
+    ) -> std::result::Result<PluginCatalogPage, PluginRegistryCatalogError> {
+        Err(unavailable_plugin_catalog())
+    }
+
+    async fn inspect(
+        &self,
+        _registry: &PluginRegistry,
+        _host: &PluginCatalogHost,
+        _package_id: &str,
+        _version: Option<&str>,
+        _channel: Option<PluginReleaseChannel>,
+    ) -> std::result::Result<PluginCatalogInspection, PluginRegistryCatalogError> {
+        Err(unavailable_plugin_catalog())
+    }
+
+    async fn inspect_cached(
+        &self,
+        _registry: &PluginRegistry,
+        _host: &PluginCatalogHost,
+        _package_id: &str,
+        _version: Option<&str>,
+        _channel: Option<PluginReleaseChannel>,
+    ) -> std::result::Result<PluginCatalogInspection, PluginRegistryCatalogError> {
+        Err(unavailable_plugin_catalog())
+    }
+}
+
+fn unavailable_plugin_catalog() -> PluginRegistryCatalogError {
+    PluginRegistryCatalogError::Use {
+        code: "fixture.plugin_catalog_unavailable".into(),
+    }
+}
 
 #[async_trait::async_trait]
 impl IWorkflowRunHistoryReader for EmptyWorkflowRunHistoryReader {
@@ -890,6 +973,13 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             forms: Arc::new(InMemoryFormRepository::new()),
             form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
             search,
+            plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
+            plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
+            plugin_trust_roots: Arc::new(
+                PluginTrustRootObjectStore::in_memory(MAX_BOOTSTRAP_ROOT_BYTES)
+                    .map_err(|error| BootError::Internal(error.to_string()))?,
+            ),
+            plugin_catalog: Arc::new(UnavailablePluginRegistryCatalog),
             asset_catalog,
             mcp_service_profiles,
             mcp_route_policies,

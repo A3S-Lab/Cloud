@@ -127,6 +127,12 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_workflow_definitions_revise` | Command | `workflow:write` |
 | `a3s_cloud_workflow_goals_create` | Command | `workflow:write` |
 | `a3s_cloud_search` | Query | None |
+| `a3s_cloud_plugin_registries_list` | Query | None |
+| `a3s_cloud_plugin_registries_get` | Query | None |
+| `a3s_cloud_plugin_catalog_search` | Query | None |
+| `a3s_cloud_plugin_catalog_search_cached` | Query | None |
+| `a3s_cloud_plugin_catalog_inspect` | Query | None |
+| `a3s_cloud_plugin_catalog_inspect_cached` | Query | None |
 | `a3s_cloud_nodes_list` | Query | None |
 | `a3s_cloud_nodes_get` | Query | None |
 | `a3s_cloud_operations_list` | Query | None |
@@ -157,6 +163,14 @@ authorization boundary.
 returns the standard `503 Service Unavailable` business envelope until Box
 exposes an authoritative durable build-log contract. It does not return an
 empty success page and does not reuse Workload or Runtime logs.
+
+The six Plugin tools are read-only and reuse the Plugins QueryBus used by REST,
+the maintained client, and CLI. Registry list/get return only the Cloud-owned
+tenant projection. Catalog search/inspect compose their `host`, `search`, and
+release-selector JSON Schemas directly from `a3s-use-extension`; online and
+cached tools are distinct and never fall back into each other. They do not
+download packages, proxy the local Use management MCP, or introduce a Cloud
+catalog/cache model.
 
 ## Client flow
 
@@ -341,7 +355,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 59-tool administrator and 37-tool
+current expanded runner requires exact 65-tool administrator and 43-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

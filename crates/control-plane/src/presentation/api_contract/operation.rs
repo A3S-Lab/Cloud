@@ -2,6 +2,10 @@ use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use a3s_boot::{BootError, Result};
+use a3s_use_extension::{
+    plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
+    plugin_catalog_search_input_schema,
+};
 use serde_json::{json, Map, Value};
 
 pub(super) fn describe_operation(
@@ -348,7 +352,9 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
         return;
     }
     let mut content = Map::new();
-    if is_workflow_run_start_path(path) {
+    if let Some(schema) = plugin_catalog_read_request_schema(path) {
+        content.insert("application/json".into(), json!({ "schema": schema }));
+    } else if is_workflow_run_start_path(path) {
         content.insert(
             "application/json".into(),
             json!({
@@ -661,6 +667,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Projects"
     } else if path.contains("operations") {
         "Operations"
+    } else if path.contains("plugin-registries") {
+        "Plugins"
     } else if path.contains("search") {
         "Search"
     } else {
@@ -672,7 +680,43 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
     matches!(method, "delete" | "patch" | "post" | "put")
         && (path == "/bootstrap" || path == "/organizations" || path.starts_with("/organizations/"))
         && !path.ends_with("/source-connections/github")
+        && !is_plugin_catalog_read_path(path)
         && !is_asset_git_path(path)
+}
+
+fn is_plugin_catalog_read_path(path: &str) -> bool {
+    path.contains("/plugin-registries/{registry_id}/catalog/")
+        && (path.ends_with("/search") || path.ends_with("/inspect"))
+}
+
+fn plugin_catalog_read_request_schema(path: &str) -> Option<Value> {
+    if !is_plugin_catalog_read_path(path) {
+        return None;
+    }
+    let host = plugin_catalog_host_input_schema();
+    if path.ends_with("/search") {
+        return Some(json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["host", "search"],
+            "properties": {
+                "host": host,
+                "search": plugin_catalog_search_input_schema()
+            }
+        }));
+    }
+
+    let mut inspection = plugin_catalog_inspection_input_schema();
+    let object = inspection.as_object_mut()?;
+    object
+        .get_mut("properties")?
+        .as_object_mut()?
+        .insert("host".into(), host);
+    object
+        .get_mut("required")?
+        .as_array_mut()?
+        .insert(0, json!("host"));
+    Some(inspection)
 }
 
 fn accepts_acl(path: &str) -> bool {

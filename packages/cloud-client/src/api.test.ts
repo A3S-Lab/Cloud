@@ -36,7 +36,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.14.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.15.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -175,6 +175,87 @@ describe('CloudApi', () => {
       'search result limit must be between 1 and 50'
     );
     expect(called).toBe(false);
+  });
+
+  it('uses non-mutating POST transport for canonical A3S Use catalog queries', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const search = {
+      host: { target: 'x86_64-unknown-linux-gnu', useVersion: '0.3.0' },
+      search: { query: 'a3s', limit: 20 },
+    };
+    const inspect = {
+      host: { target: 'x86_64-unknown-linux-gnu', useVersion: '0.3.0' },
+      packageId: 'a3s/example',
+    };
+
+    await api.listPluginRegistries('organization / one');
+    await api.getPluginRegistry('organization / one', 'registry / one');
+    await api.searchPluginCatalog('organization / one', 'registry / one', search);
+    await api.searchCachedPluginCatalog('organization / one', 'registry / one', search);
+    await api.inspectPluginCatalog('organization / one', 'registry / one', inspect);
+    await api.inspectCachedPluginCatalog('organization / one', 'registry / one', inspect);
+
+    expect(
+      calls.map(([input, init]) => ({
+        input,
+        method: init?.method,
+        body: init?.body,
+        contentType: (init?.headers as Partial<Record<string, string>> | undefined)?.['Content-Type'],
+        idempotencyKey: (init?.headers as Partial<Record<string, string>> | undefined)?.['Idempotency-Key'],
+      }))
+    ).toEqual([
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/plugin-registries',
+        method: 'GET',
+        body: undefined,
+        contentType: undefined,
+        idempotencyKey: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/plugin-registries/registry%20%2F%20one',
+        method: 'GET',
+        body: undefined,
+        contentType: undefined,
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/plugin-registries/registry%20%2F%20one/catalog/search',
+        method: 'POST',
+        body: JSON.stringify(search),
+        contentType: 'application/json',
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/plugin-registries/registry%20%2F%20one/catalog/cache/search',
+        method: 'POST',
+        body: JSON.stringify(search),
+        contentType: 'application/json',
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/plugin-registries/registry%20%2F%20one/catalog/inspect',
+        method: 'POST',
+        body: JSON.stringify(inspect),
+        contentType: 'application/json',
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/plugin-registries/registry%20%2F%20one/catalog/cache/inspect',
+        method: 'POST',
+        body: JSON.stringify(inspect),
+        contentType: 'application/json',
+        idempotencyKey: undefined,
+      },
+    ]);
   });
 
   it('creates core tenant resources through their existing idempotent REST paths', async () => {

@@ -51,6 +51,32 @@ export interface EnvironmentMutationResult extends Environment {
   replayed: boolean;
 }
 
+export type PluginRegistryState = 'active' | 'disabled';
+
+export interface PluginRegistry {
+  organizationId: string;
+  id: string;
+  name: string;
+  endpoint: string;
+  rootObjectRef: string;
+  rootSha256: string;
+  rootVersion: number;
+  state: PluginRegistryState;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Canonical JSON owned and versioned by A3S Use. Cloud transports these values
+ * without maintaining a second catalog field model.
+ */
+export type A3sUseJsonObject = Readonly<Record<string, unknown>>;
+export type PluginCatalogSearchRequest = A3sUseJsonObject;
+export type PluginCatalogInspectRequest = A3sUseJsonObject;
+export type PluginCatalogPage = A3sUseJsonObject;
+export type PluginCatalogInspection = A3sUseJsonObject;
+
 export type AssetKind = 'agent' | 'mcp' | 'skill';
 export type AssetState = 'active' | 'archived';
 

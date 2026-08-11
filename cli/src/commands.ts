@@ -31,6 +31,7 @@ import { executeFormCommand } from './form-commands';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
 import { executeOntologyCommand } from './ontology-commands';
+import { executePluginCommand } from './plugin-commands';
 import { executeWorkflowCommand } from './workflow-commands';
 import {
   buildEvidenceResult,
@@ -177,6 +178,12 @@ export async function executeCommand(
   });
   if (assetResult !== undefined) {
     return assetResult;
+  }
+  const pluginResult = await executePluginCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (pluginResult !== undefined) {
+    return pluginResult;
   }
   switch (command) {
     case 'organizations list':

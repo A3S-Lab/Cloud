@@ -93,6 +93,12 @@ Commands:
   nodes revoke ID       Revoke one current node
   operations list       List recent operations in the selected organization
   search resources QUERY Search authorized resources in the selected organization
+  plugin-registries list List trusted A3S Use Registry references
+  plugin-registries get ID Get one trusted A3S Use Registry reference
+  plugin-catalog search ID Search a refreshed signed A3S Use catalog from request JSON
+  plugin-catalog search-cached ID Search an already verified catalog cache from request JSON
+  plugin-catalog inspect ID Inspect a refreshed signed A3S Use release from request JSON
+  plugin-catalog inspect-cached ID Inspect an already verified cached release from request JSON
   workloads list        List workloads in the selected environment
   workloads get ID      Get one workload
   workloads logs ID REV Read one page of workload revision logs
@@ -152,7 +158,7 @@ Global options:
   --limit <n>             Search, log, or Agent event page limit
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
-  --file <path>             A3S ACL or native Form JSON input file
+  --file <path>             A3S ACL, native Form, Workflow, or catalog JSON input file
   --expected-version <n>    Current aggregate version for a versioned mutation
   --migration-rule <id>     Target ACL migration rule for a breaking Ontology revision
   --min-ready <n>           Required ready members for gateway-scopes create

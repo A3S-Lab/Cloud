@@ -5,6 +5,10 @@ use crate::modules::shared_kernel::domain::{
     WorkflowRevisionId,
 };
 use crate::modules::workflow::{WorkflowGoalContract, WorkflowGoalSpec};
+use a3s_use_extension::{
+    plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
+    plugin_catalog_search_input_schema,
+};
 
 const MCP_PATH: &str = "/api/v1/mcp";
 const MCP_PROTOCOL_VERSION: &str = a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
@@ -365,6 +369,12 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_run_output_get",
             "a3s_cloud_workflow_run_history_get",
             "a3s_cloud_search",
+            "a3s_cloud_plugin_registries_list",
+            "a3s_cloud_plugin_registries_get",
+            "a3s_cloud_plugin_catalog_search",
+            "a3s_cloud_plugin_catalog_search_cached",
+            "a3s_cloud_plugin_catalog_inspect",
+            "a3s_cloud_plugin_catalog_inspect_cached",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
             "a3s_cloud_operations_list",
@@ -461,6 +471,12 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_run_output_get",
             "a3s_cloud_workflow_run_history_get",
             "a3s_cloud_search",
+            "a3s_cloud_plugin_registries_list",
+            "a3s_cloud_plugin_registries_get",
+            "a3s_cloud_plugin_catalog_search",
+            "a3s_cloud_plugin_catalog_search_cached",
+            "a3s_cloud_plugin_catalog_inspect",
+            "a3s_cloud_plugin_catalog_inspect_cached",
             "a3s_cloud_nodes_list",
             "a3s_cloud_nodes_get",
             "a3s_cloud_operations_list",
@@ -509,6 +525,146 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         .await?;
     assert_eq!(hidden_call.status(), 200);
     assert_eq!(response_json(&hidden_call)?["error"]["code"], -32602);
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_plugin_catalog_tools_reuse_use_contracts_and_query_bus() -> Result<()> {
+    let app = build_test_application(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+    )?;
+    let organization = bootstrap_organization(&app, "mcp-plugins", "Plugins").await?;
+    let tools = list_tools(&app, ADMIN_TOKEN, 1).await?;
+
+    let search_schema = &listed_tool(&tools, "a3s_cloud_plugin_catalog_search")?["inputSchema"];
+    assert_eq!(
+        search_schema["properties"]["host"],
+        plugin_catalog_host_input_schema()
+    );
+    assert_eq!(
+        search_schema["properties"]["search"],
+        plugin_catalog_search_input_schema()
+    );
+    assert_eq!(
+        search_schema["properties"]["registryId"],
+        json!({"type": "string", "format": "uuid"})
+    );
+
+    let inspection_schema =
+        &listed_tool(&tools, "a3s_cloud_plugin_catalog_inspect")?["inputSchema"];
+    let canonical_inspection = plugin_catalog_inspection_input_schema();
+    for property in ["packageId", "version", "channel"] {
+        assert_eq!(
+            inspection_schema["properties"][property], canonical_inspection["properties"][property],
+            "{property}"
+        );
+    }
+    assert_eq!(
+        inspection_schema["properties"]["host"],
+        plugin_catalog_host_input_schema()
+    );
+    assert_eq!(
+        inspection_schema["required"],
+        json!(["registryId", "host", "packageId"])
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_plugin_registries_list", json!({})),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&listed)?["result"]["structuredContent"]["data"],
+        json!([])
+    );
+
+    let registry_id = Uuid::now_v7();
+    let get = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_plugin_registries_get",
+                json!({"registryId": registry_id}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&get)?["result"]["structuredContent"]["code"],
+        404
+    );
+
+    let host = json!({
+        "target": "x86_64-unknown-linux-gnu",
+        "useVersion": "0.3.0"
+    });
+    for (id, name, arguments) in [
+        (
+            4,
+            "a3s_cloud_plugin_catalog_search",
+            json!({
+                "registryId": registry_id,
+                "host": host,
+                "search": {"query": "a3s", "limit": 20}
+            }),
+        ),
+        (
+            5,
+            "a3s_cloud_plugin_catalog_search_cached",
+            json!({
+                "registryId": registry_id,
+                "host": host,
+                "search": {"query": "a3s", "limit": 20}
+            }),
+        ),
+        (
+            6,
+            "a3s_cloud_plugin_catalog_inspect",
+            json!({
+                "registryId": registry_id,
+                "host": host,
+                "packageId": "a3s/example"
+            }),
+        ),
+        (
+            7,
+            "a3s_cloud_plugin_catalog_inspect_cached",
+            json!({
+                "registryId": registry_id,
+                "host": host,
+                "packageId": "a3s/example"
+            }),
+        ),
+    ] {
+        let response = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        let body = response_json(&response)?;
+        assert_eq!(body["result"]["isError"], true, "{name}");
+        assert_eq!(body["result"]["structuredContent"]["code"], 404, "{name}");
+    }
+
+    let unknown_argument = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                8,
+                "a3s_cloud_plugin_catalog_search",
+                json!({
+                    "registryId": registry_id,
+                    "host": host,
+                    "search": {"query": "a3s", "limit": 20},
+                    "organizationId": organization
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&unknown_argument)?["error"]["code"], -32602);
     Ok(())
 }
 
@@ -2204,6 +2360,15 @@ async fn management_mcp_form_tools_do_not_cross_tenant_boundaries() -> Result<()
         json!([])
     );
     Ok(())
+}
+
+fn listed_tool<'a>(body: &'a Value, name: &str) -> Result<&'a Value> {
+    body["result"]["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|tool| tool["name"] == name)
+        .ok_or_else(|| BootError::Internal(format!("Management tool {name} is missing")))
 }
 
 fn discover_request(id: u64) -> Value {

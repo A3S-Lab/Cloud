@@ -48,6 +48,14 @@ events rather than Runtime logs, so `--stream` is rejected.
 the tenant-authorized search through its public API; the CLI never loads broad
 resource lists and filters them locally.
 
+`plugin-registries list|get` reads Cloud-owned tenant Registry references.
+`plugin-catalog search|search-cached|inspect|inspect-cached <registry-id>`
+requires `--file=<request.json>` and passes one bounded canonical A3S Use JSON
+object unchanged. Online and cached reads are separate commands with no
+fallback, and none accepts an idempotency key because all four POST endpoints
+are queries. The CLI does not copy the A3S Use catalog schema, cache signed
+metadata, download package bytes, or invoke the local Use management MCP.
+
 Replayable mutation commands require `--idempotency-key=<key>`. The key must
 contain only visible ASCII letters, digits, `.`, `_`, `~`, `:`, `/`, or `-`,
 and must be at most 255 characters. The CLI never generates a key: retry the
@@ -243,6 +251,12 @@ nodes drain <node-id> --expected-version=<version>
 nodes revoke <node-id> --expected-version=<version>
 operations list
 search resources <query> [--limit=<1..50>]
+plugin-registries list
+plugin-registries get <registry-id>
+plugin-catalog search <registry-id> --file=<request.json>
+plugin-catalog search-cached <registry-id> --file=<request.json>
+plugin-catalog inspect <registry-id> --file=<request.json>
+plugin-catalog inspect-cached <registry-id> --file=<request.json>
 workloads list
 workloads get <workload-id>
 workloads logs <workload-id> <revision-id>

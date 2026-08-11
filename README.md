@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.14.0" src="https://img.shields.io/badge/REST_contract-1.14.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.15.0" src="https://img.shields.io/badge/REST_contract-1.15.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -101,7 +101,7 @@ claim. Real Runtime, Box, Gateway, process-loss, recovery, and cleanup evidence
 must still close the joint gates in [ROADMAP.md](ROADMAP.md).
 
 The backend now exposes that existing Edge-owned `McpRoutePolicy` as one
-tenant-guarded A3S ACL lifecycle through REST contract `1.14.0`, the maintained
+tenant-guarded A3S ACL lifecycle through REST contract `1.15.0`, the maintained
 TypeScript client, and `mcp-routes` CLI commands. Create and revision writes
 atomically commit the canonical ACL and digest, caller idempotency, changed-only
 Outbox fact, and audit record through the existing A3S ORM repository. They do
@@ -113,7 +113,7 @@ ACL-native Ontology authority. PostgreSQL through A3S ORM stores the aggregate
 head and immutable canonical revisions; deterministic diffs classify object,
 relation, rule, and metadata changes, and every breaking change must bind a
 real `migration` rule from the target ACL. The same handlers serve REST
-contract `1.14.0`, the maintained TypeScript client, `ontologies` CLI commands,
+contract `1.15.0`, the maintained TypeScript client, `ontologies` CLI commands,
 and seven Management MCP tools. Search receives one rebuildable Ontology
 projection. This `W0.2` backend does not add a graph database, migration-policy
 store, workflow engine, queue, object client, or frontend. Focused lifecycle
@@ -125,7 +125,7 @@ The next backend `W0.3` planning slice persists project-scoped
 closed configuration, data-schema, and policy ACL payload referenced by a
 revision. Immutable `WorkflowGoal` inputs bind exact Workflow and Ontology
 revision identities and digests; compiler `cloud.workflow.plan-compiler.v1`
-then produces a canonical, deterministic `PlanRevision`. REST `1.14.0`, the
+then produces a canonical, deterministic `PlanRevision`. REST `1.15.0`, the
 maintained client, `workflow-definitions` and `workflow-goals` CLI commands,
 and ten Management MCP tools reuse the same commands, queries, tenant guards,
 idempotency records, A3S ORM transactions, audit, and Outbox.
@@ -138,7 +138,7 @@ existing worker and reconciler execute Workflow-local `input`, `transform`,
 immutable Goal/Plan/input/payload/hook authority during replay, and project
 cancellation, deadlines, waiting, terminal output, and bounded redacted
 history. Migration `081` adds the internal authority-bound HumanTask decision
-loop described below. REST `1.14.0`, the maintained client, `workflow-runs` CLI
+loop described below. REST `1.15.0`, the maintained client, `workflow-runs` CLI
 commands, and seven Management MCP tools share start, cancel, list, get, wait,
 output, and history behavior. Public protected Form submission and HumanTask
 commands, service/finite-task dispatch, typed capability steps, compensation,
@@ -173,7 +173,7 @@ responses without a Cloud compiler or validator. Migration `079` now persists
 project-scoped canonical Form drafts and immutable owner-compiled releases
 through A3S ORM. Create, revise, and publish atomically commit the aggregate,
 release when applicable, caller idempotency, audit, and Outbox. REST contract
-`1.14.0`, the maintained TypeScript client, CLI, and seven Management MCP tools
+`1.15.0`, the maintained TypeScript client, CLI, and seven Management MCP tools
 reuse the same CQRS handlers, tenant boundary, optimistic version, and
 historical replay semantics. Focused PostgreSQL 17, REST, OpenAPI, client, CLI,
 and MCP lifecycle tests pass. Migration `081` now stores immutable accepted
@@ -200,6 +200,18 @@ locking CTE, `FOR UPDATE SKIP LOCKED`, update, and `RETURNING` in one statement;
 its runtime values remain bound parameters. Source-level regression tests keep
 raw SQL out of the other HumanTask and FormSubmission persistence paths.
 
+The first `U0.2` Plugins read surface pins `a3s-use-core` and
+`a3s-use-extension` to revision `7f731948`. Cloud owns only tenant Registry
+references and exact bootstrap-root evidence through migration `084`; A3S Use
+remains the sole TUF verifier, catalog schema, cache, compatibility selector,
+and package-record authority. REST contract `1.15.0`, the maintained client,
+`plugin-registries`/`plugin-catalog` CLI commands, and six read-only Management
+MCP tools all dispatch the same tenant-fenced queries. Online and cached reads
+are explicit and never fall back into each other, and catalog POST queries do
+not carry mutation idempotency. The authorized global Search projection and
+real HTTPS/TUF provider exit evidence remain open, so `U0.2` is implemented but
+not yet verified.
+
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one
 `owner`, `admin`, `member`, or fail-closed `restricted` organization role. API
@@ -207,7 +219,7 @@ tokens bind to that Principal, cannot exceed the issuer's scopes, and reuse the
 Membership role matrix for cross-Principal issuance; an admin cannot mint an
 owner credential. Role changes and revocation
 take effect on the next request, the last active owner is protected, and the
-same CQRS handlers are exposed through REST contract `1.14.0`, the maintained
+same CQRS handlers are exposed through REST contract `1.15.0`, the maintained
 TypeScript client, CLI, and Management MCP. A3S ORM transactions commit
 membership state, idempotency, Outbox facts, and audit together. Resource
 Grants are the next authorization slice; future OIDC subjects attach to the
@@ -270,7 +282,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.14.0`.
+contract version `1.15.0`.
 
 ### Bootstrap the first organization
 
@@ -371,7 +383,7 @@ current Box-only provider contract.
 | `P0` | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` | REST/CLI/Management MCP parity, OIDC, grants, collaboration, investigation, notifications, audit, and bounded exec | In progress |
 | `A0` | Immutable Agent/MCP/Skill release catalog, Agent deployment, and Skill binding | In progress |
-| `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; unavailable |
+| `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; trusted Registry/catalog reads available, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
 | `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun lifecycle, and internal authority-bound HumanTask decision loop are implemented; public protected submission/task surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded cross-surface verification, and `W0.4`-`W0.5` remain) |

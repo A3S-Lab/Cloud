@@ -125,7 +125,7 @@ internal Workflow-local and HumanTask execution portions of `W0.3` are now
 present. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
-and deterministic diff are exposed through REST `1.14.0`, the maintained
+and deterministic diff are exposed through REST `1.15.0`, the maintained
 client, CLI, and seven Management MCP tools; Search has one rebuildable current
 Ontology projection. Compatible migration policy is derived from the diff. A
 breaking change is valid only when the caller names an exact rule in the
@@ -133,14 +133,14 @@ target ACL whose kind is `migration`; there is no separate policy document or
 migration registry. Migration `076` stores project-scoped WorkflowDefinition
 heads, immutable Workflow revisions, every exact referenced closed ACL
 payload, immutable Goals, and deterministic Plan revisions through the same
-A3S ORM transaction boundary. REST `1.14.0`, the maintained client, CLI, and
+A3S ORM transaction boundary. REST `1.15.0`, the maintained client, CLI, and
 ten additional Management MCP tools reuse the same CQRS handlers. Historical
 idempotency replay reconstructs the aggregate
 as it existed at the referenced revision instead of pairing an old revision
 with the current head. Focused tests pass, while clean real-PostgreSQL and
 expanded cross-surface conformance still block Workflow planning verification.
 Migration `079` additionally stores project-scoped canonical native Form draft
-heads and immutable owner-compiled releases through A3S ORM. REST `1.14.0`, the
+heads and immutable owner-compiled releases through A3S ORM. REST `1.15.0`, the
 maintained client, CLI, and seven Management MCP tools share create/list/get/
 revise/publish commands and queries, tenant and role boundaries, optimistic
 versions, and historical idempotency replay. Focused PostgreSQL 17 plus domain,
@@ -159,7 +159,7 @@ interaction-mode FormRelease and Flow hook authority, creates and activates the
 task, and resumes the same hook from the immutable decision with retry,
 lease-takeover, conflict, and commit-before-ack recovery. A real PostgreSQL plus
 A3S Flow test covers concurrent coordinators, tenant scope, atomic
-submission/decision storage, replay, and receipt evidence. REST `1.14.0`, the
+submission/decision storage, replay, and receipt evidence. REST `1.15.0`, the
 maintained client, CLI, and seven additional Management MCP tools continue to
 expose start, cancel, list, get, wait, output, and history through the same CQRS
 handlers. Public protected submission and HumanTask commands/APIs/client/CLI/

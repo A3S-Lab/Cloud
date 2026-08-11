@@ -17,6 +17,9 @@ use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
     OntologyRevisionArguments, ReviseOntologyArguments,
 };
+use super::plugins::{
+    PluginCatalogInspectArguments, PluginCatalogSearchArguments, PluginRegistryArguments,
+};
 use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
 use super::search::SearchArguments;
 use super::workflow::{
@@ -30,8 +33,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, edge, forms, identity, nodes, ontology, operations, projects, search, workflow,
-    workloads,
+    artifacts, edge, forms, identity, nodes, ontology, operations, plugins, projects, search,
+    workflow, workloads,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{CommandBus, QueryBus, Result};
@@ -336,6 +339,30 @@ pub async fn execute(
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;
             search::search(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginRegistriesList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            plugins::list_registries(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginRegistriesGet => {
+            let arguments = arguments::parse::<PluginRegistryArguments>(arguments).ok()?;
+            plugins::get_registry(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginCatalogSearch => {
+            let arguments = arguments::parse::<PluginCatalogSearchArguments>(arguments).ok()?;
+            plugins::search_catalog(query_bus, organization_id, arguments, request_id, false).await
+        }
+        ManagementTool::PluginCatalogSearchCached => {
+            let arguments = arguments::parse::<PluginCatalogSearchArguments>(arguments).ok()?;
+            plugins::search_catalog(query_bus, organization_id, arguments, request_id, true).await
+        }
+        ManagementTool::PluginCatalogInspect => {
+            let arguments = arguments::parse::<PluginCatalogInspectArguments>(arguments).ok()?;
+            plugins::inspect_catalog(query_bus, organization_id, arguments, request_id, false).await
+        }
+        ManagementTool::PluginCatalogInspectCached => {
+            let arguments = arguments::parse::<PluginCatalogInspectArguments>(arguments).ok()?;
+            plugins::inspect_catalog(query_bus, organization_id, arguments, request_id, true).await
         }
         ManagementTool::NodesList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;

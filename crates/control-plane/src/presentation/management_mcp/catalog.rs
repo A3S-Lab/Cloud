@@ -2,6 +2,10 @@ use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMU
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use a3s_boot::AuthPrincipal;
+use a3s_use_extension::{
+    plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
+    plugin_catalog_search_input_schema,
+};
 use serde_json::{json, Value};
 
 pub const BUILD_RUNS_GET: &str = "a3s_cloud_build_runs_get";
@@ -58,6 +62,12 @@ pub const WORKFLOW_RUN_HISTORY_GET: &str = "a3s_cloud_workflow_run_history_get";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
+pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
+pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
+pub const PLUGIN_CATALOG_INSPECT: &str = "a3s_cloud_plugin_catalog_inspect";
+pub const PLUGIN_CATALOG_INSPECT_CACHED: &str = "a3s_cloud_plugin_catalog_inspect_cached";
+pub const PLUGIN_CATALOG_SEARCH: &str = "a3s_cloud_plugin_catalog_search";
+pub const PLUGIN_CATALOG_SEARCH_CACHED: &str = "a3s_cloud_plugin_catalog_search_cached";
 pub const WORKLOADS_GET: &str = "a3s_cloud_workloads_get";
 pub const WORKLOADS_LIST: &str = "a3s_cloud_workloads_list";
 pub const WORKLOADS_ROLLBACK: &str = "a3s_cloud_workloads_rollback";
@@ -107,6 +117,12 @@ pub enum ManagementTool {
     WorkflowRunOutputGet,
     WorkflowRunHistoryGet,
     Search,
+    PluginRegistriesList,
+    PluginRegistriesGet,
+    PluginCatalogSearch,
+    PluginCatalogSearchCached,
+    PluginCatalogInspect,
+    PluginCatalogInspectCached,
     NodesList,
     NodesGet,
     OperationsList,
@@ -128,7 +144,7 @@ pub enum ManagementTool {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 59] = [
+    const ALL: [Self; 65] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -170,6 +186,12 @@ impl ManagementTool {
         Self::WorkflowRunOutputGet,
         Self::WorkflowRunHistoryGet,
         Self::Search,
+        Self::PluginRegistriesList,
+        Self::PluginRegistriesGet,
+        Self::PluginCatalogSearch,
+        Self::PluginCatalogSearchCached,
+        Self::PluginCatalogInspect,
+        Self::PluginCatalogInspectCached,
         Self::NodesList,
         Self::NodesGet,
         Self::OperationsList,
@@ -258,6 +280,12 @@ impl ManagementTool {
             Self::WorkflowRunOutputGet => WORKFLOW_RUN_OUTPUT_GET,
             Self::WorkflowRunHistoryGet => WORKFLOW_RUN_HISTORY_GET,
             Self::Search => SEARCH,
+            Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
+            Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
+            Self::PluginCatalogSearch => PLUGIN_CATALOG_SEARCH,
+            Self::PluginCatalogSearchCached => PLUGIN_CATALOG_SEARCH_CACHED,
+            Self::PluginCatalogInspect => PLUGIN_CATALOG_INSPECT,
+            Self::PluginCatalogInspectCached => PLUGIN_CATALOG_INSPECT_CACHED,
             Self::NodesList => NODES_LIST,
             Self::NodesGet => NODES_GET,
             Self::OperationsList => OPERATIONS_LIST,
@@ -325,6 +353,12 @@ impl ManagementTool {
             | Self::WorkflowRunOutputGet
             | Self::WorkflowRunHistoryGet
             | Self::Search
+            | Self::PluginRegistriesList
+            | Self::PluginRegistriesGet
+            | Self::PluginCatalogSearch
+            | Self::PluginCatalogSearchCached
+            | Self::PluginCatalogInspect
+            | Self::PluginCatalogInspectCached
             | Self::NodesList
             | Self::NodesGet
             | Self::OperationsList
@@ -600,6 +634,42 @@ impl ManagementTool {
                 search_schema(),
                 true,
             ),
+            Self::PluginRegistriesList => (
+                "List plugin registries",
+                "List trusted A3S Use Registry references enrolled in the authenticated organization.",
+                empty_schema(),
+                true,
+            ),
+            Self::PluginRegistriesGet => (
+                "Get plugin registry",
+                "Get one tenant-authorized A3S Use Registry reference and pinned root evidence.",
+                uuid_id_schema("registryId"),
+                true,
+            ),
+            Self::PluginCatalogSearch => (
+                "Search plugin catalog",
+                "Refresh and search one signed A3S Use catalog without downloading package bytes.",
+                plugin_catalog_search_schema(),
+                true,
+            ),
+            Self::PluginCatalogSearchCached => (
+                "Search cached plugin catalog",
+                "Search one already verified A3S Use catalog cache without network fallback or package download.",
+                plugin_catalog_search_schema(),
+                true,
+            ),
+            Self::PluginCatalogInspect => (
+                "Inspect plugin catalog release",
+                "Refresh and inspect one exact compatible signed A3S Use catalog release without downloading package bytes.",
+                plugin_catalog_inspection_schema(),
+                true,
+            ),
+            Self::PluginCatalogInspectCached => (
+                "Inspect cached plugin catalog release",
+                "Inspect one exact compatible release from an already verified A3S Use catalog cache without network fallback.",
+                plugin_catalog_inspection_schema(),
+                true,
+            ),
             Self::NodesList => (
                 "List nodes",
                 "List node inventory and current availability in the authenticated organization.",
@@ -738,6 +808,40 @@ fn empty_schema() -> Value {
         "properties": {},
         "additionalProperties": false
     })
+}
+
+fn plugin_catalog_search_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["registryId", "host", "search"],
+        "properties": {
+            "registryId": {"type": "string", "format": "uuid"},
+            "host": plugin_catalog_host_input_schema(),
+            "search": plugin_catalog_search_input_schema()
+        }
+    })
+}
+
+fn plugin_catalog_inspection_schema() -> Value {
+    let mut schema = plugin_catalog_inspection_input_schema();
+    let Some(object) = schema.as_object_mut() else {
+        return schema;
+    };
+    let Some(properties) = object.get_mut("properties").and_then(Value::as_object_mut) else {
+        return schema;
+    };
+    properties.insert(
+        "registryId".into(),
+        json!({"type": "string", "format": "uuid"}),
+    );
+    properties.insert("host".into(), plugin_catalog_host_input_schema());
+    let Some(required) = object.get_mut("required").and_then(Value::as_array_mut) else {
+        return schema;
+    };
+    required.insert(0, json!("host"));
+    required.insert(0, json!("registryId"));
+    schema
 }
 
 fn project_id_schema() -> Value {

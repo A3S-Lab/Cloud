@@ -316,6 +316,12 @@ conformanceIt(
 
     const operationalListRequestIds: Record<string, string> = {};
     for (const entry of [
+      {
+        id: 60,
+        name: 'a3s_cloud_plugin_registries_list',
+        arguments: {},
+        label: 'MCP Plugin Registry listing',
+      },
       { id: 20, name: 'a3s_cloud_nodes_list', arguments: {}, label: 'MCP node listing' },
       { id: 21, name: 'a3s_cloud_operations_list', arguments: {}, label: 'MCP operation listing' },
       {
@@ -354,6 +360,52 @@ conformanceIt(
     const missingOperationalId = crypto.randomUUID();
     const missingOperationalRequestIds: Record<string, string> = {};
     for (const entry of [
+      {
+        id: 61,
+        name: 'a3s_cloud_plugin_registries_get',
+        arguments: { registryId: missingOperationalId },
+        label: 'MCP missing Plugin Registry lookup',
+      },
+      {
+        id: 62,
+        name: 'a3s_cloud_plugin_catalog_search',
+        arguments: {
+          registryId: missingOperationalId,
+          host: { target: 'x86_64-unknown-linux-gnu', useVersion: '0.3.0' },
+          search: { query: 'a3s', limit: 20 },
+        },
+        label: 'MCP missing online Plugin catalog search',
+      },
+      {
+        id: 63,
+        name: 'a3s_cloud_plugin_catalog_search_cached',
+        arguments: {
+          registryId: missingOperationalId,
+          host: { target: 'x86_64-unknown-linux-gnu', useVersion: '0.3.0' },
+          search: { query: 'a3s', limit: 20 },
+        },
+        label: 'MCP missing cached Plugin catalog search',
+      },
+      {
+        id: 64,
+        name: 'a3s_cloud_plugin_catalog_inspect',
+        arguments: {
+          registryId: missingOperationalId,
+          host: { target: 'x86_64-unknown-linux-gnu', useVersion: '0.3.0' },
+          packageId: 'a3s/example',
+        },
+        label: 'MCP missing online Plugin catalog inspection',
+      },
+      {
+        id: 65,
+        name: 'a3s_cloud_plugin_catalog_inspect_cached',
+        arguments: {
+          registryId: missingOperationalId,
+          host: { target: 'x86_64-unknown-linux-gnu', useVersion: '0.3.0' },
+          packageId: 'a3s/example',
+        },
+        label: 'MCP missing cached Plugin catalog inspection',
+      },
       {
         id: 25,
         name: 'a3s_cloud_nodes_get',

@@ -1,0 +1,3 @@
+mod plugin_registry_queries_controller;
+
+pub use plugin_registry_queries_controller::plugin_registry_queries_controller;

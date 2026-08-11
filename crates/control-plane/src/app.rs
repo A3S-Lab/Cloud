@@ -99,6 +99,16 @@ use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
     OperationsModule, PostgresOperationRepository, ReconcileOperationsHandler,
 };
+use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
+use crate::modules::plugins::domain::services::{
+    IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, IPluginTrustRootStore,
+};
+use crate::modules::plugins::{
+    A3sUsePluginRegistryCatalog, EnrollPluginRegistryHandler, GetPluginRegistryHandler,
+    InspectCachedPluginCatalogHandler, InspectPluginCatalogHandler, ListPluginRegistriesHandler,
+    PluginTrustRootObjectStore, PluginsModule, PostgresPluginRegistryRepository,
+    SearchCachedPluginCatalogHandler, SearchPluginCatalogHandler,
+};
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, ListEnvironmentsHandler, ListProjectsHandler,
@@ -184,6 +194,7 @@ use a3s_boot::{
 };
 use a3s_event::{NatsConfig, StorageType};
 use a3s_orm::PostgresExecutor;
+use a3s_use_extension::MAX_BOOTSTRAP_ROOT_BYTES;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -225,6 +236,8 @@ pub enum ControlPlaneStartupError {
     WorkflowRun(String),
     #[error("could not initialize HumanTask workers: {0}")]
     HumanTask(String),
+    #[error("could not initialize A3S Use plugin catalog: {0}")]
+    Plugins(String),
     #[error("could not initialize Secret rotation restart reconciliation: {0}")]
     SecretRestart(String),
     #[error(transparent)]
@@ -286,6 +299,22 @@ pub async fn build_application_with_source_resolver(
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
+    let plugin_repository = Arc::new(PostgresPluginRegistryRepository::new(executor.clone()));
+    let plugin_registries: Arc<dyn IPluginRegistryRepository> = plugin_repository.clone();
+    let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> =
+        plugin_repository;
+    let plugin_trust_roots: Arc<dyn IPluginTrustRootStore> = Arc::new(
+        PluginTrustRootObjectStore::local(&config.artifacts.store_dir, MAX_BOOTSTRAP_ROOT_BYTES)
+            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+    );
+    let plugin_metadata_root = std::path::absolute(
+        std::path::Path::new(&config.security.state_dir).join("use-plugin-registry-metadata"),
+    )
+    .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?;
+    let plugin_catalog: Arc<dyn IPluginRegistryCatalog> = Arc::new(
+        A3sUsePluginRegistryCatalog::new(Arc::clone(&plugin_trust_roots), plugin_metadata_root)
+            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+    );
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
@@ -891,6 +920,10 @@ pub async fn build_application_with_source_resolver(
             forms,
             form_semantic_core,
             search,
+            plugin_registries,
+            plugin_enrollment_authorizer,
+            plugin_trust_roots,
+            plugin_catalog,
             asset_catalog,
             mcp_service_profiles,
             mcp_route_policies,
@@ -977,6 +1010,10 @@ struct ApplicationDependencies {
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
+    plugin_registries: Arc<dyn IPluginRegistryRepository>,
+    plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
+    plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
+    plugin_catalog: Arc<dyn IPluginRegistryCatalog>,
     asset_catalog: Arc<AssetCatalogApplicationService>,
     mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
     mcp_route_policies: Arc<McpRoutePolicyApplicationService>,
@@ -1031,6 +1068,10 @@ fn build_application_with_health(
         forms,
         form_semantic_core,
         search,
+        plugin_registries,
+        plugin_enrollment_authorizer,
+        plugin_trust_roots,
+        plugin_catalog,
         asset_catalog,
         mcp_service_profiles,
         mcp_route_policies,
@@ -1670,6 +1711,13 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::fleet::RecordGatewayAcknowledgement, _>(
                     RecordGatewayAcknowledgementHandler::new(gateway_commands, gateway_projector),
                 )
+                .command_handler::<crate::modules::plugins::EnrollPluginRegistry, _>(
+                    EnrollPluginRegistryHandler::new(
+                        plugin_enrollment_authorizer,
+                        plugin_trust_roots,
+                        Arc::clone(&plugin_registries),
+                    ),
+                )
                 .query_handler::<crate::modules::identity::ListOrganizations, _>(
                     ListOrganizationsHandler::new(query_organizations),
                 )
@@ -1909,6 +1957,33 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::edge::GetRoute, _>(GetRouteHandler::new(
                     get_routes,
                 ))
+                .query_handler::<crate::modules::plugins::ListPluginRegistries, _>(
+                    ListPluginRegistriesHandler::new(Arc::clone(&plugin_registries)),
+                )
+                .query_handler::<crate::modules::plugins::GetPluginRegistry, _>(
+                    GetPluginRegistryHandler::new(Arc::clone(&plugin_registries)),
+                )
+                .query_handler::<crate::modules::plugins::SearchPluginCatalog, _>(
+                    SearchPluginCatalogHandler::new(
+                        Arc::clone(&plugin_registries),
+                        Arc::clone(&plugin_catalog),
+                    ),
+                )
+                .query_handler::<crate::modules::plugins::SearchCachedPluginCatalog, _>(
+                    SearchCachedPluginCatalogHandler::new(
+                        Arc::clone(&plugin_registries),
+                        Arc::clone(&plugin_catalog),
+                    ),
+                )
+                .query_handler::<crate::modules::plugins::InspectPluginCatalog, _>(
+                    InspectPluginCatalogHandler::new(
+                        Arc::clone(&plugin_registries),
+                        Arc::clone(&plugin_catalog),
+                    ),
+                )
+                .query_handler::<crate::modules::plugins::InspectCachedPluginCatalog, _>(
+                    InspectCachedPluginCatalogHandler::new(plugin_registries, plugin_catalog),
+                )
                 .global(),
         )
         .import(IdentityModule::new(bootstrap_credential))
@@ -1923,6 +1998,7 @@ fn build_application_with_health(
         .import(ExecutionsModule)
         .import(AgentsModule)
         .import(OperationsModule)
+        .import(PluginsModule)
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)
         .import(EdgeModule)

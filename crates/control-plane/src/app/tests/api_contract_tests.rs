@@ -3,6 +3,10 @@ use crate::presentation::{
     generate_openapi_contract, API_CONTRACT_VERSION_HEADER, API_MAJOR_VERSION,
     MINIMUM_DEPRECATION_DAYS, OPENAPI_CONTRACT_VERSION, OPENAPI_PUBLIC_PATH,
 };
+use a3s_use_extension::{
+    plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
+    plugin_catalog_search_input_schema,
+};
 use std::collections::BTreeSet;
 
 const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/v1.json");
@@ -144,6 +148,55 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 parameter["name"] == "idempotency-key"
                     && parameter["in"] == "header"
                     && parameter["required"] == true
+            })));
+    }
+    let plugin_registries =
+        &document["paths"]["/organizations/{organization_id}/plugin-registries"];
+    assert_eq!(plugin_registries["get"]["tags"], json!(["Plugins"]));
+    assert!(plugin_registries["get"]["responses"]["200"].is_object());
+    let plugin_registry = &document["paths"]
+        ["/organizations/{organization_id}/plugin-registries/{registry_id}"]["get"];
+    assert_eq!(plugin_registry["tags"], json!(["Plugins"]));
+    let plugin_search_schema = &document["paths"]
+        ["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/search"]["post"]
+        ["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        plugin_search_schema["properties"]["host"],
+        plugin_catalog_host_input_schema()
+    );
+    assert_eq!(
+        plugin_search_schema["properties"]["search"],
+        plugin_catalog_search_input_schema()
+    );
+    let plugin_inspection_schema = &document["paths"]
+        ["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/inspect"]
+        ["post"]["requestBody"]["content"]["application/json"]["schema"];
+    let canonical_inspection = plugin_catalog_inspection_input_schema();
+    assert_eq!(
+        plugin_inspection_schema["properties"]["host"],
+        plugin_catalog_host_input_schema()
+    );
+    for property in ["packageId", "version", "channel"] {
+        assert_eq!(
+            plugin_inspection_schema["properties"][property],
+            canonical_inspection["properties"][property],
+            "{property}"
+        );
+    }
+    for path in [
+        "/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/search",
+        "/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/cache/search",
+        "/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/inspect",
+        "/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/cache/inspect",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Plugins"]));
+        assert!(operation["requestBody"]["content"]["application/json"].is_object());
+        assert!(operation["responses"]["200"].is_object());
+        assert!(!operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key" && parameter["in"] == "header"
             })));
     }
     let log_stream = &document["paths"]

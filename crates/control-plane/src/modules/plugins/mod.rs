@@ -1,6 +1,7 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
+pub mod presentation;
 
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -16,4 +17,7 @@ pub use application::{
 pub use infrastructure::{
     persistence::{InMemoryPluginRegistryRepository, PostgresPluginRegistryRepository},
     A3sUsePluginRegistryCatalog, PluginTrustRootObjectStore,
+};
+pub use presentation::{
+    PluginCatalogInspectRequest, PluginCatalogSearchRequest, PluginRegistryResponse, PluginsModule,
 };

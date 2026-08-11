@@ -72,6 +72,11 @@ import type {
   Operation,
   Organization,
   OrganizationMutationResult,
+  PluginCatalogInspectRequest,
+  PluginCatalogInspection,
+  PluginCatalogPage,
+  PluginCatalogSearchRequest,
+  PluginRegistry,
   Project,
   ProjectMutationResult,
   PublishFormReleaseOptions,
@@ -149,7 +154,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.14.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.15.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1019,6 +1024,78 @@ export class CloudApi {
     });
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/search?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  listPluginRegistries(organizationId: string, signal?: AbortSignal): Promise<PluginRegistry[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/plugin-registries`, signal);
+  }
+
+  getPluginRegistry(
+    organizationId: string,
+    registryId: string,
+    signal?: AbortSignal
+  ): Promise<PluginRegistry> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-registries/${encodeURIComponent(registryId)}`,
+      signal
+    );
+  }
+
+  searchPluginCatalog(
+    organizationId: string,
+    registryId: string,
+    request: PluginCatalogSearchRequest,
+    signal?: AbortSignal
+  ): Promise<PluginCatalogPage> {
+    return this.postQueryJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-registries/${encodeURIComponent(registryId)}/catalog/search`,
+      request,
+      signal
+    );
+  }
+
+  searchCachedPluginCatalog(
+    organizationId: string,
+    registryId: string,
+    request: PluginCatalogSearchRequest,
+    signal?: AbortSignal
+  ): Promise<PluginCatalogPage> {
+    return this.postQueryJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-registries/${encodeURIComponent(registryId)}/catalog/cache/search`,
+      request,
+      signal
+    );
+  }
+
+  inspectPluginCatalog(
+    organizationId: string,
+    registryId: string,
+    request: PluginCatalogInspectRequest,
+    signal?: AbortSignal
+  ): Promise<PluginCatalogInspection> {
+    return this.postQueryJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-registries/${encodeURIComponent(registryId)}/catalog/inspect`,
+      request,
+      signal
+    );
+  }
+
+  inspectCachedPluginCatalog(
+    organizationId: string,
+    registryId: string,
+    request: PluginCatalogInspectRequest,
+    signal?: AbortSignal
+  ): Promise<PluginCatalogInspection> {
+    return this.postQueryJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-registries/${encodeURIComponent(registryId)}/catalog/cache/inspect`,
+      request,
       signal
     );
   }
@@ -2150,6 +2227,14 @@ export class CloudApi {
       idempotencyKey,
       signal,
       additionalHeaders,
+    });
+  }
+
+  private postQueryJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+    return this.request('POST', path, {
+      body: JSON.stringify(body),
+      contentType: 'application/json',
+      signal,
     });
   }
 

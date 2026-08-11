@@ -25,6 +25,7 @@ import {
 import type { CloudContext } from './context';
 import { requireOrganization, requireProject } from './context';
 import { usageError } from './errors';
+import { readBoundedJsonFile } from './json-file';
 import type { CommandResult } from './results';
 import {
   workflowDefinitionMutationResult,
@@ -371,29 +372,15 @@ async function readWorkflowPublication(
   path: string,
   readFile: (path: string) => Promise<Uint8Array> = (value) => Bun.file(value).bytes()
 ): Promise<PublishWorkflowDefinitionInput> {
-  let bytes: Uint8Array;
-  try {
-    bytes = await readFile(path);
-  } catch {
-    throw usageError('unable to read the Workflow publication file');
-  }
-  if (bytes.byteLength < 1 || bytes.byteLength > MAX_WORKFLOW_PUBLICATION_FILE_BYTES) {
-    throw usageError(
-      `Workflow publication must contain between 1 and ${MAX_WORKFLOW_PUBLICATION_FILE_BYTES} UTF-8 bytes`
-    );
-  }
-  let decoded: string;
-  try {
-    decoded = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    throw usageError('Workflow publication must be valid UTF-8');
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(decoded);
-  } catch {
-    throw usageError('Workflow publication must be valid JSON transport');
-  }
+  const value = await readBoundedJsonFile(
+    path,
+    {
+      label: 'Workflow publication',
+      maximumBytes: MAX_WORKFLOW_PUBLICATION_FILE_BYTES,
+      readError: 'unable to read the Workflow publication file',
+    },
+    readFile
+  );
   if (!isWorkflowPublication(value)) {
     throw usageError('Workflow publication must contain only definitionAcl and typed ACL payloads');
   }
