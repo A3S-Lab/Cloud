@@ -6,6 +6,7 @@ use uuid::Uuid;
 pub enum SearchResourceKind {
     Project,
     Ontology,
+    PluginRegistry,
     Environment,
     Node,
     Workload,
@@ -24,6 +25,7 @@ impl SearchResourceKind {
         match value {
             "project" => Ok(Self::Project),
             "ontology" => Ok(Self::Ontology),
+            "plugin_registry" => Ok(Self::PluginRegistry),
             "environment" => Ok(Self::Environment),
             "node" => Ok(Self::Node),
             "workload" => Ok(Self::Workload),
@@ -43,6 +45,7 @@ impl SearchResourceKind {
         match self {
             Self::Project => "project",
             Self::Ontology => "ontology",
+            Self::PluginRegistry => "plugin_registry",
             Self::Environment => "environment",
             Self::Node => "node",
             Self::Workload => "workload",
@@ -89,6 +92,13 @@ impl SearchResult {
             SearchResourceKind::Ontology if self.project_id.is_none() => {
                 Err("Ontology search projection is missing its project context".into())
             }
+            SearchResourceKind::PluginRegistry
+                if self.project_id.is_some()
+                    || self.environment_id.is_some()
+                    || self.workload_id.is_some() =>
+            {
+                Err("Plugin Registry search projection must be organization scoped".into())
+            }
             SearchResourceKind::Environment if self.environment_id != Some(self.id) => {
                 Err("environment search projection must identify its environment".into())
             }
@@ -124,4 +134,44 @@ fn validate_text(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SearchResourceKind, SearchResult};
+    use crate::modules::shared_kernel::domain::OrganizationId;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[test]
+    fn plugin_registry_kind_is_exact_and_organization_scoped() {
+        assert_eq!(
+            SearchResourceKind::parse("plugin_registry"),
+            Ok(SearchResourceKind::PluginRegistry)
+        );
+        assert_eq!(
+            SearchResourceKind::PluginRegistry.as_str(),
+            "plugin_registry"
+        );
+
+        let mut result = SearchResult {
+            organization_id: OrganizationId::new(),
+            project_id: None,
+            environment_id: None,
+            workload_id: None,
+            kind: SearchResourceKind::PluginRegistry,
+            id: Uuid::now_v7(),
+            title: "Official plugins".into(),
+            description: "Plugin registry".into(),
+            state: Some("active".into()),
+            updated_at: Utc::now(),
+        };
+        assert_eq!(result.validate(), Ok(()));
+
+        result.project_id = Some(Uuid::now_v7());
+        assert_eq!(
+            result.validate(),
+            Err("Plugin Registry search projection must be organization scoped".into())
+        );
+    }
 }

@@ -6,6 +6,7 @@ const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const PROJECT_ID = '019c0000-0000-7000-8000-000000000002';
 const ENVIRONMENT_ID = '019c0000-0000-7000-8000-000000000003';
 const WORKLOAD_ID = '019c0000-0000-7000-8000-000000000004';
+const PLUGIN_REGISTRY_ID = '019c0000-0000-7000-8000-000000000005';
 
 const SEARCH_RESULTS: SearchResult[] = [
   {
@@ -20,6 +21,19 @@ const SEARCH_RESULTS: SearchResult[] = [
     state: 'running',
     href: `#/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/environments/${ENVIRONMENT_ID}/workloads/${WORKLOAD_ID}`,
     updatedAt: '2026-07-27T01:00:00.000Z',
+  },
+  {
+    organizationId: ORGANIZATION_ID,
+    projectId: null,
+    environmentId: null,
+    workloadId: null,
+    kind: 'plugin_registry',
+    id: PLUGIN_REGISTRY_ID,
+    title: 'Official plugins',
+    description: 'Plugin registry at https://registry.example/plugins/',
+    state: 'active',
+    href: `#/organizations/${ORGANIZATION_ID}/plugin-registries/${PLUGIN_REGISTRY_ID}`,
+    updatedAt: '2026-08-12T01:00:00.000Z',
   },
 ];
 
@@ -87,6 +101,8 @@ describe('search resources command', () => {
     expect(output.stdout()).toContain('HREF');
     expect(output.stdout()).toContain('cloud-worker');
     expect(output.stdout()).toContain('Production worker workload');
+    expect(output.stdout()).toContain('plugin_registry');
+    expect(output.stdout()).toContain('Official plugins');
     expect(output.stderr()).toBe('');
   });
 

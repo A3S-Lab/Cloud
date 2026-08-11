@@ -208,9 +208,11 @@ and package-record authority. REST contract `1.15.0`, the maintained client,
 `plugin-registries`/`plugin-catalog` CLI commands, and six read-only Management
 MCP tools all dispatch the same tenant-fenced queries. Online and cached reads
 are explicit and never fall back into each other, and catalog POST queries do
-not carry mutation idempotency. The authorized global Search projection and
-real HTTPS/TUF provider exit evidence remain open, so `U0.2` is implemented but
-not yet verified.
+not carry mutation idempotency. Migration `085` extends the existing authorized
+global Search view with the organization-scoped Registry name, bounded endpoint
+description, state, and detail link; it adds no catalog index or synchronization
+worker. Real PostgreSQL execution and HTTPS/TUF provider exit evidence remain
+open, so `U0.2` is implemented but not yet verified.
 
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one

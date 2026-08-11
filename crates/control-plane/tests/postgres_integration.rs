@@ -965,12 +965,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         search_projection.as_deref(),
         Some("authorized_search_projections")
     );
-    let ontology_search_projection = database
+    let search_projection_definition = database
         .fetch_one_as(sql_query::<String>(
             "select pg_get_viewdef('authorized_search_projections'::regclass, true)",
         ))
         .await?;
-    assert!(ontology_search_projection.contains("'ontology'::text"));
+    assert!(search_projection_definition.contains("'ontology'::text"));
+    assert!(search_projection_definition.contains("'plugin_registry'::text"));
+    assert!(search_projection_definition.contains("plugin_registries"));
     let immutable_revision_trigger = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_trigger where tgrelid = 'ontology_revisions'::regclass and tgname = 'ontology_revisions_immutable' and not tgisinternal",
@@ -1835,6 +1837,75 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .as_str()
         .ok_or("bootstrap membership has no principal ID")?
         .to_owned();
+
+    let plugin_registry_id = Uuid::now_v7();
+    let plugin_registry_request_id = Uuid::now_v7();
+    let plugin_registry_created_at = Utc::now();
+    let plugin_root_hex = "a".repeat(64);
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into plugin_registries (organization_id, id, name, name_key, endpoint, root_object_ref, root_sha256, root_version, state, aggregate_version, last_actor_id, last_request_id, created_at, updated_at) values (",
+            )
+            .bind(Uuid::parse_str(&organization_id)?)
+            .append(", ")
+            .bind(plugin_registry_id)
+            .append(", ")
+            .bind("Official plugins")
+            .append(", ")
+            .bind("official plugins")
+            .append(", ")
+            .bind("https://registry.example/plugins/")
+            .append(", ")
+            .bind(format!("sha256/{plugin_root_hex}/root.json"))
+            .append(", ")
+            .bind(format!("sha256:{plugin_root_hex}"))
+            .append(", 1, ")
+            .bind("active")
+            .append(", 1, ")
+            .bind(Uuid::parse_str(&owner_principal_id)?)
+            .append(", ")
+            .bind(plugin_registry_request_id)
+            .append(", ")
+            .bind(plugin_registry_created_at)
+            .append(", ")
+            .bind(plugin_registry_created_at)
+            .append(")"),
+        )
+        .await?;
+
+    let plugin_registry_search = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization_id}/search?q=official&limit=20"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(plugin_registry_search.status(), 200);
+    let plugin_registry_search_body = response_json(&plugin_registry_search)?;
+    assert_eq!(
+        plugin_registry_search_body["data"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        plugin_registry_search_body["data"][0]["kind"],
+        "plugin_registry"
+    );
+    assert_eq!(
+        plugin_registry_search_body["data"][0]["id"],
+        plugin_registry_id.to_string()
+    );
+    assert_eq!(
+        plugin_registry_search_body["data"][0]["href"],
+        format!("#/organizations/{organization_id}/plugin-registries/{plugin_registry_id}")
+    );
+    assert_eq!(
+        plugin_registry_search_body["data"][0]["description"],
+        "Plugin registry · https://registry.example/plugins/"
+    );
+    assert!(!plugin_registry_search_body
+        .to_string()
+        .contains(&plugin_root_hex));
+
     let service_membership = app
         .call(post_json(
             &memberships_path,

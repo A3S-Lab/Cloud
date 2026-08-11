@@ -1,6 +1,7 @@
 export type SearchResourceKind =
   | 'project'
   | 'ontology'
+  | 'plugin_registry'
   | 'environment'
   | 'node'
   | 'workload'

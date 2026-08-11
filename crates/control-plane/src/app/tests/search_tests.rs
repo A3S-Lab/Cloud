@@ -100,6 +100,52 @@ async fn global_search_returns_only_tenant_authorized_projections() -> Result<()
 }
 
 #[tokio::test]
+async fn global_search_projects_organization_scoped_plugin_registry_links() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let search = Arc::new(InMemorySearchRepository::new());
+    let app = build_test_application_with_search(identity, projects, Arc::clone(&search))?;
+    let organization = bootstrap_organization(&app, "search-plugin-registry", "Plugins").await?;
+    let registry_id = Uuid::now_v7();
+
+    search
+        .register(SearchResult {
+            organization_id: organization_id(&organization)?,
+            project_id: None,
+            environment_id: None,
+            workload_id: None,
+            kind: SearchResourceKind::PluginRegistry,
+            id: registry_id,
+            title: "Official plugins".into(),
+            description: "Plugin registry at https://registry.example/plugins/".into(),
+            state: Some("active".into()),
+            updated_at: Utc::now(),
+        })
+        .await
+        .expect("register Plugin Registry search projection");
+
+    let response = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/search?q=official&limit=20"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response.status(), 200);
+    let body = response_json(&response)?;
+    assert_eq!(body["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(body["data"][0]["kind"], "plugin_registry");
+    assert_eq!(body["data"][0]["id"], registry_id.to_string());
+    assert_eq!(body["data"][0]["projectId"], Value::Null);
+    assert_eq!(body["data"][0]["environmentId"], Value::Null);
+    assert_eq!(body["data"][0]["workloadId"], Value::Null);
+    assert_eq!(
+        body["data"][0]["href"],
+        format!("#/organizations/{organization}/plugin-registries/{registry_id}")
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn global_search_rejects_unbounded_inputs_before_querying_projections() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());

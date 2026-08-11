@@ -90,7 +90,7 @@ fn compare_matches(
 ) -> Ordering {
     left_rank
         .cmp(right_rank)
-        .then_with(|| left.kind.cmp(&right.kind))
+        .then_with(|| left.kind.as_str().cmp(right.kind.as_str()))
         .then_with(|| left.title.to_lowercase().cmp(&right.title.to_lowercase()))
         .then_with(|| left.id.cmp(&right.id))
 }
@@ -111,6 +111,12 @@ mod tests {
             (SearchResourceKind::Node, "Cloud worker", "Node"),
             (SearchResourceKind::Node, "Worker cloud", "Node"),
             (SearchResourceKind::Operation, "Deploy", "cloud workflow"),
+            (
+                SearchResourceKind::PluginRegistry,
+                "Registry",
+                "cloud metadata",
+            ),
+            (SearchResourceKind::Operation, "Operation", "cloud metadata"),
         ] {
             repository
                 .register(SearchResult {
@@ -133,7 +139,7 @@ mod tests {
             .search(
                 organization_id,
                 &SearchQuery::parse("cloud").expect("query"),
-                4,
+                6,
             )
             .await
             .expect("search");
@@ -143,7 +149,14 @@ mod tests {
                 .iter()
                 .map(|result| result.title.as_str())
                 .collect::<Vec<_>>(),
-            ["Cloud", "Cloud worker", "Worker cloud", "Deploy"]
+            [
+                "Cloud",
+                "Cloud worker",
+                "Worker cloud",
+                "Deploy",
+                "Operation",
+                "Registry",
+            ]
         );
     }
 }

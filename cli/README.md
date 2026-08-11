@@ -46,7 +46,9 @@ events rather than Runtime logs, so `--stream` is rejected.
 `--limit` from 1 through 50, defaulting to 20. The query must contain 1 through
 128 safe characters. Validation happens before transport, and Cloud performs
 the tenant-authorized search through its public API; the CLI never loads broad
-resource lists and filters them locally.
+resource lists and filters them locally. Results include the Cloud-owned
+`plugin_registry` projection and its organization-level detail link, never A3S
+Use catalog records or cached TUF metadata.
 
 `plugin-registries list|get` reads Cloud-owned tenant Registry references.
 `plugin-catalog search|search-cached|inspect|inspect-cached <registry-id>`

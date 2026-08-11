@@ -747,6 +747,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/084_plugin_registries.sql"
             )),
         ),
+        Migration::new(
+            "085",
+            "Plugin Registry authorized Search projection",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/085_plugin_registry_search_projection.sql"
+            )),
+        ),
     ]
 }
 

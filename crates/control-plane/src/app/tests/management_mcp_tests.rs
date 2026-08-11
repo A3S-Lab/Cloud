@@ -1443,11 +1443,11 @@ async fn management_mcp_search_uses_the_tenant_authorized_query() -> Result<()> 
             project_id: None,
             environment_id: None,
             workload_id: None,
-            kind: SearchResourceKind::Node,
+            kind: SearchResourceKind::PluginRegistry,
             id: allowed_id,
-            title: "Cloud worker".into(),
-            description: "Node · ready".into(),
-            state: Some("ready".into()),
+            title: "Cloud plugin registry".into(),
+            description: "Plugin registry at https://registry.example/plugins/".into(),
+            state: Some("active".into()),
             updated_at: Utc::now(),
         })
         .await
@@ -1458,11 +1458,11 @@ async fn management_mcp_search_uses_the_tenant_authorized_query() -> Result<()> 
             project_id: None,
             environment_id: None,
             workload_id: None,
-            kind: SearchResourceKind::Node,
+            kind: SearchResourceKind::PluginRegistry,
             id: denied_id,
-            title: "Cloud hidden worker".into(),
-            description: "Node · ready".into(),
-            state: Some("ready".into()),
+            title: "Cloud hidden plugin registry".into(),
+            description: "Plugin registry at https://hidden.example/plugins/".into(),
+            state: Some("active".into()),
             updated_at: Utc::now(),
         })
         .await
@@ -1489,8 +1489,16 @@ async fn management_mcp_search_uses_the_tenant_authorized_query() -> Result<()> 
         body["result"]["structuredContent"]["data"][0]["id"],
         allowed_id.to_string()
     );
+    assert_eq!(
+        body["result"]["structuredContent"]["data"][0]["kind"],
+        "plugin_registry"
+    );
+    assert_eq!(
+        body["result"]["structuredContent"]["data"][0]["href"],
+        format!("#/organizations/{organization}/plugin-registries/{allowed_id}")
+    );
     assert!(!body.to_string().contains(&denied_id.to_string()));
-    assert!(!body.to_string().contains("Cloud hidden worker"));
+    assert!(!body.to_string().contains("Cloud hidden plugin registry"));
     Ok(())
 }
 

@@ -127,10 +127,11 @@ Runtime unit.
 
 `searchResources` validates a 1-to-128-character safe query and a result limit
 from 1 through 50 before transport, then calls the organization-scoped public
-search endpoint. It returns contextual, credential-free projections only.
-Authorization, ranking, and resource registration remain Cloud
-responsibilities; callers must not emulate search by loading broad resource
-lists.
+search endpoint. It returns contextual, credential-free projections, including
+organization-scoped `plugin_registry` results whose links target the Cloud-owned
+Registry detail surface. It never returns A3S Use catalog rows or TUF metadata.
+Authorization, ranking, and resource registration remain Cloud responsibilities;
+callers must not emulate search by loading broad resource lists.
 
 `listPluginRegistries` and `getPluginRegistry` expose the Cloud-owned tenant
 Registry projection. `searchPluginCatalog`, `searchCachedPluginCatalog`,

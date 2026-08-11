@@ -54,6 +54,9 @@ fn search_href(result: &SearchResult) -> String {
                 )
             },
         ),
+        SearchResourceKind::PluginRegistry => {
+            format!("{organization_root}/plugin-registries/{}", result.id)
+        }
         SearchResourceKind::Environment => {
             context_root(result).map_or(organization_root, |root| root)
         }
