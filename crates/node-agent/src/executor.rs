@@ -337,12 +337,12 @@ impl CommandExecutor {
                     applied: Box::new(applied),
                 })
             }
-            NodeCommandPayload::PluginHostSetEnablement { request } => {
-                let (capabilities, enablement) =
-                    plugin_host::set_enablement(self.plugin_host()?, request).await?;
-                Ok(NodeCommandResult::PluginHostEnablementSet {
+            NodeCommandPayload::PluginHostPlanEnablement { request } => {
+                let (capabilities, enablement_plan) =
+                    plugin_host::plan_enablement(self.plugin_host()?, request).await?;
+                Ok(NodeCommandResult::PluginHostEnablementPlanned {
                     capabilities,
-                    enablement: Box::new(enablement),
+                    enablement_plan: Box::new(enablement_plan),
                 })
             }
             NodeCommandPayload::PluginHostObserve { request } => {
@@ -416,7 +416,7 @@ fn completion_timestamp(
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
-            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostEnablementPlanned { .. }
             | NodeCommandResult::PluginHostObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,

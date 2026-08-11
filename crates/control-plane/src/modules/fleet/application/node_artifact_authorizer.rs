@@ -158,7 +158,7 @@ fn artifact_binding_digest(payload: &NodeCommandPayload) -> Result<Option<String
         | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
         | NodeCommandPayload::PluginHostPlan { .. }
         | NodeCommandPayload::PluginHostApply { .. }
-        | NodeCommandPayload::PluginHostSetEnablement { .. }
+        | NodeCommandPayload::PluginHostPlanEnablement { .. }
         | NodeCommandPayload::PluginHostObserve { .. } => Ok(None),
     }
 }

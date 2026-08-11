@@ -5,9 +5,9 @@ use a3s_runtime::contract::{
 };
 use a3s_use_core::{
     PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
-    PluginHostEnablementRequest, PluginHostEnablementResult, PluginHostObservationRequest,
+    PluginHostEnablementPlanRequest, PluginHostEnablementPlanResult, PluginHostObservationRequest,
     PluginHostObservationResult, PluginHostPlanRequest, PluginHostPlanResult,
-    PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA,
+    PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA,
     PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA, PLUGIN_HOST_PLAN_REQUEST_SCHEMA,
 };
 use chrono::{DateTime, Utc};
@@ -80,8 +80,8 @@ pub enum NodeCommandPayload {
     PluginHostApply {
         request: Box<PluginHostApplyRequest>,
     },
-    PluginHostSetEnablement {
-        request: Box<PluginHostEnablementRequest>,
+    PluginHostPlanEnablement {
+        request: Box<PluginHostEnablementPlanRequest>,
     },
     PluginHostObserve {
         request: Box<PluginHostObservationRequest>,
@@ -119,7 +119,7 @@ impl NodeCommandPayload {
             Self::PluginHostCapabilitiesInspect { .. } => "plugin_host_capabilities_inspect",
             Self::PluginHostPlan { .. } => "plugin_host_plan",
             Self::PluginHostApply { .. } => "plugin_host_apply",
-            Self::PluginHostSetEnablement { .. } => "plugin_host_set_enablement",
+            Self::PluginHostPlanEnablement { .. } => "plugin_host_plan_enablement",
             Self::PluginHostObserve { .. } => "plugin_host_observe",
         }
     }
@@ -149,7 +149,7 @@ impl NodeCommandPayload {
             Self::PluginHostCapabilitiesInspect { .. } => NodePluginHostCapabilitiesRequest::SCHEMA,
             Self::PluginHostPlan { .. } => PLUGIN_HOST_PLAN_REQUEST_SCHEMA,
             Self::PluginHostApply { .. } => PLUGIN_HOST_APPLY_REQUEST_SCHEMA,
-            Self::PluginHostSetEnablement { .. } => PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA,
+            Self::PluginHostPlanEnablement { .. } => PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA,
             Self::PluginHostObserve { .. } => PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA,
         }
     }
@@ -171,7 +171,7 @@ impl NodeCommandPayload {
             Self::PluginHostCapabilitiesInspect { request } => request.generation,
             Self::PluginHostPlan { request } => request.assignment_generation,
             Self::PluginHostApply { request } => request.assignment_generation,
-            Self::PluginHostSetEnablement { request } => request.assignment_generation,
+            Self::PluginHostPlanEnablement { request } => request.assignment_generation,
             Self::PluginHostObserve { request } => request.assignment_generation,
         }
     }
@@ -215,9 +215,9 @@ impl NodeCommandPayload {
             Self::PluginHostApply { request } => request.validate().map_err(|error| {
                 format!("invalid A3S Use Plugin Host apply request ({})", error.code)
             }),
-            Self::PluginHostSetEnablement { request } => request.validate().map_err(|error| {
+            Self::PluginHostPlanEnablement { request } => request.validate().map_err(|error| {
                 format!(
-                    "invalid A3S Use Plugin Host enablement request ({})",
+                    "invalid A3S Use Plugin Host enablement plan request ({})",
                     error.code
                 )
             }),
@@ -365,7 +365,7 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
             | NodeCommandPayload::PluginHostPlan { .. }
             | NodeCommandPayload::PluginHostApply { .. }
-            | NodeCommandPayload::PluginHostSetEnablement { .. }
+            | NodeCommandPayload::PluginHostPlanEnablement { .. }
             | NodeCommandPayload::PluginHostObserve { .. } => {}
         }
         if self.generation != self.payload.generation() {
@@ -439,9 +439,9 @@ pub enum NodeCommandResult {
         capabilities: PluginHostCapabilities,
         applied: Box<PluginHostApplyResult>,
     },
-    PluginHostEnablementSet {
+    PluginHostEnablementPlanned {
         capabilities: PluginHostCapabilities,
-        enablement: Box<PluginHostEnablementResult>,
+        enablement_plan: Box<PluginHostEnablementPlanResult>,
     },
     PluginHostObserved {
         capabilities: PluginHostCapabilities,
@@ -489,15 +489,18 @@ impl NodeCommandResult {
                     .validate()
                     .map_err(|error| format!("invalid Plugin Host apply result ({})", error.code))
             }
-            Self::PluginHostEnablementSet {
+            Self::PluginHostEnablementPlanned {
                 capabilities,
-                enablement,
+                enablement_plan,
             } => {
                 capabilities.validate().map_err(|error| {
                     format!("invalid Plugin Host capabilities ({})", error.code)
                 })?;
-                enablement.validate().map_err(|error| {
-                    format!("invalid Plugin Host enablement result ({})", error.code)
+                enablement_plan.validate().map_err(|error| {
+                    format!(
+                        "invalid Plugin Host enablement plan result ({})",
+                        error.code
+                    )
                 })
             }
             Self::PluginHostObserved {
@@ -627,16 +630,16 @@ impl NodeCommandResult {
                     )
                 }),
             (
-                NodeCommandPayload::PluginHostSetEnablement { request },
-                Self::PluginHostEnablementSet {
+                NodeCommandPayload::PluginHostPlanEnablement { request },
+                Self::PluginHostEnablementPlanned {
                     capabilities,
-                    enablement,
+                    enablement_plan,
                 },
-            ) => enablement
+            ) => enablement_plan
                 .validate_for(request, capabilities)
                 .map_err(|error| {
                     format!(
-                        "Plugin Host enablement result does not match its request ({})",
+                        "Plugin Host enablement plan result does not match its request ({})",
                         error.code
                     )
                 }),
@@ -800,9 +803,14 @@ impl NodeCommandAck {
                     plugin_host_timestamp("apply completion", applied.completed_at_ms)?,
                     applied.replayed,
                 )),
-                NodeCommandResult::PluginHostEnablementSet { enablement, .. } => Some((
-                    plugin_host_timestamp("enablement completion", enablement.completed_at_ms)?,
-                    enablement.replayed,
+                NodeCommandResult::PluginHostEnablementPlanned {
+                    enablement_plan, ..
+                } => Some((
+                    plugin_host_timestamp(
+                        "enablement plan creation",
+                        enablement_plan.planned_at_ms,
+                    )?,
+                    enablement_plan.replayed,
                 )),
                 NodeCommandResult::PluginHostObserved { observation, .. } => Some((
                     plugin_host_timestamp("observation", observation.observed_at_ms)?,
@@ -845,7 +853,7 @@ impl NodeCommandAck {
                     | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
                     | NodeCommandPayload::PluginHostPlan { .. }
                     | NodeCommandPayload::PluginHostApply { .. }
-                    | NodeCommandPayload::PluginHostSetEnablement { .. }
+                    | NodeCommandPayload::PluginHostPlanEnablement { .. }
                     | NodeCommandPayload::PluginHostObserve { .. }
             ) && self.schema != Self::SCHEMA
             {

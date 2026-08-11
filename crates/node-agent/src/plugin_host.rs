@@ -1,6 +1,6 @@
 use a3s_use_core::{
     PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
-    PluginHostEnablementRequest, PluginHostEnablementResult, PluginHostManager,
+    PluginHostEnablementPlanRequest, PluginHostEnablementPlanResult, PluginHostManager,
     PluginHostObservationRequest, PluginHostObservationResult, PluginHostPlanRequest,
     PluginHostPlanResult, UseResult,
 };
@@ -33,13 +33,13 @@ pub(crate) async fn apply(
     Ok((capabilities, result))
 }
 
-pub(crate) async fn set_enablement(
+pub(crate) async fn plan_enablement(
     manager: &dyn PluginHostManager,
-    request: &PluginHostEnablementRequest,
-) -> UseResult<(PluginHostCapabilities, PluginHostEnablementResult)> {
+    request: &PluginHostEnablementPlanRequest,
+) -> UseResult<(PluginHostCapabilities, PluginHostEnablementPlanResult)> {
     let capabilities = inspect(manager).await?;
     request.validate_for_capabilities(&capabilities)?;
-    let result = manager.set_enablement(request.clone()).await?;
+    let result = manager.plan_enablement(request.clone()).await?;
     result.validate_for(request, &capabilities)?;
     Ok((capabilities, result))
 }

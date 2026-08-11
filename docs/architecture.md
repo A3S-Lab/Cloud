@@ -621,10 +621,13 @@ version, desired generation, expiry, and typed payload. A receipt settles only
 the exact command or batch it names. Redelivery after a lost acknowledgement
 must return the same outcome without repeating a side effect.
 
-The planned A3S Use host adapter is another typed executor behind this same
-command lease and journal. Plan, apply, enablement, and observation are
-versioned payload variants in the existing Fleet envelope; they are not a
-second node endpoint, queue, stream, or generic action envelope.
+The A3S Use host adapter is another typed executor behind this same command
+lease and journal. Capabilities inspection, package planning, reviewed
+enablement planning, digest-only apply, and observation are versioned payload
+variants in the existing Fleet envelope; they are not a second node endpoint,
+queue, stream, or generic action envelope. Both package and enablement plans
+converge through the same apply variant, so the Node Agent cannot create a
+direct enable/disable mutation path.
 
 ### 9.2 Claims and fencing
 

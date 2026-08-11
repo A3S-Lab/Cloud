@@ -5,14 +5,14 @@ use crate::{
 };
 use a3s_use_core::{
     PluginDesiredState, PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
-    PluginHostEnablementRequest, PluginHostEnablementResult, PluginHostObservationRequest,
-    PluginHostObservationResult, PluginHostObservationStatus, PluginHostPackageState,
-    PluginHostPlanRequest, PluginManagedScope, PluginObservedState, PluginOperationAction,
-    PluginPackageId, PluginSurfaceKind, PluginSurfaceRef, PLUGIN_HOST_APPLY_REQUEST_SCHEMA,
-    PLUGIN_HOST_APPLY_RESULT_SCHEMA, PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA,
-    PLUGIN_HOST_ENABLEMENT_RESULT_SCHEMA, PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA,
-    PLUGIN_HOST_OBSERVATION_RESULT_SCHEMA, PLUGIN_HOST_PLAN_REQUEST_SCHEMA,
-    PLUGIN_MANAGED_SCOPE_SCHEMA,
+    PluginHostEnablementPlanRequest, PluginHostEnablementPlanResult,
+    PluginHostEnablementPlanStatus, PluginHostObservationRequest, PluginHostObservationResult,
+    PluginHostObservationStatus, PluginHostPackageState, PluginHostPlanRequest, PluginManagedScope,
+    PluginObservedState, PluginOperationAction, PluginPackageId, PluginSurfaceKind,
+    PluginSurfaceRef, PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_APPLY_RESULT_SCHEMA,
+    PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA,
+    PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA, PLUGIN_HOST_OBSERVATION_RESULT_SCHEMA,
+    PLUGIN_HOST_PLAN_REQUEST_SCHEMA, PLUGIN_MANAGED_SCOPE_SCHEMA,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -21,11 +21,17 @@ const DIGEST_B: &str = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const DIGEST_C: &str = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const DIGEST_D: &str = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 const HOST_CAPABILITIES_DIGEST: &str =
-    "sha256:0f70f027e30eebc34801109d01ccca4e051b343ca4fae70c1ddf92ed8574b899";
+    "sha256:0896cbd13d4a563edda6fd5a8f53f94a66d0b6002d8629cdf83e573ed4acebdb";
 
 fn plugin_capabilities() -> PluginHostCapabilities {
-    PluginHostCapabilities::v1("host:node-01", "0.2.1", "use:0.2.1:linux-x86_64")
+    PluginHostCapabilities::v4("host:node-01", "0.2.2", "use:0.2.2:linux-x86_64")
         .expect("Plugin Host capabilities")
+}
+
+fn capabilities_digest() -> String {
+    plugin_capabilities()
+        .descriptor_digest()
+        .expect("capabilities digest")
 }
 
 fn managed_scope() -> PluginManagedScope {
@@ -48,7 +54,7 @@ fn observed_request(assignment_generation: u64) -> PluginHostObservationRequest 
         schema: PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA.into(),
         request_id: "request:observe:0001".into(),
         assignment_generation,
-        capabilities_digest: HOST_CAPABILITIES_DIGEST.into(),
+        capabilities_digest: capabilities_digest(),
         scope: managed_scope(),
         package_id: package_id(),
     }
@@ -101,12 +107,8 @@ fn installed_state(package_generation: u64) -> PluginHostPackageState {
 
 #[test]
 fn plugin_host_commands_reuse_only_the_versioned_use_contracts() {
-    assert_eq!(
-        plugin_capabilities()
-            .descriptor_digest()
-            .expect("capabilities digest"),
-        HOST_CAPABILITIES_DIGEST
-    );
+    plugin_capabilities().validate().expect("v4 capabilities");
+    assert_eq!(capabilities_digest(), HOST_CAPABILITIES_DIGEST);
 
     let capability_request =
         NodePluginHostCapabilitiesRequest::new(2).expect("capabilities request");
@@ -127,11 +129,12 @@ fn plugin_host_commands_reuse_only_the_versioned_use_contracts() {
         schema: PLUGIN_HOST_PLAN_REQUEST_SCHEMA.into(),
         request_id: "request:plan:0001".into(),
         assignment_generation: 3,
-        capabilities_digest: HOST_CAPABILITIES_DIGEST.into(),
+        capabilities_digest: capabilities_digest(),
         scope: managed_scope(),
         action: PluginOperationAction::Uninstall,
         package_id: package_id(),
         candidate: None,
+        package_lock: None,
         selected_surfaces: Vec::new(),
     };
     let plan_payload = NodeCommandPayload::PluginHostPlan {
@@ -146,7 +149,7 @@ fn plugin_host_commands_reuse_only_the_versioned_use_contracts() {
         schema: PLUGIN_HOST_APPLY_REQUEST_SCHEMA.into(),
         request_id: "request:apply:0001".into(),
         assignment_generation: 3,
-        capabilities_digest: HOST_CAPABILITIES_DIGEST.into(),
+        capabilities_digest: capabilities_digest(),
         scope: managed_scope(),
         package_id: package_id(),
         operation_id: "use-operation:0001".into(),
@@ -160,25 +163,24 @@ fn plugin_host_commands_reuse_only_the_versioned_use_contracts() {
     assert_eq!(apply_payload.kind(), "plugin_host_apply");
     assert_eq!(apply_payload.schema(), PLUGIN_HOST_APPLY_REQUEST_SCHEMA);
 
-    let enablement = PluginHostEnablementRequest {
-        schema: PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA.into(),
+    let enablement = PluginHostEnablementPlanRequest {
+        schema: PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA.into(),
         request_id: "request:enable:0001".into(),
-        operation_id: "use-enablement:0001".into(),
         assignment_generation: 4,
-        capabilities_digest: HOST_CAPABILITIES_DIGEST.into(),
+        capabilities_digest: capabilities_digest(),
         scope: managed_scope(),
         package_id: package_id(),
         expected_package_generation: 13,
         enabled: true,
     };
-    let enablement_payload = NodeCommandPayload::PluginHostSetEnablement {
+    let enablement_payload = NodeCommandPayload::PluginHostPlanEnablement {
         request: Box::new(enablement),
     };
     enablement_payload.validate().expect("enablement payload");
-    assert_eq!(enablement_payload.kind(), "plugin_host_set_enablement");
+    assert_eq!(enablement_payload.kind(), "plugin_host_plan_enablement");
     assert_eq!(
         enablement_payload.schema(),
-        PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA
+        PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA
     );
 
     let observation_payload = NodeCommandPayload::PluginHostObserve {
@@ -198,10 +200,19 @@ fn plugin_host_commands_reuse_only_the_versioned_use_contracts() {
         enablement_payload,
         observation_payload,
     ] {
+        let expected_kind = payload.kind();
         let encoded = serde_json::to_value(payload).expect("encode Plugin Host payload");
+        assert_eq!(encoded["kind"], expected_kind);
         assert_ne!(encoded["kind"], "plugin_host_execute");
         assert!(encoded.get("action").is_none());
     }
+    assert!(
+        serde_json::from_value::<NodeCommandPayload>(serde_json::json!({
+            "kind": "plugin_host_set_enablement",
+            "request": {}
+        }))
+        .is_err()
+    );
 }
 
 #[test]
@@ -252,17 +263,17 @@ fn plugin_host_acknowledgements_reject_stale_capabilities_and_result_substitutio
     let NodeCommandResult::PluginHostObserved { capabilities, .. } = result.as_mut() else {
         panic!("Plugin Host observation");
     };
-    capabilities.manager_build_id = "use:0.2.1:changed".into();
+    capabilities.manager_build_id = "use:0.2.2:changed".into();
     assert!(stale.validate_against(&command).is_err());
 }
 
 #[test]
-fn plugin_host_apply_and_enablement_results_bind_the_exact_request_generation() {
+fn plugin_host_apply_and_enablement_plan_results_bind_the_exact_request_generation() {
     let apply_request = PluginHostApplyRequest {
         schema: PLUGIN_HOST_APPLY_REQUEST_SCHEMA.into(),
         request_id: "request:apply:0001".into(),
         assignment_generation: 5,
-        capabilities_digest: HOST_CAPABILITIES_DIGEST.into(),
+        capabilities_digest: capabilities_digest(),
         scope: managed_scope(),
         package_id: package_id(),
         operation_id: "use-operation:0001".into(),
@@ -299,46 +310,46 @@ fn plugin_host_apply_and_enablement_results_bind_the_exact_request_generation() 
     .validate_against(&apply_command)
     .expect("exact apply acknowledgement");
 
-    let enablement_request = PluginHostEnablementRequest {
-        schema: PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA.into(),
+    let enablement_request = PluginHostEnablementPlanRequest {
+        schema: PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA.into(),
         request_id: "request:enable:0001".into(),
-        operation_id: "use-enablement:0001".into(),
         assignment_generation: 6,
-        capabilities_digest: HOST_CAPABILITIES_DIGEST.into(),
+        capabilities_digest: capabilities_digest(),
         scope: managed_scope(),
         package_id: package_id(),
         expected_package_generation: 13,
         enabled: true,
     };
-    let enablement_command = command(NodeCommandPayload::PluginHostSetEnablement {
+    let enablement_command = command(NodeCommandPayload::PluginHostPlanEnablement {
         request: Box::new(enablement_request.clone()),
     });
-    let enablement_completed_at = enablement_command.issued_at + Duration::milliseconds(100);
-    let enablement = PluginHostEnablementResult {
-        schema: PLUGIN_HOST_ENABLEMENT_RESULT_SCHEMA.into(),
+    let enablement_planned_at = enablement_command.issued_at + Duration::milliseconds(100);
+    let enablement_plan = PluginHostEnablementPlanResult {
+        schema: PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA.into(),
         request_id: enablement_request.request_id.clone(),
-        operation_id: enablement_request.operation_id.clone(),
         assignment_generation: enablement_request.assignment_generation,
         capabilities_digest: enablement_request.capabilities_digest.clone(),
         scope: enablement_request.scope.clone(),
         package_id: enablement_request.package_id.clone(),
-        completed_at_ms: u64::try_from(enablement_completed_at.timestamp_millis())
-            .expect("enablement completion"),
-        operation_result_digest: DIGEST_C.into(),
-        changed: false,
+        expected_package_generation: enablement_request.expected_package_generation,
+        enabled: enablement_request.enabled,
+        planned_at_ms: u64::try_from(enablement_planned_at.timestamp_millis())
+            .expect("enablement plan creation"),
+        status: PluginHostEnablementPlanStatus::NoChange,
         state: installed_state(13),
+        plan: None,
         replayed: false,
     };
     acknowledgement(
         &enablement_command,
-        NodeCommandResult::PluginHostEnablementSet {
+        NodeCommandResult::PluginHostEnablementPlanned {
             capabilities: plugin_capabilities(),
-            enablement: Box::new(enablement),
+            enablement_plan: Box::new(enablement_plan),
         },
-        enablement_completed_at + Duration::milliseconds(100),
+        enablement_planned_at + Duration::milliseconds(100),
     )
     .validate_against(&enablement_command)
-    .expect("exact enablement acknowledgement");
+    .expect("exact enablement plan acknowledgement");
 }
 
 #[test]

@@ -10,17 +10,19 @@ use a3s_runtime::contract::{
 };
 use a3s_runtime::{RuntimeClient, RuntimeError, RuntimeResult};
 use a3s_use_core::{
-    PlanActor, PlanAuthority, PlanPackageRole, PlanPolicyDecision, PlanScope, PlanScopeKind,
-    PlannedOperationImpact, PlannedStateEvidence, PlannedWorkspaceImpact, PluginCatalogRecord,
-    PluginDesiredState, PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
-    PluginHostEnablementRequest, PluginHostEnablementResult, PluginHostManager,
-    PluginHostObservationRequest, PluginHostObservationResult, PluginHostObservationStatus,
-    PluginHostPackageState, PluginHostPlanRequest, PluginHostPlanResult, PluginManagedScope,
-    PluginObservedState, PluginOperationAction, PluginOperationPlanBinding,
-    PluginOperationPlanDraft, PluginOperationPlanEnvelope, PluginPackageId, PluginSurfaceKind,
-    PluginSurfaceRef, UseError, UseResult, VerifiedCatalogProvenance, VerifiedPluginCatalogRecord,
+    PlanActor, PlanAuthority, PlanPackageChangeKind, PlanPackageRole, PlanPolicyDecision,
+    PlanScope, PlanScopeKind, PlannedOperationImpact, PlannedPackageTransition,
+    PlannedStateEvidence, PlannedWorkspaceImpact, PluginCatalogRecord, PluginDesiredState,
+    PluginHostApplyRequest, PluginHostApplyResult, PluginHostCapabilities,
+    PluginHostEnablementPlanRequest, PluginHostEnablementPlanResult,
+    PluginHostEnablementPlanStatus, PluginHostManager, PluginHostObservationRequest,
+    PluginHostObservationResult, PluginHostObservationStatus, PluginHostPackageState,
+    PluginHostPlanRequest, PluginHostPlanResult, PluginManagedScope, PluginObservedState,
+    PluginOperationAction, PluginOperationPlanBinding, PluginOperationPlanDraft,
+    PluginOperationPlanEnvelope, PluginPackageId, PluginSurfaceKind, PluginSurfaceRef, UseError,
+    UseResult, VerifiedCatalogProvenance, VerifiedPluginCatalogRecord,
     PLUGIN_HOST_APPLY_REQUEST_SCHEMA, PLUGIN_HOST_APPLY_RESULT_SCHEMA,
-    PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_RESULT_SCHEMA,
+    PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA,
     PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA, PLUGIN_HOST_OBSERVATION_RESULT_SCHEMA,
     PLUGIN_HOST_PLAN_REQUEST_SCHEMA, PLUGIN_HOST_PLAN_RESULT_SCHEMA, PLUGIN_MANAGED_SCOPE_SCHEMA,
 };
@@ -74,7 +76,7 @@ struct ManagerCalls {
     capabilities: AtomicUsize,
     plan: AtomicUsize,
     apply: AtomicUsize,
-    enablement: AtomicUsize,
+    enablement_plan: AtomicUsize,
     observe: AtomicUsize,
 }
 
@@ -182,32 +184,93 @@ impl PluginHostManager for RecordingPluginHostManager {
         })
     }
 
-    async fn set_enablement(
+    async fn plan_enablement(
         &self,
-        request: PluginHostEnablementRequest,
-    ) -> UseResult<PluginHostEnablementResult> {
-        self.calls.enablement.fetch_add(1, Ordering::SeqCst);
-        let mut state = installed_state(request.expected_package_generation);
-        state.desired = if request.enabled {
-            PluginDesiredState::Enabled
-        } else {
-            PluginDesiredState::InstalledDisabled
-        };
-        if !request.enabled {
-            state.observed = PluginObservedState::Installed;
+        request: PluginHostEnablementPlanRequest,
+    ) -> UseResult<PluginHostEnablementPlanResult> {
+        self.calls.enablement_plan.fetch_add(1, Ordering::SeqCst);
+        let state = installed_state(request.expected_package_generation);
+        let planned_at_ms = now_ms();
+        if request.enabled {
+            return Ok(PluginHostEnablementPlanResult {
+                schema: PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA.into(),
+                request_id: request.request_id,
+                assignment_generation: request.assignment_generation,
+                capabilities_digest: request.capabilities_digest,
+                scope: request.scope,
+                package_id: request.package_id,
+                expected_package_generation: request.expected_package_generation,
+                enabled: true,
+                planned_at_ms,
+                status: PluginHostEnablementPlanStatus::NoChange,
+                state,
+                plan: None,
+                replayed: false,
+            });
         }
-        Ok(PluginHostEnablementResult {
-            schema: PLUGIN_HOST_ENABLEMENT_RESULT_SCHEMA.into(),
+
+        let catalog = candidate();
+        let selected = catalog.selected_state(&[])?;
+        let transition = PlannedPackageTransition::resolved(
+            request.package_id.as_str(),
+            PlanPackageRole::Root,
+            PlanPackageChangeKind::Retain,
+            Some(selected.clone()),
+            Some(selected),
+            None,
+        )?;
+        let draft = PluginOperationPlanDraft::new(
+            PluginOperationAction::Disable,
+            request.package_id.as_str(),
+            request.package_id.component_id(),
+            vec![transition],
+            Vec::new(),
+            vec![PlannedWorkspaceImpact {
+                scope_id: request.scope.scope_id.clone(),
+                grant_before_digest: Some(DIGEST_B.into()),
+                grant_after_digest: None,
+                enabled_before: true,
+                enabled_after: false,
+            }],
+            PlannedOperationImpact {
+                download_bytes: 0,
+                installed_bytes_after: catalog.record.package.expanded_bytes,
+                reclaimed_bytes: 0,
+                drain_required: false,
+                retained_data: true,
+                okf_changes: Vec::new(),
+            },
+            PlannedStateEvidence {
+                state_revision: 3,
+                capability_generation: state.capability_generation,
+                receipt_digest: state.receipt_digest.clone(),
+            },
+        )?;
+        let plan = draft.bind(PluginOperationPlanBinding {
+            operation_id: "use-enablement-operation:0001".into(),
+            created_at_ms: planned_at_ms,
+            expires_at_ms: planned_at_ms + 10 * 60 * 1_000,
+            scope: request.scope.plan_scope(),
+            authority: PlanAuthority {
+                actor: PlanActor::User,
+                decision: PlanPolicyDecision::Allow,
+                policy_digest: DIGEST_C.into(),
+                confirmation_required: false,
+            },
+        })?;
+        Ok(PluginHostEnablementPlanResult {
+            schema: PLUGIN_HOST_ENABLEMENT_PLAN_RESULT_SCHEMA.into(),
             request_id: request.request_id,
-            operation_id: request.operation_id,
             assignment_generation: request.assignment_generation,
             capabilities_digest: request.capabilities_digest,
             scope: request.scope,
             package_id: request.package_id,
-            completed_at_ms: now_ms(),
-            operation_result_digest: DIGEST_A.into(),
-            changed: false,
+            expected_package_generation: request.expected_package_generation,
+            enabled: false,
+            planned_at_ms,
+            status: PluginHostEnablementPlanStatus::Planned,
             state,
+            plan: Some(PluginOperationPlanEnvelope::new(plan)?),
             replayed: false,
         })
     }
@@ -233,7 +296,7 @@ impl PluginHostManager for RecordingPluginHostManager {
 }
 
 fn plugin_capabilities() -> PluginHostCapabilities {
-    PluginHostCapabilities::v1("host:node-01", "0.2.1", "use:0.2.1:linux-x86_64")
+    PluginHostCapabilities::v4("host:node-01", "0.2.2", "use:0.2.2:linux-x86_64")
         .expect("Plugin Host capabilities")
 }
 
@@ -412,6 +475,7 @@ async fn stale_capabilities_fail_before_plan_delegation_and_replay_the_same_fail
         action: PluginOperationAction::Install,
         package_id: package_id(),
         candidate: Some(candidate()),
+        package_lock: None,
         selected_surfaces: Vec::new(),
     };
     let command = envelope(
@@ -460,6 +524,7 @@ async fn same_generation_plugin_stages_dispatch_through_only_the_shared_manager_
         action: PluginOperationAction::Install,
         package_id: package_id(),
         candidate: Some(candidate()),
+        package_lock: None,
         selected_surfaces: Vec::new(),
     };
     let plan_ack = executor
@@ -508,10 +573,9 @@ async fn same_generation_plugin_stages_dispatch_through_only_the_shared_manager_
             if matches!(result.as_ref(), NodeCommandResult::PluginHostApplied { .. })
     ));
 
-    let enablement_request = PluginHostEnablementRequest {
-        schema: PLUGIN_HOST_ENABLEMENT_REQUEST_SCHEMA.into(),
+    let enablement_request = PluginHostEnablementPlanRequest {
+        schema: PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA.into(),
         request_id: "request:enable:0001".into(),
-        operation_id: "use-enablement:0001".into(),
         assignment_generation: 1,
         capabilities_digest: capabilities_digest.clone(),
         scope: managed_scope(),
@@ -519,28 +583,46 @@ async fn same_generation_plugin_stages_dispatch_through_only_the_shared_manager_
         expected_package_generation: 13,
         enabled: false,
     };
-    let enablement_ack = executor
-        .execute(envelope(
-            node_id,
-            assignment_id,
-            3,
-            NodeCommandPayload::PluginHostSetEnablement {
-                request: Box::new(enablement_request),
-            },
-        ))
-        .await
-        .expect("enablement command");
-    let NodeCommandOutcome::Succeeded { result } = enablement_ack.outcome else {
-        panic!("same-generation enablement must succeed after apply");
-    };
-    let NodeCommandResult::PluginHostEnablementSet { enablement, .. } = result.as_ref() else {
-        panic!("enablement result");
-    };
-    assert_eq!(enablement.assignment_generation, 1);
-    assert_eq!(
-        enablement.state.desired,
-        PluginDesiredState::InstalledDisabled
+    let enablement_command = envelope(
+        node_id,
+        assignment_id,
+        3,
+        NodeCommandPayload::PluginHostPlanEnablement {
+            request: Box::new(enablement_request),
+        },
     );
+    let enablement_ack = executor
+        .execute(enablement_command.clone())
+        .await
+        .expect("enablement plan command");
+    let NodeCommandOutcome::Succeeded { result } = &enablement_ack.outcome else {
+        panic!("same-generation enablement planning must succeed after apply");
+    };
+    let NodeCommandResult::PluginHostEnablementPlanned {
+        enablement_plan, ..
+    } = result.as_ref()
+    else {
+        panic!("enablement plan result");
+    };
+    assert_eq!(enablement_plan.assignment_generation, 1);
+    assert_eq!(
+        enablement_plan.status,
+        PluginHostEnablementPlanStatus::Planned
+    );
+    assert_eq!(enablement_plan.state.desired, PluginDesiredState::Enabled);
+    assert_eq!(
+        enablement_plan.plan.as_ref().map(|plan| plan.plan.action),
+        Some(PluginOperationAction::Disable)
+    );
+
+    let mut redelivered_enablement = enablement_command;
+    redelivered_enablement.lease_id = Uuid::now_v7();
+    let replayed_enablement = executor
+        .execute(redelivered_enablement)
+        .await
+        .expect("enablement plan journal replay");
+    assert_eq!(replayed_enablement.outcome, enablement_ack.outcome);
+    assert_eq!(manager.calls.enablement_plan.load(Ordering::SeqCst), 1);
 
     let observation_request = PluginHostObservationRequest {
         schema: PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA.into(),
@@ -570,6 +652,6 @@ async fn same_generation_plugin_stages_dispatch_through_only_the_shared_manager_
     assert_eq!(manager.calls.capabilities.load(Ordering::SeqCst), 4);
     assert_eq!(manager.calls.plan.load(Ordering::SeqCst), 1);
     assert_eq!(manager.calls.apply.load(Ordering::SeqCst), 1);
-    assert_eq!(manager.calls.enablement.load(Ordering::SeqCst), 1);
+    assert_eq!(manager.calls.enablement_plan.load(Ordering::SeqCst), 1);
     assert_eq!(manager.calls.observe.load(Ordering::SeqCst), 1);
 }

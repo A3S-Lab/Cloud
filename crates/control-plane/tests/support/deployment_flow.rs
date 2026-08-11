@@ -709,7 +709,7 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
-            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostEnablementPlanned { .. }
             | NodeCommandResult::PluginHostObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,

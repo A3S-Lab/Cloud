@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-08-09.**
+**Status as of 2026-08-11.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -144,7 +144,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `P0` — Developer workflows | Build detection, web/worker/scheduled profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, External OIDC identity federation, grants, search, collaboration, security investigation, notifications, audit, and bounded exec/terminal | In progress |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
-| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed plan/apply, enablement, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
+| `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
 | `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun, and internal authority-bound HumanTask decision loop are implemented; public protected submission/task surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded cross-surface verification, and `W0.4`-`W0.5` remain) |
@@ -1293,16 +1293,22 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | In progress | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-1 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | A3S Use M0 contracts and the frozen managed-host contract; complete shared-manager composition still gates mutation |
+| `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 at `19d8750`; the root compatibility lock and complete shared-manager composition still gate mutation |
 | `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
 
-The current `U0.1` slice pins `a3s-use-core` to the exact upstream revision
-that owns the canonical `PluginHostManager`, managed-scope fence, and host
-contracts. Five explicit Fleet commands reuse those upstream request/result
-types, the existing node-command queue, and the existing Node Agent journal.
+The current `U0.1` Cloud slice pins `a3s-use-core` 0.2.2 to upstream revision
+`19d8750ca2b999369cab9d2242cfa133e7612002`, which owns the canonical
+protocol-level-4 `PluginHostManager`, managed-scope fence, package lock,
+selected-surface evidence, and reviewed enablement-plan contracts. Five
+explicit Fleet commands reuse those upstream request/result types, the
+existing node-command queue, and the existing Node Agent journal: capabilities
+inspection, package planning, enablement planning, digest-only apply, and
+observation. Enablement planning returns either `no-change` or an immutable
+canonical plan; it cannot mutate package state. The same apply command is the
+sole mutation path for package and enablement plans.
 Host capabilities are read from that sole Manager through the capabilities
 inspection command and returned as command-bound evidence; Cloud does not add
 another heartbeat capability schema or capability store. The root compatibility
@@ -1344,9 +1350,9 @@ The Node Agent invokes the shared Plugin Manager through a typed library/host
 adapter. It never shells out to `a3s use`, calls the local manager MCP, accepts
 a raw executable/provider/endpoint from Cloud, or opens another management
 port. The existing Fleet command queue and Node Agent journal carry bounded
-plan, apply, enablement, and observation payloads. A3S Use's local operation
-journal then owns its nested package saga; Cloud Flow waits for its exact
-result rather than reproducing its stages.
+package-plan, enablement-plan, digest-only apply, and observation payloads. A3S
+Use's local operation journal then owns its nested package saga; Cloud Flow
+waits for its exact result rather than reproducing its stages.
 
 `U0` deliberately does not:
 

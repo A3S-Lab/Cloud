@@ -944,7 +944,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "plugin_host_capabilities_inspect",
         "plugin_host_plan",
         "plugin_host_apply",
-        "plugin_host_set_enablement",
+        "plugin_host_plan_enablement",
         "plugin_host_observe",
     ] {
         assert!(
@@ -953,6 +953,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         );
     }
     assert!(!node_command_kind_constraint.contains("plugin_host_execute"));
+    assert!(!node_command_kind_constraint.contains("plugin_host_set_enablement"));
     let search_projection = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regclass('public.authorized_search_projections')::text",

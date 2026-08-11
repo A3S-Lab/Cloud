@@ -559,8 +559,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-use-core"
-version = "0.2.1"
-source = "git+https://github.com/A3S-Lab/Use.git?rev=a15cb412b26d83040ab491386baff2dda90264b1#a15cb412b26d83040ab491386baff2dda90264b1"
+version = "0.2.2"
+source = "git+https://github.com/A3S-Lab/Use.git?rev=19d8750ca2b999369cab9d2242cfa133e7612002#19d8750ca2b999369cab9d2242cfa133e7612002"
 dependencies = [
  "async-trait",
  "olpc-cjson",

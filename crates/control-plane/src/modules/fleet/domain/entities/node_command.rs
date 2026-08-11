@@ -120,7 +120,7 @@ impl NodeCommand {
                 | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
                 | NodeCommandResult::PluginHostPlanned { .. }
                 | NodeCommandResult::PluginHostApplied { .. }
-                | NodeCommandResult::PluginHostEnablementSet { .. }
+                | NodeCommandResult::PluginHostEnablementPlanned { .. }
                 | NodeCommandResult::PluginHostObserved { .. } => {}
             }
         }

@@ -525,7 +525,7 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
-            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostEnablementPlanned { .. }
             | NodeCommandResult::PluginHostObserved { .. } => return None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => return None,
@@ -559,7 +559,7 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
-            | NodeCommandResult::PluginHostEnablementSet { .. }
+            | NodeCommandResult::PluginHostEnablementPlanned { .. }
             | NodeCommandResult::PluginHostObserved { .. } => None,
         },
         NodeCommandOutcome::Rejected { .. } | NodeCommandOutcome::Failed { .. } => None,

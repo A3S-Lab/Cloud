@@ -723,6 +723,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/081_human_tasks_and_form_submissions.sql"
             )),
         ),
+        Migration::new(
+            "082",
+            "reviewed Plugin Host enablement plans",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/082_plugin_host_enablement_plans.sql"
+            )),
+        ),
     ]
 }
 
