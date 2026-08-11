@@ -122,8 +122,10 @@ impl ReplicatedGatewayMember {
                 &certificate_request,
                 node_id,
                 &managed_state_file,
-                &format!(
-                    "revision={workload_revision_id} unit=workload:{workload_id}:revision:{workload_revision_id} generation=1 member={ordinal}"
+                &ManagedTargetFixture::new(
+                    workload_revision_id,
+                    format!("workload:{workload_id}:revision:{workload_revision_id}"),
+                    1,
                 ),
             ),
             Some(certificate_request),

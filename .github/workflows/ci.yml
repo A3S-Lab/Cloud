@@ -166,6 +166,13 @@ jobs:
           cargo build --manifest-path ../../crates/gateway/Cargo.toml \
             --release --locked --bin a3s-gateway
 
+      - name: Validate Cloud-compiled target identity with pinned Gateway
+        run: |
+          A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \
+            cargo test -p a3s-cloud-control-plane --lib --locked \
+              modules::edge::infrastructure::gateway_snapshot_compiler::contract_tests::installed_gateway_validates_compiled_snapshot \
+              -- --exact --nocapture
+
       - name: Serve and recover exact Gateway snapshots
         run: |
           A3S_CLOUD_TEST_GATEWAY_BIN="$GITHUB_WORKSPACE/crates/gateway/target/release/a3s-gateway" \

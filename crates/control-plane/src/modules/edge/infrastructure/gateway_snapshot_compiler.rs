@@ -998,8 +998,13 @@ impl GatewaySnapshotCompiler {
         }
         for route in &routes {
             let name = format!("route-{}", route.id.as_uuid().simple());
+            let managed_target = managed_target_acl(
+                route.target.workload_revision_id.as_uuid(),
+                &route.target.runtime_unit_id,
+                route.target.runtime_generation,
+            )?;
             acl.push_str(&format!(
-                "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\n# target revision={} unit={} generation={}\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
+                "routers \"{name}\" {{\n  rule = {}\n  service = \"{name}\"\n  entrypoints = [\"a3s-cloud-https\"]\n}}\n\n# target revision={} unit={} generation={}\nservices \"{name}\" {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    servers = [{{ url = {}, target = {} }}]\n  }}\n}}\n\n",
                 acl_string(&format!(
                     "Host(`{}`) && PathPrefix(`{}`)",
                     route.hostname.as_str(),
@@ -1010,6 +1015,7 @@ impl GatewaySnapshotCompiler {
                 route.target.runtime_generation,
                 acl_string(&duration(self.config.upstream_request_timeout_ms)),
                 acl_string(route.target.upstream.as_str()),
+                managed_target,
             ));
         }
         if let Some(mcp) = mcp {
@@ -1365,8 +1371,10 @@ fn append_mcp_snapshot_acl(
         let mut targets = route.targets.iter().collect::<Vec<_>>();
         targets.sort_by_key(|target| (target.priority, target.target_id));
         for target in targets {
+            let managed_target =
+                managed_target_acl(target.target_id, &target.unit_id, target.generation)?;
             acl.push_str(&format!(
-                "# MCP target route={} target={} unit={} generation={}\nservices {} {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    stream_idle_timeout = {}\n    stream_total_timeout = {}\n    servers = [{{ url = {} }}]\n  }}\n}}\n\n",
+                "# MCP target route={} target={} unit={} generation={}\nservices {} {{\n  load_balancer {{\n    strategy = \"round-robin\"\n    request_timeout = {}\n    stream_idle_timeout = {}\n    stream_total_timeout = {}\n    servers = [{{ url = {}, target = {} }}]\n  }}\n}}\n\n",
                 route.route_id,
                 target.target_id,
                 target.unit_id,
@@ -1376,6 +1384,7 @@ fn append_mcp_snapshot_acl(
                 acl_string(&route.stream_idle_timeout),
                 acl_string(&route.stream_total_timeout),
                 acl_string(&target.endpoint),
+                managed_target,
             ));
         }
     }
@@ -1412,6 +1421,35 @@ fn acl_string(value: &str) -> String {
         .replace('\n', "\\n")
         .replace('\r', "\\r");
     format!("\"{escaped}\"")
+}
+
+fn managed_target_acl(
+    target_id: uuid::Uuid,
+    unit_id: &str,
+    generation: u64,
+) -> Result<String, String> {
+    const MAX_UNIT_ID_BYTES: usize = 512;
+    const MAX_EXACT_ACL_INTEGER: u64 = (1_u64 << 53) - 1;
+
+    if target_id.is_nil() || generation == 0 {
+        return Err("managed Gateway target identity is invalid".into());
+    }
+    if generation > MAX_EXACT_ACL_INTEGER {
+        return Err("managed Gateway target generation exceeds the exact ACL integer limit".into());
+    }
+    if unit_id.is_empty()
+        || unit_id.len() > MAX_UNIT_ID_BYTES
+        || unit_id.trim() != unit_id
+        || unit_id.chars().any(char::is_whitespace)
+        || unit_id.chars().any(char::is_control)
+    {
+        return Err("managed Gateway target Unit identity is not canonical".into());
+    }
+    Ok(format!(
+        "{{ target_id = {}, unit_id = {}, generation = {generation} }}",
+        acl_string(&target_id.to_string()),
+        acl_string(unit_id),
+    ))
 }
 
 fn duration(milliseconds: u64) -> String {

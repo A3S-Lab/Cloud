@@ -214,6 +214,11 @@ async fn plans_the_complete_active_set_for_one_receiving_gateway() {
         projection.projection().routes[0].targets[0].node_id,
         node_id.as_uuid()
     );
+    let expected_target = (
+        projection.projection().routes[0].targets[0].target_id,
+        projection.projection().routes[0].targets[0].unit_id.clone(),
+        projection.projection().routes[0].targets[0].generation,
+    );
     let expires_at = projection.projection().expires_at;
     let compiled = snapshot_compiler()
         .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
@@ -233,6 +238,16 @@ async fn plans_the_complete_active_set_for_one_receiving_gateway() {
         .acl
         .contains("service = \"a3s-cloud-mcp-default-deny\""));
     assert!(snapshot.acl.contains("services \"mcp-target-"));
+    assert!(snapshot.acl.contains("target = {"));
+    assert!(snapshot
+        .acl
+        .contains(&format!("target_id = \"{}\"", expected_target.0)));
+    assert!(snapshot
+        .acl
+        .contains(&format!("unit_id = \"{}\"", expected_target.1)));
+    assert!(snapshot
+        .acl
+        .contains(&format!("generation = {}", expected_target.2)));
     assert!(snapshot.acl.contains("mcp {"));
     assert!(snapshot.acl.contains("management {"));
     assert_eq!(

@@ -25,6 +25,42 @@ const TLS_HOSTNAME: &str = "managed-tls.a3s.test";
 const INITIAL_UPSTREAM_BODY: &str = "a3s-cloud-target-generation-1";
 const REPLACEMENT_UPSTREAM_BODY: &str = "a3s-cloud-target-generation-2";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ManagedTargetFixture {
+    target_id: uuid::Uuid,
+    unit_id: String,
+    generation: u64,
+}
+
+impl ManagedTargetFixture {
+    fn new(target_id: uuid::Uuid, unit_id: String, generation: u64) -> Self {
+        Self {
+            target_id,
+            unit_id,
+            generation,
+        }
+    }
+
+    fn acl_object(&self) -> String {
+        format!(
+            "{{ target_id = \"{}\", unit_id = \"{}\", generation = {} }}",
+            self.target_id, self.unit_id, self.generation
+        )
+    }
+
+    fn metric_id(&self) -> String {
+        let mut identity = Sha256::new();
+        identity.update(b"a3s-gateway-managed-target-v1");
+        identity.update([0]);
+        identity.update(self.target_id.as_bytes());
+        identity.update([0]);
+        identity.update(self.unit_id.as_bytes());
+        identity.update([0]);
+        identity.update(self.generation.to_be_bytes());
+        format!("b_{:x}", identity.finalize())
+    }
+}
+
 struct FixtureGatewayCertificateSigner {
     node_id: uuid::Uuid,
     dns_names: Vec<String>,
@@ -201,6 +237,21 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     let directory = tempfile::tempdir()?;
     let (traffic_port, management_port) = unused_ports();
     let gateway_id = uuid::Uuid::now_v7();
+    let workload_id = uuid::Uuid::now_v7();
+    let initial_revision_id = uuid::Uuid::now_v7();
+    let replacement_revision_id = uuid::Uuid::now_v7();
+    let initial_target = ManagedTargetFixture::new(
+        initial_revision_id,
+        format!("workload:{workload_id}:revision:{initial_revision_id}"),
+        1,
+    );
+    let replacement_target = ManagedTargetFixture::new(
+        replacement_revision_id,
+        format!("workload:{workload_id}:revision:{replacement_revision_id}"),
+        2,
+    );
+    let initial_upstream = LoopbackHttpUpstream::start(INITIAL_UPSTREAM_BODY).await?;
+    let replacement_upstream = LoopbackHttpUpstream::start(REPLACEMENT_UPSTREAM_BODY).await?;
     let managed_state_file = directory.path().join("managed-snapshot.json");
     let bootstrap = management_gateway_acl(management_port, gateway_id, &managed_state_file);
     let config_path = directory.path().join("gateway.acl");
@@ -224,6 +275,8 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
             gateway_id,
             &managed_state_file,
             1,
+            initial_upstream.address,
+            &initial_target,
         ),
     )?;
     if !matches!(
@@ -232,6 +285,14 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     ) {
         return Err("real Gateway did not apply the first snapshot".into());
     }
+    let traffic_url = format!("http://127.0.0.1:{traffic_port}/fixture");
+    let traffic_client = reqwest::Client::builder().no_proxy().build()?;
+    let response = wait_for_http(&traffic_client, &traffic_url, &mut gateway.child).await?;
+    if response.text().await? != INITIAL_UPSTREAM_BODY {
+        return Err("first managed snapshot returned an unexpected target".into());
+    }
+    let initial_request_count = initial_upstream.request_count();
+    assert_gateway_target_metrics(&base_url, &initial_target, None).await?;
     let second_issued_at = Utc::now();
     let second = GatewaySnapshot::new(
         gateway_id,
@@ -245,6 +306,8 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
             gateway_id,
             &managed_state_file,
             2,
+            replacement_upstream.address,
+            &replacement_target,
         ),
     )?;
     if !matches!(
@@ -253,6 +316,14 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     ) {
         return Err("real Gateway did not apply the second snapshot".into());
     }
+    let response = wait_for_http(&traffic_client, &traffic_url, &mut gateway.child).await?;
+    if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
+        return Err("second managed snapshot returned a stale target generation".into());
+    }
+    if initial_upstream.request_count() != initial_request_count {
+        return Err("replacement snapshot reached the superseded target generation".into());
+    }
+    assert_gateway_target_metrics(&base_url, &replacement_target, Some(&initial_target)).await?;
     let invalid_issued_at = Utc::now();
     let invalid = GatewaySnapshot::new(
         gateway_id,
@@ -272,6 +343,11 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     if retained.state != ManagedSnapshotState::Applied || !retained.ready {
         return Err("rejected native Gateway apply changed the prior ready snapshot".into());
     }
+    let response = wait_for_http(&traffic_client, &traffic_url, &mut gateway.child).await?;
+    if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
+        return Err("rejected apply changed the active target generation".into());
+    }
+    assert_gateway_target_metrics(&base_url, &replacement_target, Some(&initial_target)).await?;
 
     let renewal_issued_at = Utc::now();
     let renewal = GatewaySnapshot::new(
@@ -305,6 +381,19 @@ async fn installed_a3s_gateway_validates_and_reloads_complete_snapshots() -> Tes
     if superseded.state != ManagedSnapshotState::NotApplied || superseded.ready {
         return Err("real Gateway kept the superseded validity selector ready".into());
     }
+
+    drop(gateway);
+    let mut restarted = GatewayProcess::start(&binary, &config_path)?;
+    wait_for_gateway(&base_url, &mut restarted.child).await?;
+    let recovered = control.readiness(&renewal).await?;
+    if recovered.state != ManagedSnapshotState::Applied || !recovered.ready {
+        return Err("Gateway did not recover the renewed target snapshot exactly".into());
+    }
+    let response = wait_for_http(&traffic_client, &traffic_url, &mut restarted.child).await?;
+    if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
+        return Err("Gateway restart recovered a superseded target generation".into());
+    }
+    assert_gateway_target_metrics(&base_url, &replacement_target, Some(&initial_target)).await?;
     Ok(())
 }
 
@@ -318,12 +407,19 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     let workload_id = uuid::Uuid::now_v7();
     let initial_revision_id = uuid::Uuid::now_v7();
     let replacement_revision_id = uuid::Uuid::now_v7();
-    let initial_target_identity = format!(
-        "revision={initial_revision_id} unit=workload:{workload_id}:revision:{initial_revision_id} generation=1"
+    let initial_target = ManagedTargetFixture::new(
+        initial_revision_id,
+        format!("workload:{workload_id}:revision:{initial_revision_id}"),
+        1,
     );
-    let replacement_target_identity = format!(
-        "revision={replacement_revision_id} unit=workload:{workload_id}:revision:{replacement_revision_id} generation=2"
+    let replacement_target = ManagedTargetFixture::new(
+        replacement_revision_id,
+        format!("workload:{workload_id}:revision:{replacement_revision_id}"),
+        2,
     );
+    if initial_target.metric_id() == replacement_target.metric_id() {
+        return Err("managed target telemetry identity did not bind the generation".into());
+    }
     let managed_state_file = directory.path().join("managed-snapshot.json");
     let config_path = directory.path().join("gateway.acl");
     std::fs::write(
@@ -387,15 +483,15 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
             &initial_certificate_request,
             node_id,
             &managed_state_file,
-            &initial_target_identity,
+            &initial_target,
         ),
         Some(initial_certificate_request),
     )?;
     if !initial_snapshot
         .acl
-        .contains(&format!("# target {initial_target_identity}"))
+        .contains(&format!("target = {}", initial_target.acl_object()))
     {
-        return Err("initial snapshot omitted the Cloud target-generation identity".into());
+        return Err("initial snapshot omitted the typed Cloud target identity".into());
     }
     if !matches!(
         initial_installer.install(&initial_snapshot).await?,
@@ -413,6 +509,7 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     if response.text().await? != INITIAL_UPSTREAM_BODY {
         return Err("initial managed TLS route returned an unexpected target".into());
     }
+    assert_gateway_target_metrics(&base_url, &initial_target, None).await?;
     let initial_request_count = initial_upstream.request_count();
     let initial_status = control.readiness(&initial_snapshot).await?;
     if initial_status.state != ManagedSnapshotState::Applied || !initial_status.ready {
@@ -460,15 +557,15 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
             &replacement_certificate_request,
             node_id,
             &managed_state_file,
-            &replacement_target_identity,
+            &replacement_target,
         ),
         Some(replacement_certificate_request),
     )?;
     if !replacement_snapshot
         .acl
-        .contains(&format!("# target {replacement_target_identity}"))
+        .contains(&format!("target = {}", replacement_target.acl_object()))
     {
-        return Err("replacement snapshot omitted the Cloud target-generation identity".into());
+        return Err("replacement snapshot omitted the typed Cloud target identity".into());
     }
     if !matches!(
         replacement_installer.install(&replacement_snapshot).await?,
@@ -487,6 +584,7 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
         return Err("replacement snapshot exposed a stale target generation".into());
     }
+    assert_gateway_target_metrics(&base_url, &replacement_target, Some(&initial_target)).await?;
     if initial_upstream.request_count() != initial_request_count {
         return Err("replacement traffic reached the superseded target generation".into());
     }
@@ -519,6 +617,7 @@ async fn installed_a3s_gateway_rotates_managed_tls_and_target_generation() -> Te
     if response.text().await? != REPLACEMENT_UPSTREAM_BODY {
         return Err("Gateway restart recovered a superseded target generation".into());
     }
+    assert_gateway_target_metrics(&base_url, &replacement_target, Some(&initial_target)).await?;
     Ok(())
 }
 
@@ -569,13 +668,34 @@ fn gateway_acl(
     gateway_id: uuid::Uuid,
     managed_state_file: &Path,
     revision: u64,
+    upstream: SocketAddr,
+    target: &ManagedTargetFixture,
 ) -> String {
+    let target_acl = target.acl_object();
     format!(
         r#"# revision {revision}
 entrypoints "web" {{ address = "127.0.0.1:{traffic_port}" }}
 
+routers "managed-http-fixture" {{
+  rule = "PathPrefix(`/`)"
+  service = "managed-http-fixture"
+  entrypoints = ["web"]
+}}
+
+# target revision={} unit={} generation={}
+services "managed-http-fixture" {{
+  load_balancer {{
+    strategy = "round-robin"
+    request_timeout = "2s"
+    servers = [{{ url = "http://{upstream}", target = {target_acl} }}]
+  }}
+}}
+
 {}
 "#,
+        target.target_id,
+        target.unit_id,
+        target.generation,
         management_gateway_acl(management_port, gateway_id, managed_state_file)
     )
 }
@@ -587,8 +707,9 @@ fn tls_gateway_acl(
     certificate: &GatewayCertificateRequest,
     gateway_id: uuid::Uuid,
     managed_state_file: &Path,
-    target_identity: &str,
+    target: &ManagedTargetFixture,
 ) -> String {
+    let target_acl = target.acl_object();
     format!(
         r#"entrypoints "a3s-cloud-https" {{
   address = "127.0.0.1:{tls_port}"
@@ -605,12 +726,12 @@ routers "managed-tls-fixture" {{
   entrypoints = ["a3s-cloud-https"]
 }}
 
-# target {target_identity}
+# target revision={} unit={} generation={}
 services "managed-tls-fixture" {{
   load_balancer {{
     strategy = "round-robin"
     request_timeout = "2s"
-    servers = [{{ url = "http://{upstream}" }}]
+    servers = [{{ url = "http://{upstream}", target = {target_acl} }}]
   }}
 }}
 
@@ -618,8 +739,44 @@ services "managed-tls-fixture" {{
 "#,
         certificate.certificate_file,
         certificate.private_key_file,
+        target.target_id,
+        target.unit_id,
+        target.generation,
         management_gateway_acl(management_port, gateway_id, managed_state_file)
     )
+}
+
+async fn assert_gateway_target_metrics(
+    base_url: &str,
+    expected: &ManagedTargetFixture,
+    superseded: Option<&ManagedTargetFixture>,
+) -> TestResult {
+    let client = reqwest::Client::builder()
+        .use_rustls_tls()
+        .no_proxy()
+        .build()?;
+    let output = client
+        .get(format!("{base_url}/metrics"))
+        .bearer_auth(GATEWAY_TOKEN)
+        .send()
+        .await?
+        .error_for_status()?
+        .text()
+        .await?;
+    let expected_metric_id = expected.metric_id();
+    if !output.contains(&format!("backend_id=\"{expected_metric_id}\"")) {
+        return Err("Gateway telemetry omitted the exact managed target identity".into());
+    }
+    if output.contains(&expected.target_id.to_string()) || output.contains(&expected.unit_id) {
+        return Err("Gateway telemetry exposed raw managed target identity".into());
+    }
+    if let Some(superseded) = superseded {
+        let superseded_metric_id = superseded.metric_id();
+        if output.contains(&format!("backend_id=\"{superseded_metric_id}\"")) {
+            return Err("Gateway telemetry retained the superseded target generation".into());
+        }
+    }
+    Ok(())
 }
 
 fn management_gateway_acl(
@@ -707,4 +864,24 @@ async fn wait_for_https(
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
     Err(format!("A3S Gateway managed TLS endpoint did not become ready: {last_failure}").into())
+}
+
+async fn wait_for_http(
+    client: &reqwest::Client,
+    url: &str,
+    child: &mut Child,
+) -> TestResult<reqwest::Response> {
+    let mut last_failure = "no HTTP response".to_owned();
+    for _ in 0..100 {
+        if child.try_wait()?.is_some() {
+            return Err("A3S Gateway exited before managed HTTP was ready".into());
+        }
+        match client.get(url).send().await {
+            Ok(response) if response.status().is_success() => return Ok(response),
+            Ok(response) => last_failure = format!("HTTP {}", response.status()),
+            Err(error) => last_failure = error.to_string(),
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    Err(format!("A3S Gateway managed HTTP endpoint did not become ready: {last_failure}").into())
 }
