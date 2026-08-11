@@ -71,3 +71,14 @@ orm_table! {
         occurred_at: DateTime<Utc> => "occurred_at",
     }
 }
+
+orm_table! {
+    pub(super) struct AgentExecutionChangeSets => "agent_execution_change_sets" {
+        organization_id: Uuid => "organization_id",
+        execution_id: Uuid => "execution_id",
+        batch_id: Uuid => "batch_id",
+        node_id: Uuid => "node_id",
+        change_set: serde_json::Value => "change_set",
+        recorded_at: DateTime<Utc> => "recorded_at",
+    }
+}

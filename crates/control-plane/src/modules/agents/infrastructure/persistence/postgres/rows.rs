@@ -1,15 +1,19 @@
-use super::schema::{AgentConversations, AgentExecutionEvents, AgentExecutions};
+use super::schema::{
+    AgentConversations, AgentExecutionChangeSets, AgentExecutionEvents, AgentExecutions,
+};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentConversationStatus, AgentEventContent,
-    AgentExecution, AgentExecutionEvent, AgentExecutionEventKind, AgentExecutionStatus,
-    AgentReleaseBinding,
+    AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent, AgentExecutionEventKind,
+    AgentExecutionStatus, AgentReleaseBinding,
 };
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, DeploymentId,
     EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
     WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
-use a3s_cloud_contracts::{AgentProtocolRunIdentityV1, AgentProtocolRunStateV1};
+use a3s_cloud_contracts::{
+    AgentProtocolChangeSetV1, AgentProtocolRunIdentityV1, AgentProtocolRunStateV1,
+};
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
 use chrono::{DateTime, Utc};
@@ -19,6 +23,7 @@ use uuid::Uuid;
 pub(super) struct ConversationSelection;
 pub(super) struct ExecutionSelection;
 pub(super) struct EventSelection;
+pub(super) struct ChangeSetSelection;
 
 impl Selection for ConversationSelection {
     type Output = ConversationRow;
@@ -102,6 +107,21 @@ impl Selection for EventSelection {
     }
 }
 
+impl Selection for ChangeSetSelection {
+    type Output = ChangeSetRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![
+            AgentExecutionChangeSets::organization_id().expression(),
+            AgentExecutionChangeSets::execution_id().expression(),
+            AgentExecutionChangeSets::batch_id().expression(),
+            AgentExecutionChangeSets::node_id().expression(),
+            AgentExecutionChangeSets::change_set().expression(),
+            AgentExecutionChangeSets::recorded_at().expression(),
+        ]
+    }
+}
+
 pub(super) struct ConversationRow {
     organization_id: Uuid,
     project_id: Uuid,
@@ -166,6 +186,15 @@ pub(super) struct EventRow {
     occurred_at: DateTime<Utc>,
 }
 
+pub(super) struct ChangeSetRow {
+    organization_id: Uuid,
+    execution_id: Uuid,
+    batch_id: Uuid,
+    node_id: Uuid,
+    change_set: Value,
+    recorded_at: DateTime<Utc>,
+}
+
 macro_rules! from_row {
     ($row:ty, { $($field:ident: $index:literal),+ $(,)? }) => {
         impl FromRow for $row {
@@ -199,6 +228,11 @@ from_row!(ExecutionRow, {
 from_row!(EventRow, {
     organization_id: 0, conversation_id: 1, sequence: 2, execution_id: 3,
     kind: 4, content: 5, content_digest: 6, content_size_bytes: 7, occurred_at: 8,
+});
+
+from_row!(ChangeSetRow, {
+    organization_id: 0, execution_id: 1, batch_id: 2, node_id: 3,
+    change_set: 4, recorded_at: 5,
 });
 
 impl ConversationRow {
@@ -372,6 +406,23 @@ impl EventRow {
             .validate()
             .map_err(|error| corrupt(format!("Agent execution event is invalid: {error}")))?;
         Ok(event)
+    }
+}
+
+impl ChangeSetRow {
+    pub(super) fn change_set(self) -> Result<AgentExecutionChangeSet, RepositoryError> {
+        let change_set: AgentProtocolChangeSetV1 = serde_json::from_value(self.change_set)
+            .map_err(|error| corrupt(format!("A3S Code change set is invalid: {error}")))?;
+        AgentExecutionChangeSet {
+            organization_id: OrganizationId::from_uuid(self.organization_id),
+            execution_id: AgentExecutionId::from_uuid(self.execution_id),
+            batch_id: self.batch_id,
+            node_id: NodeId::from_uuid(self.node_id),
+            change_set,
+            recorded_at: self.recorded_at,
+        }
+        .restore()
+        .map_err(|error| corrupt(format!("Agent execution change set is invalid: {error}")))
     }
 }
 

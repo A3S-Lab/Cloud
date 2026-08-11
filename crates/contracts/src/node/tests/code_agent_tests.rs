@@ -1,10 +1,11 @@
 use super::metadata;
 use crate::{
-    AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
-    AgentProtocolEventPageV1, AgentProtocolRunIdentityV1, AgentProtocolRunStartV1,
-    AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1, NodeCodeAgentEventReceiptV1,
-    NodeCodeAgentRuntimeBindingV1, NodeCommandAck, NodeCommandEnvelope, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, AGENT_PROTOCOL_V1,
+    AgentProtocolChangeSetV1, AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1,
+    AgentProtocolCommandV1, AgentProtocolEventPageV1, AgentProtocolRunIdentityV1,
+    AgentProtocolRunStartV1, AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1,
+    NodeCodeAgentEventReceiptV1, NodeCodeAgentRuntimeBindingV1, NodeCommandAck,
+    NodeCommandEnvelope, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1, AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
 };
 use chrono::{TimeZone, Utc};
 use uuid::Uuid;
@@ -132,6 +133,7 @@ fn event_delivery_carries_an_unmodified_code_page_and_exact_receipt() {
         node_id: Uuid::now_v7(),
         binding: binding(execution_id),
         page,
+        change_set: None,
         sent_at_ms: observed_at_ms + 1,
     };
     batch.validate().expect("valid Code event delivery");
@@ -156,4 +158,60 @@ fn event_delivery_carries_an_unmodified_code_page_and_exact_receipt() {
     changed.accepted_at_ms += 1;
     changed.page_digest = format!("sha256:{}", "d".repeat(64));
     assert!(changed.validate_for(&batch).is_err());
+}
+
+#[test]
+fn change_set_is_only_valid_on_its_exact_terminal_page() {
+    let execution_id = Uuid::now_v7();
+    let observed_at_ms = 1_723_000_000_000;
+    let change_set = AgentProtocolChangeSetV1 {
+        schema: AgentProtocolChangeSetV1::SCHEMA.into(),
+        identity: identity(),
+        state: AgentProtocolRunStateV1::Completed,
+        format: AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1.into(),
+        encoding: AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1.into(),
+        base_tree: format!("git-tree:{}", "a".repeat(40)),
+        result_tree: format!("git-tree:{}", "b".repeat(40)),
+        patch_digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            .into(),
+        patch_bytes: 0,
+        patch_base64: String::new(),
+        observed_at_ms,
+    };
+    let page = AgentProtocolEventPageV1 {
+        schema: AgentProtocolEventPageV1::SCHEMA.into(),
+        identity: identity(),
+        after_event_sequence: None,
+        first_available_sequence: None,
+        latest_sequence_exclusive: 0,
+        next_after_event_sequence: None,
+        state: AgentProtocolRunStateV1::Completed,
+        observed_at_ms,
+        retention_gap: false,
+        has_more: false,
+        events: Vec::new(),
+    };
+    let batch = NodeCodeAgentEventBatchV1 {
+        schema: NodeCodeAgentEventBatchV1::SCHEMA.into(),
+        batch_id: Uuid::now_v7(),
+        node_id: Uuid::now_v7(),
+        binding: binding(execution_id),
+        page,
+        change_set: Some(change_set),
+        sent_at_ms: observed_at_ms + 1,
+    };
+    batch.validate().expect("terminal change set delivery");
+
+    let mut nonterminal = batch.clone();
+    nonterminal.page.state = AgentProtocolRunStateV1::Executing;
+    assert!(nonterminal.validate().is_err());
+
+    let mut mismatched = batch;
+    mismatched
+        .change_set
+        .as_mut()
+        .expect("change set")
+        .identity
+        .run_id = "another-run".into();
+    assert!(mismatched.validate().is_err());
 }

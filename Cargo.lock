@@ -54,7 +54,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=93d789f23ed0bbe54a4b9c95daa1958d393bb7c6#93d789f23ed0bbe54a4b9c95daa1958d393bb7c6"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=5a823c7a980dee15fcaf34c092ac417d65853589#5a823c7a980dee15fcaf34c092ac417d65853589"
 dependencies = [
  "a3s-acl 0.3.0 (git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99)",
  "a3s-common",
@@ -75,7 +75,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=93d789f23ed0bbe54a4b9c95daa1958d393bb7c6#93d789f23ed0bbe54a4b9c95daa1958d393bb7c6"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=5a823c7a980dee15fcaf34c092ac417d65853589#5a823c7a980dee15fcaf34c092ac417d65853589"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=93d789f23ed0bbe54a4b9c95daa1958d393bb7c6#93d789f23ed0bbe54a4b9c95daa1958d393bb7c6"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=5a823c7a980dee15fcaf34c092ac417d65853589#5a823c7a980dee15fcaf34c092ac417d65853589"
 dependencies = [
  "a3s-acl 0.3.0 (git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99)",
  "a3s-box-core",
@@ -267,7 +267,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "6.8.1"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=e0b385b0db667add293f038cd1d4c3213560302a#e0b385b0db667add293f038cd1d4c3213560302a"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=ab3abc831c686db37f084c2f12bd7e1c571c9f7a#ab3abc831c686db37f084c2f12bd7e1c571c9f7a"
 dependencies = [
  "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-common",
@@ -3005,7 +3005,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -4618,7 +4618,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4656,7 +4656,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.61.2",
 ]

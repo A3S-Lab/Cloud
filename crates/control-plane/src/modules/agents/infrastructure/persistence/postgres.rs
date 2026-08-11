@@ -6,7 +6,7 @@ mod writes;
 use crate::infrastructure::{idempotency_replay, transaction_error};
 use crate::modules::agents::domain::{
     AcceptAgentCodeEventBatchWrite, AgentCodeRunWrite, AgentConversation, AgentConversationWrite,
-    AgentConversationWriteReference, AgentExecution, AgentExecutionEvent,
+    AgentConversationWriteReference, AgentExecution, AgentExecutionChangeSet, AgentExecutionEvent,
     AgentExecutionEventsWrite, AgentExecutionWrite, AgentExecutionWriteReference,
     AppendAgentExecutionEventsWrite, BindAgentCodeRunWrite, CreateAgentConversationWrite,
     IAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecutionWrite,
@@ -161,6 +161,14 @@ impl IAgentRepository for PostgresAgentRepository {
         execution_id: AgentExecutionId,
     ) -> Result<Option<AgentExecution>, RepositoryError> {
         queries::find_execution(&self.executor, organization_id, execution_id).await
+    }
+
+    async fn find_execution_change_set(
+        &self,
+        organization_id: OrganizationId,
+        execution_id: AgentExecutionId,
+    ) -> Result<Option<AgentExecutionChangeSet>, RepositoryError> {
+        queries::find_execution_change_set(&self.executor, organization_id, execution_id).await
     }
 
     async fn pending_operation_starts(

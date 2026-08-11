@@ -3,8 +3,8 @@ use crate::modules::agents::application::{
     StartAgentExecutionResult,
 };
 use crate::modules::agents::domain::{
-    AgentConversation, AgentConversationStatus, AgentExecution, AgentExecutionEvent,
-    AgentExecutionEventKind, AgentExecutionStatus,
+    AgentConversation, AgentConversationStatus, AgentExecution, AgentExecutionChangeSet,
+    AgentExecutionEvent, AgentExecutionEventKind, AgentExecutionStatus,
 };
 use crate::presentation::{format_sequence_cursor, SequencePage, SequenceRecord};
 use chrono::{DateTime, Utc};
@@ -143,6 +143,31 @@ pub struct AgentReleaseBindingResponse {
     pub artifact_digest: String,
     pub artifact_media_type: String,
     pub artifact_size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentExecutionChangeSetResponse {
+    pub organization_id: Uuid,
+    pub execution_id: Uuid,
+    pub batch_id: Uuid,
+    pub node_id: Uuid,
+    /// Code-owned protocol payload; its snake_case wire fields remain exact.
+    pub change_set: a3s_cloud_contracts::AgentProtocolChangeSetV1,
+    pub recorded_at: DateTime<Utc>,
+}
+
+impl From<AgentExecutionChangeSet> for AgentExecutionChangeSetResponse {
+    fn from(value: AgentExecutionChangeSet) -> Self {
+        Self {
+            organization_id: value.organization_id.as_uuid(),
+            execution_id: value.execution_id.as_uuid(),
+            batch_id: value.batch_id,
+            node_id: value.node_id.as_uuid(),
+            change_set: value.change_set,
+            recorded_at: value.recorded_at,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -8,6 +8,7 @@ import type {
   AgentConversation,
   AgentConversationMutationResult,
   AgentExecution,
+  AgentExecutionChangeSet,
   AgentExecutionEventsPage,
   AgentExecutionMutationResult,
   ApiToken,
@@ -1213,6 +1214,18 @@ export class CloudApi {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/agent-executions/${encodeURIComponent(executionId)}`,
+      signal
+    );
+  }
+
+  getAgentExecutionChangeSet(
+    organizationId: string,
+    executionId: string,
+    signal?: AbortSignal
+  ): Promise<AgentExecutionChangeSet> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/agent-executions/${encodeURIComponent(executionId)}/changes`,
       signal
     );
   }

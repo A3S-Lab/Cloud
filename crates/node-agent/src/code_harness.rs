@@ -1,7 +1,9 @@
 use a3s_cloud_contracts::{
-    AgentProtocolCommandReceiptV1, AgentProtocolCommandV1, AgentProtocolEventPageRequestV1,
-    AgentProtocolEventPageV1, NodeCodeAgentRuntimeBindingV1, AGENT_PROTOCOL_COMMAND_HTTP_PATH_V1,
-    AGENT_PROTOCOL_EVENT_PAGE_HTTP_PATH_V1, AGENT_PROTOCOL_MAX_EVENT_PAGE_BYTES,
+    AgentProtocolChangeSetRequestV1, AgentProtocolChangeSetV1, AgentProtocolCommandReceiptV1,
+    AgentProtocolCommandV1, AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1,
+    NodeCodeAgentRuntimeBindingV1, AGENT_PROTOCOL_CHANGE_SET_HTTP_PATH_V1,
+    AGENT_PROTOCOL_COMMAND_HTTP_PATH_V1, AGENT_PROTOCOL_EVENT_PAGE_HTTP_PATH_V1,
+    AGENT_PROTOCOL_MAX_CHANGE_SET_RESPONSE_BYTES, AGENT_PROTOCOL_MAX_EVENT_PAGE_BYTES,
 };
 use a3s_runtime::contract::{
     RuntimeInspection, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
@@ -33,6 +35,15 @@ pub(crate) trait CodeHarnessTransport: Send + Sync {
         request: &AgentProtocolEventPageRequestV1,
         timeout: Duration,
     ) -> Result<AgentProtocolEventPageV1, CodeHarnessError>;
+
+    async fn change_set(
+        &self,
+        _endpoint: &RuntimeServiceEndpoint,
+        _request: &AgentProtocolChangeSetRequestV1,
+        _timeout: Duration,
+    ) -> Result<Option<AgentProtocolChangeSetV1>, CodeHarnessError> {
+        Ok(None)
+    }
 }
 
 pub(crate) struct HttpCodeHarnessTransport {
@@ -188,6 +199,79 @@ impl CodeHarnessTransport for HttpCodeHarnessTransport {
             ));
         }
         Ok(page)
+    }
+
+    async fn change_set(
+        &self,
+        endpoint: &RuntimeServiceEndpoint,
+        request: &AgentProtocolChangeSetRequestV1,
+        timeout: Duration,
+    ) -> Result<Option<AgentProtocolChangeSetV1>, CodeHarnessError> {
+        endpoint.validate().map_err(CodeHarnessError::Invalid)?;
+        request
+            .validate()
+            .map_err(|error| CodeHarnessError::Invalid(error.code().into()))?;
+        if endpoint.protocol != TransportProtocol::Tcp || timeout.is_zero() {
+            return Err(CodeHarnessError::Invalid(
+                "A3S Code Harness requires a TCP endpoint and positive timeout".into(),
+            ));
+        }
+        let base_url = Url::parse(&format!("http://{}/", endpoint.socket_addr()))
+            .map_err(|error| CodeHarnessError::Invalid(error.to_string()))?;
+        let url = base_url
+            .join(AGENT_PROTOCOL_CHANGE_SET_HTTP_PATH_V1.trim_start_matches('/'))
+            .map_err(|error| CodeHarnessError::Invalid(error.to_string()))?;
+        let mut response = self
+            .client
+            .post(url)
+            .timeout(timeout)
+            .json(request)
+            .send()
+            .await
+            .map_err(|error| CodeHarnessError::Transport(error.to_string()))?;
+        let status = response.status();
+        if status == StatusCode::UNPROCESSABLE_ENTITY {
+            return Ok(None);
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > AGENT_PROTOCOL_MAX_CHANGE_SET_RESPONSE_BYTES as u64)
+        {
+            return Err(CodeHarnessError::Protocol(
+                "A3S Code Harness change set exceeds its protocol bound".into(),
+            ));
+        }
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| CodeHarnessError::Transport(error.to_string()))?
+        {
+            let next = body
+                .len()
+                .checked_add(chunk.len())
+                .ok_or_else(|| CodeHarnessError::Protocol("response size overflowed".into()))?;
+            if next > AGENT_PROTOCOL_MAX_CHANGE_SET_RESPONSE_BYTES {
+                return Err(CodeHarnessError::Protocol(
+                    "A3S Code Harness change set exceeds its protocol bound".into(),
+                ));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        if !status.is_success() {
+            return Err(CodeHarnessError::Rejected { status });
+        }
+        let change_set: AgentProtocolChangeSetV1 = serde_json::from_slice(&body)
+            .map_err(|error| CodeHarnessError::Protocol(error.to_string()))?;
+        change_set
+            .validate()
+            .map_err(|error| CodeHarnessError::Protocol(error.code().into()))?;
+        if change_set.identity != request.identity {
+            return Err(CodeHarnessError::Protocol(
+                "A3S Code Harness change set changed its request identity".into(),
+            ));
+        }
+        Ok(Some(change_set))
     }
 }
 

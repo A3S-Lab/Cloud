@@ -10,8 +10,9 @@ use crate::modules::shared_kernel::domain::{
     WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
-    AgentProtocolEventPageV1, AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1,
-    AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1, AGENT_PROTOCOL_V1,
+    AgentProtocolChangeSetV1, AgentProtocolEventPageV1, AgentProtocolEventRecordV1,
+    AgentProtocolRunIdentityV1, AgentProtocolRunStateV1, NodeCodeAgentEventBatchV1,
+    AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1, AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1, AGENT_PROTOCOL_V1,
 };
 use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
@@ -177,6 +178,7 @@ fn event_batch(
         node_id: binding.node_id().as_uuid(),
         binding: binding.node_runtime_binding(execution.id.as_uuid()),
         page,
+        change_set: None,
         sent_at_ms: observed_at_ms + 1,
     }
 }
@@ -184,6 +186,29 @@ fn event_batch(
 fn accepted_at(batch: &NodeCodeAgentEventBatchV1) -> DateTime<Utc> {
     DateTime::from_timestamp_millis(i64::try_from(batch.sent_at_ms + 1).expect("accepted time"))
         .expect("accepted timestamp")
+}
+
+fn empty_change_set(
+    identity: &AgentProtocolRunIdentityV1,
+    state: AgentProtocolRunStateV1,
+    observed_at_ms: u64,
+) -> AgentProtocolChangeSetV1 {
+    let change_set = AgentProtocolChangeSetV1 {
+        schema: AgentProtocolChangeSetV1::SCHEMA.into(),
+        identity: identity.clone(),
+        state,
+        format: AGENT_PROTOCOL_CHANGE_SET_FORMAT_V1.into(),
+        encoding: AGENT_PROTOCOL_CHANGE_SET_ENCODING_V1.into(),
+        base_tree: format!("git-tree:{}", "a".repeat(40)),
+        result_tree: format!("git-tree:{}", "b".repeat(40)),
+        patch_digest: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            .into(),
+        patch_bytes: 0,
+        patch_base64: String::new(),
+        observed_at_ms,
+    };
+    change_set.validate().expect("change set");
+    change_set
 }
 
 #[tokio::test]
@@ -374,13 +399,19 @@ async fn code_event_batch_projects_semantics_and_replays_one_receipt() {
         .expect("bind Code run");
     assert!(!bound.replayed);
 
-    let batch = event_batch(
+    let mut batch = event_batch(
         &execution,
         &binding,
         Uuid::now_v7(),
         AgentProtocolRunStateV1::Completed,
         2,
     );
+    batch.change_set = Some(empty_change_set(
+        binding.identity(),
+        AgentProtocolRunStateV1::Completed,
+        batch.page.observed_at_ms,
+    ));
+    batch.validate().expect("event batch with change set");
     let write = || {
         AcceptAgentCodeEventBatchWrite::new(
             execution.organization_id,
@@ -422,6 +453,16 @@ async fn code_event_batch_projects_semantics_and_replays_one_receipt() {
         .expect("find execution")
         .expect("execution");
     assert_eq!(current.status.as_str(), "succeeded");
+    let stored_change_set = repository
+        .find_execution_change_set(execution.organization_id, execution.id)
+        .await
+        .expect("find change set")
+        .expect("stored change set");
+    assert_eq!(stored_change_set.batch_id, batch.batch_id);
+    assert_eq!(
+        stored_change_set.change_set,
+        batch.change_set.clone().unwrap()
+    );
     assert_eq!(
         current
             .code
@@ -534,6 +575,7 @@ async fn consecutive_code_pages_use_code_time_instead_of_control_plane_latency()
         binding: binding.node_runtime_binding(execution.id.as_uuid()),
         sent_at_ms: second_page.observed_at_ms + 1,
         page: second_page,
+        change_set: None,
     };
     let second_accepted_at = first_accepted_at + Duration::milliseconds(1);
     repository

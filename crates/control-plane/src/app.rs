@@ -2,9 +2,10 @@ use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
 use crate::modules::agents::{
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionReconciler,
     AgentsModule, AppendAgentExecutionEventsHandler, CancelAgentExecutionHandler,
-    CreateAgentConversationHandler, GetAgentConversationHandler, GetAgentExecutionEventsHandler,
-    GetAgentExecutionHandler, IAgentRepository, ListAgentConversationsHandler,
-    ListAgentExecutionsHandler, PostgresAgentRepository, StartAgentExecutionHandler,
+    CreateAgentConversationHandler, GetAgentConversationHandler, GetAgentExecutionChangeSetHandler,
+    GetAgentExecutionEventsHandler, GetAgentExecutionHandler, IAgentRepository,
+    ListAgentConversationsHandler, ListAgentExecutionsHandler, PostgresAgentRepository,
+    StartAgentExecutionHandler,
 };
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::artifacts::{
@@ -1237,6 +1238,7 @@ fn build_application_with_health(
     let get_agent_conversations = Arc::clone(&agents);
     let list_agent_conversations = Arc::clone(&agents);
     let get_agent_executions = Arc::clone(&agents);
+    let get_agent_execution_change_sets = Arc::clone(&agents);
     let list_agent_executions = Arc::clone(&agents);
     let get_agent_execution_events = agents;
     let accept_source_webhooks = source_webhooks;
@@ -1835,6 +1837,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::agents::GetAgentExecution, _>(
                     GetAgentExecutionHandler::new(get_agent_executions),
+                )
+                .query_handler::<crate::modules::agents::GetAgentExecutionChangeSet, _>(
+                    GetAgentExecutionChangeSetHandler::new(get_agent_execution_change_sets),
                 )
                 .query_handler::<crate::modules::agents::GetAgentExecutionEvents, _>(
                     GetAgentExecutionEventsHandler::new(get_agent_execution_events),
