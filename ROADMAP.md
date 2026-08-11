@@ -19,6 +19,7 @@ plans.
 | [A3S Use plugin roadmap](https://github.com/A3S-Lab/Use/blob/main/ROADMAP.md) | Canonical plugin package, catalog, plan/apply, grant, Runtime-binding, capability-generation, and shared Plugin Manager delivery |
 | [Runtime roadmap](https://github.com/A3S-Lab/Runtime/blob/main/ROADMAP.md) | Runtime-local Unit lifecycle, provider certification, and `MCP0.2` substrate work |
 | [Gateway roadmap](https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md) | Gateway-local current capability truth and implementation backlog |
+| [Agent Runtime platform roadmap](https://github.com/A3S-Lab/a3s/blob/main/docs/agent-runtime-platform-roadmap.md) | Cross-repository ownership, non-duplication rules, and `AR0` dependency order |
 
 The documents must change together when a product gate changes state. The
 owning detailed plan decides whether its exit evidence is sufficient to mark a
@@ -151,8 +152,37 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
 | `EV0` — Governed self-evolution | Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback | Planned |
+| `AR0` — Governed Agent Runtime experience | One simplified projection over existing Agent, Workload, Deployment, Operation, Runtime, Box, Secret, and evidence authorities; bounded egress, brokered credentials, context-cost evidence, idle policy, and checkpoint/fork experience without a parallel lifecycle | Planned; `AR0.1` waits for `A1.3` and the Box baseline |
 
-### 3.1 Baseline requiring Box re-certification
+### 3.1 `AR0`: governed Agent Runtime experience
+
+`AR0` adopts the strongest developer, cost, and security outcomes of hosted
+Agent execution products without creating a second platform inside Cloud. The
+public `AgentRuntime` resource is a correlated projection over existing
+`AgentRelease`, `HarnessInvocationProfile`, `WorkloadRevision`, `Deployment`,
+`AgentExecution`, and `Operation` identities. Workloads and Fleet remain the
+only placement and reconciliation path; A3S Runtime remains the only generic
+Task/Service lifecycle; Box remains the only Cloud provider.
+
+| Gate | State | Cloud-owned outcome | Required external owner |
+| --- | --- | --- | --- |
+| `AR0.1` | Planned | REST/client/CLI/Management MCP create/get/list/exec/log/stop/delete projection with one transactionally correlated underlying lifecycle and no new scheduler or run store | Runtime and Box baseline; `A0.4`; `A1.3`; `C0.1` |
+| `AR0.2` | Planned | Closed ACL egress policy, tenant/grant checks, immutable digest, audit, and compilation into the Workload/Runtime path | Runtime generic capability; Box compilation; OCI Runtime enforcement |
+| `AR0.3` | Planned | Destination-bound, expiring brokered credential grants and secret-free receipts; Cloud Secrets remains sole durable credential authority | Box node-local broker; OCI Runtime isolation; `C0.3` |
+| `AR0.4` | Planned | Bounded context-cost and Tool-use facts, authorized projections, and correlation with Agent events and optional Inference usage | Common Harness evidence implemented first by A3S Code |
+| `AR0.5` | Planned | Pin deterministic Tool-result transformation policy and retain source/result digests plus immutable original-content authority | Common Harness transform contract; no Gateway/Runtime rewriting |
+| `AR0.6` | Planned | Sole idle-policy evaluator, exact wake intent, Operation history, audit, and bounded failure projection | Runtime pause/resume; Box/OCI Runtime recovery; Gateway signal only for ingress demand |
+| `AR0.7` | Planned | Reuse `A1.6` immutable semantic/provider checkpoints and fork lineage through the same execution lifecycle | Runtime/Box/OCI Runtime checkpoint capability and Harness semantic checkpoint |
+| `AR0.8` | Planned | Fold measured vertical and replica decisions into the sole `H0.5` Workloads autoscaler | Trusted resource evidence and replacement/recovery gates |
+
+Cloud does not implement an Agent egress proxy, plaintext credential injector,
+Tool-result compressor, process freezer, snapshot engine, or live resource
+mutator. Those mechanisms remain with their owning repositories, while Cloud
+owns policy, grants, desired state, audit, and product availability. The
+cross-repository contract and evidence rules are defined in the
+[Agent Runtime platform roadmap](https://github.com/A3S-Lab/a3s/blob/main/docs/agent-runtime-platform-roadmap.md).
+
+### 3.2 Baseline requiring Box re-certification
 
 `R0` through `E0` define one cumulative behavioral baseline:
 
@@ -171,7 +201,7 @@ Gateway revisions. Later work must reuse this path. A new interface, asset
 type, import format, accelerator, replica policy, or provider never creates a
 second deployment or reconciliation engine.
 
-### 3.2 Current in-progress gates
+### 3.3 Current in-progress gates
 
 `BX0` is the release-blocking provider migration:
 
