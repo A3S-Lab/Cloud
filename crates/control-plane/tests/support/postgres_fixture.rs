@@ -237,6 +237,16 @@ pub(super) fn config() -> CloudConfig {
             reconcile_interval_ms: 1_000,
             lease_ms: 5_000,
         },
+        human_tasks: HumanTasksConfig {
+            coordination_poll_interval_ms: 100,
+            coordination_batch_size: 100,
+            resume_poll_interval_ms: 100,
+            resume_batch_size: 100,
+            resume_lease_ms: 5_000,
+            flow_operation_timeout_ms: 1_000,
+            retry_initial_ms: 100,
+            retry_max_ms: 5_000,
+        },
         deployments: DeploymentsConfig {
             reconcile_interval_ms: 1_000,
             command_ttl_ms: 10_000,

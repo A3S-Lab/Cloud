@@ -165,6 +165,18 @@ export type {
 
 export type { SearchResourceKind, SearchResult } from './search';
 
+export type {
+  FormDraft,
+  FormDraftInput,
+  FormDraftMutationResult,
+  FormPublicationMutationResult,
+  FormRelease,
+  FormReleaseRef,
+  FormReleaseSummary,
+  PublishFormReleaseOptions,
+  ReviseFormDraftOptions,
+} from './form';
+
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface Operation {
@@ -808,8 +820,12 @@ export type {
   ReviseOntologyOptions,
 } from './ontology';
 export type {
+  CancelWorkflowRunInput,
+  ListWorkflowRunsOptions,
   PublishWorkflowDefinitionInput,
   ReviseWorkflowDefinitionOptions,
+  StartWorkflowRunInput,
+  WaitWorkflowRunOptions,
   WorkflowCapabilityOwner,
   WorkflowCapabilityReference,
   WorkflowCapabilityType,
@@ -826,6 +842,15 @@ export type {
   WorkflowPlanStep,
   WorkflowRevision,
   WorkflowRevisionSummary,
+  WorkflowRun,
+  WorkflowRunHistoryEvent,
+  WorkflowRunHistoryOptions,
+  WorkflowRunHistoryPage,
+  WorkflowRunMutationResult,
+  WorkflowRunOutput,
+  WorkflowRunStatus,
+  WorkflowStepProjection,
+  WorkflowStepProjectionStatus,
   WorkflowStepKind,
 } from './workflow';
 export type {

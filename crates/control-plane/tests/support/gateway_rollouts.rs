@@ -24,6 +24,7 @@ use a3s_cloud_control_plane::modules::edge::{
     RouteTarget, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayRolloutId, GatewayScopeId, IdempotencyRequest,
@@ -69,6 +70,11 @@ pub async fn exercise_replicated_gateway_rollout(
     let certificate_convergence_members = [NodeId::new(), NodeId::new()];
     let rejected_convergence_members = [NodeId::new(), NodeId::new()];
     let unavailable_convergence_members = [NodeId::new(), NodeId::new()];
+    let capabilities = NodeCapabilities::new(
+        "test-runtime",
+        "gateway-rollout-test",
+        serde_json::json!({}),
+    )?;
     for (ordinal, node_id) in members
         .iter()
         .chain(route_members.iter())
@@ -99,9 +105,9 @@ pub async fn exercise_replicated_gateway_rollout(
                 .append(", 'ready', ")
                 .bind(Uuid::now_v7())
                 .append(", 'test', 'test-runtime', 'gateway-rollout-test', ")
-                .bind(format!("sha256:{}", "a".repeat(64)))
+                .bind(capabilities.digest())
                 .append(", ")
-                .bind(serde_json::json!({}))
+                .bind(capabilities.document().clone())
                 .append(", ")
                 .bind(now)
                 .append(", ")

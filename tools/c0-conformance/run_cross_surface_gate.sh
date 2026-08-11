@@ -348,6 +348,15 @@ if [[ $scenario == management-mcp ]]; then
   mcp_ontology_idempotency_count="$(postgres_query \
     "select count(*) from idempotency_records where idempotency_key in ('c0:mcp:rest-ontology', 'c0:mcp:ontology-compatible', 'c0:mcp:ontology-breaking')")"
   [[ $mcp_ontology_idempotency_count == 3 ]] || die "Ontology replay did not preserve one record per accepted idempotency identity"
+  mcp_form_draft_count="$(postgres_query \
+    "select count(*) from form_drafts f join projects p on p.organization_id = f.organization_id and p.id = f.project_id where p.name = 'MCP Conformance Project' and f.name = 'MCP Approval request' and f.aggregate_version = 3 and f.latest_release_id is not null")"
+  [[ $mcp_form_draft_count == 1 ]] || die "PostgreSQL did not retain the expected published Form draft"
+  mcp_form_release_count="$(postgres_query \
+    "select count(*) from form_releases r join form_drafts f on f.organization_id = r.organization_id and f.id = r.form_id where f.name = 'MCP Approval request' and r.revision = 1 and r.source_draft_version = 2 and r.compiler_revision = 'a3s-form-core@0.1.0'")"
+  [[ $mcp_form_release_count == 1 ]] || die "PostgreSQL did not retain the expected immutable Form release"
+  mcp_form_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key in ('c0:mcp:rest-form', 'c0:mcp:form-revise', 'c0:mcp:form-publish')")"
+  [[ $mcp_form_idempotency_count == 3 ]] || die "Form replay did not preserve one record per accepted idempotency identity"
   hidden_project_count="$(postgres_query \
     "select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
   [[ $hidden_project_count == 0 ]] || die "hidden MCP mutation changed PostgreSQL state"
@@ -388,16 +397,16 @@ done
 {
   printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
   if [[ $scenario == management-mcp ]]; then
-    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n'
+    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_form_draft_rows=1\nmcp_form_release_rows=1\nmcp_form_idempotency_rows=3\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n'
   fi
 } >"$evidence_directory/persistence-check.txt"
 
 if [[ $scenario == cross-surface ]]; then
-  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s contract=1.12.0\n' \
+  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s contract=1.14.0\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 else
-  printf 'A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2026-07-28 contract=1.12.0\n' \
+  printf 'A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2026-07-28 contract=1.14.0\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 fi

@@ -1,3 +1,6 @@
+mod schema;
+
+use self::schema::{OperationProjections, OperationRequests};
 use crate::infrastructure::{
     execute, fetch_optional, is_foreign_key_violation, is_unique_violation, transaction_error,
     PostgresPersistenceError,
@@ -10,7 +13,9 @@ use crate::modules::operations::domain::value_objects::{OperationSubject, Workfl
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
 };
-use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_orm::{
+    insert_into, select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -55,7 +60,59 @@ impl IOperationRepository for PostgresOperationRepository {
     ) -> Result<IdempotentWrite<OperationRequest>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
-                Box::pin(async move { enqueue_operation(transaction, request).await })
+                Box::pin(async move {
+                    lock_operation(transaction, request.id).await?;
+                    if let Some(existing) =
+                        find_request_in_transaction(transaction, request.id).await?
+                    {
+                        if !existing.has_same_definition(&request) {
+                            return Err(RepositoryError::Conflict(
+                                "operation ID was reused with a different request".into(),
+                            )
+                            .into());
+                        }
+                        return Ok(IdempotentWrite {
+                            value: existing,
+                            replayed: true,
+                        });
+                    }
+                    let inserted = execute(
+                        transaction,
+                        insert_into::<OperationRequests>()
+                            .value(OperationRequests::operation_id(), request.id.as_uuid())
+                            .value(
+                                OperationRequests::organization_id(),
+                                request.organization_id.as_uuid(),
+                            )
+                            .value(OperationRequests::subject_kind(), request.subject.kind())
+                            .value(OperationRequests::subject_id(), request.subject.id())
+                            .value(OperationRequests::workflow_name(), request.workflow.name())
+                            .value(
+                                OperationRequests::workflow_version(),
+                                request.workflow.version(),
+                            )
+                            .value(OperationRequests::input(), request.input.clone())
+                            .value(OperationRequests::requested_at(), request.requested_at),
+                    )
+                    .await;
+                    match inserted {
+                        Ok(1) => Ok(IdempotentWrite {
+                            value: request,
+                            replayed: false,
+                        }),
+                        Ok(rows) => Err(PostgresPersistenceError::Invariant(format!(
+                            "enqueueing operation affected {rows} rows"
+                        ))),
+                        Err(error) if is_foreign_key_violation(&error) => {
+                            Err(RepositoryError::NotFound.into())
+                        }
+                        Err(error) if is_unique_violation(&error) => Err(
+                            RepositoryError::Conflict("operation ID is already in use".into())
+                                .into(),
+                        ),
+                        Err(error) => Err(error),
+                    }
+                })
             })
             .await
             .map_err(transaction_error)
@@ -64,10 +121,22 @@ impl IOperationRepository for PostgresOperationRepository {
     async fn pending_starts(&self, limit: usize) -> Result<Vec<OperationRequest>, RepositoryError> {
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
-                sql_query::<OperationRequestRow>(
-                    "select r.operation_id, r.organization_id, r.subject_kind, r.subject_id, r.workflow_name, r.workflow_version, r.input, r.requested_at from operation_requests r left join operation_projections p on p.operation_id = r.operation_id where p.operation_id is null or p.status not in ('succeeded', 'failed', 'cancelled') order by r.requested_at asc, r.operation_id asc limit ",
-                )
-                .bind(limit.max(1)),
+                operation_request_select()
+                    .left_join::<OperationProjections>(
+                        OperationProjections::operation_id()
+                            .eq_column(OperationRequests::operation_id()),
+                    )
+                    .filter(
+                        OperationProjections::operation_id().is_null().or(
+                            OperationProjections::status()
+                                .ne("succeeded")
+                                .and(OperationProjections::status().ne("failed"))
+                                .and(OperationProjections::status().ne("cancelled")),
+                        ),
+                    )
+                    .order_by(OperationRequests::requested_at(), OrderDirection::Asc)
+                    .order_by(OperationRequests::operation_id(), OrderDirection::Asc)
+                    .limit(limit.max(1) as u64),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
@@ -110,27 +179,32 @@ impl IOperationRepository for PostgresOperationRepository {
                                 || existing.error != projection.error)
                         {
                             return Err(PostgresPersistenceError::Invariant(
-                                "operation projection changed without advancing its sequence".into(),
+                                "operation projection changed without advancing its sequence"
+                                    .into(),
                             ));
                         }
                     }
                     let written = execute(
                         transaction,
-                        sql_query::<()>(
-                            "insert into operation_projections (operation_id, status, last_sequence, output, error, updated_at) values (",
-                        )
-                        .bind(projection.operation_id.as_uuid())
-                        .append(", ")
-                        .bind(projection.status.as_str())
-                        .append(", ")
-                        .bind(projection.last_sequence)
-                        .append(", ")
-                        .bind(projection.output.clone())
-                        .append(", ")
-                        .bind(projection.error.as_deref())
-                        .append(", ")
-                        .bind(projection.updated_at)
-                        .append(") on conflict (operation_id) do update set status = excluded.status, last_sequence = excluded.last_sequence, output = excluded.output, error = excluded.error, updated_at = excluded.updated_at"),
+                        insert_into::<OperationProjections>()
+                            .value(
+                                OperationProjections::operation_id(),
+                                projection.operation_id.as_uuid(),
+                            )
+                            .value(OperationProjections::status(), projection.status.as_str())
+                            .value(
+                                OperationProjections::last_sequence(),
+                                projection.last_sequence,
+                            )
+                            .value(OperationProjections::output(), projection.output.clone())
+                            .value(OperationProjections::error(), projection.error.clone())
+                            .value(OperationProjections::updated_at(), projection.updated_at)
+                            .on_conflict(OperationProjections::operation_id())
+                            .do_update_from_excluded(OperationProjections::status())
+                            .do_update_from_excluded(OperationProjections::last_sequence())
+                            .do_update_from_excluded(OperationProjections::output())
+                            .do_update_from_excluded(OperationProjections::error())
+                            .do_update_from_excluded(OperationProjections::updated_at()),
                     )
                     .await;
                     match written {
@@ -169,12 +243,11 @@ impl IOperationRepository for PostgresOperationRepository {
         let database = Database::new(PostgresDialect, self.executor.clone());
         let requests = database
             .fetch_all_as(
-                sql_query::<OperationRequestRow>(
-                    "select operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at from operation_requests where organization_id = ",
-                )
-                .bind(organization_id.as_uuid())
-                .append(" order by requested_at desc, operation_id asc limit ")
-                .bind(limit.max(1)),
+                operation_request_select()
+                    .filter(OperationRequests::organization_id().eq(organization_id.as_uuid()))
+                    .order_by(OperationRequests::requested_at(), OrderDirection::Desc)
+                    .order_by(OperationRequests::operation_id(), OrderDirection::Asc)
+                    .limit(limit.max(1) as u64),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
@@ -184,10 +257,12 @@ impl IOperationRepository for PostgresOperationRepository {
             .collect::<Result<Vec<_>, _>>()?;
         let projections = database
             .fetch_all_as(
-                sql_query::<OperationProjectionRow>(
-                    "select p.operation_id, p.status, p.last_sequence, p.output, p.error, p.updated_at from operation_projections p join operation_requests r on r.operation_id = p.operation_id where r.organization_id = ",
-                )
-                .bind(organization_id.as_uuid()),
+                operation_projection_select()
+                    .inner_join::<OperationRequests>(
+                        OperationRequests::operation_id()
+                            .eq_column(OperationProjections::operation_id()),
+                    )
+                    .filter(OperationRequests::organization_id().eq(organization_id.as_uuid())),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
@@ -206,86 +281,14 @@ impl IOperationRepository for PostgresOperationRepository {
     }
 }
 
-/// Enqueue the canonical Operations request inside an existing Cloud
-/// transaction. Owning contexts use this only when their aggregate and its
-/// one Operation must become visible atomically; Operations remains the sole
-/// schema and reconciliation authority.
-pub(crate) async fn enqueue_operation(
-    transaction: &a3s_orm::PostgresTransaction,
-    request: OperationRequest,
-) -> Result<IdempotentWrite<OperationRequest>, PostgresPersistenceError> {
-    lock_operation(transaction, request.id).await?;
-    if let Some(existing) = find_request_in_transaction(transaction, request.id).await? {
-        if !existing.has_same_definition(&request) {
-            return Err(RepositoryError::Conflict(
-                "operation ID was reused with a different request".into(),
-            )
-            .into());
-        }
-        return Ok(IdempotentWrite {
-            value: existing,
-            replayed: true,
-        });
-    }
-    let inserted = execute(
-        transaction,
-        sql_query::<()>(
-            "insert into operation_requests (operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at) values (",
-        )
-        .bind(request.id.as_uuid())
-        .append(", ")
-        .bind(request.organization_id.as_uuid())
-        .append(", ")
-        .bind(request.subject.kind())
-        .append(", ")
-        .bind(request.subject.id())
-        .append(", ")
-        .bind(request.workflow.name())
-        .append(", ")
-        .bind(request.workflow.version())
-        .append(", ")
-        .bind(request.input.clone())
-        .append(", ")
-        .bind(request.requested_at)
-        .append(")"),
-    )
-    .await;
-    match inserted {
-        Ok(1) => Ok(IdempotentWrite {
-            value: request,
-            replayed: false,
-        }),
-        Ok(rows) => Err(PostgresPersistenceError::Invariant(format!(
-            "enqueueing operation affected {rows} rows"
-        ))),
-        Err(error) if is_foreign_key_violation(&error) => Err(RepositoryError::NotFound.into()),
-        Err(error) if is_unique_violation(&error) => {
-            Err(RepositoryError::Conflict("operation ID is already in use".into()).into())
-        }
-        Err(error) => Err(error),
-    }
-}
-
 async fn lock_operation(
     transaction: &a3s_orm::PostgresTransaction,
     operation_id: OperationId,
 ) -> Result<(), PostgresPersistenceError> {
-    let locked = fetch_optional::<i32, _>(
-        transaction,
-        sql_query::<i32>("select 1 from (select pg_advisory_xact_lock(hashtext(")
-            .bind("cloud.operation")
-            .append("), hashtext(")
-            .bind(operation_id.to_string())
-            .append("))) as locked"),
-    )
-    .await?;
-    if locked == Some(1) {
-        Ok(())
-    } else {
-        Err(PostgresPersistenceError::Invariant(
-            "operation advisory lock did not return a row".into(),
-        ))
-    }
+    transaction
+        .advisory_xact_lock("cloud.operation", &operation_id.to_string())
+        .await?;
+    Ok(())
 }
 
 async fn find_request_in_transaction(
@@ -310,18 +313,43 @@ async fn find_projection_in_transaction(
         .map_err(Into::into)
 }
 
-fn request_query(operation_id: OperationId) -> a3s_orm::SqlQuery<OperationRequestRow> {
-    sql_query::<OperationRequestRow>(
-        "select operation_id, organization_id, subject_kind, subject_id, workflow_name, workflow_version, input, requested_at from operation_requests where operation_id = ",
-    )
-    .bind(operation_id.as_uuid())
+fn request_query(
+    operation_id: OperationId,
+) -> a3s_orm::query::SelectQuery<OperationRequests, OperationRequestRow> {
+    operation_request_select().filter(OperationRequests::operation_id().eq(operation_id.as_uuid()))
 }
 
-fn projection_query(operation_id: OperationId) -> a3s_orm::SqlQuery<OperationProjectionRow> {
-    sql_query::<OperationProjectionRow>(
-        "select operation_id, status, last_sequence, output, error, updated_at from operation_projections where operation_id = ",
-    )
-    .bind(operation_id.as_uuid())
+fn projection_query(
+    operation_id: OperationId,
+) -> a3s_orm::query::SelectQuery<OperationProjections, OperationProjectionRow> {
+    operation_projection_select()
+        .filter(OperationProjections::operation_id().eq(operation_id.as_uuid()))
+}
+
+fn operation_request_select() -> a3s_orm::query::SelectQuery<OperationRequests, OperationRequestRow>
+{
+    select_from::<OperationRequests>().select((
+        OperationRequests::operation_id(),
+        OperationRequests::organization_id(),
+        OperationRequests::subject_kind(),
+        OperationRequests::subject_id(),
+        OperationRequests::workflow_name(),
+        OperationRequests::workflow_version(),
+        OperationRequests::input(),
+        OperationRequests::requested_at(),
+    ))
+}
+
+fn operation_projection_select(
+) -> a3s_orm::query::SelectQuery<OperationProjections, OperationProjectionRow> {
+    select_from::<OperationProjections>().select((
+        OperationProjections::operation_id(),
+        OperationProjections::status(),
+        OperationProjections::last_sequence(),
+        OperationProjections::output(),
+        OperationProjections::error(),
+        OperationProjections::updated_at(),
+    ))
 }
 
 fn decode_request(row: OperationRequestRow) -> Result<OperationRequest, RepositoryError> {

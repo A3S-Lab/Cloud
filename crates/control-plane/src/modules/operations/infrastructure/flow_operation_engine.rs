@@ -26,12 +26,38 @@ impl IOperationEngine for FlowOperationEngine {
         request: &OperationRequest,
     ) -> Result<OperationProjection, OperationEngineError> {
         let run_id = request.id.to_string();
-        let spec = WorkflowSpec::rust_embedded(
+        let current_build_id = self
+            .engine
+            .runtime_build_compatibility()
+            .ok_or_else(|| {
+                OperationEngineError::Unavailable(
+                    "A3S Flow runtime build compatibility is not configured".into(),
+                )
+            })?
+            .current_build_id()
+            .clone();
+        let expected_spec = WorkflowSpec::rust_embedded(
             request.workflow.name(),
             request.workflow.version(),
             "a3s-cloud",
             "main",
-        );
+        )
+        .with_runtime_build(current_build_id);
+        let spec = match self.engine.snapshot(&run_id).await {
+            Ok(snapshot) => {
+                if snapshot.spec.name != expected_spec.name
+                    || snapshot.spec.version != expected_spec.version
+                    || snapshot.spec.runtime != expected_spec.runtime
+                {
+                    return Err(OperationEngineError::Conflict(format!(
+                        "Flow run {run_id} has a different persisted workflow contract"
+                    )));
+                }
+                snapshot.spec
+            }
+            Err(FlowError::RunNotFound(_)) => expected_spec,
+            Err(error) => return Err(map_flow_error(error)),
+        };
         self.engine
             .start_with_id(&run_id, spec, request.input.clone())
             .await
@@ -70,6 +96,7 @@ fn snapshot_to_projection(
         WorkflowRunStatus::Pending => OperationStatus::Queued,
         WorkflowRunStatus::Running => OperationStatus::Running,
         WorkflowRunStatus::Suspended => OperationStatus::Suspended,
+        WorkflowRunStatus::Cancelling => OperationStatus::Cancelling,
         WorkflowRunStatus::Completed
             if snapshot.output.as_ref().and_then(|output| {
                 output
@@ -139,6 +166,19 @@ mod tests {
         assert_eq!(projection.status, OperationStatus::Succeeded);
     }
 
+    #[test]
+    fn cleanup_aware_cancellation_remains_non_terminal_until_flow_finishes() {
+        let operation_id = OperationId::new();
+        let projection = snapshot_to_projection(WorkflowRunSnapshot {
+            status: WorkflowRunStatus::Cancelling,
+            ..completed_snapshot(operation_id, json!({}))
+        })
+        .expect("project cancelling operation");
+
+        assert_eq!(projection.status, OperationStatus::Cancelling);
+        assert!(!projection.status.is_terminal());
+    }
+
     fn completed_snapshot(
         operation_id: OperationId,
         output: serde_json::Value,
@@ -151,8 +191,12 @@ mod tests {
             steps: BTreeMap::new(),
             waits: BTreeMap::new(),
             hooks: BTreeMap::new(),
+            cancellation: None,
+            progress: Vec::new(),
+            child_operations: BTreeMap::new(),
             output: Some(output),
             error: None,
+            terminal_outcome: None,
             last_sequence: 3,
         }
     }

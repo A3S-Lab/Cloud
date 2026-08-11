@@ -150,6 +150,21 @@ atomically. This envelope is transport packaging, not a JSON configuration
 authority; Cloud alone parses ACL, verifies every digest/binding, persists the
 immutable revision, and compiles Goals into deterministic Plans.
 
+WorkflowRun start binds one exact Goal and Plan revision and accepts an
+optional `--run-timeout-seconds` value from 1 through 2,592,000. Wait accepts
+`--wait-seconds` from 0 through 30; list and history use the shared bounded
+`--limit`, while history uses `--cursor` as the last observed Flow sequence.
+Start and cancel require a caller-owned idempotency key. The CLI never executes
+steps locally or infers completion from transport, logs, or process state.
+
+Form draft create/revise accepts a bounded native Form JSON transport file
+containing only `name`, optional `description`, and the Form `document` object.
+Revise and release publication require a positive `--expected-version`. Cloud
+canonicalizes the document, delegates semantic compilation to the pinned A3S
+Form owner, and persists drafts/releases through A3S ORM; the CLI does not
+compile or validate Form semantics and does not treat JSON as general Cloud
+product configuration.
+
 Flags override environment context. Remote API URLs require HTTPS. Plain HTTP
 is accepted only for literal `localhost`, `127.0.0.1`, or `::1` endpoints.
 
@@ -185,6 +200,20 @@ workflow-goals list
 workflow-goals get <workflow-goal-id>
 workflow-goals create --file=<goal.acl>
 workflow-goals plan <workflow-goal-id> <plan-revision-id>
+workflow-runs list [--limit=<1..200>]
+workflow-runs get <workflow-run-id>
+workflow-runs start <workflow-goal-id> <plan-revision-id> [--run-timeout-seconds=<1..2592000>]
+workflow-runs wait <workflow-run-id> [--wait-seconds=<0..30>]
+workflow-runs cancel <workflow-run-id> [--reason=<text>]
+workflow-runs output <workflow-run-id>
+workflow-runs history <workflow-run-id> [--cursor=<sequence>] [--limit=<1..100>]
+forms list
+forms get <form-id>
+forms create --file=<form.json>
+forms revise <form-id> --file=<form.json> --expected-version=<version>
+form-releases list <form-id>
+form-releases get <form-id> <release-id>
+form-releases publish <form-id> --expected-version=<version>
 assets list
 assets get <asset-id>
 assets create <name> <agent|mcp|skill>
@@ -302,8 +331,23 @@ aggregate and immutable revision lineage, including exact canonical payloads.
 `workflow-goals` creates one immutable Goal from closed ACL and lists/reads the
 Goal and deterministic Plan revision. Cloud owns digest validation,
 compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
-persistence. The CLI does not retain a graph, compile or run a plan, start a
-provider, or recreate the retired standalone Workflow control plane.
+persistence. `workflow-runs` starts and cancels the exact Plan idempotently,
+lists and reads current semantic step projections, waits for bounded terminal
+progress, returns completed output, and pages redacted A3S Flow history. The
+minimal runtime supports Workflow-local `input`, `transform`, `branch`, and
+`output`; HumanTask, service/finite-task, typed capability, and compensation
+surfaces remain unavailable. The CLI does not retain a graph, compile or run a
+plan locally, start a provider, or recreate the retired standalone Workflow
+control plane.
+
+`forms` creates, revises, lists, and reads project-scoped canonical native Form
+drafts. `form-releases` publishes, lists, and reads immutable releases carrying
+the exact normalized document, owner-compiled plan, compiler/schema identity,
+content digest, and portable release reference. Writes require a caller-owned
+idempotency key; revise and publish also require the current aggregate version.
+Cloud owns tenancy, compilation, optimistic concurrency, audit, Outbox, and
+A3S ORM persistence. The CLI does not retain a draft store, compile a Form,
+validate submissions, or create a second Form authority.
 
 `asset-releases deploy` creates an ordinary Workload from an exact published
 Agent release. `asset-releases update` creates the next revision of an existing

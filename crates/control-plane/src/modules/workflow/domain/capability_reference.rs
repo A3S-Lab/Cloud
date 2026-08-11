@@ -7,6 +7,7 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityOwner {
     Assets,
+    Forms,
     Workflow,
     Inference,
     Use,
@@ -17,6 +18,7 @@ impl CapabilityOwner {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Assets => "assets",
+            Self::Forms => "forms",
             Self::Workflow => "workflow",
             Self::Inference => "inference",
             Self::Use => "use",
@@ -27,6 +29,7 @@ impl CapabilityOwner {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "assets" => Ok(Self::Assets),
+            "forms" => Ok(Self::Forms),
             "workflow" => Ok(Self::Workflow),
             "inference" => Ok(Self::Inference),
             "use" => Ok(Self::Use),
@@ -41,6 +44,7 @@ impl CapabilityOwner {
 pub enum CapabilityType {
     AgentRelease,
     McpServiceProfile,
+    FormRelease,
     WorkflowRevision,
     ModelRevision,
     UsePackage,
@@ -53,6 +57,7 @@ impl CapabilityType {
         match self {
             Self::AgentRelease => "agent_release",
             Self::McpServiceProfile => "mcp_service_profile",
+            Self::FormRelease => "form_release",
             Self::WorkflowRevision => "workflow_revision",
             Self::ModelRevision => "model_revision",
             Self::UsePackage => "use_package",
@@ -65,6 +70,7 @@ impl CapabilityType {
         match value {
             "agent_release" => Ok(Self::AgentRelease),
             "mcp_service_profile" => Ok(Self::McpServiceProfile),
+            "form_release" => Ok(Self::FormRelease),
             "workflow_revision" => Ok(Self::WorkflowRevision),
             "model_revision" => Ok(Self::ModelRevision),
             "use_package" => Ok(Self::UsePackage),
@@ -77,6 +83,7 @@ impl CapabilityType {
     pub const fn owner(self) -> CapabilityOwner {
         match self {
             Self::AgentRelease | Self::McpServiceProfile => CapabilityOwner::Assets,
+            Self::FormRelease => CapabilityOwner::Forms,
             Self::WorkflowRevision | Self::ConnectorRevision => CapabilityOwner::Workflow,
             Self::ModelRevision => CapabilityOwner::Inference,
             Self::UsePackage => CapabilityOwner::Use,
@@ -115,6 +122,16 @@ impl CapabilityReference {
             ));
         }
         validate_revision("Workflow capability revision", &self.revision)?;
+        if self.capability_type == CapabilityType::FormRelease {
+            let release_id = Uuid::parse_str(&self.revision).map_err(|_| {
+                "Workflow FormRelease capability revision must be an exact UUID".to_owned()
+            })?;
+            if release_id.is_nil() {
+                return Err(
+                    "Workflow FormRelease capability revision must be a non-nil UUID".into(),
+                );
+            }
+        }
         validate_text("Workflow capability name", &self.capability, 1, 128)?;
         if !self.capability.bytes().all(|byte| {
             byte.is_ascii_lowercase()
@@ -140,6 +157,7 @@ mod tests {
         let cases = [
             (CapabilityType::AgentRelease, CapabilityOwner::Assets),
             (CapabilityType::McpServiceProfile, CapabilityOwner::Assets),
+            (CapabilityType::FormRelease, CapabilityOwner::Forms),
             (CapabilityType::WorkflowRevision, CapabilityOwner::Workflow),
             (CapabilityType::ConnectorRevision, CapabilityOwner::Workflow),
             (CapabilityType::ModelRevision, CapabilityOwner::Inference),
@@ -186,5 +204,12 @@ mod tests {
         reference.capability = "agent.execute".into();
         reference.revision = "unsafe/revision".into();
         assert!(reference.validate().is_err());
+
+        reference.owner = CapabilityOwner::Forms;
+        reference.capability_type = CapabilityType::FormRelease;
+        reference.revision = "latest".into();
+        assert!(reference.validate().is_err());
+        reference.revision = Uuid::now_v7().to_string();
+        reference.validate().expect("exact FormRelease reference");
     }
 }

@@ -107,6 +107,8 @@ export async function proveOntologyConformance(
   const compatibleData = objectValue(compatibleRevision.structured.data, 'compatible Ontology mutation data');
   const compatibleRevisionData = objectValue(compatibleData.revision, 'compatible Ontology revision data');
   const secondRevisionId = uuidValue(compatibleRevisionData.id, 'compatible Ontology revision ID');
+  const compatibleCanonicalAcl = compatibleRevisionData.canonicalAcl;
+  expect(typeof compatibleCanonicalAcl).toBe('string');
   expect(objectValue(compatibleRevisionData.migrationPolicy, 'compatible migration policy').kind).toBe(
     'compatible'
   );
@@ -131,7 +133,7 @@ export async function proveOntologyConformance(
     'read-only MCP Ontology revision lookup'
   );
   expect(objectValue(revision.structured.data, 'MCP Ontology revision data').canonicalAcl).toBe(
-    compatibleAcl
+    compatibleCanonicalAcl
   );
   const diff = await callTool(
     environment,

@@ -1,5 +1,9 @@
 import {
   type CloudApi,
+  MAX_WORKFLOW_RUN_HISTORY_LIMIT,
+  MAX_WORKFLOW_RUN_LIST_LIMIT,
+  MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
+  MAX_WORKFLOW_RUN_WAIT_SECONDS,
   MAX_WORKFLOW_GOAL_ACL_BYTES,
   type PublishWorkflowDefinitionInput,
 } from '@a3s/cloud-client';
@@ -7,6 +11,7 @@ import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
+  rejectExpectedVersionOption,
   rejectFileOption,
   rejectGatewayRolloutOptions,
   rejectIdempotencyOption,
@@ -14,6 +19,7 @@ import {
   requireArity,
   requireIdempotencyKey,
   requireListCommand,
+  requireMutationCommand,
   requireReadCommand,
 } from './command-options';
 import type { CloudContext } from './context';
@@ -30,6 +36,11 @@ import {
   workflowPlanRevisionResult,
   workflowRevisionResult,
   workflowRevisionsResult,
+  workflowRunHistoryResult,
+  workflowRunMutationResult,
+  workflowRunOutputResult,
+  workflowRunResult,
+  workflowRunsResult,
 } from './workflow-results';
 
 const MAX_WORKFLOW_PUBLICATION_FILE_BYTES = 12 * 1024 * 1024;
@@ -46,6 +57,9 @@ export async function executeWorkflowCommand(
   dependencies: WorkflowCommandDependencies = {}
 ): Promise<CommandResult | undefined> {
   const { positionals } = arguments_;
+  if (!command.startsWith('workflow-runs ')) {
+    rejectMisplacedWorkflowRunOptions(arguments_);
+  }
   switch (command) {
     case 'workflow-definitions list':
       requireListCommand(arguments_);
@@ -146,9 +160,177 @@ export async function executeWorkflowCommand(
           positionalUuid(positionals, 3, 'Plan revision ID')
         )
       );
+    case 'workflow-runs list': {
+      requireArity(positionals, 2, 'workflow-runs list');
+      rejectWorkflowRunReadMutationOptions(arguments_);
+      if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+        throw usageError('--cursor and --stream are not valid for WorkflowRun list');
+      }
+      rejectWorkflowRunSpecificOptions(arguments_);
+      const limit = parseBoundedIntegerOption(
+        arguments_.limit,
+        'WorkflowRun list limit',
+        1,
+        MAX_WORKFLOW_RUN_LIST_LIMIT
+      );
+      return workflowRunsResult(
+        await cloudApi().listWorkflowRuns(requireOrganization(context), requireProject(context), { limit })
+      );
+    }
+    case 'workflow-runs get':
+      requireReadCommand(arguments_, 'workflow-runs get <workflow-run-id>');
+      rejectWorkflowRunSpecificOptions(arguments_);
+      return workflowRunResult(
+        await cloudApi().getWorkflowRun(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'WorkflowRun ID')
+        )
+      );
+    case 'workflow-runs start': {
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        4,
+        'workflow-runs start <workflow-goal-id> <plan-revision-id>'
+      );
+      if (arguments_.reason !== undefined || arguments_.workflowRunWaitSeconds !== undefined) {
+        throw usageError('--reason and --wait-seconds are not valid for WorkflowRun start');
+      }
+      const timeoutSeconds = parseBoundedIntegerOption(
+        arguments_.workflowRunTimeoutSeconds,
+        'WorkflowRun timeout',
+        1,
+        MAX_WORKFLOW_RUN_TIMEOUT_SECONDS
+      );
+      return workflowRunMutationResult(
+        await cloudApi().startWorkflowRun(
+          requireOrganization(context),
+          requireProject(context),
+          {
+            workflowGoalId: positionalUuid(positionals, 2, 'WorkflowGoal ID'),
+            planRevisionId: positionalUuid(positionals, 3, 'Plan revision ID'),
+            timeoutSeconds,
+          },
+          idempotencyKey
+        )
+      );
+    }
+    case 'workflow-runs cancel': {
+      const idempotencyKey = requireMutationCommand(arguments_, 3, 'workflow-runs cancel <workflow-run-id>');
+      if (
+        arguments_.workflowRunTimeoutSeconds !== undefined ||
+        arguments_.workflowRunWaitSeconds !== undefined
+      ) {
+        throw usageError('--run-timeout-seconds and --wait-seconds are not valid for WorkflowRun cancel');
+      }
+      return workflowRunMutationResult(
+        await cloudApi().cancelWorkflowRun(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'WorkflowRun ID'),
+          { reason: arguments_.reason },
+          idempotencyKey
+        )
+      );
+    }
+    case 'workflow-runs wait': {
+      requireReadCommand(arguments_, 'workflow-runs wait <workflow-run-id>');
+      if (arguments_.reason !== undefined || arguments_.workflowRunTimeoutSeconds !== undefined) {
+        throw usageError('--reason and --run-timeout-seconds are not valid for WorkflowRun wait');
+      }
+      const timeoutSeconds = parseBoundedIntegerOption(
+        arguments_.workflowRunWaitSeconds,
+        'WorkflowRun wait timeout',
+        0,
+        MAX_WORKFLOW_RUN_WAIT_SECONDS
+      );
+      return workflowRunResult(
+        await cloudApi().waitWorkflowRun(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'WorkflowRun ID'),
+          { timeoutSeconds }
+        )
+      );
+    }
+    case 'workflow-runs output':
+      requireReadCommand(arguments_, 'workflow-runs output <workflow-run-id>');
+      rejectWorkflowRunSpecificOptions(arguments_);
+      return workflowRunOutputResult(
+        await cloudApi().getWorkflowRunOutput(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'WorkflowRun ID')
+        )
+      );
+    case 'workflow-runs history': {
+      requireArity(positionals, 3, 'workflow-runs history <workflow-run-id>');
+      rejectWorkflowRunReadMutationOptions(arguments_);
+      if (arguments_.stream !== undefined) {
+        throw usageError('--stream is not valid for WorkflowRun history');
+      }
+      rejectWorkflowRunSpecificOptions(arguments_);
+      const afterSequence = parseBoundedIntegerOption(
+        arguments_.cursor,
+        'WorkflowRun history cursor',
+        0,
+        Number.MAX_SAFE_INTEGER
+      );
+      const limit = parseBoundedIntegerOption(
+        arguments_.limit,
+        'WorkflowRun history limit',
+        1,
+        MAX_WORKFLOW_RUN_HISTORY_LIMIT
+      );
+      return workflowRunHistoryResult(
+        await cloudApi().getWorkflowRunHistory(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'WorkflowRun ID'),
+          { afterSequence, limit }
+        )
+      );
+    }
     default:
       return undefined;
   }
+}
+
+function rejectMisplacedWorkflowRunOptions(arguments_: ParsedArguments): void {
+  if (
+    arguments_.workflowRunTimeoutSeconds !== undefined ||
+    arguments_.workflowRunWaitSeconds !== undefined ||
+    arguments_.reason !== undefined
+  ) {
+    throw usageError(
+      '--run-timeout-seconds, --wait-seconds, and --reason are valid only for WorkflowRun commands'
+    );
+  }
+}
+
+function rejectWorkflowRunSpecificOptions(arguments_: ParsedArguments): void {
+  rejectMisplacedWorkflowRunOptions(arguments_);
+}
+
+function rejectWorkflowRunReadMutationOptions(arguments_: ParsedArguments): void {
+  rejectIdempotencyOption(arguments_);
+  rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+}
+
+function parseBoundedIntegerOption(
+  raw: string | undefined,
+  label: string,
+  minimum: number,
+  maximum: number
+): number | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!/^[0-9]+$/u.test(raw)) {
+    throw usageError(`${label} must be an integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw usageError(`${label} must be between ${minimum} and ${maximum}`);
+  }
+  return value;
 }
 
 function requireRevisionMutation(arguments_: ParsedArguments): {

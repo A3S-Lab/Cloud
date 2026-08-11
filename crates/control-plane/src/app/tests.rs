@@ -1,8 +1,8 @@
 use super::*;
 use crate::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
-    EventProviderKind, EventsConfig, FleetConfig, LogsConfig, NodeControlConfig, OperationsConfig,
-    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
+    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SourcesConfig,
 };
 use crate::modules::agents::InMemoryAgentRepository;
@@ -15,6 +15,7 @@ use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
+use crate::modules::forms::{InMemoryFormRepository, NativeFormSemanticCore};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
@@ -37,8 +38,8 @@ use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
 };
 use crate::modules::workflow::{
-    InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
-    InMemoryWorkflowGoalRepository,
+    IWorkflowRunHistoryReader, InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
+    InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, WorkflowRunHistoryPage,
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
@@ -56,6 +57,7 @@ mod asset_git_support;
 mod asset_git_tests;
 mod build_tests;
 mod execution_tests;
+mod forms_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
 mod ontology_tests;
@@ -76,6 +78,7 @@ const ADMIN_TOKEN: &str = "a3s_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const PROJECT_TOKEN: &str = "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const EXPIRING_TOKEN: &str = "a3s_cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const SOURCE_TOKEN: &str = "a3s_dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+const FORM_TOKEN: &str = "a3s_1111111111111111111111111111111111111111111111111111111111111111";
 const TOKEN_MANAGER_TOKEN: &str =
     "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const SERVICE_MEMBER_TOKEN: &str =
@@ -95,6 +98,23 @@ struct TestSourceResolver;
 struct TestGithubAppAuthorization;
 
 struct UnavailableMcpRoutePolicyRepository;
+
+struct EmptyWorkflowRunHistoryReader;
+
+#[async_trait::async_trait]
+impl IWorkflowRunHistoryReader for EmptyWorkflowRunHistoryReader {
+    async fn read(
+        &self,
+        _flow_run_id: &str,
+        _after_sequence: u64,
+        _limit: usize,
+    ) -> std::result::Result<WorkflowRunHistoryPage, String> {
+        Ok(WorkflowRunHistoryPage {
+            events: Vec::new(),
+            next_sequence: None,
+        })
+    }
+}
 
 #[async_trait::async_trait]
 impl IMcpRoutePolicyRepository for UnavailableMcpRoutePolicyRepository {
@@ -378,6 +398,16 @@ fn config() -> CloudConfig {
         operations: OperationsConfig {
             reconcile_interval_ms: 1_000,
             lease_ms: 5_000,
+        },
+        human_tasks: HumanTasksConfig {
+            coordination_poll_interval_ms: 100,
+            coordination_batch_size: 100,
+            resume_poll_interval_ms: 100,
+            resume_batch_size: 100,
+            resume_lease_ms: 5_000,
+            flow_operation_timeout_ms: 1_000,
+            retry_initial_ms: 100,
+            retry_max_ms: 5_000,
         },
         deployments: DeploymentsConfig {
             reconcile_interval_ms: 1_000,
@@ -855,6 +885,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ontologies: Arc::new(InMemoryOntologyRepository::new()),
             workflow_definitions: Arc::new(InMemoryWorkflowDefinitionRepository::new()),
             workflow_goals: Arc::new(InMemoryWorkflowGoalRepository::new()),
+            workflow_runs: Arc::new(InMemoryWorkflowRunRepository::new()),
+            workflow_run_history: Arc::new(EmptyWorkflowRunHistoryReader),
+            forms: Arc::new(InMemoryFormRepository::new()),
+            form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
             search,
             asset_catalog,
             mcp_service_profiles,

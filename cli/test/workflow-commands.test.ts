@@ -10,6 +10,7 @@ const REVISION_ID = '019c0000-0000-7000-8000-000000000004';
 const GOAL_ID = '019c0000-0000-7000-8000-000000000005';
 const PLAN_ID = '019c0000-0000-7000-8000-000000000006';
 const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000007';
+const RUN_ID = '019c0000-0000-7000-8000-000000000008';
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 const DEFINITION_ACL = 'workflow { schema = "cloud.workflow.definition.v1" }\n';
 const PAYLOAD_ACL = 'configuration { schema = "cloud.workflow.configuration.v1" }\n';
@@ -55,6 +56,31 @@ describe('a3s-cloud Workflow commands', () => {
       ['workflow-goals', 'plan', GOAL_ID, PLAN_ID],
       `/organizations/${ORGANIZATION_ID}/workflow-goals/${GOAL_ID}/plan-revisions/${PLAN_ID}`,
       planRevision(),
+    ],
+    [
+      ['workflow-runs', 'list', '--limit=2'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-runs?limit=2`,
+      [workflowRun()],
+    ],
+    [
+      ['workflow-runs', 'get', RUN_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}`,
+      workflowRun(),
+    ],
+    [
+      ['workflow-runs', 'wait', RUN_ID, '--wait-seconds=0'],
+      `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/wait?timeoutSeconds=0`,
+      workflowRun(),
+    ],
+    [
+      ['workflow-runs', 'output', RUN_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/output`,
+      workflowRunOutput(),
+    ],
+    [
+      ['workflow-runs', 'history', RUN_ID, '--cursor=7', '--limit=10'],
+      `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/history?afterSequence=7&limit=10`,
+      workflowRunHistory(),
     ],
   ] as const)('queries the authoritative Workflow lifecycle %#', async (argv, path, data) => {
     const calls: Array<Parameters<CloudFetch>> = [];
@@ -173,6 +199,105 @@ describe('a3s-cloud Workflow commands', () => {
         }),
       })
     );
+  });
+
+  it('starts and cancels WorkflowRuns with explicit bounded options and idempotency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        return envelope(workflowRunMutation(), 202);
+      },
+    };
+    const started = await runCli(
+      [
+        'workflow-runs',
+        'start',
+        GOAL_ID,
+        PLAN_ID,
+        '--run-timeout-seconds=60',
+        '--idempotency-key=cli:workflow-run:start',
+        '--output=json',
+      ],
+      runtime
+    );
+    const cancelled = await runCli(
+      [
+        'workflow-runs',
+        'cancel',
+        RUN_ID,
+        '--reason=operator request',
+        '--idempotency-key=cli:workflow-run:cancel',
+        '--output=json',
+      ],
+      runtime
+    );
+
+    expect(started).toBe(ExitCode.Success);
+    expect(cancelled).toBe(ExitCode.Success);
+    expect(calls.map(([input]) => input)).toEqual([
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-runs`,
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/cancel`,
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          workflowGoalId: GOAL_ID,
+          planRevisionId: PLAN_ID,
+          timeoutSeconds: 60,
+        }),
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'cli:workflow-run:start',
+        }),
+      })
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ reason: 'operator request' }),
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'cli:workflow-run:cancel',
+        }),
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
+  it('rejects out-of-range WorkflowRun options before transport', async () => {
+    let called = false;
+    const execute = (argv: string[]) => {
+      const output = capture();
+      return {
+        output,
+        result: runCli(argv, {
+          ...output.runtime,
+          environment: completeEnvironment(),
+          fetch: async () => {
+            called = true;
+            return envelope({});
+          },
+        }),
+      };
+    };
+    const invalidStart = execute([
+      'workflow-runs',
+      'start',
+      GOAL_ID,
+      PLAN_ID,
+      '--run-timeout-seconds=0',
+      '--idempotency-key=cli:workflow-run:start',
+    ]);
+    const invalidHistory = execute(['workflow-runs', 'history', RUN_ID, '--limit=101']);
+
+    expect(await invalidStart.result).toBe(ExitCode.Usage);
+    expect(await invalidHistory.result).toBe(ExitCode.Usage);
+    expect(invalidStart.output.stderr()).toContain('WorkflowRun timeout must be between');
+    expect(invalidHistory.output.stderr()).toContain('WorkflowRun history limit must be between');
+    expect(called).toBe(false);
   });
 
   it('rejects malformed publication and oversized goal ACL before transport', async () => {
@@ -323,6 +448,80 @@ function planRevision() {
 
 function goalMutation() {
   return { goal: goal(), planRevision: planRevision(), replayed: false };
+}
+
+function workflowRun() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    id: RUN_ID,
+    workflowGoalId: GOAL_ID,
+    planRevisionId: PLAN_ID,
+    planDigest: DIGEST,
+    operationId: RUN_ID,
+    flowRunId: RUN_ID,
+    flowRuntimeBuildId: null,
+    executionInputDigest: DIGEST,
+    status: 'pending',
+    lastFlowSequence: 0,
+    outputDigest: null,
+    error: null,
+    aggregateVersion: 1,
+    requestedBy: PRINCIPAL_ID,
+    requestedAt: '2026-08-09T00:00:00.000Z',
+    updatedAt: '2026-08-09T00:00:00.000Z',
+    startedAt: null,
+    deadlineAt: '2026-08-09T01:00:00.000Z',
+    cancellationRequestedAt: null,
+    cancellationReason: null,
+    finishedAt: null,
+    steps: [
+      {
+        stepId: 'input',
+        kind: 'input',
+        status: 'pending',
+        flowStepId: 'workflow:input',
+        attemptGeneration: 0,
+        selectedHandle: null,
+        result: null,
+        resultDigest: null,
+        error: null,
+        evidenceReferences: [],
+        lastFlowSequence: 0,
+        updatedAt: '2026-08-09T00:00:00.000Z',
+      },
+    ],
+  };
+}
+
+function workflowRunMutation() {
+  return { workflowRun: workflowRun(), replayed: false };
+}
+
+function workflowRunOutput() {
+  return {
+    workflowRunId: RUN_ID,
+    output: { result: 'done' },
+    outputDigest: DIGEST,
+    finishedAt: '2026-08-09T00:01:00.000Z',
+  };
+}
+
+function workflowRunHistory() {
+  return {
+    events: [
+      {
+        sequence: 8,
+        eventId: '019c0000-0000-7000-8000-000000000009',
+        eventKey: 'flow.step.completed',
+        occurredAt: '2026-08-09T00:00:30.000Z',
+        stepId: 'input',
+        attempt: 1,
+        details: { result: 'redacted' },
+      },
+    ],
+    nextSequence: null,
+  };
 }
 
 function envelope(data: unknown, status = 200): Response {

@@ -1,3 +1,5 @@
 mod publish_workflow_definition_request;
+mod workflow_run_request;
 
 pub use publish_workflow_definition_request::PublishWorkflowDefinitionRequest;
+pub use workflow_run_request::{CancelWorkflowRunRequest, StartWorkflowRunRequest};

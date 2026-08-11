@@ -257,6 +257,123 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
         response_json(&fetched_plan)?["data"]["digest"],
         goal["data"]["goal"]["planDigest"]
     );
+
+    let run_collection =
+        format!("/api/v1/organizations/{organization_id}/projects/{project_id}/workflow-runs");
+    let start_body = json!({
+        "workflowGoalId": goal_id,
+        "planRevisionId": plan_revision_id,
+        "timeoutSeconds": 60
+    });
+    let start_run = || post_json(&run_collection, "workflow-run-start", start_body.clone());
+    let started = app.call(start_run()).await?;
+    let replayed_start = app.call(start_run()).await?;
+    assert_eq!(started.status(), 202);
+    assert_eq!(replayed_start.status(), 200);
+    let started = response_json(&started)?;
+    let replayed_start = response_json(&replayed_start)?;
+    let run_id = required_string(&started["data"]["workflowRun"]["id"], "WorkflowRun ID")?;
+    assert_eq!(
+        started["data"]["workflowRun"]["operationId"],
+        started["data"]["workflowRun"]["id"]
+    );
+    assert_eq!(started["data"]["workflowRun"]["status"], "pending");
+    assert_eq!(
+        started["data"]["workflowRun"]["steps"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
+    );
+    assert_eq!(replayed_start["data"]["replayed"], true);
+    assert_eq!(replayed_start["data"]["workflowRun"]["id"], run_id);
+
+    let conflicting_start = app
+        .call(post_json(
+            &run_collection,
+            "workflow-run-start",
+            json!({
+                "workflowGoalId": goal_id,
+                "planRevisionId": plan_revision_id,
+                "timeoutSeconds": 61
+            }),
+        ))
+        .await?;
+    assert_eq!(conflicting_start.status(), 409);
+    let missing_plan = app
+        .call(post_json(
+            &run_collection,
+            "workflow-run-missing-plan",
+            json!({
+                "workflowGoalId": goal_id,
+                "planRevisionId": Uuid::now_v7(),
+                "timeoutSeconds": 60
+            }),
+        ))
+        .await?;
+    assert_eq!(missing_plan.status(), 404);
+
+    let run_root = format!("/api/v1/organizations/{organization_id}/workflow-runs/{run_id}");
+    let listed_runs = app
+        .call(get_as(format!("{run_collection}?limit=1"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(listed_runs.status(), 200);
+    assert_eq!(response_json(&listed_runs)?["data"][0]["id"], run_id);
+    let invalid_list = app
+        .call(get_as(format!("{run_collection}?limit=201"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(invalid_list.status(), 422);
+    let fetched_run = app.call(get_as(&run_root, ADMIN_TOKEN)).await?;
+    assert_eq!(response_json(&fetched_run)?["data"]["id"], run_id);
+    let waited_run = app
+        .call(get_as(
+            format!("{run_root}/wait?timeoutSeconds=0"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response_json(&waited_run)?["data"]["status"], "pending");
+    let pending_history = app
+        .call(get_as(
+            format!("{run_root}/history?afterSequence=0&limit=10"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(pending_history.status(), 200);
+    assert_eq!(
+        response_json(&pending_history)?["data"]["events"],
+        json!([])
+    );
+    let pending_output = app
+        .call(get_as(format!("{run_root}/output"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(pending_output.status(), 409);
+
+    let cancel_body = json!({"reason": "operator request"});
+    let cancel_run = || {
+        post_json(
+            format!("{run_root}/cancel"),
+            "workflow-run-cancel",
+            cancel_body.clone(),
+        )
+    };
+    let cancelled = app.call(cancel_run()).await?;
+    let cancelled_replay = app.call(cancel_run()).await?;
+    assert_eq!(cancelled.status(), 202);
+    assert_eq!(cancelled_replay.status(), 200);
+    let cancelled = response_json(&cancelled)?;
+    assert_eq!(cancelled["data"]["workflowRun"]["status"], "cancelling");
+    assert_eq!(
+        cancelled["data"]["workflowRun"]["cancellationReason"],
+        "operator request"
+    );
+    assert_eq!(response_json(&cancelled_replay)?["data"]["replayed"], true);
+    let conflicting_cancel = app
+        .call(post_json(
+            format!("{run_root}/cancel"),
+            "workflow-run-cancel",
+            json!({"reason": "different reason"}),
+        ))
+        .await?;
+    assert_eq!(conflicting_cancel.status(), 409);
     Ok(())
 }
 

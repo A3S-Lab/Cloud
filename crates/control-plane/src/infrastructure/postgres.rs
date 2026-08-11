@@ -685,10 +685,42 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "077",
-            "Workflow runs and atomic Operations bindings",
+            "cleanup-aware Flow operation cancellation",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/077_workflow_runs.sql"
+                "/../../migrations/077_flow_operation_cancelling.sql"
+            )),
+        ),
+        Migration::new(
+            "078",
+            "Boot Flow task queue schema",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/078_boot_flow_task_queue_schema.sql"
+            )),
+        ),
+        Migration::new(
+            "079",
+            "Form drafts and immutable releases",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/079_form_drafts_and_releases.sql"
+            )),
+        ),
+        Migration::new(
+            "080",
+            "Workflow runs and semantic step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/080_workflow_runs.sql"
+            )),
+        ),
+        Migration::new(
+            "081",
+            "Human tasks, Form submissions, and durable Flow resume delivery",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/081_human_tasks_and_form_submissions.sql"
             )),
         ),
     ]

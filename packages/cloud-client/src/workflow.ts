@@ -173,3 +173,113 @@ export interface WorkflowGoalMutationResult {
   planRevision: WorkflowPlanRevision;
   replayed: boolean;
 }
+
+export type WorkflowRunStatus =
+  | 'pending'
+  | 'running'
+  | 'waiting'
+  | 'cancelling'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'timed_out';
+
+export type WorkflowStepProjectionStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'skipped';
+
+export interface StartWorkflowRunInput {
+  workflowGoalId: string;
+  planRevisionId: string;
+  timeoutSeconds?: number;
+}
+
+export interface CancelWorkflowRunInput {
+  reason?: string;
+}
+
+export interface ListWorkflowRunsOptions {
+  limit?: number;
+}
+
+export interface WaitWorkflowRunOptions {
+  timeoutSeconds?: number;
+}
+
+export interface WorkflowRunHistoryOptions {
+  afterSequence?: number;
+  limit?: number;
+}
+
+export interface WorkflowStepProjection {
+  stepId: string;
+  kind: 'input' | 'transform' | 'branch' | 'output';
+  status: WorkflowStepProjectionStatus;
+  flowStepId: string;
+  attemptGeneration: number;
+  selectedHandle: string | null;
+  result: unknown | null;
+  resultDigest: string | null;
+  error: string | null;
+  evidenceReferences: string[];
+  lastFlowSequence: number;
+  updatedAt: string;
+}
+
+export interface WorkflowRun {
+  organizationId: string;
+  projectId: string;
+  id: string;
+  workflowGoalId: string;
+  planRevisionId: string;
+  planDigest: string;
+  operationId: string;
+  flowRunId: string;
+  flowRuntimeBuildId: string | null;
+  executionInputDigest: string;
+  status: WorkflowRunStatus;
+  lastFlowSequence: number;
+  outputDigest: string | null;
+  error: string | null;
+  aggregateVersion: number;
+  requestedBy: string;
+  requestedAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  deadlineAt: string;
+  cancellationRequestedAt: string | null;
+  cancellationReason: string | null;
+  finishedAt: string | null;
+  steps: WorkflowStepProjection[];
+}
+
+export interface WorkflowRunMutationResult {
+  workflowRun: WorkflowRun;
+  replayed: boolean;
+}
+
+export interface WorkflowRunOutput {
+  workflowRunId: string;
+  output: unknown;
+  outputDigest: string;
+  finishedAt: string;
+}
+
+export interface WorkflowRunHistoryEvent {
+  sequence: number;
+  eventId: string;
+  eventKey: string;
+  occurredAt: string;
+  stepId: string | null;
+  attempt: number | null;
+  details: unknown;
+}
+
+export interface WorkflowRunHistoryPage {
+  events: WorkflowRunHistoryEvent[];
+  nextSequence: number | null;
+}

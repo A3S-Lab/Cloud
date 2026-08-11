@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, WorkflowRunId};
-use crate::modules::workflow::application::WorkflowRunView;
+use crate::modules::workflow::domain::WorkflowRunRecord;
 use a3s_boot::Query;
 
 #[derive(Debug, Clone)]
@@ -10,5 +10,5 @@ pub struct GetWorkflowRun {
 }
 
 impl Query for GetWorkflowRun {
-    type Output = ApplicationResult<WorkflowRunView>;
+    type Output = ApplicationResult<WorkflowRunRecord>;
 }

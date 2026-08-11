@@ -20,6 +20,7 @@ use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
     CreateAssetReleaseWrite, IAssetRepository, PostgresAssetRepository,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::operations::{
     IOperationRepository, OperationProjection, OperationRequest, OperationStatus, OperationSubject,
     PostgresOperationRepository, WorkflowIdentity,
@@ -69,10 +70,12 @@ pub async fn exercise_build_run_persistence(
     let apply_command_id = NodeCommandId::new();
     let cleanup_command_id = NodeCommandId::new();
     let command_time = chrono::Utc::now();
+    let capabilities =
+        NodeCapabilities::new("test-runtime", "test-runtime-1", serde_json::json!({}))?;
     database
         .execute(
             sql_query::<()>(
-                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (",
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
             )
             .bind(organization_id.as_uuid())
             .append(", ")
@@ -80,14 +83,14 @@ pub async fn exercise_build_run_persistence(
             .append(", 'build publication fixture', 'build-publication-fixture', 'ready', ")
             .bind(Uuid::now_v7())
             .append(", 'test', 'test-runtime', 'test-runtime-1', ")
-            .bind(format!("sha256:{}", "f".repeat(64)))
+            .bind(capabilities.digest())
             .append(", ")
-            .bind(serde_json::json!({}))
-            .append(", ")
-            .bind(command_time)
+            .bind(capabilities.document().clone())
             .append(", ")
             .bind(command_time)
-            .append(", 1)"),
+            .append(", ")
+            .bind(command_time)
+            .append(", 2, 1)"),
         )
         .await?;
     for (command_id, sequence, kind) in [
@@ -1135,10 +1138,12 @@ async fn drive_hosted_release_publication(
     let apply_command_id = NodeCommandId::new();
     let cleanup_command_id = NodeCommandId::new();
     let command_time = build.updated_at;
+    let capabilities =
+        NodeCapabilities::new("test-runtime", "test-runtime-1", serde_json::json!({}))?;
     database
         .execute(
             sql_query::<()>(
-                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (",
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
             )
             .bind(asset.organization_id.as_uuid())
             .append(", ")
@@ -1150,14 +1155,14 @@ async fn drive_hosted_release_publication(
             .append(", 'ready', ")
             .bind(Uuid::now_v7())
             .append(", 'test', 'test-runtime', 'test-runtime-1', ")
-            .bind(format!("sha256:{}", "f".repeat(64)))
+            .bind(capabilities.digest())
             .append(", ")
-            .bind(serde_json::json!({}))
-            .append(", ")
-            .bind(command_time)
+            .bind(capabilities.document().clone())
             .append(", ")
             .bind(command_time)
-            .append(", 1)"),
+            .append(", ")
+            .bind(command_time)
+            .append(", 2, 1)"),
         )
         .await?;
     for (command_id, sequence, kind) in [

@@ -20,6 +20,7 @@ import {
   toolNames,
   uuidValue,
 } from './management-mcp-conformance-support';
+import { proveFormConformance } from './management-mcp-form-conformance';
 import { proveOntologyConformance } from './management-mcp-ontology-conformance';
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
@@ -209,6 +210,7 @@ conformanceIt(
       'a3s_cloud_workloads_stop',
       'a3s_cloud_deployments_cancel',
       'a3s_cloud_build_runs_cancel',
+      'a3s_cloud_workflow_runs_cancel',
     ]);
     for (const tool of toolDefinitions(adminCatalog)) {
       expect(tool.annotations.readOnlyHint).toBe(readOnlyToolSet.has(tool.name));
@@ -297,6 +299,8 @@ conformanceIt(
       firstRevisionId: firstOntologyRevisionId,
       secondRevisionId: secondOntologyRevisionId,
     } = ontologyEvidence;
+    const formEvidence = await proveFormConformance(environment, organizationId, projectId, credentials);
+    const { formId, releaseId: formReleaseId } = formEvidence;
 
     const restEnvironment = await restEnvelope(
       `${environment.baseUrl}/organizations/${organizationId}/projects/${projectId}/environments`,
@@ -640,7 +644,7 @@ workload "mcp-stop" {
     const workloadStopReplay = await callTool(
       environment,
       environment.adminToken,
-      52,
+      59,
       'a3s_cloud_workloads_stop',
       { workloadId, idempotencyKey: 'c0:mcp:workload-stop' },
       credentials,
@@ -742,7 +746,7 @@ workload "mcp-stop" {
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v5',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v6',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
@@ -754,6 +758,8 @@ workload "mcp-stop" {
         ontologyId,
         firstOntologyRevisionId,
         secondOntologyRevisionId,
+        formId,
+        formReleaseId,
         environmentId,
         workloadId,
         foreignOrganizationId,
@@ -770,6 +776,11 @@ workload "mcp-stop" {
         mcpOntologyCreateReplay: ontologyEvidence.requestIds.mcpCreateReplay,
         mcpOntologyCompatibleRevision: ontologyEvidence.requestIds.mcpCompatibleRevision,
         mcpOntologyExplicitMigration: ontologyEvidence.requestIds.mcpExplicitMigration,
+        restFormCreate: formEvidence.requestIds.restCreate,
+        mcpFormCreateReplay: formEvidence.requestIds.mcpCreateReplay,
+        mcpFormRevise: formEvidence.requestIds.mcpRevise,
+        mcpFormPublish: formEvidence.requestIds.mcpPublish,
+        mcpFormPublishReplay: formEvidence.requestIds.mcpPublishReplay,
         restEnvironmentCreate: requestId(restEnvironment.body, 'REST environment request ID'),
         restWorkloadCreate: requestId(workloadCreate.body, 'REST Workload request ID'),
         mcpWorkloadStop: requestId(workloadStop.structured, 'MCP Workload stop request ID'),
@@ -795,6 +806,8 @@ workload "mcp-stop" {
         'rest-to-mcp-idempotency-replay',
         'acl-native-versioned-ontology-lifecycle',
         'ontology-migration-and-historical-replay',
+        'native-form-draft-release-lifecycle',
+        'form-rest-to-mcp-replay-and-historical-replay',
         'operational-read-query-catalog',
         'bounded-operational-query-arguments',
         'paged-log-and-evidence-query-boundaries',

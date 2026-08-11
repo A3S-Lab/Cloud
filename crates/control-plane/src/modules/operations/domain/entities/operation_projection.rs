@@ -8,6 +8,7 @@ pub enum OperationStatus {
     Queued,
     Running,
     Suspended,
+    Cancelling,
     Succeeded,
     Failed,
     Cancelled,
@@ -19,6 +20,7 @@ impl OperationStatus {
             Self::Queued => "queued",
             Self::Running => "running",
             Self::Suspended => "suspended",
+            Self::Cancelling => "cancelling",
             Self::Succeeded => "succeeded",
             Self::Failed => "failed",
             Self::Cancelled => "cancelled",
@@ -30,6 +32,7 @@ impl OperationStatus {
             "queued" => Ok(Self::Queued),
             "running" => Ok(Self::Running),
             "suspended" => Ok(Self::Suspended),
+            "cancelling" => Ok(Self::Cancelling),
             "succeeded" => Ok(Self::Succeeded),
             "failed" => Ok(Self::Failed),
             "cancelled" => Ok(Self::Cancelled),
@@ -50,4 +53,19 @@ pub struct OperationProjection {
     pub output: Option<serde_json::Value>,
     pub error: Option<String>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::OperationStatus;
+
+    #[test]
+    fn cancelling_status_round_trips_without_becoming_terminal() {
+        assert_eq!(
+            OperationStatus::parse("cancelling"),
+            Ok(OperationStatus::Cancelling)
+        );
+        assert_eq!(OperationStatus::Cancelling.as_str(), "cancelling");
+        assert!(!OperationStatus::Cancelling.is_terminal());
+    }
 }

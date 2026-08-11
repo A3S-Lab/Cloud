@@ -1,22 +1,16 @@
 use super::GetWorkflowRun;
-use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::workflow::application::WorkflowRunView;
-use crate::modules::workflow::domain::IWorkflowRunRepository;
+use crate::modules::workflow::domain::{IWorkflowRunRepository, WorkflowRunRecord};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct GetWorkflowRunHandler {
-    runs: Arc<dyn IWorkflowRunRepository>,
-    operations: Arc<dyn IOperationRepository>,
+    repository: Arc<dyn IWorkflowRunRepository>,
 }
 
 impl GetWorkflowRunHandler {
-    pub fn new(
-        runs: Arc<dyn IWorkflowRunRepository>,
-        operations: Arc<dyn IOperationRepository>,
-    ) -> Self {
-        Self { runs, operations }
+    pub fn new(repository: Arc<dyn IWorkflowRunRepository>) -> Self {
+        Self { repository }
     }
 }
 
@@ -25,27 +19,19 @@ impl QueryHandler<GetWorkflowRun> for GetWorkflowRunHandler {
         &self,
         query: GetWorkflowRun,
         _context: CqrsContext,
-    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkflowRunView>>> {
-        let runs = Arc::clone(&self.runs);
-        let operations = Arc::clone(&self.operations);
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkflowRunRecord>>> {
+        let repository = Arc::clone(&self.repository);
         Box::pin(async move {
-            let run = match runs
+            match repository
                 .find(query.organization_id, query.workflow_run_id)
                 .await
             {
-                Ok(Some(value)) => value,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "WorkflowRun not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
-            Ok(
-                super::super::workflow_run_view::load(run, operations.as_ref())
-                    .await
-                    .map_err(Into::into),
-            )
+                Ok(Some(record)) => Ok(Ok(record)),
+                Ok(None) => Ok(Err(ApplicationError::NotFound(
+                    "WorkflowRun not found".into(),
+                ))),
+                Err(error) => Ok(Err(error.into())),
+            }
         })
     }
 }

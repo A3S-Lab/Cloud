@@ -258,6 +258,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
                 && target.publication.revision == gateway_revision
         })
         .ok_or("node-wide MCP publication was not pending")?;
+    let node_wide_failed_at = pending.publication.command_not_after + Duration::milliseconds(1);
     fixture
         .edge
         .mark_mcp_gateway_snapshot_unavailable(
@@ -267,7 +268,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
             pending.publication.revision,
             pending.publication.command_id,
             "complete node-wide staging before ordinary composition",
-            planned_at + Duration::milliseconds(1),
+            node_wide_failed_at,
         )
         .await?;
 
@@ -305,7 +306,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         )?,
         desired_state,
     );
-    let ordinary_at = planned_at + Duration::milliseconds(2);
+    let ordinary_at = node_wide_failed_at + Duration::milliseconds(1);
     let domain_claim = fixture
         .edge
         .find_domain_claim(fixture.organization_id, first_policy.spec().domain_claim_id)
@@ -469,6 +470,9 @@ async fn fail_pending_snapshot(fixture: &Fixture<'_>) -> TestResult {
         .filter(|target| target.publication.node_id == fixture.scope.node_id)
         .max_by_key(|target| target.publication.revision)
         .ok_or("MCP node aggregation fixture expected the pending cleanup snapshot")?;
+    let observed_at = fixture
+        .observed_at
+        .max(pending.publication.command_not_after + Duration::milliseconds(1));
     fixture
         .edge
         .mark_mcp_gateway_snapshot_unavailable(
@@ -478,7 +482,7 @@ async fn fail_pending_snapshot(fixture: &Fixture<'_>) -> TestResult {
             pending.publication.revision,
             pending.publication.command_id,
             "complete the single-scope fixture before node aggregation",
-            fixture.observed_at,
+            observed_at,
         )
         .await?;
     Ok(())

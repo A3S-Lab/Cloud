@@ -178,7 +178,10 @@ pub(super) fn node(row: NodeRow) -> Result<Node, RepositoryError> {
         })?;
     if capabilities.digest() != capabilities_digest {
         return Err(RepositoryError::Storage(
-            "stored node capabilities digest does not match its document".into(),
+            format!(
+                "stored node {id} capabilities digest does not match its document: stored={capabilities_digest}, computed={}",
+                capabilities.digest()
+            ),
         ));
     }
     Ok(Node {

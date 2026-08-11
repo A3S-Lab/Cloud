@@ -1,21 +1,28 @@
+mod rows;
+mod schema;
+
+use self::rows::{
+    decode_run, decode_step, WorkflowRunRow, WorkflowRunSelection, WorkflowStepRow,
+    WorkflowStepSelection,
+};
+use self::schema::{OperationRequests, WorkflowRuns, WorkflowStepProjections};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
     is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
     transaction_error, AuditWrite, PostgresPersistenceError,
 };
-use crate::modules::operations::infrastructure::persistence::enqueue_operation;
+use crate::modules::operations::domain::entities::OperationRequest;
+use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, OperationId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
-    RepositoryError, Sha256Digest, WorkflowGoalId, WorkflowRunId,
+    IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError, WorkflowRunId,
 };
-use crate::modules::workflow::application::workflow_run_operation;
 use crate::modules::workflow::domain::repositories::WorkflowRunWriteReference;
 use crate::modules::workflow::domain::{
-    IWorkflowRunRepository, StartWorkflowRunWrite, WorkflowRun,
+    CancelWorkflowRunWrite, CreateWorkflowRunWrite, IWorkflowRunRepository, WorkflowRun,
+    WorkflowRunRecord, WorkflowStepProjection, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
 };
-use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
+use a3s_orm::{insert_into, select_from, update_table, OrderDirection, PostgresExecutor};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -29,95 +36,72 @@ impl PostgresWorkflowRunRepository {
     }
 }
 
-struct WorkflowRunRow {
-    organization_id: Uuid,
-    project_id: Uuid,
-    id: Uuid,
-    workflow_goal_id: Uuid,
-    plan_revision_id: Uuid,
-    plan_digest: String,
-    operation_id: Uuid,
-    requested_by: Uuid,
-    requested_at: DateTime<Utc>,
-}
-
-impl FromRow for WorkflowRunRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            organization_id: decode(row, 0)?,
-            project_id: decode(row, 1)?,
-            id: decode(row, 2)?,
-            workflow_goal_id: decode(row, 3)?,
-            plan_revision_id: decode(row, 4)?,
-            plan_digest: decode(row, 5)?,
-            operation_id: decode(row, 6)?,
-            requested_by: decode(row, 7)?,
-            requested_at: decode(row, 8)?,
-        })
-    }
-}
-
 #[async_trait]
 impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
-    async fn start(
+    async fn create(
         &self,
-        write: StartWorkflowRunWrite,
-    ) -> Result<IdempotentWrite<WorkflowRun>, RepositoryError> {
+        write: CreateWorkflowRunWrite,
+    ) -> Result<IdempotentWrite<WorkflowRunRecord>, RepositoryError> {
+        write.record.validate().map_err(RepositoryError::Storage)?;
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    if let Some(reference) = idempotency_replay::<WorkflowRunWriteReference>(
+                    if let Some(replay) = idempotency_replay::<WorkflowRunWriteReference>(
                         transaction,
                         &write.idempotency,
                     )
                     .await?
                     {
                         return Ok(IdempotentWrite {
-                            value: load_run(transaction, reference.value).await?,
+                            value: load_record(
+                                transaction,
+                                replay.value.organization_id,
+                                replay.value.workflow_run_id,
+                                false,
+                            )
+                            .await?,
                             replayed: true,
                         });
                     }
-                    write
-                        .run
-                        .validate_identity()
-                        .map_err(PostgresPersistenceError::Invariant)?;
-                    let expected_operation = workflow_run_operation(&write.run)
-                        .map_err(PostgresPersistenceError::Invariant)?;
-                    if !write.operation.has_same_definition(&expected_operation) {
-                        return Err(PostgresPersistenceError::Invariant(
-                            "WorkflowRun write contains another Operation request".into(),
-                        ));
-                    }
-                    enqueue_operation(transaction, write.operation).await?;
-                    let inserted = insert_run(transaction, &write.run).await;
-                    match inserted {
-                        Ok(()) => {}
-                        Err(error) if is_unique_violation(&error) => {
-                            return Err(RepositoryError::Conflict(
-                                "WorkflowRun identity already exists".into(),
-                            )
-                            .into())
+                    let insertion = async {
+                        insert_operation(transaction, &write.record.run).await?;
+                        insert_run(transaction, &write.record.run).await?;
+                        for step in &write.record.steps {
+                            insert_step(transaction, step).await?;
                         }
+                        Ok::<(), PostgresPersistenceError>(())
+                    }
+                    .await;
+                    match insertion {
+                        Ok(()) => {}
                         Err(error) if is_foreign_key_violation(&error) => {
                             return Err(RepositoryError::NotFound.into())
+                        }
+                        Err(error) if is_unique_violation(&error) => {
+                            return Err(RepositoryError::Conflict(
+                                "WorkflowRun or correlated Operation identity already exists"
+                                    .into(),
+                            )
+                            .into())
                         }
                         Err(error) => return Err(error),
                     }
                     store_outbox(transaction, &write.event).await?;
                     store_run_audit(
                         transaction,
-                        &write.run,
+                        &write.record,
                         write.actor_principal_id,
                         write.request_id,
+                        "workflow.run.requested",
                     )
                     .await?;
                     let reference = WorkflowRunWriteReference {
-                        organization_id: write.run.organization_id,
-                        workflow_run_id: write.run.id,
+                        organization_id: write.record.run.organization_id,
+                        workflow_run_id: write.record.run.id,
                     };
                     store_idempotency(transaction, &write.idempotency, &reference).await?;
                     Ok(IdempotentWrite {
-                        value: write.run,
+                        value: write.record,
                         replayed: false,
                     })
                 })
@@ -130,21 +114,15 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
         &self,
         organization_id: OrganizationId,
         workflow_run_id: WorkflowRunId,
-    ) -> Result<Option<WorkflowRun>, RepositoryError> {
+    ) -> Result<Option<WorkflowRunRecord>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    fetch_optional::<WorkflowRunRow, _>(
-                        transaction,
-                        run_select()
-                            .append(" where organization_id = ")
-                            .bind(organization_id.as_uuid())
-                            .append(" and id = ")
-                            .bind(workflow_run_id.as_uuid()),
-                    )
-                    .await?
-                    .map(decode_run)
-                    .transpose()
+                    match find_run_row(transaction, organization_id, workflow_run_id, false).await?
+                    {
+                        Some(row) => decode_record(transaction, row).await.map(Some),
+                        None => Ok(None),
+                    }
                 })
             })
             .await
@@ -155,23 +133,182 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
         &self,
         organization_id: OrganizationId,
         project_id: ProjectId,
-    ) -> Result<Vec<WorkflowRun>, RepositoryError> {
+        limit: usize,
+    ) -> Result<Vec<WorkflowRunRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         self.executor
             .transaction(move |transaction| {
                 Box::pin(async move {
-                    fetch_all::<WorkflowRunRow, _>(
+                    let rows = fetch_all::<WorkflowRunRow, _>(
                         transaction,
                         run_select()
-                            .append(" where organization_id = ")
-                            .bind(organization_id.as_uuid())
-                            .append(" and project_id = ")
-                            .bind(project_id.as_uuid())
-                            .append(" order by requested_at desc, id asc"),
+                            .filter(WorkflowRuns::organization_id().eq(organization_id.as_uuid()))
+                            .filter(WorkflowRuns::project_id().eq(project_id.as_uuid()))
+                            .order_by(WorkflowRuns::requested_at(), OrderDirection::Desc)
+                            .order_by(WorkflowRuns::id(), OrderDirection::Desc)
+                            .limit(limit as u64),
+                    )
+                    .await?;
+                    let mut records = Vec::with_capacity(rows.len());
+                    for row in rows {
+                        records.push(decode_record(transaction, row).await?);
+                    }
+                    Ok(records)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn request_cancellation(
+        &self,
+        write: CancelWorkflowRunWrite,
+    ) -> Result<IdempotentWrite<WorkflowRunRecord>, RepositoryError> {
+        write.record.validate().map_err(RepositoryError::Storage)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(replay) = idempotency_replay::<WorkflowRunWriteReference>(
+                        transaction,
+                        &write.idempotency,
                     )
                     .await?
-                    .into_iter()
-                    .map(decode_run)
-                    .collect()
+                    {
+                        return Ok(IdempotentWrite {
+                            value: load_record(
+                                transaction,
+                                replay.value.organization_id,
+                                replay.value.workflow_run_id,
+                                false,
+                            )
+                            .await?,
+                            replayed: true,
+                        });
+                    }
+                    let existing = load_record(
+                        transaction,
+                        write.record.run.organization_id,
+                        write.record.run.id,
+                        true,
+                    )
+                    .await?;
+                    validate_cancellation_transition(
+                        &existing,
+                        &write.record,
+                        write.expected_version,
+                    )?;
+                    persist_run(transaction, &write.record.run, write.expected_version).await?;
+                    store_outbox(transaction, &write.event).await?;
+                    store_run_audit(
+                        transaction,
+                        &write.record,
+                        write.actor_principal_id,
+                        write.request_id,
+                        "workflow.run.cancellation-requested",
+                    )
+                    .await?;
+                    let reference = WorkflowRunWriteReference {
+                        organization_id: write.record.run.organization_id,
+                        workflow_run_id: write.record.run.id,
+                    };
+                    store_idempotency(transaction, &write.idempotency, &reference).await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn pending_reconciliation(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<WorkflowRunRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let rows = fetch_all::<WorkflowRunRow, _>(
+                        transaction,
+                        run_select()
+                            .filter(WorkflowRuns::status().ne("completed"))
+                            .filter(WorkflowRuns::status().ne("failed"))
+                            .filter(WorkflowRuns::status().ne("cancelled"))
+                            .filter(WorkflowRuns::status().ne("timed_out"))
+                            .order_by(WorkflowRuns::requested_at(), OrderDirection::Asc)
+                            .order_by(WorkflowRuns::id(), OrderDirection::Asc)
+                            .limit(limit as u64),
+                    )
+                    .await?;
+                    let mut records = Vec::with_capacity(rows.len());
+                    for row in rows {
+                        records.push(decode_record(transaction, row).await?);
+                    }
+                    Ok(records)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay(
+        &self,
+        idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    ) -> Result<Option<WorkflowRunRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(replay) =
+                        idempotency_replay::<WorkflowRunWriteReference>(transaction, &idempotency)
+                            .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_record(
+                        transaction,
+                        replay.value.organization_id,
+                        replay.value.workflow_run_id,
+                        false,
+                    )
+                    .await
+                    .map(Some)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn save_projection(
+        &self,
+        record: WorkflowRunRecord,
+        expected_version: u64,
+    ) -> Result<WorkflowRunRecord, RepositoryError> {
+        record.validate().map_err(RepositoryError::Storage)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let existing =
+                        load_record(transaction, record.run.organization_id, record.run.id, true)
+                            .await?;
+                    validate_projection_transition(&existing, &record, expected_version)?;
+                    persist_run(transaction, &record.run, expected_version).await?;
+                    for step in &record.steps {
+                        persist_step(transaction, step).await?;
+                    }
+                    load_record(
+                        transaction,
+                        record.run.organization_id,
+                        record.run.id,
+                        false,
+                    )
+                    .await
                 })
             })
             .await
@@ -179,116 +316,457 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
     }
 }
 
-fn run_select() -> a3s_orm::SqlQuery<WorkflowRunRow> {
-    sql_query::<WorkflowRunRow>(
-        "select organization_id, project_id, id, workflow_goal_id, plan_revision_id, plan_digest, operation_id, requested_by, requested_at from workflow_runs",
-    )
-}
-
-async fn load_run(
+async fn insert_operation(
     transaction: &a3s_orm::PostgresTransaction,
-    reference: WorkflowRunWriteReference,
-) -> Result<WorkflowRun, PostgresPersistenceError> {
-    fetch_optional::<WorkflowRunRow, _>(
-        transaction,
-        run_select()
-            .append(" where organization_id = ")
-            .bind(reference.organization_id.as_uuid())
-            .append(" and id = ")
-            .bind(reference.workflow_run_id.as_uuid()),
+    run: &WorkflowRun,
+) -> Result<(), PostgresPersistenceError> {
+    let operation = OperationRequest::new(
+        run.operation_id,
+        run.organization_id,
+        OperationSubject::new("workflow_run", run.id.as_uuid())
+            .map_err(PostgresPersistenceError::Invariant)?,
+        WorkflowIdentity::new(WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION)
+            .map_err(PostgresPersistenceError::Invariant)?,
+        serde_json::to_value(&run.execution_input)?,
+        run.requested_at,
+    );
+    require_one_row(
+        "WorkflowRun Operation",
+        execute(
+            transaction,
+            insert_into::<OperationRequests>()
+                .value(OperationRequests::operation_id(), operation.id.as_uuid())
+                .value(
+                    OperationRequests::organization_id(),
+                    operation.organization_id.as_uuid(),
+                )
+                .value(OperationRequests::subject_kind(), operation.subject.kind())
+                .value(OperationRequests::subject_id(), operation.subject.id())
+                .value(
+                    OperationRequests::workflow_name(),
+                    operation.workflow.name(),
+                )
+                .value(
+                    OperationRequests::workflow_version(),
+                    operation.workflow.version(),
+                )
+                .value(OperationRequests::input(), operation.input)
+                .value(OperationRequests::requested_at(), operation.requested_at),
+        )
+        .await?,
     )
-    .await?
-    .map(decode_run)
-    .transpose()?
-    .ok_or_else(|| {
-        PostgresPersistenceError::Invariant("WorkflowRun replay target is missing".into())
-    })
-}
-
-fn decode_run(row: WorkflowRunRow) -> Result<WorkflowRun, PostgresPersistenceError> {
-    WorkflowRun::restore(
-        OrganizationId::from_uuid(row.organization_id),
-        ProjectId::from_uuid(row.project_id),
-        WorkflowRunId::from_uuid(row.id),
-        WorkflowGoalId::from_uuid(row.workflow_goal_id),
-        PlanRevisionId::from_uuid(row.plan_revision_id),
-        Sha256Digest::parse(row.plan_digest).map_err(|error| {
-            PostgresPersistenceError::Invariant(format!(
-                "stored WorkflowRun plan digest is invalid: {error}"
-            ))
-        })?,
-        OperationId::from_uuid(row.operation_id),
-        PrincipalId::from_uuid(row.requested_by),
-        row.requested_at,
-    )
-    .map_err(|error| {
-        PostgresPersistenceError::Invariant(format!("stored WorkflowRun is invalid: {error}"))
-    })
 }
 
 async fn insert_run(
     transaction: &a3s_orm::PostgresTransaction,
     run: &WorkflowRun,
 ) -> Result<(), PostgresPersistenceError> {
+    let execution_input = String::from_utf8(
+        run.execution_input
+            .canonical_bytes()
+            .map_err(PostgresPersistenceError::Invariant)?,
+    )
+    .map_err(|_| PostgresPersistenceError::Invariant("WorkflowRun input was not UTF-8".into()))?;
     require_one_row(
         "WorkflowRun",
         execute(
             transaction,
-            sql_query::<()>("insert into workflow_runs (organization_id, project_id, id, workflow_goal_id, plan_revision_id, plan_digest, operation_id, requested_by, requested_at) values (")
-                .bind(run.organization_id.as_uuid())
-                .append(", ")
-                .bind(run.project_id.as_uuid())
-                .append(", ")
-                .bind(run.id.as_uuid())
-                .append(", ")
-                .bind(run.workflow_goal_id.as_uuid())
-                .append(", ")
-                .bind(run.plan_revision_id.as_uuid())
-                .append(", ")
-                .bind(run.plan_digest.as_str())
-                .append(", ")
-                .bind(run.operation_id.as_uuid())
-                .append(", ")
-                .bind(run.requested_by.as_uuid())
-                .append(", ")
-                .bind(run.requested_at)
-                .append(")"),
+            insert_into::<WorkflowRuns>()
+                .value(
+                    WorkflowRuns::organization_id(),
+                    run.organization_id.as_uuid(),
+                )
+                .value(WorkflowRuns::project_id(), run.project_id.as_uuid())
+                .value(WorkflowRuns::id(), run.id.as_uuid())
+                .value(
+                    WorkflowRuns::workflow_goal_id(),
+                    run.workflow_goal_id.as_uuid(),
+                )
+                .value(
+                    WorkflowRuns::plan_revision_id(),
+                    run.plan_revision_id.as_uuid(),
+                )
+                .value(WorkflowRuns::plan_digest(), run.plan_digest.as_str())
+                .value(WorkflowRuns::operation_id(), run.operation_id.as_uuid())
+                .value(WorkflowRuns::flow_run_id(), run.flow_run_id.as_str())
+                .value(
+                    WorkflowRuns::flow_runtime_build_id(),
+                    run.flow_runtime_build_id.clone(),
+                )
+                .value(WorkflowRuns::execution_input(), execution_input)
+                .value(
+                    WorkflowRuns::execution_input_digest(),
+                    run.execution_input_digest.as_str(),
+                )
+                .value(WorkflowRuns::status(), run.status.as_str())
+                .value(WorkflowRuns::last_flow_sequence(), run.last_flow_sequence)
+                .value(WorkflowRuns::output(), run.output.clone())
+                .value(
+                    WorkflowRuns::output_digest(),
+                    run.output_digest
+                        .as_ref()
+                        .map(|digest| digest.as_str().to_owned()),
+                )
+                .value(WorkflowRuns::error(), run.error.clone())
+                .value(WorkflowRuns::aggregate_version(), run.aggregate_version)
+                .value(WorkflowRuns::requested_by(), run.requested_by.as_uuid())
+                .value(WorkflowRuns::requested_at(), run.requested_at)
+                .value(WorkflowRuns::updated_at(), run.updated_at)
+                .value(WorkflowRuns::started_at(), run.started_at)
+                .value(
+                    WorkflowRuns::cancellation_requested_at(),
+                    run.cancellation_requested_at,
+                )
+                .value(
+                    WorkflowRuns::cancellation_reason(),
+                    run.cancellation_reason.clone(),
+                )
+                .value(WorkflowRuns::finished_at(), run.finished_at),
         )
         .await?,
     )
 }
 
-async fn store_run_audit(
+async fn insert_step(
+    transaction: &a3s_orm::PostgresTransaction,
+    step: &WorkflowStepProjection,
+) -> Result<(), PostgresPersistenceError> {
+    require_one_row(
+        "WorkflowStepProjection",
+        execute(
+            transaction,
+            insert_into::<WorkflowStepProjections>()
+                .value(
+                    WorkflowStepProjections::organization_id(),
+                    step.organization_id.as_uuid(),
+                )
+                .value(
+                    WorkflowStepProjections::project_id(),
+                    step.project_id.as_uuid(),
+                )
+                .value(
+                    WorkflowStepProjections::workflow_run_id(),
+                    step.workflow_run_id.as_uuid(),
+                )
+                .value(WorkflowStepProjections::step_id(), step.step_id.as_str())
+                .value(WorkflowStepProjections::kind(), step.kind.as_str())
+                .value(WorkflowStepProjections::status(), step.status.as_str())
+                .value(
+                    WorkflowStepProjections::flow_step_id(),
+                    step.flow_step_id.as_str(),
+                )
+                .value(
+                    WorkflowStepProjections::attempt_generation(),
+                    step.attempt_generation,
+                )
+                .value(
+                    WorkflowStepProjections::selected_handle(),
+                    step.selected_handle.clone(),
+                )
+                .value(WorkflowStepProjections::result(), step.result.clone())
+                .value(
+                    WorkflowStepProjections::result_digest(),
+                    step.result_digest
+                        .as_ref()
+                        .map(|digest| digest.as_str().to_owned()),
+                )
+                .value(WorkflowStepProjections::error(), step.error.clone())
+                .value(
+                    WorkflowStepProjections::evidence_references(),
+                    serde_json::to_value(&step.evidence_references)?,
+                )
+                .value(
+                    WorkflowStepProjections::last_flow_sequence(),
+                    step.last_flow_sequence,
+                )
+                .value(WorkflowStepProjections::updated_at(), step.updated_at),
+        )
+        .await?,
+    )
+}
+
+async fn persist_run(
     transaction: &a3s_orm::PostgresTransaction,
     run: &WorkflowRun,
+    expected_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    let rows = execute(
+        transaction,
+        update_table::<WorkflowRuns>()
+            .set(
+                WorkflowRuns::flow_runtime_build_id(),
+                run.flow_runtime_build_id.clone(),
+            )
+            .set(WorkflowRuns::status(), run.status.as_str())
+            .set(WorkflowRuns::last_flow_sequence(), run.last_flow_sequence)
+            .set(WorkflowRuns::output(), run.output.clone())
+            .set(
+                WorkflowRuns::output_digest(),
+                run.output_digest
+                    .as_ref()
+                    .map(|digest| digest.as_str().to_owned()),
+            )
+            .set(WorkflowRuns::error(), run.error.clone())
+            .set(WorkflowRuns::aggregate_version(), run.aggregate_version)
+            .set(WorkflowRuns::updated_at(), run.updated_at)
+            .set(WorkflowRuns::started_at(), run.started_at)
+            .set(
+                WorkflowRuns::cancellation_requested_at(),
+                run.cancellation_requested_at,
+            )
+            .set(
+                WorkflowRuns::cancellation_reason(),
+                run.cancellation_reason.clone(),
+            )
+            .set(WorkflowRuns::finished_at(), run.finished_at)
+            .filter(WorkflowRuns::organization_id().eq(run.organization_id.as_uuid()))
+            .filter(WorkflowRuns::id().eq(run.id.as_uuid()))
+            .filter(WorkflowRuns::aggregate_version().eq(expected_version)),
+    )
+    .await?;
+    match rows {
+        1 => Ok(()),
+        0 => Err(RepositoryError::Conflict("WorkflowRun changed concurrently".into()).into()),
+        rows => Err(PostgresPersistenceError::Invariant(format!(
+            "projecting WorkflowRun affected {rows} rows"
+        ))),
+    }
+}
+
+async fn persist_step(
+    transaction: &a3s_orm::PostgresTransaction,
+    step: &WorkflowStepProjection,
+) -> Result<(), PostgresPersistenceError> {
+    let rows = execute(
+        transaction,
+        update_table::<WorkflowStepProjections>()
+            .set(WorkflowStepProjections::status(), step.status.as_str())
+            .set(
+                WorkflowStepProjections::attempt_generation(),
+                step.attempt_generation,
+            )
+            .set(
+                WorkflowStepProjections::selected_handle(),
+                step.selected_handle.clone(),
+            )
+            .set(WorkflowStepProjections::result(), step.result.clone())
+            .set(
+                WorkflowStepProjections::result_digest(),
+                step.result_digest
+                    .as_ref()
+                    .map(|digest| digest.as_str().to_owned()),
+            )
+            .set(WorkflowStepProjections::error(), step.error.clone())
+            .set(
+                WorkflowStepProjections::evidence_references(),
+                serde_json::to_value(&step.evidence_references)?,
+            )
+            .set(
+                WorkflowStepProjections::last_flow_sequence(),
+                step.last_flow_sequence,
+            )
+            .set(WorkflowStepProjections::updated_at(), step.updated_at)
+            .filter(WorkflowStepProjections::organization_id().eq(step.organization_id.as_uuid()))
+            .filter(WorkflowStepProjections::workflow_run_id().eq(step.workflow_run_id.as_uuid()))
+            .filter(WorkflowStepProjections::step_id().eq(step.step_id.as_str())),
+    )
+    .await?;
+    require_one_row("WorkflowStepProjection", rows)
+}
+
+async fn find_run_row(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    workflow_run_id: WorkflowRunId,
+    for_update: bool,
+) -> Result<Option<WorkflowRunRow>, PostgresPersistenceError> {
+    let mut query = run_select()
+        .filter(WorkflowRuns::organization_id().eq(organization_id.as_uuid()))
+        .filter(WorkflowRuns::id().eq(workflow_run_id.as_uuid()));
+    if for_update {
+        query = query.for_update();
+    }
+    fetch_optional(transaction, query).await
+}
+
+fn run_select() -> a3s_orm::query::SelectQuery<WorkflowRuns, WorkflowRunRow> {
+    select_from::<WorkflowRuns>().select(WorkflowRunSelection)
+}
+
+async fn load_record(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    workflow_run_id: WorkflowRunId,
+    for_update: bool,
+) -> Result<WorkflowRunRecord, PostgresPersistenceError> {
+    let row = find_run_row(transaction, organization_id, workflow_run_id, for_update)
+        .await?
+        .ok_or(PostgresPersistenceError::Repository(
+            RepositoryError::NotFound,
+        ))?;
+    decode_record(transaction, row).await
+}
+
+async fn decode_record(
+    transaction: &a3s_orm::PostgresTransaction,
+    row: WorkflowRunRow,
+) -> Result<WorkflowRunRecord, PostgresPersistenceError> {
+    let run = decode_run(row)?;
+    let rows = fetch_all::<WorkflowStepRow, _>(
+        transaction,
+        select_from::<WorkflowStepProjections>()
+            .select(WorkflowStepSelection)
+            .filter(WorkflowStepProjections::organization_id().eq(run.organization_id.as_uuid()))
+            .filter(WorkflowStepProjections::workflow_run_id().eq(run.id.as_uuid())),
+    )
+    .await?;
+    let mut by_id = rows
+        .into_iter()
+        .map(decode_step)
+        .map(|result| result.map(|step| (step.step_id.clone(), step)))
+        .collect::<Result<std::collections::BTreeMap<_, _>, _>>()?;
+    let mut steps = Vec::with_capacity(by_id.len());
+    for planned in &run.execution_input.plan.steps {
+        steps.push(by_id.remove(&planned.id).ok_or_else(|| {
+            PostgresPersistenceError::Invariant(format!(
+                "stored WorkflowRun is missing step {:?}",
+                planned.id
+            ))
+        })?);
+    }
+    if !by_id.is_empty() {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored WorkflowRun contains unplanned step projections".into(),
+        ));
+    }
+    let record = WorkflowRunRecord { run, steps };
+    record.validate().map_err(|error| {
+        PostgresPersistenceError::Invariant(format!("stored WorkflowRun is invalid: {error}"))
+    })?;
+    Ok(record)
+}
+
+fn validate_cancellation_transition(
+    existing: &WorkflowRunRecord,
+    next: &WorkflowRunRecord,
+    expected_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    if existing.run.aggregate_version != expected_version || existing.steps != next.steps {
+        return Err(RepositoryError::Conflict(
+            "WorkflowRun changed while cancellation was requested".into(),
+        )
+        .into());
+    }
+    let mut candidate = existing.run.clone();
+    let requested_at = next.run.cancellation_requested_at.ok_or_else(|| {
+        PostgresPersistenceError::Invariant(
+            "WorkflowRun cancellation is missing its request time".into(),
+        )
+    })?;
+    candidate
+        .request_cancellation(next.run.cancellation_reason.clone(), requested_at)
+        .map_err(PostgresPersistenceError::Invariant)?;
+    if candidate != next.run {
+        return Err(RepositoryError::Conflict(
+            "WorkflowRun cancellation transition drifted".into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_projection_transition(
+    existing: &WorkflowRunRecord,
+    next: &WorkflowRunRecord,
+    expected_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    if existing.run.aggregate_version != expected_version
+        || next.run.aggregate_version
+            != expected_version.checked_add(1).ok_or_else(|| {
+                PostgresPersistenceError::Invariant(
+                    "WorkflowRun aggregate version overflowed".into(),
+                )
+            })?
+        || next.run.last_flow_sequence <= existing.run.last_flow_sequence
+        || !same_run_authority(&existing.run, &next.run)
+        || existing.steps.len() != next.steps.len()
+    {
+        return Err(RepositoryError::Conflict(
+            "WorkflowRun projection transition conflicts with stored state".into(),
+        )
+        .into());
+    }
+    for current in &existing.steps {
+        let projected = next
+            .steps
+            .iter()
+            .find(|step| step.step_id == current.step_id)
+            .ok_or_else(|| {
+                PostgresPersistenceError::Invariant("WorkflowRun projection lost a step".into())
+            })?;
+        if current.organization_id != projected.organization_id
+            || current.project_id != projected.project_id
+            || current.workflow_run_id != projected.workflow_run_id
+            || current.kind != projected.kind
+            || current.flow_step_id != projected.flow_step_id
+            || projected.last_flow_sequence < current.last_flow_sequence
+            || (current.status.is_terminal() && current != projected)
+        {
+            return Err(RepositoryError::Conflict(format!(
+                "Workflow step {:?} projection transition conflicts with stored state",
+                current.step_id
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn same_run_authority(left: &WorkflowRun, right: &WorkflowRun) -> bool {
+    left.organization_id == right.organization_id
+        && left.project_id == right.project_id
+        && left.id == right.id
+        && left.workflow_goal_id == right.workflow_goal_id
+        && left.plan_revision_id == right.plan_revision_id
+        && left.plan_digest == right.plan_digest
+        && left.operation_id == right.operation_id
+        && left.flow_run_id == right.flow_run_id
+        && left.execution_input == right.execution_input
+        && left.execution_input_digest == right.execution_input_digest
+        && left.requested_by == right.requested_by
+        && left.requested_at == right.requested_at
+}
+
+async fn store_run_audit(
+    transaction: &a3s_orm::PostgresTransaction,
+    record: &WorkflowRunRecord,
     actor_principal_id: PrincipalId,
     request_id: Uuid,
+    action: &'static str,
 ) -> Result<(), PostgresPersistenceError> {
     store_audit(
         transaction,
         &AuditWrite {
             audit_id: Uuid::now_v7(),
-            organization_id: run.organization_id.as_uuid(),
+            organization_id: record.run.organization_id.as_uuid(),
             actor_id: Some(actor_principal_id.as_uuid()),
-            action: "workflow.run.requested",
-            aggregate_id: run.id.as_uuid(),
-            occurred_at: run.requested_at,
+            action,
+            aggregate_id: record.run.id.as_uuid(),
+            occurred_at: record.run.updated_at,
             request_id,
             details: serde_json::json!({
-                "projectId": run.project_id,
-                "workflowGoalId": run.workflow_goal_id,
-                "planRevisionId": run.plan_revision_id,
-                "planDigest": run.plan_digest,
-                "operationId": run.operation_id,
+                "projectId": record.run.project_id,
+                "workflowGoalId": record.run.workflow_goal_id,
+                "planRevisionId": record.run.plan_revision_id,
+                "planDigest": record.run.plan_digest,
+                "operationId": record.run.operation_id,
+                "flowRunId": record.run.flow_run_id,
+                "executionInputDigest": record.run.execution_input_digest,
+                "status": record.run.status,
+                "deadlineAt": record.run.execution_input.deadline_at,
+                "cancellationReason": record.run.cancellation_reason,
             }),
         },
     )
     .await
-}
-
-fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
-    let value = row
-        .value(index)
-        .ok_or(DecodeError::MissingColumn { index })?;
-    T::from_value(value, index)
 }

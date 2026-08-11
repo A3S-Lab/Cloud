@@ -48,6 +48,20 @@ Commands:
   workflow-goals get ID  Get one exact WorkflowGoal
   workflow-goals create  Compile a WorkflowGoal from A3S ACL
   workflow-goals plan ID REV Get one immutable deterministic PlanRevision
+  workflow-runs list     List recent WorkflowRuns in the selected project
+  workflow-runs get ID   Get one WorkflowRun and its step projections
+  workflow-runs start GOAL PLAN Start one exact PlanRevision idempotently
+  workflow-runs wait ID  Wait up to a bounded interval for terminal state
+  workflow-runs cancel ID Request WorkflowRun cancellation idempotently
+  workflow-runs output ID Read the bounded output of a completed WorkflowRun
+  workflow-runs history ID Read bounded, redacted A3S Flow history
+  forms list            List Form drafts in the selected project
+  forms get ID          Get one Form draft
+  forms create          Create a Form draft from native Form JSON
+  forms revise ID       Revise a Form draft with optimistic concurrency
+  form-releases list FORM List immutable releases for one Form
+  form-releases get FORM ID Get one immutable Form release
+  form-releases publish FORM Publish the current Form draft immutably
   assets list           List Assets in the selected organization
   assets get ID         Get one Asset
   assets create NAME KIND Create an Agent, MCP, or Skill Asset idempotently
@@ -137,7 +151,7 @@ Global options:
   --limit <n>             Search, log, or Agent event page limit
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
-  --file <path>             A3S ACL file for a desired-state mutation
+  --file <path>             A3S ACL or native Form JSON input file
   --expected-version <n>    Current aggregate version for a versioned mutation
   --migration-rule <id>     Target ACL migration rule for a breaking Ontology revision
   --min-ready <n>           Required ready members for gateway-scopes create
