@@ -35,6 +35,8 @@ impl PluginTrustRootObjectRef {
 pub struct PluginTrustRoot {
     object_ref: PluginTrustRootObjectRef,
     digest: Sha256Digest,
+    /// Version decoded from the exact caller-pinned bootstrap trust anchor.
+    /// Refreshed TUF metadata may report a newer current root version.
     version: u64,
 }
 

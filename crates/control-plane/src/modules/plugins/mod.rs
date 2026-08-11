@@ -3,5 +3,5 @@ pub mod infrastructure;
 
 pub use infrastructure::{
     persistence::{InMemoryPluginRegistryRepository, PostgresPluginRegistryRepository},
-    PluginTrustRootObjectStore,
+    A3sUsePluginRegistryCatalog, PluginTrustRootObjectStore,
 };

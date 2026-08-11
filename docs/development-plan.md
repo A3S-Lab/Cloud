@@ -306,7 +306,7 @@ Status as of 2026-08-11:
 | A1 | In progress | `A1.0` is verified and `A1.1` implements the durable conversation/execution foundation. The local `A1.2` native Code provider pins the Code-owned protocol, persists exact Workload/Runtime/run delivery identity through migration 069, reconciles the reserved Operation through the existing Flow runtime, forwards commands through Fleet and the node journal, settles Code pages through the shared outbound-batch primitive, derives only bounded semantic output/terminal facts, and implements the root `a3s code harness` HTTP entrypoint. Dependency publication, cancel/recover orchestration, and clean Linux PostgreSQL/Runtime recovery evidence remain open; provider-neutral `A1.3` and `A1.4` through `A1.6` remain planned. |
 | W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology contract foundation, exact capability references, deterministic graph validation, the ten-node outcome mapping, and architectural guards against duplicate execution mechanisms. Backend `W0.2` adds immutable Ontology revisions, deterministic migration/diff policy, and authorized Search. The `W0.3` planning slice adds immutable Workflow definitions/revisions, exact closed ACL payloads, Goals, and deterministic Plan revisions. Migration `079` adds project-scoped canonical Form drafts and immutable native owner-compiled releases. Migration `080` adds an A3S ORM-backed WorkflowRun bound to one exact Goal/Plan and correlated Operation/A3S Flow run. Migration `081` adds typed A3S ORM persistence for immutable FormSubmission and WorkflowDecision records, optimistic HumanTasks, hook Inbox evidence, and leased resume Outbox/receipts. Workflow-local `input`, `transform`, `branch`, `human_decision`, and `output` execution, immutable replay validation, worker-role task coordination, lease/retry/conflict resume recovery, cancellation, deadline timeout, output, and history share the same Flow authority. Real PostgreSQL plus Flow gates cover concurrency, atomic submission/decision storage, lease takeover, commit-before-ack recovery, replay, tenant isolation, and four API/worker `SIGKILL` boundaries without duplicating WorkflowRun, Operation, Flow history, terminal projection, or cancellation. Existing REST `1.14.0`, maintained client, CLI, and Management MCP surfaces expose only the non-task lifecycle. Public protected submission/HumanTask surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded clean cross-surface conformance, `W0.4`-`W0.5`, and public availability remain planned. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
-| U0 | In progress; unavailable | The Cloud slice of `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The first `U0.2` slices add the `PluginRegistry` domain, migration 084 persistence, and one typed trust-root adapter over the shared immutable-object client without copying TUF/catalog or object-storage mechanisms. Root compatibility locking, production Manager composition, registry application/interfaces, the published Use catalog adapter, assignments, and real-provider gates remain open; no user-facing capability is claimed. |
+| U0 | In progress; unavailable | The Cloud slice of `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The first `U0.2` slices add the `PluginRegistry` domain, migration 084 persistence, one typed trust-root adapter over the shared immutable-object client, and one published `a3s-use-extension` adapter for public-network refresh and online/cached catalog search/inspection. Cloud adds no TUF, catalog, query, cursor, cache, or object-storage mechanism. Root compatibility locking, production Manager composition, registry application/interfaces, assignments, and real-provider gates remain open; no user-facing capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
 | H0.2 | Historical | PostgreSQL/Gateway projection behavior passed, but the joint release gate must be repeated with Box-hosted upstreams on exact revisions |
@@ -2316,11 +2316,12 @@ modules/plugins/
 ```
 
 Domain code depends only on pure canonical contract types where needed. In
-particular, package/surface identity, verified catalog selection,
-`PluginDesiredState`, plan/confirmation, managed scope, host capabilities, and
-package-plan/apply/enablement-plan/observation request and result types come
-directly from `a3s-use-core`; Cloud does not wrap, fork, or restate them. The Use catalog,
-Fleet, Flow, object, and persistence implementations remain infrastructure
+particular, package/surface identity, `PluginDesiredState`, plan/confirmation,
+managed scope, host capabilities, and package-plan/apply/enablement-plan/
+observation request and result types come directly from `a3s-use-core`.
+Registry/TUF, verified catalog selection, host/search inputs, snapshots, pages,
+and inspection results come directly from `a3s-use-extension`; Cloud does not
+wrap, fork, or restate them. The Use catalog, Fleet, Flow, object, and persistence implementations remain infrastructure
 adapters behind constructor-injected ports. If a future required canonical type
 or host operation is missing, it is added and released in A3S Use before Cloud
 consumes it; Cloud does not create a similarly named local value object or JSON
@@ -2329,7 +2330,9 @@ schema.
 under `infrastructure`, and controllers delegate to the command/query buses.
 
 The upstream protocol-level-4 `PluginHostManager` contract is frozen in
-`a3s-use-core` 0.2.2. `U0.1` pins its exact released Cargo dependency and Use gitlink,
+`a3s-use-core` 0.2.2, and the Registry/catalog API is pinned at
+`a3s-use-extension` 0.3.0. Both resolve to exact Use revision
+`800dc66182dc57091637d974156be8d7e291914e`. `U0.1` pins the released Cargo dependencies and Use gitlink,
 then adds the sorted Use component plus plugin-host protocol level to
 `compat/cloud-stack.acl`. The gitlink, dependency, lock entry, canonical
 fixtures, and Cloud contract tests advance together; a branch, path dependency,
@@ -2361,14 +2364,20 @@ in-memory/PostgreSQL repositories are implemented. Repository creation shares
 one fail-closed aggregate/event validation path and commits the registry,
 Outbox fact, audit record, and organization-scoped idempotency result in the
 same PostgreSQL transaction after active-human membership authorization. No
-catalog or TUF metadata is persisted. The typed Plugins trust-root adapter
+catalog or TUF metadata is persisted. The enrolled root version is the version
+decoded from the exact caller-pinned bootstrap trust anchor; it is not the
+current root version reported after a later verified TUF refresh. The typed Plugins trust-root adapter
 reuses the shared immutable-object client for exact content-addressed write,
 replay, read, bound, conflict, and corruption semantics. Host composition must
 inject A3S Use's public bootstrap-root size bound; Cloud defines no duplicate
-constant or TUF verifier. Enrollment application commands, the published A3S
-Use catalog adapter, application queries, authorized Search projection,
-REST/client/CLI/Management MCP reads, and real-provider exit evidence remain
-open; the Web projection stays deferred by section 1.1.
+constant or TUF verifier. The published `a3s-use-extension` adapter forces its
+`PublicInternet` policy, isolates the Use-owned metadata datastore by tenant,
+Registry, and root digest, re-pins and compares exact bootstrap-root evidence,
+and delegates refresh plus online/cached search and inspection through the
+upstream request/result types. Enrollment application commands, application
+queries, authorized Search projection, REST/client/CLI/Management MCP reads,
+and real-provider exit evidence remain open; the Web projection stays deferred
+by section 1.1.
 
 The exact catalog selection is immutable within one assignment generation.
 Cloud assignment generation, Use installed generation, and Use capability

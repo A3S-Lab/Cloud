@@ -43,6 +43,15 @@ impl PluginTrustRootObjectStore {
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn in_memory(maximum_root_bytes: u64) -> Result<Self, PluginTrustRootStoreError> {
+        let objects: std::sync::Arc<dyn object_store::ObjectStore> =
+            std::sync::Arc::new(object_store::memory::InMemory::new());
+        let client = ImmutableObjectClient::from_store(objects, OBJECT_NAMESPACE)
+            .map_err(map_object_error)?;
+        Self::from_client(client, maximum_root_bytes)
+    }
+
     fn validate_bytes(
         &self,
         root: &PluginTrustRoot,

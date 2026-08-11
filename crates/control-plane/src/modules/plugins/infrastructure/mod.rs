@@ -1,4 +1,6 @@
+mod a3s_use_plugin_registry_catalog;
 pub mod persistence;
 mod plugin_trust_root_object_store;
 
+pub use a3s_use_plugin_registry_catalog::A3sUsePluginRegistryCatalog;
 pub use plugin_trust_root_object_store::PluginTrustRootObjectStore;

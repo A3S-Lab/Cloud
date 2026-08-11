@@ -437,11 +437,13 @@ package, while a Cloud Asset is exactly one Agent, MCP, or Skill release.
 The stable package identity is the A3S Use identity
 `<publisher>/<name>`. `use/<publisher>/<name>` is its component identity and a
 route is only an alias. Cloud consumes these identities, surface kinds,
-catalog records, operation plans, confirmations, and observations from the
-pinned `a3s-use-core` contracts. It must not restate their validation rules or
+operation plans, confirmations, and observations from the pinned
+`a3s-use-core` contracts. Registry/TUF verification, catalog hosts, searches,
+snapshots, pages, inspections, and their validation come from the pinned
+`a3s-use-extension` contract. Cloud must not restate their validation rules or
 fork their schemas. If a future required value object or remote-host API is not
-public in A3S Use, it is added and released there before `U0.1` advances the
-compatibility lock; no Cloud-local substitute is accepted.
+public in A3S Use, it is added and released there before the compatibility lock
+advances; no Cloud-local substitute is accepted.
 
 One assignment converges through this control path:
 
