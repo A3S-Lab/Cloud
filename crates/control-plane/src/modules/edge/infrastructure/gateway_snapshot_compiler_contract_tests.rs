@@ -61,6 +61,18 @@ fn compiles_every_owned_route_into_one_deterministic_snapshot() {
     first.state = RouteState::Active;
     let mut second = route(node_id, "api.example.com", "/v1", 49153);
     second.gateway_certificate_id = Some(certificate_id);
+    let expected_targets = [
+        (
+            first.target.workload_revision_id,
+            first.target.runtime_unit_id.clone(),
+            first.target.runtime_generation,
+        ),
+        (
+            second.target.workload_revision_id,
+            second.target.runtime_unit_id.clone(),
+            second.target.runtime_generation,
+        ),
+    ];
     let issued_at = Utc::now();
     let expires_at = issued_at + Duration::minutes(10);
     let forward = compiler()
@@ -86,6 +98,14 @@ fn compiles_every_owned_route_into_one_deterministic_snapshot() {
     assert!(forward.acl.contains("http://127.0.0.1:49152/"));
     assert!(forward.acl.contains("mode { kind = \"cloud-managed\" }"));
     assert!(forward.acl.contains(&node_id.to_string()));
+    assert_eq!(forward.acl.matches("target = {").count(), 2);
+    for (target_id, unit_id, generation) in expected_targets {
+        assert!(forward
+            .acl
+            .contains(&format!("target_id = \"{target_id}\"")));
+        assert!(forward.acl.contains(&format!("unit_id = \"{unit_id}\"")));
+        assert!(forward.acl.contains(&format!("generation = {generation}")));
+    }
 }
 
 #[test]
@@ -198,7 +218,32 @@ fn installed_gateway_validates_compiled_snapshot() {
         .expect("snapshot");
     let directory = tempfile::tempdir().expect("Gateway validation directory");
     let path = directory.path().join("gateway.acl");
-    std::fs::write(&path, snapshot.acl).expect("write compiled Gateway snapshot");
+    let local_path = |name: &str| {
+        directory
+            .path()
+            .join(name)
+            .to_string_lossy()
+            .replace('\\', "/")
+    };
+    let certificate = snapshot
+        .certificate_request
+        .as_ref()
+        .expect("compiled certificate request");
+    let acl = snapshot
+        .acl
+        .replace(
+            &acl_string(&certificate.certificate_file),
+            &acl_string(&local_path("certificate.pem")),
+        )
+        .replace(
+            &acl_string(&certificate.private_key_file),
+            &acl_string(&local_path("private-key.pem")),
+        )
+        .replace(
+            &acl_string("/var/lib/a3s-gateway/managed-snapshot.json"),
+            &acl_string(&local_path("managed-snapshot.json")),
+        );
+    std::fs::write(&path, acl).expect("write compiled Gateway snapshot");
     let output = std::process::Command::new(binary)
         .arg("validate")
         .arg("--config")

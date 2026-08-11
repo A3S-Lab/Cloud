@@ -998,7 +998,7 @@ health, and operations. Neither store becomes PostgreSQL desired-state truth.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
-| `H0.3` | Planned | Multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.3` | Foundation in progress | Typed managed target identity plus multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
@@ -1114,10 +1114,14 @@ partially addressable apply.
 
 Cloud persists each private route target as an exact immutable revision,
 deterministic Runtime unit, positive generation, declared port, canonical
-node-local origin, and command-bound healthy observation. Revision, unit, and
-generation enter the complete ACL digest. A cutover requires a different
-revision and strictly newer generation; rejection retains the prior target,
-while the exact applied acknowledgement atomically selects the candidate.
+node-local origin, and command-bound healthy observation. Ordinary and MCP
+compilers now emit the target, Unit, and generation as a closed typed
+`servers[].target` object rather than relying on an ACL comment. Gateway
+validates and retains that identity and derives a credential-free, ordering-
+independent telemetry ID from it. The fields enter the complete ACL digest. A
+cutover requires a different revision and strictly newer generation; rejection
+retains the prior target, while the exact applied acknowledgement atomically
+selects the candidate.
 PostgreSQL migration 036 splits legacy shared nodes deterministically by
 environment/node binding, backfills Route and serialized recovery documents,
 and enforces the complete tenancy/node relationship across restart.
@@ -1164,14 +1168,18 @@ certificate replacement release physical ownership member by member only after
 the matching acknowledgement.
 
 The cross-repository gate builds Gateway commit
-`7a146b6d53635861e5db4870fb4603a5c59c87ee`. Real Gateway processes prove
-complete snapshot reload, independent certificate and target replacement, two
-member-specific journals and trust roots, continued service after one member is
-lost, exact native-journal recovery when it returns, independent Cloud cursors,
-and Agent process death after native apply but before acknowledgement. Together
-with the recreated PostgreSQL 17 gate, this closes `H0.2`. Independently placed
-multi-node Gateways remain `H0.3`; production control-plane and Gateway HA remain
-`H0.4`.
+`e92896769953aee28ef69261f77265e427f9d396`. It validates ordinary Route
+compiler output against the installed binary; the MCP compiler has the same
+typed target shape, while its full Gateway policy block remains gated by
+`MCP0`. Real Gateway processes prove
+typed target replacement, opaque generation-bound telemetry, rejected-apply
+retention, same-digest renewal, native-journal restart recovery, independent
+certificate replacement, two member-specific journals and trust roots,
+continued service after one member is lost, independent Cloud cursors, and
+Agent process death after native apply but before acknowledgement. Together
+with the recreated PostgreSQL 17 gate, this closes `H0.2` and delivers the
+target-identity slice of `H0.3`. Independently placed multi-node Gateways remain
+`H0.3`; production control-plane and Gateway HA remain `H0.4`.
 
 ### 5.8 `I0`: inference profile
 
@@ -1626,7 +1634,7 @@ not replay a request after upstream dispatch begins.
 | Gate | Cloud work | Gateway work | Joint result |
 | --- | --- | --- | --- |
 | `E0` | Edge desired state, managed TLS, complete snapshots, and exact acknowledgement | Native snapshot apply, HTTPS, routing, health, durable recovery, and prior-revision preservation | Verified clean-host A-to-B-to-cloned-A route and recovery evidence remains the regression baseline |
-| `H0.2` | Logical Gateway scopes, ordered membership, exact target derivation, atomic Route-and-rollout staging, threshold activation, per-member recovery, certificate convergence, and exact rollback | Explicit managed mode, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, read-only observation, and rejection of local control loops | Verified against Gateway `7a146b6`: two real members converge independently, preserve service through member loss, recover from native journals, reject cross-member trust, and replay apply-before-ack without duplicate mutation; PostgreSQL 17 proves atomic staging, threshold projection, failure retention, recovery, rollback, and typed A3S ORM persistence |
+| `H0.2` | Logical Gateway scopes, ordered membership, exact typed target derivation, atomic Route-and-rollout staging, threshold activation, per-member recovery, certificate convergence, and exact rollback | Explicit managed mode, typed target/Unit/generation retention, opaque stable target telemetry, advertised management-protocol tuple, native exact apply/readiness, same-digest renewal, durable journal, read-only observation, and rejection of local control loops | Verified against Gateway `e928967`: Cloud-compiled ordinary snapshots validate on the pinned binary; typed target replacement, rejection retention, renewal, restart, two-member loss/recovery, cross-member trust rejection, and apply-before-ack replay preserve exact state; PostgreSQL 17 proves atomic staging, threshold projection, failure retention, recovery, rollback, and typed A3S ORM persistence. MCP emits the same target shape but remains behind its separate joint gate |
 | `MCP0` | Immutable hosted MCP profile, release binding, Runtime Service projection, replica/rollout authority, expiring authorization policy, complete Gateway ACL snapshot, operations, and audit | Modern `2026-07-28` header/body validation, local request authorization, stateless healthy-target selection, request-scoped SSE, cancellation, no post-dispatch replay, drain, and bounded telemetry | A real MCP client reaches a real Box-hosted server through exact Cloud/Runtime/Gateway revisions; discovery, denial, malformed headers, stream cancellation, process/node loss, rollout, recovery, and cleanup gates pass |
 | `I0.2b` | Inference routes, keys, grants, typed local/global limits, and dispatch snapshots | Native OpenAI body-aware dispatch, cached enforcement, Redis-backed globally exact counters, streaming, and pre-first-byte fallback | Real SDK, denial, revocation, local and shared-counter enforcement, framing, disconnect, and acknowledgement gates pass |
 | `I0.2c` | Usage ingestion, gaps, immutable ledger, rollups, and rollout authority | Durable ordered request/attempt spool, replay, backpressure, and weight execution | Every started request becomes terminal or visibly unknown after crash and replay |

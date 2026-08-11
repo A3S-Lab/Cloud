@@ -325,7 +325,7 @@ its authority.
 | Generic compute | Finite Tasks, ordinary application Services, cancellation, cleanup, and operation replay | Executions, Workloads, `R0`, `D0`, `BX0` |
 | Fleet control | Enrollment, outbound mTLS, inventory, Claims, commands, receipts, fencing, draining, and cleanup | Fleet, Node Agent, `N0`, `H0` |
 | Execution substrate | Runtime/Box isolation, images, builds, mounts, outputs, logs, checkpoints, health, and provider recovery | Runtime, Box, `BX0`, `PW0` |
-| Managed traffic | Domains, certificate issuance and ownership-exclusive renewal, logical Gateway scopes, ACL-native MCP route-policy lifecycle, one node planner/compiler, owner-exclusive complete publication, routing, health, update, rollback, and exact applied state | Edge, Fleet, Gateway, Secrets, `E0`, `H0`, `MCP0`, `I0` |
+| Managed traffic | Domains, certificate issuance and ownership-exclusive renewal, logical Gateway scopes, typed target/Unit/generation identity, ACL-native MCP route-policy lifecycle, one node planner/compiler, owner-exclusive complete publication, routing, health, update, rollback, and exact applied state | Edge, Fleet, Gateway, Secrets, `E0`, `H0`, `MCP0`, `I0` |
 | Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
 | Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
 | Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |

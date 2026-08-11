@@ -3209,15 +3209,21 @@ revocation, rejection, unavailability, restart-safe Fleet redispatch, and stale
 writer rejection.
 
 The cross-repository tests build Gateway commit
-`7a146b6d53635861e5db4870fb4603a5c59c87ee`. Two real Gateway processes receive
+`e92896769953aee28ef69261f77265e427f9d396`. Cloud-compiled ordinary snapshots
+first validate against that exact binary. The MCP compiler emits the same typed
+target shape, but the full MCP Gateway policy remains behind its separate joint
+gate. Two real Gateway processes receive
 independent identities, snapshots, certificates, Agent journals, and native
 journals. Both serve the same healthy target; cross-CA trust fails; either
 member keeps serving after peer loss; the returning member restores the exact
 snapshot from its native journal; and Agent replay does not repeat certificate
 issuance, apply, or acknowledgement. A separate process-death gate kills the
 Agent after native apply but before Cloud acknowledgement and proves exact
-redelivery advances one durable cursor without another apply. These provider,
-failure, recovery, and PostgreSQL gates close `H0.2`. Independently placed
+redelivery advances one durable cursor without another apply. The single-member
+fixture also proves typed target/Unit/generation replacement, opaque stable
+telemetry identity, rejected-apply retention, same-digest renewal, and exact
+restart recovery. These provider, failure, recovery, and PostgreSQL gates close
+`H0.2` and deliver the target-identity slice of `H0.3`. Independently placed
 multi-node Gateways remain `H0.3`, and production control-plane/Gateway HA
 remains `H0.4`.
 
@@ -3402,7 +3408,7 @@ explicitly cleanup-pending Operation, and a complete audit/correlation chain.
 | 4 | Provider create before agent journal update | Verified | `provider_create_before_state_update_reattaches_the_same_container` uses real Docker and proves restart reattaches one container; the Secret-rotation consumer gate additionally restarts the isolated provider and kills the applying child while the exact Runtime receipt is pending, then reconstructs and reattaches the same container without duplicate material |
 | 5 | Node result persistence before server acknowledgement | Verified | `command_observation_precedes_ack_and_only_ack_advances_the_cursor` plus the PostgreSQL deployment gate preserve observation and exact acknowledgement replay |
 | 6 | Health success before deployment projection update | Verified | `exercise_deployment_flow` reconstructs Flow and the coordinator after durable real Runtime health evidence, then activates exactly once |
-| 7 | Gateway apply before acknowledgement | Verified H0.2 | `installed_a3s_gateway_recovers_native_apply_after_agent_process_death` durably begins the node command, applies the exact snapshot through pinned Gateway `7a146b6`, proves Gateway readiness while Cloud has no acknowledgement projection, sends `SIGKILL`, redelivers the same command under a new lease, persists one exact applied acknowledgement, and restarts Gateway from its sole durable managed-state journal without another apply. The two-member gate separately proves independent journals, continued service through peer loss, and exact recovery when the lost member returns |
+| 7 | Gateway apply before acknowledgement | Verified H0.2 | `installed_a3s_gateway_recovers_native_apply_after_agent_process_death` durably begins the node command, applies the exact snapshot through pinned Gateway `e928967`, proves Gateway readiness while Cloud has no acknowledgement projection, sends `SIGKILL`, redelivers the same command under a new lease, persists one exact applied acknowledgement, and restarts Gateway from its sole durable managed-state journal without another apply. The same pin validates typed ordinary target identity; MCP retains a separate joint gate. The two-member gate separately proves independent journals, continued service through peer loss, and exact recovery when the lost member returns |
 | 8 | Activation before old-revision cleanup | Verified | `activation_before_retirement_crash_probe` runs inside the PostgreSQL/Linux and isolated Cloud consumer gates: the parent prevents retirement command access, a child durably selects the candidate as `retiring`, the parent proves no cleanup command exists and sends `SIGKILL`, and a reconstructed coordinator emits one deterministic stop and requires stopped-or-absent evidence before terminal `active` |
 | 9 | Secret version commit before workload restart command | Verified | `exercise_secret_rotation_restart` begins from the committed rotation outbox fact, confirms no restart row exists in the mutation transaction, races reconstructed workers, commits one derived revision/deployment with causal linkage, emits one reference-only Runtime apply command, reconstructs Flow after its durable result, and finishes with plaintext scans across every durable boundary and revision digest |
 

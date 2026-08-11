@@ -67,4 +67,20 @@ fn snapshot_digest_binds_the_exact_runtime_generation() {
     assert_ne!(first.snapshot_digest, second.snapshot_digest);
     assert!(first.acl.contains("generation=1"));
     assert!(second.acl.contains("generation=2"));
+    for (snapshot, generation) in [(&first, 1), (&second, 2)] {
+        assert!(snapshot.acl.contains("target = {"));
+        assert!(snapshot
+            .acl
+            .contains(&format!("target_id = \"{workload_revision_id}\"")));
+        assert!(snapshot.acl.contains(&format!(
+            "unit_id = \"workload:{workload_id}:revision:{workload_revision_id}\""
+        )));
+        assert!(snapshot.acl.contains(&format!("generation = {generation}")));
+    }
+
+    newer.target.runtime_generation = 9_007_199_254_740_992;
+    let error = compiler
+        .compile(metadata, certificate_id, &[newer])
+        .expect_err("inexact ACL generation");
+    assert!(error.contains("exact ACL integer limit"));
 }
