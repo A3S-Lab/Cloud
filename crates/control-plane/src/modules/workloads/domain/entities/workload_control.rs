@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 const EFFECTIVE_PLACEMENT_POLICY_SCHEMA: &str = "a3s.cloud.effective-placement-policy.v1";
 const MAX_OWNER_KIND_LENGTH: usize = 64;
+pub const MAX_WORKLOAD_REPLICAS: u32 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -112,22 +113,16 @@ pub struct EffectivePlacementPolicy {
 
 impl EffectivePlacementPolicy {
     pub fn single_replica() -> Self {
-        Self::new(1, 1, 1, PlacementTopology::SingleNode)
-            .expect("the built-in single-replica placement policy is valid")
+        Self::replica_set(1, 1).expect("the built-in single-replica placement policy is valid")
     }
 
-    fn new(
-        generation: u64,
-        desired_replicas: u32,
-        members_per_replica: u32,
-        topology: PlacementTopology,
-    ) -> Result<Self, String> {
+    pub fn replica_set(generation: u64, desired_replicas: u32) -> Result<Self, String> {
         let mut policy = Self {
             schema: EFFECTIVE_PLACEMENT_POLICY_SCHEMA.into(),
             generation,
             desired_replicas,
-            members_per_replica,
-            topology,
+            members_per_replica: 1,
+            topology: PlacementTopology::SingleNode,
             digest: String::new(),
         };
         policy.digest = policy.calculate_digest()?;
@@ -138,7 +133,7 @@ impl EffectivePlacementPolicy {
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != EFFECTIVE_PLACEMENT_POLICY_SCHEMA
             || self.generation == 0
-            || self.desired_replicas != 1
+            || self.desired_replicas > MAX_WORKLOAD_REPLICAS
             || self.members_per_replica != 1
             || self.topology != PlacementTopology::SingleNode
             || !is_sha256_digest(&self.digest)
@@ -220,17 +215,30 @@ pub struct WorkloadControlSpec {
 
 impl WorkloadControlSpec {
     pub fn unmanaged_single_replica() -> Self {
-        Self {
+        Self::unmanaged_replica_set(1, 1)
+            .expect("the built-in unmanaged single-replica policy is valid")
+    }
+
+    pub fn unmanaged_replica_set(generation: u64, desired_replicas: u32) -> Result<Self, String> {
+        Ok(Self {
             managed_owner: None,
-            placement_policy: EffectivePlacementPolicy::single_replica(),
-        }
+            placement_policy: EffectivePlacementPolicy::replica_set(generation, desired_replicas)?,
+        })
     }
 
     pub fn managed_single_replica(owner: ManagedOwnerReference) -> Result<Self, String> {
+        Self::managed_replica_set(owner, 1, 1)
+    }
+
+    pub fn managed_replica_set(
+        owner: ManagedOwnerReference,
+        generation: u64,
+        desired_replicas: u32,
+    ) -> Result<Self, String> {
         owner.validate()?;
         Ok(Self {
             managed_owner: Some(owner),
-            placement_policy: EffectivePlacementPolicy::single_replica(),
+            placement_policy: EffectivePlacementPolicy::replica_set(generation, desired_replicas)?,
         })
     }
 

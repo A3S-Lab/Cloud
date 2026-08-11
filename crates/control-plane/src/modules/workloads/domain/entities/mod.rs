@@ -22,10 +22,11 @@ pub use secret_binding::{SecretBinding, SecretBindingTarget};
 pub use workload::{Workload, WorkloadDesiredState};
 pub use workload_control::{
     EffectivePlacementPolicy, ManagedOwnerKind, ManagedOwnerReference, PlacementTopology,
-    WorkloadControl, WorkloadControlSpec,
+    WorkloadControl, WorkloadControlSpec, MAX_WORKLOAD_REPLICAS,
 };
 pub use workload_replica::{
-    DeploymentReplicaBinding, WorkloadReplica, WorkloadReplicaMember, CANONICAL_REPLICA_ORDINAL,
+    DeploymentReplicaBinding, WorkloadReplica, WorkloadReplicaLifecycle, WorkloadReplicaMember,
+    CANONICAL_REPLICA_ORDINAL,
 };
 pub use workload_revision::{
     AgentWorkloadRevisionBinding, ExternalBuildReference, HttpHealthCheck,

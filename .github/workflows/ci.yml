@@ -14,6 +14,49 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  replica-set-postgres:
+    name: H0 replica-set PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: a3s-cloud-conformance
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/cloud
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+        with:
+          path: apps/cloud
+
+      - name: Install Rust 1.88.0
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: 1.88.0
+
+      - name: Migrate and verify stable replica sets
+        env:
+          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+          RUST_MIN_STACK: 33554432
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_foundation_is_migrated_atomic_and_idempotent
+          -- --exact --nocapture --test-threads=1
+
   rust:
     name: Rust ${{ matrix.toolchain }}
     runs-on: ubuntu-24.04

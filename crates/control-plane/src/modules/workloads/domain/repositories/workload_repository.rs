@@ -184,12 +184,24 @@ pub trait IWorkloadRepository: Send + Sync {
         replica_id: WorkloadReplicaId,
     ) -> Result<WorkloadReplica, RepositoryError>;
 
+    async fn list_workload_replicas(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<Vec<WorkloadReplica>, RepositoryError>;
+
     async fn find_workload_replica_member(
         &self,
         organization_id: OrganizationId,
         replica_id: WorkloadReplicaId,
         member_id: WorkloadReplicaMemberId,
     ) -> Result<WorkloadReplicaMember, RepositoryError>;
+
+    async fn list_workload_replica_members(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+    ) -> Result<Vec<WorkloadReplicaMember>, RepositoryError>;
 
     async fn find_deployment_replica_binding(
         &self,

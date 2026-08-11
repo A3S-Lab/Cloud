@@ -75,8 +75,14 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             return Ok(response);
         }
         validate_bundle(&request)?;
+        let desired_replicas = request.control.placement_policy.desired_replicas();
+        if desired_replicas == 0 {
+            return Err(RepositoryError::Conflict(
+                "a deployment cannot be created for a scale-to-zero Workload".into(),
+            ));
+        }
         let is_new_workload = !state.workloads.contains_key(&request.workload.id);
-        let (workload, control, replica, member) = if let Some(existing) =
+        let (workload, control, replicas, members) = if let Some(existing) =
             state.workloads.get(&request.workload.id)
         {
             if existing != &request.workload {
@@ -97,14 +103,15 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             control
                 .require_authority(&request.control)
                 .map_err(RepositoryError::Conflict)?;
-            let replica_id = WorkloadReplicaId::from_uuid(existing.id.as_uuid());
+            let replica_id = WorkloadReplica::deterministic_id(existing.id, 0)
+                .map_err(RepositoryError::Storage)?;
             let mut replica = state.replicas.get(&replica_id).cloned().ok_or_else(|| {
                 RepositoryError::Storage("Workload is missing its canonical replica".into())
             })?;
             replica
                 .advance(&request.revision, request.revision.created_at)
                 .map_err(RepositoryError::Conflict)?;
-            let member_id = WorkloadReplicaMemberId::from_uuid(existing.id.as_uuid());
+            let member_id = WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid());
             let member = state
                 .replica_members
                 .get(&member_id)
@@ -114,7 +121,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                         "Workload is missing its canonical replica member".into(),
                     )
                 })?;
-            (existing.clone(), control, replica, member)
+            (existing.clone(), control, vec![replica], vec![member])
         } else {
             let name_key = (
                 request.workload.organization_id,
@@ -128,11 +135,18 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             }
             let control = WorkloadControl::create(&request.workload, request.control.clone())
                 .map_err(RepositoryError::Conflict)?;
-            let replica = WorkloadReplica::canonical(&request.workload, &request.revision)
-                .map_err(RepositoryError::Conflict)?;
-            let member = WorkloadReplicaMember::canonical(&request.workload, &replica)
-                .map_err(RepositoryError::Conflict)?;
-            (request.workload.clone(), control, replica, member)
+            let mut replicas = Vec::with_capacity(desired_replicas as usize);
+            let mut members = Vec::with_capacity(desired_replicas as usize);
+            for ordinal in 0..desired_replicas {
+                let replica =
+                    WorkloadReplica::for_ordinal(&request.workload, &request.revision, ordinal)
+                        .map_err(RepositoryError::Conflict)?;
+                let member = WorkloadReplicaMember::for_replica(&request.workload, &replica)
+                    .map_err(RepositoryError::Conflict)?;
+                members.push(member);
+                replicas.push(replica);
+            }
+            (request.workload.clone(), control, replicas, members)
         };
         let next_generation = state
             .revisions
@@ -158,6 +172,12 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 "workload revision or deployment identity is already in use".into(),
             ));
         }
+        let replica = replicas
+            .first()
+            .ok_or_else(|| RepositoryError::Storage("Workload replica set is empty".into()))?;
+        let member = members.first().ok_or_else(|| {
+            RepositoryError::Storage("Workload replica member set is empty".into())
+        })?;
         let binding = DeploymentReplicaBinding::create(
             &request.deployment,
             &request.revision,
@@ -178,9 +198,13 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 .workloads
                 .insert(request.workload.id, request.workload.clone());
             state.controls.insert(request.workload.id, control);
-            state.replica_members.insert(member.id, member);
+            for member in members {
+                state.replica_members.insert(member.id, member);
+            }
         }
-        state.replicas.insert(replica.id, replica);
+        for replica in replicas {
+            state.replicas.insert(replica.id, replica);
+        }
         state
             .revisions
             .insert(request.revision.id, request.revision.clone());
@@ -428,6 +452,24 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .ok_or(RepositoryError::NotFound)
     }
 
+    async fn list_workload_replicas(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<Vec<WorkloadReplica>, RepositoryError> {
+        let state = self.state.read().await;
+        let mut replicas = state
+            .replicas
+            .values()
+            .filter(|replica| {
+                replica.organization_id == organization_id && replica.workload_id == workload_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        replicas.sort_by_key(|replica| (replica.ordinal, replica.id));
+        Ok(replicas)
+    }
+
     async fn find_workload_replica_member(
         &self,
         organization_id: OrganizationId,
@@ -444,6 +486,24 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             })
             .cloned()
             .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn list_workload_replica_members(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+    ) -> Result<Vec<WorkloadReplicaMember>, RepositoryError> {
+        let state = self.state.read().await;
+        let mut members = state
+            .replica_members
+            .values()
+            .filter(|member| {
+                member.organization_id == organization_id && member.replica_id == replica_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        members.sort_by_key(|member| (member.ordinal, member.id));
+        Ok(members)
     }
 
     async fn find_deployment_replica_binding(

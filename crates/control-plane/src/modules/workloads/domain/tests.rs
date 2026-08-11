@@ -126,6 +126,28 @@ fn managed_owner_and_effective_placement_are_closed_and_digest_bound() {
 }
 
 #[test]
+fn replica_set_policy_is_bounded_and_digest_bound() {
+    let scale_to_zero = EffectivePlacementPolicy::replica_set(3, 0).expect("scale-to-zero policy");
+    assert_eq!(scale_to_zero.generation(), 3);
+    assert_eq!(scale_to_zero.desired_replicas(), 0);
+    scale_to_zero
+        .validate()
+        .expect("valid scale-to-zero policy");
+
+    let largest = EffectivePlacementPolicy::replica_set(4, MAX_WORKLOAD_REPLICAS)
+        .expect("largest supported replica set");
+    largest.validate().expect("valid largest replica set");
+    assert!(EffectivePlacementPolicy::replica_set(0, 1).is_err());
+    assert!(EffectivePlacementPolicy::replica_set(1, MAX_WORKLOAD_REPLICAS + 1).is_err());
+
+    let mut corrupt = largest.document().expect("policy document");
+    corrupt["desiredReplicas"] = serde_json::json!(1);
+    let corrupt: EffectivePlacementPolicy =
+        serde_json::from_value(corrupt).expect("decode corrupt policy");
+    assert!(corrupt.validate().is_err());
+}
+
+#[test]
 fn canonical_replica_identity_survives_generation_advances_and_fences_node_changes() {
     let now = Utc::now();
     let workload = Workload::create(
@@ -150,6 +172,14 @@ fn canonical_replica_identity_survives_generation_advances_and_fences_node_chang
     let mut member =
         WorkloadReplicaMember::canonical(&workload, &replica).expect("canonical member");
     let member_id = member.id;
+    assert_eq!(replica.id.as_uuid(), workload.id.as_uuid());
+    assert_eq!(member.id.as_uuid(), workload.id.as_uuid());
+    assert_eq!(
+        replica
+            .runtime_unit_id(&first_revision)
+            .expect("legacy Runtime identity"),
+        first_revision.runtime_unit_id()
+    );
     let first_node = NodeId::new();
     member
         .place(first_node, now + Duration::seconds(1))
@@ -177,7 +207,73 @@ fn canonical_replica_identity_survives_generation_advances_and_fences_node_chang
     assert_eq!(replica.id, replica_id);
     assert_eq!(member.id, member_id);
     assert_eq!(replica.generation, 2);
+    assert_eq!(replica.revision_generation, 2);
     assert_eq!(replica.revision_id, second_revision.id);
+}
+
+#[test]
+fn replica_set_identity_and_retirement_are_generation_fenced() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("replica-set").expect("name"),
+        now,
+    );
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        template('a'),
+        now,
+    )
+    .expect("revision");
+    let mut replica = WorkloadReplica::for_ordinal(&workload, &revision, 1).expect("replica one");
+    let same_replica =
+        WorkloadReplica::for_ordinal(&workload, &revision, 1).expect("deterministic replica one");
+    let other_replica = WorkloadReplica::for_ordinal(&workload, &revision, 2).expect("replica two");
+    assert_eq!(replica.id, same_replica.id);
+    assert_ne!(replica.id, other_replica.id);
+    assert_ne!(replica.id.as_uuid(), workload.id.as_uuid());
+    assert!(replica
+        .runtime_unit_id(&revision)
+        .expect("replica Runtime identity")
+        .contains(&format!(":replica:{}:", replica.id)));
+
+    let mut member = WorkloadReplicaMember::for_replica(&workload, &replica).expect("member");
+    assert_eq!(member.id.as_uuid(), replica.id.as_uuid());
+    let node = NodeId::new();
+    member
+        .place(node, now + Duration::seconds(1))
+        .expect("place member");
+    replica
+        .request_retirement(now + Duration::seconds(2))
+        .expect("request retirement");
+    assert_eq!(replica.lifecycle, WorkloadReplicaLifecycle::Retiring);
+    assert!(replica
+        .complete_retirement(&member, now + Duration::seconds(3))
+        .is_err());
+    member
+        .release_after_fencing(node, now + Duration::seconds(3))
+        .expect("release after fencing");
+    replica
+        .complete_retirement(&member, now + Duration::seconds(4))
+        .expect("complete retirement");
+    let retired_generation = replica.generation;
+    assert_eq!(replica.lifecycle, WorkloadReplicaLifecycle::Retired);
+
+    replica
+        .reactivate(&revision, now + Duration::seconds(5))
+        .expect("reactivate same stable replica");
+    assert_eq!(replica.id, same_replica.id);
+    assert_eq!(replica.generation, retired_generation + 1);
+    assert_eq!(replica.lifecycle, WorkloadReplicaLifecycle::Desired);
+    member
+        .place(NodeId::new(), now + Duration::seconds(6))
+        .expect("place reactivated member");
+    assert_eq!(member.placement_generation, 2);
 }
 
 #[test]

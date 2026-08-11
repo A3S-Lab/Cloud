@@ -33,7 +33,8 @@ use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, DeploymentStatus,
     HttpHealthCheck, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
     ResourceClaimReservation, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
-    ServiceResources, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
+    ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec, WorkloadDesiredState,
+    WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{DeploymentRequested, WorkloadStopRequested};
 use crate::modules::workloads::domain::repositories::{
@@ -74,6 +75,58 @@ mod routed_update;
 mod support;
 
 use support::*;
+
+#[tokio::test]
+async fn replica_set_creation_materializes_stable_ordered_identities_once(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let requested_at = Utc::now();
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("replica-set-materialization")?,
+        requested_at,
+    );
+    let mut bundle = deployment_bundle(
+        workload.clone(),
+        1,
+        'a',
+        requested_at,
+        "replica-set-materialization",
+    )?;
+    bundle.control = WorkloadControlSpec::unmanaged_replica_set(1, 3)?;
+    let replay = bundle.clone();
+    let repository = InMemoryWorkloadRepository::new();
+
+    repository.create_deployment(bundle).await?;
+    assert!(repository.create_deployment(replay).await?.replayed);
+    let replicas = repository
+        .list_workload_replicas(organization_id, workload.id)
+        .await?;
+    assert_eq!(
+        replicas
+            .iter()
+            .map(|replica| replica.ordinal)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert!(replicas
+        .iter()
+        .all(|replica| replica.lifecycle == WorkloadReplicaLifecycle::Desired));
+    assert_eq!(replicas[0].id.as_uuid(), workload.id.as_uuid());
+    assert_ne!(replicas[1].id, replicas[2].id);
+    for replica in replicas {
+        let members = repository
+            .list_workload_replica_members(organization_id, replica.id)
+            .await?;
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].id.as_uuid(), replica.id.as_uuid());
+        assert_eq!(members[0].node_id, None);
+    }
+    Ok(())
+}
 
 fn standalone_placement_binding(
     organization_id: OrganizationId,

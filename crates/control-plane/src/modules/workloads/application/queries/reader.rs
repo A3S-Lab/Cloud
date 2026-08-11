@@ -2,10 +2,9 @@ use super::{DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResu
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, OrganizationId, RepositoryError, WorkloadId, WorkloadReplicaId,
-    WorkloadReplicaMemberId,
+    DeploymentId, OrganizationId, RepositoryError, WorkloadId,
 };
-use crate::modules::workloads::domain::entities::Workload;
+use crate::modules::workloads::domain::entities::{Workload, WorkloadReplicaLifecycle};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -95,38 +94,58 @@ impl WorkloadQueryReader {
                 })?;
             deployment_views.push(self.deployment_view(deployment, revision).await?);
         }
-        let replica_id = WorkloadReplicaId::from_uuid(workload.id.as_uuid());
-        let replica = self
+        let replicas = self
             .workloads
-            .find_workload_replica(organization_id, workload.id, replica_id)
+            .list_workload_replicas(organization_id, workload.id)
             .await?;
-        let member_id = WorkloadReplicaMemberId::from_uuid(workload.id.as_uuid());
-        let member = self
-            .workloads
-            .find_workload_replica_member(organization_id, replica_id, member_id)
-            .await?;
-        if replica.organization_id != workload.organization_id
-            || replica.project_id != workload.project_id
-            || replica.environment_id != workload.environment_id
-            || replica.workload_id != workload.id
-            || member.organization_id != workload.organization_id
-            || member.project_id != workload.project_id
-            || member.environment_id != workload.environment_id
-            || member.workload_id != workload.id
-            || member.replica_id != replica.id
-            || !revisions_by_id.contains_key(&replica.revision_id)
+        let desired_replicas = usize::try_from(control.spec.placement_policy.desired_replicas())
+            .map_err(|_| RepositoryError::Storage("desired replica count overflowed".into()))?;
+        if replicas
+            .iter()
+            .filter(|replica| replica.lifecycle == WorkloadReplicaLifecycle::Desired)
+            .count()
+            != desired_replicas
+            || replicas.iter().enumerate().any(|(index, replica)| {
+                replica.lifecycle == WorkloadReplicaLifecycle::Desired
+                    && usize::try_from(replica.ordinal).ok() != Some(index)
+            })
         {
             return Err(RepositoryError::Storage(
                 "Workload replica projection is inconsistent with its control state".into(),
             ));
         }
+        let mut replica_views = Vec::with_capacity(replicas.len());
+        for replica in replicas {
+            let members = self
+                .workloads
+                .list_workload_replica_members(organization_id, replica.id)
+                .await?;
+            if replica.organization_id != workload.organization_id
+                || replica.project_id != workload.project_id
+                || replica.environment_id != workload.environment_id
+                || replica.workload_id != workload.id
+                || members.len() != 1
+                || members.iter().any(|member| {
+                    member.organization_id != workload.organization_id
+                        || member.project_id != workload.project_id
+                        || member.environment_id != workload.environment_id
+                        || member.workload_id != workload.id
+                        || member.replica_id != replica.id
+                })
+                || revisions_by_id
+                    .get(&replica.revision_id)
+                    .is_none_or(|revision| revision.generation != replica.revision_generation)
+            {
+                return Err(RepositoryError::Storage(
+                    "Workload replica projection is inconsistent with its control state".into(),
+                ));
+            }
+            replica_views.push(WorkloadReplicaQueryResult { replica, members });
+        }
         Ok(WorkloadQueryResult {
             workload,
             control,
-            replicas: vec![WorkloadReplicaQueryResult {
-                replica,
-                members: vec![member],
-            }],
+            replicas: replica_views,
             revisions,
             deployments: deployment_views,
         })

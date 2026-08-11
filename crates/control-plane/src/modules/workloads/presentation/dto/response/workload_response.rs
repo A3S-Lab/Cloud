@@ -66,7 +66,9 @@ pub struct WorkloadReplicaResponse {
     pub id: Uuid,
     pub ordinal: u32,
     pub revision_id: Uuid,
+    pub revision_generation: u64,
     pub generation: u64,
+    pub lifecycle: String,
     pub members: Vec<WorkloadReplicaMemberResponse>,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
@@ -278,7 +280,9 @@ impl From<WorkloadReplicaQueryResult> for WorkloadReplicaResponse {
             id: replica.id.as_uuid(),
             ordinal: replica.ordinal,
             revision_id: replica.revision_id.as_uuid(),
+            revision_generation: replica.revision_generation,
             generation: replica.generation,
+            lifecycle: replica.lifecycle.as_str().into(),
             members: result
                 .members
                 .into_iter()

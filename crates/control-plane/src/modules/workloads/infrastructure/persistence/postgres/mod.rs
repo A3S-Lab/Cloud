@@ -123,6 +123,14 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
         replicas::find_replica(&self.executor, organization_id, workload_id, replica_id).await
     }
 
+    async fn list_workload_replicas(
+        &self,
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+    ) -> Result<Vec<WorkloadReplica>, RepositoryError> {
+        replicas::list_replicas(&self.executor, organization_id, workload_id).await
+    }
+
     async fn find_workload_replica_member(
         &self,
         organization_id: OrganizationId,
@@ -130,6 +138,14 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
         member_id: WorkloadReplicaMemberId,
     ) -> Result<WorkloadReplicaMember, RepositoryError> {
         replicas::find_member(&self.executor, organization_id, replica_id, member_id).await
+    }
+
+    async fn list_workload_replica_members(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+    ) -> Result<Vec<WorkloadReplicaMember>, RepositoryError> {
+        replicas::list_members(&self.executor, organization_id, replica_id).await
     }
 
     async fn find_deployment_replica_binding(

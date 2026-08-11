@@ -755,6 +755,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/085_plugin_registry_search_projection.sql"
             )),
         ),
+        Migration::new(
+            "086",
+            "stable multi-replica workload identity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/086_workload_replica_sets.sql"
+            )),
+        ),
     ]
 }
 

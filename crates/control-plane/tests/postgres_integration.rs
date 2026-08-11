@@ -855,7 +855,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 84);
+    assert_eq!(applied, 86);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -3541,6 +3541,14 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await
     .map_err(|error| format!("Workload persistence integration failed: {error}"))?;
+    workloads_support::exercise_replica_set(
+        &executor,
+        Uuid::parse_str(&organization_id)?,
+        Uuid::parse_str(&project_id)?,
+        Uuid::parse_str(&environment_id)?,
+    )
+    .await
+    .map_err(|error| format!("Workload replica-set persistence failed: {error}"))?;
     resource_claims_support::exercise_resource_claims(
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),

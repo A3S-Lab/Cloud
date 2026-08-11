@@ -14,7 +14,8 @@ use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
     IWorkloadRepository, OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess,
-    ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
+    ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec, WorkloadReplicaLifecycle,
+    WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -402,6 +403,71 @@ pub async fn exercise_workloads(
         candidate_deployment_id,
         node_id,
     })
+}
+
+pub async fn exercise_replica_set(
+    executor: &PostgresExecutor,
+    organization_uuid: Uuid,
+    project_uuid: Uuid,
+    environment_uuid: Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(organization_uuid);
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::from_uuid(project_uuid),
+        EnvironmentId::from_uuid(environment_uuid),
+        ResourceName::parse("PostgreSQL replica set")?,
+        Utc::now(),
+    );
+    let repository = PostgresWorkloadRepository::new(executor.clone());
+    let mut bundle = request(
+        workload.clone(),
+        1,
+        'd',
+        "postgres-replica-set",
+        workload.created_at,
+    )?;
+    bundle.control = WorkloadControlSpec::unmanaged_replica_set(1, 3)?;
+    let replay = bundle.clone();
+    repository.create_deployment(bundle).await?;
+    assert!(repository.create_deployment(replay).await?.replayed);
+
+    let replicas = repository
+        .list_workload_replicas(organization_id, workload.id)
+        .await?;
+    assert_eq!(
+        replicas
+            .iter()
+            .map(|replica| replica.ordinal)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert!(replicas.iter().all(|replica| {
+        replica.lifecycle == WorkloadReplicaLifecycle::Desired
+            && replica.revision_generation == 1
+            && replica.generation == 1
+    }));
+    assert_eq!(replicas[0].id.as_uuid(), workload.id.as_uuid());
+    assert_ne!(replicas[1].id, replicas[2].id);
+    for replica in &replicas {
+        let members = repository
+            .list_workload_replica_members(organization_id, replica.id)
+            .await?;
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].id.as_uuid(), replica.id.as_uuid());
+        assert_eq!(members[0].node_id, None);
+    }
+    let stored_count = Database::new(PostgresDialect, executor.clone())
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from workload_replicas where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and workload_id = ")
+                .bind(workload.id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(stored_count, 3);
+    Ok(())
 }
 
 pub(crate) fn request(
