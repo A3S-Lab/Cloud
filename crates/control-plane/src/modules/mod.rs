@@ -9,6 +9,7 @@ pub mod identity;
 pub mod integration_events;
 pub mod operations;
 mod platform;
+pub mod plugins;
 pub mod projects;
 pub mod search;
 pub mod secrets;

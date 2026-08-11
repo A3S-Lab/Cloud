@@ -505,7 +505,7 @@ cannot accept an AnySentry signal as a command, write production desired state,
 or add a training scheduler, model/Agent registry, dataset store, or deployment
 controller.
 
-### 3.16 Plugin assignments (planned U0)
+### 3.16 Plugin assignments (U0 in progress)
 
 Owns organization-scoped plugin registry enrollment and environment-scoped
 desired package assignments. It answers which exact signed package and named

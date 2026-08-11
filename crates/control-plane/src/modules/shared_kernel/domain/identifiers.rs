@@ -44,6 +44,7 @@ identifier!(MembershipId);
 identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(EnvironmentId);
+identifier!(PluginRegistryId);
 identifier!(OperationId);
 identifier!(NodeId);
 identifier!(EnrollmentTokenId);

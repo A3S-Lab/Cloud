@@ -1294,7 +1294,7 @@ lifecycle application service.
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
 | `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 at `19d8750`; the root compatibility lock and complete shared-manager composition still gate mutation |
-| `U0.2` | Planned | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
+| `U0.2` | Core persistence in progress | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
@@ -1314,6 +1314,15 @@ inspection command and returned as command-bound evidence; Cloud does not add
 another heartbeat capability schema or capability store. The root compatibility
 lock and production Manager composition remain open, so no registry,
 assignment, or user-facing plugin capability is claimed yet.
+
+The first `U0.2` backend slice defines the tenant-scoped `PluginRegistry`
+aggregate and exact content-addressed trust-root evidence, plus migration 083
+and A3S ORM repositories with canonical row decoding, tenant-scoped
+idempotency, Outbox, and audit writes. It deliberately stores no TUF metadata,
+catalog row, package target, or package byte. Enrollment application commands,
+immutable root-object admission, the published A3S Use public-network catalog
+adapter, tenant queries, and REST/client/CLI/Management MCP reads remain open;
+therefore `U0.2` is not yet user-visible or verified.
 
 The Cloud API has one assignment vocabulary and imports A3S Use's canonical
 `PluginDesiredState`; it does not define a parallel lifecycle enum. The sole

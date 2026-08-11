@@ -419,7 +419,7 @@ mutable repository configuration source.
 
 ### 6.4 A3S Use plugin management boundary
 
-`Plugins` is a deliberately thin bounded context planned under `U0`. It owns
+`Plugins` is a deliberately thin bounded context in progress under `U0`. It owns
 organization- and environment-scoped registry enrollment plus one desired
 assignment for each `(package_id, target host)` tuple. The initial assignment
 binds exactly one workspace scope, one exact signed catalog record, one exact

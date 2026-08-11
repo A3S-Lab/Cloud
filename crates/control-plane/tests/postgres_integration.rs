@@ -808,6 +808,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists node_enrollment_reservations cascade;
              drop table if exists nodes cascade;
              drop table if exists enrollment_tokens cascade;
+             drop table if exists plugin_registries cascade;
              drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
              drop table if exists identity_principals cascade;
@@ -854,7 +855,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 81);
+    assert_eq!(applied, 83);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -871,6 +872,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "human_tasks",
         "ontologies",
         "ontology_revisions",
+        "plugin_registries",
         "workflow_decisions",
         "workflow_human_task_inbox",
         "workflow_resume_outbox",

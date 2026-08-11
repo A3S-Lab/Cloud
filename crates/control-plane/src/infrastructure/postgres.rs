@@ -731,6 +731,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/082_plugin_host_enablement_plans.sql"
             )),
         ),
+        Migration::new(
+            "083",
+            "tenant plugin registry enrollment",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/083_plugin_registries.sql"
+            )),
+        ),
     ]
 }
 
