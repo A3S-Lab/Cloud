@@ -766,8 +766,11 @@ contexts' tables.
 - A registry belongs to one organization and binds one normalized HTTPS
   endpoint, exact TUF trust-root digest and version, immutable root-object
   reference, lifecycle state, and aggregate version. Trust-root bytes are
-  protocol evidence in the shared immutable-object infrastructure; they are
-  never parsed as product configuration or copied into a PluginAssignment.
+  protocol evidence admitted through one typed adapter over the shared
+  immutable-object infrastructure. Its size bound comes from A3S Use at host
+  composition; Cloud neither defines another root limit nor parses TUF. Root
+  bytes are never parsed as product configuration or copied into a
+  PluginAssignment.
 - Registry enrollment, trust-root rotation, suspension, and removal require a
   trusted human principal and the shared audit path. Management MCP agents
   cannot create trust authority.

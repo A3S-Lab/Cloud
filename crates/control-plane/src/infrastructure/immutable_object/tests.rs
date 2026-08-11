@@ -242,3 +242,23 @@ fn artifact_adapter_cannot_reimplement_low_level_object_storage() {
         );
     }
 }
+
+#[test]
+fn plugin_trust_root_adapter_cannot_reimplement_low_level_object_storage() {
+    let source =
+        include_str!("../../modules/plugins/infrastructure/plugin_trust_root_object_store.rs");
+    let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+    for forbidden in [
+        "object_store::",
+        "std::fs::",
+        "tokio::fs::",
+        "spawn_blocking",
+        "AmazonS3Builder",
+        "PutMode::Create",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "the typed plugin trust-root adapter must reuse ImmutableObjectClient; found {forbidden}"
+        );
+    }
+}

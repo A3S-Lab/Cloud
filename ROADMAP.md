@@ -1315,14 +1315,20 @@ another heartbeat capability schema or capability store. The root compatibility
 lock and production Manager composition remain open, so no registry,
 assignment, or user-facing plugin capability is claimed yet.
 
-The first `U0.2` backend slice defines the tenant-scoped `PluginRegistry`
+The first `U0.2` backend slices define the tenant-scoped `PluginRegistry`
 aggregate and exact content-addressed trust-root evidence, plus migration 083
 and A3S ORM repositories with canonical row decoding, tenant-scoped
-idempotency, Outbox, and audit writes. It deliberately stores no TUF metadata,
+idempotency, Outbox, and audit writes. A typed Plugins adapter now admits and
+reads exact root bytes through the shared immutable-object client, rejects
+empty, oversized, digest-mismatched, corrupt, and conflicting content, and
+replays identical content without another object-store implementation. Its
+constructor requires the owner-supplied size ceiling so production composition
+can pass the A3S Use Registry bound; Cloud defines no parallel limit. These
+slices deliberately store no TUF metadata,
 catalog row, package target, or package byte. Enrollment application commands,
-immutable root-object admission, the published A3S Use public-network catalog
-adapter, tenant queries, and REST/client/CLI/Management MCP reads remain open;
-therefore `U0.2` is not yet user-visible or verified.
+the published A3S Use public-network catalog adapter, tenant queries, and
+REST/client/CLI/Management MCP reads remain open; therefore `U0.2` is not yet
+user-visible or verified.
 
 The Cloud API has one assignment vocabulary and imports A3S Use's canonical
 `PluginDesiredState`; it does not define a parallel lifecycle enum. The sole
