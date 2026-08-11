@@ -1,3 +1,3 @@
 mod plugin_registry;
 
-pub use plugin_registry::PluginRegistry;
+pub use plugin_registry::{NewPluginRegistry, PluginRegistry};

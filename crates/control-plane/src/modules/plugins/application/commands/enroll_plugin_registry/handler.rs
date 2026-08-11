@@ -1,5 +1,5 @@
 use super::{EnrollPluginRegistry, EnrollPluginRegistryResult};
-use crate::modules::plugins::domain::entities::PluginRegistry;
+use crate::modules::plugins::domain::entities::{NewPluginRegistry, PluginRegistry};
 use crate::modules::plugins::domain::events::PluginRegistryEnrolled;
 use crate::modules::plugins::domain::repositories::{
     CreatePluginRegistryWrite, IPluginRegistryRepository,
@@ -75,16 +75,16 @@ impl CommandHandler<EnrollPluginRegistry> for EnrollPluginRegistryHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let registry = match PluginRegistry::enroll(
-                command.organization_id,
-                PluginRegistryId::new(),
+            let registry = match PluginRegistry::enroll(NewPluginRegistry {
+                organization_id: command.organization_id,
+                id: PluginRegistryId::new(),
                 name,
                 endpoint,
                 trust_root,
-                command.actor_id,
-                command.request_id,
-                command.requested_at,
-            ) {
+                actor_id: command.actor_id,
+                request_id: command.request_id,
+                enrolled_at: command.requested_at,
+            }) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };

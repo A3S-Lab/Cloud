@@ -128,7 +128,7 @@ impl IPluginRegistryRepository for InMemoryPluginRegistryRepository {
 #[cfg(test)]
 mod tests {
     use super::InMemoryPluginRegistryRepository;
-    use crate::modules::plugins::domain::entities::PluginRegistry;
+    use crate::modules::plugins::domain::entities::{NewPluginRegistry, PluginRegistry};
     use crate::modules::plugins::domain::events::PluginRegistryEnrolled;
     use crate::modules::plugins::domain::repositories::{
         CreatePluginRegistryWrite, IPluginRegistryRepository,
@@ -145,20 +145,21 @@ mod tests {
         actor_id: PrincipalId,
         request_id: Uuid,
     ) -> PluginRegistry {
-        PluginRegistry::enroll(
+        PluginRegistry::enroll(NewPluginRegistry {
             organization_id,
-            PluginRegistryId::new(),
-            ResourceName::parse("Official").expect("name"),
-            PluginRegistryEndpoint::parse("https://registry.example/a3s").expect("endpoint"),
-            PluginTrustRoot::from_digest(
+            id: PluginRegistryId::new(),
+            name: ResourceName::parse("Official").expect("name"),
+            endpoint: PluginRegistryEndpoint::parse("https://registry.example/a3s")
+                .expect("endpoint"),
+            trust_root: PluginTrustRoot::from_digest(
                 Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("digest"),
                 7,
             )
             .expect("trust root"),
             actor_id,
             request_id,
-            Utc::now(),
-        )
+            enrolled_at: Utc::now(),
+        })
         .expect("registry")
     }
 

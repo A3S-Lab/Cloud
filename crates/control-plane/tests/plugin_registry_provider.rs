@@ -1,4 +1,6 @@
-use a3s_cloud_control_plane::modules::plugins::domain::entities::PluginRegistry;
+use a3s_cloud_control_plane::modules::plugins::domain::entities::{
+    NewPluginRegistry, PluginRegistry,
+};
 use a3s_cloud_control_plane::modules::plugins::domain::services::{
     IPluginRegistryCatalog, IPluginTrustRootStore, PluginRegistryCatalogError,
     PluginTrustRootStoreError, PluginTrustRootWrite,
@@ -259,16 +261,16 @@ fn enrolled_registry(
     endpoint: &str,
     trust_root: PluginTrustRoot,
 ) -> Result<PluginRegistry, Box<dyn Error>> {
-    PluginRegistry::enroll(
+    PluginRegistry::enroll(NewPluginRegistry {
         organization_id,
-        registry_id,
-        ResourceName::parse(name).map_err(test_error)?,
-        PluginRegistryEndpoint::parse(endpoint).map_err(test_error)?,
+        id: registry_id,
+        name: ResourceName::parse(name).map_err(test_error)?,
+        endpoint: PluginRegistryEndpoint::parse(endpoint).map_err(test_error)?,
         trust_root,
-        PrincipalId::new(),
-        Uuid::now_v7(),
-        Utc::now(),
-    )
+        actor_id: PrincipalId::new(),
+        request_id: Uuid::now_v7(),
+        enrolled_at: Utc::now(),
+    })
     .map_err(|error| test_error(error).into())
 }
 

@@ -181,8 +181,8 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         let binding = DeploymentReplicaBinding::create(
             &request.deployment,
             &request.revision,
-            &replica,
-            &member,
+            replica,
+            member,
         )
         .map_err(RepositoryError::Conflict)?;
         if is_new_workload {

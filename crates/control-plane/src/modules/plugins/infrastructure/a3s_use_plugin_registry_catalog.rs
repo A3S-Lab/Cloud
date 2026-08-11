@@ -183,6 +183,7 @@ fn map_use_error(error: UseError) -> PluginRegistryCatalogError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::plugins::domain::entities::NewPluginRegistry;
     use crate::modules::plugins::domain::services::IPluginTrustRootStore;
     use crate::modules::plugins::domain::value_objects::{PluginRegistryEndpoint, PluginTrustRoot};
     use crate::modules::plugins::test_support::VALID_BOOTSTRAP_ROOT;
@@ -203,17 +204,17 @@ mod tests {
     }
 
     fn registry(root: PluginTrustRoot) -> PluginRegistry {
-        PluginRegistry::enroll(
-            OrganizationId::new(),
-            PluginRegistryId::new(),
-            ResourceName::parse("Official").expect("registry name"),
-            PluginRegistryEndpoint::parse("https://registry.example/plugins")
+        PluginRegistry::enroll(NewPluginRegistry {
+            organization_id: OrganizationId::new(),
+            id: PluginRegistryId::new(),
+            name: ResourceName::parse("Official").expect("registry name"),
+            endpoint: PluginRegistryEndpoint::parse("https://registry.example/plugins")
                 .expect("registry endpoint"),
-            root,
-            PrincipalId::new(),
-            Uuid::now_v7(),
-            Utc::now(),
-        )
+            trust_root: root,
+            actor_id: PrincipalId::new(),
+            request_id: Uuid::now_v7(),
+            enrolled_at: Utc::now(),
+        })
         .expect("plugin registry")
     }
 
