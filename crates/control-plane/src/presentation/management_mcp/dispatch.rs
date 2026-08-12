@@ -10,8 +10,9 @@ use super::forms::{
     PublishFormReleaseArguments, ReviseFormDraftArguments,
 };
 use super::identity::{
-    ChangeMembershipRoleArguments, CreateServiceMembershipArguments, MembershipArguments,
-    RevokeMembershipArguments,
+    ChangeMembershipRoleArguments, CreateResourceGrantArguments, CreateServiceMembershipArguments,
+    ListResourceGrantsArguments, MembershipArguments, ResourceGrantArguments,
+    RevokeMembershipArguments, RevokeResourceGrantArguments,
 };
 use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
@@ -135,6 +136,38 @@ pub async fn execute(
         ManagementTool::MembershipsRevoke => {
             let arguments = arguments::parse::<RevokeMembershipArguments>(arguments).ok()?;
             identity::revoke_membership(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ResourceGrantsList => {
+            let arguments = arguments::parse::<ListResourceGrantsArguments>(arguments).ok()?;
+            identity::list_resource_grants(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::ResourceGrantsGet => {
+            let arguments = arguments::parse::<ResourceGrantArguments>(arguments).ok()?;
+            identity::get_resource_grant(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::ResourceGrantsCreate => {
+            let arguments = arguments::parse::<CreateResourceGrantArguments>(arguments).ok()?;
+            identity::create_resource_grant(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ResourceGrantsRevoke => {
+            let arguments = arguments::parse::<RevokeResourceGrantArguments>(arguments).ok()?;
+            identity::revoke_resource_grant(
                 command_bus,
                 organization_id,
                 actor_principal_id,

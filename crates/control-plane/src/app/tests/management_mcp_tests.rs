@@ -437,6 +437,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_service_memberships_create",
             "a3s_cloud_memberships_change_role",
             "a3s_cloud_memberships_revoke",
+            "a3s_cloud_resource_grants_list",
+            "a3s_cloud_resource_grants_get",
+            "a3s_cloud_resource_grants_create",
+            "a3s_cloud_resource_grants_revoke",
             "a3s_cloud_projects_create",
             "a3s_cloud_projects_list",
             "a3s_cloud_forms_create",
@@ -511,6 +515,18 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     assert_eq!(
         create_form["inputSchema"]["properties"]["document"]["x-a3s-max-canonical-bytes"],
         4 * 1024 * 1024
+    );
+    let create_resource_grant =
+        listed_tool(&administrator_tools, "a3s_cloud_resource_grants_create")?;
+    assert_eq!(
+        create_resource_grant["inputSchema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        create_resource_grant["inputSchema"]["properties"]["scope"]["oneOf"]
+            .as_array()
+            .map(Vec::len),
+        Some(3)
     );
 
     let hidden_call = app
@@ -797,6 +813,169 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
         3
     );
     assert!(revoked_body["result"]["structuredContent"]["data"]["revokedAt"].is_string());
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_resource_grant_commands_queries_and_idempotency() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    bootstrap_organization(&app, "mcp-resource-grants", "Acme").await?;
+
+    let membership = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_service_memberships_create",
+                json!({
+                    "name": "Restricted deployment observer",
+                    "role": "restricted",
+                    "idempotencyKey": "mcp-resource-grant-membership"
+                }),
+            ),
+        ))
+        .await?;
+    let membership = response_json(&membership)?;
+    let membership_id = membership["result"]["structuredContent"]["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP membership response has no ID".into()))?;
+    let project_id = Uuid::now_v7();
+    let create_arguments = json!({
+        "membershipId": membership_id,
+        "scope": {"kind": "project", "projectId": project_id},
+        "idempotencyKey": "mcp-resource-grant-create"
+    });
+
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                2,
+                "a3s_cloud_resource_grants_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        created["result"]["structuredContent"]["data"]["scope"],
+        json!({"kind": "project", "projectId": project_id})
+    );
+    assert_eq!(
+        created["result"]["structuredContent"]["data"]["replayed"],
+        false
+    );
+    let resource_grant_id = created["result"]["structuredContent"]["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Resource Grant response has no ID".into()))?
+        .to_owned();
+
+    let replayed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(3, "a3s_cloud_resource_grants_create", create_arguments),
+        ))
+        .await?;
+    let replayed = response_json(&replayed)?;
+    assert_eq!(replayed["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replayed["result"]["structuredContent"]["data"]["id"],
+        resource_grant_id
+    );
+    assert_eq!(
+        replayed["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_resource_grants_list",
+                json!({"membershipId": membership_id}),
+            ),
+        ))
+        .await?;
+    let listed = response_json(&listed)?;
+    assert_eq!(
+        listed["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_resource_grants_get",
+                json!({"resourceGrantId": resource_grant_id}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&fetched)?["result"]["structuredContent"]["data"]["membershipId"],
+        membership_id
+    );
+
+    let revoke_arguments = json!({
+        "resourceGrantId": resource_grant_id,
+        "expectedVersion": 1,
+        "idempotencyKey": "mcp-resource-grant-revoke"
+    });
+    let revoked = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_resource_grants_revoke",
+                revoke_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let revoked = response_json(&revoked)?;
+    assert_eq!(revoked["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        revoked["result"]["structuredContent"]["data"]["aggregateVersion"],
+        2
+    );
+    assert!(revoked["result"]["structuredContent"]["data"]["revokedAt"].is_string());
+
+    let replayed_revoke = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(7, "a3s_cloud_resource_grants_revoke", revoke_arguments),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&replayed_revoke)?["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let malformed_scope = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                8,
+                "a3s_cloud_resource_grants_create",
+                json!({
+                    "membershipId": membership_id,
+                    "scope": {
+                        "kind": "project",
+                        "projectId": project_id,
+                        "nodeId": Uuid::now_v7()
+                    },
+                    "idempotencyKey": "mcp-resource-grant-malformed"
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(response_json(&malformed_scope)?["error"]["code"], -32602);
     Ok(())
 }
 

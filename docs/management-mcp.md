@@ -109,6 +109,10 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_service_memberships_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_change_role` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_resource_grants_list` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_ontologies_list` | Query | None |
 | `a3s_cloud_ontologies_get` | Query | None |
 | `a3s_cloud_ontology_revisions_list` | Query | None |

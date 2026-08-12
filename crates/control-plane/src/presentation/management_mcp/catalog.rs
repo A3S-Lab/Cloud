@@ -31,6 +31,10 @@ pub const MEMBERSHIPS_GET: &str = "a3s_cloud_memberships_get";
 pub const SERVICE_MEMBERSHIPS_CREATE: &str = "a3s_cloud_service_memberships_create";
 pub const MEMBERSHIPS_CHANGE_ROLE: &str = "a3s_cloud_memberships_change_role";
 pub const MEMBERSHIPS_REVOKE: &str = "a3s_cloud_memberships_revoke";
+pub const RESOURCE_GRANTS_LIST: &str = "a3s_cloud_resource_grants_list";
+pub const RESOURCE_GRANTS_GET: &str = "a3s_cloud_resource_grants_get";
+pub const RESOURCE_GRANTS_CREATE: &str = "a3s_cloud_resource_grants_create";
+pub const RESOURCE_GRANTS_REVOKE: &str = "a3s_cloud_resource_grants_revoke";
 pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
@@ -84,6 +88,10 @@ pub enum ManagementTool {
     ServiceMembershipsCreate,
     MembershipsChangeRole,
     MembershipsRevoke,
+    ResourceGrantsList,
+    ResourceGrantsGet,
+    ResourceGrantsCreate,
+    ResourceGrantsRevoke,
     ProjectsCreate,
     ProjectsList,
     FormsCreate,
@@ -156,7 +164,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 65] = [
+    const ALL: [Self; 69] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -164,6 +172,10 @@ impl ManagementTool {
         Self::ServiceMembershipsCreate,
         Self::MembershipsChangeRole,
         Self::MembershipsRevoke,
+        Self::ResourceGrantsList,
+        Self::ResourceGrantsGet,
+        Self::ResourceGrantsCreate,
+        Self::ResourceGrantsRevoke,
         Self::ProjectsCreate,
         Self::ProjectsList,
         Self::FormsCreate,
@@ -257,6 +269,10 @@ impl ManagementTool {
             Self::ServiceMembershipsCreate => SERVICE_MEMBERSHIPS_CREATE,
             Self::MembershipsChangeRole => MEMBERSHIPS_CHANGE_ROLE,
             Self::MembershipsRevoke => MEMBERSHIPS_REVOKE,
+            Self::ResourceGrantsList => RESOURCE_GRANTS_LIST,
+            Self::ResourceGrantsGet => RESOURCE_GRANTS_GET,
+            Self::ResourceGrantsCreate => RESOURCE_GRANTS_CREATE,
+            Self::ResourceGrantsRevoke => RESOURCE_GRANTS_REVOKE,
             Self::ProjectsCreate => PROJECTS_CREATE,
             Self::ProjectsList => PROJECTS_LIST,
             Self::FormsCreate => FORMS_CREATE,
@@ -325,7 +341,11 @@ impl ManagementTool {
             | Self::MembershipsGet
             | Self::ServiceMembershipsCreate
             | Self::MembershipsChangeRole
-            | Self::MembershipsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
+            | Self::MembershipsRevoke
+            | Self::ResourceGrantsList
+            | Self::ResourceGrantsGet
+            | Self::ResourceGrantsCreate
+            | Self::ResourceGrantsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
             Self::FormsCreate | Self::FormsRevise | Self::FormReleasesPublish => {
                 Some(ApiTokenScope::FORM_WRITE)
@@ -394,6 +414,10 @@ impl ManagementTool {
                 | Self::ServiceMembershipsCreate
                 | Self::MembershipsChangeRole
                 | Self::MembershipsRevoke
+                | Self::ResourceGrantsList
+                | Self::ResourceGrantsGet
+                | Self::ResourceGrantsCreate
+                | Self::ResourceGrantsRevoke
         )
     }
 
@@ -489,6 +513,30 @@ impl ManagementTool {
                 "Revoke membership",
                 "Revoke one membership with last-owner protection, optimistic concurrency, and explicit idempotency.",
                 revoke_membership_schema(),
+                false,
+            ),
+            Self::ResourceGrantsList => (
+                "List Resource Grants",
+                "List Resource Grant history for one restricted organization membership.",
+                uuid_id_schema("membershipId"),
+                true,
+            ),
+            Self::ResourceGrantsGet => (
+                "Get Resource Grant",
+                "Get one Resource Grant from the shared Cloud identity authority.",
+                uuid_id_schema("resourceGrantId"),
+                true,
+            ),
+            Self::ResourceGrantsCreate => (
+                "Create Resource Grant",
+                "Grant one closed project, environment, or node scope to a restricted membership with explicit idempotency.",
+                create_resource_grant_schema(),
+                false,
+            ),
+            Self::ResourceGrantsRevoke => (
+                "Revoke Resource Grant",
+                "Revoke one Resource Grant with optimistic concurrency and explicit idempotency.",
+                revoke_resource_grant_schema(),
                 false,
             ),
             Self::ProjectsCreate => (
@@ -843,6 +891,7 @@ impl ManagementTool {
         let destructive = matches!(
             self,
             Self::MembershipsRevoke
+                | Self::ResourceGrantsRevoke
                 | Self::WorkloadsStop
                 | Self::DeploymentsCancel
                 | Self::BuildRunsCancel
@@ -1405,6 +1454,67 @@ fn revoke_membership_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["membershipId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn resource_grant_scope_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["project"]},
+                    "projectId": {"type": "string", "format": "uuid"}
+                },
+                "required": ["kind", "projectId"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["environment"]},
+                    "projectId": {"type": "string", "format": "uuid"},
+                    "environmentId": {"type": "string", "format": "uuid"}
+                },
+                "required": ["kind", "projectId", "environmentId"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["node"]},
+                    "nodeId": {"type": "string", "format": "uuid"}
+                },
+                "required": ["kind", "nodeId"],
+                "additionalProperties": false
+            }
+        ]
+    })
+}
+
+fn create_resource_grant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "membershipId": {"type": "string", "format": "uuid"},
+            "scope": resource_grant_scope_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["membershipId", "scope", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_resource_grant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "resourceGrantId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["resourceGrantId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

@@ -1,10 +1,17 @@
 use super::arguments::EmptyArguments;
 use super::tool_result;
-use crate::modules::identity::presentation::{MembershipMutationResponse, MembershipResponse};
-use crate::modules::identity::{
-    ChangeMembershipRole, CreateServiceMembership, GetMembership, ListMemberships, RevokeMembership,
+use crate::modules::identity::presentation::{
+    MembershipMutationResponse, MembershipResponse, ResourceGrantMutationResponse,
+    ResourceGrantResponse, ResourceGrantScopeDto,
 };
-use crate::modules::shared_kernel::domain::{MembershipId, OrganizationId, PrincipalId};
+use crate::modules::identity::{
+    ChangeMembershipRole, CreateResourceGrant, CreateServiceMembership, GetMembership,
+    GetResourceGrant, ListMemberships, ListResourceGrants, RevokeMembership, RevokeResourceGrant,
+};
+use crate::modules::shared_kernel::application::ApplicationError;
+use crate::modules::shared_kernel::domain::{
+    MembershipId, OrganizationId, PrincipalId, ResourceGrantId,
+};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -38,6 +45,34 @@ pub struct ChangeMembershipRoleArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevokeMembershipArguments {
     membership_id: Uuid,
+    expected_version: u64,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListResourceGrantsArguments {
+    membership_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResourceGrantArguments {
+    resource_grant_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateResourceGrantArguments {
+    membership_id: Uuid,
+    scope: ResourceGrantScopeDto,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeResourceGrantArguments {
+    resource_grant_id: Uuid,
     expected_version: u64,
     idempotency_key: String,
 }
@@ -159,6 +194,114 @@ pub async fn revoke_membership(
     {
         Ok(result) => {
             tool_result::success(200, MembershipMutationResponse::from(result), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_resource_grants(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListResourceGrantsArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListResourceGrants {
+            organization_id,
+            membership_id: Some(MembershipId::from_uuid(arguments.membership_id)),
+        })
+        .await?
+    {
+        Ok(grants) => tool_result::success(
+            200,
+            grants
+                .into_iter()
+                .map(ResourceGrantResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_resource_grant(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ResourceGrantArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetResourceGrant {
+            organization_id,
+            resource_grant_id: ResourceGrantId::from_uuid(arguments.resource_grant_id),
+        })
+        .await?
+    {
+        Ok(grant) => tool_result::success(200, ResourceGrantResponse::from(grant), request_id),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_resource_grant(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    actor_is_platform_admin: bool,
+    arguments: CreateResourceGrantArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    let scope = match arguments.scope.try_into() {
+        Ok(scope) => scope,
+        Err(error) => {
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id)
+        }
+    };
+    match bus
+        .execute(CreateResourceGrant {
+            organization_id,
+            membership_id: MembershipId::from_uuid(arguments.membership_id),
+            scope,
+            actor_principal_id,
+            actor_is_platform_admin,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                ResourceGrantMutationResponse::from(result),
+                request_id,
+            )
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_resource_grant(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    actor_is_platform_admin: bool,
+    arguments: RevokeResourceGrantArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokeResourceGrant {
+            organization_id,
+            resource_grant_id: ResourceGrantId::from_uuid(arguments.resource_grant_id),
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            actor_is_platform_admin,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            tool_result::success(200, ResourceGrantMutationResponse::from(result), request_id)
         }
         Err(error) => tool_result::application_error(error, request_id),
     }
