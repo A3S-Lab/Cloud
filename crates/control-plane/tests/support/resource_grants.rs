@@ -1,4 +1,7 @@
 use super::*;
+use a3s_cloud_control_plane::modules::executions::{
+    ExecutionReconciler, PostgresExecutionRepository,
+};
 use a3s_cloud_control_plane::ControlPlane;
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use std::collections::BTreeSet;
@@ -16,7 +19,7 @@ pub async fn exercise_resource_grant_matrix(
     postgres_url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let executor = connect_and_migrate(&postgres_url, 8).await?;
-    let database = Database::new(PostgresDialect, executor);
+    let database = Database::new(PostgresDialect, executor.clone());
     let _postgres_url = EnvironmentOverride::set(POSTGRES_URL_ENV, &postgres_url);
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_TOKEN_ENV, BOOTSTRAP_TOKEN_VALUE);
     let state = tempfile::tempdir()?;
@@ -92,6 +95,19 @@ pub async fn exercise_resource_grant_matrix(
         "rg3:execution-denied",
     )
     .await?;
+    let operation_reconciliation = ExecutionReconciler::new(
+        Arc::new(PostgresExecutionRepository::new(executor.clone())),
+        Arc::new(PostgresOperationRepository::new(executor.clone())),
+    )
+    .run_once(100)
+    .await?;
+    assert_eq!(operation_reconciliation.started, 2);
+    assert_eq!(operation_reconciliation.replayed, 0);
+    assert!(
+        operation_reconciliation.failures.is_empty(),
+        "Execution Operation reconciliation failed: {:?}",
+        operation_reconciliation.failures
+    );
     let granted_node = enroll_node(&app, &organization, "granted", 'd').await?;
     let denied_node = enroll_node(&app, &organization, "denied", 'e').await?;
 
@@ -103,6 +119,13 @@ pub async fn exercise_resource_grant_matrix(
         format!("/api/v1/organizations/{organization}/executions/{granted_execution}");
     let denied_execution_path =
         format!("/api/v1/organizations/{organization}/executions/{denied_execution}");
+
+    wait_for_operation_subjects(
+        &app,
+        &operation_collection,
+        [&granted_execution, &denied_execution],
+    )
+    .await?;
 
     for (role, token) in [
         ("owner", ADMIN_TOKEN),
@@ -866,6 +889,37 @@ fn collection_values(
         .iter()
         .map(|item| required_string(&item[field], field))
         .collect()
+}
+
+async fn wait_for_operation_subjects<const N: usize>(
+    app: &ControlPlane,
+    collection: &str,
+    expected: [&String; N],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let expected = expected.into_iter().cloned().collect::<BTreeSet<_>>();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let response = app.call(get_as(collection, ADMIN_TOKEN)).await?;
+        if response.status() != 200 {
+            return Err(std::io::Error::other(format!(
+                "Operation readiness collection returned {}",
+                response.status()
+            ))
+            .into());
+        }
+        let body = response_json(&response)?;
+        let observed = collection_values(&body["data"], "subjectId")?;
+        if expected.is_subset(&observed) {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(std::io::Error::other(format!(
+                "Operation reconciliation did not expose subjects {expected:?}; observed {observed:?}"
+            ))
+            .into());
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
 }
 
 async fn assert_error_equivalent(
