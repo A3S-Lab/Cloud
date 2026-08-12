@@ -1734,6 +1734,15 @@ node.
   evaluator. Unknown, missing, or denied subjects are hidden, workflow input is
   never treated as ownership evidence, and no Operation or Identity ownership
   table is added.
+  The dedicated `C0.3-RG3` PostgreSQL gate now builds one production
+  application and runs the same owner/admin/member/restricted matrix through
+  REST, Management MCP, and Operation SSE reconnects. It covers project
+  ancestry, exact environment and node grants, collection filtering, direct
+  and owner-resolved commands, guessed-ID equivalence, tenant isolation,
+  next-request revocation, replay authorization, and exact Grant,
+  idempotency, Outbox, and audit rows. The gate is implemented and compiled;
+  `C0.3` remains unverified until that conditional test succeeds against real
+  PostgreSQL via `A3S_CLOUD_TEST_POSTGRES_URL`.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store

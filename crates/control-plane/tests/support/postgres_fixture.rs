@@ -1,5 +1,6 @@
 use super::*;
 use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 
 pub(super) const URL_ENV: &str = "A3S_CLOUD_INTEGRATION_POSTGRES_URL";
 pub(super) const BOOTSTRAP_ENV: &str = "A3S_CLOUD_INTEGRATION_BOOTSTRAP_TOKEN";
@@ -378,4 +379,22 @@ pub(super) fn config() -> CloudConfig {
             vault_timeout_ms: 5_000,
         },
     }
+}
+
+pub(super) fn configure_ephemeral_application_state(
+    config: &mut CloudConfig,
+    root: &Path,
+) -> PathBuf {
+    config.security.state_dir = root.display().to_string();
+    config.node_control.certificate_file =
+        root.join("node-control/server.pem").display().to_string();
+    config.node_control.private_key_file = root
+        .join("node-control/server-key.pem")
+        .display()
+        .to_string();
+    config.node_control.client_ca_file = root.join("node-ca/ca.pem").display().to_string();
+    let asset_repository_directory = root.join("asset-repositories");
+    config.assets.repository_dir = asset_repository_directory.display().to_string();
+    config.artifacts.store_dir = root.join("immutable-objects").display().to_string();
+    asset_repository_directory
 }

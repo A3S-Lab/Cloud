@@ -90,6 +90,8 @@ mod plugins_support;
 mod postgres_fixture;
 #[path = "support/resource_claims.rs"]
 mod resource_claims_support;
+#[path = "support/resource_grants.rs"]
+mod resource_grants_support;
 #[path = "support/secret_rotation_restart.rs"]
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
@@ -258,6 +260,19 @@ async fn postgres_plugin_registry_is_atomic_tenant_scoped_and_searchable() {
     )
     .await
     .expect("PostgreSQL Plugin Registry persistence gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_resource_grants_enforce_the_cross_surface_authorization_matrix() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        resource_grants_support::exercise_resource_grant_matrix,
+    )
+    .await
+    .expect("PostgreSQL Resource Grant cross-surface authorization gate");
 }
 
 async fn exercise_postgres_replica_set_foundation(
@@ -1848,29 +1863,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         EnvironmentOverride::set(GITHUB_WEBHOOK_ENV, GITHUB_WEBHOOK_SECRET);
     let security_directory = tempfile::tempdir()?;
     let mut application_config = config();
-    application_config.security.state_dir = security_directory.path().display().to_string();
-    application_config.node_control.certificate_file = security_directory
-        .path()
-        .join("node-control/server.pem")
-        .display()
-        .to_string();
-    application_config.node_control.private_key_file = security_directory
-        .path()
-        .join("node-control/server-key.pem")
-        .display()
-        .to_string();
-    application_config.node_control.client_ca_file = security_directory
-        .path()
-        .join("node-ca/ca.pem")
-        .display()
-        .to_string();
-    let asset_repository_directory = security_directory.path().join("asset-repositories");
-    application_config.assets.repository_dir = asset_repository_directory.display().to_string();
-    application_config.artifacts.store_dir = security_directory
-        .path()
-        .join("immutable-objects")
-        .display()
-        .to_string();
+    let asset_repository_directory =
+        configure_ephemeral_application_state(&mut application_config, security_directory.path());
     let app = if std::env::var("A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER").as_deref() == Ok("1") {
         build_application_with_source_resolver(
             application_config,
