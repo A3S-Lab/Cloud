@@ -1677,6 +1677,16 @@ node.
   inferred from organization ownership. OIDC links and invitations must resolve
   the existing Principal/Membership authority rather than introduce
   provider-owned roles.
+- Close indirect Resource Grant authorization before adding any restricted-role
+  product surface. The context owning an Asset, Form, Workflow, Workload,
+  Deployment, BuildRun, Route, Secret, Agent execution, or Operation resolves
+  its existing project/environment/node identity through its current repository
+  and passes that canonical scope to the shared `ResourceAccessEvaluator`.
+  Collection queries receive the evaluator and filter at the authoritative
+  query boundary. Do not add an Identity cross-context ownership table, a
+  context-local grant evaluator, presentation-only filtering, or an MCP-only
+  authorization result. Denied and missing indirect IDs must have the same
+  response shape and observable behavior.
 - Add one tenant-authorized global-search command/query and REST/client/CLI/MCP
   interface over registered resource projections. Retain grant-derived console
   modes for consumers, project stewards, and platform operators as a deferred

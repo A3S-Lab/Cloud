@@ -159,11 +159,11 @@ interaction-mode FormRelease and Flow hook authority, creates and activates the
 task, and resumes the same hook from the immutable decision with retry,
 lease-takeover, conflict, and commit-before-ack recovery. A real PostgreSQL plus
 A3S Flow test covers concurrent coordinators, tenant scope, atomic
-submission/decision storage, replay, and receipt evidence. REST `1.15.0`, the
+submission/decision storage, replay, and receipt evidence. REST `1.16.0`, the
 maintained client, CLI, and seven additional Management MCP tools continue to
 expose start, cancel, list, get, wait, output, and history through the same CQRS
 handlers. Public protected submission and HumanTask commands/APIs/client/CLI/
-MCP, Resource Grant evaluation, expiry/cancellation coordination,
+MCP and their Resource Grant enforcement, expiry/cancellation coordination,
 human/service/finite-task dispatch beyond the internal coordinator, typed
 capability steps, compensation, expanded cross-surface evidence, and public
 Workflow availability remain open.

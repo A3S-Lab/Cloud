@@ -847,6 +847,21 @@ to the same Principal and Membership authority. Attribution, notifications,
 security investigation, audit queries, and role-focused frontend projections
 remain planned, so `C0.3` is in progress rather than verified.
 
+Resource Grant closure is deliberately staged so later contexts do not create
+their own RBAC or resource-ownership registry:
+
+| Gate | State | Required outcome |
+| --- | --- | --- |
+| `C0.3-RG1` | Implemented; real PostgreSQL rerun pending | Identity owns one Membership-bound grant lifecycle for closed project, environment, and node scopes. Authentication loads active grants on every request; the shared evaluator protects directly scoped routes and filters Project, Environment, Node, and Search collections. REST/OpenAPI, client, CLI, and Management MCP reuse the same commands and queries. |
+| `C0.3-RG2` | Next prerequisite | Every owning context resolves an indirect resource such as an Asset, Form, Workflow, Workload, Deployment, BuildRun, Route, Secret, Agent execution, or Operation to its already-authoritative project/environment/node identity, then calls the shared evaluator. Missing and denied identities remain indistinguishable. No Identity-owned cross-context ownership table, presentation-only filter, or context-local grant evaluator is allowed. |
+| `C0.3-RG3` | Pending | Server-side collection filtering and direct/indirect command authorization pass one cross-surface matrix for owner/admin/member/restricted roles, project ancestry, exact environment/node grants, revocation on the next request and stream reconnect, guessed IDs, tenant isolation, idempotency, Outbox, and audit against real PostgreSQL. Only this gate can mark the Resource Grant slice verified. |
+
+`C0.3-RG2` is a hard prerequisite for exposing protected HumanTask submission,
+project-scoped Asset/Workflow automation to restricted principals, scoped
+operational dashboards, or any new role-focused frontend. Each owning module
+may expose a small existing-repository query that returns its canonical scope;
+it must not persist a second scope index or copy the grant lifecycle.
+
 ### 5.4 `A0`: Agent, MCP, and Skill releases
 
 | Sub-gate | State | Outcome |
