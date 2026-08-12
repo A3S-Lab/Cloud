@@ -3069,7 +3069,7 @@ reconciliation, process death, and provider recovery.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
-| `H0.3` | Planned | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
+| `H0.3` | Foundation in progress | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
@@ -3249,6 +3249,32 @@ restart recovery. These provider, failure, recovery, and PostgreSQL gates close
 `H0.2` and deliver the target-identity slice of `H0.3`. Independently placed
 multi-node Gateways remain `H0.3`, and production control-plane/Gateway HA
 remains `H0.4`.
+
+The active `H0.3` foundation makes desired replica count durable and
+executable without introducing another scheduler. Migration 086 extends the
+placement policy to zero through one hundred desired replicas, records each
+replica's exact revision generation and desired/retiring/retired lifecycle,
+and permits multiple replica-bound Deployments for one Workload revision. An
+atomic, versioned reconfiguration preserves stable ordinal identities, creates
+the missing desired replicas and members, marks scaled-down replicas retiring,
+and emits one replay-safe fact. A deterministic materializer then creates at
+most one Deployment and one workflow operation for each desired replica
+generation. Runtime reconciliation, commands, Claims, and cleanup use the
+replica-specific Unit and generation instead of aliasing every member to the
+canonical revision Runtime identity.
+
+Edge target resolution now follows each active Deployment binding through the
+current desired replica and member, accepts only exact fresh healthy Runtime
+evidence, and publishes the replica-specific Unit and generation. Retiring and
+stale replica generations are excluded even while their historical Deployment
+is still active. The focused multi-node flow proves three independently placed
+replica identities, a two-target healthy projection, exact replica cleanup,
+and immediate route contraction during a three-to-one scale-down. This remains
+a foundation rather than the `H0.3` exit: explicit anti-affinity policy,
+retirement completion and resource release, drain/evacuation, maintenance and
+node-pool policy, placement groups and gang claims, bounded rolling updates,
+independent Gateway placement, and provider-neutral private networking remain
+open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,

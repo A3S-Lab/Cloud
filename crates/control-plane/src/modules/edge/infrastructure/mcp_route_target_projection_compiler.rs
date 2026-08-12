@@ -170,7 +170,6 @@ fn validate_candidates(
     profile: &McpServiceProfile,
     candidates: &[McpRouteTargetCandidate],
 ) -> Result<(), String> {
-    let expected_unit_id = revision.runtime_unit_id();
     let mut nodes = HashSet::new();
     let mut priorities = BTreeSet::new();
     let mut weights = BTreeMap::<u32, u64>::new();
@@ -183,8 +182,8 @@ fn validate_candidates(
             || !nodes.insert(resolved.node_id)
             || resolved.workload_id != revision.workload_id
             || target.workload_revision_id != revision.id
-            || target.runtime_unit_id != expected_unit_id
-            || target.runtime_generation != revision.generation
+            || target.has_canonical_runtime_identity(revision.workload_id)
+                && target.runtime_generation != revision.generation
             || target.port_name.as_str() != profile.spec().runtime_port
         {
             return Err(
@@ -415,6 +414,32 @@ pub(super) mod tests {
         }
     }
 
+    fn replica_target(
+        fixture: &Fixture,
+        node_id: NodeId,
+        replica_id: Uuid,
+        generation: u64,
+        port: u16,
+    ) -> ResolvedRouteTarget {
+        ResolvedRouteTarget {
+            workload_id: fixture.revision.workload_id,
+            node_id,
+            target: RouteTarget::new(
+                fixture.revision.workload_id,
+                fixture.revision.id,
+                format!(
+                    "workload:{}:replica:{replica_id}:revision:{}",
+                    fixture.revision.workload_id, fixture.revision.id
+                ),
+                generation,
+                RoutePortName::parse("mcp").expect("port name"),
+                UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}")).expect("endpoint"),
+                now(),
+            )
+            .expect("replica route target"),
+        }
+    }
+
     #[test]
     fn compiles_deterministic_release_bound_runtime_targets() {
         let fixture = fixture();
@@ -478,6 +503,46 @@ pub(super) mod tests {
     }
 
     #[test]
+    fn compiles_distinct_replica_runtime_identities_for_one_revision() {
+        let fixture = fixture();
+        let first_node = NodeId::from_uuid(uuid("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"));
+        let second_node = NodeId::from_uuid(uuid("cccccccc-cccc-4ccc-8ccc-cccccccccccc"));
+        let replica_id = uuid("dddddddd-dddd-4ddd-8ddd-dddddddddddd");
+        let canonical = McpRouteTargetCandidate::new(target(&fixture, first_node, 49152), 0, 1)
+            .expect("canonical target");
+        let replica = McpRouteTargetCandidate::new(
+            replica_target(&fixture, second_node, replica_id, 11, 49153),
+            0,
+            1,
+        )
+        .expect("replica target");
+
+        let projection = McpRouteTargetProjectionCompiler
+            .compile(
+                &fixture.policy,
+                &fixture.profile,
+                &fixture.revision,
+                "mcp",
+                vec![replica, canonical],
+            )
+            .expect("replica projection");
+
+        assert_eq!(projection.targets.len(), 2);
+        assert_eq!(
+            projection.targets[0].generation,
+            fixture.revision.generation
+        );
+        assert_eq!(projection.targets[1].generation, 11);
+        assert!(projection.targets[1]
+            .unit_id
+            .contains(&format!("replica:{replica_id}:revision")));
+        assert_ne!(
+            projection.targets[0].target_id,
+            projection.targets[1].target_id
+        );
+    }
+
+    #[test]
     fn rejects_unbound_or_mismatched_runtime_evidence() {
         let fixture = fixture();
         let node_id = NodeId::new();
@@ -503,15 +568,30 @@ pub(super) mod tests {
             .expect_err("unbound revision")
             .contains("release-bound"));
 
-        let mut wrong_generation = candidate.clone();
-        wrong_generation.resolved.target.runtime_generation += 1;
+        let mut malformed_unit = candidate.clone();
+        malformed_unit.resolved.target.runtime_unit_id = "free-form-runtime-unit".into();
         assert!(McpRouteTargetProjectionCompiler
             .compile(
                 &fixture.policy,
                 &fixture.profile,
                 &fixture.revision,
                 "mcp",
-                vec![wrong_generation],
+                vec![malformed_unit],
+            )
+            .is_err());
+
+        let mut wrong_canonical_generation = candidate.clone();
+        wrong_canonical_generation
+            .resolved
+            .target
+            .runtime_generation += 1;
+        assert!(McpRouteTargetProjectionCompiler
+            .compile(
+                &fixture.policy,
+                &fixture.profile,
+                &fixture.revision,
+                "mcp",
+                vec![wrong_canonical_generation],
             )
             .is_err());
 

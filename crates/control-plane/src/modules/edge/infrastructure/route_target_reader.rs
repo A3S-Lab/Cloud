@@ -7,10 +7,11 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentStatus, Workload, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, DeploymentStatus, Workload, WorkloadReplicaLifecycle,
+    WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
-use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_spec;
+use crate::modules::workloads::infrastructure::runtime_spec::project_replica_runtime_spec;
 use a3s_cloud_contracts::RuntimeServiceEndpoint;
 use a3s_runtime::contract::RuntimeUnitSpec;
 use async_trait::async_trait;
@@ -92,43 +93,82 @@ impl WorkloadRouteTargetReader {
                     )
             })
             .collect::<Vec<_>>();
-        let spec = project_runtime_spec(&revision).map_err(RepositoryError::Conflict)?;
+        let mut targets = Vec::with_capacity(deployments.len());
+        let mut replica_generations = BTreeSet::new();
+        for deployment in deployments {
+            let binding = self
+                .workloads
+                .find_deployment_replica_binding(organization_id, deployment.id)
+                .await?;
+            if binding.organization_id != workload.organization_id
+                || binding.project_id != workload.project_id
+                || binding.environment_id != workload.environment_id
+                || binding.workload_id != workload.id
+                || binding.revision_id != revision.id
+            {
+                return Err(RepositoryError::Storage(
+                    "route target deployment has an inconsistent replica binding".into(),
+                ));
+            }
+            let replica = self
+                .workloads
+                .find_workload_replica(organization_id, workload.id, binding.replica_id)
+                .await?;
+            if replica.lifecycle != WorkloadReplicaLifecycle::Desired
+                || replica.revision_id != revision.id
+                || replica.generation != binding.replica_generation
+            {
+                continue;
+            }
+            let member = self
+                .workloads
+                .find_workload_replica_member(organization_id, replica.id, binding.member_id)
+                .await?;
+            let spec = project_replica_runtime_spec(&revision, &replica)
+                .map_err(RepositoryError::Storage)?;
+            binding
+                .validate_against(&deployment, &revision, &replica, &member)
+                .map_err(RepositoryError::Storage)?;
+            if !replica_generations.insert((replica.id, replica.generation)) {
+                return Err(RepositoryError::Storage(
+                    "route target replica generation has multiple active deployments".into(),
+                ));
+            }
+            targets.push(RouteDeploymentTarget {
+                deployment,
+                binding,
+                spec,
+            });
+        }
+        targets.sort_by_key(|target| {
+            (
+                target.binding.replica_id,
+                target.binding.replica_generation,
+                target.deployment.id,
+            )
+        });
         Ok(RouteTargetContext {
             workload,
             revision,
-            deployments,
-            spec,
+            targets,
         })
     }
 
     async fn resolve_deployment_target(
         &self,
-        organization_id: OrganizationId,
         context: &RouteTargetContext,
-        deployment: &Deployment,
+        candidate: &RouteDeploymentTarget,
         port_name: &RoutePortName,
         now: DateTime<Utc>,
     ) -> Result<ResolvedRouteTarget, RepositoryError> {
+        let deployment = &candidate.deployment;
         let node_id = deployment.node_id.ok_or_else(|| {
             RepositoryError::Storage("active deployment has no node identity".into())
         })?;
         let runtime_command_id = deployment.command_id.ok_or_else(|| {
             RepositoryError::Storage("active deployment has no Runtime command identity".into())
         })?;
-        let binding = self
-            .workloads
-            .find_deployment_replica_binding(organization_id, deployment.id)
-            .await?;
-        if binding.workload_id != context.workload.id
-            || binding.revision_id != context.revision.id
-            || binding.node_id != Some(node_id)
-            || binding.runtime_unit_id != context.revision.runtime_unit_id()
-            || binding.runtime_generation != context.revision.generation
-        {
-            return Err(RepositoryError::Storage(
-                "route target deployment has an inconsistent replica binding".into(),
-            ));
-        }
+        let binding = &candidate.binding;
         let observation = self
             .observations
             .latest_runtime_observation(
@@ -151,7 +191,7 @@ impl WorkloadRouteTargetReader {
                 "route target Runtime health observation is stale".into(),
             ));
         }
-        if !observation.observation.converges(&context.spec) {
+        if !observation.observation.converges(&candidate.spec) {
             return Err(RepositoryError::Conflict(
                 "route target Runtime observation is not healthy at the desired generation".into(),
             ));
@@ -162,8 +202,8 @@ impl WorkloadRouteTargetReader {
         let target = RouteTarget::new(
             context.workload.id,
             context.revision.id,
-            context.spec.unit_id.clone(),
-            context.spec.generation,
+            candidate.spec.unit_id.clone(),
+            candidate.spec.generation,
             port_name.clone(),
             gateway_http_upstream(&endpoint).map_err(RepositoryError::Conflict)?,
             observation.received_at,
@@ -180,7 +220,12 @@ impl WorkloadRouteTargetReader {
 struct RouteTargetContext {
     workload: Workload,
     revision: WorkloadRevision,
-    deployments: Vec<Deployment>,
+    targets: Vec<RouteDeploymentTarget>,
+}
+
+struct RouteDeploymentTarget {
+    deployment: Deployment,
+    binding: DeploymentReplicaBinding,
     spec: RuntimeUnitSpec,
 }
 
@@ -204,19 +249,13 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
                 port_name,
             )
             .await?;
-        if context.deployments.len() != 1 {
+        if context.targets.len() != 1 {
             return Err(RepositoryError::Conflict(
                 "route target must resolve to exactly one active healthy deployment".into(),
             ));
         }
-        self.resolve_deployment_target(
-            organization_id,
-            &context,
-            &context.deployments[0],
-            port_name,
-            now,
-        )
-        .await
+        self.resolve_deployment_target(&context, &context.targets[0], port_name, now)
+            .await
     }
 
     async fn resolve_healthy_target_set(
@@ -252,25 +291,19 @@ impl IRouteTargetReader for WorkloadRouteTargetReader {
             .await?;
         let mut targets = Vec::with_capacity(member_node_ids.len());
         for member_node_id in member_node_ids {
-            let deployments = context
-                .deployments
+            let member_targets = context
+                .targets
                 .iter()
-                .filter(|deployment| deployment.node_id == Some(*member_node_id))
+                .filter(|target| target.deployment.node_id == Some(*member_node_id))
                 .collect::<Vec<_>>();
-            if deployments.len() != 1 {
+            if member_targets.len() != 1 {
                 return Err(RepositoryError::Conflict(format!(
                     "route target set member {member_node_id} must resolve to exactly one active healthy deployment"
                 )));
             }
             targets.push(
-                self.resolve_deployment_target(
-                    organization_id,
-                    &context,
-                    deployments[0],
-                    port_name,
-                    now,
-                )
-                .await?,
+                self.resolve_deployment_target(&context, member_targets[0], port_name, now)
+                    .await?,
             );
         }
         ResolvedRouteTargetSet::new(member_node_ids, targets).map_err(RepositoryError::Conflict)
