@@ -1,4 +1,5 @@
 use super::GetFormRelease;
+use crate::modules::forms::application::resource_access::FormResourceAccess;
 use crate::modules::forms::domain::{FormRelease, IFormRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -22,6 +23,12 @@ impl QueryHandler<GetFormRelease> for GetFormReleaseHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<FormRelease>>> {
         let forms = Arc::clone(&self.forms);
         Box::pin(async move {
+            if let Err(error) = FormResourceAccess::new(Arc::clone(&forms))
+                .draft(query.organization_id, query.form_id, &query.resource_access)
+                .await
+            {
+                return Ok(Err(error));
+            }
             match forms
                 .find_release(query.organization_id, query.form_id, query.release_id)
                 .await

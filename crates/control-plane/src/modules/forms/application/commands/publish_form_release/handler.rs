@@ -1,5 +1,6 @@
 use super::PublishFormRelease;
 use crate::modules::forms::application::form_compilation::compile_release_content;
+use crate::modules::forms::application::resource_access::FormResourceAccess;
 use crate::modules::forms::application::FormPublicationMutationResult;
 use crate::modules::forms::domain::{
     FormPublicationRecord, FormRelease, FormReleasePublished, IFormRepository, IFormSemanticCore,
@@ -42,6 +43,17 @@ impl CommandHandler<PublishFormRelease> for PublishFormReleaseHandler {
                     "expected Form draft version must be positive".into(),
                 )));
             }
+            let draft = match FormResourceAccess::new(Arc::clone(&forms))
+                .draft(
+                    command.organization_id,
+                    command.form_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
                 "formId": command.form_id,
@@ -69,14 +81,6 @@ impl CommandHandler<PublishFormRelease> for PublishFormReleaseHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let draft = match forms
-                .find_draft(command.organization_id, command.form_id)
-                .await
-            {
-                Ok(Some(value)) => value,
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("Form not found".into()))),
-                Err(error) => return Ok(Err(error.into())),
-            };
             if draft.aggregate_version != command.expected_version {
                 return Ok(Err(ApplicationError::Conflict(
                     "Form draft was changed from a stale aggregate version".into(),

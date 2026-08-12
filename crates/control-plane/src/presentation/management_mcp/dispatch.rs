@@ -210,6 +210,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
                 request_id,
             )
             .await
@@ -220,15 +221,36 @@ pub async fn execute(
         }
         ManagementTool::FormsGet => {
             let arguments = arguments::parse::<FormDraftArguments>(arguments).ok()?;
-            forms::get_draft(query_bus, organization_id, arguments, request_id).await
+            forms::get_draft(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::FormReleasesList => {
             let arguments = arguments::parse::<FormDraftArguments>(arguments).ok()?;
-            forms::list_releases(query_bus, organization_id, arguments, request_id).await
+            forms::list_releases(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::FormReleasesGet => {
             let arguments = arguments::parse::<FormReleaseArguments>(arguments).ok()?;
-            forms::get_release(query_bus, organization_id, arguments, request_id).await
+            forms::get_release(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::FormReleasesPublish => {
             let arguments = arguments::parse::<PublishFormReleaseArguments>(arguments).ok()?;
@@ -237,6 +259,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
                 request_id,
             )
             .await

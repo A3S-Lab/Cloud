@@ -1688,6 +1688,12 @@ node.
   replay. Explicitly scoped Secret list/create paths remain direct. Internal
   materialization keeps its stricter Workload revision, binding, and
   environment validation instead of reusing an end-user request evaluator.
+  The Forms vertical slice resolves every indirect draft/release request
+  through the existing Form draft, then authorizes its canonical project
+  before reads, revisions, publication, or idempotency replay across REST and
+  Management MCP. Environment-only grants do not imply project-level Form
+  access. Releases inherit the draft's project identity; FormSubmission and
+  HumanTask remain Workflow-owned boundaries and do not borrow this resolver.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1707,7 +1713,9 @@ node.
   Management MCP metadata grant only coarse project-family admission, while
   the Workloads application layer resolves the existing entity and makes the
   final shared-evaluator decision before replay or side effects.
-  The remaining Asset, Form, Workflow, Agent execution, and Operation
+  Form draft/release detail, revision, publication, and release queries now
+  implement the same pattern through the Forms repository. The remaining
+  Asset, Workflow, Agent execution, and Operation
   boundaries resolve their existing project/environment/node identity through
   their owning repositories and pass
   that canonical scope to the shared `ResourceAccessEvaluator`.

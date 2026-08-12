@@ -1,4 +1,5 @@
 use crate::modules::forms::application::FormDraftMutationResult;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{FormId, OrganizationId, PrincipalId};
 use a3s_boot::Command;
@@ -8,6 +9,7 @@ use uuid::Uuid;
 pub struct ReviseFormDraft {
     pub organization_id: OrganizationId,
     pub form_id: FormId,
+    pub resource_access: ResourceAccessEvaluator,
     pub expected_version: u64,
     pub name: String,
     pub description: String,

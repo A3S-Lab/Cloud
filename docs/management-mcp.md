@@ -310,6 +310,14 @@ the principal and never accepts either as an argument. It does not compile or
 validate Form semantics itself and does not expose Form submission or
 HumanTask execution.
 
+For a restricted Membership, create/list use their explicit `projectId` while
+get, revise, publish, and release tools receive only coarse project-family
+admission from the MCP catalog. The shared Forms application resolver loads the
+draft's canonical project and makes the final Resource Grant decision before
+reads or idempotency replay. Denied and missing Form IDs therefore return the
+same `404`, revocation applies on the next request, and an environment-only
+grant cannot authorize a project-scoped Form.
+
 ## Bounded observability reads
 
 `a3s_cloud_workload_logs_get` accepts `workloadId`, `revisionId`, and optional

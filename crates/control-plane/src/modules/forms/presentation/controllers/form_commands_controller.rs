@@ -4,12 +4,15 @@ use crate::modules::forms::presentation::{
 };
 use crate::modules::forms::{CreateFormDraft, PublishFormRelease, ReviseFormDraft};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{FormId, OrganizationId, ProjectId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    RouteDefinition, AUTH_SCOPES_METADATA,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -57,76 +60,88 @@ pub fn form_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefini
                 }
             },
         )?
-        .post(
-            "/{organization_id}/forms/{form_id}/draft-revisions",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&revise_bus);
-                async move {
-                    let body: FormDraftRequest = request.json_with_content_type()?;
-                    let (name, description, document_json) =
-                        body.into_parts().map_err(BootError::BadRequest)?;
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let form_id = FormId::from_uuid(request.param_as::<Uuid>("form_id")?);
-                    let expected_version = expected_version(&request)?;
-                    let actor_principal_id = actor_principal_id(&request)?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    match bus
-                        .execute(ReviseFormDraft {
-                            organization_id,
-                            form_id,
-                            expected_version,
-                            name,
-                            description,
-                            document_json,
-                            actor_principal_id,
-                            idempotency_key,
-                            request_id,
-                        })
-                        .await?
-                    {
-                        Ok(result) => {
-                            let status = if result.replayed { 200 } else { 201 };
-                            let response = FormDraftMutationResponse::try_from(result)
-                                .map_err(BootError::Internal)?;
-                            BootResponse::json_with_status(status, &response)
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/forms/{form_id}/draft-revisions",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&revise_bus);
+                    async move {
+                        let body: FormDraftRequest = request.json_with_content_type()?;
+                        let (name, description, document_json) =
+                            body.into_parts().map_err(BootError::BadRequest)?;
+                        let organization_id =
+                            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                        let form_id = FormId::from_uuid(request.param_as::<Uuid>("form_id")?);
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let expected_version = expected_version(&request)?;
+                        let actor_principal_id = actor_principal_id(&request)?;
+                        let (idempotency_key, request_id) = request_identity(&request)?;
+                        match bus
+                            .execute(ReviseFormDraft {
+                                organization_id,
+                                form_id,
+                                resource_access,
+                                expected_version,
+                                name,
+                                description,
+                                document_json,
+                                actor_principal_id,
+                                idempotency_key,
+                                request_id,
+                            })
+                            .await?
+                        {
+                            Ok(result) => {
+                                let status = if result.replayed { 200 } else { 201 };
+                                let response = FormDraftMutationResponse::try_from(result)
+                                    .map_err(BootError::Internal)?;
+                                BootResponse::json_with_status(status, &response)
+                            }
+                            Err(error) => application_error_response(error, request_id),
                         }
-                        Err(error) => application_error_response(error, request_id),
                     }
-                }
-            },
-        )?
-        .post(
-            "/{organization_id}/forms/{form_id}/releases",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let form_id = FormId::from_uuid(request.param_as::<Uuid>("form_id")?);
-                    let expected_version = expected_version(&request)?;
-                    let actor_principal_id = actor_principal_id(&request)?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    match bus
-                        .execute(PublishFormRelease {
-                            organization_id,
-                            form_id,
-                            expected_version,
-                            actor_principal_id,
-                            idempotency_key,
-                            request_id,
-                        })
-                        .await?
-                    {
-                        Ok(result) => {
-                            let status = if result.replayed { 200 } else { 201 };
-                            let response = FormPublicationMutationResponse::try_from(result)
-                                .map_err(BootError::Internal)?;
-                            BootResponse::json_with_status(status, &response)
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/forms/{form_id}/releases",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let organization_id =
+                            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                        let form_id = FormId::from_uuid(request.param_as::<Uuid>("form_id")?);
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let expected_version = expected_version(&request)?;
+                        let actor_principal_id = actor_principal_id(&request)?;
+                        let (idempotency_key, request_id) = request_identity(&request)?;
+                        match bus
+                            .execute(PublishFormRelease {
+                                organization_id,
+                                form_id,
+                                resource_access,
+                                expected_version,
+                                actor_principal_id,
+                                idempotency_key,
+                                request_id,
+                            })
+                            .await?
+                        {
+                            Ok(result) => {
+                                let status = if result.replayed { 200 } else { 201 };
+                                let response = FormPublicationMutationResponse::try_from(result)
+                                    .map_err(BootError::Internal)?;
+                                BootResponse::json_with_status(status, &response)
+                            }
+                            Err(error) => application_error_response(error, request_id),
                         }
-                        Err(error) => application_error_response(error, request_id),
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }

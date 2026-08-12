@@ -439,6 +439,11 @@ impl ManagementTool {
                 Some(ManagementResourceBinding::EnvironmentArguments)
             }
             Self::WorkloadsGet
+            | Self::FormsGet
+            | Self::FormsRevise
+            | Self::FormReleasesGet
+            | Self::FormReleasesList
+            | Self::FormReleasesPublish
             | Self::WorkloadLogsGet
             | Self::WorkloadsStop
             | Self::WorkloadsRollback
@@ -1560,6 +1565,7 @@ mod tests {
             .with_scope(ApiTokenScope::WORKLOAD_WRITE)
             .with_scope(ApiTokenScope::BUILD_WRITE)
             .with_scope(ApiTokenScope::ROUTE_WRITE)
+            .with_scope(ApiTokenScope::FORM_WRITE)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -1573,7 +1579,11 @@ mod tests {
         });
         assert!(ManagementTool::EnvironmentsList.visible_to(&principal));
         assert!(ManagementTool::FormsList.visible_to(&principal));
-        assert!(!ManagementTool::FormsGet.visible_to(&principal));
+        assert!(ManagementTool::FormsGet.visible_to(&principal));
+        assert!(ManagementTool::FormsRevise.visible_to(&principal));
+        assert!(ManagementTool::FormReleasesGet.visible_to(&principal));
+        assert!(ManagementTool::FormReleasesList.visible_to(&principal));
+        assert!(ManagementTool::FormReleasesPublish.visible_to(&principal));
         assert!(!ManagementTool::NodesGet.visible_to(&principal));
         assert!(ManagementTool::ProjectsList.visible_to(&principal));
         assert!(ManagementTool::Search.visible_to(&principal));
@@ -1602,6 +1612,11 @@ mod tests {
         assert!(!ManagementTool::EnvironmentsList.visible_to(&principal));
         assert!(!ManagementTool::ProjectsList.visible_to(&principal));
         assert!(!ManagementTool::FormsList.visible_to(&principal));
+        assert!(!ManagementTool::FormsGet.visible_to(&principal));
+        assert!(!ManagementTool::FormsRevise.visible_to(&principal));
+        assert!(!ManagementTool::FormReleasesGet.visible_to(&principal));
+        assert!(!ManagementTool::FormReleasesList.visible_to(&principal));
+        assert!(!ManagementTool::FormReleasesPublish.visible_to(&principal));
         assert!(!ManagementTool::WorkloadsGet.visible_to(&principal));
         assert!(!ManagementTool::WorkloadsStop.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsGet.visible_to(&principal));

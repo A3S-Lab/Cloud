@@ -1,6 +1,7 @@
 pub mod commands;
 mod form_compilation;
 pub mod queries;
+mod resource_access;
 
 use crate::modules::forms::domain::{FormDraft, FormPublicationRecord};
 

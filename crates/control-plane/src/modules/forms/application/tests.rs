@@ -11,6 +11,7 @@ use super::queries::{
 };
 use crate::modules::forms::domain::IFormRepository;
 use crate::modules::forms::infrastructure::{InMemoryFormRepository, NativeFormSemanticCore};
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::domain::entities::Project;
 use crate::modules::projects::domain::events::ProjectCreated;
 use crate::modules::projects::domain::repositories::IProjectRepository;
@@ -62,6 +63,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
     let revise = ReviseFormDraft {
         organization_id,
         form_id: created.draft.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         expected_version: 1,
         name: "Approval request".into(),
         description: "Manager approval with reason".into(),
@@ -80,6 +82,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
     let publish = PublishFormRelease {
         organization_id,
         form_id: created.draft.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         expected_version: 2,
         actor_principal_id: actor,
         idempotency_key: "publish-approval".into(),
@@ -108,6 +111,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
             GetFormDraft {
                 organization_id,
                 form_id: created.draft.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
             },
             context(),
         )
@@ -133,6 +137,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
                 organization_id,
                 form_id: created.draft.id,
                 release_id: published.publication.release.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
             },
             context(),
         )
@@ -145,6 +150,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
             ListFormReleases {
                 organization_id,
                 form_id: created.draft.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
             },
             context(),
         )
@@ -185,6 +191,7 @@ async fn publish_rejects_form_core_diagnostics_without_persisting_a_release() {
                 PublishFormRelease {
                     organization_id,
                     form_id: created.draft.id,
+                    resource_access: ResourceAccessEvaluator::organization_wide(),
                     expected_version: 1,
                     actor_principal_id: actor,
                     idempotency_key: "publish-invalid".into(),

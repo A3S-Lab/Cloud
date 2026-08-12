@@ -1,4 +1,5 @@
 use super::ReviseFormDraft;
+use crate::modules::forms::application::resource_access::FormResourceAccess;
 use crate::modules::forms::application::FormDraftMutationResult;
 use crate::modules::forms::domain::{
     FormDocument, FormDraftChanged, IFormRepository, ReviseFormDraftWrite,
@@ -37,6 +38,17 @@ impl CommandHandler<ReviseFormDraft> for ReviseFormDraftHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            let current = match FormResourceAccess::new(Arc::clone(&forms))
+                .draft(
+                    command.organization_id,
+                    command.form_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
                 "formId": command.form_id,
@@ -67,14 +79,6 @@ impl CommandHandler<ReviseFormDraft> for ReviseFormDraftHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let current = match forms
-                .find_draft(command.organization_id, command.form_id)
-                .await
-            {
-                Ok(Some(value)) => value,
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("Form not found".into()))),
-                Err(error) => return Ok(Err(error.into())),
-            };
             if current.aggregate_version != command.expected_version {
                 return Ok(Err(ApplicationError::Conflict(
                     "Form draft was changed from a stale aggregate version".into(),

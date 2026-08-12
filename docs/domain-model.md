@@ -591,6 +591,12 @@ contexts' tables.
   boundary that still requires the exact Workload revision, declared Secret
   binding, matching environment, and active version; a user Resource Grant
   neither replaces nor broadens that delivery check.
+- Indirect Form draft detail/revision, publication, and release reads resolve
+  the canonical draft through Forms and authorize its exact project before
+  idempotency replay or mutation. A project grant covers the Form; an
+  environment-only grant does not. Releases inherit that draft scope, while
+  FormSubmission and HumanTask stay under their Workflow-owned authorization
+  boundary rather than introducing a second or inferred Form ownership path.
 
 ### Project and Environment
 
