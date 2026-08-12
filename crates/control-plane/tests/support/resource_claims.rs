@@ -3,9 +3,10 @@ use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeState;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    OrganizationId, RepositoryError, ResourceClaimId, ResourceName, WorkloadId,
+    NodeId, OrganizationId, RepositoryError, ResourceClaimId, ResourceName, WorkloadId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     AtomicResourceClaimReservation, IResourceClaimRepository, IWorkloadRepository,
@@ -14,7 +15,7 @@ use a3s_cloud_control_plane::modules::workloads::{
     ResourceSlotRequest, ResourceUnit, Workload,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
-use chrono::{Duration, Utc};
+use chrono::{Duration, Timelike, Utc};
 use std::sync::Arc;
 use tokio::sync::Barrier;
 
@@ -24,15 +25,7 @@ pub async fn exercise_replica_anti_affinity(
     replica_set: &ReplicaSetFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let nodes = PostgresNodeRepository::new(executor.clone());
-    let mut selected = None;
-    for node in nodes.list(organization_id).await? {
-        if let Some(inventory) = nodes.current_resource_inventory(node.id).await? {
-            selected = Some((node, inventory.inventory));
-            break;
-        }
-    }
-    let (node, inventory) =
-        selected.ok_or("replica anti-affinity fixture has no inventoried node")?;
+    let (node_id, inventory) = ready_inventoried_node(&nodes, organization_id).await?;
     let binding_time = replica_set
         .bindings
         .iter()
@@ -44,7 +37,7 @@ pub async fn exercise_replica_anti_affinity(
         .max(inventory.observed_at + Duration::seconds(1));
     exercise_required_replica_anti_affinity(
         &Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
-        node.id,
+        node_id,
         replica_set,
         inventory,
         base,
@@ -58,14 +51,7 @@ pub async fn exercise_atomic_resource_claim_reservations(
     replica_set: &ReplicaSetFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let nodes = PostgresNodeRepository::new(executor.clone());
-    let mut selected = None;
-    for node in nodes.list(organization_id).await? {
-        if let Some(inventory) = nodes.current_resource_inventory(node.id).await? {
-            selected = Some((node, inventory.inventory));
-            break;
-        }
-    }
-    let (node, inventory) = selected.ok_or("atomic Claim fixture has no inventoried node")?;
+    let (node_id, inventory) = ready_inventoried_node(&nodes, organization_id).await?;
     let first_unplaced = replica_set
         .bindings
         .first()
@@ -75,7 +61,7 @@ pub async fn exercise_atomic_resource_claim_reservations(
         &nodes,
         organization_id,
         replica_set,
-        node.id,
+        node_id,
         &inventory,
     )
     .await?;
@@ -104,8 +90,8 @@ pub async fn exercise_atomic_resource_claim_reservations(
         .find_deployment_replica_binding(organization_id, second_deployment_id)
         .await?;
     let placement_at = created_at.max(second_unplaced.updated_at);
-    let first_binding = first_unplaced.propose_assignment(node.id, placement_at)?;
-    let second_binding = second_unplaced.propose_assignment(node.id, placement_at)?;
+    let first_binding = first_unplaced.propose_assignment(node_id, placement_at)?;
+    let second_binding = second_unplaced.propose_assignment(node_id, placement_at)?;
     let cpu_slot = inventory
         .slots
         .iter()
@@ -125,7 +111,7 @@ pub async fn exercise_atomic_resource_claim_reservations(
         )
         .bind(organization_id.as_uuid())
         .append(" and node_id = ")
-        .bind(node.id.as_uuid())
+        .bind(node_id.as_uuid())
         .append(" and resource_kind = 'cpu' and stable_resource_id = ")
         .bind(cpu_slot.stable_resource_id.as_str())
     };
@@ -231,6 +217,50 @@ pub async fn exercise_atomic_resource_claim_reservations(
             .await?;
     }
     Ok(())
+}
+
+async fn ready_inventoried_node(
+    nodes: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+) -> Result<(NodeId, NodeResourceInventory), Box<dyn std::error::Error>> {
+    let mut ready_without_inventory = None;
+    let mut inventory_template = None;
+    for node in nodes.list(organization_id).await? {
+        let inventory = nodes.current_resource_inventory(node.id).await?;
+        if inventory_template.is_none() {
+            inventory_template = inventory.as_ref().map(|record| record.inventory.clone());
+        }
+        if node.state == NodeState::Ready {
+            if let Some(inventory) = inventory {
+                return Ok((node.id, inventory.inventory));
+            }
+            if ready_without_inventory.is_none() {
+                ready_without_inventory = Some(node);
+            }
+        }
+    }
+
+    let node = ready_without_inventory.ok_or("Claim fixture has no ready node")?;
+    let template = inventory_template.ok_or("Claim fixture has no inventory template")?;
+    let observed_at = Utc::now()
+        .max(node.enrolled_at)
+        .max(node.last_observed_at)
+        .max(template.observed_at);
+    let observed_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000)
+        .ok_or("Claim fixture inventory timestamp is invalid")?
+        + Duration::milliseconds(1);
+    let inventory = NodeResourceInventory::new(
+        node.id.as_uuid(),
+        node.agent_instance_id,
+        1,
+        observed_at,
+        template.slots,
+    )?;
+    nodes
+        .record_resource_inventory(inventory.clone(), observed_at + Duration::milliseconds(1))
+        .await?;
+    Ok((node.id, inventory))
 }
 
 async fn exercise_concurrent_atomic_resource_claim_candidates(

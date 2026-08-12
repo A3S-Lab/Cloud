@@ -382,7 +382,7 @@ pub(super) async fn require_node_pool_placement_eligible(
     if !node_pool_placement_is_eligible(transaction, organization_id, node_pool_id, node_id).await?
     {
         return Err(placement_unavailable(
-            "node pool membership changed before resource placement was committed",
+            "node readiness or pool membership changed before resource placement was committed",
         )
         .into());
     }

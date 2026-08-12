@@ -1400,6 +1400,38 @@ pub async fn exercise_placement_group_plans(
             })
         })
         .collect::<Result<Vec<_>, std::num::TryFromIntError>>()?;
+    let capabilities = NodeCapabilities::new(
+        "test-runtime",
+        "postgres-placement-group",
+        serde_json::json!({}),
+    )?;
+    for placement in &placements {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (",
+                )
+                .bind(organization_uuid)
+                .append(", ")
+                .bind(placement.node_id.as_uuid())
+                .append(", ")
+                .bind(format!("PostgreSQL placement group {}", placement.ordinal + 1))
+                .append(", ")
+                .bind(format!("postgres-placement-group-{}", placement.node_id))
+                .append(", 'ready', ")
+                .bind(Uuid::now_v7())
+                .append(", 'test', 'test-runtime', 'postgres-placement-group', ")
+                .bind(capabilities.digest())
+                .append(", ")
+                .bind(capabilities.document().clone())
+                .append(", ")
+                .bind(deployment_requested_at)
+                .append(", ")
+                .bind(deployment_requested_at)
+                .append(", 1)"),
+            )
+            .await?;
+    }
     let schedule_write = PlacementGroupSchedulingWrite {
         organization_id,
         deployment_id: resolving.id,
@@ -1409,42 +1441,22 @@ pub async fn exercise_placement_group_plans(
         placements,
         scheduled_at: deployment_requested_at,
     };
+    let mut stale_candidate_write = schedule_write.clone();
+    stale_candidate_write.placements[0].node_id = NodeId::new();
     assert!(matches!(
         repository
-            .schedule_placement_group(schedule_write.clone())
+            .schedule_placement_group(stale_candidate_write)
             .await,
         Err(RepositoryError::Conflict(message))
-            if message.starts_with("replica placement unavailable: ")
+            if message.contains("node readiness or pool membership changed")
     ));
-    let node_capabilities = NodeCapabilities::new("test-runtime", "test-runtime-1", json!({}))?;
-    for (ordinal, placement) in schedule_write.placements.iter().enumerate() {
-        let name = format!("postgres-placement-group-worker-{ordinal}");
-        database
-            .execute(
-                sql_query::<()>(
-                    "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
-                )
-                .bind(organization_uuid)
-                .append(", ")
-                .bind(placement.node_id.as_uuid())
-                .append(", ")
-                .bind(name.as_str())
-                .append(", ")
-                .bind(name.as_str())
-                .append(", 'ready', ")
-                .bind(Uuid::now_v7())
-                .append(", 'test', 'test-runtime', 'test-runtime-1', ")
-                .bind(node_capabilities.digest())
-                .append(", ")
-                .bind(node_capabilities.document().clone())
-                .append(", ")
-                .bind(deployment_requested_at)
-                .append(", ")
-                .bind(deployment_requested_at)
-                .append(", 0, 1)"),
-            )
-            .await?;
-    }
+    assert_eq!(
+        repository
+            .find_deployment(organization_id, resolving.id)
+            .await?
+            .status,
+        DeploymentStatus::Resolving
+    );
     let (left_schedule, right_schedule) = tokio::join!(
         repository.schedule_placement_group(schedule_write.clone()),
         repository.schedule_placement_group(schedule_write),

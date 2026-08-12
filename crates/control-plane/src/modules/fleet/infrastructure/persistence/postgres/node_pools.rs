@@ -8,6 +8,7 @@ use crate::modules::fleet::domain::entities::{
     NodePool, NodePoolMaintenanceWindow, NodePoolMemberRemoval,
 };
 use crate::modules::fleet::domain::repositories::{NodeEvacuationCause, NodePoolWrite};
+use crate::modules::fleet::domain::value_objects::NodeState;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeId, NodePoolId, OrganizationId, RepositoryError, ResourceName,
 };
@@ -283,16 +284,17 @@ pub(crate) async fn node_pool_placement_is_eligible(
     node_id: NodeId,
 ) -> Result<bool, PostgresPersistenceError> {
     lock_node_placement(transaction, organization_id, node_id).await?;
-    let node_exists = fetch_optional::<Uuid, _>(
+    let ready_node = fetch_optional::<Uuid, _>(
         transaction,
         select_from::<Nodes>()
             .select(Nodes::id())
             .filter(Nodes::organization_id().eq(organization_id.as_uuid()))
             .filter(Nodes::id().eq(node_id.as_uuid()))
+            .filter(Nodes::state().eq(NodeState::Ready.as_str()))
             .limit(1),
     )
     .await?;
-    if node_exists.is_none() {
+    if ready_node.is_none() {
         return Ok(false);
     }
     let pending_removal = fetch_optional::<Uuid, _>(
