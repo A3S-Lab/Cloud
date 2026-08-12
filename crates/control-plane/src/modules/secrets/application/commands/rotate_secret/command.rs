@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::secrets::application::{SecretMutationResult, SecretPlaintext};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, SecretId};
@@ -8,6 +9,7 @@ use uuid::Uuid;
 pub struct RotateSecret {
     pub organization_id: OrganizationId,
     pub secret_id: SecretId,
+    pub resource_access: ResourceAccessEvaluator,
     pub value: SecretPlaintext,
     pub idempotency_key: String,
     pub request_id: Uuid,

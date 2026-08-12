@@ -584,6 +584,13 @@ contexts' tables.
   Credential are separate Edge aggregates; they do not borrow ordinary Route
   ownership and must resolve their own canonical scope when their indirect
   boundaries close.
+- Indirect Secret detail, rotation, and version revocation resolve the Secret
+  through Secrets and authorize its immutable project/environment pair before
+  idempotency replay or mutation. Explicitly scoped list/create requests keep
+  using their path scope. Runtime materialization is a separate internal
+  boundary that still requires the exact Workload revision, declared Secret
+  binding, matching environment, and active version; a user Resource Grant
+  neither replaces nor broadens that delivery check.
 
 ### Project and Environment
 

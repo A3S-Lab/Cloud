@@ -1,9 +1,14 @@
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::secrets::application::{GetSecret, ListSecrets};
 use crate::modules::secrets::presentation::dto::{SecretDetailsResponse, SecretListItemResponse};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId, SecretId};
 use crate::presentation::application_error_response;
-use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{
+    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -41,28 +46,34 @@ pub fn secret_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinit
                 }
             },
         )?
-        .get(
-            "/{organization_id}/secrets/{secret_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let secret_id = SecretId::from_uuid(request.param_as::<Uuid>("secret_id")?);
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetSecret {
-                            organization_id,
-                            secret_id,
-                        })
-                        .await?
-                    {
-                        Ok(secret) => BootResponse::json(&SecretDetailsResponse::from(secret)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/secrets/{secret_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let organization_id =
+                            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                        let secret_id = SecretId::from_uuid(request.param_as::<Uuid>("secret_id")?);
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetSecret {
+                                organization_id,
+                                secret_id,
+                                resource_access,
+                            })
+                            .await?
+                        {
+                            Ok(secret) => BootResponse::json(&SecretDetailsResponse::from(secret)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
 
 fn request_id(request: &BootRequest) -> Result<Uuid> {

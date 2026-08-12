@@ -1,4 +1,5 @@
 use super::RevokeSecretVersion;
+use crate::modules::secrets::application::resource_access::SecretResourceAccess;
 use crate::modules::secrets::application::{SecretMutationResult, SecretVersionResult};
 use crate::modules::secrets::domain::{
     ISecretRepository, SecretChanged, SecretVersionState, TransitionSecretVersion,
@@ -33,6 +34,17 @@ impl CommandHandler<RevokeSecretVersion> for RevokeSecretVersionHandler {
                     "Secret version must be greater than zero".into(),
                 )));
             }
+            let mut secret = match SecretResourceAccess::new(Arc::clone(&secrets))
+                .secret(
+                    command.organization_id,
+                    command.secret_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organization_id": command.organization_id,
                 "secret_id": command.secret_id,
@@ -58,13 +70,6 @@ impl CommandHandler<RevokeSecretVersion> for RevokeSecretVersionHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let mut secret = match secrets
-                .find(command.organization_id, command.secret_id)
-                .await
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(error.into())),
-            };
             let mut version = match secrets
                 .find_version(command.organization_id, command.secret_id, command.version)
                 .await

@@ -1682,7 +1682,12 @@ node.
   REST and Management MCP. Route collection and publication paths continue to
   use their explicit project/environment parameters. MCP Route Policy,
   DomainClaim, and Credential remain independent Edge aggregates and do not
-  inherit scope through an ordinary Route lookup.
+  inherit scope through an ordinary Route lookup. The Secrets vertical slice
+  resolves detail, rotation, and version revocation through the existing
+  Secret repository and authorizes its immutable environment scope before
+  replay. Explicitly scoped Secret list/create paths remain direct. Internal
+  materialization keeps its stricter Workload revision, binding, and
+  environment validation instead of reusing an end-user request evaluator.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1702,7 +1707,7 @@ node.
   Management MCP metadata grant only coarse project-family admission, while
   the Workloads application layer resolves the existing entity and makes the
   final shared-evaluator decision before replay or side effects.
-  The remaining Asset, Form, Workflow, Secret, Agent execution, and Operation
+  The remaining Asset, Form, Workflow, Agent execution, and Operation
   boundaries resolve their existing project/environment/node identity through
   their owning repositories and pass
   that canonical scope to the shared `ResourceAccessEvaluator`.

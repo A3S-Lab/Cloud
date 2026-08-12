@@ -1,4 +1,5 @@
 use super::GetSecret;
+use crate::modules::secrets::application::resource_access::SecretResourceAccess;
 use crate::modules::secrets::application::{SecretDetails, SecretVersionResult};
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::ApplicationResult;
@@ -23,9 +24,16 @@ impl QueryHandler<GetSecret> for GetSecretHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<SecretDetails>>> {
         let secrets = Arc::clone(&self.secrets);
         Box::pin(async move {
-            let secret = match secrets.find(query.organization_id, query.secret_id).await {
+            let secret = match SecretResourceAccess::new(Arc::clone(&secrets))
+                .secret(
+                    query.organization_id,
+                    query.secret_id,
+                    &query.resource_access,
+                )
+                .await
+            {
                 Ok(value) => value,
-                Err(error) => return Ok(Err(error.into())),
+                Err(error) => return Ok(Err(error)),
             };
             let versions = match secrets
                 .list_versions(query.organization_id, query.secret_id)

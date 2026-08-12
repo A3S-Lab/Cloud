@@ -1,6 +1,9 @@
 use super::*;
 use crate::modules::secrets::ISecretRepository;
 
+const RESTRICTED_SECRET_TOKEN: &str =
+    "a3s_5555555555555555555555555555555555555555555555555555555555555555";
+
 #[tokio::test]
 async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
@@ -283,6 +286,263 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
         .ciphertext()
         .contains(first_plaintext));
     Ok(())
+}
+
+#[tokio::test]
+async fn restricted_secret_boundaries_authorize_before_reads_mutations_and_replay() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let secrets = Arc::new(InMemorySecretRepository::new());
+    let app = build_test_application_with_secrets(identity, projects, secrets)?;
+    let organization = bootstrap_organization(&app, "secret-grants", "Secret grants").await?;
+
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "secret-grants-membership",
+            json!({"name": "Restricted secret operator", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let membership_id = membership["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted Secret membership has no ID".into()))?;
+    let principal_id = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted Secret principal has no ID".into()))?;
+    let token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "secret-grants-token",
+            json!({
+                "name": "Restricted secret operator",
+                "token": RESTRICTED_SECRET_TOKEN,
+                "scopes": [ApiTokenScope::SECRET_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(token.status(), 201);
+
+    let granted_project =
+        create_project(&app, &organization, "secret-granted-project", "Granted").await?;
+    let denied_project =
+        create_project(&app, &organization, "secret-denied-project", "Denied").await?;
+    let granted_environment = secret_environment(
+        &app,
+        &organization,
+        &granted_project,
+        "secret-granted-environment",
+        "Granted",
+    )
+    .await?;
+    let denied_environment = secret_environment(
+        &app,
+        &organization,
+        &denied_project,
+        "secret-denied-environment",
+        "Denied",
+    )
+    .await?;
+    let granted_collection = format!(
+        "/api/v1/organizations/{organization}/projects/{granted_project}/environments/{granted_environment}/secrets"
+    );
+    let denied_collection = format!(
+        "/api/v1/organizations/{organization}/projects/{denied_project}/environments/{denied_environment}/secrets"
+    );
+    let granted_secret = app
+        .call(post_json(
+            &granted_collection,
+            "secret-grants-create-granted",
+            json!({"name": "Granted secret", "value": "granted-value"}),
+        ))
+        .await?;
+    assert_eq!(granted_secret.status(), 201);
+    let granted_secret_id = response_id(&granted_secret)?;
+    let denied_secret = app
+        .call(post_json(
+            &denied_collection,
+            "secret-grants-create-denied",
+            json!({"name": "Denied secret", "value": "denied-value"}),
+        ))
+        .await?;
+    assert_eq!(denied_secret.status(), 201);
+    let denied_secret_id = response_id(&denied_secret)?;
+
+    let resource_grants_path =
+        format!("/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants");
+    let granted = app
+        .call(post_json(
+            &resource_grants_path,
+            "secret-grants-create",
+            json!({
+                "scope": {
+                    "kind": "environment",
+                    "projectId": granted_project,
+                    "environmentId": granted_environment
+                }
+            }),
+        ))
+        .await?;
+    assert_eq!(granted.status(), 201);
+    let granted_resource_id = response_json(&granted)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("Secret Resource Grant has no ID".into()))?
+        .to_owned();
+
+    let granted_detail =
+        format!("/api/v1/organizations/{organization}/secrets/{granted_secret_id}");
+    let denied_detail = format!("/api/v1/organizations/{organization}/secrets/{denied_secret_id}");
+    let missing_secret_id = crate::modules::shared_kernel::domain::SecretId::new();
+    let missing_detail =
+        format!("/api/v1/organizations/{organization}/secrets/{missing_secret_id}");
+    let allowed = app
+        .call(get_as(&granted_detail, RESTRICTED_SECRET_TOKEN))
+        .await?;
+    assert_eq!(allowed.status(), 200);
+    let allowed_list = app
+        .call(get_as(&granted_collection, RESTRICTED_SECRET_TOKEN))
+        .await?;
+    assert_eq!(allowed_list.status(), 200);
+    let denied_list = app
+        .call(get_as(&denied_collection, RESTRICTED_SECRET_TOKEN))
+        .await?;
+    assert_eq!(denied_list.status(), 403);
+    assert_resource_not_found_equivalent(
+        &app,
+        get_as(&denied_detail, RESTRICTED_SECRET_TOKEN),
+        get_as(&missing_detail, RESTRICTED_SECRET_TOKEN),
+    )
+    .await?;
+
+    let denied_versions = format!("{denied_detail}/versions");
+    let missing_versions = format!("{missing_detail}/versions");
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            &denied_versions,
+            "secret-rotate-denied",
+            json!({"value": "denied-rotate"}),
+            RESTRICTED_SECRET_TOKEN,
+        ),
+        post_json_as(
+            &missing_versions,
+            "secret-rotate-missing",
+            json!({"value": "missing-rotate"}),
+            RESTRICTED_SECRET_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!("{denied_versions}/1/revoke"),
+            "secret-revoke-denied",
+            json!({}),
+            RESTRICTED_SECRET_TOKEN,
+        ),
+        post_json_as(
+            format!("{missing_versions}/1/revoke"),
+            "secret-revoke-missing",
+            json!({}),
+            RESTRICTED_SECRET_TOKEN,
+        ),
+    )
+    .await?;
+
+    let granted_versions = format!("{granted_detail}/versions");
+    let rotate_allowed = || {
+        post_json_as(
+            &granted_versions,
+            "secret-rotate-granted",
+            json!({"value": "rotated-granted-value"}),
+            RESTRICTED_SECRET_TOKEN,
+        )
+    };
+    let rotated = app.call(rotate_allowed()).await?;
+    let rotate_replay = app.call(rotate_allowed()).await?;
+    assert_eq!(rotated.status(), 201);
+    assert_eq!(rotate_replay.status(), 200);
+    assert_eq!(response_json(&rotate_replay)?["data"]["replayed"], true);
+    let revoke_allowed = || {
+        post_json_as(
+            format!("{granted_versions}/1/revoke"),
+            "secret-revoke-granted",
+            json!({}),
+            RESTRICTED_SECRET_TOKEN,
+        )
+    };
+    let revoked_version = app.call(revoke_allowed()).await?;
+    let revoke_replay = app.call(revoke_allowed()).await?;
+    assert_eq!(revoked_version.status(), 200);
+    assert_eq!(revoke_replay.status(), 200);
+    assert_eq!(response_json(&revoke_replay)?["data"]["replayed"], true);
+
+    let fallback_grant = app
+        .call(post_json(
+            &resource_grants_path,
+            "secret-grants-fallback",
+            json!({"scope": {"kind": "project", "projectId": denied_project}}),
+        ))
+        .await?;
+    assert_eq!(fallback_grant.status(), 201);
+    let fallback_access = app
+        .call(get_as(&denied_detail, RESTRICTED_SECRET_TOKEN))
+        .await?;
+    assert_eq!(fallback_access.status(), 200);
+    let revoked_grant = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/resource-grants/{granted_resource_id}/revocation"
+            ),
+            "secret-grants-revoke",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(revoked_grant.status(), 200);
+    assert_resource_not_found_equivalent(
+        &app,
+        rotate_allowed(),
+        post_json_as(
+            &missing_versions,
+            "secret-rotate-missing-after-revoke",
+            json!({"value": "rotated-granted-value"}),
+            RESTRICTED_SECRET_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        revoke_allowed(),
+        post_json_as(
+            format!("{missing_versions}/1/revoke"),
+            "secret-revoke-missing-after-revoke",
+            json!({}),
+            RESTRICTED_SECRET_TOKEN,
+        ),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn secret_environment(
+    app: &BootApplication,
+    organization: &str,
+    project: &str,
+    idempotency_key: &str,
+    name: &str,
+) -> Result<String> {
+    let response = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            idempotency_key,
+            json!({"name": name}),
+        ))
+        .await?;
+    assert_eq!(response.status(), 201);
+    response_id(&response)
 }
 
 fn assert_response_hides_secret_material(response: &BootResponse, plaintexts: &[&str]) {

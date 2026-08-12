@@ -3,6 +3,7 @@ pub mod queries;
 
 mod encryption;
 mod plaintext;
+mod resource_access;
 mod result;
 
 pub use commands::{

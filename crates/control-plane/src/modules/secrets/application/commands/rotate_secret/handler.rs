@@ -1,4 +1,5 @@
 use super::RotateSecret;
+use crate::modules::secrets::application::resource_access::SecretResourceAccess;
 use crate::modules::secrets::application::{encryption_error, SecretMutationResult};
 use crate::modules::secrets::domain::{
     secret_encryption_context, ISecretEncryptionService, ISecretRepository, RotateSecretWrite,
@@ -38,6 +39,17 @@ impl CommandHandler<RotateSecret> for RotateSecretHandler {
         let secrets = Arc::clone(&self.secrets);
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
+            let mut secret = match SecretResourceAccess::new(Arc::clone(&secrets))
+                .secret(
+                    command.organization_id,
+                    command.secret_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
             let value_digest = command.value.digest();
             let canonical = serde_json::to_vec(&CanonicalRotateSecret {
                 organization_id: command.organization_id,
@@ -64,13 +76,6 @@ impl CommandHandler<RotateSecret> for RotateSecretHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let mut secret = match secrets
-                .find(command.organization_id, command.secret_id)
-                .await
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(error.into())),
-            };
             if secret.state != SecretState::Active {
                 return Ok(Err(ApplicationError::Conflict(
                     "revoked Secret cannot create another version".into(),
