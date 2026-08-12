@@ -41,6 +41,7 @@ macro_rules! identifier {
 identifier!(OrganizationId);
 identifier!(PrincipalId);
 identifier!(MembershipId);
+identifier!(ResourceGrantId);
 identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(EnvironmentId);

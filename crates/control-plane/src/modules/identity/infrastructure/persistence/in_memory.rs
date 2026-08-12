@@ -1,5 +1,6 @@
 use crate::modules::identity::domain::entities::{
-    ApiToken, AuthenticatedApiToken, IdentityBootstrap, IdentityPrincipal, Membership, Organization,
+    ApiToken, AuthenticatedApiToken, IdentityBootstrap, IdentityPrincipal, Membership,
+    Organization, ResourceGrant,
 };
 use crate::modules::identity::domain::repositories::{
     CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
@@ -7,7 +8,7 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, IdempotencyRequest, IdempotentWrite, MembershipId, OrganizationId, PrincipalId,
-    RepositoryError,
+    RepositoryError, ResourceGrantId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -29,6 +30,7 @@ pub(super) struct State {
     pub(super) names: BTreeMap<String, OrganizationId>,
     pub(super) principals: BTreeMap<PrincipalId, IdentityPrincipal>,
     pub(super) memberships: BTreeMap<MembershipId, Membership>,
+    pub(super) resource_grants: BTreeMap<ResourceGrantId, ResourceGrant>,
     pub(super) membership_subjects: BTreeMap<(OrganizationId, PrincipalId), MembershipId>,
     pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
     pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,

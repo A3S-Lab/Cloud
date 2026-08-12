@@ -229,7 +229,7 @@ impl FromRow for ApiTokenRow {
     }
 }
 
-fn decode_column<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
+pub(super) fn decode_column<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
     T::from_value(
         row.value(index)
             .ok_or(DecodeError::MissingColumn { index })?,

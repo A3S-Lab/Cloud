@@ -15,6 +15,9 @@ pub use application::commands::create_api_token::{
 pub use application::commands::create_organization::{
     CreateOrganization, CreateOrganizationHandler, CreateOrganizationResult,
 };
+pub use application::commands::create_resource_grant::{
+    CreateResourceGrant, CreateResourceGrantHandler,
+};
 pub use application::commands::create_service_membership::{
     CreateServiceMembership, CreateServiceMembershipHandler,
 };
@@ -22,10 +25,17 @@ pub use application::commands::revoke_api_token::{
     RevokeApiToken, RevokeApiTokenHandler, RevokeApiTokenResult,
 };
 pub use application::commands::revoke_membership::{RevokeMembership, RevokeMembershipHandler};
+pub use application::commands::revoke_resource_grant::{
+    RevokeResourceGrant, RevokeResourceGrantHandler,
+};
 pub use application::queries::get_api_token::{GetApiToken, GetApiTokenHandler};
 pub use application::queries::get_membership::{GetMembership, GetMembershipHandler};
+pub use application::queries::get_resource_grant::{GetResourceGrant, GetResourceGrantHandler};
 pub use application::queries::list_api_tokens::{ListApiTokens, ListApiTokensHandler};
 pub use application::queries::list_memberships::{ListMemberships, ListMembershipsHandler};
 pub use application::queries::list_organizations::{ListOrganizations, ListOrganizationsHandler};
+pub use application::queries::list_resource_grants::{
+    ListResourceGrants, ListResourceGrantsHandler,
+};
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
 pub use presentation::IdentityModule;

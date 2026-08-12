@@ -1,6 +1,6 @@
 use super::postgres::{
-    decode_membership, decode_principal, insert_membership, insert_principal, MembershipRow,
-    PostgresIdentityRepository, PrincipalRow,
+    decode_column, decode_membership, decode_principal, insert_membership, insert_principal,
+    MembershipRow, PostgresIdentityRepository, PrincipalRow,
 };
 use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_unique_violation, store_audit,
@@ -16,7 +16,7 @@ use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipId, OrganizationId, PrincipalId, RepositoryError,
 };
-use a3s_orm::{sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, Row};
+use a3s_orm::{sql_query, Database, DecodeError, FromRow, PostgresDialect, Row};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -57,14 +57,6 @@ impl FromRow for MembershipRecordRow {
             disabled_at: decode_column(row, 13)?,
         })
     }
-}
-
-fn decode_column<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
-    T::from_value(
-        row.value(index)
-            .ok_or(DecodeError::MissingColumn { index })?,
-        index,
-    )
 }
 
 fn decode_record(row: MembershipRecordRow) -> Result<MembershipRecord, RepositoryError> {
@@ -114,7 +106,7 @@ pub(super) async fn lock_membership_set(
     Ok(())
 }
 
-async fn load_membership_for_update(
+pub(super) async fn load_membership_for_update(
     transaction: &a3s_orm::PostgresTransaction,
     organization_id: OrganizationId,
     membership_id: MembershipId,
@@ -173,7 +165,7 @@ async fn load_principal(
     .map_err(Into::into)
 }
 
-fn authorize_management(
+pub(super) fn authorize_management(
     actor: Option<&Membership>,
     actor_is_platform_admin: bool,
     current_role: MembershipRole,

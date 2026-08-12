@@ -763,6 +763,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/086_workload_replica_sets.sql"
             )),
         ),
+        Migration::new(
+            "087",
+            "Membership-bound Resource Grants",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/087_resource_grants.sql"
+            )),
+        ),
     ]
 }
 

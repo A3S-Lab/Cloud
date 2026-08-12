@@ -23,7 +23,7 @@ fn record(state: &State, membership: &Membership) -> Result<MembershipRecord, Re
     })
 }
 
-fn actor_membership(
+pub(super) fn actor_membership(
     state: &State,
     organization_id: OrganizationId,
     principal_id: PrincipalId,
@@ -36,7 +36,7 @@ fn actor_membership(
         .cloned()
 }
 
-fn authorize_management(
+pub(super) fn authorize_management(
     actor: Option<&Membership>,
     actor_is_platform_admin: bool,
     current_role: MembershipRole,

@@ -18,10 +18,10 @@ pub use identifiers::{
     FormReleaseId, FormSubmissionId, GatewayCertificateId, GatewayRolloutId, GatewayScopeId,
     HumanTaskId, McpCredentialId, MembershipId, NodeCertificateId, NodeCommandId, NodeId,
     OntologyId, OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId, PluginRegistryId,
-    PrincipalId, ProjectId, ResourceClaimId, RouteId, SecretId, SourceConnectionId,
-    SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId, WorkflowDefinitionId,
-    WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId, WorkloadReplicaId,
-    WorkloadReplicaMemberId, WorkloadRevisionId,
+    PrincipalId, ProjectId, ResourceClaimId, ResourceGrantId, RouteId, SecretId,
+    SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
+    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;
