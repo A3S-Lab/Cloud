@@ -57,9 +57,11 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 10. revokes the read-only Token through REST and requires the next MCP request
    to return `401`; and
 11. requires the expected Project, Ontology head, three immutable Ontology
-    revisions, Form draft/release, Environment, stopped Workload, idempotency,
-    and Token-digest rows, read-only scope, revocation, and zero plaintext
-    credentials in responses, logs, evidence, or the PostgreSQL dump.
+    revisions, exact Ontology Outbox/audit/Search/idempotency rows, migration
+    `075`, rejected-migration zero-write behavior, Form draft/release,
+    Environment, stopped Workload, and Token-digest rows; foreign Ontology
+    lookup is indistinguishable from missing, and responses, logs, evidence,
+    and the PostgreSQL dump retain zero plaintext credentials.
 
 Both scenarios execute production PostgreSQL repositories through A3S ORM.
 The runner creates isolated temporary state and a digest-pinned PostgreSQL
@@ -102,3 +104,7 @@ A passing clean default run writes `A3S_CLOUD_C0_1_CROSS_SURFACE_PASS`. A
 passing clean MCP run writes `A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS`. Both results
 bind the exact Cloud, Runtime, and Box revisions and retain only sanitized
 scenario evidence, provider logs, and credential-free persistence checks.
+The clean MCP scenario also writes the strict
+`A3S_CLOUD_W0_2_CERTIFIED ... checks=12/12` result. It reuses the same
+production process and PostgreSQL authority to certify W0.2; it does not add a
+second Ontology repository, migration runner, Search projection, or test stack.

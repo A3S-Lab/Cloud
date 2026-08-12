@@ -348,6 +348,32 @@ if [[ $scenario == management-mcp ]]; then
   mcp_ontology_idempotency_count="$(postgres_query \
     "select count(*) from idempotency_records where idempotency_key in ('c0:mcp:rest-ontology', 'c0:mcp:ontology-compatible', 'c0:mcp:ontology-breaking')")"
   [[ $mcp_ontology_idempotency_count == 3 ]] || die "Ontology replay did not preserve one record per accepted idempotency identity"
+  mcp_ontology_rejected_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key = 'c0:mcp:ontology-breaking-rejected'")"
+  [[ $mcp_ontology_rejected_idempotency_count == 0 ]] || die "rejected Ontology migration consumed its idempotency identity"
+  mcp_ontology_outbox_count="$(postgres_query \
+    "select count(*) from outbox_events e join ontologies o on o.organization_id = e.organization_id and o.id = e.aggregate_id join projects p on p.organization_id = o.organization_id and p.id = o.project_id where p.name = 'MCP Conformance Project' and o.name = 'Support' and e.event_key in ('workflow.ontology.created', 'workflow.ontology.revised')")"
+  [[ $mcp_ontology_outbox_count == 3 ]] || die "Ontology lifecycle did not retain exactly three Outbox facts"
+  mcp_ontology_audit_count="$(postgres_query \
+    "select count(*) from audit_records a join ontologies o on o.organization_id = a.organization_id and o.id = a.aggregate_id join projects p on p.organization_id = o.organization_id and p.id = o.project_id where p.name = 'MCP Conformance Project' and o.name = 'Support' and a.action in ('workflow.ontology.created', 'workflow.ontology.revised')")"
+  [[ $mcp_ontology_audit_count == 3 ]] || die "Ontology lifecycle did not retain exactly three audit records"
+  mcp_ontology_search_count="$(postgres_query \
+    "select count(*) from authorized_search_projections s join projects p on p.organization_id = s.organization_id and p.id = s.project_id where p.name = 'MCP Conformance Project' and s.resource_kind = 'ontology' and s.title = 'Support'")"
+  [[ $mcp_ontology_search_count == 1 ]] || die "authorized Search did not retain exactly one Ontology projection"
+  mcp_ontology_migration_count="$(postgres_query \
+    "select count(*) from a3s_orm_migrations where version = '075'")"
+  [[ $mcp_ontology_migration_count == 1 ]] || die "Ontology migration 075 is not recorded exactly once"
+  mcp_ontology_immutable_trigger_count="$(postgres_query \
+    "select count(*) from pg_trigger where tgrelid = 'ontology_revisions'::regclass and tgname = 'ontology_revisions_immutable' and not tgisinternal")"
+  [[ $mcp_ontology_immutable_trigger_count == 1 ]] || die "Ontology revision immutability trigger is missing"
+  ontology_immutability_log="$evidence_directory/w0.2-immutability.log"
+  if postgres_query \
+    "update ontology_revisions set canonical_acl = canonical_acl where (organization_id, ontology_id) in (select o.organization_id, o.id from ontologies o join projects p on p.organization_id = o.organization_id and p.id = o.project_id where p.name = 'MCP Conformance Project' and o.name = 'Support')" \
+    >"$ontology_immutability_log" 2>&1; then
+    die "stored Ontology revisions accepted mutation"
+  fi
+  grep --fixed-strings --quiet 'Ontology revisions are immutable' "$ontology_immutability_log" ||
+    die "Ontology revision mutation did not fail through the immutable authority"
   mcp_form_draft_count="$(postgres_query \
     "select count(*) from form_drafts f join projects p on p.organization_id = f.organization_id and p.id = f.project_id where p.name = 'MCP Conformance Project' and f.name = 'MCP Approval request' and f.aggregate_version = 3 and f.latest_release_id is not null")"
   [[ $mcp_form_draft_count == 1 ]] || die "PostgreSQL did not retain the expected published Form draft"
@@ -397,7 +423,16 @@ done
 {
   printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
   if [[ $scenario == management-mcp ]]; then
-    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_form_draft_rows=1\nmcp_form_release_rows=1\nmcp_form_idempotency_rows=3\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n'
+    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_ontology_rows=%s\nmcp_ontology_revision_rows=%s\nmcp_ontology_outbox_rows=%s\nmcp_ontology_audit_rows=%s\nmcp_ontology_search_rows=%s\nmcp_ontology_idempotency_rows=%s\nmcp_ontology_rejected_idempotency_rows=%s\nmcp_ontology_migration_rows=%s\nmcp_ontology_immutable_triggers=%s\nmcp_form_draft_rows=1\nmcp_form_release_rows=1\nmcp_form_idempotency_rows=3\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n' \
+      "$mcp_ontology_count" \
+      "$mcp_ontology_revision_count" \
+      "$mcp_ontology_outbox_count" \
+      "$mcp_ontology_audit_count" \
+      "$mcp_ontology_search_count" \
+      "$mcp_ontology_idempotency_count" \
+      "$mcp_ontology_rejected_idempotency_count" \
+      "$mcp_ontology_migration_count" \
+      "$mcp_ontology_immutable_trigger_count"
   fi
 } >"$evidence_directory/persistence-check.txt"
 
@@ -406,6 +441,9 @@ if [[ $scenario == cross-surface ]]; then
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 else
+  printf 'A3S_CLOUD_W0_2_CERTIFIED cloud=%s runtime=%s box=%s source=%s schema=075 rest=1.15.0 mcp=2026-07-28 ontologies=1 revisions=3 outbox=3 audit=3 search=1 idempotency=3 rejected=0 immutable=1 tenant=1 checks=12/12\n' \
+    "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
+    | tee "$evidence_directory/w0.2-result.txt"
   printf 'A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2026-07-28 contract=1.15.0\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
