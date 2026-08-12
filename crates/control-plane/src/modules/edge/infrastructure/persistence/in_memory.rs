@@ -86,6 +86,18 @@ impl InMemoryEdgeRepository {
     }
 
     #[cfg(test)]
+    pub(crate) async fn seed_route(&self, route: Route) {
+        let ownership = (
+            route.gateway_node_id,
+            route.hostname.as_str().to_owned(),
+            route.path_prefix.as_str().to_owned(),
+        );
+        let mut state = self.state.write().await;
+        state.ownership.insert(ownership, route.id);
+        state.routes.insert(route.id, route);
+    }
+
+    #[cfg(test)]
     pub(super) async fn gateway_publication(
         &self,
         node_id: NodeId,

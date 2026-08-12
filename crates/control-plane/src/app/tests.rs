@@ -74,6 +74,7 @@ mod mcp_credential_tests;
 mod ontology_tests;
 mod platform_tests;
 mod plugin_tests;
+mod route_tests;
 mod search_tests;
 mod secret_tests;
 mod source_lifecycle_tests;
@@ -695,6 +696,27 @@ fn build_test_application(
     )
 }
 
+fn build_test_application_with_edge(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    edge: Arc<crate::modules::edge::InMemoryEdgeRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        edge,
+    )
+}
+
 fn build_test_application_with_search(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -926,10 +948,40 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     builds: Arc<dyn IBuildRunRepository>,
     search: Arc<dyn ISearchRepository>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        github_connections,
+        github_authorization,
+        github_installation_tokens,
+        builds,
+        search,
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    builds: Arc<dyn IBuildRunRepository>,
+    search: Arc<dyn ISearchRepository>,
+    edge: Arc<crate::modules::edge::InMemoryEdgeRepository>,
+) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
-    let edge = Arc::new(crate::modules::edge::InMemoryEdgeRepository::new());
     let routes: Arc<dyn IEdgeRepository> = edge.clone();
     let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge;
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(

@@ -1,9 +1,14 @@
 use crate::modules::edge::application::{GetRoute, ListRoutes};
 use crate::modules::edge::presentation::dto::RouteResponse;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId, RouteId};
 use crate::presentation::application_error_response;
-use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{
+    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -42,27 +47,33 @@ pub fn route_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 }
             },
         )?
-        .get(
-            "/{organization_id}/routes/{route_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetRoute {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            route_id: RouteId::from_uuid(request.param_as::<Uuid>("route_id")?),
-                        })
-                        .await?
-                    {
-                        Ok(route) => BootResponse::json(&RouteResponse::from(route)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/routes/{route_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        match bus
+                            .execute(GetRoute {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                route_id: RouteId::from_uuid(request.param_as::<Uuid>("route_id")?),
+                                resource_access,
+                            })
+                            .await?
+                        {
+                            Ok(route) => BootResponse::json(&RouteResponse::from(route)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
 
 use super::request::request_id;

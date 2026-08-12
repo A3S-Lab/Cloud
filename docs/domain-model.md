@@ -577,6 +577,13 @@ contexts' tables.
   Asset-release BuildRuns have no canonical project/environment today, so
   organization-wide roles may access them while restricted memberships fail
   closed; neither Artifacts nor Identity fabricates a project association.
+- Indirect ordinary Route detail resolves the Route through Edge and authorizes
+  its stored project/environment pair at the same application boundary for
+  REST and Management MCP. Explicitly scoped Route lists and publication keep
+  using their path project/environment. MCP Route Policy, DomainClaim, and
+  Credential are separate Edge aggregates; they do not borrow ordinary Route
+  ownership and must resolve their own canonical scope when their indirect
+  boundaries close.
 
 ### Project and Environment
 

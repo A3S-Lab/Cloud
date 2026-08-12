@@ -1677,7 +1677,12 @@ node.
   use their canonical project/environment identity. Hosted Asset-release runs
   are organization-scoped today, so organization-wide roles retain access and
   restricted memberships fail closed instead of receiving synthetic project
-  ownership.
+  ownership. The Edge vertical slice resolves ordinary Route detail through
+  the existing Edge repository and authorizes its stored environment scope for
+  REST and Management MCP. Route collection and publication paths continue to
+  use their explicit project/environment parameters. MCP Route Policy,
+  DomainClaim, and Credential remain independent Edge aggregates and do not
+  inherit scope through an ordinary Route lookup.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1697,9 +1702,9 @@ node.
   Management MCP metadata grant only coarse project-family admission, while
   the Workloads application layer resolves the existing entity and makes the
   final shared-evaluator decision before replay or side effects.
-  The remaining Asset, Form, Workflow, Route, Secret, Agent execution, and
-  Operation boundaries resolve their existing
-  project/environment/node identity through its owning repository and passes
+  The remaining Asset, Form, Workflow, Secret, Agent execution, and Operation
+  boundaries resolve their existing project/environment/node identity through
+  their owning repositories and pass
   that canonical scope to the shared `ResourceAccessEvaluator`.
   Collection queries receive the evaluator and filter at the authoritative
   query boundary. Do not add an Identity cross-context ownership table, a

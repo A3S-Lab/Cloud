@@ -444,6 +444,7 @@ impl ManagementTool {
             | Self::WorkloadsRollback
             | Self::DeploymentsGet
             | Self::DeploymentsCancel
+            | Self::RoutesGet
             | Self::BuildRunsGet
             | Self::BuildRunLogsGet
             | Self::BuildEvidenceGet
@@ -1558,6 +1559,7 @@ mod tests {
             .with_role("organization_restricted")
             .with_scope(ApiTokenScope::WORKLOAD_WRITE)
             .with_scope(ApiTokenScope::BUILD_WRITE)
+            .with_scope(ApiTokenScope::ROUTE_WRITE)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -1581,6 +1583,7 @@ mod tests {
         assert!(ManagementTool::WorkloadsRollback.visible_to(&principal));
         assert!(ManagementTool::DeploymentsGet.visible_to(&principal));
         assert!(ManagementTool::DeploymentsCancel.visible_to(&principal));
+        assert!(ManagementTool::RoutesGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunLogsGet.visible_to(&principal));
         assert!(ManagementTool::BuildEvidenceGet.visible_to(&principal));
@@ -1603,6 +1606,7 @@ mod tests {
         assert!(!ManagementTool::WorkloadsStop.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsGet.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsCancel.visible_to(&principal));
+        assert!(!ManagementTool::RoutesGet.visible_to(&principal));
         assert!(!ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(!ManagementTool::BuildRunsCancel.visible_to(&principal));
     }

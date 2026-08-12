@@ -518,7 +518,14 @@ pub async fn execute(
         }
         ManagementTool::RoutesGet => {
             let arguments = arguments::parse::<RouteArguments>(arguments).ok()?;
-            edge::get_route(query_bus, organization_id, arguments, request_id).await
+            edge::get_route(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::BuildRunsList => {
             let arguments = arguments::parse::<BuildRunListArguments>(arguments).ok()?;

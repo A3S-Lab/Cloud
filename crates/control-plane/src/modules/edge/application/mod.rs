@@ -3,6 +3,7 @@ mod mcp_credential_delivery;
 mod mcp_credential_delivery_receipt_sweeper;
 mod mcp_route_policy_service;
 pub mod queries;
+mod resource_access;
 
 pub(crate) use mcp_credential_delivery::{encrypt_delivery_receipt, recover_delivery};
 pub use mcp_credential_delivery::{
