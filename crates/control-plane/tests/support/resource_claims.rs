@@ -24,17 +24,15 @@ pub async fn exercise_replica_anti_affinity(
     replica_set: &ReplicaSetFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let nodes = PostgresNodeRepository::new(executor.clone());
-    let node = nodes
-        .list(organization_id)
-        .await?
-        .into_iter()
-        .next()
-        .ok_or("replica anti-affinity fixture has no node")?;
-    let inventory = nodes
-        .current_resource_inventory(node.id)
-        .await?
-        .ok_or("replica anti-affinity fixture node has no inventory")?
-        .inventory;
+    let mut selected = None;
+    for node in nodes.list(organization_id).await? {
+        if let Some(inventory) = nodes.current_resource_inventory(node.id).await? {
+            selected = Some((node, inventory.inventory));
+            break;
+        }
+    }
+    let (node, inventory) =
+        selected.ok_or("replica anti-affinity fixture has no inventoried node")?;
     let binding_time = replica_set
         .bindings
         .iter()
