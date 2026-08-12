@@ -292,6 +292,68 @@ fn replica_set_identity_and_retirement_are_generation_fenced() {
 }
 
 #[test]
+fn stateless_evacuation_reuses_identity_only_after_the_exact_generation_is_fenced() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("evacuated-replica").expect("name"),
+        now,
+    );
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        template('a'),
+        now,
+    )
+    .expect("revision");
+    let mut replica = WorkloadReplica::for_ordinal(&workload, &revision, 1).expect("replica");
+    let stable_id = replica.id;
+    let original_generation = replica.generation;
+    let mut member = WorkloadReplicaMember::for_replica(&workload, &replica).expect("member");
+    let source_node_id = NodeId::new();
+    member
+        .place(source_node_id, now + Duration::seconds(1))
+        .expect("place source member");
+    replica
+        .request_evacuation(&member, source_node_id, now + Duration::seconds(2))
+        .expect("request evacuation");
+    assert_eq!(replica.lifecycle, WorkloadReplicaLifecycle::Retiring);
+    assert_eq!(replica.evacuation_node_id, Some(source_node_id));
+
+    let command_id = NodeCommandId::new();
+    replica
+        .dispatch_retirement(command_id, now + Duration::seconds(3))
+        .expect("dispatch Runtime fence");
+    replica
+        .record_runtime_fenced(command_id, now + Duration::seconds(4))
+        .expect("record Runtime fence");
+    assert!(replica
+        .complete_evacuation(&member, now + Duration::seconds(5))
+        .is_err());
+    member
+        .release_after_fencing(source_node_id, now + Duration::seconds(5))
+        .expect("release fenced placement");
+    replica
+        .complete_evacuation(&member, now + Duration::seconds(6))
+        .expect("complete evacuation");
+
+    assert_eq!(replica.id, stable_id);
+    assert_eq!(replica.generation, original_generation + 1);
+    assert_eq!(replica.revision_id, revision.id);
+    assert_eq!(replica.revision_generation, revision.generation);
+    assert_eq!(replica.lifecycle, WorkloadReplicaLifecycle::Desired);
+    assert_eq!(replica.evacuation_node_id, None);
+    assert_eq!(replica.retirement_command_id, None);
+    assert_eq!(replica.runtime_fenced_at, None);
+    assert_eq!(member.node_id, None);
+    assert_eq!(member.placement_generation, 1);
+}
+
+#[test]
 fn replica_set_reconfiguration_retires_only_the_tail_and_reuses_stable_identities() {
     let now = Utc::now();
     let workload = Workload::create(

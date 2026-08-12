@@ -51,6 +51,7 @@ pub struct WorkloadReplica {
     pub revision_generation: u64,
     pub generation: u64,
     pub lifecycle: WorkloadReplicaLifecycle,
+    pub evacuation_node_id: Option<NodeId>,
     pub retirement_command_id: Option<NodeCommandId>,
     pub runtime_fenced_at: Option<DateTime<Utc>>,
     pub aggregate_version: u64,
@@ -82,6 +83,7 @@ impl WorkloadReplica {
             revision_generation: revision.generation,
             generation: revision.generation,
             lifecycle: WorkloadReplicaLifecycle::Desired,
+            evacuation_node_id: None,
             retirement_command_id: None,
             runtime_fenced_at: None,
             aggregate_version: 1,
@@ -164,6 +166,42 @@ impl WorkloadReplica {
             return Ok(());
         }
         self.lifecycle = WorkloadReplicaLifecycle::Retiring;
+        self.evacuation_node_id = None;
+        self.retirement_command_id = None;
+        self.runtime_fenced_at = None;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Workload replica version overflowed".to_string())?;
+        self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn request_evacuation(
+        &mut self,
+        member: &WorkloadReplicaMember,
+        node_id: NodeId,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let at = canonical_timestamp(at);
+        if node_id.as_uuid().is_nil()
+            || member.replica_id != self.id
+            || member.workload_id != self.workload_id
+            || member.node_id != Some(node_id)
+            || at < self.updated_at.max(member.updated_at)
+        {
+            return Err("Workload replica evacuation request is invalid".into());
+        }
+        if self.lifecycle == WorkloadReplicaLifecycle::Retiring
+            && self.evacuation_node_id == Some(node_id)
+        {
+            return Ok(());
+        }
+        if self.lifecycle != WorkloadReplicaLifecycle::Desired {
+            return Err("Workload replica is not eligible for evacuation".into());
+        }
+        self.lifecycle = WorkloadReplicaLifecycle::Retiring;
+        self.evacuation_node_id = Some(node_id);
         self.retirement_command_id = None;
         self.runtime_fenced_at = None;
         self.aggregate_version = self
@@ -237,12 +275,46 @@ impl WorkloadReplica {
             || member.workload_id != self.workload_id
             || member.node_id.is_some()
             || self.lifecycle != WorkloadReplicaLifecycle::Retiring
+            || self.evacuation_node_id.is_some()
             || self.retirement_command_id.is_some() != self.runtime_fenced_at.is_some()
             || at < self.updated_at.max(member.updated_at)
         {
             return Err("Workload replica cannot retire before its member is released".into());
         }
         self.lifecycle = WorkloadReplicaLifecycle::Retired;
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Workload replica version overflowed".to_string())?;
+        self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn complete_evacuation(
+        &mut self,
+        member: &WorkloadReplicaMember,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let at = canonical_timestamp(at);
+        if member.replica_id != self.id
+            || member.workload_id != self.workload_id
+            || member.node_id.is_some()
+            || self.lifecycle != WorkloadReplicaLifecycle::Retiring
+            || self.evacuation_node_id.is_none()
+            || self.retirement_command_id.is_none()
+            || self.runtime_fenced_at.is_none()
+            || at < self.updated_at.max(member.updated_at)
+        {
+            return Err("Workload replica cannot complete evacuation before fencing".into());
+        }
+        self.generation = self
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| "Workload replica generation overflowed".to_string())?;
+        self.lifecycle = WorkloadReplicaLifecycle::Desired;
+        self.evacuation_node_id = None;
+        self.retirement_command_id = None;
+        self.runtime_fenced_at = None;
         self.aggregate_version = self
             .aggregate_version
             .checked_add(1)
@@ -271,6 +343,7 @@ impl WorkloadReplica {
             .checked_add(1)
             .ok_or_else(|| "Workload replica generation overflowed".to_string())?;
         self.lifecycle = WorkloadReplicaLifecycle::Desired;
+        self.evacuation_node_id = None;
         self.retirement_command_id = None;
         self.runtime_fenced_at = None;
         self.aggregate_version = self
@@ -294,6 +367,9 @@ impl WorkloadReplica {
             || self.aggregate_version == 0
             || self.updated_at < self.created_at
             || self
+                .evacuation_node_id
+                .is_some_and(|node_id| node_id.as_uuid().is_nil())
+            || self
                 .runtime_fenced_at
                 .is_some_and(|fenced_at| fenced_at < self.created_at || fenced_at > self.updated_at)
         {
@@ -301,13 +377,16 @@ impl WorkloadReplica {
         }
         let retirement_state_valid = match self.lifecycle {
             WorkloadReplicaLifecycle::Desired => {
-                self.retirement_command_id.is_none() && self.runtime_fenced_at.is_none()
+                self.evacuation_node_id.is_none()
+                    && self.retirement_command_id.is_none()
+                    && self.runtime_fenced_at.is_none()
             }
             WorkloadReplicaLifecycle::Retiring => {
                 self.runtime_fenced_at.is_none() || self.retirement_command_id.is_some()
             }
             WorkloadReplicaLifecycle::Retired => {
-                self.retirement_command_id.is_some() == self.runtime_fenced_at.is_some()
+                self.evacuation_node_id.is_none()
+                    && self.retirement_command_id.is_some() == self.runtime_fenced_at.is_some()
             }
         };
         if !retirement_state_valid {

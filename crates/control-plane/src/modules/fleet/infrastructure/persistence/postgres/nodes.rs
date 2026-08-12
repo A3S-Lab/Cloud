@@ -228,3 +228,30 @@ pub(super) async fn list(
         .map(rows::node)
         .collect()
 }
+
+pub(super) async fn list_draining(
+    executor: &PostgresExecutor,
+    limit: usize,
+) -> Result<Vec<Node>, RepositoryError> {
+    if limit == 0 || limit > 10_000 {
+        return Err(RepositoryError::Conflict(
+            "node state query limit must be between 1 and 10000".into(),
+        ));
+    }
+    let limit = u64::try_from(limit)
+        .map_err(|_| RepositoryError::Conflict("node state query limit is invalid".into()))?;
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(
+            sql_query::<NodeRow>(SELECT_NODES)
+                .append(" where state = ")
+                .bind(NodeState::Draining.as_str())
+                .append(" order by organization_id asc, id asc limit ")
+                .bind(limit),
+        )
+        .await
+        .map_err(|error| RepositoryError::Storage(error.to_string()))?
+        .rows
+        .into_iter()
+        .map(rows::node)
+        .collect()
+}

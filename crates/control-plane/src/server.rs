@@ -14,8 +14,8 @@ use crate::modules::workflow::{
     HumanTaskCoordinator, HumanTaskResumeWorker, WorkflowRunReconciler,
 };
 use crate::modules::workloads::{
-    ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, SecretRotationRestartReconciler,
-    WorkloadRuntimeReconciler,
+    NodeDrainEvacuationReconciler, ReplicaDeploymentMaterializer, ReplicaRetirementReconciler,
+    SecretRotationRestartReconciler, WorkloadRuntimeReconciler,
 };
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
 use std::net::SocketAddr;
@@ -42,6 +42,7 @@ pub(crate) struct ControlPlaneWorkers {
     gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
     gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
+    node_drain_evacuation_reconciler: Option<NodeDrainEvacuationReconciler>,
     replica_deployment_materializer: Option<ReplicaDeploymentMaterializer>,
     replica_retirement_reconciler: Option<ReplicaRetirementReconciler>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
@@ -70,6 +71,7 @@ impl ControlPlaneWorkers {
         gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
         gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
+        node_drain_evacuation_reconciler: Option<NodeDrainEvacuationReconciler>,
         replica_deployment_materializer: Option<ReplicaDeploymentMaterializer>,
         replica_retirement_reconciler: Option<ReplicaRetirementReconciler>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
@@ -95,6 +97,7 @@ impl ControlPlaneWorkers {
             gateway_replica_recovery_reconciler,
             gateway_rollout_rollback_reconciler,
             secret_rotation_restart_reconciler,
+            node_drain_evacuation_reconciler,
             replica_deployment_materializer,
             replica_retirement_reconciler,
             workload_reconciler,
@@ -174,6 +177,9 @@ impl ControlPlane {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {
+            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(reconciler) = self.workers.node_drain_evacuation_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
         }
         if let Some(materializer) = self.workers.replica_deployment_materializer {

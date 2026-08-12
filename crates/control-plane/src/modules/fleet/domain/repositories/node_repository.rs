@@ -153,3 +153,14 @@ pub trait INodeRepository: Send + Sync {
 
     async fn list(&self, organization_id: OrganizationId) -> Result<Vec<Node>, RepositoryError>;
 }
+
+#[async_trait]
+pub trait INodeDrainRepository: Send + Sync {
+    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError>;
+
+    async fn find_drain_node(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<Node, RepositoryError>;
+}

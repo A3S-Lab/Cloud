@@ -8,10 +8,11 @@ pub(crate) use resource_claim_repository::{
 pub use workload_repository::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
     ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
-    RetiringReplicaTarget, SecretRotation, SecretRotationCompletion, SecretRotationReconciliation,
-    WorkloadStopBundle,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
+    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
+    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
+    SecretRotationReconciliation, WorkloadStopBundle,
 };

@@ -62,6 +62,7 @@ impl Selection for ReplicaSelection {
             WorkloadReplicas::revision_generation().expression(),
             WorkloadReplicas::generation().expression(),
             WorkloadReplicas::lifecycle().expression(),
+            WorkloadReplicas::evacuation_node_id().expression(),
             WorkloadReplicas::retirement_command_id().expression(),
             WorkloadReplicas::runtime_fenced_at().expression(),
             WorkloadReplicas::aggregate_version().expression(),
@@ -143,6 +144,7 @@ struct ReplicaRow {
     revision_generation: u64,
     generation: u64,
     lifecycle: String,
+    evacuation_node_id: Option<Uuid>,
     retirement_command_id: Option<Uuid>,
     runtime_fenced_at: Option<DateTime<Utc>>,
     aggregate_version: u64,
@@ -202,8 +204,8 @@ from_row!(ControlRow, {
 from_row!(ReplicaRow, {
     id: 0, organization_id: 1, project_id: 2, environment_id: 3, workload_id: 4,
     ordinal: 5, revision_id: 6, revision_generation: 7, generation: 8,
-    lifecycle: 9, retirement_command_id: 10, runtime_fenced_at: 11,
-    aggregate_version: 12, created_at: 13, updated_at: 14,
+    lifecycle: 9, evacuation_node_id: 10, retirement_command_id: 11,
+    runtime_fenced_at: 12, aggregate_version: 13, created_at: 14, updated_at: 15,
 });
 from_row!(MemberRow, {
     id: 0, organization_id: 1, project_id: 2, environment_id: 3, workload_id: 4,
@@ -857,6 +859,10 @@ pub(super) async fn insert_replica(
             .value(WorkloadReplicas::generation(), replica.generation)
             .value(WorkloadReplicas::lifecycle(), replica.lifecycle.as_str())
             .value(
+                WorkloadReplicas::evacuation_node_id(),
+                replica.evacuation_node_id.map(NodeId::as_uuid),
+            )
+            .value(
                 WorkloadReplicas::retirement_command_id(),
                 replica.retirement_command_id.map(NodeCommandId::as_uuid),
             )
@@ -941,6 +947,10 @@ pub(super) async fn persist_replica(
             )
             .set(WorkloadReplicas::generation(), replica.generation)
             .set(WorkloadReplicas::lifecycle(), replica.lifecycle.as_str())
+            .set(
+                WorkloadReplicas::evacuation_node_id(),
+                replica.evacuation_node_id.map(NodeId::as_uuid),
+            )
             .set(
                 WorkloadReplicas::retirement_command_id(),
                 replica.retirement_command_id.map(NodeCommandId::as_uuid),
@@ -1121,6 +1131,7 @@ impl ReplicaRow {
             generation: self.generation,
             lifecycle: WorkloadReplicaLifecycle::parse(&self.lifecycle)
                 .map_err(RepositoryError::Storage)?,
+            evacuation_node_id: self.evacuation_node_id.map(NodeId::from_uuid),
             retirement_command_id: self.retirement_command_id.map(NodeCommandId::from_uuid),
             runtime_fenced_at: self.runtime_fenced_at,
             aggregate_version: self.aggregate_version,

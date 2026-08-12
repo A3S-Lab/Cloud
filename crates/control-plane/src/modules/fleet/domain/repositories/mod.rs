@@ -12,7 +12,7 @@ pub use node_control_repository::{
     NodeObservationSubmission, NodeResourceInventoryRecord, RuntimeObservationRecord,
 };
 pub use node_repository::{
-    INodeRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
-    NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
-    NodeHeartbeatUpdate, NodeStateChange,
+    INodeDrainRepository, INodeRepository, NodeCertificateRotationCompletion,
+    NodeCertificateRotationDraft, NodeCertificateRotationReservation, NodeEnrollmentDraft,
+    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeStateChange,
 };

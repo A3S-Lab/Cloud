@@ -3,7 +3,7 @@ use crate::modules::fleet::domain::entities::{
     EnrollmentToken, NodeCertificate, NodeCertificateMaterial, NodeCommandDraft,
 };
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeRepository,
+    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodeRepository,
     NodeCertificateRotationCompletion, NodeCertificateRotationDraft, NodeEnrollmentDraft,
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery,
     NodeLogChunkReceiptDraft, NodeStateChange,
@@ -1065,6 +1065,21 @@ async fn heartbeat_draining_rotation_and_revocation_preserve_node_identity() {
         .expect("drain")
         .value;
     assert!(!draining.accepts_new_work_at(now + Duration::seconds(3), Duration::seconds(10)));
+    assert_eq!(
+        repository
+            .list_draining(1)
+            .await
+            .expect("list draining nodes"),
+        vec![draining.clone()]
+    );
+    assert_eq!(
+        repository
+            .find_drain_node(organization_id, draining.id)
+            .await
+            .expect("find drain node"),
+        draining
+    );
+    assert!(repository.list_draining(0).await.is_err());
     let revoked = repository
         .set_state(NodeStateChange {
             organization_id,

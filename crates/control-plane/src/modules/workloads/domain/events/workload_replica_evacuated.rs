@@ -11,20 +11,21 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkloadReplicaRetired {
+pub struct WorkloadReplicaEvacuated {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
     pub replica_id: WorkloadReplicaId,
+    pub previous_replica_generation: u64,
     pub replica_generation: u64,
     pub ordinal: u32,
-    pub node_id: Option<NodeId>,
+    pub source_node_id: NodeId,
     pub placement_generation: u64,
-    pub runtime_fence_command_id: Option<NodeCommandId>,
-    pub runtime_fenced_at: Option<DateTime<Utc>>,
-    pub retired_at: DateTime<Utc>,
+    pub runtime_fence_command_id: NodeCommandId,
+    pub runtime_fenced_at: DateTime<Utc>,
+    pub evacuated_at: DateTime<Utc>,
 }
 
-impl WorkloadReplicaRetired {
+impl WorkloadReplicaEvacuated {
     pub fn envelope(
         previous: &WorkloadReplica,
         current: &WorkloadReplica,
@@ -32,59 +33,66 @@ impl WorkloadReplicaRetired {
         current_member: &WorkloadReplicaMember,
         correlation_id: Uuid,
     ) -> Result<DomainEventEnvelope, String> {
-        let expected_member_version = previous_member
-            .aggregate_version
-            .checked_add(u64::from(previous_member.node_id.is_some()))
-            .ok_or_else(|| "Workload replica member version overflowed".to_string())?;
+        let source_node_id = previous
+            .evacuation_node_id
+            .ok_or_else(|| "Workload replica evacuation omitted its source node".to_string())?;
+        let runtime_fence_command_id = previous
+            .retirement_command_id
+            .ok_or_else(|| "Workload replica evacuation omitted its Runtime fence".to_string())?;
+        let runtime_fenced_at = previous.runtime_fenced_at.ok_or_else(|| {
+            "Workload replica evacuation omitted its Runtime fencing time".to_string()
+        })?;
         if previous.id != current.id
             || previous.organization_id != current.organization_id
             || previous.workload_id != current.workload_id
-            || previous.generation != current.generation
             || previous.ordinal != current.ordinal
+            || previous.revision_id != current.revision_id
+            || previous.revision_generation != current.revision_generation
             || previous.lifecycle != WorkloadReplicaLifecycle::Retiring
-            || previous.evacuation_node_id.is_some()
-            || current.lifecycle != WorkloadReplicaLifecycle::Retired
-            || current.evacuation_node_id.is_some()
+            || current.lifecycle != WorkloadReplicaLifecycle::Desired
+            || previous.generation.checked_add(1) != Some(current.generation)
             || previous.aggregate_version.checked_add(1) != Some(current.aggregate_version)
-            || previous.retirement_command_id != current.retirement_command_id
-            || previous.runtime_fenced_at != current.runtime_fenced_at
-            || previous.retirement_command_id.is_some() != previous.runtime_fenced_at.is_some()
-            || previous_member.node_id.is_some() && previous.runtime_fenced_at.is_none()
+            || current.evacuation_node_id.is_some()
+            || current.retirement_command_id.is_some()
+            || current.runtime_fenced_at.is_some()
             || previous_member.id != current_member.id
             || previous_member.replica_id != previous.id
             || current_member.replica_id != current.id
-            || previous_member.placement_generation != current_member.placement_generation
+            || previous_member.node_id != Some(source_node_id)
             || current_member.node_id.is_some()
-            || current_member.aggregate_version != expected_member_version
+            || previous_member.placement_generation != current_member.placement_generation
+            || previous_member.aggregate_version.checked_add(1)
+                != Some(current_member.aggregate_version)
             || current.updated_at < previous.updated_at.max(current_member.updated_at)
             || correlation_id.is_nil()
         {
-            return Err("Workload replica retirement event has an invalid transition".into());
+            return Err("Workload replica evacuated event has an invalid transition".into());
         }
         Ok(DomainEventEnvelope {
             event_id: Uuid::now_v7(),
-            event_key: "workload.replica.retired".into(),
+            event_key: "workload.replica.evacuated".into(),
             schema_version: 1,
             organization_id: current.organization_id.as_uuid(),
             aggregate_id: current.id.as_uuid(),
             aggregate_version: current.aggregate_version,
             occurred_at: current.updated_at,
             correlation_id,
-            causation_id: previous.retirement_command_id.map(NodeCommandId::as_uuid),
+            causation_id: Some(runtime_fence_command_id.as_uuid()),
             payload: serde_json::to_value(Self {
                 organization_id: current.organization_id,
                 workload_id: current.workload_id,
                 replica_id: current.id,
+                previous_replica_generation: previous.generation,
                 replica_generation: current.generation,
                 ordinal: current.ordinal,
-                node_id: previous_member.node_id,
+                source_node_id,
                 placement_generation: previous_member.placement_generation,
-                runtime_fence_command_id: current.retirement_command_id,
-                runtime_fenced_at: current.runtime_fenced_at,
-                retired_at: current.updated_at,
+                runtime_fence_command_id,
+                runtime_fenced_at,
+                evacuated_at: current.updated_at,
             })
             .map_err(|error| {
-                format!("could not encode Workload replica retirement event: {error}")
+                format!("could not encode Workload replica evacuated event: {error}")
             })?,
         })
     }
