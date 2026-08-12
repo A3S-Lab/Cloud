@@ -821,7 +821,7 @@ async fn management_mcp_reuses_resource_grant_commands_queries_and_idempotency()
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
-    bootstrap_organization(&app, "mcp-resource-grants", "Acme").await?;
+    let organization = bootstrap_organization(&app, "mcp-resource-grants", "Acme").await?;
 
     let membership = app
         .call(mcp_request(
@@ -841,7 +841,19 @@ async fn management_mcp_reuses_resource_grant_commands_queries_and_idempotency()
     let membership_id = membership["result"]["structuredContent"]["data"]["id"]
         .as_str()
         .ok_or_else(|| BootError::Internal("MCP membership response has no ID".into()))?;
-    let project_id = Uuid::now_v7();
+    let project = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects"),
+            "mcp-resource-grant-project",
+            json!({"name": "Granted project"}),
+        ))
+        .await?;
+    assert_eq!(project.status(), 201);
+    let project_id = response_json(&project)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP Resource Grant project has no ID".into()))?
+        .parse::<Uuid>()
+        .map_err(|error| BootError::Internal(format!("invalid project ID: {error}")))?;
     let create_arguments = json!({
         "membershipId": membership_id,
         "scope": {"kind": "project", "projectId": project_id},

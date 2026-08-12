@@ -109,8 +109,8 @@ are different facts.
 ### 3.1 Identity and access
 
 Owns stable human and service Principals, organizations, Membership roles,
-Principal-bound API credentials, revocation, planned Resource Grants, optional
-external OIDC subject links under `C0.3`, and tenant context. It answers who may
+Principal-bound API credentials, revocation, Resource Grants, planned external
+OIDC subject links under `C0.3`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, or store asset
 collaborator data in an unvalidated metadata document.
@@ -121,7 +121,7 @@ Primary aggregates:
 - `Organization`
 - `Membership`
 - `ApiToken`
-- `ResourceGrant` (next `C0.3` slice)
+- `ResourceGrant`
 - `ExternalIdentityLink` (planned `C0.3`)
 
 ### 3.2 Projects
@@ -435,7 +435,7 @@ creates a resume receipt only after observing the exact matching
 validates the exact interaction-mode FormRelease and hook metadata before task
 creation, and recovers a resume committed before receipt acknowledgement.
 Draft/release commands and APIs are implemented; public protected submission,
-HumanTask/tasklist surfaces, Resource Grant evaluation, and expiry/cancellation
+HumanTask/tasklist surfaces, Resource Grant enforcement on those public surfaces, and expiry/cancellation
 coordination remain later slices.
 
 The first closed Workflow contract uses these semantic step kinds:
@@ -556,9 +556,14 @@ contexts' tables.
   member may issue only for its own Principal; cross-Principal issuance reuses
   the Membership role matrix, so an `admin` cannot issue an owner credential
   and only an owner or platform administrator can manage owner credentials.
-- Membership restriction and revocation affect every bound credential on the
-  next request. `restricted` fails closed on tenant resources until the shared
-  Resource Grant evaluator is implemented.
+- Membership restriction, Resource Grant revocation, and Membership revocation
+  affect every bound credential on the next request. `restricted` fails closed
+  unless one active Membership-bound Resource Grant covers the requested
+  project, environment, or node.
+- A project grant covers that project and its descendant environments. An
+  environment grant and a node grant are exact. Every target must already exist
+  in the same organization; all surfaces reuse the same evaluator and
+  create/revoke commands rather than implementing presentation-local RBAC.
 
 ### Project and Environment
 

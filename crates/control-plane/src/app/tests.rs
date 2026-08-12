@@ -1649,6 +1649,33 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
 
     let resource_grants_path =
         format!("/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants");
+    for (idempotency_key, scope) in [
+        (
+            "membership:grant-missing-project",
+            json!({"kind": "project", "projectId": Uuid::now_v7()}),
+        ),
+        (
+            "membership:grant-missing-environment",
+            json!({
+                "kind": "environment",
+                "projectId": granted_project_id,
+                "environmentId": Uuid::now_v7()
+            }),
+        ),
+        (
+            "membership:grant-missing-node",
+            json!({"kind": "node", "nodeId": Uuid::now_v7()}),
+        ),
+    ] {
+        let missing_target = app
+            .call(post_json(
+                &resource_grants_path,
+                idempotency_key,
+                json!({"scope": scope}),
+            ))
+            .await?;
+        assert_eq!(missing_target.status(), 404);
+    }
     let grant_body = json!({
         "scope": {
             "kind": "project",

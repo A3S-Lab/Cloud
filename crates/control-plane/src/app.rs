@@ -1211,6 +1211,9 @@ fn build_application_with_health(
     let list_memberships = Arc::clone(&memberships);
     let get_memberships = Arc::clone(&memberships);
     let create_resource_grants = Arc::clone(&resource_grants);
+    let resource_grant_projects = Arc::clone(&projects);
+    let resource_grant_environments = Arc::clone(&environments);
+    let resource_grant_nodes = Arc::clone(&nodes);
     let revoke_resource_grants = Arc::clone(&resource_grants);
     let list_resource_grants = Arc::clone(&resource_grants);
     let get_resource_grants = Arc::clone(&resource_grants);
@@ -1424,7 +1427,12 @@ fn build_application_with_health(
                     RevokeMembershipHandler::new(revoke_memberships),
                 )
                 .command_handler::<crate::modules::identity::CreateResourceGrant, _>(
-                    CreateResourceGrantHandler::new(create_resource_grants),
+                    CreateResourceGrantHandler::new(
+                        create_resource_grants,
+                        resource_grant_projects,
+                        resource_grant_environments,
+                        resource_grant_nodes,
+                    ),
                 )
                 .command_handler::<crate::modules::identity::RevokeResourceGrant, _>(
                     RevokeResourceGrantHandler::new(revoke_resource_grants),

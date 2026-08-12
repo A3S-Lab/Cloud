@@ -2131,6 +2131,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(service_project.status(), 201);
+    let service_project_id = response_id(&service_project)?;
     let restricted = app
         .call(post_json(
             &service_role_path,
@@ -2145,6 +2146,117 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .status(),
         403
     );
+    let resource_grants_path = format!(
+        "/api/v1/organizations/{organization_id}/memberships/{service_membership_id}/resource-grants"
+    );
+    let missing_target = app
+        .call(post_json(
+            &resource_grants_path,
+            "resource-grant-missing-project",
+            json!({
+                "scope": {"kind": "project", "projectId": Uuid::now_v7()}
+            }),
+        ))
+        .await?;
+    assert_eq!(missing_target.status(), 404);
+    let grant_body = json!({
+        "scope": {"kind": "project", "projectId": service_project_id}
+    });
+    let resource_grant = app
+        .call(post_json(
+            &resource_grants_path,
+            "resource-grant-service-project",
+            grant_body.clone(),
+        ))
+        .await?;
+    let resource_grant_replay = app
+        .call(post_json(
+            &resource_grants_path,
+            "resource-grant-service-project",
+            grant_body,
+        ))
+        .await?;
+    assert_eq!(resource_grant.status(), 201);
+    assert_eq!(resource_grant_replay.status(), 200);
+    let resource_grant_id = response_id(&resource_grant)?;
+    let resource_grant_uuid = Uuid::parse_str(&resource_grant_id)?;
+    assert_eq!(response_id(&resource_grant_replay)?, resource_grant_id);
+    assert_eq!(
+        response_json(&resource_grant_replay)?["data"]["replayed"],
+        true
+    );
+
+    let listed_grants = app.call(get_as(&resource_grants_path, ADMIN_TOKEN)).await?;
+    assert_eq!(listed_grants.status(), 200);
+    assert_eq!(
+        response_json(&listed_grants)?["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    let resource_grant_path =
+        format!("/api/v1/organizations/{organization_id}/resource-grants/{resource_grant_id}");
+    assert_eq!(
+        app.call(get_as(&resource_grant_path, ADMIN_TOKEN))
+            .await?
+            .status(),
+        200
+    );
+    let visible_projects = app
+        .call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+        .await?;
+    assert_eq!(visible_projects.status(), 200);
+    assert_eq!(
+        response_json(&visible_projects)?["data"][0]["id"],
+        service_project_id.to_string()
+    );
+
+    let revoke_arguments = json!({"expectedVersion": 1});
+    let revoked_grant = app
+        .call(post_json(
+            format!("{resource_grant_path}/revocation"),
+            "resource-grant-service-project-revoke",
+            revoke_arguments.clone(),
+        ))
+        .await?;
+    let revoked_grant_replay = app
+        .call(post_json(
+            format!("{resource_grant_path}/revocation"),
+            "resource-grant-service-project-revoke",
+            revoke_arguments,
+        ))
+        .await?;
+    assert_eq!(revoked_grant.status(), 200);
+    assert_eq!(revoked_grant_replay.status(), 200);
+    assert_eq!(
+        response_json(&revoked_grant)?["data"]["aggregateVersion"],
+        2
+    );
+    assert!(response_json(&revoked_grant)?["data"]["revokedAt"].is_string());
+    assert_eq!(
+        response_json(&revoked_grant_replay)?["data"]["replayed"],
+        true
+    );
+    assert_eq!(
+        app.call(get_as(&project_path, SERVICE_MEMBER_TOKEN))
+            .await?
+            .status(),
+        403
+    );
+    let stored_resource_grant_evidence = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64)>(
+                "select (select count(*) from resource_grants where id = ",
+            )
+            .bind(resource_grant_uuid)
+            .append(" and aggregate_version = 2 and revoked_at is not null), (select count(*) from audit_records where aggregate_id = ")
+            .bind(resource_grant_uuid)
+            .append(" and action like 'identity.resource-grant.%'), (select count(*) from outbox_events where aggregate_id = ")
+            .bind(resource_grant_uuid)
+            .append(" and event_key like 'identity.resource-grant.%')"),
+        )
+        .await?;
+    assert_eq!(stored_resource_grant_evidence, (1, 2, 2));
     let restored = app
         .call(post_json(
             &service_role_path,
