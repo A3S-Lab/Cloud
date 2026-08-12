@@ -117,8 +117,10 @@ contract `1.15.0`, the maintained TypeScript client, `ontologies` CLI commands,
 and seven Management MCP tools. Search receives one rebuildable Ontology
 projection. This `W0.2` backend does not add a graph database, migration-policy
 store, workflow engine, queue, object client, or frontend. Focused lifecycle
-and cross-surface tests pass; clean real-PostgreSQL conformance remains the
-verification boundary.
+tests and the clean A3S Box/PostgreSQL cross-surface gate pass. The strict
+`12/12` evidence covers accepted and rejected migrations, immutable revisions,
+idempotency, Outbox, audit, Search, and cross-tenant MCP non-disclosure, so
+`W0.2` is verified.
 
 The next backend `W0.3` planning slice persists project-scoped
 `WorkflowDefinition` heads, immutable `WorkflowRevision` records, and every
@@ -396,7 +398,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; trusted Registry/catalog reads available, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1`, backend `W0.2`, and the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun lifecycle, and internal authority-bound HumanTask decision loop are implemented; public protected submission/task surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded cross-surface verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified, while the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun lifecycle, and internal authority-bound HumanTask decision loop are implemented; public protected submission/task surfaces, Resource Grants, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded `W0.3` cross-surface verification, and `W0.4`-`W0.5` remain) |
 | `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
 | `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |
