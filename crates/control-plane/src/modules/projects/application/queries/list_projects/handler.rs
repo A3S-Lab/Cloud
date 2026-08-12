@@ -23,10 +23,18 @@ impl QueryHandler<ListProjects> for ListProjectsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<Project>>>> {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
-            Ok(repository
-                .list(query.organization_id)
-                .await
-                .map_err(Into::into))
+            let projects = match repository.list(query.organization_id).await {
+                Ok(projects) => projects,
+                Err(error) => return Ok(Err(error.into())),
+            };
+            Ok(Ok(projects
+                .into_iter()
+                .filter(|project| {
+                    query
+                        .resource_access
+                        .project_is_visible_in_collection(project.id)
+                })
+                .collect()))
         })
     }
 }

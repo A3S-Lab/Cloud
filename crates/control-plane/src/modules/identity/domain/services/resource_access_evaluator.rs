@@ -79,6 +79,25 @@ impl ResourceAccessEvaluator {
         self.allows(ResourceGrantScope::Node { node_id })
     }
 
+    pub fn projected_resource_is_visible(
+        &self,
+        project_id: Option<ProjectId>,
+        environment_id: Option<EnvironmentId>,
+        node_id: Option<NodeId>,
+    ) -> bool {
+        match (project_id, environment_id, node_id) {
+            (_, _, _) if self.organization_wide => true,
+            (Some(project_id), Some(environment_id), None) => {
+                self.environment_is_visible(project_id, environment_id)
+            }
+            (Some(project_id), None, None) => {
+                self.allows(ResourceGrantScope::Project { project_id })
+            }
+            (None, None, Some(node_id)) => self.node_is_visible(node_id),
+            _ => false,
+        }
+    }
+
     pub fn has_project_visibility(&self) -> bool {
         self.organization_wide
             || self
@@ -161,5 +180,29 @@ mod tests {
         };
         let evaluator = ResourceAccessEvaluator::restricted([node, node]);
         assert_eq!(evaluator.granted_scopes().collect::<Vec<_>>(), vec![node]);
+    }
+
+    #[test]
+    fn projected_resources_fail_closed_without_a_supported_scope() {
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let node_id = NodeId::new();
+        let evaluator = ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+            project_id,
+            environment_id,
+        }]);
+        assert!(evaluator.projected_resource_is_visible(
+            Some(project_id),
+            Some(environment_id),
+            None
+        ));
+        assert!(!evaluator.projected_resource_is_visible(Some(project_id), None, None));
+        assert!(!evaluator.projected_resource_is_visible(None, None, Some(node_id)));
+        assert!(!evaluator.projected_resource_is_visible(None, None, None));
+        assert!(!evaluator.projected_resource_is_visible(
+            Some(project_id),
+            Some(environment_id),
+            Some(node_id)
+        ));
     }
 }

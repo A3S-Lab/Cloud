@@ -149,6 +149,10 @@ pub(super) enum ManagementResourceBinding {
     ProjectArgument,
     EnvironmentArguments,
     NodeArgument,
+    ProjectCollection,
+    EnvironmentCollection,
+    NodeCollection,
+    SearchCollection,
 }
 
 impl ManagementTool {
@@ -396,7 +400,6 @@ impl ManagementTool {
     pub(super) const fn resource_binding(self) -> Option<ManagementResourceBinding> {
         match self {
             Self::EnvironmentsCreate
-            | Self::EnvironmentsList
             | Self::FormsCreate
             | Self::FormsList
             | Self::OntologiesCreate
@@ -411,6 +414,10 @@ impl ManagementTool {
                 Some(ManagementResourceBinding::EnvironmentArguments)
             }
             Self::NodesGet => Some(ManagementResourceBinding::NodeArgument),
+            Self::ProjectsList => Some(ManagementResourceBinding::ProjectCollection),
+            Self::EnvironmentsList => Some(ManagementResourceBinding::EnvironmentCollection),
+            Self::NodesList => Some(ManagementResourceBinding::NodeCollection),
+            Self::Search => Some(ManagementResourceBinding::SearchCollection),
             _ => None,
         }
     }
@@ -428,6 +435,14 @@ impl ManagementTool {
                 evaluator.has_project_visibility()
             }
             Some(ManagementResourceBinding::NodeArgument) => evaluator.has_node_visibility(),
+            Some(
+                ManagementResourceBinding::ProjectCollection
+                | ManagementResourceBinding::EnvironmentCollection,
+            ) => evaluator.has_project_visibility(),
+            Some(ManagementResourceBinding::NodeCollection) => evaluator.has_node_visibility(),
+            Some(ManagementResourceBinding::SearchCollection) => {
+                evaluator.has_any_visible_resource()
+            }
             None => false,
         }
     }
@@ -1423,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn restricted_catalog_only_exposes_directly_authorizable_tools() {
+    fn restricted_catalog_exposes_direct_and_filtered_collection_tools() {
         let principal = restricted_principal(ResourceGrantScope::Project {
             project_id: ProjectId::new(),
         });
@@ -1431,7 +1446,8 @@ mod tests {
         assert!(ManagementTool::FormsList.visible_to(&principal));
         assert!(!ManagementTool::FormsGet.visible_to(&principal));
         assert!(!ManagementTool::NodesGet.visible_to(&principal));
-        assert!(!ManagementTool::ProjectsList.visible_to(&principal));
+        assert!(ManagementTool::ProjectsList.visible_to(&principal));
+        assert!(ManagementTool::Search.visible_to(&principal));
     }
 
     #[test]
@@ -1440,7 +1456,10 @@ mod tests {
             node_id: NodeId::new(),
         });
         assert!(ManagementTool::NodesGet.visible_to(&principal));
+        assert!(ManagementTool::NodesList.visible_to(&principal));
+        assert!(ManagementTool::Search.visible_to(&principal));
         assert!(!ManagementTool::EnvironmentsList.visible_to(&principal));
+        assert!(!ManagementTool::ProjectsList.visible_to(&principal));
         assert!(!ManagementTool::FormsList.visible_to(&principal));
     }
 }

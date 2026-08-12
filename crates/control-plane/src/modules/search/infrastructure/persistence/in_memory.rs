@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::search::domain::{ISearchRepository, SearchQuery, SearchResult};
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
 use async_trait::async_trait;
@@ -34,6 +35,7 @@ impl ISearchRepository for InMemorySearchRepository {
         organization_id: OrganizationId,
         query: &SearchQuery,
         limit: u16,
+        resource_access: &ResourceAccessEvaluator,
     ) -> Result<Vec<SearchResult>, RepositoryError> {
         self.query_count.fetch_add(1, AtomicOrdering::Relaxed);
         let query = query.as_str();
@@ -43,6 +45,7 @@ impl ISearchRepository for InMemorySearchRepository {
             .await
             .iter()
             .filter(|projection| projection.organization_id == organization_id)
+            .filter(|projection| projection.is_visible_to(resource_access))
             .filter_map(|projection| {
                 let title = projection.title.to_lowercase();
                 let id = projection.id.to_string();
@@ -98,7 +101,9 @@ fn compare_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::search::domain::SearchResourceKind;
+    use crate::modules::shared_kernel::domain::ProjectId;
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -140,6 +145,7 @@ mod tests {
                 organization_id,
                 &SearchQuery::parse("cloud").expect("query"),
                 6,
+                &ResourceAccessEvaluator::organization_wide(),
             )
             .await
             .expect("search");
@@ -158,5 +164,49 @@ mod tests {
                 "Registry",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn authorization_is_applied_before_ranking_and_limit() {
+        let repository = InMemorySearchRepository::new();
+        let organization_id = OrganizationId::new();
+        let denied_project_id = ProjectId::new();
+        let allowed_project_id = ProjectId::new();
+        for (project_id, title) in [
+            (denied_project_id, "cloud"),
+            (allowed_project_id, "cloud worker"),
+        ] {
+            repository
+                .register(SearchResult {
+                    organization_id,
+                    project_id: Some(project_id.as_uuid()),
+                    environment_id: None,
+                    workload_id: None,
+                    kind: SearchResourceKind::Project,
+                    id: project_id.as_uuid(),
+                    title: title.into(),
+                    description: String::new(),
+                    state: None,
+                    updated_at: Utc::now(),
+                })
+                .await
+                .expect("projection");
+        }
+
+        let resource_access = ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+            project_id: allowed_project_id,
+        }]);
+        let results = repository
+            .search(
+                organization_id,
+                &SearchQuery::parse("cloud").expect("query"),
+                1,
+                &resource_access,
+            )
+            .await
+            .expect("search");
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].id, allowed_project_id.as_uuid());
     }
 }

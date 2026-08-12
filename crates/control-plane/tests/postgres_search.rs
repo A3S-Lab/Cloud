@@ -1,8 +1,10 @@
 use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
+use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
 use a3s_cloud_control_plane::modules::search::{
     ISearchRepository, PostgresSearchRepository, SearchQuery,
 };
-use a3s_cloud_control_plane::modules::shared_kernel::domain::OrganizationId;
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::Utc;
 use uuid::Uuid;
@@ -118,6 +120,7 @@ async fn exercise_search(database_url: &str) -> Result<(), Box<dyn std::error::E
             allowed_organization,
             &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
             20,
+            &ResourceAccessEvaluator::organization_wide(),
         )
         .await?;
     if allowed.len() != 1
@@ -126,11 +129,38 @@ async fn exercise_search(database_url: &str) -> Result<(), Box<dyn std::error::E
     {
         return Err(std::io::Error::other("allowed search projection was not isolated").into());
     }
+    let restricted = repository
+        .search(
+            allowed_organization,
+            &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
+            20,
+            &ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+                project_id: ProjectId::from_uuid(allowed_project),
+            }]),
+        )
+        .await?;
+    if restricted.len() != 1 || restricted[0].id != allowed_project {
+        return Err(std::io::Error::other("resource grant did not expose its projection").into());
+    }
+    let ungranted = repository
+        .search(
+            allowed_organization,
+            &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
+            20,
+            &ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+                project_id: ProjectId::new(),
+            }]),
+        )
+        .await?;
+    if !ungranted.is_empty() {
+        return Err(std::io::Error::other("ungranted projection was returned").into());
+    }
     let denied = repository
         .search(
             denied_organization,
             &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
             20,
+            &ResourceAccessEvaluator::organization_wide(),
         )
         .await?;
     if denied.len() != 1 || denied[0].id != denied_project {
@@ -141,6 +171,7 @@ async fn exercise_search(database_url: &str) -> Result<(), Box<dyn std::error::E
             allowed_organization,
             &SearchQuery::parse("%").map_err(std::io::Error::other)?,
             20,
+            &ResourceAccessEvaluator::organization_wide(),
         )
         .await?;
     if !wildcard.is_empty() {

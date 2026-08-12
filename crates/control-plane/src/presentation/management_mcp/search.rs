@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::search::presentation::SearchResultResponse;
 use crate::modules::search::SearchResources;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -20,6 +21,7 @@ pub async fn search(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: SearchArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -27,6 +29,7 @@ pub async fn search(
             organization_id,
             query: arguments.query,
             limit: arguments.limit,
+            resource_access,
         })
         .await?
     {

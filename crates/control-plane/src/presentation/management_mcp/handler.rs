@@ -8,6 +8,7 @@ use super::protocol::{
     JSON_RPC_UNSUPPORTED_PROTOCOL_VERSION,
 };
 use super::MANAGEMENT_MCP_PROTOCOL_VERSION;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
@@ -253,12 +254,9 @@ impl ManagementMcpHandler {
         let actor_is_platform_admin = principal.has_role("platform_admin");
         let arguments = call.arguments.unwrap_or_else(|| json!({}));
         let evaluator = resource_access_evaluator(&principal)?;
-        let authorized = match management_resource_scope(tool, &arguments) {
-            Ok(resource) => evaluator.allows(resource),
-            Err(ManagementResourceScopeError::NotResourceScoped) => {
-                evaluator.is_organization_wide()
-            }
-            Err(ManagementResourceScopeError::InvalidArguments) => {
+        let authorized = match management_resource_is_authorized(tool, &arguments, &evaluator) {
+            Ok(authorized) => authorized,
+            Err(ManagementResourceAuthorizationError::InvalidArguments) => {
                 return invalid_tool_arguments(id)
             }
         };
@@ -280,6 +278,7 @@ impl ManagementMcpHandler {
                 actor_principal_id,
                 actor_is_platform_admin,
                 request_id,
+                evaluator,
             ),
             arguments,
         )
@@ -298,36 +297,49 @@ impl ManagementMcpHandler {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ManagementResourceScopeError {
-    NotResourceScoped,
+enum ManagementResourceAuthorizationError {
     InvalidArguments,
 }
 
-fn management_resource_scope(
+fn management_resource_is_authorized(
     tool: ManagementTool,
     arguments: &Value,
-) -> std::result::Result<ResourceGrantScope, ManagementResourceScopeError> {
+    evaluator: &ResourceAccessEvaluator,
+) -> std::result::Result<bool, ManagementResourceAuthorizationError> {
     let uuid_argument = |name: &str| {
         arguments
             .get(name)
             .and_then(Value::as_str)
             .and_then(|value| Uuid::parse_str(value).ok())
-            .ok_or(ManagementResourceScopeError::InvalidArguments)
+            .ok_or(ManagementResourceAuthorizationError::InvalidArguments)
     };
     match tool.resource_binding() {
-        Some(ManagementResourceBinding::ProjectArgument) => Ok(ResourceGrantScope::Project {
-            project_id: ProjectId::from_uuid(uuid_argument("projectId")?),
-        }),
+        Some(ManagementResourceBinding::ProjectArgument) => {
+            Ok(evaluator.allows(ResourceGrantScope::Project {
+                project_id: ProjectId::from_uuid(uuid_argument("projectId")?),
+            }))
+        }
         Some(ManagementResourceBinding::EnvironmentArguments) => {
-            Ok(ResourceGrantScope::Environment {
+            Ok(evaluator.allows(ResourceGrantScope::Environment {
                 project_id: ProjectId::from_uuid(uuid_argument("projectId")?),
                 environment_id: EnvironmentId::from_uuid(uuid_argument("environmentId")?),
-            })
+            }))
         }
-        Some(ManagementResourceBinding::NodeArgument) => Ok(ResourceGrantScope::Node {
-            node_id: NodeId::from_uuid(uuid_argument("nodeId")?),
-        }),
-        None => Err(ManagementResourceScopeError::NotResourceScoped),
+        Some(ManagementResourceBinding::NodeArgument) => {
+            Ok(evaluator.allows(ResourceGrantScope::Node {
+                node_id: NodeId::from_uuid(uuid_argument("nodeId")?),
+            }))
+        }
+        Some(ManagementResourceBinding::ProjectCollection) => {
+            Ok(evaluator.has_project_visibility())
+        }
+        Some(ManagementResourceBinding::EnvironmentCollection) => Ok(evaluator
+            .project_is_visible_in_collection(ProjectId::from_uuid(uuid_argument("projectId")?))),
+        Some(ManagementResourceBinding::NodeCollection) => Ok(evaluator.has_node_visibility()),
+        Some(ManagementResourceBinding::SearchCollection) => {
+            Ok(evaluator.has_any_visible_resource())
+        }
+        None => Ok(evaluator.is_organization_wide()),
     }
 }
 
@@ -393,43 +405,96 @@ mod tests {
     use super::*;
 
     #[test]
-    fn direct_tool_arguments_map_to_closed_resource_scopes() {
+    fn direct_tool_arguments_are_authorized_by_closed_resource_scopes() {
         let project_id = Uuid::now_v7();
         let environment_id = Uuid::now_v7();
         let node_id = Uuid::now_v7();
-        assert_eq!(
-            management_resource_scope(ManagementTool::FormsList, &json!({"projectId": project_id})),
-            Ok(ResourceGrantScope::Project {
+        let evaluator = ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project {
                 project_id: ProjectId::from_uuid(project_id),
-            })
-        );
-        assert_eq!(
-            management_resource_scope(
-                ManagementTool::WorkloadsList,
-                &json!({"projectId": project_id, "environmentId": environment_id})
-            ),
-            Ok(ResourceGrantScope::Environment {
-                project_id: ProjectId::from_uuid(project_id),
-                environment_id: EnvironmentId::from_uuid(environment_id),
-            })
-        );
-        assert_eq!(
-            management_resource_scope(ManagementTool::NodesGet, &json!({"nodeId": node_id})),
-            Ok(ResourceGrantScope::Node {
+            },
+            ResourceGrantScope::Node {
                 node_id: NodeId::from_uuid(node_id),
-            })
+            },
+        ]);
+        assert_eq!(
+            management_resource_is_authorized(
+                ManagementTool::FormsList,
+                &json!({"projectId": project_id}),
+                &evaluator,
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            management_resource_is_authorized(
+                ManagementTool::WorkloadsList,
+                &json!({"projectId": project_id, "environmentId": environment_id}),
+                &evaluator,
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            management_resource_is_authorized(
+                ManagementTool::NodesGet,
+                &json!({"nodeId": node_id}),
+                &evaluator,
+            ),
+            Ok(true)
+        );
+    }
+
+    #[test]
+    fn collection_tools_use_visibility_without_becoming_mutation_authority() {
+        let project_id = Uuid::now_v7();
+        let environment_id = Uuid::now_v7();
+        let evaluator = ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+            project_id: ProjectId::from_uuid(project_id),
+            environment_id: EnvironmentId::from_uuid(environment_id),
+        }]);
+        assert_eq!(
+            management_resource_is_authorized(ManagementTool::ProjectsList, &json!({}), &evaluator,),
+            Ok(true)
+        );
+        assert_eq!(
+            management_resource_is_authorized(
+                ManagementTool::EnvironmentsList,
+                &json!({"projectId": project_id}),
+                &evaluator,
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            management_resource_is_authorized(
+                ManagementTool::EnvironmentsCreate,
+                &json!({"projectId": project_id}),
+                &evaluator,
+            ),
+            Ok(false)
+        );
+        assert_eq!(
+            management_resource_is_authorized(ManagementTool::Search, &json!({}), &evaluator),
+            Ok(true)
         );
     }
 
     #[test]
     fn indirect_and_malformed_tools_fail_closed() {
+        let evaluator = ResourceAccessEvaluator::restricted([]);
         assert_eq!(
-            management_resource_scope(ManagementTool::FormsGet, &json!({"formId": Uuid::now_v7()})),
-            Err(ManagementResourceScopeError::NotResourceScoped)
+            management_resource_is_authorized(
+                ManagementTool::FormsGet,
+                &json!({"formId": Uuid::now_v7()}),
+                &evaluator,
+            ),
+            Ok(false)
         );
         assert_eq!(
-            management_resource_scope(ManagementTool::FormsList, &json!({"projectId": "bad"})),
-            Err(ManagementResourceScopeError::InvalidArguments)
+            management_resource_is_authorized(
+                ManagementTool::FormsList,
+                &json!({"projectId": "bad"}),
+                &evaluator,
+            ),
+            Err(ManagementResourceAuthorizationError::InvalidArguments)
         );
     }
 }

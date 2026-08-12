@@ -1,5 +1,6 @@
 use super::NodeQueryResult;
 use crate::modules::fleet::domain::repositories::INodeRepository;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,6 +11,7 @@ use std::sync::Arc;
 pub struct ListNodes {
     pub organization_id: OrganizationId,
     pub queried_at: DateTime<Utc>,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for ListNodes {
@@ -49,6 +51,7 @@ impl QueryHandler<ListNodes> for ListNodesHandler {
             match nodes.list(query.organization_id).await {
                 Ok(nodes) => Ok(Ok(nodes
                     .into_iter()
+                    .filter(|node| query.resource_access.node_is_visible(node.id))
                     .map(|node| NodeQueryResult {
                         availability: node.availability_at(query.queried_at, heartbeat_timeout),
                         node,

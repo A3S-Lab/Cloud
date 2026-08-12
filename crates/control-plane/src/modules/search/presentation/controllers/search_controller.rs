@@ -1,4 +1,4 @@
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::search::application::SearchResources;
 use crate::modules::search::presentation::dto::SearchResultResponse;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -16,6 +16,8 @@ pub fn search_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
             async move {
                 let parameters: SearchParameters = request.query()?;
                 let request_id = request_id(&request)?;
+                let resource_access =
+                    resource_access_evaluator(&request.require_auth_principal()?)?;
                 match bus
                     .execute(SearchResources {
                         organization_id: OrganizationId::from_uuid(
@@ -23,6 +25,7 @@ pub fn search_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
                         ),
                         query: parameters.query.unwrap_or_default(),
                         limit: parameters.limit,
+                        resource_access,
                     })
                     .await?
                 {

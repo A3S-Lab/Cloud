@@ -2,6 +2,7 @@ use super::arguments::{EmptyArguments, NodeArguments};
 use super::tool_result;
 use crate::modules::fleet::presentation::NodeResponse;
 use crate::modules::fleet::{GetNode, ListNodes};
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
 use a3s_boot::{QueryBus, Result};
 use chrono::Utc;
@@ -13,12 +14,14 @@ pub async fn list_nodes(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     _arguments: EmptyArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListNodes {
             organization_id,
             queried_at: Utc::now(),
+            resource_access,
         })
         .await?
     {

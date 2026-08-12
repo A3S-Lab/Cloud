@@ -1,4 +1,5 @@
-use crate::modules::shared_kernel::domain::OrganizationId;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
@@ -116,6 +117,15 @@ impl SearchResult {
             }
             _ => Ok(()),
         }
+    }
+
+    pub fn is_visible_to(&self, resource_access: &ResourceAccessEvaluator) -> bool {
+        let node_id = (self.kind == SearchResourceKind::Node).then(|| NodeId::from_uuid(self.id));
+        resource_access.projected_resource_is_visible(
+            self.project_id.map(ProjectId::from_uuid),
+            self.environment_id.map(EnvironmentId::from_uuid),
+            node_id,
+        )
     }
 }
 

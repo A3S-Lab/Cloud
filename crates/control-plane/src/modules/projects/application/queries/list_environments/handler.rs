@@ -31,6 +31,14 @@ impl QueryHandler<ListEnvironments> for ListEnvironmentsHandler {
         let projects = Arc::clone(&self.projects);
         let environments = Arc::clone(&self.environments);
         Box::pin(async move {
+            if !query
+                .resource_access
+                .project_is_visible_in_collection(query.project_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "project not found in organization".into(),
+                )));
+            }
             match projects.find(query.organization_id, query.project_id).await {
                 Ok(Some(_)) => {}
                 Ok(None) => {
@@ -40,10 +48,21 @@ impl QueryHandler<ListEnvironments> for ListEnvironmentsHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
-            Ok(environments
+            let environments = match environments
                 .list(query.organization_id, query.project_id)
                 .await
-                .map_err(Into::into))
+            {
+                Ok(environments) => environments,
+                Err(error) => return Ok(Err(error.into())),
+            };
+            Ok(Ok(environments
+                .into_iter()
+                .filter(|environment| {
+                    query
+                        .resource_access
+                        .environment_is_visible(environment.project_id, environment.id)
+                })
+                .collect()))
         })
     }
 }

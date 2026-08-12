@@ -1,5 +1,6 @@
 use super::arguments::EmptyArguments;
 use super::tool_result;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::presentation::{
     EnvironmentListItemResponse, EnvironmentResponse, ProjectListItemResponse, ProjectResponse,
 };
@@ -83,9 +84,16 @@ pub async fn list_projects(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     _arguments: EmptyArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
-    match bus.execute(ListProjects { organization_id }).await? {
+    match bus
+        .execute(ListProjects {
+            organization_id,
+            resource_access,
+        })
+        .await?
+    {
         Ok(projects) => tool_result::success(
             200,
             projects
@@ -102,12 +110,14 @@ pub async fn list_environments(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ProjectArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListEnvironments {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            resource_access,
         })
         .await?
     {

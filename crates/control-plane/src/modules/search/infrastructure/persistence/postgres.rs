@@ -1,4 +1,6 @@
 use super::postgres_schema::AuthorizedSearchProjections;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::search::domain::{
     ISearchRepository, SearchQuery, SearchResourceKind, SearchResult,
 };
@@ -80,6 +82,7 @@ impl PostgresSearchRepository {
         organization_id: OrganizationId,
         predicate: Expression,
         limit: u16,
+        resource_access: &ResourceAccessEvaluator,
     ) -> Result<Vec<SearchResult>, RepositoryError> {
         let rows = Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
@@ -90,6 +93,7 @@ impl PostgresSearchRepository {
                             .eq(organization_id.as_uuid()),
                     )
                     .filter(predicate)
+                    .filter(resource_visibility_predicate(resource_access))
                     .order_by(
                         AuthorizedSearchProjections::resource_kind(),
                         OrderDirection::Asc,
@@ -118,6 +122,7 @@ impl ISearchRepository for PostgresSearchRepository {
         organization_id: OrganizationId,
         query: &SearchQuery,
         limit: u16,
+        resource_access: &ResourceAccessEvaluator,
     ) -> Result<Vec<SearchResult>, RepositoryError> {
         let query_text = query.as_str().to_owned();
         let exact = AuthorizedSearchProjections::title_key()
@@ -140,9 +145,15 @@ impl ISearchRepository for PostgresSearchRepository {
         )
         .gt(0);
 
-        let exact = self.fetch_rank(organization_id, exact, limit).await?;
-        let prefix = self.fetch_rank(organization_id, prefix, limit).await?;
-        let contains = self.fetch_rank(organization_id, contains, limit).await?;
+        let exact = self
+            .fetch_rank(organization_id, exact, limit, resource_access)
+            .await?;
+        let prefix = self
+            .fetch_rank(organization_id, prefix, limit, resource_access)
+            .await?;
+        let contains = self
+            .fetch_rank(organization_id, contains, limit, resource_access)
+            .await?;
         let mut seen = BTreeSet::new();
         let mut results = Vec::with_capacity(usize::from(limit));
         for result in exact.into_iter().chain(prefix).chain(contains) {
@@ -155,6 +166,31 @@ impl ISearchRepository for PostgresSearchRepository {
         }
         Ok(results)
     }
+}
+
+fn resource_visibility_predicate(resource_access: &ResourceAccessEvaluator) -> Expression {
+    if resource_access.is_organization_wide() {
+        return bound::<bool>(true).eq(true);
+    }
+    let mut predicates = resource_access.granted_scopes().map(|scope| match scope {
+        ResourceGrantScope::Project { project_id } => AuthorizedSearchProjections::project_id()
+            .eq(Some(project_id.as_uuid()))
+            .and(AuthorizedSearchProjections::resource_kind().ne("node".to_owned())),
+        ResourceGrantScope::Environment {
+            project_id,
+            environment_id,
+        } => AuthorizedSearchProjections::project_id()
+            .eq(Some(project_id.as_uuid()))
+            .and(AuthorizedSearchProjections::environment_id().eq(Some(environment_id.as_uuid())))
+            .and(AuthorizedSearchProjections::resource_kind().ne("node".to_owned())),
+        ResourceGrantScope::Node { node_id } => AuthorizedSearchProjections::resource_kind()
+            .eq("node".to_owned())
+            .and(AuthorizedSearchProjections::resource_id().eq(node_id.as_uuid())),
+    });
+    let Some(first) = predicates.next() else {
+        return bound::<bool>(false).eq(true);
+    };
+    predicates.fold(first, Expression::or)
 }
 
 fn decode_row(row: SearchRow) -> Result<SearchResult, RepositoryError> {

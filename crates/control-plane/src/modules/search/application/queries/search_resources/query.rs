@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::search::domain::SearchResult;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -8,6 +9,7 @@ pub struct SearchResources {
     pub organization_id: OrganizationId,
     pub query: String,
     pub limit: u16,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for SearchResources {

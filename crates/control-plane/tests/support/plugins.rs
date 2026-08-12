@@ -1,4 +1,5 @@
 use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
+use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::plugins::domain::entities::{
     NewPluginRegistry, PluginRegistry,
 };
@@ -267,7 +268,14 @@ pub(super) async fn exercise_plugin_registry_persistence(
 
     let search = PostgresSearchRepository::new(executor.clone());
     let query = SearchQuery::parse("official").map_err(test_error)?;
-    let results = search.search(organization_id, &query, 20).await?;
+    let results = search
+        .search(
+            organization_id,
+            &query,
+            20,
+            &ResourceAccessEvaluator::organization_wide(),
+        )
+        .await?;
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].kind, SearchResourceKind::PluginRegistry);
     assert_eq!(results[0].id, enrolled.id.as_uuid());
@@ -278,7 +286,12 @@ pub(super) async fn exercise_plugin_registry_persistence(
     );
     assert_eq!(results[0].state.as_deref(), Some("active"));
     assert!(search
-        .search(foreign_organization_id, &query, 20)
+        .search(
+            foreign_organization_id,
+            &query,
+            20,
+            &ResourceAccessEvaluator::organization_wide(),
+        )
         .await?
         .is_empty());
 

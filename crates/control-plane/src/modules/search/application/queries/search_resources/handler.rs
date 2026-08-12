@@ -34,7 +34,12 @@ impl QueryHandler<SearchResources> for SearchResourcesHandler {
                 ))));
             }
             Ok(repository
-                .search(query.organization_id, &normalized, query.limit)
+                .search(
+                    query.organization_id,
+                    &normalized,
+                    query.limit,
+                    &query.resource_access,
+                )
                 .await
                 .map_err(Into::into))
         })

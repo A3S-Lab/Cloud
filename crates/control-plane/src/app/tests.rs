@@ -1626,6 +1626,14 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         .ok_or_else(|| BootError::Internal("created project has no ID".into()))?
         .parse::<Uuid>()
         .map_err(|error| BootError::Internal(format!("invalid project ID: {error}")))?;
+    let ungranted_project = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects"),
+            "membership:ungranted-project",
+            json!({"name": "Ungranted Project"}),
+        ))
+        .await?;
+    assert_eq!(ungranted_project.status(), 201);
 
     let restricted = app
         .call(post_json(
@@ -1697,6 +1705,19 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(granted_access.status(), 200);
+    let visible_projects = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/projects"),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(visible_projects.status(), 200);
+    let visible_projects = response_json(&visible_projects)?["data"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| BootError::Internal("project list response is not an array".into()))?;
+    assert_eq!(visible_projects.len(), 1);
+    assert_eq!(visible_projects[0]["id"], granted_project_id.to_string());
     let ungranted_access = app
         .call(get_as(
             format!(
@@ -1735,6 +1756,13 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(revoked_access.status(), 403);
+    let revoked_collection_access = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/projects"),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(revoked_collection_access.status(), 403);
 
     let restored = app
         .call(post_json(

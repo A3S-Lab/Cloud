@@ -36,32 +36,36 @@ use super::{
     artifacts, edge, forms, identity, nodes, ontology, operations, plugins, projects, search,
     workflow, workloads,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(super) struct ManagementExecutionContext {
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     actor_is_platform_admin: bool,
     request_id: Uuid,
+    resource_access: ResourceAccessEvaluator,
 }
 
 impl ManagementExecutionContext {
-    pub(super) const fn new(
+    pub(super) fn new(
         organization_id: OrganizationId,
         actor_principal_id: PrincipalId,
         actor_is_platform_admin: bool,
         request_id: Uuid,
+        resource_access: ResourceAccessEvaluator,
     ) -> Self {
         Self {
             organization_id,
             actor_principal_id,
             actor_is_platform_admin,
             request_id,
+            resource_access,
         }
     }
 }
@@ -78,6 +82,7 @@ pub async fn execute(
         actor_principal_id,
         actor_is_platform_admin,
         request_id,
+        resource_access,
     } = context;
     let result = match tool {
         ManagementTool::EnvironmentsCreate => {
@@ -86,7 +91,14 @@ pub async fn execute(
         }
         ManagementTool::EnvironmentsList => {
             let arguments = arguments::parse::<ProjectArguments>(arguments).ok()?;
-            projects::list_environments(query_bus, organization_id, arguments, request_id).await
+            projects::list_environments(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::MembershipsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
@@ -138,7 +150,14 @@ pub async fn execute(
         }
         ManagementTool::ProjectsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
-            projects::list_projects(query_bus, organization_id, arguments, request_id).await
+            projects::list_projects(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::FormsCreate => {
             let arguments = arguments::parse::<CreateFormDraftArguments>(arguments).ok()?;
@@ -338,7 +357,14 @@ pub async fn execute(
         }
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;
-            search::search(query_bus, organization_id, arguments, request_id).await
+            search::search(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::PluginRegistriesList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
@@ -366,7 +392,14 @@ pub async fn execute(
         }
         ManagementTool::NodesList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
-            nodes::list_nodes(query_bus, organization_id, arguments, request_id).await
+            nodes::list_nodes(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::NodesGet => {
             let arguments = arguments::parse::<NodeArguments>(arguments).ok()?;
