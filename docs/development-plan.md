@@ -3337,10 +3337,30 @@ Agent-backed Claims require validated release acknowledgement; database-only
 reservations can be cancelled locally. Retirement completion atomically clears
 the member placement, advances the replica to retired, and emits one replay-safe
 event, while a later scale-up reuses the stable ordinal identity with a new
-generation and cleared retirement evidence. This remains a foundation rather
-than the `H0.3` exit: drain/evacuation, maintenance and node-pool policy,
-placement groups and gang claims, bounded rolling updates, independent Gateway
-placement, and provider-neutral private networking remain open.
+generation and cleared retirement evidence.
+
+Migration 090 adds a durable evacuation source to the retiring replica
+generation. A bounded worker scans Fleet nodes that are still `draining`,
+selects only their exact current placed desired replicas, and atomically records
+one replay-safe evacuation intent and event. That lifecycle change immediately
+removes the old generation from forward Deployment and Edge target projection.
+The existing retirement reconciler then removes and durably fences the exact
+Runtime generation and releases its exact Resource Claim before completion may
+clear the member placement. Completion preserves the stable replica ID,
+ordinal, and revision, advances only the replica generation, and returns it to
+`desired`; the existing materializer and scheduler create and place the new
+Deployment generation on a ready node. In-memory and PostgreSQL 17 gates cover
+concurrent intent replay, stale-generation rejection, exact fence ordering,
+single-event persistence, stable-identity rematerialization, and monotonically
+advancing placement generation.
+
+The supported Service template currently compiles only CPU, memory, and
+optional ephemeral-storage Claims, so this closes the stateless
+drain/evacuation foundation without admitting a volume move. It remains short
+of the `H0.3` exit: stateful volume evacuation and an operator-visible blocked
+outcome wait for the `S0` prior-writer fence contract; maintenance and node-pool
+policy, placement groups and gang claims, bounded rolling updates, independent
+Gateway placement, and provider-neutral private networking also remain open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,
@@ -3354,9 +3374,9 @@ sole scheduler.
 
 ### Work
 
-- Extend the verified single-replica identity and capacity model to desired
-  replica counts, per-member placement generations, anti-affinity, drain and
-  evacuation, maintenance windows, and node pools.
+- Extend the verified replica identity, capacity, anti-affinity, and stateless
+  evacuation model with operator-visible stateful drain blocking, maintenance
+  windows, and node pools.
 - Extend the verified inference-neutral Claim and fencing model to multi-member
   execution plans, atomic placement groups, and gang claims. These primitives
   support I0 without containing model, backend, rank-launcher, or

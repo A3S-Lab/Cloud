@@ -96,6 +96,26 @@ pub struct ReplicaDeploymentMaterialization {
     pub created: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplicaEvacuationCandidate {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub expected_replica_version: u64,
+    pub member_id: WorkloadReplicaMemberId,
+    pub expected_member_version: u64,
+    pub source_node_id: NodeId,
+    pub placement_generation: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplicaEvacuationRequest {
+    pub candidate: ReplicaEvacuationCandidate,
+    pub requested_at: DateTime<Utc>,
+    pub correlation_id: Uuid,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveRuntimeTarget {
     pub workload: Workload,
@@ -236,6 +256,21 @@ pub trait IWorkloadReplicaRetirementRepository: Send + Sync {
     async fn complete_replica_retirement(
         &self,
         completion: ReplicaRetirementCompletion,
+    ) -> Result<IdempotentWrite<WorkloadReplica>, RepositoryError>;
+}
+
+#[async_trait]
+pub trait IWorkloadReplicaEvacuationRepository: Send + Sync {
+    async fn pending_replica_evacuations(
+        &self,
+        organization_id: OrganizationId,
+        source_node_id: NodeId,
+        limit: usize,
+    ) -> Result<Vec<ReplicaEvacuationCandidate>, RepositoryError>;
+
+    async fn request_replica_evacuation(
+        &self,
+        request: ReplicaEvacuationRequest,
     ) -> Result<IdempotentWrite<WorkloadReplica>, RepositoryError>;
 }
 

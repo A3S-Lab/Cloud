@@ -33,6 +33,7 @@ pub struct ReplicaRetirementReport {
     pub runtime_fences: usize,
     pub claims_released: usize,
     pub retired: usize,
+    pub evacuated: usize,
     pub replayed: usize,
     pub pending: usize,
     pub failures: Vec<ReplicaRetirementFailure>,
@@ -145,6 +146,7 @@ impl ReplicaRetirementReconciler {
                                 runtime_fences = report.runtime_fences,
                                 claims_released = report.claims_released,
                                 retired = report.retired,
+                                evacuated = report.evacuated,
                                 replayed = report.replayed,
                                 pending = report.pending,
                                 failures = report.failures.len(),
@@ -220,6 +222,7 @@ impl ReplicaRetirementReconciler {
             .max(claim_released_at)
             .max(target.replica.updated_at)
             .max(target.member.updated_at);
+        let evacuation = target.replica.evacuation_node_id.is_some();
         let completion = self
             .retirements
             .complete_replica_retirement(ReplicaRetirementCompletion {
@@ -238,6 +241,8 @@ impl ReplicaRetirementReconciler {
             .map_err(repository_error("complete Workload replica retirement"))?;
         if completion.replayed {
             report.replayed += 1;
+        } else if evacuation {
+            report.evacuated += 1;
         } else {
             report.retired += 1;
         }
@@ -692,6 +697,10 @@ fn validate_target(target: &RetiringReplicaTarget) -> Result<(), String> {
         || target.member.replica_id != target.replica.id
         || target.deployment.is_some() != target.replica_binding.is_some()
         || target.member.node_id.is_some() && target.replica_binding.is_none()
+        || target
+            .replica
+            .evacuation_node_id
+            .is_some_and(|node_id| target.member.node_id != Some(node_id))
         || target.replica.runtime_fenced_at.is_some()
             && target.replica.retirement_command_id.is_none()
     {

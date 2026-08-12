@@ -6,7 +6,7 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaMemberId,
 };
 use crate::modules::workloads::domain::entities::{WorkloadReplica, WorkloadReplicaLifecycle};
-use crate::modules::workloads::domain::events::WorkloadReplicaRetired;
+use crate::modules::workloads::domain::events::{WorkloadReplicaEvacuated, WorkloadReplicaRetired};
 use crate::modules::workloads::domain::repositories::{
     ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
     RetiringReplicaTarget,
@@ -201,6 +201,15 @@ async fn complete_in_transaction(
     )
     .await?
     .ok_or_else(|| invariant("retiring replica member is missing"))?;
+    if completion.replica_generation.checked_add(1) == Some(replica.generation)
+        && replica.lifecycle == WorkloadReplicaLifecycle::Desired
+        && replica.evacuation_node_id.is_none()
+    {
+        return Ok(IdempotentWrite {
+            value: replica,
+            replayed: true,
+        });
+    }
     require_generation(&replica, completion.replica_generation)?;
     if replica.lifecycle == WorkloadReplicaLifecycle::Retired && member.node_id.is_none() {
         return Ok(IdempotentWrite {
@@ -216,18 +225,24 @@ async fn complete_in_transaction(
         ))
         .into());
     }
+    let evacuation = replica.evacuation_node_id.is_some();
+    let remains_desired = replica.ordinal < control.spec.placement_policy.desired_replicas();
     if replica.lifecycle != WorkloadReplicaLifecycle::Retiring
-        || replica.ordinal < control.spec.placement_policy.desired_replicas()
+        || evacuation != remains_desired
         || member.node_id != completion.fenced_node_id
+        || replica
+            .evacuation_node_id
+            .is_some_and(|source| Some(source) != completion.fenced_node_id)
     {
         return Err(RepositoryError::Conflict(
-            "Workload replica is no longer eligible for retirement completion".into(),
+            "Workload replica is no longer eligible for generation retirement completion".into(),
         )
         .into());
     }
-    if deployment
+    if (deployment
         .as_ref()
         .is_some_and(|deployment| deployment.command_id.is_some())
+        || completion.fenced_node_id.is_some())
         && replica.runtime_fenced_at.is_none()
     {
         return Err(RepositoryError::Conflict(
@@ -244,17 +259,31 @@ async fn complete_in_transaction(
             .release_after_fencing(node_id, completion.completed_at)
             .map_err(RepositoryError::Conflict)?;
     }
-    replica
-        .complete_retirement(&member, completion.completed_at)
-        .map_err(RepositoryError::Conflict)?;
-    let event = WorkloadReplicaRetired::envelope(
-        &previous_replica,
-        &replica,
-        &previous_member,
-        &member,
-        completion.correlation_id,
-    )
-    .map_err(invariant)?;
+    let event = if evacuation {
+        replica
+            .complete_evacuation(&member, completion.completed_at)
+            .map_err(RepositoryError::Conflict)?;
+        WorkloadReplicaEvacuated::envelope(
+            &previous_replica,
+            &replica,
+            &previous_member,
+            &member,
+            completion.correlation_id,
+        )
+        .map_err(invariant)?
+    } else {
+        replica
+            .complete_retirement(&member, completion.completed_at)
+            .map_err(RepositoryError::Conflict)?;
+        WorkloadReplicaRetired::envelope(
+            &previous_replica,
+            &replica,
+            &previous_member,
+            &member,
+            completion.correlation_id,
+        )
+        .map_err(invariant)?
+    };
     replicas::persist_member(transaction, &member, previous_member_version).await?;
     replicas::persist_replica(transaction, &replica, previous_replica_version).await?;
     store_outbox(transaction, &event).await?;
@@ -305,6 +334,10 @@ fn validate_target(target: &RetiringReplicaTarget) -> Result<(), String> {
         || target.member.workload_id != target.replica.workload_id
         || target.member.replica_id != target.replica.id
         || target.member.id.as_uuid() != target.replica.id.as_uuid()
+        || target
+            .replica
+            .evacuation_node_id
+            .is_some_and(|node_id| target.member.node_id != Some(node_id))
         || target.deployment.is_some() != target.replica_binding.is_some()
         || target.member.node_id.is_some() && target.replica_binding.is_none()
     {

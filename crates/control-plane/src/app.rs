@@ -61,7 +61,7 @@ use crate::modules::executions::{
     IExecutionRepository, ListExecutionsHandler, PostgresExecutionRepository,
 };
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeRepository,
+    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodeRepository,
 };
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::{
@@ -159,6 +159,7 @@ use crate::modules::workflow::{
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadReplicaDeploymentRepository;
+use crate::modules::workloads::domain::repositories::IWorkloadReplicaEvacuationRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadReplicaRetirementRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
@@ -168,9 +169,9 @@ use crate::modules::workloads::{
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository, ReplicaDeploymentMaterializer,
-    ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
+    IWorkloadRuntimeControl, ListWorkloadsHandler, NodeDrainEvacuationReconciler,
+    OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
     WorkloadRuntimeReconciler, WorkloadsModule,
@@ -322,6 +323,7 @@ pub async fn build_application_with_source_resolver(
     );
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
+    let draining_nodes: Arc<dyn INodeDrainRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
         LocalNodeArtifactStore::new(&config.artifacts.store_dir, config.artifacts.max_blob_bytes)
@@ -339,6 +341,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
     let replica_deployments: Arc<dyn IWorkloadReplicaDeploymentRepository> =
+        workload_repository.clone();
+    let replica_evacuations: Arc<dyn IWorkloadReplicaEvacuationRepository> =
         workload_repository.clone();
     let replica_retirements: Arc<dyn IWorkloadReplicaRetirementRepository> =
         workload_repository.clone();
@@ -896,6 +900,14 @@ pub async fn build_application_with_source_resolver(
         config.logs.tombstone_compaction_batch_size,
     )
     .map_err(ControlPlaneStartupError::LogStorage)?;
+    let node_drain_evacuation_reconciler = NodeDrainEvacuationReconciler::new(
+        draining_nodes,
+        replica_evacuations,
+        Duration::from_millis(config.deployments.reconcile_interval_ms),
+        100,
+        100,
+    )
+    .map_err(ControlPlaneStartupError::NodeControl)?;
     let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
         replica_retirements,
         Arc::clone(&workload_runtime_control),
@@ -1014,6 +1026,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(gateway_replica_recovery_reconciler),
             run_operations.then_some(gateway_rollout_rollback_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
+            run_operations.then_some(node_drain_evacuation_reconciler),
             run_operations.then_some(replica_deployment_materializer),
             run_operations.then_some(replica_retirement_reconciler),
             run_operations.then_some(workload_reconciler),

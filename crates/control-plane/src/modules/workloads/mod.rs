@@ -32,18 +32,20 @@ pub use domain::entities::{
     WorkloadRevision, CANONICAL_REPLICA_ORDINAL, MAX_WORKLOAD_REPLICAS,
 };
 pub use domain::events::{
-    DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaRetired,
-    WorkloadReplicaSetReconfigured, WorkloadStopRequested,
+    DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaEvacuated,
+    WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired, WorkloadReplicaSetReconfigured,
+    WorkloadStopRequested,
 };
 pub use domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IResourceClaimRepository,
     ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
-    RetiringReplicaTarget, SecretRotation, SecretRotationCompletion, SecretRotationReconciliation,
-    WorkloadStopBundle,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
+    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
+    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
+    SecretRotationReconciliation, WorkloadStopBundle,
 };
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
@@ -54,7 +56,8 @@ pub use domain::services::{
 pub use infrastructure::{
     project_replica_runtime_spec, project_runtime_spec, DeploymentFlowConfig,
     DeploymentFlowDependencies, DeploymentFlowRuntime, IWorkloadRuntimeControl,
-    InMemoryResourceClaimRepository, InMemoryWorkloadRepository, OciRegistryArtifactResolver,
+    InMemoryResourceClaimRepository, InMemoryWorkloadRepository, NodeDrainEvacuationFailure,
+    NodeDrainEvacuationReconciler, NodeDrainEvacuationReport, OciRegistryArtifactResolver,
     PostgresResourceClaimRepository, PostgresWorkloadRepository,
     ReplicaDeploymentMaterializationFailure, ReplicaDeploymentMaterializationReport,
     ReplicaDeploymentMaterializer, ReplicaRetirementFailure, ReplicaRetirementReconciler,

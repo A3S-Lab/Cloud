@@ -781,6 +781,7 @@ export interface WorkloadReplica {
   revisionGeneration: number;
   generation: number;
   lifecycle: 'desired' | 'retiring' | 'retired';
+  evacuationNodeId: string | null;
   retirementCommandId: string | null;
   runtimeFencedAt: string | null;
   members: WorkloadReplicaMember[];

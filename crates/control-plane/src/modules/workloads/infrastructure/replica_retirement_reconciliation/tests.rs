@@ -16,7 +16,8 @@ use crate::modules::workloads::infrastructure::{
 };
 use crate::modules::workloads::{
     CreateDeploymentBundle, DeploymentRequested, IWorkloadReplicaDeploymentRepository,
-    IWorkloadRepository, ReconfigureReplicaSetWrite, WorkloadControlSpec,
+    IWorkloadReplicaEvacuationRepository, IWorkloadRepository, ReconfigureReplicaSetWrite,
+    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, WorkloadControlSpec,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandFailure, NodeResourceClaimPrepare, NodeResourceClaimReleased,
@@ -542,6 +543,127 @@ async fn terminal_runtime_removal_failure_keeps_claim_and_placement_fenced(
     Ok(())
 }
 
+#[tokio::test]
+async fn evacuation_fences_and_releases_the_old_generation_before_rematerializing(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - ChronoDuration::minutes(1);
+    let repository = Arc::new(InMemoryWorkloadRepository::new());
+    let target = seed_evacuating_target(repository.as_ref(), base).await?;
+    let stable_replica_id = target.replica.id;
+    let previous_generation = target.replica.generation;
+    let previous_deployment_id = target.deployment.as_ref().ok_or("evacuated deployment")?.id;
+    let claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let control = Arc::new(FakeControl::default());
+    let claim = bound_claim(
+        &target,
+        claims.as_ref(),
+        control.as_ref(),
+        target.replica.updated_at,
+    )
+    .await?;
+    let reconciler = reconciler(repository.clone(), control.clone(), claims.clone())?;
+
+    reconciler
+        .run_once(base + ChronoDuration::seconds(10))
+        .await?;
+    let removal = control
+        .commands()
+        .await
+        .into_iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeRemove { .. }))
+        .ok_or("Runtime removal")?;
+    let removal_completed_at = base + ChronoDuration::seconds(11);
+    control
+        .acknowledge_at(
+            &removal,
+            removal_completed_at,
+            successful_runtime_removal(&removal, removal_completed_at)?,
+        )
+        .await;
+    let releasing = reconciler
+        .run_once(base + ChronoDuration::seconds(12))
+        .await?;
+    assert_eq!(releasing.runtime_fences, 1);
+    assert_eq!(releasing.release_commands, 1);
+    assert_eq!(releasing.evacuated, 0);
+    let release = control
+        .commands()
+        .await
+        .into_iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or("Claim release")?;
+    let release_completed_at = base + ChronoDuration::seconds(13);
+    control
+        .acknowledge_at(
+            &release,
+            release_completed_at,
+            successful_claim_release(&release, release_completed_at)?,
+        )
+        .await;
+
+    let completed = reconciler
+        .run_once(base + ChronoDuration::seconds(14))
+        .await?;
+    assert_eq!(completed.claims_released, 1);
+    assert_eq!(completed.evacuated, 1);
+    assert_eq!(completed.retired, 0);
+    assert_eq!(
+        claims.find(claim.organization_id, claim.id).await?.state,
+        ResourceClaimState::Released
+    );
+    let replica = repository
+        .find_workload_replica(
+            target.replica.organization_id,
+            target.replica.workload_id,
+            target.replica.id,
+        )
+        .await?;
+    assert_eq!(replica.id, stable_replica_id);
+    assert_eq!(replica.generation, previous_generation + 1);
+    assert_eq!(replica.lifecycle, WorkloadReplicaLifecycle::Desired);
+    assert_eq!(replica.evacuation_node_id, None);
+    let member = current_member(repository.as_ref(), &target).await?;
+    assert_eq!(member.node_id, None);
+    assert_eq!(member.placement_generation, 1);
+
+    let candidates = repository.pending_replica_deployments(10).await?;
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].replica_id, stable_replica_id);
+    assert_eq!(candidates[0].replica_generation, previous_generation + 1);
+    let materialized = repository
+        .materialize_replica_deployment(candidates[0], base + ChronoDuration::seconds(15))
+        .await?
+        .ok_or("replacement replica deployment")?;
+    assert_ne!(materialized.deployment.id, previous_deployment_id);
+    let binding = repository
+        .find_deployment_replica_binding(target.replica.organization_id, materialized.deployment.id)
+        .await?;
+    assert_eq!(binding.replica_id, stable_replica_id);
+    assert_eq!(binding.replica_generation, previous_generation + 1);
+    assert_eq!(binding.placement_generation, 1);
+    let events = repository.outbox_events().await;
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_key == "workload.replica.evacuation.requested")
+            .count(),
+        1
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| event.event_key == "workload.replica.evacuated")
+            .count(),
+        1
+    );
+    Ok(())
+}
+
 fn reconciler(
     retirements: Arc<dyn IWorkloadReplicaRetirementRepository>,
     control: Arc<dyn IWorkloadRuntimeControl>,
@@ -634,6 +756,88 @@ async fn seed_retiring_target(
         .into_iter()
         .find(|target| target.replica.workload_id == workload.id && target.replica.ordinal == 1)
         .ok_or_else(|| "retiring replica target is missing".into())
+}
+
+async fn seed_evacuating_target(
+    repository: &InMemoryWorkloadRepository,
+    at: DateTime<Utc>,
+) -> Result<RetiringReplicaTarget, Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("replica evacuation fixture")?,
+        at,
+    );
+    let mut bundle = deployment_bundle(workload.clone(), at)?;
+    bundle.control = WorkloadControlSpec::unmanaged_replica_set(1, 1)?;
+    let deployment = bundle.deployment.clone();
+    repository.create_deployment(bundle).await?;
+    let resolving = repository
+        .mark_resolving(
+            deployment.id,
+            deployment.aggregate_version,
+            at + ChronoDuration::seconds(1),
+        )
+        .await?;
+    let source_node_id = NodeId::new();
+    let scheduled = repository
+        .assign_node(
+            resolving.id,
+            resolving.aggregate_version,
+            source_node_id,
+            at + ChronoDuration::seconds(2),
+        )
+        .await?;
+    repository
+        .mark_dispatched(
+            scheduled.id,
+            scheduled.aggregate_version,
+            NodeCommandId::new(),
+            at + ChronoDuration::seconds(3),
+        )
+        .await?;
+    let replica = repository
+        .list_workload_replicas(organization_id, workload.id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("evacuated replica")?;
+    let member = repository
+        .find_workload_replica_member(
+            organization_id,
+            replica.id,
+            crate::modules::shared_kernel::domain::WorkloadReplicaMemberId::from_uuid(
+                replica.id.as_uuid(),
+            ),
+        )
+        .await?;
+    let candidate = ReplicaEvacuationCandidate {
+        organization_id,
+        workload_id: workload.id,
+        replica_id: replica.id,
+        replica_generation: replica.generation,
+        expected_replica_version: replica.aggregate_version,
+        member_id: member.id,
+        expected_member_version: member.aggregate_version,
+        source_node_id,
+        placement_generation: member.placement_generation,
+    };
+    repository
+        .request_replica_evacuation(ReplicaEvacuationRequest {
+            candidate,
+            requested_at: at + ChronoDuration::seconds(4),
+            correlation_id: Uuid::now_v7(),
+        })
+        .await?;
+    repository
+        .pending_replica_retirements(10)
+        .await?
+        .into_iter()
+        .find(|target| target.replica.id == replica.id)
+        .ok_or_else(|| "evacuating replica target is missing".into())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

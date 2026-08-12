@@ -1,20 +1,22 @@
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
-    WorkloadRevisionId,
+    DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
     WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{
-    WorkloadReplicaRetired, WorkloadReplicaSetReconfigured,
+    WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired,
+    WorkloadReplicaSetReconfigured,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
-    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaRetirementCompletion,
+    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
     ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
     RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
     WorkloadStopBundle,
@@ -1174,6 +1176,168 @@ fn replica_set_repository_error(error: ReplicaSetReconfigurationError) -> Reposi
 }
 
 #[async_trait]
+impl IWorkloadReplicaEvacuationRepository for InMemoryWorkloadRepository {
+    async fn pending_replica_evacuations(
+        &self,
+        organization_id: OrganizationId,
+        source_node_id: NodeId,
+        limit: usize,
+    ) -> Result<Vec<ReplicaEvacuationCandidate>, RepositoryError> {
+        if source_node_id.as_uuid().is_nil() || limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "replica evacuation query is invalid".into(),
+            ));
+        }
+        let state = self.state.read().await;
+        let mut candidates = state
+            .replicas
+            .values()
+            .filter(|replica| {
+                replica.organization_id == organization_id
+                    && replica.lifecycle == WorkloadReplicaLifecycle::Desired
+                    && state
+                        .workloads
+                        .get(&replica.workload_id)
+                        .is_some_and(|workload| {
+                            workload.desired_state
+                                == crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+                        })
+                    && state
+                        .controls
+                        .get(&replica.workload_id)
+                        .is_some_and(|control| {
+                            replica.ordinal < control.spec.placement_policy.desired_replicas()
+                        })
+            })
+            .filter_map(|replica| {
+                let member_id = WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid());
+                let member = state.replica_members.get(&member_id)?;
+                if member.node_id != Some(source_node_id) {
+                    return None;
+                }
+                let binding = state.deployment_replica_bindings.values().find(|binding| {
+                    binding.organization_id == organization_id
+                        && binding.replica_id == replica.id
+                        && binding.replica_generation == replica.generation
+                        && binding.member_id == member.id
+                        && binding.node_id == Some(source_node_id)
+                        && binding.placement_generation == member.placement_generation
+                })?;
+                Some((
+                    replica.updated_at,
+                    ReplicaEvacuationCandidate {
+                        organization_id,
+                        workload_id: replica.workload_id,
+                        replica_id: replica.id,
+                        replica_generation: replica.generation,
+                        expected_replica_version: replica.aggregate_version,
+                        member_id: member.id,
+                        expected_member_version: member.aggregate_version,
+                        source_node_id,
+                        placement_generation: binding.placement_generation,
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(updated_at, candidate)| {
+            (*updated_at, candidate.workload_id, candidate.replica_id)
+        });
+        Ok(candidates
+            .into_iter()
+            .take(limit)
+            .map(|(_, candidate)| candidate)
+            .collect())
+    }
+
+    async fn request_replica_evacuation(
+        &self,
+        request: ReplicaEvacuationRequest,
+    ) -> Result<IdempotentWrite<WorkloadReplica>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let candidate = request.candidate;
+        let workload = state
+            .workloads
+            .get(&candidate.workload_id)
+            .filter(|workload| workload.organization_id == candidate.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let control = state
+            .controls
+            .get(&candidate.workload_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("evacuated Workload has no control record".into())
+            })?;
+        let mut replica = state
+            .replicas
+            .get(&candidate.replica_id)
+            .filter(|replica| {
+                replica.organization_id == candidate.organization_id
+                    && replica.workload_id == candidate.workload_id
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let member = state
+            .replica_members
+            .get(&candidate.member_id)
+            .filter(|member| member.replica_id == candidate.replica_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("evacuated replica member is missing".into())
+            })?;
+        if replica.generation == candidate.replica_generation
+            && replica.lifecycle == WorkloadReplicaLifecycle::Retiring
+            && replica.evacuation_node_id == Some(candidate.source_node_id)
+        {
+            return Ok(IdempotentWrite {
+                value: replica,
+                replayed: true,
+            });
+        }
+        if workload.desired_state
+            != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+            || replica.generation != candidate.replica_generation
+            || replica.aggregate_version != candidate.expected_replica_version
+            || replica.lifecycle != WorkloadReplicaLifecycle::Desired
+            || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+            || member.aggregate_version != candidate.expected_member_version
+            || member.node_id != Some(candidate.source_node_id)
+            || member.placement_generation != candidate.placement_generation
+            || !state.deployment_replica_bindings.values().any(|binding| {
+                binding.organization_id == candidate.organization_id
+                    && binding.workload_id == candidate.workload_id
+                    && binding.replica_id == candidate.replica_id
+                    && binding.replica_generation == candidate.replica_generation
+                    && binding.member_id == candidate.member_id
+                    && binding.node_id == Some(candidate.source_node_id)
+                    && binding.placement_generation == candidate.placement_generation
+            })
+        {
+            return Err(RepositoryError::Conflict(
+                "Workload replica evacuation candidate changed".into(),
+            ));
+        }
+        let previous = replica.clone();
+        replica
+            .request_evacuation(&member, candidate.source_node_id, request.requested_at)
+            .map_err(RepositoryError::Conflict)?;
+        let event = WorkloadReplicaEvacuationRequested::envelope(
+            &previous,
+            &replica,
+            &member,
+            request.correlation_id,
+        )
+        .map_err(RepositoryError::Storage)?;
+        state.replicas.insert(replica.id, replica.clone());
+        state.outbox.push(event);
+        Ok(IdempotentWrite {
+            value: replica,
+            replayed: false,
+        })
+    }
+}
+
+#[async_trait]
 impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
     async fn pending_replica_retirements(
         &self,
@@ -1348,6 +1512,15 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
             .filter(|member| member.replica_id == completion.replica_id)
             .cloned()
             .ok_or_else(|| RepositoryError::Storage("retiring replica member is missing".into()))?;
+        if completion.replica_generation.checked_add(1) == Some(replica.generation)
+            && replica.lifecycle == WorkloadReplicaLifecycle::Desired
+            && replica.evacuation_node_id.is_none()
+        {
+            return Ok(IdempotentWrite {
+                value: replica,
+                replayed: true,
+            });
+        }
         if replica.generation != completion.replica_generation {
             return Err(RepositoryError::Conflict(
                 "replica retirement completion changed generation".into(),
@@ -1369,12 +1542,18 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
         let control = state.controls.get(&replica.workload_id).ok_or_else(|| {
             RepositoryError::Storage("retiring replica Workload has no control record".into())
         })?;
+        let evacuation = replica.evacuation_node_id.is_some();
+        let remains_desired = replica.ordinal < control.spec.placement_policy.desired_replicas();
         if replica.lifecycle != WorkloadReplicaLifecycle::Retiring
-            || replica.ordinal < control.spec.placement_policy.desired_replicas()
+            || evacuation != remains_desired
             || member.node_id != completion.fenced_node_id
+            || replica
+                .evacuation_node_id
+                .is_some_and(|source| Some(source) != completion.fenced_node_id)
         {
             return Err(RepositoryError::Conflict(
-                "Workload replica is no longer eligible for retirement completion".into(),
+                "Workload replica is no longer eligible for generation retirement completion"
+                    .into(),
             ));
         }
         let dispatched_runtime = state
@@ -1399,7 +1578,9 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
             })
             .transpose()?
             .unwrap_or(false);
-        if dispatched_runtime && replica.runtime_fenced_at.is_none() {
+        if (dispatched_runtime || completion.fenced_node_id.is_some())
+            && replica.runtime_fenced_at.is_none()
+        {
             return Err(RepositoryError::Conflict(
                 "Workload replica Runtime is not durably fenced".into(),
             ));
@@ -1411,17 +1592,31 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
                 .release_after_fencing(node_id, completion.completed_at)
                 .map_err(RepositoryError::Conflict)?;
         }
-        replica
-            .complete_retirement(&member, completion.completed_at)
-            .map_err(RepositoryError::Conflict)?;
-        let event = WorkloadReplicaRetired::envelope(
-            &previous_replica,
-            &replica,
-            &previous_member,
-            &member,
-            completion.correlation_id,
-        )
-        .map_err(RepositoryError::Storage)?;
+        let event = if evacuation {
+            replica
+                .complete_evacuation(&member, completion.completed_at)
+                .map_err(RepositoryError::Conflict)?;
+            WorkloadReplicaEvacuated::envelope(
+                &previous_replica,
+                &replica,
+                &previous_member,
+                &member,
+                completion.correlation_id,
+            )
+            .map_err(RepositoryError::Storage)?
+        } else {
+            replica
+                .complete_retirement(&member, completion.completed_at)
+                .map_err(RepositoryError::Conflict)?;
+            WorkloadReplicaRetired::envelope(
+                &previous_replica,
+                &replica,
+                &previous_member,
+                &member,
+                completion.correlation_id,
+            )
+            .map_err(RepositoryError::Storage)?
+        };
         state.replica_members.insert(member.id, member);
         state.replicas.insert(replica.id, replica.clone());
         state.outbox.push(event);

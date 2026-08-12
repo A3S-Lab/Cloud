@@ -204,6 +204,21 @@ impl INodeRepository for PostgresNodeRepository {
 }
 
 #[async_trait]
+impl crate::modules::fleet::domain::repositories::INodeDrainRepository for PostgresNodeRepository {
+    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError> {
+        nodes::list_draining(&self.executor, limit).await
+    }
+
+    async fn find_drain_node(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<Node, RepositoryError> {
+        nodes::find(&self.executor, organization_id, node_id).await
+    }
+}
+
+#[async_trait]
 impl INodeControlRepository for PostgresNodeRepository {
     async fn enqueue_command(
         &self,

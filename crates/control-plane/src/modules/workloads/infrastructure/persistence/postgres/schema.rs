@@ -196,6 +196,7 @@ orm_table! {
         revision_generation: u64 => "revision_generation",
         generation: u64 => "generation",
         lifecycle: String => "lifecycle",
+        evacuation_node_id: Option<Uuid> => "evacuation_node_id",
         retirement_command_id: Option<Uuid> => "retirement_command_id",
         runtime_fenced_at: Option<DateTime<Utc>> => "runtime_fenced_at",
         aggregate_version: u64 => "aggregate_version",

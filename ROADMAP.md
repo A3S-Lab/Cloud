@@ -1020,7 +1020,7 @@ health, and operations. Neither store becomes PostgreSQL desired-state truth.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
-| `H0.3` | Foundation in progress | Typed managed target identity plus multi-node replica sets, placement groups, gang claims, drain, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, and stateless drain/evacuation; placement groups, gang claims, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
@@ -1202,6 +1202,17 @@ Agent process death after native apply but before acknowledgement. Together
 with the recreated PostgreSQL 17 gate, this closes `H0.2` and delivers the
 target-identity slice of `H0.3`. Independently placed multi-node Gateways remain
 `H0.3`; production control-plane and Gateway HA remain `H0.4`.
+
+The active `H0.3` foundation now persists desired replica counts, stable
+replica/member identities, exact per-generation Deployment bindings, required
+sibling anti-affinity, and durable Runtime retirement fences. Migration 090
+adds bounded draining-node discovery and one replay-safe evacuation intent for
+the exact placed stateless generation. The ordinary retirement path fences the
+old Runtime and releases its Claim before clearing placement; the stable
+replica then advances generation and returns through the existing materializer
+and scheduler. Stateful volume moves remain rejected until `S0` supplies
+trusted prior-writer fence evidence, and the other `H0.3` table items remain
+open.
 
 ### 5.8 `I0`: inference profile
 

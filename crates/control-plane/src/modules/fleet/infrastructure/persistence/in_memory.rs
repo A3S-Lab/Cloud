@@ -588,6 +588,43 @@ impl INodeRepository for InMemoryNodeRepository {
     }
 }
 
+#[async_trait]
+impl crate::modules::fleet::domain::repositories::INodeDrainRepository for InMemoryNodeRepository {
+    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "node state query limit must be between 1 and 10000".into(),
+            ));
+        }
+        let mut nodes = self
+            .state
+            .read()
+            .await
+            .nodes
+            .values()
+            .filter(|node| node.state == NodeState::Draining)
+            .cloned()
+            .collect::<Vec<_>>();
+        nodes.sort_by_key(|node| (node.organization_id, node.id));
+        nodes.truncate(limit);
+        Ok(nodes)
+    }
+
+    async fn find_drain_node(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<Node, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .nodes
+            .get(&(organization_id, node_id))
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+}
+
 pub(super) fn project_heartbeat(
     current: &Node,
     update: &NodeHeartbeatUpdate,

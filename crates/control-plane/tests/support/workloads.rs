@@ -1,7 +1,7 @@
 use a3s_cloud_contracts::NodeCommandPayload;
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository,
+    INodeControlRepository, INodeDrainRepository, INodeRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
@@ -16,10 +16,12 @@ use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentReplicaBinding, DeploymentRequested,
     DeploymentStatus, HttpHealthCheck, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ReplicaAntiAffinity,
-    ReplicaRetirementCompletion, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
-    Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, OciArtifact, PostgresWorkloadRepository,
+    ReconfigureReplicaSetWrite, ReplicaAntiAffinity, ReplicaEvacuationRequest,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
+    WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -986,6 +988,254 @@ pub async fn exercise_replica_set(
     Ok(ReplicaSetFixture {
         bindings: replica_bindings,
     })
+}
+
+pub async fn exercise_replica_evacuation(
+    executor: &PostgresExecutor,
+    organization_uuid: Uuid,
+    replica_set: &mut ReplicaSetFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(organization_uuid);
+    let repository = PostgresWorkloadRepository::new(executor.clone());
+    let database = Database::new(PostgresDialect, executor.clone());
+    let selected_index = replica_set
+        .bindings
+        .len()
+        .checked_sub(1)
+        .ok_or("replica evacuation fixture has no deployment binding")?;
+    let source_binding = replica_set.bindings[selected_index].clone();
+    let source_deployment = repository
+        .find_deployment(organization_id, source_binding.deployment_id)
+        .await?;
+    let (source_node_uuid, previous_node_state) = database
+        .fetch_one_as(
+            sql_query::<(Uuid, String)>(
+                "select nodes.id, nodes.state from nodes join node_resource_inventory_heads inventory on inventory.organization_id = nodes.organization_id and inventory.node_id = nodes.id where nodes.organization_id = ",
+            )
+            .bind(organization_uuid)
+            .append(" order by nodes.id asc limit 1"),
+        )
+        .await?;
+    let source_node_id = NodeId::from_uuid(source_node_uuid);
+    database
+        .execute(
+            sql_query::<()>("update nodes set state = 'ready' where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and id = ")
+                .bind(source_node_uuid),
+        )
+        .await?;
+    let base = Utc::now()
+        .max(source_binding.updated_at + Duration::seconds(1))
+        .max(source_deployment.updated_at + Duration::seconds(1));
+    let resolving = repository
+        .mark_resolving(
+            source_deployment.id,
+            source_deployment.aggregate_version,
+            base,
+        )
+        .await?;
+    let placed = repository
+        .assign_node(
+            source_deployment.id,
+            resolving.aggregate_version,
+            source_node_id,
+            base + Duration::seconds(1),
+        )
+        .await?;
+    let placed_member = repository
+        .find_workload_replica_member(
+            organization_id,
+            source_binding.replica_id,
+            source_binding.member_id,
+        )
+        .await?;
+    assert_eq!(placed_member.node_id, Some(source_node_id));
+    assert_eq!(placed_member.placement_generation, 1);
+
+    database
+        .execute(
+            sql_query::<()>("update nodes set state = 'draining' where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and id = ")
+                .bind(source_node_uuid),
+        )
+        .await?;
+    let node_repository = PostgresNodeRepository::new(executor.clone());
+    assert!(node_repository
+        .list_draining(100)
+        .await?
+        .iter()
+        .any(|node| node.id == source_node_id));
+
+    let candidates = repository
+        .pending_replica_evacuations(organization_id, source_node_id, 100)
+        .await?
+        .into_iter()
+        .filter(|candidate| candidate.replica_id == source_binding.replica_id)
+        .collect::<Vec<_>>();
+    assert_eq!(candidates.len(), 1);
+    let candidate = candidates[0];
+    assert_eq!(
+        candidate.replica_generation,
+        source_binding.replica_generation
+    );
+    assert_eq!(candidate.member_id, source_binding.member_id);
+    assert_eq!(candidate.placement_generation, 1);
+    let request = ReplicaEvacuationRequest {
+        candidate,
+        requested_at: base + Duration::seconds(2),
+        correlation_id: Uuid::now_v7(),
+    };
+    let (left, right) = tokio::join!(
+        repository.request_replica_evacuation(request),
+        repository.request_replica_evacuation(request),
+    );
+    let left = left?;
+    let right = right?;
+    assert_ne!(left.replayed, right.replayed);
+    assert_eq!(left.value, right.value);
+    let requested = left.value;
+    assert_eq!(requested.lifecycle, WorkloadReplicaLifecycle::Retiring);
+    assert_eq!(requested.evacuation_node_id, Some(source_node_id));
+    assert!(repository
+        .pending_replica_evacuations(organization_id, source_node_id, 100)
+        .await?
+        .into_iter()
+        .all(|candidate| candidate.replica_id != source_binding.replica_id));
+    assert!(matches!(
+        repository
+            .mark_dispatched(
+                source_deployment.id,
+                placed.aggregate_version,
+                NodeCommandId::new(),
+                base + Duration::seconds(3),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let target = repository
+        .pending_replica_retirements(100)
+        .await?
+        .into_iter()
+        .find(|target| target.replica.id == source_binding.replica_id)
+        .ok_or("requested replica evacuation was not exposed to retirement")?;
+    let command_id = NodeCommandId::new();
+    let dispatched = repository
+        .dispatch_replica_retirement(ReplicaRetirementDispatch {
+            organization_id,
+            workload_id: source_binding.workload_id,
+            replica_id: source_binding.replica_id,
+            replica_generation: source_binding.replica_generation,
+            expected_replica_version: target.replica.aggregate_version,
+            command_id,
+            dispatched_at: base + Duration::seconds(3),
+        })
+        .await?;
+    let fenced = repository
+        .record_replica_runtime_fenced(ReplicaRuntimeFence {
+            organization_id,
+            workload_id: source_binding.workload_id,
+            replica_id: source_binding.replica_id,
+            replica_generation: source_binding.replica_generation,
+            expected_replica_version: dispatched.aggregate_version,
+            command_id,
+            fenced_at: base + Duration::seconds(4),
+        })
+        .await?;
+    let completion = ReplicaRetirementCompletion {
+        organization_id,
+        workload_id: source_binding.workload_id,
+        replica_id: source_binding.replica_id,
+        replica_generation: source_binding.replica_generation,
+        expected_replica_version: fenced.aggregate_version,
+        member_id: source_binding.member_id,
+        expected_member_version: target.member.aggregate_version,
+        fenced_node_id: Some(source_node_id),
+        completed_at: base + Duration::seconds(5),
+        correlation_id: Uuid::now_v7(),
+    };
+    let completed = repository.complete_replica_retirement(completion).await?;
+    assert!(!completed.replayed);
+    assert_eq!(completed.value.id, source_binding.replica_id);
+    assert_eq!(
+        completed.value.generation,
+        source_binding.replica_generation + 1
+    );
+    assert_eq!(completed.value.lifecycle, WorkloadReplicaLifecycle::Desired);
+    assert_eq!(completed.value.evacuation_node_id, None);
+    assert!(
+        repository
+            .complete_replica_retirement(completion)
+            .await?
+            .replayed
+    );
+    let released_member = repository
+        .find_workload_replica_member(
+            organization_id,
+            source_binding.replica_id,
+            source_binding.member_id,
+        )
+        .await?;
+    assert_eq!(released_member.node_id, None);
+    assert_eq!(released_member.placement_generation, 1);
+
+    let replacement_candidate = repository
+        .pending_replica_deployments(100)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.replica_id == source_binding.replica_id)
+        .ok_or("evacuated replica generation was not rematerialized")?;
+    assert_eq!(
+        replacement_candidate.replica_generation,
+        completed.value.generation
+    );
+    let replacement = repository
+        .materialize_replica_deployment(replacement_candidate, base + Duration::seconds(6))
+        .await?
+        .ok_or("evacuated replica replacement materialization was skipped")?;
+    assert!(replacement.created);
+    assert_ne!(replacement.deployment.id, source_deployment.id);
+    let replacement_binding = repository
+        .find_deployment_replica_binding(organization_id, replacement.deployment.id)
+        .await?;
+    assert_eq!(replacement_binding.replica_id, source_binding.replica_id);
+    assert_eq!(
+        replacement_binding.replica_generation,
+        completed.value.generation
+    );
+    assert_eq!(replacement_binding.node_id, None);
+    assert_eq!(replacement_binding.placement_generation, 1);
+    replica_set.bindings[selected_index] = replacement_binding;
+
+    for event_key in [
+        "workload.replica.evacuation.requested",
+        "workload.replica.evacuated",
+    ] {
+        assert_eq!(
+            database
+                .fetch_one_as(
+                    sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ",)
+                        .bind(source_binding.replica_id.as_uuid())
+                        .append(" and event_key = ")
+                        .bind(event_key),
+                )
+                .await?,
+            1
+        );
+    }
+    database
+        .execute(
+            sql_query::<()>("update nodes set state = ")
+                .bind(previous_node_state)
+                .append(" where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and id = ")
+                .bind(source_node_uuid),
+        )
+        .await?;
+    Ok(())
 }
 
 fn replica_set_write(

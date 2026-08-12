@@ -787,6 +787,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/089_workload_replica_retirement_evidence.sql"
             )),
         ),
+        Migration::new(
+            "090",
+            "durable Workload replica evacuation intent",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/090_workload_replica_evacuation_intent.sql"
+            )),
+        ),
     ]
 }
 

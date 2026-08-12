@@ -245,7 +245,6 @@ fn validate_materialization_context(
         || member.workload_id != workload.id
         || member.replica_id != replica.id
         || member.node_id.is_some()
-        || member.placement_generation != 0
     {
         return Err("replica deployment materialization context is inconsistent".into());
     }

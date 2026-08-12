@@ -70,6 +70,7 @@ pub struct WorkloadReplicaResponse {
     pub revision_generation: u64,
     pub generation: u64,
     pub lifecycle: String,
+    pub evacuation_node_id: Option<Uuid>,
     pub retirement_command_id: Option<Uuid>,
     pub runtime_fenced_at: Option<DateTime<Utc>>,
     pub members: Vec<WorkloadReplicaMemberResponse>,
@@ -291,6 +292,7 @@ impl From<WorkloadReplicaQueryResult> for WorkloadReplicaResponse {
             revision_generation: replica.revision_generation,
             generation: replica.generation,
             lifecycle: replica.lifecycle.as_str().into(),
+            evacuation_node_id: replica.evacuation_node_id.map(|node_id| node_id.as_uuid()),
             retirement_command_id: replica
                 .retirement_command_id
                 .map(|command_id| command_id.as_uuid()),

@@ -272,7 +272,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (89, "089".into()));
+    assert_eq!(migration_state, (90, "090".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -318,7 +318,7 @@ async fn exercise_postgres_replica_set_foundation(
         )
         .await?;
 
-    let replica_set = workloads_support::exercise_replica_set(
+    let mut replica_set = workloads_support::exercise_replica_set(
         &executor,
         organization_id,
         project_id,
@@ -326,6 +326,8 @@ async fn exercise_postgres_replica_set_foundation(
     )
     .await?;
     fleet_support::exercise_fleet(&executor, organization_id).await?;
+    workloads_support::exercise_replica_evacuation(&executor, organization_id, &mut replica_set)
+        .await?;
     workloads_support::exercise_replica_policy_v1_upgrade(
         &executor,
         organization_id,
@@ -963,7 +965,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 89);
+    assert_eq!(applied, 90);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -3600,6 +3602,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(listed[0]["replicas"][0]["revisionGeneration"], 2);
     assert_eq!(listed[0]["replicas"][0]["generation"], 2);
     assert_eq!(listed[0]["replicas"][0]["lifecycle"], "desired");
+    assert_eq!(listed[0]["replicas"][0]["evacuationNodeId"], Value::Null);
     assert_eq!(listed[0]["replicas"][0]["retirementCommandId"], Value::Null);
     assert_eq!(listed[0]["replicas"][0]["runtimeFencedAt"], Value::Null);
     assert_eq!(
@@ -3769,7 +3772,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await
     .map_err(|error| format!("Workload persistence integration failed: {error}"))?;
-    let replica_set_fixture = workloads_support::exercise_replica_set(
+    let mut replica_set_fixture = workloads_support::exercise_replica_set(
         &executor,
         Uuid::parse_str(&organization_id)?,
         Uuid::parse_str(&project_id)?,
@@ -3777,6 +3780,13 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await
     .map_err(|error| format!("Workload replica-set persistence failed: {error}"))?;
+    workloads_support::exercise_replica_evacuation(
+        &executor,
+        Uuid::parse_str(&organization_id)?,
+        &mut replica_set_fixture,
+    )
+    .await
+    .map_err(|error| format!("Workload replica evacuation failed: {error}"))?;
     resource_claims_support::exercise_resource_claims(
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),

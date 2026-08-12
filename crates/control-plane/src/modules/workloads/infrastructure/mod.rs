@@ -1,4 +1,5 @@
 mod deployment_flow;
+mod node_drain_reconciliation;
 mod oci_registry;
 mod persistence;
 mod reconciliation;
@@ -11,6 +12,9 @@ pub use deployment_flow::{
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+};
+pub use node_drain_reconciliation::{
+    NodeDrainEvacuationFailure, NodeDrainEvacuationReconciler, NodeDrainEvacuationReport,
 };
 pub use oci_registry::OciRegistryArtifactResolver;
 pub use persistence::{

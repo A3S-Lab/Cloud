@@ -2,6 +2,7 @@ mod create;
 mod operation_requests;
 mod queries;
 mod replica_deployment_materialization;
+mod replica_evacuations;
 mod replica_retirements;
 mod replica_set_reconfiguration;
 mod replicas;
@@ -26,11 +27,13 @@ use crate::modules::workloads::domain::entities::{
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
     ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
-    RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
+    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
+    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation,
+    WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -452,6 +455,28 @@ impl IWorkloadReplicaDeploymentRepository for PostgresWorkloadRepository {
     ) -> Result<Option<ReplicaDeploymentMaterialization>, RepositoryError> {
         replica_deployment_materialization::materialize(&self.executor, candidate, requested_at)
             .await
+    }
+}
+
+#[async_trait]
+impl IWorkloadReplicaEvacuationRepository for PostgresWorkloadRepository {
+    async fn pending_replica_evacuations(
+        &self,
+        organization_id: OrganizationId,
+        source_node_id: NodeId,
+        limit: usize,
+    ) -> Result<Vec<ReplicaEvacuationCandidate>, RepositoryError> {
+        replica_evacuations::pending(&self.executor, organization_id, source_node_id, limit).await
+    }
+
+    async fn request_replica_evacuation(
+        &self,
+        request: ReplicaEvacuationRequest,
+    ) -> Result<
+        crate::modules::shared_kernel::domain::IdempotentWrite<WorkloadReplica>,
+        RepositoryError,
+    > {
+        replica_evacuations::request(&self.executor, request).await
     }
 }
 
