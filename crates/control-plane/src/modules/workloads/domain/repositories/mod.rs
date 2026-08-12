@@ -6,6 +6,7 @@ pub(crate) use resource_claim_repository::{capacity_unavailable, is_capacity_una
 pub use workload_repository::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
     ISecretRotationRestartRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, SecretRotation,
-    SecretRotationCompletion, SecretRotationReconciliation, WorkloadStopBundle,
+    ReconfigureReplicaSetWrite, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, SecretRotation, SecretRotationCompletion,
+    SecretRotationReconciliation, WorkloadStopBundle,
 };

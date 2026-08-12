@@ -5,8 +5,8 @@ use crate::modules::shared_kernel::domain::{
     WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl,
-    WorkloadControlSpec, WorkloadReplica, WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, ManagedOwnerReference, OciArtifact, Workload,
+    WorkloadControl, WorkloadControlSpec, WorkloadReplica, WorkloadReplicaMember, WorkloadRevision,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -54,6 +54,26 @@ pub struct DeploymentBundle {
 pub struct WorkloadStopBundle {
     pub workload: Workload,
     pub operation: OperationRequest,
+    pub replayed: bool,
+}
+
+#[derive(Clone)]
+pub struct ReconfigureReplicaSetWrite {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub expected_control_version: u64,
+    pub expected_policy_generation: u64,
+    pub desired_replicas: u32,
+    pub managed_owner: Option<ManagedOwnerReference>,
+    pub idempotency: IdempotencyRequest,
+    pub correlation_id: Uuid,
+    pub requested_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplicaSetWriteResult {
+    pub control: WorkloadControl,
+    pub replicas: Vec<WorkloadReplica>,
     pub replayed: bool,
 }
 
@@ -164,6 +184,11 @@ pub trait IWorkloadRepository: Send + Sync {
         expected_version: u64,
         stopped_at: DateTime<Utc>,
     ) -> Result<Workload, RepositoryError>;
+
+    async fn reconfigure_replica_set(
+        &self,
+        write: ReconfigureReplicaSetWrite,
+    ) -> Result<ReplicaSetWriteResult, RepositoryError>;
 
     async fn find_workload(
         &self,

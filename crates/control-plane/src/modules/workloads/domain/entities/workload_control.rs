@@ -318,6 +318,46 @@ impl WorkloadControl {
         Ok(())
     }
 
+    pub fn reconfigure_replica_set(
+        &mut self,
+        expected_policy_generation: u64,
+        desired_replicas: u32,
+        requested_owner: Option<&ManagedOwnerReference>,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        self.spec.validate()?;
+        let at = canonical_timestamp(at);
+        if self.spec.managed_owner.as_ref() != requested_owner {
+            return Err("workload replica reconfiguration has the wrong owner authority".into());
+        }
+        if self.spec.placement_policy.generation() != expected_policy_generation {
+            return Err(format!(
+                "workload placement policy changed from expected generation {expected_policy_generation} to {}",
+                self.spec.placement_policy.generation()
+            ));
+        }
+        if self.spec.placement_policy.desired_replicas() == desired_replicas {
+            return Err("workload replica reconfiguration does not change desired replicas".into());
+        }
+        if at < self.updated_at {
+            return Err("workload replica reconfiguration time regressed".into());
+        }
+        let next_policy_generation = expected_policy_generation
+            .checked_add(1)
+            .ok_or_else(|| "workload placement policy generation overflowed".to_string())?;
+        let next_aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "workload control version overflowed".to_string())?;
+        let placement_policy =
+            EffectivePlacementPolicy::replica_set(next_policy_generation, desired_replicas)?;
+
+        self.spec.placement_policy = placement_policy;
+        self.aggregate_version = next_aggregate_version;
+        self.updated_at = at;
+        Ok(())
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn restore(
         organization_id: OrganizationId,

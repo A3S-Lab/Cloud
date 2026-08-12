@@ -7,10 +7,14 @@ use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
     WorkloadReplicaMember, WorkloadRevision,
 };
+use crate::modules::workloads::domain::events::WorkloadReplicaSetReconfigured;
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IWorkloadRepository,
-    IWorkloadRuntimeTargetRepository, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, WorkloadStopBundle,
+    IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite, ReplicaSetWriteResult,
+    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, WorkloadStopBundle,
+};
+use crate::modules::workloads::domain::services::{
+    plan_replica_set_reconfiguration, ReplicaSetReconfigurationError,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -42,6 +46,7 @@ struct State {
     idempotency: BTreeMap<(String, String), (String, DeploymentBundle)>,
     cancellation_idempotency: BTreeMap<(String, String), (String, Deployment)>,
     stop_idempotency: BTreeMap<(String, String), (String, WorkloadStopBundle)>,
+    replica_set_idempotency: BTreeMap<(String, String), (String, ReplicaSetWriteResult)>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
 }
 
@@ -408,6 +413,107 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .map_err(RepositoryError::Conflict)?;
         state.workloads.insert(workload_id, workload.clone());
         Ok(workload)
+    }
+
+    async fn reconfigure_replica_set(
+        &self,
+        write: ReconfigureReplicaSetWrite,
+    ) -> Result<ReplicaSetWriteResult, RepositoryError> {
+        let mut state = self.state.write().await;
+        let idempotency_key = (
+            write.idempotency.scope.clone(),
+            write.idempotency.key.clone(),
+        );
+        if let Some((digest, response)) = state.replica_set_idempotency.get(&idempotency_key) {
+            if digest != &write.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            let mut response = response.clone();
+            response.replayed = true;
+            return Ok(response);
+        }
+
+        let workload = state_workload(&state, write.organization_id, write.workload_id)?;
+        let current_control = state
+            .controls
+            .get(&write.workload_id)
+            .filter(|control| control.organization_id == write.organization_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its durable control record".into())
+            })?;
+        let mut current_replicas = state
+            .replicas
+            .values()
+            .filter(|replica| {
+                replica.organization_id == write.organization_id
+                    && replica.workload_id == write.workload_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        current_replicas.sort_by_key(|replica| (replica.ordinal, replica.id));
+        let canonical = current_replicas
+            .iter()
+            .find(|replica| replica.ordinal == 0)
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its canonical replica".into())
+            })?;
+        let revision = state
+            .revisions
+            .get(&canonical.revision_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "Workload canonical replica references a missing revision".into(),
+                )
+            })?;
+        let reconfiguration = plan_replica_set_reconfiguration(
+            &workload,
+            current_control.clone(),
+            &revision,
+            current_replicas,
+            write.expected_control_version,
+            write.expected_policy_generation,
+            write.desired_replicas,
+            write.managed_owner.as_ref(),
+            write.requested_at,
+        )
+        .map_err(replica_set_repository_error)?;
+        for member in &reconfiguration.members_to_create {
+            if state.replica_members.contains_key(&member.id) {
+                return Err(RepositoryError::Storage(
+                    "new Workload replica member identity already exists".into(),
+                ));
+            }
+        }
+        let event = WorkloadReplicaSetReconfigured::envelope(
+            &current_control,
+            &reconfiguration.control,
+            write.correlation_id,
+        )
+        .map_err(RepositoryError::Storage)?;
+
+        for member in reconfiguration.members_to_create {
+            state.replica_members.insert(member.id, member);
+        }
+        for replica in &reconfiguration.replicas {
+            state.replicas.insert(replica.id, replica.clone());
+        }
+        state.controls.insert(
+            reconfiguration.control.workload_id,
+            reconfiguration.control.clone(),
+        );
+        state.outbox.push(event);
+        let response = ReplicaSetWriteResult {
+            control: reconfiguration.control,
+            replicas: reconfiguration.replicas,
+            replayed: false,
+        };
+        state.replica_set_idempotency.insert(
+            idempotency_key,
+            (write.idempotency.request_digest, response.clone()),
+        );
+        Ok(response)
     }
 
     async fn find_workload(
@@ -874,6 +980,13 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             deployment.cancel(at)
         })
         .await
+    }
+}
+
+fn replica_set_repository_error(error: ReplicaSetReconfigurationError) -> RepositoryError {
+    match error {
+        ReplicaSetReconfigurationError::Conflict(message) => RepositoryError::Conflict(message),
+        ReplicaSetReconfigurationError::Invariant(message) => RepositoryError::Storage(message),
     }
 }
 

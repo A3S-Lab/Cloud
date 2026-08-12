@@ -1,4 +1,5 @@
 use super::entities::*;
+use super::services::plan_replica_set_reconfiguration;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, McpServiceProfile,
@@ -274,6 +275,116 @@ fn replica_set_identity_and_retirement_are_generation_fenced() {
         .place(NodeId::new(), now + Duration::seconds(6))
         .expect("place reactivated member");
     assert_eq!(member.placement_generation, 2);
+}
+
+#[test]
+fn replica_set_reconfiguration_retires_only_the_tail_and_reuses_stable_identities() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("reconfigurable-replica-set").expect("name"),
+        now,
+    );
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        template('a'),
+        now,
+    )
+    .expect("revision");
+    let control = WorkloadControl::create(
+        &workload,
+        WorkloadControlSpec::unmanaged_replica_set(1, 3).expect("replica-set policy"),
+    )
+    .expect("control");
+    let mut members = Vec::new();
+    let mut replicas = Vec::new();
+    for ordinal in 0..3 {
+        let replica = WorkloadReplica::for_ordinal(&workload, &revision, ordinal).expect("replica");
+        members
+            .push(WorkloadReplicaMember::for_replica(&workload, &replica).expect("replica member"));
+        replicas.push(replica);
+    }
+    let stable_ids = replicas
+        .iter()
+        .map(|replica| replica.id)
+        .collect::<Vec<_>>();
+
+    let scaled_down = plan_replica_set_reconfiguration(
+        &workload,
+        control,
+        &revision,
+        replicas,
+        1,
+        1,
+        1,
+        None,
+        now + Duration::seconds(1),
+    )
+    .expect("scale down");
+    assert_eq!(scaled_down.control.aggregate_version, 2);
+    assert_eq!(scaled_down.control.spec.placement_policy.generation(), 2);
+    assert_eq!(
+        scaled_down.control.spec.placement_policy.desired_replicas(),
+        1
+    );
+    assert_eq!(
+        scaled_down
+            .replicas
+            .iter()
+            .map(|replica| replica.lifecycle)
+            .collect::<Vec<_>>(),
+        vec![
+            WorkloadReplicaLifecycle::Desired,
+            WorkloadReplicaLifecycle::Retiring,
+            WorkloadReplicaLifecycle::Retiring,
+        ]
+    );
+
+    let mut retired = scaled_down.replicas;
+    for replica in retired.iter_mut().skip(1) {
+        let member = members
+            .iter()
+            .find(|member| member.replica_id == replica.id)
+            .expect("stored member");
+        replica
+            .complete_retirement(member, now + Duration::seconds(2))
+            .expect("complete unplaced retirement");
+    }
+    let scaled_up = plan_replica_set_reconfiguration(
+        &workload,
+        scaled_down.control,
+        &revision,
+        retired,
+        2,
+        2,
+        3,
+        None,
+        now + Duration::seconds(3),
+    )
+    .expect("scale up");
+    assert!(scaled_up.members_to_create.is_empty());
+    assert_eq!(
+        scaled_up
+            .replicas
+            .iter()
+            .map(|replica| replica.id)
+            .collect::<Vec<_>>(),
+        stable_ids
+    );
+    assert!(scaled_up
+        .replicas
+        .iter()
+        .all(|replica| replica.lifecycle == WorkloadReplicaLifecycle::Desired));
+    assert_eq!(scaled_up.replicas[0].generation, 1);
+    assert_eq!(scaled_up.replicas[1].generation, 2);
+    assert_eq!(scaled_up.replicas[2].generation, 2);
+    assert_eq!(scaled_up.control.aggregate_version, 3);
+    assert_eq!(scaled_up.control.spec.placement_policy.generation(), 3);
 }
 
 #[test]

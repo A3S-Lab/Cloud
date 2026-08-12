@@ -1,6 +1,7 @@
 mod create;
 mod operation_requests;
 mod queries;
+mod replica_set_reconfiguration;
 mod replicas;
 mod resource_claim_rows;
 mod resource_claim_writes;
@@ -23,8 +24,8 @@ use crate::modules::workloads::domain::entities::{
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
     ISecretRotationRestartRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, SecretRotation,
-    SecretRotationReconciliation, WorkloadStopBundle,
+    ReconfigureReplicaSetWrite, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -96,6 +97,13 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
             stopped_at,
         )
         .await
+    }
+
+    async fn reconfigure_replica_set(
+        &self,
+        write: ReconfigureReplicaSetWrite,
+    ) -> Result<ReplicaSetWriteResult, RepositoryError> {
+        replica_set_reconfiguration::reconfigure(&self.executor, write).await
     }
 
     async fn find_workload(

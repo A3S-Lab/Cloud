@@ -32,18 +32,21 @@ pub use domain::entities::{
     MAX_WORKLOAD_REPLICAS,
 };
 pub use domain::events::{
-    DeploymentCancellationRequested, DeploymentRequested, WorkloadStopRequested,
+    DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaSetReconfigured,
+    WorkloadStopRequested,
 };
 pub use domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IResourceClaimRepository,
     ISecretRotationRestartRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, SecretRotation,
-    SecretRotationCompletion, SecretRotationReconciliation, WorkloadStopBundle,
+    ReconfigureReplicaSetWrite, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, SecretRotation, SecretRotationCompletion,
+    SecretRotationReconciliation, WorkloadStopBundle,
 };
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
     DeploymentRouteUpdateRequest, IDeploymentRouteUpdater, IOciArtifactResolver,
-    OciArtifactResolutionError, OciRegistryCredentialReference, UnroutedDeploymentRouteUpdater,
+    OciArtifactResolutionError, OciRegistryCredentialReference, ReplicaSetReconfiguration,
+    ReplicaSetReconfigurationError, UnroutedDeploymentRouteUpdater,
 };
 pub use infrastructure::{
     project_runtime_spec, DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,

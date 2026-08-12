@@ -513,6 +513,47 @@ async fn control_in_transaction(
     .map_err(Into::into)
 }
 
+pub(super) async fn control_for_update(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    workload_id: WorkloadId,
+) -> Result<Option<WorkloadControl>, PostgresPersistenceError> {
+    fetch_optional(
+        transaction,
+        select_from::<WorkloadControls>()
+            .select(ControlSelection)
+            .filter(WorkloadControls::organization_id().eq(organization_id.as_uuid()))
+            .filter(WorkloadControls::workload_id().eq(workload_id.as_uuid()))
+            .for_update(),
+    )
+    .await?
+    .map(ControlRow::control)
+    .transpose()
+    .map_err(Into::into)
+}
+
+pub(super) async fn replicas_for_update(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    workload_id: WorkloadId,
+) -> Result<Vec<WorkloadReplica>, PostgresPersistenceError> {
+    crate::infrastructure::fetch_all(
+        transaction,
+        select_from::<WorkloadReplicas>()
+            .select(ReplicaSelection)
+            .filter(WorkloadReplicas::organization_id().eq(organization_id.as_uuid()))
+            .filter(WorkloadReplicas::workload_id().eq(workload_id.as_uuid()))
+            .order_by(WorkloadReplicas::ordinal(), OrderDirection::Asc)
+            .order_by(WorkloadReplicas::id(), OrderDirection::Asc)
+            .for_update(),
+    )
+    .await?
+    .into_iter()
+    .map(ReplicaRow::replica)
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(Into::into)
+}
+
 async fn replica_in_transaction(
     transaction: &PostgresTransaction,
     organization_id: OrganizationId,
@@ -634,7 +675,7 @@ async fn insert_control(
     require_one_row("Workload control", rows)
 }
 
-async fn insert_replica(
+pub(super) async fn insert_replica(
     transaction: &PostgresTransaction,
     replica: &WorkloadReplica,
 ) -> Result<(), PostgresPersistenceError> {
@@ -677,7 +718,7 @@ async fn insert_replica(
     require_one_row("Workload replica", rows)
 }
 
-async fn insert_member(
+pub(super) async fn insert_member(
     transaction: &PostgresTransaction,
     member: &WorkloadReplicaMember,
 ) -> Result<(), PostgresPersistenceError> {
@@ -725,7 +766,7 @@ async fn insert_member(
     require_one_row("Workload replica member", rows)
 }
 
-async fn persist_replica(
+pub(super) async fn persist_replica(
     transaction: &PostgresTransaction,
     replica: &WorkloadReplica,
     previous_version: u64,

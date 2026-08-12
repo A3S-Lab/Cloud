@@ -13,9 +13,9 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
-    IWorkloadRepository, OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess,
-    ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec, WorkloadReplicaLifecycle,
-    WorkloadRevision,
+    IWorkloadRepository, OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite,
+    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
+    WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -458,7 +458,8 @@ pub async fn exercise_replica_set(
         assert_eq!(members[0].id.as_uuid(), replica.id.as_uuid());
         assert_eq!(members[0].node_id, None);
     }
-    let stored_count = Database::new(PostgresDialect, executor.clone())
+    let database = Database::new(PostgresDialect, executor.clone());
+    let stored_count = database
         .fetch_one_as(
             sql_query::<i64>("select count(*) from workload_replicas where organization_id = ")
                 .bind(organization_id.as_uuid())
@@ -467,7 +468,167 @@ pub async fn exercise_replica_set(
         )
         .await?;
     assert_eq!(stored_count, 3);
+
+    let scalable_workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::from_uuid(project_uuid),
+        EnvironmentId::from_uuid(environment_uuid),
+        ResourceName::parse("PostgreSQL scalable replica set")?,
+        Utc::now(),
+    );
+    repository
+        .create_deployment(request(
+            scalable_workload.clone(),
+            1,
+            'e',
+            "postgres-scalable-replica-set",
+            scalable_workload.created_at,
+        )?)
+        .await?;
+    let initial_control = repository
+        .find_workload_control(organization_id, scalable_workload.id)
+        .await?;
+    let left_write = replica_set_write(
+        &initial_control,
+        3,
+        "postgres-replica-set-scale-up-left",
+        scalable_workload.created_at + Duration::seconds(1),
+    )?;
+    let right_write = replica_set_write(
+        &initial_control,
+        3,
+        "postgres-replica-set-scale-up-right",
+        scalable_workload.created_at + Duration::seconds(1),
+    )?;
+    let (left, right) = tokio::join!(
+        repository.reconfigure_replica_set(left_write.clone()),
+        repository.reconfigure_replica_set(right_write.clone())
+    );
+    let (winner, winning_write, loser) = match (left, right) {
+        (Ok(winner), Err(loser)) => (winner, left_write, loser),
+        (Err(loser), Ok(winner)) => (winner, right_write, loser),
+        outcomes => {
+            return Err(
+                format!("expected one PostgreSQL replica-set writer, got {outcomes:?}").into(),
+            )
+        }
+    };
+    assert!(matches!(loser, RepositoryError::Conflict(_)));
+    assert!(!winner.replayed);
+    assert_eq!(winner.control.aggregate_version, 2);
+    assert_eq!(winner.control.spec.placement_policy.generation(), 2);
+    assert_eq!(winner.control.spec.placement_policy.desired_replicas(), 3);
+    assert_eq!(
+        winner
+            .replicas
+            .iter()
+            .map(|replica| replica.ordinal)
+            .collect::<Vec<_>>(),
+        vec![0, 1, 2]
+    );
+    assert!(
+        repository
+            .reconfigure_replica_set(winning_write.clone())
+            .await?
+            .replayed
+    );
+    let conflicting_replay = ReconfigureReplicaSetWrite {
+        desired_replicas: 2,
+        idempotency: IdempotencyRequest::new(
+            winning_write.idempotency.scope.clone(),
+            winning_write.idempotency.key.clone(),
+            b"different PostgreSQL replica-set request",
+        )?,
+        ..winning_write
+    };
+    assert!(matches!(
+        repository.reconfigure_replica_set(conflicting_replay).await,
+        Err(RepositoryError::IdempotencyConflict)
+    ));
+
+    let scaled_down = repository
+        .reconfigure_replica_set(replica_set_write(
+            &winner.control,
+            1,
+            "postgres-replica-set-scale-down",
+            scalable_workload.created_at + Duration::seconds(2),
+        )?)
+        .await?;
+    assert_eq!(scaled_down.control.aggregate_version, 3);
+    assert_eq!(scaled_down.control.spec.placement_policy.generation(), 3);
+    assert_eq!(
+        scaled_down
+            .replicas
+            .iter()
+            .map(|replica| replica.lifecycle)
+            .collect::<Vec<_>>(),
+        vec![
+            WorkloadReplicaLifecycle::Desired,
+            WorkloadReplicaLifecycle::Retiring,
+            WorkloadReplicaLifecycle::Retiring,
+        ]
+    );
+    let persisted = repository
+        .list_workload_replicas(organization_id, scalable_workload.id)
+        .await?;
+    assert_eq!(persisted, scaled_down.replicas);
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>(
+                    "select count(*) from workload_replica_members where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and workload_id = ")
+                .bind(scalable_workload.id.as_uuid()),
+            )
+            .await?,
+        3
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ",)
+                    .bind(scalable_workload.id.as_uuid())
+                    .append(" and event_key = 'workload.replica-set.reconfigured'"),
+            )
+            .await?,
+        2
+    );
     Ok(())
+}
+
+fn replica_set_write(
+    control: &WorkloadControl,
+    desired_replicas: u32,
+    idempotency_key: &str,
+    requested_at: chrono::DateTime<Utc>,
+) -> Result<ReconfigureReplicaSetWrite, Box<dyn std::error::Error>> {
+    let canonical = serde_json::to_vec(&json!({
+        "organizationId": control.organization_id,
+        "workloadId": control.workload_id,
+        "expectedPolicyGeneration": control.spec.placement_policy.generation(),
+        "desiredReplicas": desired_replicas,
+    }))?;
+    Ok(ReconfigureReplicaSetWrite {
+        organization_id: control.organization_id,
+        workload_id: control.workload_id,
+        expected_control_version: control.aggregate_version,
+        expected_policy_generation: control.spec.placement_policy.generation(),
+        desired_replicas,
+        managed_owner: control.spec.managed_owner.clone(),
+        idempotency: IdempotencyRequest::new(
+            format!(
+                "organizations/{}/workloads/{}/replica-set",
+                control.organization_id, control.workload_id
+            ),
+            idempotency_key,
+            &canonical,
+        )?,
+        correlation_id: Uuid::now_v7(),
+        requested_at,
+    })
 }
 
 pub(crate) fn request(
