@@ -16,9 +16,11 @@ use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentReplicaBinding, DeploymentRequested,
     DeploymentStatus, HttpHealthCheck, IWorkloadPlacementGroupRepository,
-    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ReplicaAntiAffinity,
+    IWorkloadPlacementGroupSchedulingRepository, IWorkloadReplicaDeploymentRepository,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, OciArtifact,
+    PlacementGroupCancellationWrite, PlacementGroupMemberPlacement, PlacementGroupSchedulingWrite,
+    PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ReplicaAntiAffinity,
     ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
     ReplicaRuntimeFence, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
     WorkloadControl, WorkloadControlSpec, WorkloadPlacementGroup, WorkloadReplicaLifecycle,
@@ -1378,6 +1380,98 @@ pub async fn exercise_placement_group_plans(
         .iter()
         .all(|candidate| candidate.workload_id != workload.id));
 
+    let resolving = repository
+        .mark_resolving(
+            materialization.deployment.id,
+            materialization.deployment.aggregate_version,
+            deployment_requested_at,
+        )
+        .await?;
+    let placements = materialization
+        .member_bindings
+        .iter()
+        .enumerate()
+        .map(|(ordinal, binding)| {
+            Ok(PlacementGroupMemberPlacement {
+                ordinal: u32::try_from(ordinal)?,
+                member_id: binding.member_id,
+                node_id: NodeId::new(),
+            })
+        })
+        .collect::<Result<Vec<_>, std::num::TryFromIntError>>()?;
+    let schedule_write = PlacementGroupSchedulingWrite {
+        organization_id,
+        deployment_id: resolving.id,
+        expected_deployment_version: resolving.aggregate_version,
+        group_id: write.group.id,
+        group_plan_digest: write.group.plan_digest.clone(),
+        placements,
+        scheduled_at: deployment_requested_at,
+    };
+    let (left_schedule, right_schedule) = tokio::join!(
+        repository.schedule_placement_group(schedule_write.clone()),
+        repository.schedule_placement_group(schedule_write),
+    );
+    let left_schedule = left_schedule?;
+    let right_schedule = right_schedule?;
+    assert_ne!(left_schedule.replayed, right_schedule.replayed);
+    assert_eq!(left_schedule.value, right_schedule.value);
+    assert_eq!(
+        left_schedule.value.deployment.status,
+        DeploymentStatus::Scheduled
+    );
+    assert_eq!(
+        left_schedule
+            .value
+            .member_bindings
+            .iter()
+            .filter_map(|binding| binding.node_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    assert_eq!(
+        left_schedule.value.deployment.node_id,
+        left_schedule.value.member_bindings[0].node_id
+    );
+
+    let cancelling = repository
+        .mark_cancellation_requested(
+            left_schedule.value.deployment.id,
+            left_schedule.value.deployment.aggregate_version,
+            deployment_requested_at,
+        )
+        .await?;
+    let cancellation_write = PlacementGroupCancellationWrite {
+        organization_id,
+        deployment_id: cancelling.id,
+        expected_deployment_version: cancelling.aggregate_version,
+        group_id: write.group.id,
+        group_plan_digest: write.group.plan_digest.clone(),
+        cancelled_at: deployment_requested_at,
+    };
+    let (left_cancel, right_cancel) = tokio::join!(
+        repository.cancel_placement_group(cancellation_write.clone()),
+        repository.cancel_placement_group(cancellation_write),
+    );
+    let left_cancel = left_cancel?;
+    let right_cancel = right_cancel?;
+    assert_ne!(left_cancel.replayed, right_cancel.replayed);
+    assert_eq!(left_cancel.value, right_cancel.value);
+    assert_eq!(
+        left_cancel.value.deployment.status,
+        DeploymentStatus::Cancelled
+    );
+    assert_eq!(
+        repository
+            .list_workload_replica_members(organization_id, replica.id)
+            .await?
+            .into_iter()
+            .map(|member| (member.node_id, member.placement_generation))
+            .collect::<Vec<_>>(),
+        vec![(None, 1), (None, 1), (None, 1)]
+    );
+
     let mut changed_templates = vec![
         revision.resolved_template()?.clone(),
         template('8'),
@@ -1397,20 +1491,6 @@ pub async fn exercise_placement_group_plans(
         Err(RepositoryError::IdempotencyConflict)
     );
 
-    let released_at = now + Duration::milliseconds(3);
-    database
-        .execute(
-            sql_query::<()>(
-                "update workload_replica_members set placement_generation = 2, aggregate_version = aggregate_version + 2, updated_at = greatest(updated_at, ",
-            )
-            .bind(released_at)
-            .append(") where organization_id = ")
-            .bind(organization_uuid)
-            .append(" and replica_id = ")
-            .bind(replica.id.as_uuid())
-            .append(" and ordinal > 0"),
-        )
-        .await?;
     let advanced_at = now + Duration::milliseconds(4);
     database
         .execute(
@@ -1455,7 +1535,7 @@ pub async fn exercise_placement_group_plans(
         .iter()
         .filter(|member| member.ordinal > 0)
         .all(|member| member.node_id.is_none()
-            && member.placement_generation == 2
+            && member.placement_generation == 1
             && member.aggregate_version == 3));
     assert_eq!(
         repository

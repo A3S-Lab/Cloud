@@ -1,5 +1,6 @@
 use crate::modules::workloads::domain::entities::{
-    DeploymentReplicaBinding, WorkloadReplica, WorkloadReplicaLifecycle, WorkloadRevision,
+    DeploymentReplicaBinding, ServiceTemplate, WorkloadPlacementGroupMemberPlan, WorkloadReplica,
+    WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_cloud_contracts::CloudSecretReference;
 use a3s_runtime::contract::{
@@ -52,6 +53,34 @@ pub(crate) fn project_bound_runtime_spec(
     Ok(spec)
 }
 
+pub(crate) fn project_placement_group_runtime_spec(
+    revision: &WorkloadRevision,
+    binding: &DeploymentReplicaBinding,
+    plan: &WorkloadPlacementGroupMemberPlan,
+) -> Result<RuntimeUnitSpec, String> {
+    if binding.workload_id != revision.workload_id
+        || binding.revision_id != revision.id
+        || binding.member_id != plan.member_id
+        || binding.runtime_unit_id != plan.runtime_unit_id
+        || binding.runtime_generation != binding.replica_generation
+        || binding.runtime_generation == 0
+        || plan.template.digest()? != plan.template_digest
+    {
+        return Err("placement-group member has an invalid Runtime projection".into());
+    }
+    let mut spec = project_runtime_spec_from_template(
+        revision,
+        &plan.template,
+        revision
+            .mcp_binding()
+            .map(|binding| binding.profile_digest().as_str()),
+    )?;
+    spec.unit_id.clone_from(&binding.runtime_unit_id);
+    spec.generation = binding.runtime_generation;
+    spec.validate()?;
+    Ok(spec)
+}
+
 /// Project one ordinary Runtime Service while binding an optional immutable
 /// product semantics profile. Runtime treats the digest as opaque.
 fn project_runtime_spec_with_digest(
@@ -59,6 +88,14 @@ fn project_runtime_spec_with_digest(
     semantics_profile_digest: Option<&str>,
 ) -> Result<RuntimeUnitSpec, String> {
     let template = revision.resolved_template()?;
+    project_runtime_spec_from_template(revision, template, semantics_profile_digest)
+}
+
+fn project_runtime_spec_from_template(
+    revision: &WorkloadRevision,
+    template: &ServiceTemplate,
+    semantics_profile_digest: Option<&str>,
+) -> Result<RuntimeUnitSpec, String> {
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
         unit_id: revision.runtime_unit_id(),

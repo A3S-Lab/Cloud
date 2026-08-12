@@ -19,7 +19,7 @@ pub(super) fn runtime_with_resource_claims(
     resource_claims: Arc<dyn IResourceClaimRepository>,
     convergence_timeout: Duration,
 ) -> Result<DeploymentFlowRuntime, String> {
-    let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
+    let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
     let milliseconds = u64::try_from(convergence_timeout.num_milliseconds())

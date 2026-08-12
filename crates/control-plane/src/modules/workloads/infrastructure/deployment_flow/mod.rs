@@ -1,5 +1,6 @@
 mod legacy_workflow;
 mod placement_group_workflow;
+mod placement_group_workflow_v2;
 mod previous_workflow;
 mod steps;
 mod stop_workflow;
@@ -17,11 +18,12 @@ use crate::modules::shared_kernel::domain::{
 pub use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
-    PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+    PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+    STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::ResourceClaimState;
 use crate::modules::workloads::domain::repositories::{
-    IResourceClaimRepository, IWorkloadRepository,
+    IDeploymentFlowWorkloadRepository, IResourceClaimRepository,
 };
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
@@ -94,7 +96,7 @@ fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 
 #[derive(Clone)]
 pub struct DeploymentFlowRuntime {
-    pub(super) workloads: Arc<dyn IWorkloadRepository>,
+    pub(super) workloads: Arc<dyn IDeploymentFlowWorkloadRepository>,
     pub(super) resource_claims: Arc<dyn IResourceClaimRepository>,
     pub(super) artifacts: Arc<dyn IOciArtifactResolver>,
     pub(super) nodes: Arc<dyn INodeSchedulingRepository>,
@@ -106,7 +108,7 @@ pub struct DeploymentFlowRuntime {
 
 #[derive(Clone)]
 pub struct DeploymentFlowDependencies {
-    workloads: Arc<dyn IWorkloadRepository>,
+    workloads: Arc<dyn IDeploymentFlowWorkloadRepository>,
     resource_claims: Arc<dyn IResourceClaimRepository>,
     artifacts: Arc<dyn IOciArtifactResolver>,
     nodes: Arc<dyn INodeSchedulingRepository>,
@@ -116,7 +118,7 @@ pub struct DeploymentFlowDependencies {
 
 impl DeploymentFlowDependencies {
     pub fn new(
-        workloads: Arc<dyn IWorkloadRepository>,
+        workloads: Arc<dyn IDeploymentFlowWorkloadRepository>,
         resource_claims: Arc<dyn IResourceClaimRepository>,
         artifacts: Arc<dyn IOciArtifactResolver>,
         nodes: Arc<dyn INodeSchedulingRepository>,
@@ -178,6 +180,10 @@ impl FlowRuntime for DeploymentFlowRuntime {
             (
                 PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
                 PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+            ) => placement_group_workflow_v2::replay(&self.config, invocation),
+            (
+                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+                PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
             ) => placement_group_workflow::replay(&self.config, invocation),
             (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => {
                 stop_workflow::replay(&self.config, invocation)
@@ -191,6 +197,11 @@ impl FlowRuntime for DeploymentFlowRuntime {
 
     async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<serde_json::Value> {
         if invocation
+            .step_name
+            .starts_with("placement_group_deployment_v2_")
+        {
+            placement_group_workflow_v2::execute(self, invocation).await
+        } else if invocation
             .step_name
             .starts_with("placement_group_deployment_")
         {

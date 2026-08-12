@@ -453,7 +453,7 @@ fn require_expected_version(
     }
 }
 
-async fn persist_deployment(
+pub(super) async fn persist_deployment(
     transaction: &PostgresTransaction,
     deployment: &Deployment,
     previous_version: u64,

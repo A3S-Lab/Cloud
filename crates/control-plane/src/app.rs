@@ -163,6 +163,7 @@ use crate::modules::workflow::{
     WaitWorkflowRunHandler, WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
     WorkflowRunReconciler,
 };
+use crate::modules::workloads::domain::repositories::IDeploymentFlowWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadReplicaDeploymentRepository;
@@ -351,6 +352,8 @@ pub async fn build_application_with_source_resolver(
     let resource_claims: Arc<dyn IResourceClaimRepository> =
         Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
+    let deployment_workloads: Arc<dyn IDeploymentFlowWorkloadRepository> =
+        workload_repository.clone();
     let replica_deployments: Arc<dyn IWorkloadReplicaDeploymentRepository> =
         workload_repository.clone();
     let replica_evacuations: Arc<dyn IWorkloadReplicaEvacuationRepository> =
@@ -699,7 +702,7 @@ pub async fn build_application_with_source_resolver(
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let deployment_runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
-            Arc::clone(&workloads),
+            deployment_workloads,
             Arc::clone(&resource_claims),
             artifacts,
             scheduling_nodes,

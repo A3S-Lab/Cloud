@@ -1,9 +1,10 @@
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, EnvironmentId, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    ProjectId, ResourceClaimId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, Workload, WorkloadPlacementGroupMemberPlan, WorkloadRevision,
+    Deployment, DeploymentStatus, Workload, WorkloadPlacementGroupMemberPlan, WorkloadRevision,
     MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS, MAX_WORKLOAD_REPLICAS,
 };
 use chrono::{DateTime, Utc};
@@ -13,6 +14,7 @@ use uuid::Uuid;
 pub const CANONICAL_REPLICA_ORDINAL: u32 = 0;
 const REPLICA_ID_DOMAIN: &str = "a3s.cloud.workload-replica.v1";
 const REPLICA_MEMBER_ID_DOMAIN: &str = "a3s.cloud.workload-replica-member.v1";
+const PLACEMENT_GROUP_CLAIM_ID_DOMAIN: &str = "a3s.cloud.placement-group-resource-claim.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -669,6 +671,34 @@ impl DeploymentReplicaBinding {
         Ok(())
     }
 
+    pub fn assign_placement_group_member(
+        &mut self,
+        deployment: &Deployment,
+        member: &WorkloadReplicaMember,
+        plan: &WorkloadPlacementGroupMemberPlan,
+    ) -> Result<(), String> {
+        let node_id = member
+            .node_id
+            .ok_or_else(|| "placement-group member assignment omitted its node".to_string())?;
+        if deployment.id != self.deployment_id
+            || deployment.status != DeploymentStatus::Scheduled
+            || deployment.node_id.is_none()
+            || deployment.updated_at < self.updated_at
+            || member.replica_id != self.replica_id
+            || plan.member_id != member.id
+            || plan.member_id != self.member_id
+            || plan.runtime_unit_id != self.runtime_unit_id
+            || plan.ordinal == 0 && deployment.node_id != Some(node_id)
+            || self.node_id.is_some_and(|existing| existing != node_id)
+        {
+            return Err("deployment placement-group member assignment is inconsistent".into());
+        }
+        self.node_id = Some(node_id);
+        self.placement_generation = member.placement_generation;
+        self.updated_at = deployment.updated_at;
+        Ok(())
+    }
+
     pub fn propose_assignment(&self, node_id: NodeId, at: DateTime<Utc>) -> Result<Self, String> {
         let at = canonical_timestamp(at);
         if self.node_id.is_some() || node_id.as_uuid().is_nil() || at < self.updated_at {
@@ -683,6 +713,11 @@ impl DeploymentReplicaBinding {
         Ok(candidate)
     }
 
+    pub fn placement_group_resource_claim_id(&self) -> ResourceClaimId {
+        let name = format!("{PLACEMENT_GROUP_CLAIM_ID_DOMAIN}:{}", self.member_id);
+        ResourceClaimId::from_uuid(Uuid::new_v5(&self.deployment_id.as_uuid(), name.as_bytes()))
+    }
+
     pub fn validate_against(
         &self,
         deployment: &Deployment,
@@ -691,7 +726,10 @@ impl DeploymentReplicaBinding {
         member: &WorkloadReplicaMember,
     ) -> Result<(), String> {
         self.validate_common(deployment, revision, replica, member)?;
-        if self.runtime_unit_id != replica.runtime_unit_id(revision)? {
+        if self.node_id != deployment.node_id
+            || self.node_id.is_some() && self.node_id != member.node_id
+            || self.runtime_unit_id != replica.runtime_unit_id(revision)?
+        {
             return Err("deployment replica binding is invalid".into());
         }
         Ok(())
@@ -706,11 +744,23 @@ impl DeploymentReplicaBinding {
         plan: &WorkloadPlacementGroupMemberPlan,
     ) -> Result<(), String> {
         self.validate_common(deployment, revision, replica, member)?;
+        let current_placement = self.node_id == member.node_id;
+        let historical_release = matches!(
+            deployment.status,
+            DeploymentStatus::Failed | DeploymentStatus::Orphaned | DeploymentStatus::Cancelled
+        ) && self.node_id.is_some()
+            && member.node_id.is_none();
         if plan.member_id != member.id
             || plan.ordinal != member.ordinal
             || plan.runtime_unit_id != self.runtime_unit_id
             || plan.template.digest()? != plan.template_digest
             || replica.runtime_unit_id_for_member(revision, member)? != self.runtime_unit_id
+            || !current_placement && !historical_release
+            || plan.ordinal == 0 && self.node_id != deployment.node_id
+            || deployment.node_id.is_none() && self.node_id.is_some()
+            || deployment.node_id.is_some()
+                && !deployment.status.is_terminal()
+                && self.node_id.is_none()
         {
             return Err("deployment placement-group member binding is invalid".into());
         }
@@ -739,8 +789,6 @@ impl DeploymentReplicaBinding {
             || self.member_id != member.id
             || member.replica_id != self.replica_id
             || member.workload_id != self.workload_id
-            || self.node_id != deployment.node_id
-            || self.node_id.is_some() && self.node_id != member.node_id
             || self.placement_generation != member.placement_generation
             || self.runtime_generation != replica.generation
             || self.runtime_unit_id.trim().is_empty()

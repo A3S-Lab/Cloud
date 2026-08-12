@@ -41,16 +41,18 @@ pub use domain::events::{
     WorkloadStopRequested,
 };
 pub use domain::repositories::{
-    ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IResourceClaimRepository,
-    ISecretRotationRestartRepository, IWorkloadPlacementGroupRepository,
+    ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
+    IDeploymentFlowWorkloadRepository, IResourceClaimRepository, ISecretRotationRestartRepository,
+    IWorkloadPlacementGroupRepository, IWorkloadPlacementGroupSchedulingRepository,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
     IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    PlacementGroupMaterialization, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
-    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
-    RetiringReplicaTarget, SecretRotation, SecretRotationCompletion, SecretRotationReconciliation,
-    WorkloadStopBundle,
+    PlacementGroupCancellationWrite, PlacementGroupMaterialization, PlacementGroupMemberPlacement,
+    PlacementGroupPlacement, PlacementGroupSchedulingWrite, ReconfigureReplicaSetWrite,
+    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
+    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
+    SecretRotationReconciliation, WorkloadStopBundle,
 };
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
@@ -70,5 +72,6 @@ pub use infrastructure::{
     SecretRotationRestartReport, WorkloadReconciliationFailure, WorkloadReconciliationReport,
     WorkloadRuntimeReconciler, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+    PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
 };
 pub use presentation::WorkloadsModule;

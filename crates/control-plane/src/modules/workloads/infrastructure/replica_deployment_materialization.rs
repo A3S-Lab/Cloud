@@ -410,6 +410,7 @@ pub(crate) fn validate_existing_materialization(
             }
             let mut member_ids = BTreeSet::new();
             let mut runtime_unit_ids = BTreeSet::new();
+            let mut node_ids = BTreeSet::new();
             for binding in member_bindings {
                 if binding.deployment_id != deployment.id
                     || binding.organization_id != group_binding.organization_id
@@ -422,11 +423,29 @@ pub(crate) fn validate_existing_materialization(
                     || binding.runtime_generation != group_binding.replica_generation
                     || !member_ids.insert(binding.member_id)
                     || !runtime_unit_ids.insert(binding.runtime_unit_id.as_str())
+                    || binding
+                        .node_id
+                        .is_some_and(|node_id| !node_ids.insert(node_id))
                 {
                     return Err(
                         "stored placement-group Deployment member bindings are inconsistent".into(),
                     );
                 }
+            }
+            let leader_node_id = member_bindings.first().and_then(|binding| binding.node_id);
+            let assigned_members = member_bindings
+                .iter()
+                .filter(|binding| binding.node_id.is_some())
+                .count();
+            if deployment.node_id != leader_node_id
+                || assigned_members != 0 && assigned_members != member_bindings.len()
+                || assigned_members == 0 && deployment.node_id.is_some()
+                || assigned_members == member_bindings.len()
+                    && node_ids.len() != member_bindings.len()
+            {
+                return Err(
+                    "stored placement-group Deployment scheduling shape is inconsistent".into(),
+                );
             }
             Ok(())
         }

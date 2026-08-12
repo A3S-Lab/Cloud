@@ -4,9 +4,9 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, OciArtifact, Workload,
-    WorkloadControl, WorkloadPlacementGroup, WorkloadReplica, WorkloadReplicaLifecycle,
-    WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, DeploymentStatus,
+    OciArtifact, Workload, WorkloadControl, WorkloadPlacementGroup, WorkloadReplica,
+    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{
     WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired,
@@ -14,14 +14,15 @@ use crate::modules::workloads::domain::events::{
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    IWorkloadPlacementGroupRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, PlacementGroupMaterialization,
-    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
-    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
-    ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
-    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
-    WorkloadStopBundle,
+    IWorkloadPlacementGroupRepository, IWorkloadPlacementGroupSchedulingRepository,
+    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    PlacementGroupCancellationWrite, PlacementGroupMaterialization, PlacementGroupPlacement,
+    PlacementGroupSchedulingWrite, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
+    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    RetiringReplicaTarget, WorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
     plan_replica_set_reconfiguration, ReplicaSetReconfigurationError,
@@ -1249,6 +1250,349 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             deployment.cancel(at)
         })
         .await
+    }
+}
+
+#[async_trait]
+impl IWorkloadPlacementGroupSchedulingRepository for InMemoryWorkloadRepository {
+    async fn schedule_placement_group(
+        &self,
+        write: PlacementGroupSchedulingWrite,
+    ) -> Result<IdempotentWrite<PlacementGroupPlacement>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        let mut deployment = state
+            .deployments
+            .get(&write.deployment_id)
+            .filter(|deployment| deployment.organization_id == write.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let group_binding = state
+            .deployment_placement_group_bindings
+            .get(&deployment.id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "placement-group Deployment is missing its group binding".into(),
+                )
+            })?;
+        if group_binding.group_id != write.group_id
+            || group_binding.group_plan_digest != write.group_plan_digest
+            || usize::try_from(group_binding.member_count).ok() != Some(write.placements.len())
+        {
+            return Err(RepositoryError::Conflict(
+                "placement-group scheduling write changed the immutable plan".into(),
+            ));
+        }
+        let group = state
+            .placement_groups
+            .get(&write.group_id)
+            .cloned()
+            .ok_or_else(|| RepositoryError::Storage("placement-group plan is missing".into()))?;
+        if group.id != write.group_id
+            || group.plan_digest != write.group_plan_digest
+            || group.members.len() != write.placements.len()
+        {
+            return Err(RepositoryError::Conflict(
+                "placement-group scheduling write changed the immutable plan".into(),
+            ));
+        }
+        let mut bindings = group
+            .members
+            .iter()
+            .map(|plan| {
+                state
+                    .deployment_replica_member_bindings
+                    .get(&(deployment.id, plan.member_id))
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "placement-group Deployment member binding is missing".into(),
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let stored_members = group
+            .members
+            .iter()
+            .map(|plan| {
+                state
+                    .replica_members
+                    .get(&plan.member_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage("placement-group member is missing".into())
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        if deployment.status == DeploymentStatus::Scheduled {
+            if deployment.node_id != write.placements.first().map(|placement| placement.node_id)
+                || bindings.len() != write.placements.len()
+                || bindings
+                    .iter()
+                    .zip(&write.placements)
+                    .zip(&stored_members)
+                    .any(|((binding, placement), member)| {
+                        binding.member_id != placement.member_id
+                            || binding.node_id != Some(placement.node_id)
+                            || member.id != placement.member_id
+                            || member.ordinal != placement.ordinal
+                            || member.node_id != Some(placement.node_id)
+                            || member.placement_generation != binding.placement_generation
+                    })
+            {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: PlacementGroupPlacement {
+                    deployment,
+                    member_bindings: bindings,
+                },
+                replayed: true,
+            });
+        }
+        if deployment.status != DeploymentStatus::Resolving {
+            return Err(RepositoryError::Conflict(format!(
+                "placement-group Deployment cannot schedule from {}",
+                deployment.status.as_str()
+            )));
+        }
+        if deployment.aggregate_version != write.expected_deployment_version {
+            return Err(version_conflict(
+                write.expected_deployment_version,
+                deployment.aggregate_version,
+            ));
+        }
+        require_current_desired_replica(&state, &deployment)?;
+        let workload = state
+            .workloads
+            .get(&deployment.workload_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("placement-group Workload is missing".into())
+            })?;
+        let control = state
+            .controls
+            .get(&deployment.workload_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("placement-group Workload control is missing".into())
+            })?;
+        let revision = state
+            .revisions
+            .get(&deployment.revision_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("placement-group Workload revision is missing".into())
+            })?;
+        let replica = state
+            .replicas
+            .get(&group.replica_id)
+            .cloned()
+            .ok_or_else(|| RepositoryError::Storage("placement-group replica is missing".into()))?;
+        let mut members = stored_members;
+        validate_existing_group_materialization_context(
+            &deployment,
+            PlacementGroupDeploymentContext {
+                workload: &workload,
+                policy: &control.spec.placement_policy,
+                revision: &revision,
+                replica: &replica,
+                group: &group,
+                members: &members,
+            },
+            &bindings,
+            &group_binding,
+        )
+        .map_err(RepositoryError::Conflict)?;
+
+        let previous_deployment_version = deployment.aggregate_version;
+        let leader_node_id = write
+            .placements
+            .first()
+            .map(|placement| placement.node_id)
+            .ok_or_else(|| RepositoryError::Conflict("placement-group leader is missing".into()))?;
+        deployment
+            .schedule(leader_node_id, write.scheduled_at)
+            .map_err(RepositoryError::Conflict)?;
+        debug_assert!(deployment.aggregate_version > previous_deployment_version);
+        for (((plan, placement), member), binding) in group
+            .members
+            .iter()
+            .zip(&write.placements)
+            .zip(&mut members)
+            .zip(&mut bindings)
+        {
+            if plan.ordinal != placement.ordinal || plan.member_id != placement.member_id {
+                return Err(RepositoryError::Conflict(
+                    "placement-group scheduling member changed the immutable plan".into(),
+                ));
+            }
+            member
+                .place(placement.node_id, write.scheduled_at)
+                .map_err(RepositoryError::Conflict)?;
+            binding
+                .assign_placement_group_member(&deployment, member, plan)
+                .map_err(RepositoryError::Conflict)?;
+        }
+
+        for (member, binding) in members.into_iter().zip(&bindings) {
+            state.replica_members.insert(member.id, member);
+            state
+                .deployment_replica_member_bindings
+                .insert((deployment.id, binding.member_id), binding.clone());
+        }
+        let leader_binding = bindings.first().cloned().ok_or_else(|| {
+            RepositoryError::Storage("placement-group leader binding is missing".into())
+        })?;
+        state
+            .deployment_replica_bindings
+            .insert(deployment.id, leader_binding);
+        state.deployments.insert(deployment.id, deployment.clone());
+        Ok(IdempotentWrite {
+            value: PlacementGroupPlacement {
+                deployment,
+                member_bindings: bindings,
+            },
+            replayed: false,
+        })
+    }
+
+    async fn cancel_placement_group(
+        &self,
+        write: PlacementGroupCancellationWrite,
+    ) -> Result<IdempotentWrite<PlacementGroupPlacement>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        let mut deployment = state
+            .deployments
+            .get(&write.deployment_id)
+            .filter(|deployment| deployment.organization_id == write.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let group_binding = state
+            .deployment_placement_group_bindings
+            .get(&deployment.id)
+            .filter(|binding| {
+                binding.group_id == write.group_id
+                    && binding.group_plan_digest == write.group_plan_digest
+            })
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "placement-group cancellation changed the immutable plan".into(),
+                )
+            })?;
+        let group = state
+            .placement_groups
+            .get(&group_binding.group_id)
+            .cloned()
+            .ok_or_else(|| RepositoryError::Storage("placement-group plan is missing".into()))?;
+        if group.id != write.group_id
+            || group.plan_digest != write.group_plan_digest
+            || usize::try_from(group_binding.member_count).ok() != Some(group.members.len())
+        {
+            return Err(RepositoryError::Conflict(
+                "placement-group cancellation changed the immutable plan".into(),
+            ));
+        }
+        let bindings = group
+            .members
+            .iter()
+            .map(|plan| {
+                state
+                    .deployment_replica_member_bindings
+                    .get(&(deployment.id, plan.member_id))
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "placement-group Deployment member binding is missing".into(),
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let stored_members = group
+            .members
+            .iter()
+            .map(|plan| {
+                state
+                    .replica_members
+                    .get(&plan.member_id)
+                    .cloned()
+                    .ok_or_else(|| {
+                        RepositoryError::Storage("placement-group member is missing".into())
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if deployment.status == DeploymentStatus::Cancelled {
+            if bindings
+                .iter()
+                .zip(&stored_members)
+                .any(|(binding, member)| {
+                    binding.member_id != member.id
+                        || member.node_id.is_some()
+                        || binding.placement_generation != member.placement_generation
+                })
+            {
+                return Err(RepositoryError::Storage(
+                    "cancelled placement-group member state is inconsistent".into(),
+                ));
+            }
+            return Ok(IdempotentWrite {
+                value: PlacementGroupPlacement {
+                    deployment,
+                    member_bindings: bindings,
+                },
+                replayed: true,
+            });
+        }
+        if deployment.status != DeploymentStatus::Cancelling
+            || deployment.command_id.is_some()
+            || deployment.cleanup_command_id.is_some()
+            || deployment.aggregate_version != write.expected_deployment_version
+        {
+            return Err(RepositoryError::Conflict(
+                "placement-group cancellation is not safe before Agent preparation".into(),
+            ));
+        }
+        let mut members = Vec::with_capacity(group.members.len());
+        for ((plan, binding), stored_member) in
+            group.members.iter().zip(&bindings).zip(stored_members)
+        {
+            let mut member = stored_member;
+            if plan.member_id != binding.member_id || plan.member_id != member.id {
+                return Err(RepositoryError::Storage(
+                    "placement-group cancellation member is inconsistent".into(),
+                ));
+            }
+            match binding.node_id {
+                Some(node_id) => member
+                    .release_after_fencing(node_id, write.cancelled_at)
+                    .map_err(RepositoryError::Conflict)?,
+                None if member.node_id.is_none() => {}
+                None => {
+                    return Err(RepositoryError::Conflict(
+                        "unassigned placement-group binding has a placed member".into(),
+                    ))
+                }
+            }
+            members.push(member);
+        }
+        deployment
+            .cancel(write.cancelled_at)
+            .map_err(RepositoryError::Conflict)?;
+        for member in members {
+            state.replica_members.insert(member.id, member);
+        }
+        state.deployments.insert(deployment.id, deployment.clone());
+        Ok(IdempotentWrite {
+            value: PlacementGroupPlacement {
+                deployment,
+                member_bindings: bindings,
+            },
+            replayed: false,
+        })
     }
 }
 
