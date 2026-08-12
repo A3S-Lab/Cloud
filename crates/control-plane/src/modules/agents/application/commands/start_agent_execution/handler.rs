@@ -1,4 +1,5 @@
 use super::{StartAgentExecution, StartAgentExecutionResult};
+use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::application::support::{idempotency, validate_request_id};
 use crate::modules::agents::domain::{
     AgentConversationStatus, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
@@ -46,6 +47,17 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
             }
+            let conversation = match AgentResourceAccess::new(Arc::clone(&agents))
+                .conversation(
+                    command.organization_id,
+                    command.conversation_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(conversation) => conversation,
+                Err(error) => return Ok(Err(error)),
+            };
             let idempotency = match idempotency(
                 format!(
                     "organizations/{}/agent-conversations/{}/executions",
@@ -70,18 +82,6 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                         && execution.agent.asset_id() == command.agent_asset_id
                         && execution.agent.asset_release_id() == command.agent_asset_release_id =>
                 {
-                    let conversation = match agents
-                        .find_conversation(command.organization_id, command.conversation_id)
-                        .await
-                    {
-                        Ok(Some(conversation)) => conversation,
-                        Ok(None) => {
-                            return Err(a3s_boot::BootError::Internal(
-                                "replayed Agent execution lost its conversation".into(),
-                            ));
-                        }
-                        Err(error) => return Ok(Err(error.into())),
-                    };
                     return Ok(Ok(StartAgentExecutionResult {
                         conversation,
                         execution,
@@ -96,18 +96,6 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let conversation = match agents
-                .find_conversation(command.organization_id, command.conversation_id)
-                .await
-            {
-                Ok(Some(conversation)) => conversation,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "Agent conversation not found".into(),
-                    )));
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
             if conversation.status != AgentConversationStatus::Active {
                 return Ok(Err(ApplicationError::Conflict(
                     "closed Agent conversation cannot start an execution".into(),

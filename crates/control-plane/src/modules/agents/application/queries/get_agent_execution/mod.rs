@@ -1,5 +1,7 @@
+use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::{AgentExecution, IAgentRepository};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -8,6 +10,7 @@ use std::sync::Arc;
 pub struct GetAgentExecution {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for GetAgentExecution {
@@ -15,12 +18,14 @@ impl Query for GetAgentExecution {
 }
 
 pub struct GetAgentExecutionHandler {
-    agents: Arc<dyn IAgentRepository>,
+    resource_access: AgentResourceAccess,
 }
 
 impl GetAgentExecutionHandler {
     pub fn new(agents: Arc<dyn IAgentRepository>) -> Self {
-        Self { agents }
+        Self {
+            resource_access: AgentResourceAccess::new(agents),
+        }
     }
 }
 
@@ -30,18 +35,16 @@ impl QueryHandler<GetAgentExecution> for GetAgentExecutionHandler {
         query: GetAgentExecution,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<AgentExecution>>> {
-        let agents = Arc::clone(&self.agents);
+        let resource_access = self.resource_access.clone();
         Box::pin(async move {
-            match agents
-                .find_execution(query.organization_id, query.execution_id)
+            Ok(resource_access
+                .execution(
+                    query.organization_id,
+                    query.execution_id,
+                    &query.resource_access,
+                )
                 .await
-            {
-                Ok(Some(execution)) => Ok(Ok(execution)),
-                Ok(None) => Ok(Err(ApplicationError::NotFound(
-                    "Agent execution not found".into(),
-                ))),
-                Err(error) => Ok(Err(error.into())),
-            }
+                .map(|access| access.execution))
         })
     }
 }

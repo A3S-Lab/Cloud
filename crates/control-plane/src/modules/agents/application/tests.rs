@@ -16,6 +16,7 @@ use crate::modules::assets::domain::{
     CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository, TransitionAssetReleaseWrite,
     TransitionAssetWrite,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::operations::{IOperationRepository, InMemoryOperationRepository};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -93,6 +94,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
     let start = StartAgentExecution {
         organization_id,
         conversation_id: created.conversation.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         agent_asset_id: asset.id,
         agent_asset_release_id: release.id,
         input: serde_json::json!({"message": "hello"}),
@@ -119,6 +121,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
     let cancel = CancelAgentExecution {
         organization_id,
         execution_id: started.execution.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         idempotency_key: "agent-execution:cancel".into(),
         request_id: Uuid::now_v7(),
         requested_at: requested_at + Duration::milliseconds(1),
@@ -220,6 +223,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
             GetAgentExecutionEvents {
                 organization_id,
                 conversation_id: created.conversation.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
                 after_sequence: None,
                 limit: 10,
             },

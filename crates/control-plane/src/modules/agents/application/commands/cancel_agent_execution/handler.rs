@@ -1,4 +1,5 @@
 use super::{CancelAgentExecution, CancelAgentExecutionResult};
+use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::application::support::{idempotency, validate_request_id};
 use crate::modules::agents::domain::{
     AgentExecutionCancellationRequested, IAgentRepository, RequestAgentExecutionCancellationWrite,
@@ -29,6 +30,17 @@ impl CommandHandler<CancelAgentExecution> for CancelAgentExecutionHandler {
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
             }
+            let access = match AgentResourceAccess::new(Arc::clone(&agents))
+                .execution(
+                    command.organization_id,
+                    command.execution_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(access) => access,
+                Err(error) => return Ok(Err(error)),
+            };
             let idempotency = match idempotency(
                 format!(
                     "organizations/{}/agent-executions/{}/cancel",
@@ -46,22 +58,11 @@ impl CommandHandler<CancelAgentExecution> for CancelAgentExecutionHandler {
             match agents.replay_execution(&idempotency).await {
                 Ok(Some(execution))
                     if execution.organization_id == command.organization_id
-                        && execution.id == command.execution_id =>
+                        && execution.id == command.execution_id
+                        && execution.conversation_id == access.execution.conversation_id =>
                 {
-                    let conversation = match agents
-                        .find_conversation(execution.organization_id, execution.conversation_id)
-                        .await
-                    {
-                        Ok(Some(conversation)) => conversation,
-                        Ok(None) => {
-                            return Err(BootError::Internal(
-                                "replayed Agent cancellation lost its conversation".into(),
-                            ));
-                        }
-                        Err(error) => return Ok(Err(error.into())),
-                    };
                     return Ok(Ok(CancelAgentExecutionResult {
-                        conversation,
+                        conversation: access.conversation,
                         execution,
                         replayed: true,
                     }));
@@ -75,18 +76,7 @@ impl CommandHandler<CancelAgentExecution> for CancelAgentExecutionHandler {
                 Err(error) => return Ok(Err(error.into())),
             }
 
-            let mut execution = match agents
-                .find_execution(command.organization_id, command.execution_id)
-                .await
-            {
-                Ok(Some(execution)) => execution,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "Agent execution not found".into(),
-                    )));
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
+            let mut execution = access.execution;
             let expected_version = execution.aggregate_version;
             if let Err(error) = execution.request_cancellation(command.requested_at) {
                 return Ok(Err(ApplicationError::Conflict(error)));

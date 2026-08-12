@@ -1,5 +1,7 @@
+use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::{AgentConversation, IAgentRepository};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AgentConversationId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -8,6 +10,7 @@ use std::sync::Arc;
 pub struct GetAgentConversation {
     pub organization_id: OrganizationId,
     pub conversation_id: AgentConversationId,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for GetAgentConversation {
@@ -15,12 +18,14 @@ impl Query for GetAgentConversation {
 }
 
 pub struct GetAgentConversationHandler {
-    agents: Arc<dyn IAgentRepository>,
+    resource_access: AgentResourceAccess,
 }
 
 impl GetAgentConversationHandler {
     pub fn new(agents: Arc<dyn IAgentRepository>) -> Self {
-        Self { agents }
+        Self {
+            resource_access: AgentResourceAccess::new(agents),
+        }
     }
 }
 
@@ -30,18 +35,15 @@ impl QueryHandler<GetAgentConversation> for GetAgentConversationHandler {
         query: GetAgentConversation,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<AgentConversation>>> {
-        let agents = Arc::clone(&self.agents);
+        let resource_access = self.resource_access.clone();
         Box::pin(async move {
-            match agents
-                .find_conversation(query.organization_id, query.conversation_id)
-                .await
-            {
-                Ok(Some(conversation)) => Ok(Ok(conversation)),
-                Ok(None) => Ok(Err(ApplicationError::NotFound(
-                    "Agent conversation not found".into(),
-                ))),
-                Err(error) => Ok(Err(error.into())),
-            }
+            Ok(resource_access
+                .conversation(
+                    query.organization_id,
+                    query.conversation_id,
+                    &query.resource_access,
+                )
+                .await)
         })
     }
 }

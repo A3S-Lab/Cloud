@@ -616,6 +616,18 @@ contexts' tables.
   closed regardless of unrelated project, environment, or node grants. No
   synthetic project association or Identity-owned Asset index is introduced;
   denied and missing identifiers share the same `404` contract.
+- Indirect AgentConversation detail, execution-list/start, event-page, and SSE
+  requests resolve the conversation through Agents and authorize its canonical
+  project/environment pair. AgentExecution detail, change-set, and cancellation
+  first resolve the execution and then its owning conversation; an exact
+  environment grant or its parent project grant covers both. Explicit
+  conversation create/list routes keep their direct environment check. Denied
+  and missing identifiers share one `404` contract, and start/cancellation
+  authorization precedes idempotency replay so revocation applies on the next
+  request. An SSE connection retains its authenticated evaluator snapshot and
+  observes grant changes on reconnect. Internal provider binding and event
+  ingestion remain authority-bound commands and do not reuse an end-user
+  Resource Grant evaluator or create a second ownership index.
 
 ### Project and Environment
 

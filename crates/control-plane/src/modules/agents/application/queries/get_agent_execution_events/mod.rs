@@ -1,4 +1,6 @@
+use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::{AgentExecutionEvent, IAgentRepository};
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentConversationId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -9,6 +11,7 @@ use std::sync::Arc;
 pub struct GetAgentExecutionEvents {
     pub organization_id: OrganizationId,
     pub conversation_id: AgentConversationId,
+    pub resource_access: ResourceAccessEvaluator,
     pub after_sequence: Option<u64>,
     pub limit: usize,
 }
@@ -27,11 +30,15 @@ pub struct AgentExecutionEventPage {
 
 pub struct GetAgentExecutionEventsHandler {
     agents: Arc<dyn IAgentRepository>,
+    resource_access: AgentResourceAccess,
 }
 
 impl GetAgentExecutionEventsHandler {
     pub fn new(agents: Arc<dyn IAgentRepository>) -> Self {
-        Self { agents }
+        Self {
+            agents: Arc::clone(&agents),
+            resource_access: AgentResourceAccess::new(agents),
+        }
     }
 }
 
@@ -43,23 +50,23 @@ impl QueryHandler<GetAgentExecutionEvents> for GetAgentExecutionEventsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<AgentExecutionEventPage>>>
     {
         let agents = Arc::clone(&self.agents);
+        let resource_access = self.resource_access.clone();
         Box::pin(async move {
             if query.limit == 0 || query.limit > 200 {
                 return Ok(Err(ApplicationError::Invalid(
                     "Agent event limit must be between 1 and 200".into(),
                 )));
             }
-            let conversation = match agents
-                .find_conversation(query.organization_id, query.conversation_id)
+            let conversation = match resource_access
+                .conversation(
+                    query.organization_id,
+                    query.conversation_id,
+                    &query.resource_access,
+                )
                 .await
             {
-                Ok(Some(conversation)) => conversation,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "Agent conversation not found".into(),
-                    )));
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Ok(conversation) => conversation,
+                Err(error) => return Ok(Err(error)),
             };
             if query
                 .after_sequence

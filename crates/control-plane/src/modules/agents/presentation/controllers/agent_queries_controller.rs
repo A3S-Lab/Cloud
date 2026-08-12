@@ -1,3 +1,4 @@
+use super::request::request_id;
 use crate::modules::agents::application::{
     GetAgentConversation, GetAgentExecution, GetAgentExecutionChangeSet, GetAgentExecutionEvents,
     ListAgentConversations, ListAgentExecutions,
@@ -6,7 +7,10 @@ use crate::modules::agents::presentation::dto::{
     AgentConversationResponse, AgentExecutionChangeSetResponse, AgentExecutionEventPageResponse,
     AgentExecutionResponse,
 };
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, EnvironmentId, OrganizationId, ProjectId,
 };
@@ -16,7 +20,8 @@ use crate::presentation::{
     MAX_LIVE_SEQUENCE_RECORDS,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, SseStream,
+    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+    SseStream,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -66,9 +71,10 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 }
             },
         )?
-        .get(
-            "/{organization_id}/agent-conversations/{conversation_id}",
-            move |request: BootRequest| {
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/agent-conversations/{conversation_id}",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&get_conversation_bus);
                 async move {
                     let request_id = request_id(&request)?;
@@ -80,6 +86,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
                         })
                         .await?
                     {
@@ -89,11 +98,14 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .get(
-            "/{organization_id}/agent-conversations/{conversation_id}/executions",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/agent-conversations/{conversation_id}/executions",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&list_executions_bus);
                 async move {
                     let request_id = request_id(&request)?;
@@ -108,6 +120,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
                             limit,
                         })
                         .await?
@@ -121,11 +136,14 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .get(
-            "/{organization_id}/agent-executions/{execution_id}",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/agent-executions/{execution_id}",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&get_execution_bus);
                 async move {
                     let request_id = request_id(&request)?;
@@ -137,6 +155,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             execution_id: AgentExecutionId::from_uuid(
                                 request.param_as::<Uuid>("execution_id")?,
                             ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
                         })
                         .await?
                     {
@@ -146,11 +167,14 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .get(
-            "/{organization_id}/agent-executions/{execution_id}/changes",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/agent-executions/{execution_id}/changes",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&get_change_set_bus);
                 async move {
                     let request_id = request_id(&request)?;
@@ -162,6 +186,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             execution_id: AgentExecutionId::from_uuid(
                                 request.param_as::<Uuid>("execution_id")?,
                             ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
                         })
                         .await?
                     {
@@ -171,11 +198,14 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .get(
-            "/{organization_id}/agent-conversations/{conversation_id}/events",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/agent-conversations/{conversation_id}/events",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&get_events_bus);
                 async move {
                     let request_id = request_id(&request)?;
@@ -188,6 +218,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
                             after_sequence: decode_sequence_cursor(
                                 parameters.cursor.as_deref(),
                                 "Agent event",
@@ -202,11 +235,14 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .sse(
-            "/{organization_id}/agent-conversations/{conversation_id}/events/stream",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::sse(
+                "/{organization_id}/agent-conversations/{conversation_id}/events/stream",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&stream_events_bus);
                 async move {
                     let parameters: AgentLiveEventsQuery = request.query()?;
@@ -229,14 +265,19 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
+                            resource_access: resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?,
                             after_sequence,
                             limit: usize::from(parameters.limit),
                         },
                     )
                     .await
                 }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,14 +319,4 @@ async fn agent_event_stream(
         "Agent event",
     )
     .await
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
 }

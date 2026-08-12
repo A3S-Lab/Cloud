@@ -771,6 +771,7 @@ fn build_test_application_with_edge(
         Arc::new(InMemorySearchRepository::new()),
         edge,
         None,
+        None,
     )
 }
 
@@ -793,6 +794,32 @@ fn build_test_application_with_asset_store(
         Arc::new(InMemorySearchRepository::new()),
         Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
         Some(assets),
+        None,
+    )
+}
+
+fn build_test_application_with_agent_repositories(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    assets: Arc<UnavailableAssetStore>,
+    builds: Arc<InMemoryBuildRunRepository>,
+    agents: Arc<InMemoryAgentRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        builds,
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        Some(assets),
+        Some(agents),
     )
 }
 
@@ -1041,6 +1068,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         search,
         Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
         None,
+        None,
     )
 }
 
@@ -1059,6 +1087,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     search: Arc<dyn ISearchRepository>,
     edge: Arc<crate::modules::edge::InMemoryEdgeRepository>,
     test_assets: Option<Arc<UnavailableAssetStore>>,
+    test_agents: Option<Arc<InMemoryAgentRepository>>,
 ) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -1141,7 +1170,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             workloads: workload_port,
             builds,
             executions: Arc::new(InMemoryExecutionRepository::new()),
-            agents: Arc::new(InMemoryAgentRepository::new()),
+            agents: test_agents.unwrap_or_else(|| Arc::new(InMemoryAgentRepository::new())),
             routes,
             mcp_credentials,
             secrets,

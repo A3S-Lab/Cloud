@@ -1713,6 +1713,17 @@ node.
   application resolver and denied or missing aggregate IDs return the same
   `404` contract. HumanTask remains a separate Workflow-owned public boundary
   that must close before its surfaces are exposed.
+  The Agents vertical slice resolves AgentConversation directly and
+  AgentExecution through its owning conversation, then authorizes the
+  conversation's canonical project/environment pair before indirect detail,
+  execution-list, change-set, event, SSE, start, cancellation, or idempotency
+  replay. Exact environment grants and their parent project grants cover the
+  execution; unrelated environments fail as the same `404` as missing IDs.
+  Explicit conversation create/list routes retain their direct environment
+  guard. SSE captures the request evaluator at connection time, so revocation
+  applies on reconnect; internal provider binding and event-ingestion commands
+  remain separate authority boundaries and do not receive an end-user grant
+  evaluator.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1736,10 +1747,11 @@ node.
   implement the same pattern through the Forms repository. Ontology,
   WorkflowDefinition, WorkflowGoal, WorkflowRun, and their inherited child
   records now implement it through one Workflow application resolver. The
-  remaining Agent execution and Operation
-  boundaries resolve their existing project/environment/node identity through
-  their owning repositories and pass
-  that canonical scope to the shared `ResourceAccessEvaluator`.
+  AgentConversation and AgentExecution REST boundaries now implement it
+  through one Agents application resolver. The remaining Operation boundary
+  resolves its existing project/environment/node identity through its owning
+  repository and passes that canonical scope to the shared
+  `ResourceAccessEvaluator`.
   Collection queries receive the evaluator and filter at the authoritative
   query boundary. Do not add an Identity cross-context ownership table, a
   context-local grant evaluator, presentation-only filtering, or an MCP-only
