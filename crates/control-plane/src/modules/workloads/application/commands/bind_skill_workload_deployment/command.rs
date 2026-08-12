@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, AssetReleaseId, OrganizationId, WorkloadId};
 use crate::modules::workloads::application::UpdateWorkloadDeploymentResult;
@@ -9,6 +10,7 @@ use uuid::Uuid;
 pub struct BindSkillWorkloadDeployment {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
+    pub resource_access: ResourceAccessEvaluator,
     pub skill_asset_id: AssetId,
     pub skill_asset_release_id: AssetReleaseId,
     pub idempotency_key: String,

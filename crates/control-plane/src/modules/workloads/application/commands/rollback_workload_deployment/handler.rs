@@ -7,6 +7,7 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
@@ -44,8 +45,20 @@ impl CommandHandler<RollbackWorkloadDeployment> for RollbackWorkloadDeploymentHa
         a3s_boot::Result<ApplicationResult<RollbackWorkloadDeploymentResult>>,
     > {
         let workloads = Arc::clone(&self.workloads);
+        let resource_access = WorkloadResourceAccess::new(Arc::clone(&workloads));
         let secrets = Arc::clone(&self.secrets);
         Box::pin(async move {
+            let workload = match resource_access
+                .workload(
+                    command.organization_id,
+                    command.workload_id,
+                    &command.resource_access,
+                )
+                .await
+            {
+                Ok(workload) => workload,
+                Err(error) => return Ok(Err(error)),
+            };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
                 "workloadId": command.workload_id,
@@ -86,16 +99,6 @@ impl CommandHandler<RollbackWorkloadDeployment> for RollbackWorkloadDeploymentHa
                 Err(error) => return Ok(Err(error.into())),
             }
 
-            let workload = match workloads
-                .find_workload(command.organization_id, command.workload_id)
-                .await
-            {
-                Ok(workload) => workload,
-                Err(RepositoryError::NotFound) => {
-                    return Ok(Err(ApplicationError::NotFound("workload not found".into())))
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
             if workload.desired_state != WorkloadDesiredState::Running {
                 return Ok(Err(ApplicationError::Conflict(
                     "only an active running workload can be rolled back".into(),

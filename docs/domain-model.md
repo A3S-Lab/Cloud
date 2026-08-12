@@ -564,11 +564,13 @@ contexts' tables.
   environment grant and a node grant are exact. Every target must already exist
   in the same organization; all surfaces reuse the same evaluator and
   create/revoke commands rather than implementing presentation-local RBAC.
-- Indirect Workload, Deployment, and workload-log reads resolve their owning
-  Workload through the Workloads repository and authorize its canonical
-  project/environment pair at the application boundary. Route and Management
-  MCP metadata provide coarse discovery/admission only; denied and missing IDs
-  share one `404` contract and no second ownership index is persisted.
+- Indirect Workload, Deployment, and workload-log reads plus ordinary/Agent
+  updates, rollback, Skill binding/unbinding, stop, and cancellation resolve
+  their owning Workload through the Workloads repository and authorize its
+  canonical project/environment pair at the application boundary before replay
+  or side effects. Route and Management MCP metadata provide coarse
+  discovery/admission only; denied and missing IDs share one `404` contract and
+  no second ownership index is persisted.
 
 ### Project and Environment
 

@@ -1,5 +1,8 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, EnvironmentId, OrganizationId, ProjectId,
     SourceRevisionId, WorkloadId,
@@ -19,7 +22,7 @@ use crate::modules::workloads::presentation::dto::{
 use crate::presentation::{application_error_response, A3S_ACL_MEDIA_TYPE};
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    RouteDefinition, AUTH_SCOPES_METADATA,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -159,9 +162,10 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                 }
             },
         )?
-        .post(
-            "/{organization_id}/workloads/{workload_id}/deployments",
-            move |request: BootRequest| {
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/workloads/{workload_id}/deployments",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&update_bus);
                 async move {
                     let (body, expected_name) = update_workload_request(&request)?;
@@ -169,11 +173,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
                         WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(UpdateWorkloadDeployment {
                             organization_id,
                             workload_id,
+                            resource_access,
                             expected_name,
                             template: body.template.into(),
                             idempotency_key,
@@ -192,11 +199,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .post(
-            "/{organization_id}/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&agent_update_bus);
                 async move {
                     let (body, expected_name) = update_agent_workload_request(&request)?;
@@ -204,6 +214,8 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
                         WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let asset_id = AssetId::from_uuid(request.param_as::<Uuid>("asset_id")?);
                     let asset_release_id = AssetReleaseId::from_uuid(
                         request.param_as::<Uuid>("asset_release_id")?,
@@ -213,6 +225,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         .execute(UpdateAgentWorkloadDeployment {
                             organization_id,
                             workload_id,
+                            resource_access,
                             asset_id,
                             asset_release_id,
                             expected_name,
@@ -233,11 +246,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .post(
-            "/{organization_id}/workloads/{workload_id}/rollback",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/workloads/{workload_id}/rollback",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&rollback_bus);
                 async move {
                     let body: RollbackWorkloadRequest = request.json_with_content_type()?;
@@ -245,11 +261,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
                         WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(RollbackWorkloadDeployment {
                             organization_id,
                             workload_id,
+                            resource_access,
                             source_revision_id: body.source_revision_id(),
                             idempotency_key,
                             request_id,
@@ -267,17 +286,22 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .post(
-            "/{organization_id}/workloads/{workload_id}/skills/{skill_asset_id}/releases/{skill_asset_release_id}/bindings",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/workloads/{workload_id}/skills/{skill_asset_id}/releases/{skill_asset_release_id}/bindings",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&bind_skill_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
                         WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let skill_asset_id =
                         AssetId::from_uuid(request.param_as::<Uuid>("skill_asset_id")?);
                     let skill_asset_release_id = AssetReleaseId::from_uuid(
@@ -288,6 +312,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         .execute(BindSkillWorkloadDeployment {
                             organization_id,
                             workload_id,
+                            resource_access,
                             skill_asset_id,
                             skill_asset_release_id,
                             idempotency_key,
@@ -306,17 +331,22 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .delete(
-            "/{organization_id}/workloads/{workload_id}/skills/{skill_asset_id}/bindings",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::delete(
+                "/{organization_id}/workloads/{workload_id}/skills/{skill_asset_id}/bindings",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&unbind_skill_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
                         WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let skill_asset_id =
                         AssetId::from_uuid(request.param_as::<Uuid>("skill_asset_id")?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
@@ -324,6 +354,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         .execute(UnbindSkillWorkloadDeployment {
                             organization_id,
                             workload_id,
+                            resource_access,
                             skill_asset_id,
                             idempotency_key,
                             request_id,
@@ -341,22 +372,28 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .post(
-            "/{organization_id}/workloads/{workload_id}/stop",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/workloads/{workload_id}/stop",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&stop_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
                         WorkloadId::from_uuid(request.param_as::<Uuid>("workload_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(StopWorkload {
                             organization_id,
                             workload_id,
+                            resource_access,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -373,22 +410,28 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )?
-        .delete(
-            "/{organization_id}/deployments/{deployment_id}",
-            move |request: BootRequest| {
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::delete(
+                "/{organization_id}/deployments/{deployment_id}",
+                move |request: BootRequest| {
                 let bus = Arc::clone(&cancel_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let deployment_id =
                         DeploymentId::from_uuid(request.param_as::<Uuid>("deployment_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CancelDeployment {
                             organization_id,
                             deployment_id,
+                            resource_access,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -405,8 +448,10 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
 
 fn create_workload_request(request: &BootRequest) -> Result<CreateWorkloadRequest> {

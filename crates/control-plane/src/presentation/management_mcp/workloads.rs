@@ -142,12 +142,14 @@ pub async fn stop_workload(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: StopWorkloadArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(StopWorkload {
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
+            resource_access,
             idempotency_key: arguments.idempotency_key,
             request_id,
             requested_at: Utc::now(),
@@ -166,12 +168,14 @@ pub async fn rollback_workload(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: RollbackWorkloadArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(RollbackWorkloadDeployment {
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
+            resource_access,
             source_revision_id: WorkloadRevisionId::from_uuid(arguments.source_revision_id),
             idempotency_key: arguments.idempotency_key,
             request_id,
@@ -191,12 +195,14 @@ pub async fn cancel_deployment(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: CancelDeploymentArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CancelDeployment {
             organization_id,
             deployment_id: DeploymentId::from_uuid(arguments.deployment_id),
+            resource_access,
             idempotency_key: arguments.idempotency_key,
             request_id,
             requested_at: Utc::now(),

@@ -2,7 +2,8 @@ use super::{StopWorkload, StopWorkloadResult};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, OperationId, RepositoryError};
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, OperationId};
+use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION};
 use crate::modules::workloads::domain::events::WorkloadStopRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -28,16 +29,18 @@ impl CommandHandler<StopWorkload> for StopWorkloadHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<StopWorkloadResult>>> {
         let workloads = Arc::clone(&self.workloads);
+        let resource_access = WorkloadResourceAccess::new(Arc::clone(&workloads));
         Box::pin(async move {
-            let mut workload = match workloads
-                .find_workload(command.organization_id, command.workload_id)
+            let mut workload = match resource_access
+                .workload(
+                    command.organization_id,
+                    command.workload_id,
+                    &command.resource_access,
+                )
                 .await
             {
                 Ok(workload) => workload,
-                Err(RepositoryError::NotFound) => {
-                    return Ok(Err(ApplicationError::NotFound("workload not found".into())))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Err(error) => return Ok(Err(error)),
             };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,

@@ -12,6 +12,7 @@ use crate::modules::assets::domain::{
     AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository,
     TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
@@ -146,6 +147,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let update = UpdateAgentWorkloadDeployment {
         organization_id,
         workload_id: created.bundle.workload.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         asset_id: asset.id,
         asset_release_id: release_two.id,
         expected_name: Some("research-runtime".into()),
@@ -198,6 +200,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
             UpdateWorkloadDeployment {
                 organization_id,
                 workload_id: created.bundle.workload.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
                 expected_name: None,
                 template: created.bundle.revision.request.clone(),
                 idempotency_key: "agent-release:ordinary-update".into(),
@@ -310,6 +313,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let bind_one = BindSkillWorkloadDeployment {
         organization_id,
         workload_id: created.bundle.workload.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         skill_asset_id: skill.id,
         skill_asset_release_id: skill_release_one.id,
         idempotency_key: "skill-binding:bind-one".into(),
@@ -363,6 +367,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
             BindSkillWorkloadDeployment {
                 organization_id,
                 workload_id: created.bundle.workload.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
                 skill_asset_id: skill.id,
                 skill_asset_release_id: skill_release_two.id,
                 idempotency_key: "skill-binding:bind-two".into(),
@@ -413,6 +418,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         UpdateAgentWorkloadDeployment {
             organization_id,
             workload_id: created.bundle.workload.id,
+            resource_access: ResourceAccessEvaluator::organization_wide(),
             asset_id: agent.id,
             asset_release_id: agent_release.id,
             expected_name: None,
@@ -450,6 +456,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let unbind = UnbindSkillWorkloadDeployment {
         organization_id,
         workload_id: created.bundle.workload.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         skill_asset_id: skill.id,
         idempotency_key: "skill-binding:unbind".into(),
         request_id: Uuid::now_v7(),

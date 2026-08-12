@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, WorkloadId};
 use crate::modules::workloads::domain::repositories::WorkloadStopBundle;
@@ -10,6 +11,7 @@ use uuid::Uuid;
 pub struct StopWorkload {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
+    pub resource_access: ResourceAccessEvaluator,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,

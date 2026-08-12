@@ -667,6 +667,23 @@ fn get_as(path: impl Into<String>, token: &str) -> BootRequest {
         .with_header("authorization", format!("Bearer {token}"))
 }
 
+async fn assert_resource_not_found_equivalent(
+    app: &BootApplication,
+    denied_request: BootRequest,
+    missing_request: BootRequest,
+) -> Result<()> {
+    let denied = app.call(denied_request).await?;
+    let missing = app.call(missing_request).await?;
+    assert_eq!(denied.status(), 404);
+    assert_eq!(missing.status(), 404);
+    let denied = response_json(&denied)?;
+    let missing = response_json(&missing)?;
+    for field in ["code", "statusCode", "message", "details"] {
+        assert_eq!(denied[field], missing[field]);
+    }
+    Ok(())
+}
+
 fn build_test_application(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -1543,6 +1560,7 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
                 "token": SERVICE_MEMBER_TOKEN,
                 "scopes": [
                     ApiTokenScope::PROJECT_WRITE,
+                    ApiTokenScope::WORKLOAD_WRITE,
                     ApiTokenScope::IDENTITY_WRITE,
                     ApiTokenScope::TOKEN_WRITE
                 ],
@@ -1878,20 +1896,211 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
             ),
         ),
     ] {
-        let denied = app
-            .call(get_as(denied_path, SERVICE_MEMBER_TOKEN))
-            .await?;
-        let missing = app
-            .call(get_as(missing_path, SERVICE_MEMBER_TOKEN))
-            .await?;
-        assert_eq!(denied.status(), 404);
-        assert_eq!(missing.status(), 404);
-        let denied = response_json(&denied)?;
-        let missing = response_json(&missing)?;
-        for field in ["code", "statusCode", "message", "details"] {
-            assert_eq!(denied[field], missing[field]);
-        }
+        assert_resource_not_found_equivalent(
+            &app,
+            get_as(denied_path, SERVICE_MEMBER_TOKEN),
+            get_as(missing_path, SERVICE_MEMBER_TOKEN),
+        )
+        .await?;
     }
+
+    let granted_stop_path =
+        format!("/api/v1/organizations/{organization}/workloads/{granted_workload_id}/stop");
+    let stopped = app
+        .call(post_json_as(
+            &granted_stop_path,
+            "membership:stop-granted-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(stopped.status(), 202);
+    let stop_replay = app
+        .call(post_json_as(
+            &granted_stop_path,
+            "membership:stop-granted-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(stop_replay.status(), 200);
+
+    let granted_cancel_path =
+        format!("/api/v1/organizations/{organization}/deployments/{granted_deployment_id}");
+    let cancelled = app
+        .call(delete_as(
+            &granted_cancel_path,
+            "membership:cancel-granted-deployment",
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(cancelled.status(), 202);
+    let cancel_replay = app
+        .call(delete_as(
+            &granted_cancel_path,
+            "membership:cancel-granted-deployment",
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(cancel_replay.status(), 200);
+
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!("/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/stop"),
+            "membership:stop-ungranted-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/stop",
+                Uuid::now_v7()
+            ),
+            "membership:stop-missing-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        delete_as(
+            format!("/api/v1/organizations/{organization}/deployments/{ungranted_deployment_id}"),
+            "membership:cancel-ungranted-deployment",
+            SERVICE_MEMBER_TOKEN,
+        ),
+        delete_as(
+            format!(
+                "/api/v1/organizations/{organization}/deployments/{}",
+                Uuid::now_v7()
+            ),
+            "membership:cancel-missing-deployment",
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+
+    let update_body = json!({
+        "template": workload_tests::workload_template("restricted-update", json!([]))
+    });
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/deployments"
+            ),
+            "membership:update-ungranted-workload",
+            update_body.clone(),
+            SERVICE_MEMBER_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/deployments",
+                Uuid::now_v7()
+            ),
+            "membership:update-missing-workload",
+            update_body,
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+
+    let rollback_body = json!({"revisionId": Uuid::now_v7()});
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/rollback"
+            ),
+            "membership:rollback-ungranted-workload",
+            rollback_body.clone(),
+            SERVICE_MEMBER_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/rollback",
+                Uuid::now_v7()
+            ),
+            "membership:rollback-missing-workload",
+            rollback_body,
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+
+    let mut agent_template = workload_tests::workload_template("restricted-agent", json!([]));
+    agent_template
+        .as_object_mut()
+        .ok_or_else(|| BootError::Internal("test workload template is not an object".into()))?
+        .remove("artifact");
+    let agent_update_body = json!({"template": agent_template});
+    let asset_id = Uuid::now_v7();
+    let release_id = Uuid::now_v7();
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/assets/{asset_id}/releases/{release_id}/deployments"
+            ),
+            "membership:agent-update-ungranted-workload",
+            agent_update_body.clone(),
+            SERVICE_MEMBER_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/assets/{asset_id}/releases/{release_id}/deployments",
+                Uuid::now_v7()
+            ),
+            "membership:agent-update-missing-workload",
+            agent_update_body,
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+
+    let skill_id = Uuid::now_v7();
+    let skill_release_id = Uuid::now_v7();
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/skills/{skill_id}/releases/{skill_release_id}/bindings"
+            ),
+            "membership:bind-ungranted-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/skills/{skill_id}/releases/{skill_release_id}/bindings",
+                Uuid::now_v7()
+            ),
+            "membership:bind-missing-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        delete_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/skills/{skill_id}/bindings"
+            ),
+            "membership:unbind-ungranted-workload",
+            SERVICE_MEMBER_TOKEN,
+        ),
+        delete_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/skills/{skill_id}/bindings",
+                Uuid::now_v7()
+            ),
+            "membership:unbind-missing-workload",
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
 
     let ungranted_access = app
         .call(get_as(
@@ -1903,6 +2112,24 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(ungranted_access.status(), 403);
+
+    let fallback_grant = app
+        .call(post_json(
+            &resource_grants_path,
+            "membership:grant-fallback-project",
+            json!({
+                "scope": {
+                    "kind": "project",
+                    "projectId": ungranted_project_id,
+                }
+            }),
+        ))
+        .await?;
+    assert_eq!(fallback_grant.status(), 201);
+    let fallback_grant_id = response_json(&fallback_grant)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("fallback Resource Grant has no ID".into()))?
+        .to_owned();
 
     let revoked_grant = app
         .call(post_json(
@@ -1916,6 +2143,53 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         response_json(&revoked_grant)?["data"]["aggregateVersion"],
         2
     );
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            &granted_stop_path,
+            "membership:stop-granted-workload",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/stop",
+                Uuid::now_v7()
+            ),
+            "membership:stop-missing-after-revoke",
+            json!({}),
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        delete_as(
+            &granted_cancel_path,
+            "membership:cancel-granted-deployment",
+            SERVICE_MEMBER_TOKEN,
+        ),
+        delete_as(
+            format!(
+                "/api/v1/organizations/{organization}/deployments/{}",
+                Uuid::now_v7()
+            ),
+            "membership:cancel-missing-after-revoke",
+            SERVICE_MEMBER_TOKEN,
+        ),
+    )
+    .await?;
+
+    let fallback_revoked = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/resource-grants/{fallback_grant_id}/revocation"
+            ),
+            "membership:revoke-fallback-project",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(fallback_revoked.status(), 200);
     let revoked_access = app
         .call(get_as(
             format!(

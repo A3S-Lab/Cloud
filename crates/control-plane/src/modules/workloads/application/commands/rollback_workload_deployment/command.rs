@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, WorkloadId, WorkloadRevisionId};
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
@@ -10,6 +11,7 @@ use uuid::Uuid;
 pub struct RollbackWorkloadDeployment {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
+    pub resource_access: ResourceAccessEvaluator,
     pub source_revision_id: WorkloadRevisionId,
     pub idempotency_key: String,
     pub request_id: Uuid,

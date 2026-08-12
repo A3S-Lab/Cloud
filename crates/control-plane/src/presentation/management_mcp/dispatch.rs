@@ -470,11 +470,25 @@ pub async fn execute(
         }
         ManagementTool::WorkloadsStop => {
             let arguments = arguments::parse::<StopWorkloadArguments>(arguments).ok()?;
-            workloads::stop_workload(command_bus, organization_id, arguments, request_id).await
+            workloads::stop_workload(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkloadsRollback => {
             let arguments = arguments::parse::<RollbackWorkloadArguments>(arguments).ok()?;
-            workloads::rollback_workload(command_bus, organization_id, arguments, request_id).await
+            workloads::rollback_workload(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::DeploymentsGet => {
             let arguments = arguments::parse::<DeploymentArguments>(arguments).ok()?;
@@ -489,7 +503,14 @@ pub async fn execute(
         }
         ManagementTool::DeploymentsCancel => {
             let arguments = arguments::parse::<CancelDeploymentArguments>(arguments).ok()?;
-            workloads::cancel_deployment(command_bus, organization_id, arguments, request_id).await
+            workloads::cancel_deployment(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::RoutesList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;

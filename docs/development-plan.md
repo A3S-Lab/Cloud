@@ -1664,12 +1664,14 @@ node.
   REST/OpenAPI `1.16.0`, the maintained client, CLI, and nine
   administrator-only Management MCP tools reuse the same commands, queries,
   guards, and DTOs. The first `C0.3-RG2` vertical slice adds typed deferred
-  route metadata plus one Workloads-owned resolver: Workload, Deployment, and
-  workload-log reads derive the canonical environment scope from the existing
-  Workloads repository and reuse the shared evaluator across REST and
-  Management MCP, with denied and missing IDs returning the same `404`
-  contract. No frontend identity surface, second RBAC evaluator, identity
-  store, or audit path is introduced.
+  route metadata plus one Workloads-owned resolver. Workload, Deployment, and
+  workload-log reads and all indirect Workload/Deployment mutations derive the
+  canonical environment scope from the existing Workloads repository and
+  reuse the shared evaluator across REST and Management MCP, with denied and
+  missing IDs returning the same `404` contract. Mutation authorization occurs
+  before idempotency replay, so grant revocation takes effect on the next
+  request. No frontend identity surface, second RBAC evaluator, identity store,
+  or audit path is introduced.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1684,14 +1686,15 @@ node.
   provider-owned roles.
 - Continue closing indirect Resource Grant authorization before adding any
   restricted-role product surface. Workload, Deployment, and workload-log read
-  boundaries now implement the required pattern; their route metadata grants
-  only coarse project-family admission, while the Workloads application layer
-  resolves the existing entity and makes the final shared-evaluator decision.
+  boundaries plus ordinary/Agent updates, rollback, Skill binding/unbinding,
+  stop, and cancellation now implement the required pattern. Their route and
+  Management MCP metadata grant only coarse project-family admission, while
+  the Workloads application layer resolves the existing entity and makes the
+  final shared-evaluator decision before replay or side effects.
   Each remaining boundary—including Asset, Form, Workflow, BuildRun, Route,
-  Secret, Agent execution, Operation, and indirect Workload/Deployment
-  mutations—resolves its existing project/environment/node identity through
-  its owning repository and passes that canonical scope to the shared
-  `ResourceAccessEvaluator`.
+  Secret, Agent execution, and Operation—resolves its existing
+  project/environment/node identity through its owning repository and passes
+  that canonical scope to the shared `ResourceAccessEvaluator`.
   Collection queries receive the evaluator and filter at the authoritative
   query boundary. Do not add an Identity cross-context ownership table, a
   context-local grant evaluator, presentation-only filtering, or an MCP-only

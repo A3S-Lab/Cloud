@@ -438,9 +438,12 @@ impl ManagementTool {
             Self::WorkloadsList | Self::RoutesList | Self::BuildRunsList => {
                 Some(ManagementResourceBinding::EnvironmentArguments)
             }
-            Self::WorkloadsGet | Self::WorkloadLogsGet | Self::DeploymentsGet => {
-                Some(ManagementResourceBinding::ProjectOwnedResource)
-            }
+            Self::WorkloadsGet
+            | Self::WorkloadLogsGet
+            | Self::WorkloadsStop
+            | Self::WorkloadsRollback
+            | Self::DeploymentsGet
+            | Self::DeploymentsCancel => Some(ManagementResourceBinding::ProjectOwnedResource),
             Self::NodesGet => Some(ManagementResourceBinding::NodeArgument),
             Self::ProjectsList => Some(ManagementResourceBinding::ProjectCollection),
             Self::EnvironmentsList => Some(ManagementResourceBinding::EnvironmentCollection),
@@ -1548,6 +1551,7 @@ mod tests {
     fn restricted_principal(scope: ResourceGrantScope) -> AuthPrincipal {
         AuthPrincipal::new("principal")
             .with_role("organization_restricted")
+            .with_scope(ApiTokenScope::WORKLOAD_WRITE)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -1567,7 +1571,10 @@ mod tests {
         assert!(ManagementTool::Search.visible_to(&principal));
         assert!(ManagementTool::WorkloadsGet.visible_to(&principal));
         assert!(ManagementTool::WorkloadLogsGet.visible_to(&principal));
+        assert!(ManagementTool::WorkloadsStop.visible_to(&principal));
+        assert!(ManagementTool::WorkloadsRollback.visible_to(&principal));
         assert!(ManagementTool::DeploymentsGet.visible_to(&principal));
+        assert!(ManagementTool::DeploymentsCancel.visible_to(&principal));
     }
 
     #[test]
@@ -1582,6 +1589,8 @@ mod tests {
         assert!(!ManagementTool::ProjectsList.visible_to(&principal));
         assert!(!ManagementTool::FormsList.visible_to(&principal));
         assert!(!ManagementTool::WorkloadsGet.visible_to(&principal));
+        assert!(!ManagementTool::WorkloadsStop.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsGet.visible_to(&principal));
+        assert!(!ManagementTool::DeploymentsCancel.visible_to(&principal));
     }
 }

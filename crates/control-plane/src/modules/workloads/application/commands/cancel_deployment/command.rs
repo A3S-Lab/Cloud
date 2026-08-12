@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{DeploymentId, OrganizationId};
 use crate::modules::workloads::domain::entities::Deployment;
@@ -10,6 +11,7 @@ use uuid::Uuid;
 pub struct CancelDeployment {
     pub organization_id: OrganizationId,
     pub deployment_id: DeploymentId,
+    pub resource_access: ResourceAccessEvaluator,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
