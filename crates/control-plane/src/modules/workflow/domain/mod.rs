@@ -48,11 +48,12 @@ pub use repositories::{
 };
 pub use services::{
     diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,
-    CompiledWorkflowGoal, CompiledWorkflowRun, HumanTaskDeadlineAuthority, IWorkflowRunCoordinator,
+    CompiledWorkflowGoal, CompiledWorkflowRun, HumanTaskCancellationAuthority,
+    HumanTaskDeadlineAuthority, HumanTaskParentCancellationEvidence, IWorkflowRunCoordinator,
     IWorkflowRunHistoryReader, OntologyChange, OntologyChangeCompatibility, OntologyChangeKind,
     OntologyDiff, OntologyResourceKind, WorkflowPlanCompiler, WorkflowRunCompiler,
     WorkflowRunCoordinationError, WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
-    HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
+    HUMAN_TASK_CANCELLATION_AUTHORITY_API_VERSION, HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
 };
 pub use value_objects::{
     AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName,

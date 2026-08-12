@@ -106,15 +106,28 @@ impl HumanTaskDecisionRecord {
             {
                 return Err("HumanTask Flow resume receipt binding is inconsistent".into());
             }
-            if receipt.disposition() == FlowResumeDisposition::RunTimedOut
-                && (self.decision.outcome != WorkflowDecisionOutcome::Expire
-                    || receipt.timeout_deadline() != self.task.task.expires_at
-                    || receipt.timeout_deadline() != Some(self.decision.decided_at))
-            {
-                return Err(
-                    "Flow RunTimedOut receipt does not exactly supersede the HumanTask expiry"
-                        .into(),
-                );
+            match receipt.disposition() {
+                FlowResumeDisposition::RunTimedOut
+                    if self.decision.outcome != WorkflowDecisionOutcome::Expire
+                        || receipt.timeout_deadline() != self.task.task.expires_at
+                        || receipt.timeout_deadline() != Some(self.decision.decided_at) =>
+                {
+                    return Err(
+                        "Flow RunTimedOut receipt does not exactly supersede the HumanTask expiry"
+                            .into(),
+                    );
+                }
+                FlowResumeDisposition::RunCancelled
+                    if receipt.flow_event_at() < self.decision.decided_at
+                        || (self.decision.outcome == WorkflowDecisionOutcome::Cancel
+                            && receipt.flow_event_at() != self.decision.decided_at) =>
+                {
+                    return Err(
+                        "Flow RunCancelled receipt does not supersede the HumanTask decision"
+                            .into(),
+                    );
+                }
+                _ => {}
             }
         }
         Ok(())
@@ -215,6 +228,11 @@ pub trait IHumanTaskRepository: Send + Sync {
     async fn pending_expirations(
         &self,
         expired_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<HumanTaskRecord>, RepositoryError>;
+
+    async fn pending_parent_cancellations(
+        &self,
         limit: usize,
     ) -> Result<Vec<HumanTaskRecord>, RepositoryError>;
 

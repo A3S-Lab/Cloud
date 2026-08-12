@@ -442,18 +442,23 @@ accepted `FormSubmission`; Workflow owns the optimistically versioned
 HumanTask and immutable WorkflowDecision. Migration `081` persists those
 authorities, a deduplicating Flow-hook Inbox, and a leased resume Outbox through
 typed A3S ORM queries. Flow remains the sole hook-history authority. Cloud
-creates a resume receipt only after observing the exact matching
-`HookReceived` event, never from Outbox delivery alone. Worker-role coordination
-validates the exact interaction-mode FormRelease and hook metadata before task
-creation, and recovers a resume committed before receipt acknowledgement.
+creates a resume receipt only after observing exact matching `HookReceived`,
+`RunTimedOut`, or `RunCancelled` evidence, never from Outbox delivery alone.
+Migrations `096` and `097` reuse the same decision transaction, Outbox, and
+worker for automatic expiry and parent cancellation; the latter records the
+exact cancelling Principal and makes cancellation candidates preempt overdue
+candidates. Worker-role coordination validates the exact interaction-mode
+FormRelease and hook metadata before task creation, and recovers a resume
+committed before receipt acknowledgement.
 Draft/release commands and APIs are implemented. Protected HumanTask
 list/detail reads resolve the task through the existing Workflow repository and
 authorize its canonical project with Identity's shared Resource Grant
 evaluator. Lists omit interaction requests; detail returns the native
 request-bound interaction only to the current claimant. Versioned claim/release
 reuse the same aggregate, repository transaction, idempotency, Outbox, audit,
-and shared project authorization. Public submission and expiry/cancellation
-coordination remain later slices.
+and shared project authorization. Public submission, automatic expiry, and
+parent-cancellation coordination now reuse those same authorities; the
+end-to-end product surface remains a later slice.
 
 The first closed Workflow contract uses these semantic step kinds:
 

@@ -162,7 +162,7 @@ A3S Flow test covers concurrent coordinators, tenant scope, atomic
 submission/decision storage, replay, and receipt evidence. REST `1.16.0`, the
 maintained client, CLI, and seven additional Management MCP tools continue to
 expose start, cancel, list, get, wait, output, and history through the same CQRS
-handlers. REST `1.22.0`, the client, `human-tasks` CLI commands, and five
+handlers. REST `1.23.0`, the client, `human-tasks` CLI commands, and five
 Management MCP tools now expose bounded protected task reads plus versioned
 claim/release/submission through the same Workflow repository, domain state machine,
 transaction-bound idempotency/Outbox/audit path, and shared Identity Resource
@@ -171,7 +171,9 @@ receives the exact request-bound A3S Form interaction. Migration `096` reuses
 the same coordinator, immutable WorkflowDecision, and resume Outbox for
 automatic expiry; it recomputes the exact Run/Plan deadline authority and
 settles only from matching `HookReceived` or parent `RunTimedOut` evidence.
-Parent-run cancellation coordination and human/service/finite-task
+Migration `097` records the exact cancelling Principal and uses that same
+decision/Outbox path for cancellation-over-expiry precedence and exact parent
+`RunCancellationRequested`/`RunCancelled` evidence. Human/service/finite-task
 dispatch beyond the internal coordinator, typed capability steps,
 compensation, expanded cross-surface evidence, and public Workflow
 availability remain open.

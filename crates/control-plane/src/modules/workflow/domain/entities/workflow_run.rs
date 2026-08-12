@@ -81,6 +81,7 @@ pub struct WorkflowRun {
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
     pub cancellation_requested_at: Option<DateTime<Utc>>,
+    pub cancellation_requested_by: Option<PrincipalId>,
     pub cancellation_reason: Option<String>,
     pub finished_at: Option<DateTime<Utc>>,
 }
@@ -129,6 +130,7 @@ impl WorkflowRun {
             updated_at: requested_at,
             started_at: None,
             cancellation_requested_at: None,
+            cancellation_requested_by: None,
             cancellation_reason: None,
             finished_at: None,
         };
@@ -165,17 +167,23 @@ impl WorkflowRun {
     pub fn request_cancellation(
         &mut self,
         reason: Option<String>,
+        requested_by: PrincipalId,
         requested_at: DateTime<Utc>,
     ) -> Result<(), String> {
         if self.status.is_terminal() {
             return Err("terminal WorkflowRun cannot be cancelled".into());
         }
         if self.status == WorkflowRunStatus::Cancelling {
-            return if self.cancellation_reason == reason {
+            return if self.cancellation_reason == reason
+                && self.cancellation_requested_by == Some(requested_by)
+            {
                 Err("WorkflowRun cancellation was already requested".into())
             } else {
-                Err("WorkflowRun cancellation reason cannot drift".into())
+                Err("WorkflowRun cancellation authority cannot drift".into())
             };
+        }
+        if requested_by.as_uuid().is_nil() {
+            return Err("WorkflowRun cancellation requires a valid principal".into());
         }
         validate_optional_reason(reason.as_deref())?;
         let requested_at = canonical_timestamp(requested_at);
@@ -184,6 +192,7 @@ impl WorkflowRun {
         }
         self.status = WorkflowRunStatus::Cancelling;
         self.cancellation_requested_at = Some(requested_at);
+        self.cancellation_requested_by = Some(requested_by);
         self.cancellation_reason = reason;
         self.updated_at = requested_at;
         self.aggregate_version = self
@@ -339,12 +348,21 @@ impl WorkflowRun {
         {
             return Err("non-failed WorkflowRun contains an error".into());
         }
-        if self.status == WorkflowRunStatus::Cancelling && self.cancellation_requested_at.is_none()
+        if matches!(
+            self.status,
+            WorkflowRunStatus::Cancelling | WorkflowRunStatus::Cancelled
+        ) && (self.cancellation_requested_at.is_none()
+            || self.cancellation_requested_by.is_none())
         {
-            return Err("cancelling WorkflowRun has no cancellation request".into());
+            return Err("cancelled or cancelling WorkflowRun has no cancellation authority".into());
         }
-        if self.cancellation_reason.is_some() && self.cancellation_requested_at.is_none() {
-            return Err("WorkflowRun cancellation reason has no request time".into());
+        if self.cancellation_requested_at.is_some() != self.cancellation_requested_by.is_some()
+            || self
+                .cancellation_requested_by
+                .is_some_and(|principal_id| principal_id.as_uuid().is_nil())
+            || (self.cancellation_reason.is_some() && self.cancellation_requested_at.is_none())
+        {
+            return Err("WorkflowRun cancellation authority is inconsistent".into());
         }
         if self.status.is_terminal() != self.finished_at.is_some() {
             return Err("WorkflowRun terminal timestamp does not match its status".into());
@@ -408,9 +426,15 @@ mod tests {
         drift.status = WorkflowRunStatus::Waiting;
         assert!(run.project_flow(drift).is_err());
 
-        run.request_cancellation(Some("operator request".into()), timestamp(8, 2))
-            .expect("cancellation request");
+        let cancelled_by = PrincipalId::new();
+        run.request_cancellation(
+            Some("operator request".into()),
+            cancelled_by,
+            timestamp(8, 2),
+        )
+        .expect("cancellation request");
         assert_eq!(run.status, WorkflowRunStatus::Cancelling);
+        assert_eq!(run.cancellation_requested_by, Some(cancelled_by));
         assert_eq!(run.aggregate_version, 3);
         assert!(run
             .project_flow(WorkflowRunFlowState {
@@ -438,7 +462,9 @@ mod tests {
             })
             .expect("cancelled projection"));
         assert_eq!(run.status, WorkflowRunStatus::Cancelled);
-        assert!(run.request_cancellation(None, timestamp(8, 5)).is_err());
+        assert!(run
+            .request_cancellation(None, cancelled_by, timestamp(8, 5))
+            .is_err());
     }
 
     #[test]

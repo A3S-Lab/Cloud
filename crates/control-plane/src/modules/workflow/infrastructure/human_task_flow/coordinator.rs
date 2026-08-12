@@ -5,10 +5,11 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     expected_human_task_expiry, AssignmentPolicyRef, ChangeHumanTaskWrite, CreateHumanTaskWrite,
-    DecideHumanTaskWrite, FlowResumePayload, HumanTask, HumanTaskDeadlineAuthority,
-    HumanTaskDecisionRecord, HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStateChanged,
-    HumanTaskStatus, IHumanTaskRepository, IWorkflowRunRepository, NewHumanTask, WorkflowDecision,
-    WorkflowHumanDecisionHookMetadata, WorkflowRunRecord, WorkflowStepKind,
+    DecideHumanTaskWrite, FlowResumePayload, HumanTask, HumanTaskCancellationAuthority,
+    HumanTaskDeadlineAuthority, HumanTaskDecisionRecord, HumanTaskInteractionSpec,
+    HumanTaskParentCancellationEvidence, HumanTaskRecord, HumanTaskStateChanged, HumanTaskStatus,
+    IHumanTaskRepository, IWorkflowRunRepository, NewHumanTask, WorkflowDecision,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunRecord, WorkflowRunStatus, WorkflowStepKind,
 };
 use a3s_flow::{FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, HookStatus};
 use a3s_form_core::FormReleaseMode;
@@ -33,6 +34,13 @@ pub struct HumanTaskExpiryFailure {
     pub error: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HumanTaskCancellationFailure {
+    pub workflow_run_id: WorkflowRunId,
+    pub human_task_id: HumanTaskId,
+    pub error: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HumanTaskCoordinationReport {
     pub inspected_runs: usize,
@@ -41,11 +49,18 @@ pub struct HumanTaskCoordinationReport {
     pub replayed_tasks: usize,
     pub activated_tasks: usize,
     pub deferred_tasks: usize,
+    pub inspected_cancellations: usize,
+    pub cancelled_tasks: usize,
+    pub replayed_cancellations: usize,
+    pub deferred_cancellations: usize,
+    pub contended_cancellations: usize,
     pub inspected_expirations: usize,
     pub expired_tasks: usize,
     pub replayed_expirations: usize,
+    pub deferred_expirations: usize,
     pub contended_expirations: usize,
     pub failures: Vec<HumanTaskCoordinationFailure>,
+    pub cancellation_failures: Vec<HumanTaskCancellationFailure>,
     pub expiry_failures: Vec<HumanTaskExpiryFailure>,
 }
 
@@ -58,9 +73,10 @@ struct RunCoordination {
     deferred_tasks: usize,
 }
 
-enum ExpiryCoordination {
-    Expired,
+enum AutomaticDecisionCoordination {
+    Decided,
     Replayed,
+    Deferred,
     Contended,
 }
 
@@ -131,13 +147,31 @@ impl HumanTaskCoordinator {
                 }),
             }
         }
+        let cancellations = self.human_tasks.pending_parent_cancellations(limit).await?;
+        report.inspected_cancellations = cancellations.len();
+        for task in cancellations {
+            match self.cancel_task(task.clone()).await {
+                Ok(AutomaticDecisionCoordination::Decided) => report.cancelled_tasks += 1,
+                Ok(AutomaticDecisionCoordination::Replayed) => report.replayed_cancellations += 1,
+                Ok(AutomaticDecisionCoordination::Deferred) => report.deferred_cancellations += 1,
+                Ok(AutomaticDecisionCoordination::Contended) => report.contended_cancellations += 1,
+                Err(error) => report
+                    .cancellation_failures
+                    .push(HumanTaskCancellationFailure {
+                        workflow_run_id: task.task.workflow_run_id,
+                        human_task_id: task.task.id,
+                        error,
+                    }),
+            }
+        }
         let expirations = self.human_tasks.pending_expirations(now, limit).await?;
         report.inspected_expirations = expirations.len();
         for task in expirations {
             match self.expire_task(task.clone()).await {
-                Ok(ExpiryCoordination::Expired) => report.expired_tasks += 1,
-                Ok(ExpiryCoordination::Replayed) => report.replayed_expirations += 1,
-                Ok(ExpiryCoordination::Contended) => report.contended_expirations += 1,
+                Ok(AutomaticDecisionCoordination::Decided) => report.expired_tasks += 1,
+                Ok(AutomaticDecisionCoordination::Replayed) => report.replayed_expirations += 1,
+                Ok(AutomaticDecisionCoordination::Deferred) => report.deferred_expirations += 1,
+                Ok(AutomaticDecisionCoordination::Contended) => report.contended_expirations += 1,
                 Err(error) => report.expiry_failures.push(HumanTaskExpiryFailure {
                     workflow_run_id: task.task.workflow_run_id,
                     human_task_id: task.task.id,
@@ -174,6 +208,14 @@ impl HumanTaskCoordinator {
                                     human_task_id = %failure.human_task_id,
                                     error = %failure.error,
                                     "HumanTask deadline coordination failed"
+                                );
+                            }
+                            for failure in report.cancellation_failures {
+                                tracing::warn!(
+                                    workflow_run_id = %failure.workflow_run_id,
+                                    human_task_id = %failure.human_task_id,
+                                    error = %failure.error,
+                                    "HumanTask parent cancellation coordination failed"
                                 );
                             }
                         }
@@ -405,13 +447,76 @@ impl HumanTaskCoordinator {
         Ok(progress)
     }
 
-    async fn expire_task(&self, mut task: HumanTaskRecord) -> Result<ExpiryCoordination, String> {
+    async fn cancel_task(
+        &self,
+        mut task: HumanTaskRecord,
+    ) -> Result<AutomaticDecisionCoordination, String> {
         let run = self
             .workflow_runs
             .find(task.task.organization_id, task.task.workflow_run_id)
             .await
             .map_err(|error| format!("could not load HumanTask WorkflowRun: {error}"))?
             .ok_or_else(|| "HumanTask WorkflowRun does not exist".to_owned())?;
+        match run.run.status {
+            WorkflowRunStatus::Cancelling => return Ok(AutomaticDecisionCoordination::Deferred),
+            WorkflowRunStatus::Cancelled => {}
+            _ => return Ok(AutomaticDecisionCoordination::Contended),
+        }
+        let history = match self.engine.history(&run.run.flow_run_id).await {
+            Ok(history) => history,
+            Err(FlowError::RunNotFound(_)) => return Ok(AutomaticDecisionCoordination::Deferred),
+            Err(error) => {
+                return Err(format!(
+                    "could not read cancelled WorkflowRun Flow history: {error}"
+                ))
+            }
+        };
+        if history
+            .iter()
+            .any(|envelope| envelope.run_id != run.run.flow_run_id)
+        {
+            return Err("cancelled WorkflowRun Flow history identity drifted".into());
+        }
+        let cancellation = exact_parent_cancellation_evidence(&history)?;
+        let authority = HumanTaskCancellationAuthority::derive(&run, &task, &cancellation)?;
+        let expected_version = task.task.aggregate_version;
+        let decision_id = deterministic_cancellation_decision_id(&task, &cancellation);
+        let decision = WorkflowDecision::cancel(
+            decision_id,
+            &task.task,
+            authority.decided_by,
+            authority.authorization_decision,
+            authority.decided_at,
+        )?;
+        task.cancel(expected_version, &decision)?;
+        self.persist_automatic_decision(
+            task,
+            expected_version,
+            decision,
+            Some(cancellation.cancelled_event_id),
+            "workflow-human-task-parent-cancellation",
+            b"cancel-request",
+            "cancellation",
+        )
+        .await
+    }
+
+    async fn expire_task(
+        &self,
+        mut task: HumanTaskRecord,
+    ) -> Result<AutomaticDecisionCoordination, String> {
+        let run = self
+            .workflow_runs
+            .find(task.task.organization_id, task.task.workflow_run_id)
+            .await
+            .map_err(|error| format!("could not load HumanTask WorkflowRun: {error}"))?
+            .ok_or_else(|| "HumanTask WorkflowRun does not exist".to_owned())?;
+        if matches!(
+            run.run.status,
+            WorkflowRunStatus::Cancelling | WorkflowRunStatus::Cancelled
+        ) {
+            return Ok(AutomaticDecisionCoordination::Deferred);
+        }
         let authority = HumanTaskDeadlineAuthority::derive(&run, &task)?;
         let expected_version = task.task.aggregate_version;
         let decision_id = deterministic_expiry_decision_id(&task);
@@ -423,14 +528,39 @@ impl HumanTaskCoordinator {
             authority.decided_at,
         )?;
         task.expire(expected_version, &decision)?;
-        let resume_payload = FlowResumePayload::from_decision(&decision)?;
-        let event = HumanTaskStateChanged::envelope(&task, Some(decision.id.as_uuid()))
-            .map_err(|error| format!("could not encode HumanTask expiry event: {error}"))?;
-        let idempotency = IdempotencyRequest::new(
+        self.persist_automatic_decision(
+            task,
+            expected_version,
+            decision,
+            Some(decision_id.as_uuid()),
             "workflow-human-task-expiry",
+            b"expire-request",
+            "expiry",
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn persist_automatic_decision(
+        &self,
+        task: HumanTaskRecord,
+        expected_version: u64,
+        decision: WorkflowDecision,
+        causation_id: Option<Uuid>,
+        idempotency_scope: &'static str,
+        request_identity: &'static [u8],
+        action: &'static str,
+    ) -> Result<AutomaticDecisionCoordination, String> {
+        let resume_payload = FlowResumePayload::from_decision(&decision)?;
+        let event = HumanTaskStateChanged::envelope(&task, causation_id)
+            .map_err(|error| format!("could not encode HumanTask {action} event: {error}"))?;
+        let idempotency = IdempotencyRequest::new(
+            idempotency_scope,
             format!("{}:v{expected_version}", task.task.id),
             decision.digest.as_str().as_bytes(),
         )?;
+        let decision_id = decision.id;
+        let actor_principal_id = decision.decided_by;
         let write = DecideHumanTaskWrite {
             record: HumanTaskDecisionRecord {
                 task,
@@ -441,15 +571,15 @@ impl HumanTaskCoordinator {
             },
             expected_version,
             event,
-            actor_principal_id: authority.decided_by,
-            request_id: Uuid::new_v5(&decision_id.as_uuid(), b"expire-request"),
+            actor_principal_id,
+            request_id: Uuid::new_v5(&decision_id.as_uuid(), request_identity),
             idempotency,
         };
         let organization_id = write.record.task.task.organization_id;
         let human_task_id = write.record.task.task.id;
         match self.human_tasks.decide_task(write).await {
-            Ok(stored) if stored.replayed => Ok(ExpiryCoordination::Replayed),
-            Ok(_) => Ok(ExpiryCoordination::Expired),
+            Ok(stored) if stored.replayed => Ok(AutomaticDecisionCoordination::Replayed),
+            Ok(_) => Ok(AutomaticDecisionCoordination::Decided),
             Err(RepositoryError::Conflict(error)) => {
                 let current = self
                     .human_tasks
@@ -457,21 +587,21 @@ impl HumanTaskCoordinator {
                     .await
                     .map_err(|find_error| {
                         format!(
-                            "HumanTask expiry conflicted ({error}) and recovery read failed: {find_error}"
+                            "HumanTask {action} conflicted ({error}) and recovery read failed: {find_error}"
                         )
                     })?;
                 if current.is_some_and(|record| {
                     record.task.aggregate_version != expected_version
                         || record.task.status.is_terminal()
                 }) {
-                    Ok(ExpiryCoordination::Contended)
+                    Ok(AutomaticDecisionCoordination::Contended)
                 } else {
                     Err(format!(
-                        "HumanTask expiry conflicted without a concurrent state change: {error}"
+                        "HumanTask {action} conflicted without a concurrent state change: {error}"
                     ))
                 }
             }
-            Err(error) => Err(format!("could not persist HumanTask expiry: {error}")),
+            Err(error) => Err(format!("could not persist HumanTask {action}: {error}")),
         }
     }
 }
@@ -501,6 +631,59 @@ fn deterministic_expiry_decision_id(task: &HumanTaskRecord) -> WorkflowDecisionI
             .unwrap_or_default()
     );
     WorkflowDecisionId::from_uuid(Uuid::new_v5(&task.task.id.as_uuid(), identity.as_bytes()))
+}
+
+fn deterministic_cancellation_decision_id(
+    task: &HumanTaskRecord,
+    cancellation: &HumanTaskParentCancellationEvidence,
+) -> WorkflowDecisionId {
+    let identity = format!(
+        "parent-cancel:v{}:{}:{}",
+        task.task.aggregate_version,
+        cancellation.cancelled_sequence,
+        cancellation.cancelled_event_id
+    );
+    WorkflowDecisionId::from_uuid(Uuid::new_v5(&task.task.id.as_uuid(), identity.as_bytes()))
+}
+
+fn exact_parent_cancellation_evidence(
+    history: &[FlowEventEnvelope],
+) -> Result<HumanTaskParentCancellationEvidence, String> {
+    let requests = history
+        .iter()
+        .filter(|envelope| matches!(envelope.event, FlowEvent::RunCancellationRequested { .. }))
+        .collect::<Vec<_>>();
+    let cancellations = history
+        .iter()
+        .filter(|envelope| matches!(envelope.event, FlowEvent::RunCancelled { .. }))
+        .collect::<Vec<_>>();
+    let ([request], [cancelled]) = (requests.as_slice(), cancellations.as_slice()) else {
+        return Err(format!(
+            "cancelled WorkflowRun requires exactly one RunCancellationRequested and one RunCancelled event; observed {} and {}",
+            requests.len(),
+            cancellations.len()
+        ));
+    };
+    let FlowEvent::RunCancellationRequested {
+        request: cancellation_request,
+    } = &request.event
+    else {
+        unreachable!("request history was filtered to RunCancellationRequested")
+    };
+    let FlowEvent::RunCancelled { reason } = &cancelled.event else {
+        unreachable!("cancellation history was filtered to RunCancelled")
+    };
+    Ok(HumanTaskParentCancellationEvidence {
+        flow_run_id: cancelled.run_id.clone(),
+        request_sequence: request.sequence,
+        request_event_id: request.event_id,
+        request_event_at: canonical_timestamp(request.timestamp),
+        request_reason: cancellation_request.reason.clone(),
+        cancelled_sequence: cancelled.sequence,
+        cancelled_event_id: cancelled.event_id,
+        cancelled_event_at: canonical_timestamp(cancelled.timestamp),
+        cancelled_reason: reason.clone(),
+    })
 }
 
 fn flow_event_digest(envelope: &FlowEventEnvelope) -> Result<Sha256Digest, String> {

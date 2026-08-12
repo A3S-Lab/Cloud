@@ -27,6 +27,14 @@ pub fn observe_flow_resume_receipt(
             envelope.event_id,
             envelope.timestamp,
         ),
+        FlowEvent::RunCancelled { reason } => FlowResumeReceipt::from_run_cancelled(
+            payload,
+            &envelope.run_id,
+            reason.clone(),
+            envelope.sequence,
+            envelope.event_id,
+            envelope.timestamp,
+        ),
         _ => Err("Flow event is not resume settlement evidence".into()),
     }
 }

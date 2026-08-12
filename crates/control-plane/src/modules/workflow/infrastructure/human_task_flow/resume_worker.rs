@@ -142,7 +142,8 @@ impl HumanTaskResumeWorker {
                 {
                     Ok(_) => match disposition {
                         FlowResumeDisposition::HookReceived => report.delivered += 1,
-                        FlowResumeDisposition::RunTimedOut => report.superseded += 1,
+                        FlowResumeDisposition::RunTimedOut
+                        | FlowResumeDisposition::RunCancelled => report.superseded += 1,
                     },
                     Err(error) => report.failures.push(HumanTaskResumeFailure {
                         workflow_decision_id: decision_id,
@@ -237,6 +238,9 @@ impl HumanTaskResumeWorker {
                 if let Some(envelope) = matching_run_timed_out(&history)? {
                     return receipt_for_delivery(delivery, envelope);
                 }
+                if let Some(envelope) = matching_run_cancelled(&history)? {
+                    return receipt_for_delivery(delivery, envelope);
+                }
                 if history.iter().any(|envelope| {
                     matches!(
                         &envelope.event,
@@ -324,6 +328,22 @@ fn matching_run_timed_out(
         [envelope] => Ok(Some(*envelope)),
         _ => Err(DeliveryFailure::Conflict(
             "Flow history contains duplicate RunTimedOut events".into(),
+        )),
+    }
+}
+
+fn matching_run_cancelled(
+    history: &[FlowEventEnvelope],
+) -> Result<Option<&FlowEventEnvelope>, DeliveryFailure> {
+    let matching = history
+        .iter()
+        .filter(|envelope| matches!(&envelope.event, FlowEvent::RunCancelled { .. }))
+        .collect::<Vec<_>>();
+    match matching.as_slice() {
+        [] => Ok(None),
+        [envelope] => Ok(Some(*envelope)),
+        _ => Err(DeliveryFailure::Conflict(
+            "Flow history contains duplicate RunCancelled events".into(),
         )),
     }
 }
@@ -440,6 +460,64 @@ mod tests {
         };
         assert!(matches!(
             receipt_for_delivery(&delivery, &drifted),
+            Err(DeliveryFailure::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn settles_parent_cancellation_delivery_from_the_exact_flow_event() {
+        let (task, principal_id) = pending_task();
+        let mut record = HumanTaskRecord::create(
+            task,
+            HumanTaskInteractionSpec::approval("Approve?", None, None).expect("interaction"),
+            7,
+            Uuid::now_v7(),
+        )
+        .expect("task record");
+        record.activate(1, timestamp(8, 1)).expect("activation");
+        let decision = WorkflowDecision::cancel(
+            WorkflowDecisionId::new(),
+            &record.task,
+            principal_id,
+            AuthorizationDecisionRef::new(
+                "parent-cancellation-authority",
+                Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("digest"),
+            )
+            .expect("authority"),
+            timestamp(8, 4),
+        )
+        .expect("cancellation decision");
+        record.cancel(2, &decision).expect("cancellation");
+        let delivery = HumanTaskResumeDelivery {
+            record: HumanTaskDecisionRecord {
+                task: record,
+                submission: None,
+                resume_payload: FlowResumePayload::from_decision(&decision).expect("payload"),
+                resume_receipt: None,
+                decision,
+            },
+            attempt_count: 1,
+            lease_owner: Uuid::now_v7(),
+            claimed_at: timestamp(8, 5),
+            lease_expires_at: timestamp(8, 6),
+        };
+        delivery.validate().expect("delivery");
+        let cancelled = FlowEventEnvelope {
+            run_id: delivery.record.resume_payload.flow_run_id.clone(),
+            sequence: 11,
+            event_id: Uuid::now_v7(),
+            timestamp: timestamp(8, 4),
+            event: FlowEvent::RunCancelled {
+                reason: Some("operator request".into()),
+            },
+        };
+        let receipt = receipt_for_delivery(&delivery, &cancelled).expect("terminal receipt");
+        assert_eq!(receipt.disposition(), FlowResumeDisposition::RunCancelled);
+
+        let mut too_early = cancelled;
+        too_early.timestamp = timestamp(8, 3);
+        assert!(matches!(
+            receipt_for_delivery(&delivery, &too_early),
             Err(DeliveryFailure::Conflict(_))
         ));
     }

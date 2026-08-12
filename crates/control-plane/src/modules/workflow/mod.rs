@@ -76,7 +76,8 @@ pub use domain::{
     CapabilityType, ChangeHumanTaskWrite, CompiledWorkflowGoal, CompiledWorkflowRun,
     CreateHumanTaskWrite, CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite,
     CreateWorkflowRunWrite, DecideHumanTaskWrite, FlowResumeDisposition, FlowResumePayload,
-    FlowResumeReceipt, HumanTask, HumanTaskDecisionRecord, HumanTaskInteractionSpec,
+    FlowResumeReceipt, HumanTask, HumanTaskCancellationAuthority, HumanTaskDeadlineAuthority,
+    HumanTaskDecisionRecord, HumanTaskInteractionSpec, HumanTaskParentCancellationEvidence,
     HumanTaskRecord, HumanTaskResumeDelivery, HumanTaskStateChanged, HumanTaskStatus,
     IHumanTaskRepository, IOntologyRepository, IWorkflowDefinitionRepository,
     IWorkflowGoalRepository, IWorkflowRunCoordinator, IWorkflowRunHistoryReader,
@@ -116,9 +117,9 @@ pub use infrastructure::persistence::{
     PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository,
 };
 pub use infrastructure::{
-    observe_flow_resume_receipt, FlowWorkflowRunCoordinator, HumanTaskCoordinationFailure,
-    HumanTaskCoordinationReport, HumanTaskCoordinator, HumanTaskExpiryFailure,
-    HumanTaskResumeFailure, HumanTaskResumeReport, HumanTaskResumeWorker,
+    observe_flow_resume_receipt, FlowWorkflowRunCoordinator, HumanTaskCancellationFailure,
+    HumanTaskCoordinationFailure, HumanTaskCoordinationReport, HumanTaskCoordinator,
+    HumanTaskExpiryFailure, HumanTaskResumeFailure, HumanTaskResumeReport, HumanTaskResumeWorker,
     HumanTaskResumeWorkerConfig, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
     WORKFLOW_RUN_STEP_NAME,
 };

@@ -113,7 +113,7 @@ cancellation, timeout, output digest, and redacted history.
 
 `listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
 `submitHumanTask` expose the protected HumanTask surface in REST contract
-`1.22.0`. Lists accept only the closed status set and a limit from 1 through 200
+`1.23.0`. Lists accept only the closed status set and a limit from 1 through 200
 and return summaries without interaction payloads. Detail may return the
 request-bound native A3S Form interaction only when the bearer principal is the
 current claimant. Claim/release use explicit version and idempotency headers;

@@ -19,14 +19,15 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 };
 use a3s_cloud_control_plane::modules::workflow::domain::ResolvedWorkflowPayload;
 use a3s_cloud_control_plane::modules::workflow::{
-    CapabilityOwner, CapabilityReference, CapabilityType, ChangeHumanTaskWrite,
-    CreateWorkflowRunWrite, DecideHumanTaskWrite, FlowResumeDisposition, FlowResumePayload,
-    FlowWorkflowRunCoordinator, HumanTaskCoordinator, HumanTaskDecisionRecord,
+    CancelWorkflowRunWrite, CapabilityOwner, CapabilityReference, CapabilityType,
+    ChangeHumanTaskWrite, CreateWorkflowRunWrite, DecideHumanTaskWrite, FlowResumeDisposition,
+    FlowResumePayload, FlowWorkflowRunCoordinator, HumanTaskCoordinator, HumanTaskDecisionRecord,
     HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, HumanTaskStateChanged, HumanTaskStatus,
     IHumanTaskRepository, IWorkflowRunCoordinator, IWorkflowRunRepository,
     PostgresHumanTaskRepository, PostgresWorkflowRunRepository, WorkflowDataSchema,
-    WorkflowDataType, WorkflowDecision, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
-    WorkflowPlan, WorkflowPlanStep, WorkflowRun, WorkflowRunFlowRuntime, WorkflowRunInput,
+    WorkflowDataType, WorkflowDecision, WorkflowDecisionOutcome, WorkflowEdgeSpec, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep, WorkflowRun,
+    WorkflowRunCancellationRequested, WorkflowRunFlowRuntime, WorkflowRunInput,
     WorkflowRunReconciler, WorkflowRunRecord, WorkflowRunRequested, WorkflowStepConfiguration,
     WorkflowStepKind, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
     WORKFLOW_PLAN_SCHEMA, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
@@ -379,6 +380,18 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
         .await?;
     assert_eq!(rows, (1, 1, 1, "delivered".into(), 2));
 
+    exercise_parent_cancellation(
+        &executor,
+        authorities,
+        &input,
+        Arc::clone(&forms),
+        Arc::clone(&workflow_runs),
+        Arc::clone(&human_tasks),
+        &flow_coordinator,
+        &workflow_reconciler,
+        &engine,
+    )
+    .await?;
     exercise_expiry_after_flow_timeout(
         &executor,
         authorities,
@@ -391,6 +404,228 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
         &engine,
     )
     .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn exercise_parent_cancellation(
+    executor: &a3s_orm::PostgresExecutor,
+    authorities: Authorities,
+    base_input: &WorkflowRunInput,
+    forms: Arc<dyn IFormRepository>,
+    workflow_runs: Arc<dyn IWorkflowRunRepository>,
+    human_tasks: Arc<dyn IHumanTaskRepository>,
+    flow_coordinator: &FlowOperationCoordinator,
+    workflow_reconciler: &WorkflowRunReconciler,
+    engine: &a3s_flow::FlowEngine,
+) -> TestResult<()> {
+    let requested_at = canonical_timestamp(Utc::now());
+    let deadline_at = requested_at + ChronoDuration::seconds(5);
+    let mut input = base_input.clone();
+    input.workflow_run_id = WorkflowRunId::new();
+    input.requested_at = requested_at;
+    input.deadline_at = deadline_at;
+    input.validate()?;
+    let flow_run_id = input.workflow_run_id.to_string();
+    let (run, steps) = WorkflowRun::create(input.clone(), authorities.actor)?;
+    let requested = WorkflowRunRecord { run, steps };
+    workflow_runs
+        .create(CreateWorkflowRunWrite {
+            event: WorkflowRunRequested::envelope(&requested.run, Uuid::now_v7())?,
+            record: requested,
+            actor_principal_id: authorities.actor,
+            request_id: Uuid::now_v7(),
+            idempotency: idempotency(
+                "postgres-human-task-parent-cancellation-runs",
+                "start",
+                input.workflow_run_id.to_string().as_bytes(),
+            ),
+        })
+        .await?;
+
+    drive_flow_until(
+        flow_coordinator,
+        workflow_reconciler,
+        engine,
+        &flow_run_id,
+        FlowRunStatus::Suspended,
+    )
+    .await?;
+    let coordinator = HumanTaskCoordinator::new(
+        Arc::clone(&workflow_runs),
+        Arc::clone(&forms),
+        Arc::clone(&human_tasks),
+        engine.clone(),
+        Duration::from_millis(5),
+        100,
+    )?;
+    let created = coordinator.run_once_at(100, requested_at).await?;
+    assert!(created.failures.is_empty(), "{created:#?}");
+    assert!(created.cancellation_failures.is_empty(), "{created:#?}");
+    assert!(created.expiry_failures.is_empty(), "{created:#?}");
+    assert_eq!(created.created_tasks, 1, "{created:#?}");
+    assert_eq!(created.activated_tasks, 1, "{created:#?}");
+
+    let ready = human_tasks
+        .list_tasks(
+            authorities.organization_id,
+            authorities.project_id,
+            Some(HumanTaskStatus::Ready),
+            10,
+        )
+        .await?
+        .into_iter()
+        .find(|task| task.task.workflow_run_id == input.workflow_run_id)
+        .expect("ready cancellation HumanTask");
+
+    let mut cancelling = workflow_runs
+        .find(authorities.organization_id, input.workflow_run_id)
+        .await?
+        .expect("cancellation WorkflowRun");
+    let expected_version = cancelling.run.aggregate_version;
+    let cancellation_requested_at =
+        canonical_timestamp(Utc::now()).max(transition_time(cancelling.run.updated_at));
+    cancelling.run.request_cancellation(
+        Some("operator cancelled parent run".into()),
+        authorities.reviewer,
+        cancellation_requested_at,
+    )?;
+    let cancellation_request_id = Uuid::now_v7();
+    workflow_runs
+        .request_cancellation(CancelWorkflowRunWrite {
+            event: WorkflowRunCancellationRequested::envelope(
+                &cancelling.run,
+                cancellation_request_id,
+            )?,
+            record: cancelling,
+            expected_version,
+            actor_principal_id: authorities.reviewer,
+            request_id: cancellation_request_id,
+            idempotency: idempotency(
+                "postgres-human-task-parent-cancellation-runs",
+                "cancel",
+                input.workflow_run_id.to_string().as_bytes(),
+            ),
+        })
+        .await?;
+
+    let preempted = coordinator
+        .run_once_at(100, deadline_at + ChronoDuration::milliseconds(1))
+        .await?;
+    assert!(preempted.failures.is_empty(), "{preempted:#?}");
+    assert!(preempted.cancellation_failures.is_empty(), "{preempted:#?}");
+    assert!(preempted.expiry_failures.is_empty(), "{preempted:#?}");
+    assert_eq!(preempted.deferred_cancellations, 1, "{preempted:#?}");
+    assert_eq!(preempted.inspected_expirations, 0, "{preempted:#?}");
+    assert_eq!(preempted.expired_tasks, 0, "{preempted:#?}");
+    assert_eq!(
+        human_tasks
+            .find_task(authorities.organization_id, ready.task.id)
+            .await?
+            .expect("preempted HumanTask")
+            .task
+            .status,
+        HumanTaskStatus::Ready
+    );
+
+    drive_flow_until(
+        flow_coordinator,
+        workflow_reconciler,
+        engine,
+        &flow_run_id,
+        FlowRunStatus::Cancelled,
+    )
+    .await?;
+    let coordinator_b = HumanTaskCoordinator::new(
+        Arc::clone(&workflow_runs),
+        forms,
+        Arc::clone(&human_tasks),
+        engine.clone(),
+        Duration::from_millis(5),
+        100,
+    )?;
+    let (first, second) = tokio::join!(coordinator.run_once(100), coordinator_b.run_once(100));
+    let first = first?;
+    let second = second?;
+    assert!(first.cancellation_failures.is_empty(), "{first:#?}");
+    assert!(second.cancellation_failures.is_empty(), "{second:#?}");
+    assert_eq!(first.cancelled_tasks + second.cancelled_tasks, 1);
+    assert_eq!(first.expired_tasks + second.expired_tasks, 0);
+
+    let cancelled = human_tasks
+        .find_task(authorities.organization_id, ready.task.id)
+        .await?
+        .expect("cancelled HumanTask");
+    assert_eq!(cancelled.task.status, HumanTaskStatus::Cancelled);
+    let decision = human_tasks
+        .find_decision(
+            authorities.organization_id,
+            cancelled
+                .task
+                .decision_id
+                .expect("cancellation decision id"),
+        )
+        .await?
+        .expect("cancellation decision");
+    assert_eq!(decision.decision.outcome, WorkflowDecisionOutcome::Cancel);
+    assert_eq!(decision.decision.decided_by, authorities.reviewer);
+    assert!(decision.resume_receipt.is_none());
+
+    let worker = HumanTaskResumeWorker::new(
+        Arc::clone(&human_tasks),
+        engine.clone(),
+        HumanTaskResumeWorkerConfig {
+            batch_size: 10,
+            poll_interval: Duration::from_millis(5),
+            lease_duration: Duration::from_secs(5),
+            flow_operation_timeout: Duration::from_secs(1),
+            initial_backoff: Duration::from_millis(5),
+            maximum_backoff: Duration::from_secs(1),
+        },
+    )?;
+    let settled = worker.run_once().await?;
+    assert_eq!(settled.claimed, 1, "{settled:#?}");
+    assert_eq!(settled.superseded, 1, "{settled:#?}");
+    assert_eq!(settled.conflicted, 0, "{settled:#?}");
+    assert!(settled.failures.is_empty(), "{settled:#?}");
+
+    let decision = human_tasks
+        .find_decision(authorities.organization_id, decision.decision.id)
+        .await?
+        .expect("settled cancellation decision");
+    let receipt = decision
+        .resume_receipt
+        .as_ref()
+        .expect("RunCancelled receipt");
+    assert_eq!(receipt.disposition(), FlowResumeDisposition::RunCancelled);
+    assert_eq!(
+        receipt.cancellation_reason(),
+        Some("operator cancelled parent run")
+    );
+    assert_eq!(receipt.flow_event_at(), decision.decision.decided_at);
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    let state = database
+        .fetch_one_as(
+            sql_query::<(String, String, Uuid, Uuid)>(
+                "select delivery.state, receipt.disposition, decision.decided_by, run.cancellation_requested_by from workflow_resume_outbox delivery join workflow_resume_receipts receipt on receipt.organization_id = delivery.organization_id and receipt.workflow_decision_id = delivery.workflow_decision_id join workflow_decisions decision on decision.organization_id = delivery.organization_id and decision.id = delivery.workflow_decision_id join workflow_runs run on run.organization_id = delivery.organization_id and run.id = delivery.workflow_run_id where delivery.organization_id = ",
+            )
+            .bind(authorities.organization_id.as_uuid())
+            .append(" and delivery.human_task_id = ")
+            .bind(cancelled.task.id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(
+        state,
+        (
+            "delivered".into(),
+            "run_cancelled".into(),
+            authorities.reviewer.as_uuid(),
+            authorities.reviewer.as_uuid(),
+        )
+    );
+    let replay = coordinator_b.run_once(100).await?;
+    assert_eq!(replay.inspected_cancellations, 0, "{replay:#?}");
     Ok(())
 }
 

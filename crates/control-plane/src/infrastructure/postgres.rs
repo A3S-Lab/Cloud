@@ -845,6 +845,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/096_human_task_expiry_coordination.sql"
             )),
         ),
+        Migration::new(
+            "097",
+            "HumanTask parent cancellation coordination",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/097_human_task_parent_cancellation.sql"
+            )),
+        ),
     ]
 }
 

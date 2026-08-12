@@ -626,6 +626,7 @@ function workflowRun() {
     startedAt: null,
     deadlineAt: '2026-08-09T01:00:00.000Z',
     cancellationRequestedAt: null,
+    cancellationRequestedBy: null,
     cancellationReason: null,
     finishedAt: null,
     steps: [

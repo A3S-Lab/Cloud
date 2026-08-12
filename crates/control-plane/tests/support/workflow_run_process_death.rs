@@ -575,9 +575,11 @@ async fn request_cancellation(
         .await?
         .ok_or("cancellation-commit probe could not find the WorkflowRun")?;
     let expected_version = record.run.aggregate_version;
-    record
-        .run
-        .request_cancellation(Some(CANCELLATION_REASON.into()), Utc::now())?;
+    record.run.request_cancellation(
+        Some(CANCELLATION_REASON.into()),
+        document.actor,
+        Utc::now(),
+    )?;
     let request_id = Uuid::new_v5(
         &record.run.id.as_uuid(),
         b"workflow-run-cancellation-request",

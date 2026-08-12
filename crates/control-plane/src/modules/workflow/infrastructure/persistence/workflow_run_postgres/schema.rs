@@ -40,6 +40,7 @@ orm_table! {
         updated_at: DateTime<Utc> => "updated_at",
         started_at: Option<DateTime<Utc>> => "started_at",
         cancellation_requested_at: Option<DateTime<Utc>> => "cancellation_requested_at",
+        cancellation_requested_by: Option<Uuid> => "cancellation_requested_by",
         cancellation_reason: Option<String> => "cancellation_reason",
         finished_at: Option<DateTime<Utc>> => "finished_at",
     }

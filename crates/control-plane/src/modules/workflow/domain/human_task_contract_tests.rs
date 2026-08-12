@@ -189,6 +189,25 @@ fn records_expiry_and_cancellation_as_bound_decisions() {
         timestamp(8, 1),
     )
     .expect("cancellation decision");
+    let cancellation_payload =
+        FlowResumePayload::from_decision(&cancellation).expect("cancellation payload");
+    let cancelled_receipt = FlowResumeReceipt::from_run_cancelled(
+        &cancellation_payload,
+        &cancelled.flow_run_id,
+        Some("operator request".into()),
+        14,
+        Uuid::now_v7(),
+        timestamp(8, 1),
+    )
+    .expect("matching cancellation receipt");
+    assert_eq!(
+        cancelled_receipt.disposition(),
+        FlowResumeDisposition::RunCancelled
+    );
+    assert_eq!(
+        cancelled_receipt.cancellation_reason(),
+        Some("operator request")
+    );
     cancelled
         .cancel(1, &cancellation)
         .expect("task cancellation");
@@ -223,6 +242,20 @@ fn derives_a_resume_receipt_only_from_matching_hook_evidence() {
     .expect("matching receipt should be observed");
     assert_eq!(receipt.flow_event_sequence(), 11);
     assert_eq!(receipt.payload_digest(), &payload.digest);
+
+    let cancellation = FlowResumeReceipt::from_run_cancelled(
+        &payload,
+        &task.flow_run_id,
+        Some("parent cancelled after submission".into()),
+        12,
+        Uuid::now_v7(),
+        timestamp(8, 33),
+    )
+    .expect("parent cancellation should supersede an earlier pending submission");
+    assert_eq!(
+        cancellation.disposition(),
+        FlowResumeDisposition::RunCancelled
+    );
 
     assert!(FlowResumeReceipt::from_hook_received(
         &payload,

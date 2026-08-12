@@ -7,6 +7,7 @@ orm_table! {
         organization_id: Uuid => "organization_id",
         project_id: Uuid => "project_id",
         id: Uuid => "id",
+        status: String => "status",
     }
 }
 

@@ -254,6 +254,7 @@ export interface WorkflowRun {
   startedAt: string | null;
   deadlineAt: string;
   cancellationRequestedAt: string | null;
+  cancellationRequestedBy: string | null;
   cancellationReason: string | null;
   finishedAt: string | null;
   steps: WorkflowStepProjection[];

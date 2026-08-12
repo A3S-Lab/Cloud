@@ -6,7 +6,8 @@ mod workflow_run_coordinator;
 mod workflow_run_history;
 
 pub use human_task_deadline_authority::{
-    expected_human_task_expiry, HumanTaskDeadlineAuthority,
+    expected_human_task_expiry, HumanTaskCancellationAuthority, HumanTaskDeadlineAuthority,
+    HumanTaskParentCancellationEvidence, HUMAN_TASK_CANCELLATION_AUTHORITY_API_VERSION,
     HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
 };
 pub use ontology_diff::{

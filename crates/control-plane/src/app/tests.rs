@@ -233,6 +233,13 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
         Ok(records)
     }
 
+    async fn pending_parent_cancellations(
+        &self,
+        _limit: usize,
+    ) -> std::result::Result<Vec<HumanTaskRecord>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
     async fn replay_change(
         &self,
         idempotency: &IdempotencyRequest,

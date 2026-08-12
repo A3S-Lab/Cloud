@@ -66,10 +66,11 @@ impl CommandHandler<CancelWorkflowRun> for CancelWorkflowRunHandler {
                 }));
             }
             let expected_version = record.run.aggregate_version;
-            if let Err(error) = record
-                .run
-                .request_cancellation(command.reason, command.requested_at)
-            {
+            if let Err(error) = record.run.request_cancellation(
+                command.reason,
+                command.actor_principal_id,
+                command.requested_at,
+            ) {
                 return Ok(Err(ApplicationError::Conflict(error)));
             }
             let event = WorkflowRunCancellationRequested::envelope(&record.run, command.request_id)

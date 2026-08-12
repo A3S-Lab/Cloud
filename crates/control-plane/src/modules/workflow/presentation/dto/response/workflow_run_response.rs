@@ -65,6 +65,7 @@ pub struct WorkflowRunResponse {
     pub started_at: Option<DateTime<Utc>>,
     pub deadline_at: DateTime<Utc>,
     pub cancellation_requested_at: Option<DateTime<Utc>>,
+    pub cancellation_requested_by: Option<Uuid>,
     pub cancellation_reason: Option<String>,
     pub finished_at: Option<DateTime<Utc>>,
     pub steps: Vec<WorkflowStepProjectionResponse>,
@@ -95,6 +96,10 @@ impl From<WorkflowRunRecord> for WorkflowRunResponse {
             started_at: value.run.started_at,
             deadline_at,
             cancellation_requested_at: value.run.cancellation_requested_at,
+            cancellation_requested_by: value
+                .run
+                .cancellation_requested_by
+                .map(|principal_id| principal_id.as_uuid()),
             cancellation_reason: value.run.cancellation_reason,
             finished_at: value.run.finished_at,
             steps: value

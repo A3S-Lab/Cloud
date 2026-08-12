@@ -37,6 +37,7 @@ pub(super) struct WorkflowRunRow {
     updated_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     cancellation_requested_at: Option<DateTime<Utc>>,
+    cancellation_requested_by: Option<Uuid>,
     cancellation_reason: Option<String>,
     finished_at: Option<DateTime<Utc>>,
 }
@@ -70,6 +71,7 @@ impl Selection for WorkflowRunSelection {
             WorkflowRuns::updated_at().expression(),
             WorkflowRuns::started_at().expression(),
             WorkflowRuns::cancellation_requested_at().expression(),
+            WorkflowRuns::cancellation_requested_by().expression(),
             WorkflowRuns::cancellation_reason().expression(),
             WorkflowRuns::finished_at().expression(),
         ]
@@ -101,8 +103,9 @@ impl FromRow for WorkflowRunRow {
             updated_at: decode(row, 19)?,
             started_at: decode(row, 20)?,
             cancellation_requested_at: decode(row, 21)?,
-            cancellation_reason: decode(row, 22)?,
-            finished_at: decode(row, 23)?,
+            cancellation_requested_by: decode(row, 22)?,
+            cancellation_reason: decode(row, 23)?,
+            finished_at: decode(row, 24)?,
         })
     }
 }
@@ -149,6 +152,7 @@ pub(super) fn decode_run(row: WorkflowRunRow) -> Result<WorkflowRun, PostgresPer
         updated_at: row.updated_at,
         started_at: row.started_at,
         cancellation_requested_at: row.cancellation_requested_at,
+        cancellation_requested_by: row.cancellation_requested_by.map(PrincipalId::from_uuid),
         cancellation_reason: row.cancellation_reason,
         finished_at: row.finished_at,
     }

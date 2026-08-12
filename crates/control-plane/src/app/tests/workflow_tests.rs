@@ -1031,6 +1031,7 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
     assert_eq!(cancelled_replay.status(), 200);
     let cancelled = response_json(&cancelled)?;
     assert_eq!(cancelled["data"]["workflowRun"]["status"], "cancelling");
+    assert!(cancelled["data"]["workflowRun"]["cancellationRequestedBy"].is_string());
     assert_eq!(
         cancelled["data"]["workflowRun"]["cancellationReason"],
         "operator request"

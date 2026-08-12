@@ -198,6 +198,7 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
                         &existing,
                         &write.record,
                         write.expected_version,
+                        write.actor_principal_id,
                     )?;
                     persist_run(transaction, &write.record.run, write.expected_version).await?;
                     store_outbox(transaction, &write.event).await?;
@@ -418,6 +419,11 @@ async fn insert_run(
                     run.cancellation_requested_at,
                 )
                 .value(
+                    WorkflowRuns::cancellation_requested_by(),
+                    run.cancellation_requested_by
+                        .map(|principal_id| principal_id.as_uuid()),
+                )
+                .value(
                     WorkflowRuns::cancellation_reason(),
                     run.cancellation_reason.clone(),
                 )
@@ -513,6 +519,11 @@ async fn persist_run(
             .set(
                 WorkflowRuns::cancellation_requested_at(),
                 run.cancellation_requested_at,
+            )
+            .set(
+                WorkflowRuns::cancellation_requested_by(),
+                run.cancellation_requested_by
+                    .map(|principal_id| principal_id.as_uuid()),
             )
             .set(
                 WorkflowRuns::cancellation_reason(),
@@ -650,6 +661,7 @@ fn validate_cancellation_transition(
     existing: &WorkflowRunRecord,
     next: &WorkflowRunRecord,
     expected_version: u64,
+    actor_principal_id: PrincipalId,
 ) -> Result<(), PostgresPersistenceError> {
     if existing.run.aggregate_version != expected_version || existing.steps != next.steps {
         return Err(RepositoryError::Conflict(
@@ -664,7 +676,11 @@ fn validate_cancellation_transition(
         )
     })?;
     candidate
-        .request_cancellation(next.run.cancellation_reason.clone(), requested_at)
+        .request_cancellation(
+            next.run.cancellation_reason.clone(),
+            actor_principal_id,
+            requested_at,
+        )
         .map_err(PostgresPersistenceError::Invariant)?;
     if candidate != next.run {
         return Err(RepositoryError::Conflict(
@@ -735,6 +751,9 @@ fn same_run_authority(left: &WorkflowRun, right: &WorkflowRun) -> bool {
         && left.execution_input_digest == right.execution_input_digest
         && left.requested_by == right.requested_by
         && left.requested_at == right.requested_at
+        && left.cancellation_requested_at == right.cancellation_requested_at
+        && left.cancellation_requested_by == right.cancellation_requested_by
+        && left.cancellation_reason == right.cancellation_reason
 }
 
 async fn store_run_audit(
@@ -764,6 +783,7 @@ async fn store_run_audit(
                 "executionInputDigest": record.run.execution_input_digest,
                 "status": record.run.status,
                 "deadlineAt": record.run.execution_input.deadline_at,
+                "cancellationRequestedBy": record.run.cancellation_requested_by,
                 "cancellationReason": record.run.cancellation_reason,
             }),
         },

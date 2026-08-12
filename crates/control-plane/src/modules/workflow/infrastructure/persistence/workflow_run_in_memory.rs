@@ -125,7 +125,12 @@ impl IWorkflowRunRepository for InMemoryWorkflowRunRepository {
             .get(&key)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
-        validate_cancellation_transition(&existing, &write.record, write.expected_version)?;
+        validate_cancellation_transition(
+            &existing,
+            &write.record,
+            write.expected_version,
+            write.actor_principal_id,
+        )?;
         state.records.insert(key, write.record.clone());
         store_replay(&mut state, &write.idempotency, &write.record);
         state.outbox.push(write.event);
@@ -230,6 +235,7 @@ fn validate_cancellation_transition(
     existing: &WorkflowRunRecord,
     next: &WorkflowRunRecord,
     expected_version: u64,
+    actor_principal_id: crate::modules::shared_kernel::domain::PrincipalId,
 ) -> Result<(), RepositoryError> {
     if existing.run.aggregate_version != expected_version || existing.steps != next.steps {
         return Err(RepositoryError::Conflict(
@@ -241,7 +247,11 @@ fn validate_cancellation_transition(
         RepositoryError::Storage("WorkflowRun cancellation is missing its request time".into())
     })?;
     candidate
-        .request_cancellation(next.run.cancellation_reason.clone(), requested_at)
+        .request_cancellation(
+            next.run.cancellation_reason.clone(),
+            actor_principal_id,
+            requested_at,
+        )
         .map_err(RepositoryError::Storage)?;
     if candidate != next.run {
         return Err(RepositoryError::Conflict(
@@ -305,4 +315,7 @@ fn same_run_authority(left: &WorkflowRun, right: &WorkflowRun) -> bool {
         && left.execution_input_digest == right.execution_input_digest
         && left.requested_by == right.requested_by
         && left.requested_at == right.requested_at
+        && left.cancellation_requested_at == right.cancellation_requested_at
+        && left.cancellation_requested_by == right.cancellation_requested_by
+        && left.cancellation_reason == right.cancellation_reason
 }

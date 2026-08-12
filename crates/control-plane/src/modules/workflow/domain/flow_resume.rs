@@ -60,6 +60,7 @@ struct FlowResumePayloadDigestContent<'a> {
 pub enum FlowResumeDisposition {
     HookReceived,
     RunTimedOut,
+    RunCancelled,
 }
 
 impl FlowResumeDisposition {
@@ -67,6 +68,7 @@ impl FlowResumeDisposition {
         match self {
             Self::HookReceived => "hook_received",
             Self::RunTimedOut => "run_timed_out",
+            Self::RunCancelled => "run_cancelled",
         }
     }
 }
@@ -95,6 +97,19 @@ pub enum FlowResumeReceipt {
         flow_event_id: Uuid,
         flow_event_at: DateTime<Utc>,
         deadline: DateTime<Utc>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    RunCancelled {
+        api_version: String,
+        disposition: FlowResumeDisposition,
+        flow_run_id: String,
+        flow_hook_id: String,
+        workflow_decision_id: WorkflowDecisionId,
+        payload_digest: Sha256Digest,
+        flow_event_sequence: u64,
+        flow_event_id: Uuid,
+        flow_event_at: DateTime<Utc>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
@@ -256,6 +271,36 @@ impl FlowResumeReceipt {
         Ok(receipt)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_run_cancelled(
+        payload: &FlowResumePayload,
+        flow_run_id: &str,
+        reason: Option<String>,
+        flow_event_sequence: u64,
+        flow_event_id: Uuid,
+        flow_event_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        payload.validate()?;
+        if flow_run_id != payload.flow_run_id || flow_event_sequence == 0 || flow_event_id.is_nil()
+        {
+            return Err("Flow RunCancelled event does not supersede the resume payload".into());
+        }
+        let receipt = Self::RunCancelled {
+            api_version: FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION.into(),
+            disposition: FlowResumeDisposition::RunCancelled,
+            flow_run_id: flow_run_id.into(),
+            flow_hook_id: payload.flow_hook_id.clone(),
+            workflow_decision_id: payload.workflow_decision_id,
+            payload_digest: payload.digest.clone(),
+            flow_event_sequence,
+            flow_event_id,
+            flow_event_at: canonical_timestamp(flow_event_at),
+            reason,
+        };
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         match self {
             Self::HookReceived {
@@ -312,6 +357,36 @@ impl FlowResumeReceipt {
                     return Err("Flow RunTimedOut resume receipt is invalid".into());
                 }
             }
+            Self::RunCancelled {
+                api_version,
+                disposition,
+                flow_run_id,
+                flow_hook_id,
+                workflow_decision_id,
+                flow_event_sequence,
+                flow_event_id,
+                flow_event_at,
+                reason,
+                ..
+            } => {
+                if api_version != FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION
+                    || *disposition != FlowResumeDisposition::RunCancelled
+                    || !valid_external_identity(flow_run_id)
+                    || !valid_external_identity(flow_hook_id)
+                    || workflow_decision_id.as_uuid().is_nil()
+                    || *flow_event_sequence == 0
+                    || flow_event_id.is_nil()
+                    || *flow_event_at != canonical_timestamp(*flow_event_at)
+                    || reason.as_ref().is_some_and(|value| {
+                        value.is_empty()
+                            || value.trim() != value
+                            || value.len() > MAX_TERMINAL_REASON_BYTES
+                            || value.contains('\0')
+                    })
+                {
+                    return Err("Flow RunCancelled resume receipt is invalid".into());
+                }
+            }
         }
         Ok(())
     }
@@ -320,22 +395,23 @@ impl FlowResumeReceipt {
         match self {
             Self::HookReceived { .. } => FlowResumeDisposition::HookReceived,
             Self::RunTimedOut { .. } => FlowResumeDisposition::RunTimedOut,
+            Self::RunCancelled { .. } => FlowResumeDisposition::RunCancelled,
         }
     }
 
     pub fn flow_run_id(&self) -> &str {
         match self {
-            Self::HookReceived { flow_run_id, .. } | Self::RunTimedOut { flow_run_id, .. } => {
-                flow_run_id
-            }
+            Self::HookReceived { flow_run_id, .. }
+            | Self::RunTimedOut { flow_run_id, .. }
+            | Self::RunCancelled { flow_run_id, .. } => flow_run_id,
         }
     }
 
     pub fn flow_hook_id(&self) -> &str {
         match self {
-            Self::HookReceived { flow_hook_id, .. } | Self::RunTimedOut { flow_hook_id, .. } => {
-                flow_hook_id
-            }
+            Self::HookReceived { flow_hook_id, .. }
+            | Self::RunTimedOut { flow_hook_id, .. }
+            | Self::RunCancelled { flow_hook_id, .. } => flow_hook_id,
         }
     }
 
@@ -348,6 +424,10 @@ impl FlowResumeReceipt {
             | Self::RunTimedOut {
                 workflow_decision_id,
                 ..
+            }
+            | Self::RunCancelled {
+                workflow_decision_id,
+                ..
             } => *workflow_decision_id,
         }
     }
@@ -355,7 +435,8 @@ impl FlowResumeReceipt {
     pub fn payload_digest(&self) -> &Sha256Digest {
         match self {
             Self::HookReceived { payload_digest, .. }
-            | Self::RunTimedOut { payload_digest, .. } => payload_digest,
+            | Self::RunTimedOut { payload_digest, .. }
+            | Self::RunCancelled { payload_digest, .. } => payload_digest,
         }
     }
 
@@ -368,6 +449,10 @@ impl FlowResumeReceipt {
             Self::RunTimedOut {
                 flow_event_sequence,
                 ..
+            }
+            | Self::RunCancelled {
+                flow_event_sequence,
+                ..
             } => *flow_event_sequence,
         }
     }
@@ -376,6 +461,7 @@ impl FlowResumeReceipt {
         match self {
             Self::HookReceived { hook_event_id, .. } => *hook_event_id,
             Self::RunTimedOut { flow_event_id, .. } => *flow_event_id,
+            Self::RunCancelled { flow_event_id, .. } => *flow_event_id,
         }
     }
 
@@ -385,6 +471,7 @@ impl FlowResumeReceipt {
                 hook_received_at, ..
             } => *hook_received_at,
             Self::RunTimedOut { flow_event_at, .. } => *flow_event_at,
+            Self::RunCancelled { flow_event_at, .. } => *flow_event_at,
         }
     }
 
@@ -392,6 +479,14 @@ impl FlowResumeReceipt {
         match self {
             Self::HookReceived { .. } => None,
             Self::RunTimedOut { deadline, .. } => Some(*deadline),
+            Self::RunCancelled { .. } => None,
+        }
+    }
+
+    pub fn cancellation_reason(&self) -> Option<&str> {
+        match self {
+            Self::RunCancelled { reason, .. } => reason.as_deref(),
+            Self::HookReceived { .. } | Self::RunTimedOut { .. } => None,
         }
     }
 }

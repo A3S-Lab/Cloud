@@ -7,7 +7,7 @@ use self::rows::{
     find_task_row, hook_inbox_matches, load_decision_record, load_task, task_authority_exists,
     task_select, HumanTaskRow, ResumeDeliveryClaimRow, ResumeDeliveryClaimSelection,
 };
-use self::schema::{HumanTasks, WorkflowResumeCandidates, WorkflowResumeOutbox};
+use self::schema::{HumanTasks, WorkflowResumeCandidates, WorkflowResumeOutbox, WorkflowRuns};
 use self::writes::{
     conflict_resume_delivery, insert_decision, insert_hook_inbox, insert_resume_outbox,
     insert_resume_receipt, insert_task, lock_resume_outbox, mark_resume_delivered, persist_task,
@@ -193,8 +193,17 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                     fetch_all::<HumanTaskRow, _>(
                         transaction,
                         task_select()
+                            .inner_join::<WorkflowRuns>(
+                                HumanTasks::organization_id()
+                                    .eq_column(WorkflowRuns::organization_id())
+                                    .and(
+                                        HumanTasks::workflow_run_id().eq_column(WorkflowRuns::id()),
+                                    ),
+                            )
                             .filter(HumanTasks::expires_at().is_not_null())
                             .filter(HumanTasks::expires_at().lte(Some(expired_at)))
+                            .filter(WorkflowRuns::status().ne("cancelling"))
+                            .filter(WorkflowRuns::status().ne("cancelled"))
                             .filter(
                                 HumanTasks::status()
                                     .eq(HumanTaskStatus::PendingActivation.as_str())
@@ -202,6 +211,57 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                                     .or(HumanTasks::status().eq(HumanTaskStatus::Claimed.as_str())),
                             )
                             .order_by(HumanTasks::expires_at(), OrderDirection::Asc)
+                            .order_by(HumanTasks::organization_id(), OrderDirection::Asc)
+                            .order_by(HumanTasks::id(), OrderDirection::Asc)
+                            .limit(limit),
+                    )
+                    .await?
+                    .into_iter()
+                    .map(decode_task)
+                    .collect()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn pending_parent_cancellations(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<HumanTaskRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let limit = u64::try_from(limit).map_err(|_| {
+            RepositoryError::Conflict(
+                "HumanTask parent cancellation scan limit exceeds the supported range".into(),
+            )
+        })?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    fetch_all::<HumanTaskRow, _>(
+                        transaction,
+                        task_select()
+                            .inner_join::<WorkflowRuns>(
+                                HumanTasks::organization_id()
+                                    .eq_column(WorkflowRuns::organization_id())
+                                    .and(
+                                        HumanTasks::workflow_run_id().eq_column(WorkflowRuns::id()),
+                                    ),
+                            )
+                            .filter(
+                                HumanTasks::status()
+                                    .eq(HumanTaskStatus::PendingActivation.as_str())
+                                    .or(HumanTasks::status().eq(HumanTaskStatus::Ready.as_str()))
+                                    .or(HumanTasks::status().eq(HumanTaskStatus::Claimed.as_str())),
+                            )
+                            .filter(
+                                WorkflowRuns::status()
+                                    .eq("cancelling")
+                                    .or(WorkflowRuns::status().eq("cancelled")),
+                            )
+                            .order_by(HumanTasks::created_at(), OrderDirection::Asc)
                             .order_by(HumanTasks::organization_id(), OrderDirection::Asc)
                             .order_by(HumanTasks::id(), OrderDirection::Asc)
                             .limit(limit),
