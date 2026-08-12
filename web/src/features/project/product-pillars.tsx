@@ -1,5 +1,6 @@
 import { Boxes, CheckCircle2, Factory, GitBranch, Network, Workflow, type LucideIcon } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
+import { statusBadgeState } from '../../lib/status-badge';
 import { CAPABILITY_STATES, localize, PRODUCT_PILLARS, type ProductPillar } from './project-catalog';
 
 const PILLAR_ICONS: Record<ProductPillar['id'], LucideIcon> = {
@@ -68,7 +69,7 @@ function ProductPillarCard({ pillar }: { pillar: ProductPillar }) {
   const Icon = PILLAR_ICONS[pillar.id];
 
   return (
-    <article className={`product-pillar product-pillar-${pillar.id}`}>
+    <article className={`card product-pillar product-pillar-${pillar.id}`}>
       <header>
         <span className='product-pillar-icon' aria-hidden='true'>
           <Icon size={22} />
@@ -77,7 +78,11 @@ function ProductPillarCard({ pillar }: { pillar: ProductPillar }) {
           <small>{zh ? '技术底座' : 'Built on'}</small>
           <strong>{pillar.basedOn}</strong>
         </div>
-        <span className={`capability-state capability-state-${pillar.state}`}>
+        <span
+          className={`status-badge capability-state capability-state-${pillar.state}`}
+          data-state={statusBadgeState(pillar.state)}
+          data-size='sm'
+        >
           {localize(CAPABILITY_STATES[pillar.state].label, language)}
         </span>
       </header>

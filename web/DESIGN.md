@@ -138,6 +138,14 @@ The public homepage leads with three outward-facing products: Unified Gateway, W
 - Structural responsive reflow with preserved labels and touch targets.
 - Simplified Chinese by default with a complete, persistent English product version.
 
+## Reusable Component Contracts
+
+A3S Web projects operational data into framework-agnostic `@a3s-lab/ui` contracts while React remains responsible for transport and state. The Coding Agent flow uses `Agent Workbench` for context, execution, inspection, and activity regions; `Card`, `Item`, `Field`, `Select`, `Button`, and `Empty` for its panels and controls; `Status Badge` for mapped operational state while `Badge` remains reserved for counts and categories; `Timeline` for deployment and semantic event order; `Property List` for authoritative build, release, route, and evidence metadata; and `Log Viewer` for bounded ordered streams and explicit gaps. Shared Cloud surfaces also use `Brand Lockup`, `Workspace Header`, `Tabs`, `Toolbar`, `Combobox`, `Task Pane`, `Dialog`, `Alert`, and `Stepper` for product identity, navigation, search, operations, mutations, feedback, and bounded process paths.
+
+Bounded log and horizontal process regions remain keyboard-focusable whenever they may scroll. Log filters expose their selected state with `aria-pressed`, while live-region announcements stay on the ordered record viewport and never move operator focus.
+
+Cloud may keep product-specific visual classes beside these semantic classes during a package transition. Once the matching UI package version is published, import the split structural entrypoints and remove the redundant local layout rules in the same change. Do not use a parent-directory `file:` dependency: `apps/cloud` must continue to build as an independent repository.
+
 ## Colors
 
 The palette uses one action blue, cool neutral surfaces, and state colors reserved for operational meaning.

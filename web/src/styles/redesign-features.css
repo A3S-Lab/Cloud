@@ -26,11 +26,11 @@
   padding-block: 30px;
 }
 
-.workload-empty strong,
+.workload-empty h3,
 .detail-empty strong,
 .empty-skill-bindings strong,
 .agent-empty strong,
-.empty-operations strong {
+.empty-operations h3 {
   color: var(--text);
 }
 
@@ -99,7 +99,7 @@
   box-shadow: none;
 }
 
-.convergence-step div {
+.convergence-step > section {
   background: #ffffff;
 }
 
@@ -166,28 +166,12 @@
   color: var(--text);
 }
 
-.operation-title span,
 .operation-item small {
   color: var(--muted);
 }
 
 .operation-item em {
   color: var(--danger);
-}
-
-.stream-dot {
-  background: #9aa7b9;
-  box-shadow: none;
-}
-
-.stream-dot.live {
-  background: var(--success);
-  box-shadow: none;
-}
-
-.stream-dot.retrying {
-  background: var(--warning);
-  box-shadow: none;
 }
 
 /* Feature panels */
@@ -523,14 +507,11 @@
   background: #edf4ff;
 }
 
-.architecture-runtime-path li span {
+.architecture-runtime-path li > section,
+.architecture-runtime-path [data-step-marker] {
   border-color: #c8d9f4;
   color: var(--text);
   background: #ffffff;
-}
-
-.architecture-runtime-path li b {
-  color: var(--accent);
 }
 
 .architecture-harness-card {

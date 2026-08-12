@@ -105,10 +105,10 @@ export function ProjectHome() {
     <main id='top' className='product-home'>
       <header className='product-topbar'>
         <a className='brand-lockup' href='#top' aria-label={zh ? 'A3S OS 首页' : 'A3S OS home'}>
-          <span className='brand-mark' aria-hidden='true'>
+          <span className='brand-mark' data-brand-mark aria-hidden='true'>
             A3
           </span>
-          <span>A3S OS</span>
+          <span data-brand-name>A3S OS</span>
         </a>
         <nav aria-label={zh ? '首页导航' : 'Homepage navigation'}>
           {navItems.map((item) => (
@@ -134,11 +134,11 @@ export function ProjectHome() {
               : 'Cognitive ontology engineering, governed autonomous evolution, and a highly available service platform power Unified Gateway, autonomous workflow orchestration, and a heterogeneous Agent Factory, with security operations spanning the gateway governance path.'}
           </p>
           <div className='product-hero-actions'>
-            <a className='hero-primary-action' href='#products'>
+            <a className='btn hero-primary-action' href='#products'>
               {zh ? '了解三大产品' : 'Explore products'}
               <ArrowRight size={17} aria-hidden='true' />
             </a>
-            <a className='hero-secondary-action' href='#architecture'>
+            <a className='btn hero-secondary-action' data-variant='outline' href='#architecture'>
               <Layers3 size={17} aria-hidden='true' />
               {zh ? '查看模块架构' : 'View architecture'}
             </a>
@@ -146,7 +146,7 @@ export function ProjectHome() {
         </div>
 
         <div className='product-hero-system'>
-          <section className='signin-authority-card' aria-labelledby='authority-path-title'>
+          <section className='card signin-authority-card' aria-labelledby='authority-path-title'>
             <div className='signin-authority-heading'>
               <div>
                 <h2 id='authority-path-title'>{zh ? '一套系统运行链路' : 'One system execution path'}</h2>
@@ -158,9 +158,9 @@ export function ProjectHome() {
               </div>
               <span>{zh ? '唯一执行链路' : 'Sole execution path'}</span>
             </div>
-            <ol className='signin-authority-path'>
+            <ol className='item-group signin-authority-path'>
               {AUTHORITY_PATH.map(({ label, detail, icon: Icon }) => (
-                <li key={label}>
+                <li className='item' key={label}>
                   <span className='authority-icon' aria-hidden='true'>
                     <Icon size={19} />
                   </span>
@@ -188,10 +188,10 @@ export function ProjectHome() {
 
       <footer className='product-footer'>
         <div className='brand-lockup'>
-          <span className='brand-mark' aria-hidden='true'>
+          <span className='brand-mark' data-brand-mark aria-hidden='true'>
             A3
           </span>
-          <span>A3S OS</span>
+          <span data-brand-name>A3S OS</span>
         </div>
         <p>
           {zh
@@ -242,7 +242,12 @@ function WebClientOverview({ language }: { language: 'zh' | 'en' }) {
             <strong>A3S Web</strong>
             <small>{zh ? '统一客户端视图' : 'UNIFIED CLIENT VIEW'}</small>
           </figcaption>
-          <ol>
+          <ol
+            className='stepper'
+            aria-label={zh ? 'A3S Web 操作流程' : 'A3S Web operating flow'}
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: Overflowing steps must remain keyboard-scrollable.
+            tabIndex={0}
+          >
             {[
               zh ? '发现资源' : 'Discover',
               zh ? '执行操作' : 'Operate',
@@ -250,8 +255,12 @@ function WebClientOverview({ language }: { language: 'zh' | 'en' }) {
               zh ? '验证证据' : 'Verify',
             ].map((label, index) => (
               <li key={label}>
-                <b>0{index + 1}</b>
-                <span>{label}</span>
+                <span data-step-marker aria-hidden='true'>
+                  0{index + 1}
+                </span>
+                <section>
+                  <span>{label}</span>
+                </section>
               </li>
             ))}
           </ol>

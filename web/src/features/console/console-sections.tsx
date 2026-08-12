@@ -30,6 +30,7 @@ import { BuildRunLogPanel } from '../logs/build-run-log-panel';
 import { LiveLogPanel } from '../logs/live-log-panel';
 import { BuildEvidencePanel } from './build-evidence-panel';
 import { BuildRunPanel } from './build-run-panel';
+import { statusBadgeState } from './console-format';
 import { DeploymentTimeline } from './deployment-timeline';
 import { EdgeStatusPanel } from './edge-status-panel';
 import { AssetCatalogCard, InfrastructureCard } from './environment-summary';
@@ -118,7 +119,7 @@ function OverviewStatusBand({
           </small>
         </div>
       </div>
-      <dl className='overview-status-facts'>
+      <dl className='property-list overview-status-facts' data-variant='plain'>
         <div>
           <dt>{t('Workloads')}</dt>
           <dd>{workloadCount}</dd>
@@ -144,39 +145,52 @@ function CurrentOperationsCard({ operations }: { operations: Operation[] }) {
   const { formatRelative, label, t } = useI18n();
   const recent = operations.slice(0, 5);
   return (
-    <article className='surface current-operations-card'>
-      <div className='surface-heading'>
+    <article className='card surface current-operations-card' data-size='sm'>
+      <header className='surface-heading'>
         <div>
           <h2>{t('Current operations')}</h2>
           <p>{t('Latest durable workflow state for this organization')}</p>
         </div>
-        <span>{t('{count} total', { count: operations.length })}</span>
-      </div>
-      {recent.length === 0 ? (
-        <div className='overview-empty-state'>
-          <CheckCircle2 size={22} />
-          <div>
-            <strong>{t('No operations recorded')}</strong>
-            <p>{t('Accepted mutations and their terminal evidence will appear here.')}</p>
+        <span className='badge card-action' data-variant='secondary'>
+          {t('{count} total', { count: operations.length })}
+        </span>
+      </header>
+      <section>
+        {recent.length === 0 ? (
+          <div className='empty overview-empty-state'>
+            <figure>
+              <CheckCircle2 size={22} />
+            </figure>
+            <header>
+              <h3>{t('No operations recorded')}</h3>
+              <p>{t('Accepted mutations and their terminal evidence will appear here.')}</p>
+            </header>
           </div>
-        </div>
-      ) : (
-        <ol className='overview-operation-list'>
-          {recent.map((operation) => (
-            <li key={operation.id}>
-              <span className={`operation-status ${operation.status}`} aria-hidden='true' />
-              <span className='overview-operation-name'>
-                <strong>{label(operation.subjectKind)}</strong>
-                <small>
-                  {operation.workflowName}@{operation.workflowVersion}
-                </small>
-              </span>
-              <span className={`state-badge ${operation.status}`}>{label(operation.status)}</span>
-              <time dateTime={operation.updatedAt}>{formatRelative(operation.updatedAt)}</time>
-            </li>
-          ))}
-        </ol>
-      )}
+        ) : (
+          <ol className='item-group overview-operation-list'>
+            {recent.map((operation) => (
+              <li className='item' data-size='sm' data-variant='outline' key={operation.id}>
+                <span className={`operation-status ${operation.status}`} aria-hidden='true' />
+                <span className='overview-operation-name' data-item-content>
+                  <strong>{label(operation.subjectKind)}</strong>
+                  <small>
+                    {operation.workflowName}@{operation.workflowVersion}
+                  </small>
+                </span>
+                <span
+                  className='status-badge'
+                  data-state={statusBadgeState(operation.status)}
+                  data-size='sm'
+                  data-indicator
+                >
+                  {label(operation.status)}
+                </span>
+                <time dateTime={operation.updatedAt}>{formatRelative(operation.updatedAt)}</time>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
     </article>
   );
 }
@@ -194,27 +208,34 @@ const AUTHORITY_LAYERS = [
 function AuthorityChain() {
   const { t } = useI18n();
   return (
-    <article className='surface authority-chain-card'>
-      <div className='surface-heading'>
+    <article className='card surface authority-chain-card' data-size='sm'>
+      <header className='surface-heading'>
         <div>
           <h2>{t('Authority and runtime path')}</h2>
           <p>{t('One control route from accepted intent to execution evidence')}</p>
         </div>
-        <Box size={20} />
-      </div>
-      <ol className='authority-chain'>
-        {AUTHORITY_LAYERS.map(({ label, detail, icon: Icon }) => (
-          <li className={label === 'Agent execution providers' ? 'authority-harness' : undefined} key={label}>
-            <span aria-hidden='true'>
-              <Icon size={18} />
-            </span>
-            <div>
-              <strong>{t(label)}</strong>
-              <small>{t(detail)}</small>
-            </div>
-          </li>
-        ))}
-      </ol>
+        <Box className='card-action' size={20} aria-hidden='true' />
+      </header>
+      <section>
+        <ol className='item-group authority-chain'>
+          {AUTHORITY_LAYERS.map(({ label, detail, icon: Icon }) => (
+            <li
+              className={`item${label === 'Agent execution providers' ? ' authority-harness' : ''}`}
+              data-size='sm'
+              data-variant={label === 'Agent execution providers' ? 'muted' : 'outline'}
+              key={label}
+            >
+              <figure aria-hidden='true'>
+                <Icon size={18} />
+              </figure>
+              <section>
+                <h3>{t(label)}</h3>
+                <p>{t(detail)}</p>
+              </section>
+            </li>
+          ))}
+        </ol>
+      </section>
     </article>
   );
 }

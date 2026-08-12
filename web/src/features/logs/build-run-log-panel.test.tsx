@@ -32,6 +32,16 @@ describe('BuildRunLogPanel', () => {
     expect(host.textContent).toContain(
       'Build logs are unavailable until A3S Box exposes an authoritative durable log contract.'
     );
+    expect(host.querySelector('.log-viewer [data-log-viewport][role="log"]')).not.toBeNull();
+    const logViewport = host.querySelector<HTMLElement>('.log-viewer [data-log-viewport][role="log"]');
+    expect(logViewport?.tabIndex).toBe(0);
+    expect(logViewport?.getAttribute('aria-label')).toBe('Ordered log records');
+    expect(host.querySelector('.log-viewer [data-log-actions]')).not.toBeNull();
+    const filters = [...host.querySelectorAll<HTMLButtonElement>('[data-log-actions] button')];
+    expect(filters.map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+    expect(host.querySelector('.status-badge[data-state="neutral"][data-indicator]')).not.toBeNull();
+    expect(host.querySelector('.empty.live-log-empty > figure + header')).not.toBeNull();
+    expect([...host.querySelectorAll('button')].every((button) => button.matches('.btn'))).toBe(true);
     expect([...host.querySelectorAll('button')].every((button) => button.disabled)).toBe(true);
   });
 

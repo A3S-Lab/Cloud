@@ -34,10 +34,14 @@
 
 .architecture-export-controls {
   display: flex;
+  height: auto;
   min-width: 260px;
+  margin: 0;
+  padding: 0;
   align-items: flex-end;
   flex-direction: column;
   gap: 8px;
+  border: 0;
 }
 
 .architecture-export-controls button {
@@ -206,7 +210,7 @@
 .architecture-module-grid li,
 .architecture-business-group li,
 .architecture-payload-card,
-.architecture-runtime-path span {
+.architecture-runtime-path li > section {
   display: grid;
   min-height: 39px;
   padding: 7px 10px;
@@ -392,16 +396,41 @@
 
 .architecture-runtime-path li {
   position: relative;
+  display: grid;
   min-width: 0;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
 }
 
-.architecture-runtime-path b {
+.architecture-runtime-path [data-step-marker] {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.architecture-runtime-path li > section h5 {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.architecture-runtime-path li:not(:last-child)::after {
   position: absolute;
   top: 50%;
   right: -17px;
-  color: #ffffff;
-  font-size: 20px;
-  line-height: 1;
+  width: 14px;
+  height: 1px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.72);
+  content: '';
   transform: translateY(-50%);
 }
 

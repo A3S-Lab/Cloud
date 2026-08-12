@@ -2,7 +2,7 @@ import { Activity, CheckCheck } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import type { Operation } from '../../types/api';
 import type { StreamState } from '../operations/use-operation-stream';
-import { shortId } from './console-format';
+import { shortId, statusBadgeState } from './console-format';
 import { isTerminalOperation, visibleOperations } from './workload-view-model';
 
 interface OperationDrawerProps {
@@ -23,35 +23,59 @@ export function OperationDrawer({
   const terminalIds = visible.filter(isTerminalOperation).map((operation) => operation.id);
 
   return (
-    <aside className='operation-drawer' aria-label={t('Operations')}>
-      <div className='drawer-heading'>
+    <aside className='task-pane operation-drawer' data-responsive='overlay' aria-label={t('Operations')}>
+      <header className='drawer-heading'>
         <div>
-          <p className='eyebrow'>{t('Durable timeline')}</p>
           <h2>{t('Operations')}</h2>
+          <p>{t('Durable timeline')}</p>
         </div>
-        <output className={`stream-dot ${streamState}`} aria-label={label(streamState)} />
-      </div>
+        <output
+          className='status-badge'
+          data-state={statusBadgeState(streamState)}
+          data-size='sm'
+          data-indicator
+        >
+          {label(streamState)}
+        </output>
+      </header>
       {terminalIds.length > 0 ? (
-        <button className='drawer-cleanup' type='button' onClick={() => onDismissTerminal(terminalIds)}>
+        <button
+          className='btn drawer-cleanup'
+          data-size='xs'
+          data-variant='outline'
+          type='button'
+          onClick={() => onDismissTerminal(terminalIds)}
+        >
           <CheckCheck size={14} />
           {t('Clear {count} terminal', { count: terminalIds.length })}
         </button>
       ) : null}
-      <div className='operation-list'>
+      <section className='item-group operation-list'>
         {visible.length === 0 ? (
-          <div className='empty-operations'>
-            <Activity size={22} />
-            <strong>{t('No visible operations')}</strong>
-            <p>{t('Active work and new authoritative terminal results will appear here.')}</p>
+          <div className='empty empty-operations'>
+            <figure>
+              <Activity size={22} />
+            </figure>
+            <header>
+              <h3>{t('No visible operations')}</h3>
+              <p>{t('Active work and new authoritative terminal results will appear here.')}</p>
+            </header>
           </div>
         ) : (
           visible.map((operation) => (
-            <article className='operation-item' key={operation.id}>
+            <article className='item operation-item' data-size='sm' data-variant='outline' key={operation.id}>
               <span className={`operation-status ${operation.status}`} />
-              <div>
+              <section>
                 <div className='operation-title'>
                   <strong>{label(operation.subjectKind)}</strong>
-                  <span>{label(operation.status)}</span>
+                  <span
+                    className='status-badge'
+                    data-state={statusBadgeState(operation.status)}
+                    data-size='sm'
+                    data-indicator
+                  >
+                    {label(operation.status)}
+                  </span>
                 </div>
                 <p>
                   {operation.workflowName}@{operation.workflowVersion}
@@ -81,11 +105,11 @@ export function OperationDrawer({
                   })}
                 </small>
                 {operation.error ? <em>{operation.error}</em> : null}
-              </div>
+              </section>
             </article>
           ))
         )}
-      </div>
+      </section>
     </aside>
   );
 }

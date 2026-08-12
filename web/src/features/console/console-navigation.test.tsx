@@ -75,6 +75,9 @@ describe('ConsoleNavigation', () => {
     expect(buttons[1]?.getAttribute('aria-current')).toBe('page');
     expect(buttons[5]?.getAttribute('aria-label')).toBe('Architecture, Platform module map');
     expect(buttons.map((button) => button.tabIndex)).toEqual([-1, 0, -1, -1, -1, -1]);
+    expect(host.querySelector('nav.tabs.console-navigation')).not.toBeNull();
+    expect(host.querySelector('[role="tablist"][data-variant="line"]')).not.toBeNull();
+    expect(host.querySelectorAll('em.badge[data-variant="secondary"]')).toHaveLength(5);
 
     await act(async () => buttons[2]?.click());
     expect(onSelect).toHaveBeenCalledWith('agents');

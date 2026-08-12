@@ -58,6 +58,22 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+a.brand-lockup:focus-visible,
+.stepper:focus-visible,
+.live-log-viewport:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+a.brand-lockup:focus-visible,
+.stepper:focus-visible {
+  border-radius: 10px;
+}
+
+.live-log-viewport:focus-visible {
+  outline-offset: -3px;
+}
+
 h1,
 h2,
 p {
@@ -342,16 +358,6 @@ h2,
   font-size: 12px;
 }
 
-.connection-pill.live {
-  color: var(--accent);
-  border-color: rgba(184, 243, 107, 0.24);
-  background: rgba(184, 243, 107, 0.06);
-}
-
-.connection-pill.retrying {
-  color: var(--warning);
-}
-
 .quiet-button,
 .icon-button {
   height: 34px;
@@ -432,8 +438,17 @@ h2,
   font-size: 13px;
 }
 
-.error-banner span {
+.error-banner > section {
   flex: 1;
+}
+
+.error-banner > section p {
+  margin: 0;
+}
+
+.error-banner > footer {
+  position: static;
+  margin-left: auto;
 }
 
 .error-banner button {
@@ -552,36 +567,6 @@ h2,
   opacity: 0.56;
 }
 
-.state-badge {
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.state-badge.active,
-.state-badge.verifying {
-  border-color: rgba(184, 243, 107, 0.26);
-  color: var(--accent);
-  background: rgba(184, 243, 107, 0.06);
-}
-
-.state-badge.cancelling,
-.state-badge.cleanup_pending {
-  border-color: rgba(243, 200, 107, 0.28);
-  color: var(--warning);
-  background: rgba(243, 200, 107, 0.06);
-}
-
-.state-badge.failed,
-.state-badge.cancelled,
-.state-badge.orphaned {
-  border-color: rgba(240, 123, 115, 0.28);
-  color: var(--danger);
-  background: rgba(240, 123, 115, 0.06);
-}
-
 .convergence-track {
   display: grid;
   margin: 34px 0 0;
@@ -638,7 +623,7 @@ h2,
   background: var(--danger);
 }
 
-.convergence-step div {
+.convergence-step > section {
   z-index: 1;
   display: flex;
   min-width: 0;
@@ -656,7 +641,7 @@ h2,
 }
 
 .convergence-step small,
-.asset-kinds small {
+.asset-kinds p {
   color: var(--faint);
   font-size: 11px;
   line-height: 1.35;
@@ -786,12 +771,12 @@ h2,
 
 .asset-kinds {
   display: grid;
-  margin-top: 20px;
+  margin: 0;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
-.asset-kinds > div {
+.asset-kinds > article {
   display: flex;
   min-width: 0;
   padding: 12px 8px;
@@ -804,7 +789,13 @@ h2,
   background: rgba(5, 9, 6, 0.18);
 }
 
-.asset-kinds strong {
+.asset-kinds h3 {
+  margin: 0;
   color: #cbd6cf;
   font-size: 12px;
+}
+
+.asset-kinds figure,
+.asset-kinds p {
+  margin: 0;
 }

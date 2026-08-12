@@ -2,6 +2,7 @@ import { ArrowUpRight, LoaderCircle, Search } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import { DEFAULT_SEARCH_LIMIT, type CloudApi, validateSearchRequest } from '../../lib/api';
 import { useI18n } from '../../lib/i18n';
+import { statusBadgeState } from '../../lib/status-badge';
 import type { SearchResult } from '../../types/api';
 
 interface ResourceSearchProps {
@@ -116,7 +117,7 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
 
   return (
     <form
-      className='resource-search'
+      className='combobox resource-search'
       onSubmit={(event) => event.preventDefault()}
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
@@ -124,6 +125,7 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
     >
       <Search className='resource-search-icon' size={16} aria-hidden='true' />
       <input
+        className='input'
         type='search'
         value={query}
         disabled={!organizationId}
@@ -147,7 +149,7 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
       ) : null}
 
       {open ? (
-        <div className='resource-search-popover'>
+        <div className='resource-search-popover' data-popover>
           {error ? (
             <p className='resource-search-message error' role='alert'>
               {t(error)}
@@ -161,8 +163,12 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
               {results.map((result, index) => (
                 <button
                   className={
-                    index === activeIndex ? 'resource-search-result active' : 'resource-search-result'
+                    index === activeIndex
+                      ? 'item resource-search-result active'
+                      : 'item resource-search-result'
                   }
+                  data-size='sm'
+                  data-value={result.id}
                   id={`${listboxId}-${index}`}
                   key={`${result.kind}:${result.id}`}
                   type='button'
@@ -176,7 +182,15 @@ export function ResourceSearch({ api, organizationId, onSelect }: ResourceSearch
                     <strong>{result.title}</strong>
                     <small>{result.description}</small>
                   </span>
-                  {result.state ? <span className='resource-search-state'>{label(result.state)}</span> : null}
+                  {result.state ? (
+                    <span
+                      className='status-badge resource-search-state'
+                      data-state={statusBadgeState(result.state)}
+                      data-size='sm'
+                    >
+                      {label(result.state)}
+                    </span>
+                  ) : null}
                   <ArrowUpRight size={15} aria-hidden='true' />
                 </button>
               ))}

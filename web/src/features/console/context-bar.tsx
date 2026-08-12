@@ -33,7 +33,7 @@ export function ContextBar({
 }: ContextBarProps) {
   const { t } = useI18n();
   return (
-    <nav className='context-bar' aria-label={t('Cloud context')}>
+    <nav className='toolbar context-bar' aria-label={t('Cloud context')}>
       <ContextSelect
         label={t('Organization')}
         value={organizationId}
@@ -69,9 +69,11 @@ function ContextSelect({
 }) {
   const { t } = useI18n();
   return (
-    <label className='context-select'>
+    <label className='field context-select'>
       <span>{label}</span>
       <select
+        className='select'
+        data-size='sm'
         value={value}
         disabled={disabled || items.length === 0}
         onChange={(event) => onChange(event.target.value)}

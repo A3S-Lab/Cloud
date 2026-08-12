@@ -10,6 +10,10 @@
   border-bottom: 1px solid var(--line);
 }
 
+.build-run-panel > section {
+  min-width: 0;
+}
+
 .build-run-list {
   display: grid;
   padding: 16px;
@@ -18,8 +22,11 @@
 }
 
 .build-run-item {
+  display: flex;
   min-width: 0;
   padding: 16px;
+  align-items: stretch;
+  flex-direction: column;
   border: 1px solid rgba(38, 53, 43, 0.82);
   border-radius: 12px;
   background: rgba(7, 11, 8, 0.35);
@@ -51,7 +58,7 @@
 
 .build-run-heading small {
   color: var(--faint);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .build-run-facts {
@@ -67,7 +74,7 @@
 
 .build-run-facts dt {
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -88,7 +95,7 @@
   padding: 9px 10px;
   overflow-wrap: anywhere;
   border-radius: 8px;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -115,7 +122,7 @@
   align-items: center;
   gap: 6px;
   color: var(--accent);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -128,7 +135,7 @@
 
 .build-run-evidence-summary dt {
   color: var(--faint);
-  font-size: 8px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -138,7 +145,7 @@
   overflow: hidden;
   color: #c5d1c9;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -149,34 +156,6 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-}
-
-.state-badge.queued,
-.state-badge.preparing,
-.state-badge.prepared,
-.state-badge.scheduled,
-.state-badge.running,
-.state-badge.validating,
-.state-badge.publishing,
-.state-badge.attesting,
-.state-badge.cancelling,
-.state-badge.cleanup_pending {
-  border-color: rgba(243, 200, 107, 0.28);
-  color: var(--warning);
-  background: rgba(243, 200, 107, 0.06);
-}
-
-.state-badge.succeeded {
-  border-color: rgba(184, 243, 107, 0.26);
-  color: var(--accent);
-  background: rgba(184, 243, 107, 0.06);
-}
-
-.state-badge.failed,
-.state-badge.cancelled {
-  border-color: rgba(240, 123, 115, 0.28);
-  color: var(--danger);
-  background: rgba(240, 123, 115, 0.06);
 }
 
 .build-evidence-panel {
@@ -191,17 +170,8 @@
   border-bottom: 1px solid var(--line);
 }
 
-.evidence-verified {
-  display: inline-flex;
-  padding: 6px 9px;
-  align-items: center;
-  gap: 6px;
-  border: 1px solid rgba(184, 243, 107, 0.24);
-  border-radius: 999px;
-  color: var(--accent);
-  background: rgba(184, 243, 107, 0.055);
-  font-size: 10px;
-  font-weight: 700;
+.build-evidence-panel > section {
+  min-width: 0;
 }
 
 .build-evidence-content {
@@ -210,25 +180,39 @@
 
 .build-evidence-status {
   display: flex;
+  padding: 12px;
   align-items: center;
   gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   color: var(--accent);
+  background: var(--accent-soft);
 }
 
-.build-evidence-status > div {
+.build-evidence-status > figure {
+  display: flex;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.build-evidence-status > section {
   display: flex;
   min-width: 0;
+  flex: 1;
   flex-direction: column;
   gap: 3px;
 }
 
-.build-evidence-status strong {
+.build-evidence-status h3 {
+  margin: 0;
   font-size: 13px;
 }
 
-.build-evidence-status span {
+.build-evidence-status p {
+  margin: 0;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .build-evidence-facts {
@@ -248,7 +232,7 @@
 
 .build-evidence-facts dt {
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -258,7 +242,7 @@
   overflow-wrap: anywhere;
   color: #c5d1c9;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.45;
 }
 
@@ -276,7 +260,7 @@
   border-radius: 8px;
   color: #ffc2be;
   background: rgba(240, 123, 115, 0.08);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .build-evidence-document {
@@ -297,12 +281,12 @@
 }
 
 .build-evidence-document strong {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .build-evidence-document span {
   color: var(--faint);
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .build-evidence-document pre {
@@ -312,7 +296,7 @@
   overflow: auto;
   color: #b9c7be;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.55;
   white-space: pre;
 }

@@ -23,10 +23,10 @@ export function App() {
         <main className='standalone-access'>
           <header>
             <div className='brand-lockup'>
-              <span className='brand-mark' aria-hidden='true'>
+              <span className='brand-mark' data-brand-mark aria-hidden='true'>
                 A3
               </span>
-              <span>A3S OS · A3S Web</span>
+              <span data-brand-name>A3S OS · A3S Web</span>
             </div>
             <LanguageSwitcher />
           </header>

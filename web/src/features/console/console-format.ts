@@ -1,5 +1,7 @@
 import type { StreamState } from '../operations/use-operation-stream';
 
+export { statusBadgeState, type StatusBadgeState } from '../../lib/status-badge';
+
 export function humanize(value: string): string {
   return value.replaceAll('_', ' ').replace(/^./, (character) => character.toUpperCase());
 }

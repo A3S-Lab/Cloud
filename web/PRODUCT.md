@@ -35,6 +35,7 @@ The control plane owns intent, policy, scheduling, rollout, and management state
 - Mutations create durable operations instead of holding an HTTP request open.
 - Operators inspect workload convergence, deployment history, logs, BuildRuns, provenance evidence, routes, certificates, Agent conversations, semantic execution events, and active operations.
 - The web console shares one typed API client and contract with the CLI and other management surfaces.
+- Reusable visual and semantic contracts live in `@a3s-lab/ui`; React owns API calls, SSE streams, application state, and provider-neutral domain decisions in this host.
 
 ## Capabilities and Constraints
 
@@ -48,6 +49,7 @@ The control plane owns intent, policy, scheduling, rollout, and management state
 - The web console must distinguish implemented, in-progress, planned, unavailable, empty, loading, and error states honestly.
 - Product copy must not invent customers, benchmarks, pricing, availability guarantees, or completed roadmap capabilities.
 - The application remains React 19 with Rsbuild and the existing `lucide-react` icon family unless a separately justified dependency change is approved.
+- Consume only published `@a3s-lab/ui` versions in Cloud. Never make this independently buildable repository depend on a parent-checkout relative path; markup may adopt a pending UI contract before the matching package release, while the existing Cloud skin remains the visual fallback.
 
 ## Brand Commitments
 

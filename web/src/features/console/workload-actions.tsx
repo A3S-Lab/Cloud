@@ -109,7 +109,9 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
     <>
       <div className='workload-actions'>
         <button
-          className='secondary-button compact'
+          className='btn secondary-button compact'
+          data-size='xs'
+          data-variant='outline'
           type='button'
           disabled={!ready || releaseBound}
           title={
@@ -124,7 +126,9 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
           <Braces size={14} /> {t('Update')}
         </button>
         <button
-          className='secondary-button compact'
+          className='btn secondary-button compact'
+          data-size='xs'
+          data-variant='outline'
           type='button'
           disabled={!ready || rollbackRevisions.length === 0}
           title={
@@ -148,8 +152,8 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
         >
           <div className='action-dialog-heading'>
             <div>
-              <p className='eyebrow'>{t('Immutable replacement')}</p>
               <h2 id='update-workload-title'>{t('Update {name}', { name: workload.name })}</h2>
+              <p>{t('Immutable replacement')}</p>
             </div>
             <CloseButton disabled={submitting === 'update'} onClick={() => setUpdateDialog(null)} />
           </div>
@@ -159,9 +163,10 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
               { generation: updateDialog.sourceGeneration }
             )}
           </p>
-          <label className='template-editor'>
+          <label className='field template-editor'>
             <span>{t('Complete Service template')}</span>
             <textarea
+              className='textarea'
               value={updateDialog.draft}
               spellCheck={false}
               onChange={(event) =>
@@ -169,9 +174,13 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
               }
             />
           </label>
-          {parsedDraft.error ? <p className='dialog-validation'>{t(parsedDraft.error)}</p> : null}
+          {parsedDraft.error ? (
+            <p className='dialog-validation' role='alert'>
+              {t(parsedDraft.error)}
+            </p>
+          ) : null}
           {updateProjectionChanged ? (
-            <p className='dialog-validation'>
+            <p className='dialog-validation' role='alert'>
               {t(
                 'The authoritative desired revision changed while this editor was open. Close and reopen it before submitting.'
               )}
@@ -201,7 +210,8 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
           <div className='action-dialog-footer'>
             <span>{t('A single idempotency key is retained while this dialog stays open.')}</span>
             <button
-              className='primary-action'
+              className='btn primary-action'
+              data-size='sm'
               type='button'
               disabled={
                 submitting === 'update' ||
@@ -225,8 +235,8 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
         >
           <div className='action-dialog-heading'>
             <div>
-              <p className='eyebrow'>{t('Manual rollback')}</p>
               <h2 id='rollback-workload-title'>{t('Roll back {name}', { name: workload.name })}</h2>
+              <p>{t('Manual rollback')}</p>
             </div>
             <CloseButton disabled={submitting === 'rollback'} onClick={() => setRollbackDialog(null)} />
           </div>
@@ -235,7 +245,11 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
               'Select an older successfully activated revision. Cloud clones its exact resolved template into a new generation and uses the normal health, cutover, and retirement path.'
             )}
           </p>
-          <div className='rollback-options' role='radiogroup' aria-label={t('Rollback source revision')}>
+          <div
+            className='field rollback-options'
+            role='radiogroup'
+            aria-label={t('Rollback source revision')}
+          >
             {rollbackRevisions.map((revision) => {
               const deployment = workload.deployments.find(
                 (item) => item.revision.id === revision.id && item.activatedAt
@@ -267,7 +281,8 @@ export function WorkloadActions({ workload, onUpdate, onRollback }: WorkloadActi
           <div className='action-dialog-footer'>
             <span>{t('The source revision ID is recorded on the durable operation.')}</span>
             <button
-              className='primary-action'
+              className='btn primary-action'
+              data-size='sm'
               type='button'
               disabled={submitting === 'rollback' || !selectedRollback || !ready}
               onClick={submitRollback}
@@ -296,7 +311,7 @@ function DialogFrame({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialogRef = useRef<HTMLElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
   const closeDisabledRef = useRef(closeDisabled);
   onCloseRef.current = onClose;
@@ -350,18 +365,16 @@ function DialogFrame({
   }, []);
 
   return createPortal(
-    <div className='action-dialog-backdrop'>
-      <section
-        className='action-dialog'
-        ref={dialogRef}
-        role='dialog'
-        aria-modal='true'
-        aria-labelledby={labelId}
-        tabIndex={-1}
-      >
-        {children}
-      </section>
-    </div>,
+    <dialog
+      className='dialog action-dialog-backdrop'
+      ref={dialogRef}
+      open
+      aria-modal='true'
+      aria-labelledby={labelId}
+      tabIndex={-1}
+    >
+      <section className='action-dialog'>{children}</section>
+    </dialog>,
     document.body
   );
 }
@@ -370,7 +383,9 @@ function CloseButton({ disabled, onClick }: { disabled: boolean; onClick: () => 
   const { t } = useI18n();
   return (
     <button
-      className='icon-button'
+      className='btn icon-button'
+      data-size='icon-sm'
+      data-variant='ghost'
       type='button'
       disabled={disabled}
       aria-label={t('Close dialog')}

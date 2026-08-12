@@ -48,6 +48,11 @@ describe('ResourceSearch', () => {
     expect(searchResources).toHaveBeenCalledWith(ORGANIZATION_ID, 'worker', 20, expect.any(AbortSignal));
     expect(host.textContent).toContain('Cloud worker');
     expect(host.textContent).toContain('Workload · desired running');
+    expect(host.querySelector('form.combobox.resource-search')).not.toBeNull();
+    expect(host.querySelector('input.input[role="combobox"]')).not.toBeNull();
+    expect(host.querySelector('[data-popover]')).not.toBeNull();
+    expect(host.querySelector(`button.item[data-value="${RESOURCE_ID}"]`)).not.toBeNull();
+    expect(host.querySelector('.resource-search-state.status-badge[data-state="active"]')).not.toBeNull();
 
     const option = host.querySelector<HTMLButtonElement>('[role="option"]');
     await act(async () => option?.click());

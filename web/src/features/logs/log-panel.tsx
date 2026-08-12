@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import { useI18n } from '../../lib/i18n';
 import type { StreamState } from '../../lib/sse';
 import type { WorkloadLogRecord, WorkloadLogStreamFilter } from '../../types/api';
+import { statusBadgeState } from '../console/console-format';
 import { MAX_VISIBLE_LOG_RECORDS } from './use-log-stream';
 
 type LogFilter = 'all' | WorkloadLogStreamFilter;
@@ -49,27 +50,34 @@ export function LogPanel({
   }, [recordCount]);
 
   return (
-    <section className='surface live-log-panel' aria-label={ariaLabel}>
-      <div className='live-log-heading'>
+    <section className='surface log-viewer live-log-panel' aria-label={ariaLabel}>
+      <header className='live-log-heading'>
         <div>
-          <p className='eyebrow'>{eyebrow}</p>
+          <p>{eyebrow}</p>
           <h2>
             <SquareTerminal size={19} /> {title}
           </h2>
         </div>
         <div className='live-log-toolbar'>
-          <span className={`log-stream-state ${state}`}>
-            <Radio size={13} />
+          <span
+            className='status-badge log-stream-state'
+            data-state={statusBadgeState(state)}
+            data-size='sm'
+            data-indicator
+          >
             {label(state)}
           </span>
-          <fieldset className='log-filter'>
+          <fieldset className='log-filter' data-log-actions>
             <legend className='sr-only'>{t('Log stream filter')}</legend>
             {(['all', 'stdout', 'stderr'] as const).map((value) => (
               <button
-                className={filter === value ? 'selected' : ''}
+                className={`btn${filter === value ? ' selected' : ''}`}
+                data-size='xs'
+                data-variant={filter === value ? 'secondary' : 'ghost'}
                 type='button'
                 key={value}
                 disabled={!available}
+                aria-pressed={filter === value}
                 onClick={() => onFilterChange(value)}
               >
                 {value === 'stdout' || value === 'stderr' ? value : label(value)}
@@ -77,8 +85,8 @@ export function LogPanel({
             ))}
           </fieldset>
         </div>
-      </div>
-      <div className='live-log-meta'>
+      </header>
+      <div className='live-log-meta' data-log-meta>
         <span>{contextLabel}</span>
         <span>
           {t('Showing the latest {count} ordered records at most', {
@@ -86,27 +94,44 @@ export function LogPanel({
           })}
         </span>
       </div>
-      <div className='live-log-viewport' ref={viewport} role='log' aria-live='polite'>
+      <div
+        className='live-log-viewport'
+        ref={viewport}
+        role='log'
+        aria-label={t('Ordered log records')}
+        aria-live='polite'
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: The bounded log viewport must be keyboard-scrollable.
+        tabIndex={0}
+        data-log-viewport
+      >
         {!available ? (
-          <div className='live-log-empty'>
-            <SquareTerminal size={22} />
-            <span>{unavailableMessage}</span>
+          <div className='empty live-log-empty'>
+            <figure>
+              <SquareTerminal size={22} />
+            </figure>
+            <header>
+              <p>{unavailableMessage}</p>
+            </header>
           </div>
         ) : records.length === 0 ? (
-          <div className='live-log-empty'>
-            <Radio size={22} />
-            <span>
-              {state === 'live'
-                ? t('Connected. Waiting for ordered log records.')
-                : t('Connecting to the authoritative log stream.')}
-            </span>
+          <div className='empty live-log-empty'>
+            <figure>
+              <Radio size={22} />
+            </figure>
+            <header>
+              <p>
+                {state === 'live'
+                  ? t('Connected. Waiting for ordered log records.')
+                  : t('Connecting to the authoritative log stream.')}
+              </p>
+            </header>
           </div>
         ) : (
           records.map((record) => <LogRecord record={record} key={record.sequence} />)
         )}
       </div>
       {error ? (
-        <output className='live-log-error'>
+        <output className='live-log-error' role='alert'>
           <CircleAlert size={14} />
           {t(error)}
         </output>
@@ -119,17 +144,25 @@ function LogRecord({ record }: { record: WorkloadLogRecord }) {
   const { language, label, t } = useI18n();
   if (record.kind === 'gap') {
     return (
-      <div className='live-log-gap'>
+      <div className='live-log-gap' data-log-gap>
         <span>{sequenceLabel(record)}</span>
         <strong>{gapLabel(record, label, t)}</strong>
       </div>
     );
   }
   return (
-    <div className={`live-log-record ${record.stream ?? 'unknown'}`}>
-      <span className='live-log-sequence'>#{record.sequence}</span>
+    <div
+      className={`live-log-record ${record.stream ?? 'unknown'}`}
+      data-log-record
+      data-stream={record.stream ?? 'unknown'}
+    >
+      <span className='live-log-sequence' data-log-sequence>
+        #{record.sequence}
+      </span>
       <time>{timestampLabel(record.observedAtMs, language, t)}</time>
-      <span className='live-log-stream'>{record.stream ?? 'unknown'}</span>
+      <span className='live-log-stream' data-log-stream>
+        {record.stream ?? 'unknown'}
+      </span>
       <pre>{record.data ?? ''}</pre>
     </div>
   );

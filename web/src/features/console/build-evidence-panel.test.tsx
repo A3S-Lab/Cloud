@@ -40,6 +40,11 @@ describe('BuildEvidencePanel', () => {
 
     expect(host.textContent).toContain('Verified evidence');
     expect(host.textContent).toContain('sha256:bbbbbbbbbbbb');
+    expect(host.querySelector('section.card.build-evidence-panel')).not.toBeNull();
+    expect(host.querySelector('.status-badge[data-state="success"][data-indicator]')).not.toBeNull();
+    expect(host.querySelector('article.item.build-evidence-status')).not.toBeNull();
+    expect(host.querySelectorAll('button.btn[data-variant="outline"]')).toHaveLength(2);
+    expect(host.querySelector('dl.property-list[data-size="sm"]')).not.toBeNull();
     expect(getBuildEvidence).not.toHaveBeenCalled();
 
     const view = [...host.querySelectorAll('button')].find((button) =>

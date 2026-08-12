@@ -96,8 +96,13 @@ export function ConsoleNavigation({ activeSection, counts, onSelect }: ConsoleNa
   };
 
   return (
-    <nav className='console-navigation' aria-label={t('Environment sections')}>
-      <div role='tablist' aria-label={t('Environment workspace')}>
+    <nav className='tabs console-navigation' aria-label={t('Environment sections')}>
+      <div
+        role='tablist'
+        aria-label={t('Environment workspace')}
+        aria-orientation='horizontal'
+        data-variant='line'
+      >
         {SECTIONS.map((section, index) => {
           const Icon = section.icon;
           const active = section.id === activeSection;
@@ -126,7 +131,15 @@ export function ConsoleNavigation({ activeSection, counts, onSelect }: ConsoleNa
                 <strong>{t(section.label)}</strong>
                 <small>{t(section.description)}</small>
               </span>
-              {count === null ? null : <em title={`${count} ${t(section.countLabel ?? '')}`}>{count}</em>}
+              {count === null ? null : (
+                <em
+                  className='badge'
+                  data-variant='secondary'
+                  title={`${count} ${t(section.countLabel ?? '')}`}
+                >
+                  {count}
+                </em>
+              )}
             </button>
           );
         })}

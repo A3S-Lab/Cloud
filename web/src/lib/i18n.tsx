@@ -381,6 +381,7 @@ const ZH_CN: Record<string, string> = {
   'build {build}': '构建 {build}',
   'seq {sequence} · {time}': '序号 {sequence} · {time}',
   'Log stream filter': '日志流筛选',
+  'Ordered log records': '有序日志记录',
   'Showing the latest {count} ordered records at most': '最多显示最新 {count} 条有序记录',
   'Connected. Waiting for ordered log records.': '已连接，正在等待有序日志记录。',
   'Connecting to the authoritative log stream.': '正在连接权威日志流。',
@@ -407,6 +408,7 @@ const ZH_CN: Record<string, string> = {
   'Authorized search is unavailable.': '授权资源搜索暂不可用。',
   'Durable context': '持久化上下文',
   'Agent conversations': 'Agent 会话',
+  'Agent execution workbench': 'Agent 执行工作台',
   'Creating...': '正在创建...',
   'New conversation': '新建会话',
   'Create a conversation to start an immutable Agent release.': '创建会话以运行不可变的 Agent 发布。',
@@ -555,12 +557,28 @@ export function useI18n(): I18nContextValue {
 export function LanguageSwitcher({ compact = false }: { compact?: boolean }) {
   const { language, setLanguage, t } = useI18n();
   return (
-    <fieldset className={compact ? 'language-switcher compact' : 'language-switcher'}>
+    <fieldset
+      className={compact ? 'button-group language-switcher compact' : 'button-group language-switcher'}
+    >
       <legend className='sr-only'>{t('Language')}</legend>
-      <button type='button' aria-pressed={language === 'zh-CN'} onClick={() => setLanguage('zh-CN')}>
+      <button
+        className='btn'
+        data-size='sm'
+        data-variant='ghost'
+        type='button'
+        aria-pressed={language === 'zh-CN'}
+        onClick={() => setLanguage('zh-CN')}
+      >
         中文
       </button>
-      <button type='button' aria-pressed={language === 'en'} onClick={() => setLanguage('en')}>
+      <button
+        className='btn'
+        data-size='sm'
+        data-variant='ghost'
+        type='button'
+        aria-pressed={language === 'en'}
+        onClick={() => setLanguage('en')}
+      >
         EN
       </button>
     </fieldset>

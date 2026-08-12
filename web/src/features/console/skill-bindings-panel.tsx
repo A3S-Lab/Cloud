@@ -100,105 +100,124 @@ export function SkillBindingsPanel({
   };
 
   return (
-    <article className='surface skill-bindings-card'>
-      <div className='surface-heading'>
+    <article className='card surface skill-bindings-card' data-size='sm'>
+      <header className='surface-heading'>
         <div>
-          <p className='eyebrow'>{t('Agent inputs')}</p>
           <h2>{t('Skill bindings')}</h2>
+          <p>{t('Agent inputs')}</p>
         </div>
-        <span className='panel-count'>{revision.skillBindings.length}</span>
-      </div>
-      <p className='surface-note'>
-        {t(
-          'Each change creates a new immutable Agent workload revision. Skill bundles are mounted read-only and are never scheduled as separate services.'
+        <span className='badge panel-count card-action' data-variant='secondary'>
+          {revision.skillBindings.length}
+        </span>
+      </header>
+      <section>
+        <p className='surface-note'>
+          {t(
+            'Each change creates a new immutable Agent workload revision. Skill bundles are mounted read-only and are never scheduled as separate services.'
+          )}
+        </p>
+
+        {revision.skillBindings.length > 0 ? (
+          <ul className='item-group skill-binding-list'>
+            {revision.skillBindings.map((binding) => {
+              const asset = assets.find((item) => item.id === binding.assetId);
+              const release = releases.find((item) => item.id === binding.assetReleaseId);
+              return (
+                <li className='item' data-size='sm' data-variant='outline' key={binding.assetId}>
+                  <section data-item-content>
+                    <strong>{asset?.name ?? shortId(binding.assetId)}</strong>
+                    <span>
+                      {release?.version ?? shortId(binding.assetReleaseId)} · {binding.mountTarget}
+                    </span>
+                    <code>{binding.artifactDigest.slice(0, 23)}</code>
+                  </section>
+                  <aside data-item-actions>
+                    <button
+                      className='btn secondary-button compact'
+                      data-size='xs'
+                      data-variant='destructive'
+                      type='button'
+                      disabled={!ready || submitting !== null}
+                      title={
+                        ready ? t('Create a new revision without this Skill') : t(replacementUnavailable)
+                      }
+                      onClick={() => void unbind(binding.assetId)}
+                    >
+                      {submitting === `unbind:${binding.assetId}` ? t('Unbinding...') : t('Unbind')}
+                    </button>
+                  </aside>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className='empty empty-skill-bindings'>
+            <header>
+              <p>{t('No Skill release is bound to this revision.')}</p>
+            </header>
+          </div>
         )}
-      </p>
 
-      {revision.skillBindings.length > 0 ? (
-        <ul className='skill-binding-list'>
-          {revision.skillBindings.map((binding) => {
-            const asset = assets.find((item) => item.id === binding.assetId);
-            const release = releases.find((item) => item.id === binding.assetReleaseId);
-            return (
-              <li key={binding.assetId}>
-                <div>
-                  <strong>{asset?.name ?? shortId(binding.assetId)}</strong>
-                  <span>
-                    {release?.version ?? shortId(binding.assetReleaseId)} · {binding.mountTarget}
-                  </span>
-                  <code>{binding.artifactDigest.slice(0, 23)}</code>
-                </div>
-                <button
-                  className='secondary-button compact'
-                  type='button'
-                  disabled={!ready || submitting !== null}
-                  title={ready ? t('Create a new revision without this Skill') : t(replacementUnavailable)}
-                  onClick={() => void unbind(binding.assetId)}
-                >
-                  {submitting === `unbind:${binding.assetId}` ? t('Unbinding...') : t('Unbind')}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className='empty-skill-bindings'>{t('No Skill release is bound to this revision.')}</p>
-      )}
-
-      <div className='skill-binding-form'>
-        <label>
-          <span>{t('Skill Asset')}</span>
-          <select
-            value={effectiveAssetId}
-            disabled={!ready || submitting !== null || skillAssets.length === 0}
-            onChange={(event) => {
-              setSelectedAssetId(event.target.value);
-              setSelectedReleaseId('');
-              setBindAttempt(null);
-            }}
+        <div className='skill-binding-form'>
+          <div className='field'>
+            <label htmlFor='skill-asset-binding'>{t('Skill Asset')}</label>
+            <select
+              className='select'
+              id='skill-asset-binding'
+              value={effectiveAssetId}
+              disabled={!ready || submitting !== null || skillAssets.length === 0}
+              onChange={(event) => {
+                setSelectedAssetId(event.target.value);
+                setSelectedReleaseId('');
+                setBindAttempt(null);
+              }}
+            >
+              {skillAssets.length === 0 ? <option value=''>{t('No active Skill Assets')}</option> : null}
+              {skillAssets.map((asset) => (
+                <option key={asset.id} value={asset.id}>
+                  {asset.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className='field'>
+            <label htmlFor='skill-release-binding'>{t('Published release')}</label>
+            <select
+              className='select'
+              id='skill-release-binding'
+              value={effectiveReleaseId}
+              disabled={!ready || submitting !== null || publishedReleases.length === 0}
+              onChange={(event) => {
+                setSelectedReleaseId(event.target.value);
+                setBindAttempt(null);
+              }}
+            >
+              {publishedReleases.length === 0 ? <option value=''>{t('No published releases')}</option> : null}
+              {publishedReleases.map((release) => (
+                <option key={release.id} value={release.id}>
+                  {release.version} · {shortId(release.id)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            className='btn primary-action'
+            data-size='sm'
+            type='button'
+            disabled={
+              !ready || submitting !== null || !effectiveAssetId || !effectiveReleaseId || exactBindingExists
+            }
+            title={!ready ? t(replacementUnavailable) : undefined}
+            onClick={() => void bind()}
           >
-            {skillAssets.length === 0 ? <option value=''>{t('No active Skill Assets')}</option> : null}
-            {skillAssets.map((asset) => (
-              <option key={asset.id} value={asset.id}>
-                {asset.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>{t('Published release')}</span>
-          <select
-            value={effectiveReleaseId}
-            disabled={!ready || submitting !== null || publishedReleases.length === 0}
-            onChange={(event) => {
-              setSelectedReleaseId(event.target.value);
-              setBindAttempt(null);
-            }}
-          >
-            {publishedReleases.length === 0 ? <option value=''>{t('No published releases')}</option> : null}
-            {publishedReleases.map((release) => (
-              <option key={release.id} value={release.id}>
-                {release.version} · {shortId(release.id)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          className='primary-action'
-          type='button'
-          disabled={
-            !ready || submitting !== null || !effectiveAssetId || !effectiveReleaseId || exactBindingExists
-          }
-          title={!ready ? t(replacementUnavailable) : undefined}
-          onClick={() => void bind()}
-        >
-          {submitting?.startsWith('bind:')
-            ? t('Binding...')
-            : exactBindingExists
-              ? t('Already bound')
-              : t('Bind release')}
-        </button>
-      </div>
+            {submitting?.startsWith('bind:')
+              ? t('Binding...')
+              : exactBindingExists
+                ? t('Already bound')
+                : t('Bind release')}
+          </button>
+        </div>
+      </section>
     </article>
   );
 }

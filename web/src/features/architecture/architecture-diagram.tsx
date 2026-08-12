@@ -1,6 +1,7 @@
 import { Download, LoaderCircle, Network } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useI18n } from '../../lib/i18n';
+import { statusBadgeState } from '../../lib/status-badge';
 import {
   CAPABILITY_GROUPS,
   CAPABILITY_STATES,
@@ -96,8 +97,8 @@ export function ArchitecturePanel() {
   };
 
   return (
-    <article className='surface architecture-surface'>
-      <header className='architecture-toolbar'>
+    <article className='card surface architecture-surface'>
+      <header className='toolbar architecture-toolbar' data-wrap='true'>
         <div>
           <h2>{t('A3S OS architecture')}</h2>
           <p>
@@ -106,15 +107,23 @@ export function ArchitecturePanel() {
             )}
           </p>
         </div>
-        <div className='architecture-export-controls'>
-          <button type='button' disabled={exporting} onClick={() => void exportPng()}>
+        <fieldset className='architecture-export-controls'>
+          <legend className='sr-only'>{t('Export PNG')}</legend>
+          <button
+            className='btn'
+            data-size='sm'
+            data-variant='outline'
+            type='button'
+            disabled={exporting}
+            onClick={() => void exportPng()}
+          >
             {exporting ? <LoaderCircle className='spinning' size={16} /> : <Download size={16} />}
             {exporting ? t('Exporting...') : t('Export PNG')}
           </button>
           <p className={exportFailed ? 'export-error' : undefined} role={exportFailed ? 'alert' : 'status'}>
             {t(exportStatus)}
           </p>
-        </div>
+        </fieldset>
       </header>
 
       <section className='architecture-scroll' aria-label={t('Scrollable A3S OS architecture diagram')}>
@@ -160,7 +169,12 @@ export function ArchitecturePanel() {
               <h4 id='business-band-title'>{t('Complete Cloud product portfolio')}</h4>
               <ul className='architecture-legend' aria-label={t('Roadmap state legend')}>
                 {LEGEND_STATES.map((state) => (
-                  <li className={`architecture-legend-${state}`} key={state}>
+                  <li
+                    className={`status-badge architecture-legend-${state}`}
+                    data-state={statusBadgeState(state)}
+                    data-size='sm'
+                    key={state}
+                  >
                     {localize(CAPABILITY_STATES[state].label, language)}
                   </li>
                 ))}
@@ -189,11 +203,20 @@ export function ArchitecturePanel() {
             aria-labelledby='runtime-band-title'
           >
             <h4 id='runtime-band-title'>{t('Node convergence and execution plane')}</h4>
-            <ol className='architecture-runtime-path'>
+            <ol
+              className='stepper architecture-runtime-path'
+              aria-label={t('Node convergence and execution plane')}
+              // biome-ignore lint/a11y/noNoninteractiveTabindex: Overflowing steps must remain keyboard-scrollable.
+              tabIndex={0}
+            >
               {NODE_PATH.map((item, index) => (
                 <li key={item}>
-                  <span>{t(item)}</span>
-                  {index < NODE_PATH.length - 1 ? <b aria-hidden='true'>→</b> : null}
+                  <span data-step-marker aria-hidden='true'>
+                    {index + 1}
+                  </span>
+                  <section>
+                    <h5>{t(item)}</h5>
+                  </section>
                 </li>
               ))}
             </ol>

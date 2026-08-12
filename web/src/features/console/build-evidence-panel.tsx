@@ -88,105 +88,126 @@ export function BuildEvidencePanel({ api, organizationId, buildRun }: BuildEvide
   };
 
   return (
-    <section className='surface build-evidence-panel' aria-label={t('Build evidence')}>
-      <div className='surface-heading'>
+    <section className='card surface build-evidence-panel' data-size='sm' aria-label={t('Build evidence')}>
+      <header className='surface-heading'>
         <div>
-          <p className='eyebrow'>{t('Supply-chain integrity')}</p>
           <h2>{t('Build evidence')}</h2>
+          <p>{t('Supply-chain integrity')}</p>
         </div>
         {summary ? (
-          <span className='evidence-verified'>
+          <span
+            className='status-badge evidence-verified card-action'
+            data-state='success'
+            data-size='sm'
+            data-indicator
+          >
             <ShieldCheck size={14} /> {t('Verified')}
           </span>
         ) : null}
-      </div>
+      </header>
 
-      {!buildRun ? (
-        <div className='detail-empty'>
-          <FileJson2 size={22} />
-          <strong>{t('Select a build run')}</strong>
-          <p>{t('Choose a BuildRun to inspect its signed SBOM and provenance state.')}</p>
-        </div>
-      ) : !summary ? (
-        <div className='detail-empty'>
-          <FileJson2 size={22} />
-          <strong>
-            {buildRun.status === 'attesting' ? t('Attestation in progress') : t('No evidence available')}
-          </strong>
-          <p>
-            {buildRun.status === 'attesting'
-              ? t('Cloud is generating and signing the immutable evidence document.')
-              : t('This BuildRun has not produced verified supply-chain evidence.')}
-          </p>
-        </div>
-      ) : (
-        <div className='build-evidence-content'>
-          <div className='build-evidence-status'>
-            <ShieldCheck size={20} />
-            <div>
-              <strong>{t('Verified evidence')}</strong>
-              <span>
-                {summary.signingKeyAlgorithm}
-                {summary.signingKeyVersion === null
-                  ? ''
-                  : ` · ${t('key version {version}', { version: summary.signingKeyVersion })}`}
-                {' · '}
-                {formatTimestamp(summary.attestedAt)}
-              </span>
-            </div>
+      <section>
+        {!buildRun ? (
+          <div className='empty detail-empty'>
+            <figure>
+              <FileJson2 size={22} />
+            </figure>
+            <header>
+              <h3>{t('Select a build run')}</h3>
+              <p>{t('Choose a BuildRun to inspect its signed SBOM and provenance state.')}</p>
+            </header>
           </div>
-          <dl className='build-evidence-facts'>
-            <div>
-              <dt>{t('SBOM digest')}</dt>
-              <dd>{summary.sbomDigest}</dd>
-            </div>
-            <div>
-              <dt>{t('Provenance digest')}</dt>
-              <dd>{summary.provenanceDigest}</dd>
-            </div>
-            <div>
-              <dt>{t('Signing key ID')}</dt>
-              <dd>{summary.signingKeyId}</dd>
-            </div>
-            <div>
-              <dt>{t('Evidence schema')}</dt>
-              <dd>{summary.schema}</dd>
-            </div>
-          </dl>
-          <div className='build-evidence-actions'>
-            <button
-              className='secondary-button compact'
-              type='button'
-              disabled={loading}
-              onClick={() => void loadEvidence()}
-            >
-              <FileJson2 size={13} /> {loading ? t('Loading evidence') : t('View evidence JSON')}
-            </button>
-            <button
-              className='secondary-button compact'
-              type='button'
-              disabled={loading}
-              onClick={() => void download()}
-            >
-              <Download size={13} /> {loading ? t('Loading evidence') : t('Download JSON')}
-            </button>
+        ) : !summary ? (
+          <div className='empty detail-empty'>
+            <figure>
+              <FileJson2 size={22} />
+            </figure>
+            <header>
+              <h3>
+                {buildRun.status === 'attesting' ? t('Attestation in progress') : t('No evidence available')}
+              </h3>
+              <p>
+                {buildRun.status === 'attesting'
+                  ? t('Cloud is generating and signing the immutable evidence document.')
+                  : t('This BuildRun has not produced verified supply-chain evidence.')}
+              </p>
+            </header>
           </div>
-          {error ? (
-            <output className='build-evidence-error' role='alert'>
-              {t(error)}
-            </output>
-          ) : null}
-          {preview ? (
-            <div className='build-evidence-document'>
+        ) : (
+          <div className='build-evidence-content'>
+            <article className='item build-evidence-status' data-size='sm' data-variant='muted'>
+              <figure>
+                <ShieldCheck size={20} />
+              </figure>
+              <section>
+                <h3>{t('Verified evidence')}</h3>
+                <p>
+                  {summary.signingKeyAlgorithm}
+                  {summary.signingKeyVersion === null
+                    ? ''
+                    : ` · ${t('key version {version}', { version: summary.signingKeyVersion })}`}
+                  {' · '}
+                  {formatTimestamp(summary.attestedAt)}
+                </p>
+              </section>
+            </article>
+            <dl className='property-list build-evidence-facts' data-size='sm'>
               <div>
-                <strong>{t('Evidence JSON')}</strong>
-                <span>{preview.truncated ? t('Bounded preview') : t('Complete document')}</span>
+                <dt>{t('SBOM digest')}</dt>
+                <dd>{summary.sbomDigest}</dd>
               </div>
-              <pre>{preview.text}</pre>
+              <div>
+                <dt>{t('Provenance digest')}</dt>
+                <dd>{summary.provenanceDigest}</dd>
+              </div>
+              <div>
+                <dt>{t('Signing key ID')}</dt>
+                <dd>{summary.signingKeyId}</dd>
+              </div>
+              <div>
+                <dt>{t('Evidence schema')}</dt>
+                <dd>{summary.schema}</dd>
+              </div>
+            </dl>
+            <div className='build-evidence-actions'>
+              <button
+                className='btn secondary-button compact'
+                data-size='xs'
+                data-variant='outline'
+                type='button'
+                disabled={loading}
+                onClick={() => void loadEvidence()}
+              >
+                <FileJson2 size={13} /> {loading ? t('Loading evidence') : t('View evidence JSON')}
+              </button>
+              <button
+                className='btn secondary-button compact'
+                data-size='xs'
+                data-variant='outline'
+                type='button'
+                disabled={loading}
+                onClick={() => void download()}
+              >
+                <Download size={13} /> {loading ? t('Loading evidence') : t('Download JSON')}
+              </button>
             </div>
-          ) : null}
-        </div>
-      )}
+            {error ? (
+              <output className='build-evidence-error' role='alert'>
+                {t(error)}
+              </output>
+            ) : null}
+            {preview ? (
+              <div className='build-evidence-document'>
+                <div>
+                  <strong>{t('Evidence JSON')}</strong>
+                  <span>{preview.truncated ? t('Bounded preview') : t('Complete document')}</span>
+                </div>
+                <pre>{preview.text}</pre>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
     </section>
   );
 }

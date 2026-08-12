@@ -37,8 +37,8 @@ export function ControlPlaneAccess({ onAuthenticated }: ControlPlaneAccessProps)
   };
 
   return (
-    <section id='access' className='signin-card' aria-label={t('Sign in to A3S OS')}>
-      <div className='signin-card-heading'>
+    <section id='access' className='card signin-card' aria-label={t('Sign in to A3S OS')}>
+      <header className='signin-card-heading'>
         <span className='field-icon' aria-hidden='true'>
           <KeyRound size={21} />
         </span>
@@ -46,29 +46,32 @@ export function ControlPlaneAccess({ onAuthenticated }: ControlPlaneAccessProps)
           <h2>{t('Open A3S Web')}</h2>
           <p>{t('The credential remains in this browser tab.')}</p>
         </div>
-      </div>
+      </header>
       <form onSubmit={submit}>
-        <label htmlFor='api-token'>{t('Organization API token')}</label>
-        <input
-          id='api-token'
-          type='password'
-          autoComplete='off'
-          spellCheck={false}
-          placeholder='a3s_••••••••••••••••'
-          value={token}
-          onChange={(event) => setToken(event.target.value)}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? 'signin-error' : 'signin-token-help'}
-        />
-        <p className='signin-token-help' id='signin-token-help'>
-          {t('Sent only as a Bearer credential to the configured Cloud API.')}
-        </p>
-        {error ? (
-          <p className='form-error' id='signin-error' role='alert'>
-            {t(error)}
+        <div className='field' data-invalid={error ? 'true' : undefined}>
+          <label htmlFor='api-token'>{t('Organization API token')}</label>
+          <input
+            className='input'
+            id='api-token'
+            type='password'
+            autoComplete='off'
+            spellCheck={false}
+            placeholder='a3s_••••••••••••••••'
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            aria-invalid={Boolean(error)}
+            aria-describedby={error ? 'signin-error' : 'signin-token-help'}
+          />
+          <p className='signin-token-help' id='signin-token-help'>
+            {t('Sent only as a Bearer credential to the configured Cloud API.')}
           </p>
-        ) : null}
-        <button className='primary-button' type='submit' disabled={submitting}>
+          {error ? (
+            <p className='form-error' id='signin-error' role='alert'>
+              {t(error)}
+            </p>
+          ) : null}
+        </div>
+        <button className='btn primary-button' type='submit' disabled={submitting}>
           {submitting ? t('Verifying...') : t('Open A3S Web')}
           <ArrowRight size={17} />
         </button>

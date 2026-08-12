@@ -56,18 +56,6 @@
   background: #fbfdff;
 }
 
-.connection-pill.live {
-  border-color: #bfe7d5;
-  color: #087d55;
-  background: var(--success-soft);
-}
-
-.connection-pill.retrying {
-  border-color: #f1d39d;
-  color: var(--warning);
-  background: var(--warning-soft);
-}
-
 .quiet-button:hover,
 .icon-button:hover {
   border-color: #9fbae9;
@@ -377,47 +365,53 @@
   background: #ffe6e9;
 }
 
-.state-badge {
+.status-badge {
+  display: inline-flex;
+  min-height: 22px;
+  padding: 3px 8px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
   border-color: var(--line);
   color: var(--muted);
   background: #f6f8fc;
+  font-size: 11px;
   font-weight: 700;
+  line-height: 1;
 }
 
-.state-badge.active,
-.state-badge.verifying,
-.state-badge.running,
-.state-badge.queued {
+.status-badge[data-state='active'] {
   border-color: #bcd2ff;
   color: var(--accent);
   background: var(--accent-soft);
 }
 
-.state-badge.succeeded,
-.state-badge.healthy,
-.state-badge.complete,
-.state-badge.published {
+.status-badge[data-state='success'] {
   border-color: #bae6d2;
   color: #087c55;
   background: var(--success-soft);
 }
 
-.state-badge.cancelling,
-.state-badge.cleanup_pending,
-.state-badge.pending,
-.state-badge.draft {
+.status-badge[data-state='warning'] {
   border-color: #efd49e;
   color: var(--warning);
   background: var(--warning-soft);
 }
 
-.state-badge.failed,
-.state-badge.cancelled,
-.state-badge.orphaned,
-.state-badge.yanked {
+.status-badge[data-state='danger'] {
   border-color: #efb6bf;
   color: var(--danger);
   background: var(--danger-soft);
+}
+
+.status-badge[data-indicator]::before {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
 }
 
 /* Overview */
@@ -522,11 +516,23 @@
 
 .current-operations-card,
 .authority-chain-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.current-operations-card > header,
+.authority-chain-card > header {
+  padding: 22px 22px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.current-operations-card > section,
+.authority-chain-card > section {
   padding: 22px;
 }
 
 .overview-operation-list {
-  margin: 18px 0 0;
+  margin: 0;
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -569,7 +575,7 @@
 .overview-operation-name small,
 .overview-operation-list time {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .overview-operation-list time {
@@ -585,7 +591,12 @@
   color: var(--accent);
 }
 
-.overview-empty-state strong {
+.overview-empty-state figure,
+.overview-empty-state h3 {
+  margin: 0;
+}
+
+.overview-empty-state h3 {
   color: var(--text);
   font-size: 13px;
 }
@@ -599,7 +610,7 @@
 .authority-chain {
   position: relative;
   display: grid;
-  margin: 18px 0 0;
+  margin: 0;
   padding: 0;
   gap: 8px;
   list-style: none;
@@ -628,8 +639,9 @@
   background: #f8fbff;
 }
 
-.authority-chain li > span {
+.authority-chain li > figure {
   display: grid;
+  margin: 0;
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
@@ -640,20 +652,21 @@
   box-shadow: 0 3px 10px rgba(37, 92, 184, 0.08);
 }
 
-.authority-chain strong,
-.authority-chain small {
+.authority-chain h3,
+.authority-chain p {
+  margin: 0;
   display: block;
 }
 
-.authority-chain strong {
+.authority-chain h3 {
   color: var(--text);
   font-size: 12px;
 }
 
-.authority-chain small {
+.authority-chain p {
   margin-top: 3px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .authority-chain .authority-harness {
@@ -662,17 +675,17 @@
   background: var(--accent);
 }
 
-.authority-chain .authority-harness > span {
+.authority-chain .authority-harness > figure {
   color: #ffffff;
   background: rgba(255, 255, 255, 0.15);
   box-shadow: none;
 }
 
-.authority-chain .authority-harness strong {
+.authority-chain .authority-harness h3 {
   color: #ffffff;
 }
 
-.authority-chain .authority-harness small {
+.authority-chain .authority-harness p {
   color: #dce8ff;
 }
 
@@ -687,7 +700,25 @@
   min-height: 0;
 }
 
-.asset-kinds > div,
+.overview-support-grid .card {
+  overflow: hidden;
+}
+
+.overview-support-grid .card > header {
+  padding: 22px 22px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.overview-support-grid .card > section,
+.overview-support-grid .card > footer {
+  padding: 18px 22px;
+}
+
+.overview-support-grid .card > footer {
+  border-top: 1px solid var(--line);
+}
+
+.asset-kinds > article,
 .deployment-facts div,
 .deployment-notice {
   border-color: var(--line);
@@ -695,7 +726,7 @@
   background: #f8faff;
 }
 
-.asset-kinds strong,
+.asset-kinds h3,
 .fact-list dd,
 .deployment-facts dd,
 .deployment-notice strong {

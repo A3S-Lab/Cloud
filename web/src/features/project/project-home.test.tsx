@@ -36,6 +36,13 @@ describe('ProjectHome', () => {
 
     expect(host.querySelector('#home-title')?.textContent).toContain('企业级 AI 操作系统');
     expect(host.querySelectorAll('.product-pillar')).toHaveLength(3);
+    expect(host.querySelectorAll('.product-pillar.card')).toHaveLength(3);
+    expect(host.querySelectorAll('.product-pillar .status-badge')).toHaveLength(3);
+    expect(host.querySelectorAll('.brand-lockup [data-brand-mark]')).toHaveLength(2);
+    expect(host.querySelectorAll('.brand-lockup [data-brand-name]')).toHaveLength(2);
+    expect(host.querySelectorAll('.signin-authority-path.item-group > li.item')).toHaveLength(5);
+    expect(host.querySelectorAll('.web-client-thread ol.stepper [data-step-marker]')).toHaveLength(4);
+    expect(host.querySelector<HTMLOListElement>('.web-client-thread ol.stepper')?.tabIndex).toBe(0);
     expect(host.textContent).toContain('Workflow 自主工作流编排');
     expect(host.textContent).toContain('Agent Factory 异构智能体工厂');
     expect(host.textContent).toContain('A3S Gateway 统一网关');

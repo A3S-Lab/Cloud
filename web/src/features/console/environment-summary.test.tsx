@@ -2,7 +2,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Asset, AssetKind, AssetRelease, AssetReleaseState } from '../../types/api';
-import { AssetCatalogCard } from './environment-summary';
+import { AssetCatalogCard, EnvironmentHeading, InfrastructureCard } from './environment-summary';
 
 let root: Root | null = null;
 
@@ -33,12 +33,42 @@ describe('AssetCatalogCard', () => {
 
     await act(async () => root?.render(<AssetCatalogCard assets={assets} releases={releases} />));
 
+    expect(host.querySelector('article.card.surface.assets-card[data-size="sm"]')).not.toBeNull();
+    expect(host.querySelectorAll('.item-group.asset-kinds > article.item')).toHaveLength(3);
+    expect(
+      host.querySelector('.item-group.asset-kinds > article.item[data-variant="outline"]')
+    ).not.toBeNull();
     expect(host.textContent).toContain('2 assets · 1 published');
     expect(host.textContent).toContain('1 draft · 1 yanked');
     expect(host.textContent).toContain('1 asset · 1 published');
     expect(host.textContent).toContain('0 assets · 0 published');
     expect(host.textContent).toContain('Yanked releases remain available to pinned deployments.');
     expect(host.textContent).not.toContain('No releases');
+  });
+
+  it('uses Property List for environment and infrastructure facts', async () => {
+    const host = document.getElementById('root');
+    if (!host) throw new Error('test root is missing');
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(
+        <>
+          <EnvironmentHeading
+            organization={undefined}
+            project={undefined}
+            environment={undefined}
+            activeOperations={2}
+            workloadCount={3}
+          />
+          <InfrastructureCard deployment={undefined} routes={[]} />
+        </>
+      );
+    });
+
+    expect(host.querySelectorAll('dl.property-list.heading-facts > div')).toHaveLength(3);
+    expect(host.querySelector('article.card.surface.infrastructure-card[data-size="sm"]')).not.toBeNull();
+    expect(host.querySelectorAll('dl.property-list.fact-list > div')).toHaveLength(4);
   });
 });
 

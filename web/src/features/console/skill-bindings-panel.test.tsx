@@ -48,10 +48,16 @@ describe('SkillBindingsPanel', () => {
       'Research tools',
       '1.0.0 · release-',
     ]);
+    const panel = host.querySelector('article.card.skill-bindings-card');
+    expect(panel?.querySelector(':scope > header + section')).not.toBeNull();
+    expect(panel?.querySelector('.badge.panel-count')?.textContent?.trim()).toBe('0');
+    expect(panel?.querySelector('.empty.empty-skill-bindings')).not.toBeNull();
+    expect(panel?.querySelectorAll('.field > label + select.select')).toHaveLength(2);
     const bindButton = [...host.querySelectorAll('button')].find((button) =>
       button.textContent?.includes('Bind release')
     );
     if (!bindButton) throw new Error('bind button is missing');
+    expect(bindButton.matches('.btn.primary-action')).toBe(true);
     await act(async () => bindButton.click());
     expect(onBind).toHaveBeenCalledWith('skill-1', 'release-1', expect.stringMatching(/^web-skill-bind:/));
   });
@@ -85,10 +91,14 @@ describe('SkillBindingsPanel', () => {
     });
 
     expect(host.textContent).toContain('/a3s/skills/skill-1');
+    const bindingItem = host.querySelector('.item-group > li.item');
+    expect(bindingItem?.querySelector(':scope > [data-item-content]')).not.toBeNull();
+    expect(bindingItem?.querySelector(':scope > [data-item-actions]')).not.toBeNull();
     const unbindButton = [...host.querySelectorAll('button')].find((button) =>
       button.textContent?.includes('Unbind')
     );
     if (!unbindButton) throw new Error('unbind button is missing');
+    expect(unbindButton.matches('.btn[data-variant="destructive"]')).toBe(true);
     await act(async () => unbindButton.click());
     expect(onUnbind).toHaveBeenCalledWith('skill-1', expect.stringMatching(/^web-skill-unbind:/));
   });

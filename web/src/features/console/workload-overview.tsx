@@ -1,7 +1,7 @@
 import { Ban, CircleStop } from 'lucide-react';
 import { useI18n } from '../../lib/i18n';
 import type { DeploymentStatus, Route, ServiceTemplate, Workload } from '../../types/api';
-import { shortId } from './console-format';
+import { shortId, statusBadgeState } from './console-format';
 import { WorkloadActions } from './workload-actions';
 import { routeStage } from './workload-view-model';
 
@@ -33,48 +33,75 @@ export function WorkloadOverview({
   const stopNotice = workloadStopNotice(workload);
 
   return (
-    <article className='surface convergence-card'>
-      <div className='surface-heading'>
+    <article className='card surface convergence-card' data-size='sm'>
+      <header className='surface-heading'>
         <div>
-          <p className='eyebrow'>{t('Convergence')}</p>
           <h2>{workload?.name ?? t('Deployment state')}</h2>
+          <p>{t('Convergence')}</p>
         </div>
-        <div className='surface-actions'>
-          <span className={`state-badge ${latestDeployment?.status ?? 'neutral'}`}>
+        <div className='surface-actions card-action'>
+          <span
+            className='status-badge'
+            data-state={statusBadgeState(latestDeployment?.status ?? 'neutral')}
+            data-size='sm'
+            data-indicator
+          >
             {latestDeployment ? label(latestDeployment.status) : t('Awaiting workload')}
           </span>
           {workload ? (
             <WorkloadActions workload={workload} onUpdate={onUpdate} onRollback={onRollback} />
           ) : null}
           {latestDeployment && canCancel(latestDeployment.status) ? (
-            <button className='danger-button compact' type='button' disabled={cancelling} onClick={onCancel}>
+            <button
+              className='btn danger-button compact'
+              data-size='xs'
+              data-variant='destructive'
+              type='button'
+              disabled={cancelling}
+              onClick={onCancel}
+            >
               <Ban size={14} />
               {cancelling ? t('Requesting...') : t('Cancel')}
             </button>
           ) : null}
           {workload && canStop(workload) ? (
-            <button className='danger-button compact' type='button' disabled={stopping} onClick={onStop}>
+            <button
+              className='btn danger-button compact'
+              data-size='xs'
+              data-variant='destructive'
+              type='button'
+              disabled={stopping}
+              onClick={onStop}
+            >
               <CircleStop size={14} />
               {stopping ? t('Stopping...') : t('Stop')}
             </button>
           ) : null}
         </div>
-      </div>
-      <ol className='convergence-track' aria-label={t('Deployment convergence stages')}>
+      </header>
+      {/* biome-ignore lint/a11y/noNoninteractiveTabindex: Overflowing steps must remain keyboard-scrollable. */}
+      <ol className='stepper convergence-track' aria-label={t('Deployment convergence stages')} tabIndex={0}>
         {deploymentStages(latestDeployment?.status, latestDeployment?.revision.id, routes).map(
           (stage, index) => (
-            <li className={`convergence-step ${stage.state}`} key={stage.name}>
-              <span>{index + 1}</span>
-              <div>
+            <li
+              className={`convergence-step ${stage.state}`}
+              data-state={stepperStageState(stage.state)}
+              aria-current={stage.state === 'current' ? 'step' : undefined}
+              key={stage.name}
+            >
+              <span data-step-marker aria-hidden='true'>
+                {index + 1}
+              </span>
+              <section>
                 <strong>{t(stage.name)}</strong>
                 <small>{localizedStageLabel(stage.label, label, t)}</small>
-              </div>
+              </section>
             </li>
           )
         )}
       </ol>
       {workload ? (
-        <dl className='deployment-facts'>
+        <dl className='property-list deployment-facts' data-size='sm'>
           <div>
             <dt>{t('Desired revision')}</dt>
             <dd>
@@ -181,6 +208,15 @@ function deploymentStages(
     return { ...stage, label: 'Pending', state: 'pending' as const };
   });
   return [...projected, routeStage(revisionId, routes)];
+}
+
+function stepperStageState(
+  state: 'pending' | 'current' | 'complete' | 'failed'
+): 'active' | 'success' | 'danger' | undefined {
+  if (state === 'current') return 'active';
+  if (state === 'complete') return 'success';
+  if (state === 'failed') return 'danger';
+  return undefined;
 }
 
 function canCancel(status: DeploymentStatus): boolean {

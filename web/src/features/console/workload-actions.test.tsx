@@ -35,9 +35,11 @@ describe('WorkloadActions', () => {
     updateButton.focus();
     await act(async () => updateButton.click());
 
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]');
+    const dialog = document.querySelector<HTMLDialogElement>('dialog.dialog');
     const editor = dialog?.querySelector('textarea');
     expect(dialog).not.toBeNull();
+    expect(dialog?.matches('dialog.dialog.action-dialog-backdrop[open]')).toBe(true);
+    expect(dialog?.querySelector(':scope > section.action-dialog')).not.toBeNull();
     expect(document.activeElement).toBe(dialog);
     expect(host.hasAttribute('inert')).toBe(true);
 
@@ -47,7 +49,7 @@ describe('WorkloadActions', () => {
     await act(async () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('dialog.dialog')).toBeNull();
     expect(host.hasAttribute('inert')).toBe(false);
     expect(document.activeElement).toBe(updateButton);
   });

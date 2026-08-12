@@ -420,12 +420,22 @@ export function CloudConsole({ token, initialOrganizations, onSignOut }: CloudCo
 
       <main className='workspace'>
         {error ? (
-          <div className='error-banner' role='alert'>
-            <CircleDot size={16} />
-            <span>{t(error)}</span>
-            <button type='button' onClick={() => window.location.reload()}>
-              <RotateCw size={15} /> {t('Retry')}
-            </button>
+          <div className='alert error-banner' data-variant='destructive' role='alert'>
+            <CircleDot size={16} aria-hidden='true' />
+            <section>
+              <p>{t(error)}</p>
+            </section>
+            <footer>
+              <button
+                className='btn'
+                data-size='sm'
+                data-variant='ghost'
+                type='button'
+                onClick={() => window.location.reload()}
+              >
+                <RotateCw size={15} /> {t('Retry')}
+              </button>
+            </footer>
           </div>
         ) : null}
 

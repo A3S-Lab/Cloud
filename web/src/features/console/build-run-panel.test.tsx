@@ -50,6 +50,15 @@ describe('BuildRunPanel', () => {
     expect(host.textContent).toContain('Attempt 1');
     expect(host.textContent).toContain('Verified evidence');
     expect(host.textContent).toContain('sha256:bbbbbbbb');
+    expect(host.querySelector('section.card.build-run-panel')).not.toBeNull();
+    expect(host.querySelector('.badge.panel-count')?.textContent?.trim()).toBe('3');
+    expect(host.querySelectorAll('.item-group > article.item')).toHaveLength(3);
+    expect(host.querySelectorAll('.build-run-item > header + section + footer')).toHaveLength(3);
+    expect(host.querySelectorAll('button.btn')).toHaveLength(5);
+    expect(host.querySelectorAll('dl.property-list')).toHaveLength(4);
+    expect(
+      [...host.querySelectorAll('.status-badge')].map((badge) => badge.getAttribute('data-state'))
+    ).toEqual(['active', 'success', 'danger']);
     const cancelButtons = [...host.querySelectorAll('button')].filter((button) =>
       button.textContent?.includes('Cancel build')
     );
@@ -68,6 +77,29 @@ describe('BuildRunPanel', () => {
     expect(viewButtons).toHaveLength(2);
     await act(async () => viewButtons[0]?.click());
     expect(onSelect).toHaveBeenCalledWith('build-succeeded');
+  });
+
+  it('uses the reusable Empty contract before any build is accepted', async () => {
+    const host = document.getElementById('root');
+    if (!host) throw new Error('test root is missing');
+    root = createRoot(host);
+
+    await act(async () => {
+      root?.render(
+        <BuildRunPanel
+          buildRuns={[]}
+          selectedBuildRunId={null}
+          cancellingBuildRunId={null}
+          retryingBuildRunId={null}
+          onSelect={vi.fn()}
+          onCancel={vi.fn()}
+          onRetry={vi.fn()}
+        />
+      );
+    });
+
+    expect(host.querySelector('.empty.detail-empty > figure + header')).not.toBeNull();
+    expect(host.querySelector('.item-group')).toBeNull();
   });
 });
 

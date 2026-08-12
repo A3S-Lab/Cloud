@@ -132,7 +132,11 @@
   transform: translateY(46px);
 }
 
-.web-client-thread li b {
+.web-client-thread .stepper > li::after {
+  content: none;
+}
+
+.web-client-thread li [data-step-marker] {
   display: grid;
   width: 48px;
   height: 48px;
@@ -144,7 +148,7 @@
   font-size: 11px;
 }
 
-.web-client-thread li span {
+.web-client-thread li > section span {
   font-size: 11px;
   font-weight: 720;
 }
