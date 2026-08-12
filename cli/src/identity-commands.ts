@@ -1,4 +1,9 @@
-import { type CloudApi, CloudApiError, type MembershipRole } from '@a3s/cloud-client';
+import {
+  type CloudApi,
+  CloudApiError,
+  type MembershipRole,
+  type ResourceGrantScope,
+} from '@a3s/cloud-client';
 import type { ParsedArguments } from './arguments';
 import {
   positionalResourceName,
@@ -23,6 +28,9 @@ import {
   membershipMutationResult,
   membershipResult,
   membershipsResult,
+  resourceGrantMutationResult,
+  resourceGrantResult,
+  resourceGrantsResult,
 } from './identity-results';
 import type { CommandResult } from './results';
 import { type ReadStdin, readBoundedUtf8Stdin } from './standard-input';
@@ -158,6 +166,53 @@ export async function executeIdentityCommand(
         )
       );
     }
+    case 'resource-grants list':
+      requireReadCommand(arguments_, 'resource-grants list <membership-id>');
+      return resourceGrantsResult(
+        await cloudApi().listResourceGrants(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'membership ID')
+        )
+      );
+    case 'resource-grants get':
+      requireReadCommand(arguments_, 'resource-grants get <resource-grant-id>');
+      return resourceGrantResult(
+        await cloudApi().getResourceGrant(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'Resource Grant ID')
+        )
+      );
+    case 'resource-grants create': {
+      const mutation = requireResourceGrantCreateCommand(arguments_);
+      return resourceGrantMutationResult(
+        await safeResourceGrantMutation(() =>
+          cloudApi().createResourceGrant(
+            requireOrganization(context),
+            mutation.membershipId,
+            { scope: mutation.scope },
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'resource-grants revoke': {
+      const mutation = requireVersionMutation(
+        arguments_,
+        3,
+        'resource-grants revoke <resource-grant-id>',
+        'Resource Grant'
+      );
+      return resourceGrantMutationResult(
+        await safeResourceGrantMutation(() =>
+          cloudApi().revokeResourceGrant(
+            requireOrganization(context),
+            positionalUuid(positionals, 2, 'Resource Grant ID'),
+            mutation.expectedVersion,
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
     case 'api-tokens revoke': {
       const idempotencyKey = requireMutationCommand(arguments_, 3, 'api-tokens revoke <api-token-id>');
       return apiTokenMutationResult(
@@ -208,15 +263,71 @@ function requireMembershipVersionMutation(
   arity: number,
   usage: string
 ): { expectedVersion: number; idempotencyKey: string } {
+  return requireVersionMutation(arguments_, arity, usage, 'membership');
+}
+
+function requireVersionMutation(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string,
+  label: string
+): { expectedVersion: number; idempotencyKey: string } {
   requireArity(arguments_.positionals, arity, usage);
   rejectLogOptions(arguments_);
   rejectFileOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
   const expectedVersion = Number(arguments_.expectedVersion);
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
-    throw usageError('--expected-version must be a positive safe integer for membership mutation');
+    throw usageError(`--expected-version must be a positive safe integer for ${label} mutation`);
   }
   return { expectedVersion, idempotencyKey: requireIdempotencyKey(arguments_) };
+}
+
+function requireResourceGrantCreateCommand(arguments_: ParsedArguments): {
+  membershipId: string;
+  scope: ResourceGrantScope;
+  idempotencyKey: string;
+} {
+  const kind = arguments_.positionals[3];
+  const arity = kind === 'environment' ? 6 : 5;
+  const idempotencyKey = requireMutationCommand(
+    arguments_,
+    arity,
+    'resource-grants create <membership-id> <project PROJECT_ID | environment PROJECT_ID ENVIRONMENT_ID | node NODE_ID>'
+  );
+  const membershipId = positionalUuid(arguments_.positionals, 2, 'membership ID');
+  switch (kind) {
+    case 'project':
+      return {
+        membershipId,
+        scope: {
+          kind,
+          projectId: positionalUuid(arguments_.positionals, 4, 'project ID'),
+        },
+        idempotencyKey,
+      };
+    case 'environment':
+      return {
+        membershipId,
+        scope: {
+          kind,
+          projectId: positionalUuid(arguments_.positionals, 4, 'project ID'),
+          environmentId: positionalUuid(arguments_.positionals, 5, 'environment ID'),
+        },
+        idempotencyKey,
+      };
+    case 'node':
+      return {
+        membershipId,
+        scope: {
+          kind,
+          nodeId: positionalUuid(arguments_.positionals, 4, 'node ID'),
+        },
+        idempotencyKey,
+      };
+    default:
+      throw usageError('Resource Grant scope kind must be project, environment, or node');
+  }
 }
 
 function membershipRole(value: string | undefined): MembershipRole {
@@ -280,6 +391,22 @@ async function safeMembershipMutation<Result>(operation: () => Promise<Result>):
   } catch (error) {
     if (error instanceof CloudApiError) {
       throw new CloudApiError(error.status, 'membership mutation failed', error.statusCode, error.requestId);
+    }
+    throw error;
+  }
+}
+
+async function safeResourceGrantMutation<Result>(operation: () => Promise<Result>): Promise<Result> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof CloudApiError) {
+      throw new CloudApiError(
+        error.status,
+        'Resource Grant mutation failed',
+        error.statusCode,
+        error.requestId
+      );
     }
     throw error;
   }

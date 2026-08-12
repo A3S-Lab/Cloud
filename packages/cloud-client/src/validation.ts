@@ -1,4 +1,10 @@
-import type { CreateApiTokenInput, CreateServiceMembershipInput, MembershipRole } from './identity';
+import type {
+  CreateApiTokenInput,
+  CreateResourceGrantInput,
+  CreateServiceMembershipInput,
+  MembershipRole,
+  ResourceGrantScope,
+} from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
@@ -50,6 +56,43 @@ export function validateMembershipRole(role: MembershipRole): void {
 export function validateExpectedMembershipVersion(value: number): void {
   if (!Number.isSafeInteger(value) || value < 1) {
     throw new RangeError('expected membership version must be a positive safe integer');
+  }
+}
+
+export function validateResourceGrantInput(input: CreateResourceGrantInput): void {
+  const scope = input?.scope as ResourceGrantScope | undefined;
+  if (!scope || typeof scope !== 'object') {
+    throw new TypeError('Resource Grant scope is required');
+  }
+  switch (scope.kind) {
+    case 'project':
+      validateResourceGrantUuid(scope.projectId, 'project');
+      return;
+    case 'environment':
+      validateResourceGrantUuid(scope.projectId, 'project');
+      validateResourceGrantUuid(scope.environmentId, 'environment');
+      return;
+    case 'node':
+      validateResourceGrantUuid(scope.nodeId, 'node');
+      return;
+    default:
+      throw new TypeError('Resource Grant scope kind must be project, environment, or node');
+  }
+}
+
+export function validateExpectedResourceGrantVersion(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 1) {
+    throw new RangeError('expected Resource Grant version must be a positive safe integer');
+  }
+}
+
+function validateResourceGrantUuid(value: string, label: string): void {
+  if (
+    typeof value !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
+    value === '00000000-0000-0000-0000-000000000000'
+  ) {
+    throw new TypeError(`Resource Grant ${label} ID must be a non-nil UUID`);
   }
 }
 

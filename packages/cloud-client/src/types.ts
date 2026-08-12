@@ -171,27 +171,6 @@ export interface McpServiceProfileMutationResult extends McpServiceProfile {
 }
 
 export type {
-  ApiToken,
-  ApiTokenMutationResult,
-  CreateApiTokenInput,
-  CreateServiceMembershipInput,
-  IdentityPrincipalKind,
-  Membership,
-  MembershipMutationResult,
-  MembershipRole,
-} from './identity';
-
-export type {
-  EnrollmentToken,
-  IssueEnrollmentTokenInput,
-  Node,
-  NodeAvailability,
-  NodeState,
-} from './node';
-
-export type { SearchResourceKind, SearchResult } from './search';
-
-export type {
   FormDraft,
   FormDraftInput,
   FormDraftMutationResult,
@@ -202,6 +181,28 @@ export type {
   PublishFormReleaseOptions,
   ReviseFormDraftOptions,
 } from './form';
+export type {
+  ApiToken,
+  ApiTokenMutationResult,
+  CreateApiTokenInput,
+  CreateResourceGrantInput,
+  CreateServiceMembershipInput,
+  IdentityPrincipalKind,
+  Membership,
+  MembershipMutationResult,
+  MembershipRole,
+  ResourceGrant,
+  ResourceGrantMutationResult,
+  ResourceGrantScope,
+} from './identity';
+export type {
+  EnrollmentToken,
+  IssueEnrollmentTokenInput,
+  Node,
+  NodeAvailability,
+  NodeState,
+} from './node';
+export type { SearchResourceKind, SearchResult } from './search';
 
 export type OperationStatus = 'queued' | 'running' | 'suspended' | 'succeeded' | 'failed' | 'cancelled';
 
@@ -879,6 +880,32 @@ export type {
   ReviseOntologyOptions,
 } from './ontology';
 export type {
+  Secret,
+  SecretDetails,
+  SecretMutationResult,
+  SecretState,
+  SecretVersion,
+  SecretVersionState,
+} from './secret';
+export type {
+  BuildPlatform,
+  CreateGithubRepositorySubscriptionInput,
+  DockerfileBuildRecipe,
+  GithubConnection,
+  GithubConnectionInstall,
+  GithubConnectionStatus,
+  GithubRepositorySubscription,
+  GithubRepositorySubscriptionMutationResult,
+  GitProvider,
+  GitReferenceInput,
+  GitReferenceKind,
+  GitRepository,
+  GitRepositoryInput,
+  ResolveSourceRevisionInput,
+  SourceRevision,
+  SourceRevisionMutationResult,
+} from './source';
+export type {
   CancelWorkflowRunInput,
   ListWorkflowRunsOptions,
   PublishWorkflowDefinitionInput,
@@ -908,36 +935,10 @@ export type {
   WorkflowRunMutationResult,
   WorkflowRunOutput,
   WorkflowRunStatus,
+  WorkflowStepKind,
   WorkflowStepProjection,
   WorkflowStepProjectionStatus,
-  WorkflowStepKind,
 } from './workflow';
-export type {
-  Secret,
-  SecretDetails,
-  SecretMutationResult,
-  SecretState,
-  SecretVersion,
-  SecretVersionState,
-} from './secret';
-export type {
-  BuildPlatform,
-  CreateGithubRepositorySubscriptionInput,
-  DockerfileBuildRecipe,
-  GithubConnection,
-  GithubConnectionInstall,
-  GithubConnectionStatus,
-  GithubRepositorySubscription,
-  GithubRepositorySubscriptionMutationResult,
-  GitProvider,
-  GitReferenceInput,
-  GitReferenceKind,
-  GitRepository,
-  GitRepositoryInput,
-  ResolveSourceRevisionInput,
-  SourceRevision,
-  SourceRevisionMutationResult,
-} from './source';
 
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';
 export type WorkloadLogRecordKind = 'data' | 'gap';

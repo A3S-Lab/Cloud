@@ -3,6 +3,8 @@ import type {
   ApiTokenMutationResult,
   Membership,
   MembershipMutationResult,
+  ResourceGrant,
+  ResourceGrantMutationResult,
 } from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
 import type { CommandResult } from './results';
@@ -78,4 +80,42 @@ export function membershipMutationResult(row: MembershipMutationResult): Command
       [...MEMBERSHIP_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
+}
+
+const RESOURCE_GRANT_COLUMNS: readonly TableColumn<ResourceGrant>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'MEMBERSHIP', value: (row) => row.membershipId },
+  { header: 'KIND', value: (row) => row.scope.kind },
+  { header: 'RESOURCE', value: resourceGrantScopeIdentity },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'REVOKED AT', value: (row) => row.revokedAt ?? '' },
+];
+
+export function resourceGrantsResult(rows: ResourceGrant[]): CommandResult {
+  return { json: rows, table: renderTable(rows, RESOURCE_GRANT_COLUMNS) };
+}
+
+export function resourceGrantResult(row: ResourceGrant): CommandResult {
+  return { json: row, table: renderTable([row], RESOURCE_GRANT_COLUMNS) };
+}
+
+export function resourceGrantMutationResult(row: ResourceGrantMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...RESOURCE_GRANT_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+function resourceGrantScopeIdentity(row: ResourceGrant): string {
+  switch (row.scope.kind) {
+    case 'project':
+      return row.scope.projectId;
+    case 'environment':
+      return `${row.scope.projectId}/${row.scope.environmentId}`;
+    case 'node':
+      return row.scope.nodeId;
+  }
 }

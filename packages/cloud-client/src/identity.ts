@@ -48,3 +48,27 @@ export interface CreateServiceMembershipInput {
   name: string;
   role: MembershipRole;
 }
+
+export type ResourceGrantScope =
+  | { kind: 'project'; projectId: string }
+  | { kind: 'environment'; projectId: string; environmentId: string }
+  | { kind: 'node'; nodeId: string };
+
+export interface ResourceGrant {
+  id: string;
+  organizationId: string;
+  membershipId: string;
+  scope: ResourceGrantScope;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface ResourceGrantMutationResult extends ResourceGrant {
+  replayed: boolean;
+}
+
+export interface CreateResourceGrantInput {
+  scope: ResourceGrantScope;
+}

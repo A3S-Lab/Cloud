@@ -7,6 +7,10 @@ const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const API_TOKEN_ID = '019c0000-0000-7000-8000-000000000018';
 const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000020';
 const MEMBERSHIP_ID = '019c0000-0000-7000-8000-000000000021';
+const RESOURCE_GRANT_ID = '019c0000-0000-7000-8000-000000000022';
+const PROJECT_ID = '019c0000-0000-7000-8000-000000000023';
+const ENVIRONMENT_ID = '019c0000-0000-7000-8000-000000000024';
+const NODE_ID = '019c0000-0000-7000-8000-000000000025';
 const API_TOKEN = `a3s_${'a'.repeat(64)}`;
 
 describe('a3s-cloud identity commands', () => {
@@ -210,6 +214,92 @@ describe('a3s-cloud identity commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it.each([
+    [
+      ['resource-grants', 'list', MEMBERSHIP_ID],
+      `/organizations/${ORGANIZATION_ID}/memberships/${MEMBERSHIP_ID}/resource-grants`,
+      [resourceGrantResource()],
+    ],
+    [
+      ['resource-grants', 'get', RESOURCE_GRANT_ID],
+      `/organizations/${ORGANIZATION_ID}/resource-grants/${RESOURCE_GRANT_ID}`,
+      resourceGrantResource(),
+    ],
+  ] as const)('queries Resource Grant history %#', async (command, path, response) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(response);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...command, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(output.stderr()).toBe('');
+  });
+
+  it('creates every closed Resource Grant scope and revokes by aggregate version', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope({ ...resourceGrantResource(), replayed: false }, calls.length <= 3 ? 201 : 200);
+    };
+    const output = capture();
+    const runtime = { ...output.runtime, environment: completeEnvironment(), fetch: fetcher };
+    const commands = [
+      [
+        'resource-grants',
+        'create',
+        MEMBERSHIP_ID,
+        'project',
+        PROJECT_ID,
+        '--idempotency-key=cli:grant-project',
+      ],
+      [
+        'resource-grants',
+        'create',
+        MEMBERSHIP_ID,
+        'environment',
+        PROJECT_ID,
+        ENVIRONMENT_ID,
+        '--idempotency-key=cli:grant-environment',
+      ],
+      ['resource-grants', 'create', MEMBERSHIP_ID, 'node', NODE_ID, '--idempotency-key=cli:grant-node'],
+      [
+        'resource-grants',
+        'revoke',
+        RESOURCE_GRANT_ID,
+        '--expected-version=1',
+        '--idempotency-key=cli:grant-revoke',
+      ],
+    ];
+    for (const command of commands) {
+      expect(await runCli(command, runtime)).toBe(ExitCode.Success);
+    }
+
+    expect(calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({ scope: { kind: 'project', projectId: PROJECT_ID } }),
+      JSON.stringify({
+        scope: { kind: 'environment', projectId: PROJECT_ID, environmentId: ENVIRONMENT_ID },
+      }),
+      JSON.stringify({ scope: { kind: 'node', nodeId: NODE_ID } }),
+      JSON.stringify({ expectedVersion: 1 }),
+    ]);
+    expect(calls.map(([, init]) => (init?.headers as Record<string, string>)['Idempotency-Key'])).toEqual([
+      'cli:grant-project',
+      'cli:grant-environment',
+      'cli:grant-node',
+      'cli:grant-revoke',
+    ]);
+    expect(output.stderr()).toBe('');
+  });
+
   it('sanitizes a rejected mutation even if an upstream error echoes the credential', async () => {
     const fetcher: CloudFetch = async () =>
       new Response(
@@ -379,6 +469,14 @@ describe('a3s-cloud identity commands', () => {
         argv: ['memberships', 'create-service', 'automation', 'superuser', '--idempotency-key=k'],
         message: 'membership role must be owner, admin, member, or restricted',
       },
+      {
+        argv: ['resource-grants', 'create', MEMBERSHIP_ID, 'cluster', PROJECT_ID, '--idempotency-key=k'],
+        message: 'Resource Grant scope kind must be project, environment, or node',
+      },
+      {
+        argv: ['resource-grants', 'revoke', RESOURCE_GRANT_ID, '--idempotency-key=k'],
+        message: '--expected-version must be a positive safe integer for Resource Grant mutation',
+      },
     ];
 
     for (const testCase of cases) {
@@ -468,6 +566,19 @@ function membershipResource(): Record<string, unknown> {
     aggregateVersion: 1,
     createdAt: '2026-08-07T00:00:00.000Z',
     updatedAt: '2026-08-07T00:00:00.000Z',
+    revokedAt: null,
+  };
+}
+
+function resourceGrantResource(): Record<string, unknown> {
+  return {
+    id: RESOURCE_GRANT_ID,
+    organizationId: ORGANIZATION_ID,
+    membershipId: MEMBERSHIP_ID,
+    scope: { kind: 'project', projectId: PROJECT_ID },
+    aggregateVersion: 1,
+    createdAt: '2026-08-12T00:00:00.000Z',
+    updatedAt: '2026-08-12T00:00:00.000Z',
     revokedAt: null,
   };
 }

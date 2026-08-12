@@ -5,9 +5,9 @@ import {
   CLOUD_API_MAJOR_VERSION,
   CloudApi,
   CloudApiError,
-  DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
   type CloudFetch,
   DEFAULT_CLOUD_API_BASE_PATH,
+  DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
@@ -1764,6 +1764,68 @@ describe('CloudApi', () => {
     expect(() =>
       api.changeMembershipRole('organization', 'membership', 'member', 0, 'client:membership-version')
     ).toThrow('expected membership version must be a positive safe integer');
+    expect(called).toBe(false);
+  });
+
+  it('exposes one tenant-scoped Resource Grant lifecycle', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const projectId = '019c0000-0000-7000-8000-000000000031';
+
+    await api.listResourceGrants('organization / one', 'membership / one');
+    await api.getResourceGrant('organization / one', 'grant / one');
+    await api.createResourceGrant(
+      'organization / one',
+      'membership / one',
+      { scope: { kind: 'project', projectId } },
+      'client:resource-grant-create'
+    );
+    await api.revokeResourceGrant('organization / one', 'grant / one', 1, 'client:resource-grant-revoke');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one/resource-grants',
+      '/api/v1/organizations/organization%20%2F%20one/resource-grants/grant%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/memberships/membership%20%2F%20one/resource-grants',
+      '/api/v1/organizations/organization%20%2F%20one/resource-grants/grant%20%2F%20one/revocation',
+    ]);
+    expect(calls.slice(2).map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:resource-grant-create' }),
+        body: JSON.stringify({ scope: { kind: 'project', projectId } }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:resource-grant-revoke' }),
+        body: JSON.stringify({ expectedVersion: 1 }),
+      }),
+    ]);
+  });
+
+  it('rejects invalid Resource Grant input before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createResourceGrant(
+        'organization',
+        'membership',
+        { scope: { kind: 'node', nodeId: 'not-a-uuid' } },
+        'client:resource-grant-node'
+      )
+    ).toThrow('Resource Grant node ID must be a non-nil UUID');
+    expect(() =>
+      api.revokeResourceGrant('organization', 'grant', 0, 'client:resource-grant-version')
+    ).toThrow('expected Resource Grant version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

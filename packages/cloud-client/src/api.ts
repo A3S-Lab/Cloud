@@ -30,6 +30,7 @@ import type {
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
   CreateMcpCredentialInput,
+  CreateResourceGrantInput,
   CreateServiceMembershipInput,
   Deployment,
   DomainClaim,
@@ -72,8 +73,8 @@ import type {
   Operation,
   Organization,
   OrganizationMutationResult,
-  PluginCatalogInspectRequest,
   PluginCatalogInspection,
+  PluginCatalogInspectRequest,
   PluginCatalogPage,
   PluginCatalogSearchRequest,
   PluginRegistry,
@@ -81,7 +82,10 @@ import type {
   ProjectMutationResult,
   PublishFormReleaseOptions,
   PublishRouteInput,
+  PublishWorkflowDefinitionInput,
   ResolveSourceRevisionInput,
+  ResourceGrant,
+  ResourceGrantMutationResult,
   RetryBuildRunResult,
   ReviseFormDraftOptions,
   ReviseOntologyOptions,
@@ -101,10 +105,7 @@ import type {
   StartAgentExecutionInput,
   StartWorkflowRunInput,
   StopWorkloadResult,
-  Workload,
-  WorkloadDeploymentResult,
-  WorkloadLogStreamFilter,
-  WorkloadLogsPage,
+  WaitWorkflowRunOptions,
   WorkflowDefinition,
   WorkflowDefinitionMutationResult,
   WorkflowGoal,
@@ -112,13 +113,15 @@ import type {
   WorkflowPlanRevision,
   WorkflowRevision,
   WorkflowRevisionSummary,
-  WaitWorkflowRunOptions,
   WorkflowRun,
   WorkflowRunHistoryOptions,
   WorkflowRunHistoryPage,
   WorkflowRunMutationResult,
   WorkflowRunOutput,
-  PublishWorkflowDefinitionInput,
+  Workload,
+  WorkloadDeploymentResult,
+  WorkloadLogStreamFilter,
+  WorkloadLogsPage,
 } from './types';
 import {
   validateApiTokenInput,
@@ -126,6 +129,7 @@ import {
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
+  validateExpectedResourceGrantVersion,
   validateFormDraftInput,
   validateFormVersionControl,
   validateMcpCredentialExpiry,
@@ -134,11 +138,12 @@ import {
   validateMembershipRole,
   validateOntologyAcl,
   validateOntologyRevisionControl,
+  validateResourceGrantInput,
+  validateSecretValue,
+  validateServiceMembershipInput,
   validateWorkflowDefinitionPublication,
   validateWorkflowGoalAcl,
   validateWorkflowRevisionControl,
-  validateSecretValue,
-  validateServiceMembershipInput,
   validateWorkloadAcl,
 } from './validation';
 
@@ -170,12 +175,12 @@ export {
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
+  MAX_SECRET_VALUE_BYTES,
   MAX_WORKFLOW_DEFINITION_ACL_BYTES,
   MAX_WORKFLOW_GOAL_ACL_BYTES,
   MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
   MAX_WORKFLOW_REVISION_PAYLOAD_BYTES,
   MAX_WORKFLOW_REVISION_PAYLOADS,
-  MAX_SECRET_VALUE_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
   validateFormDraftInput,
   validateFormVersionControl,
@@ -340,6 +345,60 @@ export class CloudApi {
     validateExpectedMembershipVersion(expectedVersion);
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  listResourceGrants(
+    organizationId: string,
+    membershipId: string,
+    signal?: AbortSignal
+  ): Promise<ResourceGrant[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/resource-grants`,
+      signal
+    );
+  }
+
+  getResourceGrant(
+    organizationId: string,
+    resourceGrantId: string,
+    signal?: AbortSignal
+  ): Promise<ResourceGrant> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/resource-grants/${encodeURIComponent(resourceGrantId)}`,
+      signal
+    );
+  }
+
+  createResourceGrant(
+    organizationId: string,
+    membershipId: string,
+    input: CreateResourceGrantInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ResourceGrantMutationResult> {
+    validateResourceGrantInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/resource-grants`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokeResourceGrant(
+    organizationId: string,
+    resourceGrantId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ResourceGrantMutationResult> {
+    validateExpectedResourceGrantVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/resource-grants/${encodeURIComponent(resourceGrantId)}/revocation`,
       idempotencyKey,
       { expectedVersion },
       signal
