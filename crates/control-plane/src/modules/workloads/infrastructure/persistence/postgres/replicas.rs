@@ -554,6 +554,27 @@ pub(super) async fn replicas_for_update(
     .map_err(Into::into)
 }
 
+pub(super) async fn replica_for_update(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    workload_id: WorkloadId,
+    replica_id: WorkloadReplicaId,
+) -> Result<Option<WorkloadReplica>, PostgresPersistenceError> {
+    fetch_optional(
+        transaction,
+        select_from::<WorkloadReplicas>()
+            .select(ReplicaSelection)
+            .filter(WorkloadReplicas::organization_id().eq(organization_id.as_uuid()))
+            .filter(WorkloadReplicas::workload_id().eq(workload_id.as_uuid()))
+            .filter(WorkloadReplicas::id().eq(replica_id.as_uuid()))
+            .for_update(),
+    )
+    .await?
+    .map(ReplicaRow::replica)
+    .transpose()
+    .map_err(Into::into)
+}
+
 async fn replica_in_transaction(
     transaction: &PostgresTransaction,
     organization_id: OrganizationId,
@@ -594,6 +615,27 @@ pub(super) async fn member_in_transaction(
     .map_err(Into::into)
 }
 
+pub(super) async fn member_for_update(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    replica_id: WorkloadReplicaId,
+    member_id: WorkloadReplicaMemberId,
+) -> Result<Option<WorkloadReplicaMember>, PostgresPersistenceError> {
+    fetch_optional(
+        transaction,
+        select_from::<WorkloadReplicaMembers>()
+            .select(MemberSelection)
+            .filter(WorkloadReplicaMembers::organization_id().eq(organization_id.as_uuid()))
+            .filter(WorkloadReplicaMembers::replica_id().eq(replica_id.as_uuid()))
+            .filter(WorkloadReplicaMembers::id().eq(member_id.as_uuid()))
+            .for_update(),
+    )
+    .await?
+    .map(MemberRow::member)
+    .transpose()
+    .map_err(Into::into)
+}
+
 pub(super) async fn binding_in_transaction(
     transaction: &PostgresTransaction,
     organization_id: OrganizationId,
@@ -605,6 +647,26 @@ pub(super) async fn binding_in_transaction(
             .select(BindingSelection)
             .filter(DeploymentReplicaBindings::organization_id().eq(organization_id.as_uuid()))
             .filter(DeploymentReplicaBindings::deployment_id().eq(deployment_id.as_uuid())),
+    )
+    .await?
+    .map(BindingRow::binding)
+    .transpose()
+    .map_err(Into::into)
+}
+
+pub(super) async fn binding_for_replica_generation(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    replica_id: WorkloadReplicaId,
+    replica_generation: u64,
+) -> Result<Option<DeploymentReplicaBinding>, PostgresPersistenceError> {
+    fetch_optional(
+        transaction,
+        select_from::<DeploymentReplicaBindings>()
+            .select(BindingSelection)
+            .filter(DeploymentReplicaBindings::organization_id().eq(organization_id.as_uuid()))
+            .filter(DeploymentReplicaBindings::replica_id().eq(replica_id.as_uuid()))
+            .filter(DeploymentReplicaBindings::replica_generation().eq(replica_generation)),
     )
     .await?
     .map(BindingRow::binding)
@@ -796,7 +858,7 @@ pub(super) async fn persist_replica(
     require_one_row("Workload replica generation", rows)
 }
 
-async fn insert_binding(
+pub(super) async fn insert_binding(
     transaction: &PostgresTransaction,
     binding: &DeploymentReplicaBinding,
 ) -> Result<(), PostgresPersistenceError> {

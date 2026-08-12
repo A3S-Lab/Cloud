@@ -1,6 +1,7 @@
 mod create;
 mod operation_requests;
 mod queries;
+mod replica_deployment_materialization;
 mod replica_set_reconfiguration;
 mod replicas;
 mod resource_claim_rows;
@@ -23,8 +24,9 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    ISecretRotationRestartRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    ReconfigureReplicaSetWrite, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
+    IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
+    ReplicaDeploymentMaterialization, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
     RequestWorkloadStopBundle, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
@@ -427,6 +429,25 @@ impl ISecretRotationRestartRepository for PostgresWorkloadRepository {
         reconciled_at: DateTime<Utc>,
     ) -> Result<SecretRotationReconciliation, RepositoryError> {
         secret_rotation_restarts::reconcile(&self.executor, rotation, workload_limit, reconciled_at)
+            .await
+    }
+}
+
+#[async_trait]
+impl IWorkloadReplicaDeploymentRepository for PostgresWorkloadRepository {
+    async fn pending_replica_deployments(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ReplicaDeploymentCandidate>, RepositoryError> {
+        replica_deployment_materialization::pending(&self.executor, limit).await
+    }
+
+    async fn materialize_replica_deployment(
+        &self,
+        candidate: ReplicaDeploymentCandidate,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Option<ReplicaDeploymentMaterialization>, RepositoryError> {
+        replica_deployment_materialization::materialize(&self.executor, candidate, requested_at)
             .await
     }
 }

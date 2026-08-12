@@ -2,6 +2,7 @@ mod deployment_flow;
 mod oci_registry;
 mod persistence;
 mod reconciliation;
+pub(crate) mod replica_deployment_materialization;
 pub(crate) mod runtime_spec;
 mod secret_rotation_reconciliation;
 
@@ -18,6 +19,10 @@ pub use persistence::{
 pub use reconciliation::{
     IWorkloadRuntimeControl, WorkloadReconciliationFailure, WorkloadReconciliationReport,
     WorkloadRuntimeReconciler,
+};
+pub use replica_deployment_materialization::{
+    ReplicaDeploymentMaterializationFailure, ReplicaDeploymentMaterializationReport,
+    ReplicaDeploymentMaterializer,
 };
 pub use runtime_spec::{project_replica_runtime_spec, project_runtime_spec};
 pub use secret_rotation_reconciliation::{

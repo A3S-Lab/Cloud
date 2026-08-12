@@ -55,7 +55,7 @@ pub(super) async fn deployment_in_transaction(
     require_next_generation(transaction, &request).await?;
     insert_revision(transaction, &request).await?;
     insert_operation(transaction, &request).await?;
-    insert_deployment(transaction, &request).await?;
+    insert_deployment(transaction, &request.deployment).await?;
     replicas::record_generation(
         transaction,
         &workload,
@@ -417,11 +417,10 @@ async fn insert_operation(
     operation_requests::insert(transaction, &request.operation).await
 }
 
-async fn insert_deployment(
+pub(super) async fn insert_deployment(
     transaction: &PostgresTransaction,
-    request: &CreateDeploymentBundle,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
 ) -> Result<(), PostgresPersistenceError> {
-    let deployment = &request.deployment;
     let result = execute(
         transaction,
         insert_into::<Deployments>()

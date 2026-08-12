@@ -13,7 +13,9 @@ use crate::modules::sources::GithubConnectionAuthorityReconciler;
 use crate::modules::workflow::{
     HumanTaskCoordinator, HumanTaskResumeWorker, WorkflowRunReconciler,
 };
-use crate::modules::workloads::{SecretRotationRestartReconciler, WorkloadRuntimeReconciler};
+use crate::modules::workloads::{
+    ReplicaDeploymentMaterializer, SecretRotationRestartReconciler, WorkloadRuntimeReconciler,
+};
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
 use std::net::SocketAddr;
 
@@ -39,6 +41,7 @@ pub(crate) struct ControlPlaneWorkers {
     gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
     gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
     secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
+    replica_deployment_materializer: Option<ReplicaDeploymentMaterializer>,
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
     log_compaction_worker: Option<LogCompactionWorker>,
@@ -65,6 +68,7 @@ impl ControlPlaneWorkers {
         gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
         gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
         secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
+        replica_deployment_materializer: Option<ReplicaDeploymentMaterializer>,
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
         log_compaction_worker: Option<LogCompactionWorker>,
@@ -88,6 +92,7 @@ impl ControlPlaneWorkers {
             gateway_replica_recovery_reconciler,
             gateway_rollout_rollback_reconciler,
             secret_rotation_restart_reconciler,
+            replica_deployment_materializer,
             workload_reconciler,
             log_retention_worker,
             log_compaction_worker,
@@ -166,6 +171,9 @@ impl ControlPlane {
         }
         if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {
             workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+        }
+        if let Some(materializer) = self.workers.replica_deployment_materializer {
+            workers.push(tokio::spawn(materializer.run(shutdown_receiver.clone())));
         }
         if let Some(coordinator) = self.workers.operation_coordinator {
             let failure_sender = failure_sender.clone();

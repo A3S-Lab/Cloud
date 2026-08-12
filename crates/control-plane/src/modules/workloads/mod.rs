@@ -37,8 +37,9 @@ pub use domain::events::{
 };
 pub use domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IResourceClaimRepository,
-    ISecretRotationRestartRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    ReconfigureReplicaSetWrite, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
+    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
+    IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
+    ReplicaDeploymentMaterialization, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
     RequestWorkloadStopBundle, SecretRotation, SecretRotationCompletion,
     SecretRotationReconciliation, WorkloadStopBundle,
 };
@@ -52,8 +53,10 @@ pub use infrastructure::{
     project_replica_runtime_spec, project_runtime_spec, DeploymentFlowConfig,
     DeploymentFlowDependencies, DeploymentFlowRuntime, IWorkloadRuntimeControl,
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, OciRegistryArtifactResolver,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository, SecretRotationRestartFailure,
-    SecretRotationRestartReconciler, SecretRotationRestartReport, WorkloadReconciliationFailure,
-    WorkloadReconciliationReport, WorkloadRuntimeReconciler,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    ReplicaDeploymentMaterializationFailure, ReplicaDeploymentMaterializationReport,
+    ReplicaDeploymentMaterializer, SecretRotationRestartFailure, SecretRotationRestartReconciler,
+    SecretRotationRestartReport, WorkloadReconciliationFailure, WorkloadReconciliationReport,
+    WorkloadRuntimeReconciler,
 };
 pub use presentation::WorkloadsModule;

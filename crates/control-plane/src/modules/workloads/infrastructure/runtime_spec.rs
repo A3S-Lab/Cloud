@@ -1,5 +1,5 @@
 use crate::modules::workloads::domain::entities::{
-    WorkloadReplica, WorkloadReplicaLifecycle, WorkloadRevision,
+    DeploymentReplicaBinding, WorkloadReplica, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_cloud_contracts::CloudSecretReference;
 use a3s_runtime::contract::{
@@ -29,6 +29,25 @@ pub fn project_replica_runtime_spec(
     let mut spec = project_runtime_spec(revision)?;
     spec.unit_id = replica.runtime_unit_id(revision)?;
     spec.generation = replica.generation;
+    spec.validate()?;
+    Ok(spec)
+}
+
+pub(crate) fn project_bound_runtime_spec(
+    revision: &WorkloadRevision,
+    binding: &DeploymentReplicaBinding,
+) -> Result<RuntimeUnitSpec, String> {
+    if binding.workload_id != revision.workload_id
+        || binding.revision_id != revision.id
+        || binding.replica_generation == 0
+        || binding.runtime_generation != binding.replica_generation
+        || binding.runtime_unit_id.trim().is_empty()
+    {
+        return Err("deployment replica binding has an invalid Runtime projection".into());
+    }
+    let mut spec = project_runtime_spec(revision)?;
+    spec.unit_id.clone_from(&binding.runtime_unit_id);
+    spec.generation = binding.runtime_generation;
     spec.validate()?;
     Ok(spec)
 }

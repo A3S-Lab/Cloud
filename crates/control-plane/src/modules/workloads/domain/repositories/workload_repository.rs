@@ -77,6 +77,25 @@ pub struct ReplicaSetWriteResult {
     pub replayed: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplicaDeploymentCandidate {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_ordinal: u32,
+    pub revision_id: WorkloadRevisionId,
+    pub revision_generation: u64,
+    pub replica_generation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReplicaDeploymentMaterialization {
+    pub candidate: ReplicaDeploymentCandidate,
+    pub deployment: Deployment,
+    pub operation: OperationRequest,
+    pub created: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveRuntimeTarget {
     pub workload: Workload,
@@ -150,6 +169,20 @@ pub trait IWorkloadRuntimeTargetRepository: Send + Sync {
         &self,
         limit: usize,
     ) -> Result<Vec<ActiveRuntimeTarget>, RepositoryError>;
+}
+
+#[async_trait]
+pub trait IWorkloadReplicaDeploymentRepository: Send + Sync {
+    async fn pending_replica_deployments(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ReplicaDeploymentCandidate>, RepositoryError>;
+
+    async fn materialize_replica_deployment(
+        &self,
+        candidate: ReplicaDeploymentCandidate,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Option<ReplicaDeploymentMaterialization>, RepositoryError>;
 }
 
 #[async_trait]

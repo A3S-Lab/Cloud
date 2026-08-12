@@ -17,11 +17,13 @@ use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId, Reposito
 use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, DeploymentReplicaBinding, DeploymentStatus,
     ResourceClaimBindingEvidence, ResourceClaimReservation, ResourceClaimState,
-    SecretBindingTarget, ServiceResources, WorkloadRevision,
+    SecretBindingTarget, ServiceResources, WorkloadReplica, WorkloadReplicaMember,
+    WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::is_capacity_unavailable;
 use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
-use crate::modules::workloads::infrastructure::project_runtime_spec;
+use crate::modules::workloads::infrastructure::project_replica_runtime_spec;
+use crate::modules::workloads::infrastructure::runtime_spec::project_bound_runtime_spec;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeResourceClaimBinding};
 use a3s_flow::{FlowError, StepInvocation};
 use a3s_runtime::contract::{
@@ -177,15 +179,40 @@ async fn resolve(
             .map_err(|error| flow_error("could not persist resolved OCI artifact", error))?;
     }
     validate_rollback_source(runtime, &input, &revision).await?;
-    let spec = project_runtime_spec(&revision)
-        .map_err(|error| flow_error("could not project Runtime specification", error))?;
     let replica_binding = runtime
         .workloads
         .find_deployment_replica_binding(input.organization_id, deployment.id)
         .await
         .map_err(|error| flow_error("could not load deployment replica binding", error))?;
-    validate_replica_binding(&replica_binding, &deployment, &revision, &spec)?;
-    let previous_runtime = previous_runtime(runtime, &input, &revision).await?;
+    let replica = runtime
+        .workloads
+        .find_workload_replica(
+            input.organization_id,
+            input.workload_id,
+            replica_binding.replica_id,
+        )
+        .await
+        .map_err(|error| flow_error("could not load deployment replica", error))?;
+    let member = runtime
+        .workloads
+        .find_workload_replica_member(
+            input.organization_id,
+            replica_binding.replica_id,
+            replica_binding.member_id,
+        )
+        .await
+        .map_err(|error| flow_error("could not load deployment replica member", error))?;
+    let spec = project_replica_runtime_spec(&revision, &replica)
+        .map_err(|error| flow_error("could not project replica Runtime specification", error))?;
+    validate_current_replica_binding(
+        &replica_binding,
+        &deployment,
+        &revision,
+        &replica,
+        &member,
+        &spec,
+    )?;
+    let previous_runtime = previous_runtime(runtime, &input, &revision, &replica_binding).await?;
 
     let convergence_deadline = deployment
         .requested_at
@@ -250,6 +277,7 @@ async fn previous_runtime(
     runtime: &DeploymentFlowRuntime,
     input: &DeploymentFlowInput,
     candidate: &WorkloadRevision,
+    candidate_binding: &DeploymentReplicaBinding,
 ) -> a3s_flow::Result<Option<PreviousRuntime>> {
     let workload = runtime
         .workloads
@@ -265,9 +293,7 @@ async fn previous_runtime(
         return Ok(None);
     };
     if previous_revision_id == candidate.id {
-        return Err(FlowError::Runtime(
-            "deployment candidate is already the active immutable revision".into(),
-        ));
+        return Ok(None);
     }
     let previous_revision = runtime
         .workloads
@@ -286,26 +312,39 @@ async fn previous_runtime(
         .list_deployments(input.organization_id, workload.id)
         .await
         .map_err(|error| flow_error("could not load previous deployment", error))?;
-    let previous_deployment = deployments
-        .into_iter()
-        .find(|deployment| {
-            deployment.revision_id == previous_revision.id
-                && deployment.status == DeploymentStatus::Active
-        })
-        .ok_or_else(|| {
-            FlowError::Runtime("active workload revision has no active deployment".into())
-        })?;
+    let mut previous = None;
+    for deployment in deployments.into_iter().filter(|deployment| {
+        deployment.revision_id == previous_revision.id
+            && deployment.status == DeploymentStatus::Active
+    }) {
+        let binding = runtime
+            .workloads
+            .find_deployment_replica_binding(input.organization_id, deployment.id)
+            .await
+            .map_err(|error| flow_error("could not load previous replica binding", error))?;
+        if binding.replica_id != candidate_binding.replica_id {
+            continue;
+        }
+        if previous.replace((deployment, binding)).is_some() {
+            return Err(FlowError::Runtime(
+                "active replica generation has multiple previous deployments".into(),
+            ));
+        }
+    }
+    let (previous_deployment, replica_binding) = previous.ok_or_else(|| {
+        FlowError::Runtime("candidate replica has no active previous deployment".into())
+    })?;
     let node_id = previous_deployment
         .node_id
         .ok_or_else(|| FlowError::Runtime("active deployment omitted its node".into()))?;
-    let spec = project_runtime_spec(&previous_revision)
-        .map_err(|error| flow_error("could not project previous Runtime specification", error))?;
-    let replica_binding = runtime
-        .workloads
-        .find_deployment_replica_binding(input.organization_id, previous_deployment.id)
-        .await
-        .map_err(|error| flow_error("could not load previous deployment replica binding", error))?;
-    validate_replica_binding(
+    let spec =
+        project_bound_runtime_spec(&previous_revision, &replica_binding).map_err(|error| {
+            flow_error(
+                "could not project previous replica Runtime specification",
+                error,
+            )
+        })?;
+    validate_runtime_binding(
         &replica_binding,
         &previous_deployment,
         &previous_revision,
@@ -319,7 +358,21 @@ async fn previous_runtime(
     }))
 }
 
-fn validate_replica_binding(
+fn validate_current_replica_binding(
+    binding: &DeploymentReplicaBinding,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
+    revision: &WorkloadRevision,
+    replica: &WorkloadReplica,
+    member: &WorkloadReplicaMember,
+    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+) -> a3s_flow::Result<()> {
+    binding
+        .validate_against(deployment, revision, replica, member)
+        .map_err(|error| flow_error("deployment replica binding is invalid", error))?;
+    validate_runtime_binding(binding, deployment, revision, spec)
+}
+
+fn validate_runtime_binding(
     binding: &DeploymentReplicaBinding,
     deployment: &crate::modules::workloads::domain::entities::Deployment,
     revision: &WorkloadRevision,
@@ -329,7 +382,6 @@ fn validate_replica_binding(
         || binding.organization_id != deployment.organization_id
         || binding.workload_id != deployment.workload_id
         || binding.revision_id != revision.id
-        || binding.replica_generation != revision.generation
         || binding.runtime_unit_id != spec.unit_id
         || binding.runtime_generation != spec.generation
         || binding.node_id != deployment.node_id
@@ -695,6 +747,12 @@ async fn dispatch_with_claim(
             "deployment dispatch does not match its scheduled node".into(),
         ));
     }
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load replica binding for dispatch", error))?;
+    validate_resolved_replica_binding(&replica_binding, &deployment, &input.resolved)?;
     let resource_claim = if require_resource_claim {
         Some(Box::new(
             prepared_binding_for_dispatch(runtime, &input).await?,
@@ -718,6 +776,11 @@ async fn dispatch_with_claim(
                 .ok_or_else(|| {
                     FlowError::Runtime("dispatched Runtime apply command is missing".into())
                 })?;
+            if command.aggregate_id != replica_binding.replica_id.as_uuid() {
+                return Err(FlowError::Runtime(
+                    "dispatched Runtime apply changed its replica aggregate".into(),
+                ));
+            }
             let result_deadline =
                 apply_result_deadline(&command, &input.resolved.spec, resource_claim.as_deref())?;
             return Ok(DispatchStepOutput::Ready {
@@ -766,7 +829,7 @@ async fn dispatch_with_claim(
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: command_id,
             node_id: input.node_id,
-            aggregate_id: deployment.workload_id.as_uuid(),
+            aggregate_id: replica_binding.replica_id.as_uuid(),
             payload,
             issued_at,
             not_after,
@@ -1249,9 +1312,20 @@ async fn dispatched_resource_binding(
         .await
         .map_err(|error| flow_error("could not reload resource-bound Runtime apply", error))?
         .ok_or_else(|| FlowError::Runtime("resource-bound Runtime apply is missing".into()))?;
+    let deployment = runtime
+        .workloads
+        .find_deployment(input.resolved.organization_id, input.resolved.deployment_id)
+        .await
+        .map_err(|error| flow_error("could not reload resource-bound deployment", error))?;
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(input.resolved.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not reload resource-bound replica binding", error))?;
+    validate_resolved_replica_binding(&replica_binding, &deployment, &input.resolved)?;
     if command.id != input.dispatched.command_id
         || command.node_id != input.dispatched.node_id
-        || command.aggregate_id != input.resolved.workload_id.as_uuid()
+        || command.aggregate_id != replica_binding.replica_id.as_uuid()
     {
         return Err(FlowError::Runtime(
             "resource-bound Runtime apply identity changed".into(),
@@ -1272,6 +1346,30 @@ async fn dispatched_resource_binding(
         ));
     }
     Ok(resource_claim.map(|binding| *binding))
+}
+
+fn validate_resolved_replica_binding(
+    binding: &DeploymentReplicaBinding,
+    deployment: &crate::modules::workloads::domain::entities::Deployment,
+    resolved: &ResolveStepOutput,
+) -> a3s_flow::Result<()> {
+    if binding.deployment_id != deployment.id
+        || binding.organization_id != deployment.organization_id
+        || binding.workload_id != deployment.workload_id
+        || binding.revision_id != deployment.revision_id
+        || binding.deployment_id != resolved.deployment_id
+        || binding.organization_id != resolved.organization_id
+        || binding.workload_id != resolved.workload_id
+        || binding.revision_id != resolved.revision_id
+        || binding.runtime_unit_id != resolved.spec.unit_id
+        || binding.runtime_generation != resolved.spec.generation
+        || binding.node_id != deployment.node_id
+    {
+        return Err(FlowError::Runtime(
+            "resolved deployment changed its replica Runtime binding".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn persist_runtime_binding(
