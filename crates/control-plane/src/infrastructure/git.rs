@@ -228,8 +228,7 @@ async fn read_bounded(mut stream: impl AsyncRead + Unpin) -> Result<Vec<u8>, std
 fn find_executable(name: &str) -> Result<PathBuf, GitCommandError> {
     let path = std::env::var_os("PATH").ok_or(GitCommandError::ExecutableUnavailable)?;
     for directory in std::env::split_paths(&path) {
-        let candidate = directory.join(name);
-        if is_executable(&candidate) {
+        if let Some(candidate) = resolve_executable(&directory.join(name)) {
             return candidate
                 .canonicalize()
                 .map_err(|_| GitCommandError::ExecutableUnavailable);
@@ -257,13 +256,58 @@ fn find_exec_path(executable: &Path) -> Result<PathBuf, GitCommandError> {
     let path = PathBuf::from(path)
         .canonicalize()
         .map_err(|_| GitCommandError::ExecutableUnavailable)?;
-    if !path.is_dir()
-        || !is_executable(&path.join("git-upload-pack"))
-        || !is_executable(&path.join("git-receive-pack"))
-    {
+    if !path.is_dir() || !is_valid_exec_path(&path) {
         return Err(GitCommandError::ExecutableUnavailable);
     }
     Ok(path)
+}
+
+#[cfg(not(windows))]
+fn is_valid_exec_path(path: &Path) -> bool {
+    resolve_executable(&path.join("git-upload-pack")).is_some()
+        && resolve_executable(&path.join("git-receive-pack")).is_some()
+}
+
+#[cfg(windows)]
+fn is_valid_exec_path(path: &Path) -> bool {
+    // Git for Windows dispatches upload-pack and receive-pack as built-ins from
+    // git-core/git.exe instead of installing separate helper executables.
+    resolve_executable(&path.join("git")).is_some()
+}
+
+#[cfg(not(windows))]
+fn resolve_executable(path: &Path) -> Option<PathBuf> {
+    is_executable(path).then(|| path.to_owned())
+}
+
+#[cfg(windows)]
+fn resolve_executable(path: &Path) -> Option<PathBuf> {
+    if is_executable(path) {
+        return Some(path.to_owned());
+    }
+    let path_extensions =
+        std::env::var_os("PATHEXT").unwrap_or_else(|| OsString::from(".COM;.EXE;.BAT;.CMD"));
+    resolve_windows_executable(path, &path_extensions.to_string_lossy())
+}
+
+#[cfg(windows)]
+fn resolve_windows_executable(path: &Path, path_extensions: &str) -> Option<PathBuf> {
+    path_extensions.split(';').find_map(|extension| {
+        let extension = extension.trim();
+        if extension.len() < 2
+            || extension.len() > 16
+            || !extension.starts_with('.')
+            || !extension[1..]
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric())
+        {
+            return None;
+        }
+        let mut candidate = path.as_os_str().to_os_string();
+        candidate.push(extension);
+        let candidate = PathBuf::from(candidate);
+        is_executable(&candidate).then_some(candidate)
+    })
 }
 
 #[cfg(unix)]
@@ -281,6 +325,27 @@ fn is_executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(windows)]
+    #[test]
+    fn windows_git_tools_resolve_through_pathext() {
+        let directory = tempfile::tempdir().expect("temporary Git tool directory");
+        let executable = directory.path().join("git-upload-pack.exe");
+        std::fs::write(&executable, []).expect("stub Git tool");
+
+        let resolved = super::resolve_windows_executable(
+            &directory.path().join("git-upload-pack"),
+            ".COM;.EXE;.BAT;.CMD",
+        )
+        .expect("PATHEXT-resolved Git tool");
+        assert!(resolved.is_file());
+        assert!(resolved
+            .to_string_lossy()
+            .eq_ignore_ascii_case(&executable.to_string_lossy()));
+
+        std::fs::write(directory.path().join("git.exe"), []).expect("stub Git dispatcher");
+        assert!(super::is_valid_exec_path(directory.path()));
+    }
+
     #[test]
     fn git_consumers_reuse_the_shared_command_runner() {
         for (name, source) in [
