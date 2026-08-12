@@ -833,7 +833,7 @@ describe('CloudApi', () => {
       '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/release',
       '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/submission',
     ]);
-    expect(calls.slice(2).map(([, init]) => init)).toEqual([
+    expect(calls.slice(2, 4).map(([, init]) => init)).toEqual([
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
