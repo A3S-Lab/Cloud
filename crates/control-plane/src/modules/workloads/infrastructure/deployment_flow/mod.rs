@@ -1,4 +1,5 @@
 mod legacy_workflow;
+mod placement_group_workflow;
 mod previous_workflow;
 mod steps;
 mod stop_workflow;
@@ -15,6 +16,7 @@ use crate::modules::shared_kernel::domain::{
 };
 pub use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
+    PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
     PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::ResourceClaimState;
@@ -173,6 +175,10 @@ impl FlowRuntime for DeploymentFlowRuntime {
             (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION) => {
                 legacy_workflow::replay(&self.config, invocation)
             }
+            (
+                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+            ) => placement_group_workflow::replay(&self.config, invocation),
             (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => {
                 stop_workflow::replay(&self.config, invocation)
             }
@@ -184,7 +190,12 @@ impl FlowRuntime for DeploymentFlowRuntime {
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<serde_json::Value> {
-        if invocation.step_name.starts_with("stop_workload_") {
+        if invocation
+            .step_name
+            .starts_with("placement_group_deployment_")
+        {
+            placement_group_workflow::execute(self, invocation).await
+        } else if invocation.step_name.starts_with("stop_workload_") {
             stop_workflow::execute(self, invocation).await
         } else {
             steps::execute(self, invocation).await

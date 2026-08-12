@@ -1,6 +1,7 @@
 use super::{
-    EffectivePlacementPolicy, PlacementTopology, ServiceTemplate, Workload, WorkloadDesiredState,
-    WorkloadReplica, WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, DeploymentStatus, EffectivePlacementPolicy,
+    PlacementTopology, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadReplica,
+    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, OrganizationId, ProjectId, WorkloadId,
@@ -122,6 +123,127 @@ pub struct WorkloadPlacementGroup {
 pub struct WorkloadPlacementGroupWrite {
     pub group: WorkloadPlacementGroup,
     pub replica_members: Vec<WorkloadReplicaMember>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeploymentPlacementGroupBinding {
+    pub deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub workload_id: WorkloadId,
+    pub revision_id: WorkloadRevisionId,
+    pub revision_generation: u64,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub group_id: WorkloadPlacementGroupId,
+    pub group_plan_digest: String,
+    pub member_count: u32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl DeploymentPlacementGroupBinding {
+    pub fn create(
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        replica: &WorkloadReplica,
+        group: &WorkloadPlacementGroup,
+        members: &[WorkloadReplicaMember],
+        member_bindings: &[DeploymentReplicaBinding],
+    ) -> Result<Self, String> {
+        if deployment.status != DeploymentStatus::Queued
+            || deployment.node_id.is_some()
+            || deployment.command_id.is_some()
+            || deployment.cleanup_command_id.is_some()
+            || deployment.retirement_command_id.is_some()
+        {
+            return Err("placement-group Deployment is already mutable".into());
+        }
+        let member_count = u32::try_from(member_bindings.len())
+            .map_err(|_| "placement-group Deployment member count overflowed")?;
+        let binding = Self {
+            deployment_id: deployment.id,
+            organization_id: deployment.organization_id,
+            project_id: group.project_id,
+            environment_id: group.environment_id,
+            workload_id: deployment.workload_id,
+            revision_id: deployment.revision_id,
+            revision_generation: revision.generation,
+            replica_id: replica.id,
+            replica_generation: replica.generation,
+            group_id: group.id,
+            group_plan_digest: group.plan_digest.clone(),
+            member_count,
+            created_at: deployment.requested_at,
+            updated_at: deployment.requested_at,
+        };
+        binding.validate_against(deployment, group)?;
+        if members.len() != group.members.len() || member_bindings.len() != group.members.len() {
+            return Err("placement-group Deployment has the wrong member count".into());
+        }
+        for ((plan, member), member_binding) in
+            group.members.iter().zip(members).zip(member_bindings)
+        {
+            if plan.member_id != member.id || member_binding.member_id != member.id {
+                return Err("placement-group Deployment members are not canonical".into());
+            }
+            member_binding.validate_against_placement_group_member(
+                deployment, revision, replica, member, plan,
+            )?;
+        }
+        Ok(binding)
+    }
+
+    pub fn validate_against(
+        &self,
+        deployment: &Deployment,
+        group: &WorkloadPlacementGroup,
+    ) -> Result<(), String> {
+        group.validate()?;
+        if self.deployment_id != deployment.id
+            || self.organization_id != deployment.organization_id
+            || self.workload_id != deployment.workload_id
+            || self.revision_id != deployment.revision_id
+            || self.project_id != group.project_id
+            || self.environment_id != group.environment_id
+            || self.organization_id != group.organization_id
+            || self.workload_id != group.workload_id
+            || self.revision_id != group.revision_id
+            || self.revision_generation != group.revision_generation
+            || self.replica_id != group.replica_id
+            || self.replica_generation != group.replica_generation
+            || self.group_id != group.id
+            || self.group_plan_digest != group.plan_digest
+            || usize::try_from(self.member_count).ok() != Some(group.members.len())
+            || self.created_at != deployment.requested_at
+            || self.updated_at != self.created_at
+            || self.created_at < group.updated_at
+        {
+            return Err("placement-group Deployment binding is invalid".into());
+        }
+        self.validate()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.deployment_id.as_uuid().is_nil()
+            || self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.workload_id.as_uuid().is_nil()
+            || self.revision_id.as_uuid().is_nil()
+            || self.revision_generation == 0
+            || self.replica_id.as_uuid().is_nil()
+            || self.replica_generation == 0
+            || self.group_id.as_uuid().is_nil()
+            || !is_sha256_digest(&self.group_plan_digest)
+            || !(2..=super::MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS).contains(&self.member_count)
+            || self.updated_at < self.created_at
+        {
+            return Err("placement-group Deployment binding identity is invalid".into());
+        }
+        Ok(())
+    }
 }
 
 impl WorkloadPlacementGroupWrite {

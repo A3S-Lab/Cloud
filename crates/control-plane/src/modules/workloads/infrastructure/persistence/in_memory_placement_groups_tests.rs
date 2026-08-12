@@ -10,6 +10,9 @@ use crate::modules::workloads::domain::entities::{
 use crate::modules::workloads::domain::repositories::{
     IWorkloadPlacementGroupRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
 };
+use crate::modules::workloads::{
+    PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+};
 use chrono::Utc;
 use std::collections::BTreeMap;
 
@@ -76,6 +79,83 @@ async fn placement_group_materialization_is_atomic_replay_safe_and_immutable() {
             .len(),
         3
     );
+
+    let candidates = repository
+        .pending_replica_deployments(10)
+        .await
+        .expect("placement-group Deployment candidates");
+    assert_eq!(candidates.len(), 1);
+    let candidate = candidates[0];
+    let requested_at = Utc::now().max(created.group.updated_at);
+    let (left, right) = tokio::join!(
+        repository.materialize_replica_deployment(candidate, requested_at),
+        repository.materialize_replica_deployment(candidate, requested_at),
+    );
+    let left = left
+        .expect("left group Deployment materialization")
+        .expect("left group Deployment result");
+    let right = right
+        .expect("right group Deployment materialization")
+        .expect("right group Deployment result");
+    assert_ne!(left.created, right.created);
+    assert_eq!(left.deployment, right.deployment);
+    assert_eq!(left.member_bindings, right.member_bindings);
+    assert_eq!(left.placement_group_binding, right.placement_group_binding);
+    let materialization = if left.created { &left } else { &right };
+    assert_eq!(
+        materialization.operation.workflow.name(),
+        PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME
+    );
+    assert_eq!(
+        materialization.operation.workflow.version(),
+        PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION
+    );
+    assert_eq!(materialization.member_bindings.len(), 3);
+    assert!(materialization
+        .member_bindings
+        .iter()
+        .all(|binding| binding.node_id.is_none() && binding.placement_generation == 0));
+    let group_binding = materialization
+        .placement_group_binding
+        .as_ref()
+        .expect("group Deployment binding");
+    assert_eq!(group_binding.group_id, created.group.id);
+    assert_eq!(group_binding.group_plan_digest, created.group.plan_digest);
+    assert_eq!(group_binding.member_count, 3);
+    assert_eq!(
+        repository
+            .list_deployment_replica_member_bindings(
+                organization_id,
+                materialization.deployment.id,
+            )
+            .await
+            .expect("stored group Deployment member bindings"),
+        materialization.member_bindings
+    );
+    assert_eq!(
+        repository
+            .find_deployment_placement_group_binding(
+                organization_id,
+                materialization.deployment.id,
+            )
+            .await
+            .expect("stored group Deployment binding"),
+        *group_binding
+    );
+    assert_eq!(
+        repository
+            .outbox_events()
+            .await
+            .iter()
+            .filter(|event| event.event_key == "workload.deployment.requested")
+            .count(),
+        1
+    );
+    assert!(repository
+        .pending_replica_deployments(10)
+        .await
+        .expect("replayed placement-group Deployment candidates")
+        .is_empty());
 
     let mut changed_templates = changed_templates(&revision);
     changed_templates[1] = template('d');

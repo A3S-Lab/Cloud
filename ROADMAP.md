@@ -1024,7 +1024,7 @@ health, and operations. Neither store becomes PostgreSQL desired-state truth.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
-| `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, stateless drain/evacuation, Fleet-owned node pools with bounded maintenance evacuation, explicit Workload pool selection, generation-fenced safe member removal, bounded atomic multi-Claim reservation, and durable placement-group identity with immutable multi-member execution plans; group-aware Deployment materialization, gang preparation/compensation, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, maintenance, member removal, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, stateless drain/evacuation, Fleet-owned node pools with bounded maintenance evacuation, explicit Workload pool selection, generation-fenced safe member removal, bounded atomic multi-Claim reservation, durable placement-group identity with immutable multi-member execution plans, and one generation-fenced group Deployment/operation with exact member and plan bindings; group member scheduling, gang preparation/compensation, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, maintenance, member removal, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
@@ -1244,10 +1244,19 @@ plan for the same replica generation conflicts, stale policy or replica state
 leaves no partial member or group residue, and reliably released members retain
 their advanced placement generation when a later replica generation reuses
 them. The legacy single-member Deployment path rejects and skips multi-node
-policies so it cannot dispatch a partial group. Group-aware Deployment
-materialization, Claim-to-member assignment, Agent gang preparation and
-compensation, group health and rollout, stateful moves, private networking, and
-independent Gateway placement remain open.
+policies so it cannot dispatch a partial group. Migration 095 backfills an
+exact per-member binding for every historical Deployment, makes Resource
+Claims reference their exact Deployment member, and atomically materializes
+one Deployment, one dedicated placement-group workflow operation, every
+immutable member binding, the exact group/plan binding, and one outbox fact per
+replica generation. Concurrent writers converge to one create plus one replay;
+policy, revision, replica, and group generations are fenced both in candidate
+discovery and under transaction locks. The dedicated workflow validates the
+complete durable shape and waits without invoking the single-node scheduler,
+so this slice cannot partially dispatch a group. Group member scheduling,
+Claim-to-member assignment, Agent gang preparation and compensation, group
+health and rollout, stateful moves, private networking, and independent Gateway
+placement remain open.
 
 ### 5.8 `I0`: inference profile
 

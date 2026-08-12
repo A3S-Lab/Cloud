@@ -829,6 +829,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/094_workload_placement_group_plans.sql"
             )),
         ),
+        Migration::new(
+            "095",
+            "Workload placement-group Deployments",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/095_workload_group_deployments.sql"
+            )),
+        ),
     ]
 }
 

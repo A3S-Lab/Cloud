@@ -3183,7 +3183,7 @@ reconciliation, process death, and provider recovery.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
-| `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
+| `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, one generation-fenced group Deployment/operation with exact member and plan bindings, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
@@ -3467,8 +3467,17 @@ without member/group residue; and a later replica generation reuses reliably
 released members without resetting their placement generation or aggregate
 version. Typed A3S ORM queries retain tenant and generation fences, and the
 legacy single-member Deployment materializer explicitly rejects and skips
-multi-node policies rather than dispatching a partial group. Group-aware
-Deployment materialization, Claim-to-member assignment, concurrent Agent
+multi-node policies rather than dispatching a partial group. Migration 095
+backfills a durable per-member binding for every historical Deployment and
+makes each Resource Claim reference its exact Deployment member. For a planned
+multi-node generation, one transaction now creates exactly one Deployment, one
+dedicated placement-group workflow operation, every immutable member binding,
+the exact group/plan binding, and one outbox fact. Exact concurrent writers
+converge to one create plus one replay; candidate discovery and the locked
+write both fence policy digest, revision generation, replica generation, and
+group plan. The dedicated workflow validates that complete durable shape and
+waits for the next scheduling slice without entering the single-node dispatch
+path. Group member scheduling, Claim-to-member assignment, concurrent Agent
 preparation with whole-group compensation, group health, bounded rolling
 updates, independent Gateway placement, provider-neutral private networking,
 and stateful moves remain open.

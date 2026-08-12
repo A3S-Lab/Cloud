@@ -5,8 +5,9 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentReplicaBinding, ManagedOwnerReference, OciArtifact, Workload,
-    WorkloadControl, WorkloadControlSpec, WorkloadReplica, WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, ManagedOwnerReference,
+    OciArtifact, Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -93,6 +94,8 @@ pub struct ReplicaDeploymentMaterialization {
     pub candidate: ReplicaDeploymentCandidate,
     pub deployment: Deployment,
     pub operation: OperationRequest,
+    pub member_bindings: Vec<DeploymentReplicaBinding>,
+    pub placement_group_binding: Option<DeploymentPlacementGroupBinding>,
     pub created: bool,
 }
 
@@ -377,6 +380,18 @@ pub trait IWorkloadRepository: Send + Sync {
         organization_id: OrganizationId,
         deployment_id: DeploymentId,
     ) -> Result<DeploymentReplicaBinding, RepositoryError>;
+
+    async fn list_deployment_replica_member_bindings(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<Vec<DeploymentReplicaBinding>, RepositoryError>;
+
+    async fn find_deployment_placement_group_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<DeploymentPlacementGroupBinding, RepositoryError>;
 
     async fn list_workloads(
         &self,
