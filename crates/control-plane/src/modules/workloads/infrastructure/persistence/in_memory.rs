@@ -1,11 +1,12 @@
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
-    OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadReplicaId,
-    WorkloadReplicaMemberId, WorkloadRevisionId,
+    OrganizationId, ProjectId, RepositoryError, WorkloadId, WorkloadPlacementGroupId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
-    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl,
+    WorkloadPlacementGroup, WorkloadReplica, WorkloadReplicaLifecycle, WorkloadReplicaMember,
+    WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{
     WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested, WorkloadReplicaRetired,
@@ -13,8 +14,9 @@ use crate::modules::workloads::domain::events::{
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    IWorkloadPlacementGroupRepository, IWorkloadReplicaDeploymentRepository,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, PlacementGroupMaterialization,
     ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
     ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
     ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
@@ -54,12 +56,161 @@ struct State {
     controls: BTreeMap<WorkloadId, WorkloadControl>,
     replicas: BTreeMap<WorkloadReplicaId, WorkloadReplica>,
     replica_members: BTreeMap<WorkloadReplicaMemberId, WorkloadReplicaMember>,
+    placement_groups: BTreeMap<WorkloadPlacementGroupId, WorkloadPlacementGroup>,
     deployment_replica_bindings: BTreeMap<DeploymentId, DeploymentReplicaBinding>,
     idempotency: BTreeMap<(String, String), (String, DeploymentBundle)>,
     cancellation_idempotency: BTreeMap<(String, String), (String, Deployment)>,
     stop_idempotency: BTreeMap<(String, String), (String, WorkloadStopBundle)>,
     replica_set_idempotency: BTreeMap<(String, String), (String, ReplicaSetWriteResult)>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
+}
+
+#[async_trait]
+impl IWorkloadPlacementGroupRepository for InMemoryWorkloadRepository {
+    async fn materialize_placement_group(
+        &self,
+        write: crate::modules::workloads::domain::entities::WorkloadPlacementGroupWrite,
+    ) -> Result<PlacementGroupMaterialization, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(existing) = state.placement_groups.get(&write.group.id) {
+            if !existing.same_plan(&write.group) {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            let replica_members = current_placement_group_members(&state, existing)?;
+            return Ok(PlacementGroupMaterialization {
+                group: existing.clone(),
+                replica_members,
+                replayed: true,
+            });
+        }
+        if state.placement_groups.values().any(|candidate| {
+            candidate.organization_id == write.group.organization_id
+                && candidate.replica_id == write.group.replica_id
+                && candidate.replica_generation == write.group.replica_generation
+        }) {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+
+        let workload = state
+            .workloads
+            .get(&write.group.workload_id)
+            .ok_or(RepositoryError::NotFound)?;
+        let control = state
+            .controls
+            .get(&write.group.workload_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its durable control record".into())
+            })?;
+        let revision = state
+            .revisions
+            .get(&write.group.revision_id)
+            .ok_or_else(|| {
+                RepositoryError::Storage("placement-group revision is missing".into())
+            })?;
+        let replica = state
+            .replicas
+            .get(&write.group.replica_id)
+            .ok_or_else(|| RepositoryError::Storage("placement-group replica is missing".into()))?;
+        control
+            .validate_against(workload)
+            .map_err(RepositoryError::Storage)?;
+        let policy = &control.spec.placement_policy;
+        write
+            .group
+            .validate_context(workload, policy, revision, replica)
+            .map_err(|_| {
+                RepositoryError::Conflict(
+                    "Workload placement-group plan is stale or inconsistent".into(),
+                )
+            })?;
+
+        let mut materialized_members = Vec::with_capacity(write.replica_members.len());
+        let mut missing_members = Vec::new();
+        for member in &write.replica_members {
+            if let Some(existing) = state.replica_members.get(&member.id) {
+                write
+                    .group
+                    .validate_available_replica_member(existing)
+                    .map_err(RepositoryError::Conflict)?;
+                materialized_members.push(existing.clone());
+            } else {
+                missing_members.push(member.clone());
+                materialized_members.push(member.clone());
+            }
+        }
+        for member in missing_members {
+            state.replica_members.insert(member.id, member);
+        }
+        state
+            .placement_groups
+            .insert(write.group.id, write.group.clone());
+        Ok(PlacementGroupMaterialization {
+            group: write.group,
+            replica_members: materialized_members,
+            replayed: false,
+        })
+    }
+
+    async fn find_placement_group(
+        &self,
+        organization_id: OrganizationId,
+        group_id: WorkloadPlacementGroupId,
+    ) -> Result<WorkloadPlacementGroup, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .placement_groups
+            .get(&group_id)
+            .filter(|group| group.organization_id == organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn find_placement_group_for_replica_generation(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+        replica_generation: u64,
+    ) -> Result<WorkloadPlacementGroup, RepositoryError> {
+        self.state
+            .read()
+            .await
+            .placement_groups
+            .values()
+            .find(|group| {
+                group.organization_id == organization_id
+                    && group.replica_id == replica_id
+                    && group.replica_generation == replica_generation
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+}
+
+fn current_placement_group_members(
+    state: &State,
+    group: &WorkloadPlacementGroup,
+) -> Result<Vec<WorkloadReplicaMember>, RepositoryError> {
+    group
+        .members
+        .iter()
+        .map(|planned| {
+            let member = state
+                .replica_members
+                .get(&planned.member_id)
+                .filter(|member| member.ordinal == planned.ordinal)
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "Workload placement-group plan references a missing member".into(),
+                    )
+                })?;
+            group
+                .validate_replica_member_identity(member)
+                .map_err(RepositoryError::Storage)?;
+            Ok(member.clone())
+        })
+        .collect()
 }
 
 impl InMemoryWorkloadRepository {
@@ -69,6 +220,54 @@ impl InMemoryWorkloadRepository {
 
     pub async fn outbox_events(&self) -> Vec<a3s_cloud_contracts::DomainEventEnvelope> {
         self.state.read().await.outbox.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn seed_placement_group_foundation(
+        &self,
+        workload: Workload,
+        spec: crate::modules::workloads::domain::entities::WorkloadControlSpec,
+        revision: WorkloadRevision,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        if spec.placement_policy.topology()
+            != crate::modules::workloads::domain::entities::PlacementTopology::MultiNode
+            || spec.placement_policy.desired_replicas() != 1
+            || revision.workload_id != workload.id
+        {
+            return Err(RepositoryError::Conflict(
+                "placement-group fixture foundation is invalid".into(),
+            ));
+        }
+        let control =
+            WorkloadControl::create(&workload, spec).map_err(RepositoryError::Conflict)?;
+        let replica =
+            WorkloadReplica::canonical(&workload, &revision).map_err(RepositoryError::Conflict)?;
+        let member = WorkloadReplicaMember::canonical(&workload, &replica)
+            .map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if state.workloads.contains_key(&workload.id)
+            || state.revisions.contains_key(&revision.id)
+            || state.replicas.contains_key(&replica.id)
+            || state.replica_members.contains_key(&member.id)
+        {
+            return Err(RepositoryError::Conflict(
+                "placement-group fixture identity is already in use".into(),
+            ));
+        }
+        state.names.insert(
+            (
+                workload.organization_id,
+                workload.environment_id,
+                workload.name.key().to_owned(),
+            ),
+            workload.id,
+        );
+        state.controls.insert(workload.id, control);
+        state.revisions.insert(revision.id, revision);
+        state.replica_members.insert(member.id, member);
+        state.replicas.insert(replica.id, replica.clone());
+        state.workloads.insert(workload.id, workload);
+        Ok(replica)
     }
 }
 
@@ -1031,6 +1230,8 @@ impl IWorkloadReplicaDeploymentRepository for InMemoryWorkloadRepository {
                         .active_revision_id
                         .is_some_and(|active| active != replica.revision_id)
                     || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+                    || control.spec.placement_policy.topology()
+                        != crate::modules::workloads::domain::entities::PlacementTopology::SingleNode
                     || already_bound
                 {
                     return None;
@@ -1100,6 +1301,8 @@ impl IWorkloadReplicaDeploymentRepository for InMemoryWorkloadRepository {
             || replica.generation != candidate.replica_generation
             || replica.lifecycle != WorkloadReplicaLifecycle::Desired
             || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+            || control.spec.placement_policy.topology()
+                != crate::modules::workloads::domain::entities::PlacementTopology::SingleNode
             || workload.desired_state
                 != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
             || workload
@@ -1774,7 +1977,9 @@ fn validate_bundle(request: &CreateDeploymentBundle) -> Result<(), RepositoryErr
         .revision
         .validate_skill_bindings_for_workload(&request.workload)
         .map_err(RepositoryError::Conflict)?;
-    if request.revision.workload_id != request.workload.id
+    if request.control.placement_policy.topology()
+        != crate::modules::workloads::domain::entities::PlacementTopology::SingleNode
+        || request.revision.workload_id != request.workload.id
         || request.deployment.organization_id != request.workload.organization_id
         || request.deployment.workload_id != request.workload.id
         || request.deployment.revision_id != request.revision.id

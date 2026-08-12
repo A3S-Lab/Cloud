@@ -123,16 +123,16 @@ struct TestPluginRegistryEnrollmentAuthorizer;
 
 struct UnavailablePluginRegistryCatalog;
 
-type HumanTaskChangeReplays =
+type HumanTaskChangeReplayMap =
     std::collections::BTreeMap<(String, String), (String, OrganizationId, HumanTaskId)>;
-type HumanTaskDecisionReplays =
+type HumanTaskDecisionReplayMap =
     std::collections::BTreeMap<(String, String), (String, HumanTaskDecisionRecord)>;
 
 #[derive(Default)]
 struct TestHumanTaskRepository {
     records: std::sync::RwLock<Vec<HumanTaskRecord>>,
-    change_replays: std::sync::RwLock<HumanTaskChangeReplays>,
-    decision_replays: std::sync::RwLock<HumanTaskDecisionReplays>,
+    change_replays: std::sync::RwLock<HumanTaskChangeReplayMap>,
+    decision_replays: std::sync::RwLock<HumanTaskDecisionReplayMap>,
 }
 
 impl TestHumanTaskRepository {

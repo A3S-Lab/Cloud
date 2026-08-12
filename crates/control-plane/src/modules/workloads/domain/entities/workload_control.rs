@@ -10,6 +10,7 @@ use uuid::Uuid;
 const EFFECTIVE_PLACEMENT_POLICY_SCHEMA: &str = "a3s.cloud.effective-placement-policy.v3";
 const MAX_OWNER_KIND_LENGTH: usize = 64;
 pub const MAX_WORKLOAD_REPLICAS: u32 = 100;
+pub const MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS: u32 = 256;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -98,6 +99,7 @@ impl ManagedOwnerReference {
 #[serde(rename_all = "snake_case")]
 pub enum PlacementTopology {
     SingleNode,
+    MultiNode,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -148,12 +150,45 @@ impl EffectivePlacementPolicy {
         Ok(policy)
     }
 
+    pub fn placement_group(
+        generation: u64,
+        desired_replicas: u32,
+        members_per_replica: u32,
+    ) -> Result<Self, String> {
+        Self::placement_group_in_pool(generation, desired_replicas, members_per_replica, None)
+    }
+
+    pub fn placement_group_in_pool(
+        generation: u64,
+        desired_replicas: u32,
+        members_per_replica: u32,
+        node_pool_id: Option<NodePoolId>,
+    ) -> Result<Self, String> {
+        let mut policy = Self {
+            schema: EFFECTIVE_PLACEMENT_POLICY_SCHEMA.into(),
+            generation,
+            desired_replicas,
+            members_per_replica,
+            topology: PlacementTopology::MultiNode,
+            replica_anti_affinity: ReplicaAntiAffinity::Required,
+            node_pool_id,
+            digest: String::new(),
+        };
+        policy.digest = policy.calculate_digest()?;
+        policy.validate()?;
+        Ok(policy)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != EFFECTIVE_PLACEMENT_POLICY_SCHEMA
             || self.generation == 0
             || self.desired_replicas > MAX_WORKLOAD_REPLICAS
-            || self.members_per_replica != 1
-            || self.topology != PlacementTopology::SingleNode
+            || self.members_per_replica == 0
+            || self.members_per_replica > MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS
+            || match self.topology {
+                PlacementTopology::SingleNode => self.members_per_replica != 1,
+                PlacementTopology::MultiNode => self.members_per_replica < 2,
+            }
             || self
                 .node_pool_id
                 .is_some_and(|node_pool_id| node_pool_id.as_uuid().is_nil())
@@ -260,6 +295,23 @@ impl WorkloadControlSpec {
         Self::unmanaged_replica_set_in_pool(1, 1, Some(node_pool_id))
     }
 
+    pub fn unmanaged_placement_group(
+        generation: u64,
+        desired_replicas: u32,
+        members_per_replica: u32,
+    ) -> Result<Self, String> {
+        let spec = Self {
+            managed_owner: None,
+            placement_policy: EffectivePlacementPolicy::placement_group(
+                generation,
+                desired_replicas,
+                members_per_replica,
+            )?,
+        };
+        spec.validate()?;
+        Ok(spec)
+    }
+
     pub fn unmanaged_replica_set_in_pool(
         generation: u64,
         desired_replicas: u32,
@@ -302,6 +354,27 @@ impl WorkloadControlSpec {
                 node_pool_id,
             )?,
         })
+    }
+
+    pub fn managed_placement_group(
+        owner: ManagedOwnerReference,
+        generation: u64,
+        desired_replicas: u32,
+        members_per_replica: u32,
+        node_pool_id: Option<NodePoolId>,
+    ) -> Result<Self, String> {
+        owner.validate()?;
+        let spec = Self {
+            managed_owner: Some(owner),
+            placement_policy: EffectivePlacementPolicy::placement_group_in_pool(
+                generation,
+                desired_replicas,
+                members_per_replica,
+                node_pool_id,
+            )?,
+        };
+        spec.validate()?;
+        Ok(spec)
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -411,11 +484,19 @@ impl WorkloadControl {
             .aggregate_version
             .checked_add(1)
             .ok_or_else(|| "workload control version overflowed".to_string())?;
-        let placement_policy = EffectivePlacementPolicy::replica_set_in_pool(
-            next_policy_generation,
-            desired_replicas,
-            self.spec.placement_policy.node_pool_id(),
-        )?;
+        let placement_policy = match self.spec.placement_policy.topology() {
+            PlacementTopology::SingleNode => EffectivePlacementPolicy::replica_set_in_pool(
+                next_policy_generation,
+                desired_replicas,
+                self.spec.placement_policy.node_pool_id(),
+            )?,
+            PlacementTopology::MultiNode => EffectivePlacementPolicy::placement_group_in_pool(
+                next_policy_generation,
+                desired_replicas,
+                self.spec.placement_policy.members_per_replica(),
+                self.spec.placement_policy.node_pool_id(),
+            )?,
+        };
 
         self.spec.placement_policy = placement_policy;
         self.aggregate_version = next_aggregate_version;

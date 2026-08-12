@@ -287,7 +287,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (93, "093".into()));
+    assert_eq!(migration_state, (94, "094".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -359,6 +359,14 @@ async fn exercise_postgres_replica_set_foundation(
         &replica_set,
     )
     .await?;
+    workloads_support::exercise_placement_group_plans(
+        &executor,
+        organization_id,
+        project_id,
+        environment_id,
+    )
+    .await
+    .map_err(|error| format!("placement-group PostgreSQL gate failed: {error}"))?;
     resource_claims_support::exercise_replica_anti_affinity(
         &executor,
         OrganizationId::from_uuid(organization_id),

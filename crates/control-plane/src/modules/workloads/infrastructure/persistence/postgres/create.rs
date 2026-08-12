@@ -5,7 +5,7 @@ use crate::infrastructure::{
     require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
-use crate::modules::workloads::domain::entities::{DeploymentStatus, Workload};
+use crate::modules::workloads::domain::entities::{DeploymentStatus, PlacementTopology, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};
 use a3s_orm::{insert_into, select_from, PostgresExecutor, PostgresTransaction};
 
@@ -128,6 +128,7 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
     let operation = &request.operation;
     let event = &request.event;
     if revision.workload_id != workload.id
+        || request.control.placement_policy.topology() != PlacementTopology::SingleNode
         || deployment.organization_id != workload.organization_id
         || deployment.workload_id != workload.id
         || deployment.revision_id != revision.id

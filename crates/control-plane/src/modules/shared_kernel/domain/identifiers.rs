@@ -56,6 +56,7 @@ identifier!(WorkloadId);
 identifier!(WorkloadRevisionId);
 identifier!(WorkloadReplicaId);
 identifier!(WorkloadReplicaMemberId);
+identifier!(WorkloadPlacementGroupId);
 identifier!(DeploymentId);
 identifier!(ResourceClaimId);
 identifier!(GatewayScopeId);

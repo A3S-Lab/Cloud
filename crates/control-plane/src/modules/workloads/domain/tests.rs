@@ -164,6 +164,160 @@ fn replica_set_policy_is_bounded_and_digest_bound() {
 }
 
 #[test]
+fn placement_group_policy_is_bounded_and_preserved_across_replica_scaling() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("distributed-workload").expect("name"),
+        now,
+    );
+    let spec =
+        WorkloadControlSpec::unmanaged_placement_group(4, 2, 8).expect("placement-group policy");
+    assert_eq!(
+        spec.placement_policy.topology(),
+        PlacementTopology::MultiNode
+    );
+    assert_eq!(spec.placement_policy.members_per_replica(), 8);
+    assert!(WorkloadControlSpec::unmanaged_placement_group(1, 1, 1).is_err());
+    assert!(WorkloadControlSpec::unmanaged_placement_group(
+        1,
+        1,
+        MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS + 1,
+    )
+    .is_err());
+
+    let mut control = WorkloadControl::create(&workload, spec).expect("control");
+    control
+        .reconfigure_replica_set(4, 3, None, now + Duration::seconds(1))
+        .expect("scale placement-group replicas");
+    assert_eq!(control.spec.placement_policy.generation(), 5);
+    assert_eq!(control.spec.placement_policy.desired_replicas(), 3);
+    assert_eq!(control.spec.placement_policy.members_per_replica(), 8);
+    assert_eq!(
+        control.spec.placement_policy.topology(),
+        PlacementTopology::MultiNode
+    );
+}
+
+#[test]
+fn placement_group_plan_has_stable_group_member_and_runtime_identities() {
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("placement-group-plan").expect("name"),
+        now,
+    );
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        3,
+        template('a'),
+        now,
+    )
+    .expect("revision");
+    let replica = WorkloadReplica::canonical(&workload, &revision).expect("replica");
+    let policy = EffectivePlacementPolicy::placement_group(7, 1, 3).expect("policy");
+    let templates = vec![
+        revision.resolved_template().expect("leader").clone(),
+        template('b'),
+        template('c'),
+    ];
+    let planned_at = now + Duration::seconds(3);
+    let first = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        templates.clone(),
+        planned_at,
+    )
+    .expect("placement-group plan");
+    let replay = WorkloadPlacementGroup::plan(
+        &workload, &policy, &revision, &replica, templates, planned_at,
+    )
+    .expect("stable replay plan");
+
+    assert_eq!(first, replay);
+    assert_eq!(first.group.members.len(), 3);
+    assert_eq!(
+        first.group.members[0].role,
+        WorkloadPlacementGroupMemberRole::Leader
+    );
+    assert!(first.group.members[1..]
+        .iter()
+        .all(|member| member.role == WorkloadPlacementGroupMemberRole::Worker));
+    assert_eq!(
+        first.group.members[0].member_id.as_uuid(),
+        replica.id.as_uuid()
+    );
+    assert_eq!(
+        first.group.members[0].runtime_unit_id,
+        replica
+            .runtime_unit_id(&revision)
+            .expect("leader Runtime ID")
+    );
+    assert!(first.group.members[1]
+        .runtime_unit_id
+        .ends_with(&first.group.members[1].member_id.to_string()));
+    assert_ne!(
+        first.group.members[1].member_id,
+        first.group.members[2].member_id
+    );
+    first.validate().expect("valid write");
+
+    let mut reusable = first.replica_members[1].clone();
+    let prior_node = NodeId::new();
+    reusable
+        .place(prior_node, now + Duration::seconds(1))
+        .expect("place prior generation member");
+    reusable
+        .release_after_fencing(prior_node, now + Duration::seconds(2))
+        .expect("release prior generation member");
+    assert_ne!(reusable, first.replica_members[1]);
+    first
+        .group
+        .validate_available_replica_member(&reusable)
+        .expect("released stable member remains reusable");
+
+    let mut still_placed = first.replica_members[2].clone();
+    still_placed
+        .place(NodeId::new(), now + Duration::seconds(1))
+        .expect("place conflicting member");
+    assert!(first
+        .group
+        .validate_available_replica_member(&still_placed)
+        .is_err());
+
+    assert!(WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        vec![
+            revision.resolved_template().expect("leader").clone(),
+            template('b')
+        ],
+        now,
+    )
+    .is_err());
+    assert!(WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        vec![template('d'), template('b'), template('c')],
+        now,
+    )
+    .is_err());
+}
+
+#[test]
 fn canonical_replica_identity_survives_generation_advances_and_fences_node_changes() {
     let now = Utc::now();
     let workload = Workload::create(

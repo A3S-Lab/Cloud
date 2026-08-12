@@ -179,6 +179,8 @@ orm_table! {
         placement_policy: serde_json::Value => "placement_policy",
         placement_policy_digest: String => "placement_policy_digest",
         node_pool_id: Option<Uuid> => "node_pool_id",
+        members_per_replica: u32 => "members_per_replica",
+        placement_topology: String => "placement_topology",
         aggregate_version: u64 => "aggregate_version",
         created_at: DateTime<Utc> => "created_at",
         updated_at: DateTime<Utc> => "updated_at",
@@ -220,6 +222,44 @@ orm_table! {
         aggregate_version: u64 => "aggregate_version",
         created_at: DateTime<Utc> => "created_at",
         updated_at: DateTime<Utc> => "updated_at",
+    }
+}
+
+orm_table! {
+    pub(super) struct WorkloadPlacementGroups => "workload_placement_groups" {
+        id: Uuid => "id",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        workload_id: Uuid => "workload_id",
+        revision_id: Uuid => "revision_id",
+        revision_generation: u64 => "revision_generation",
+        replica_id: Uuid => "replica_id",
+        replica_generation: u64 => "replica_generation",
+        policy_generation: u64 => "policy_generation",
+        placement_policy_digest: String => "placement_policy_digest",
+        plan_schema: String => "plan_schema",
+        plan_digest: String => "plan_digest",
+        state: String => "state",
+        member_count: u32 => "member_count",
+        aggregate_version: u64 => "aggregate_version",
+        created_at: DateTime<Utc> => "created_at",
+        updated_at: DateTime<Utc> => "updated_at",
+    }
+}
+
+orm_table! {
+    pub(super) struct WorkloadPlacementGroupMembers => "workload_placement_group_members" {
+        organization_id: Uuid => "organization_id",
+        group_id: Uuid => "group_id",
+        workload_id: Uuid => "workload_id",
+        replica_id: Uuid => "replica_id",
+        member_id: Uuid => "member_id",
+        ordinal: u32 => "ordinal",
+        role: String => "role",
+        runtime_unit_id: String => "runtime_unit_id",
+        template: serde_json::Value => "template",
+        template_digest: String => "template_digest",
     }
 }
 
