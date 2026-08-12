@@ -11,8 +11,8 @@ mod workload_revision;
 
 pub use deployment::{Deployment, DeploymentStatus};
 pub use placement_group::{
-    WorkloadPlacementGroup, WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
-    WorkloadPlacementGroupState, WorkloadPlacementGroupWrite,
+    DeploymentPlacementGroupBinding, WorkloadPlacementGroup, WorkloadPlacementGroupMemberPlan,
+    WorkloadPlacementGroupMemberRole, WorkloadPlacementGroupState, WorkloadPlacementGroupWrite,
 };
 pub use resource_allocation::{
     ResourceAllocation, ResourceKind, ResourceSlotBinding, ResourceSlotEvidence,

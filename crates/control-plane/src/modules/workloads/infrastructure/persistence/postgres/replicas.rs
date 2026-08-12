@@ -1,3 +1,4 @@
+use super::deployment_group_bindings;
 use super::queries;
 use super::schema::{
     DeploymentReplicaBindings, WorkloadControls, WorkloadReplicaMembers, WorkloadReplicas,
@@ -361,6 +362,7 @@ pub(super) async fn place(
     )
     .await?;
     require_one_row("deployment replica placement binding", binding_rows)?;
+    deployment_group_bindings::persist_member_assignment(transaction, &binding).await?;
     Ok(binding)
 }
 
@@ -1069,7 +1071,8 @@ pub(super) async fn insert_binding(
             .value(DeploymentReplicaBindings::updated_at(), binding.updated_at),
     )
     .await?;
-    require_one_row("deployment replica binding", rows)
+    require_one_row("deployment replica binding", rows)?;
+    deployment_group_bindings::insert_member_binding(transaction, binding).await
 }
 
 impl ControlRow {

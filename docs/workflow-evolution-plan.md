@@ -167,7 +167,7 @@ Management MCP tools now expose bounded protected task reads plus versioned
 claim/release/submission through the same Workflow repository, domain state machine,
 transaction-bound idempotency/Outbox/audit path, and shared Identity Resource
 Grant evaluator. Lists omit interaction payloads and only the current claimant
-receives the exact request-bound A3S Form interaction. Migration `095` reuses
+receives the exact request-bound A3S Form interaction. Migration `096` reuses
 the same coordinator, immutable WorkflowDecision, and resume Outbox for
 automatic expiry; it recomputes the exact Run/Plan deadline authority and
 settles only from matching `HookReceived` or parent `RunTimedOut` evidence.

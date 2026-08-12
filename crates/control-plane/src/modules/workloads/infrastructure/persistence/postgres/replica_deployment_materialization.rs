@@ -1,16 +1,25 @@
-use super::schema::{DeploymentReplicaBindings, WorkloadControls, WorkloadReplicas, Workloads};
-use super::{create, operation_requests, queries, replicas};
+use super::schema::{
+    DeploymentReplicaBindings, WorkloadControls, WorkloadPlacementGroups, WorkloadReplicas,
+    Workloads,
+};
+use super::{
+    create, deployment_group_bindings, operation_requests, placement_groups, queries, replicas,
+};
 use crate::infrastructure::{store_outbox, transaction_error, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
     OrganizationId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
     WorkloadRevisionId,
 };
-use crate::modules::workloads::domain::entities::{WorkloadDesiredState, WorkloadReplicaLifecycle};
+use crate::modules::workloads::domain::entities::{
+    PlacementTopology, WorkloadDesiredState, WorkloadReplicaLifecycle,
+};
 use crate::modules::workloads::domain::repositories::{
     ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
 };
 use crate::modules::workloads::infrastructure::replica_deployment_materialization::{
-    build_replica_deployment_write, created_materialization, materialization_from_existing,
+    build_group_deployment_write, build_replica_deployment_write, created_materialization,
+    materialization_from_existing, validate_existing_group_materialization_context,
+    validate_existing_materialization, PlacementGroupDeploymentContext,
 };
 use a3s_orm::{
     exists, not, select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor,
@@ -91,8 +100,6 @@ async fn materialize_in_transaction(
         || replica.generation != candidate.replica_generation
         || replica.lifecycle != WorkloadReplicaLifecycle::Desired
         || replica.ordinal >= control.spec.placement_policy.desired_replicas()
-        || control.spec.placement_policy.topology()
-            != crate::modules::workloads::domain::entities::PlacementTopology::SingleNode
         || workload.desired_state != WorkloadDesiredState::Running
         || workload
             .active_revision_id
@@ -100,6 +107,43 @@ async fn materialize_in_transaction(
     {
         return Ok(None);
     }
+    let revision = queries::revision_in_transaction(
+        transaction,
+        candidate.organization_id,
+        candidate.revision_id,
+        false,
+    )
+    .await?
+    .ok_or_else(|| invariant("replica deployment revision is missing"))?;
+    let topology = control.spec.placement_policy.topology();
+    let placement_group = match topology {
+        PlacementTopology::SingleNode => None,
+        PlacementTopology::MultiNode => {
+            let Some(group) = placement_groups::find_for_replica_generation_in_transaction(
+                transaction,
+                candidate.organization_id,
+                candidate.replica_id,
+                candidate.replica_generation,
+                true,
+            )
+            .await?
+            else {
+                return Ok(None);
+            };
+            if group
+                .validate_context(
+                    &workload,
+                    &control.spec.placement_policy,
+                    &revision,
+                    &replica,
+                )
+                .is_err()
+            {
+                return Ok(None);
+            }
+            Some(group)
+        }
+    };
 
     if let Some(binding) = replicas::binding_for_replica_generation(
         transaction,
@@ -113,40 +157,133 @@ async fn materialize_in_transaction(
             queries::deployment_in_transaction(transaction, binding.deployment_id, false)
                 .await?
                 .ok_or_else(|| invariant("replica binding references a missing deployment"))?;
-        return materialization_from_existing(candidate, deployment)
-            .map(Some)
-            .map_err(invariant);
+        let member_bindings = deployment_group_bindings::list_member_bindings_in_transaction(
+            transaction,
+            candidate.organization_id,
+            deployment.id,
+            false,
+        )
+        .await?;
+        let placement_group_binding = deployment_group_bindings::find_group_binding_in_transaction(
+            transaction,
+            candidate.organization_id,
+            deployment.id,
+            false,
+        )
+        .await?;
+        validate_existing_materialization(
+            &deployment,
+            &binding,
+            &member_bindings,
+            placement_group_binding.as_ref(),
+            topology,
+        )
+        .map_err(invariant)?;
+        if let (Some(group), Some(group_binding)) =
+            (placement_group.as_ref(), placement_group_binding.as_ref())
+        {
+            let mut members = Vec::with_capacity(group.members.len());
+            for planned in &group.members {
+                let member = replicas::member_for_update(
+                    transaction,
+                    candidate.organization_id,
+                    candidate.replica_id,
+                    planned.member_id,
+                )
+                .await?
+                .filter(|member| member.ordinal == planned.ordinal)
+                .ok_or_else(|| invariant("stored placement-group Deployment member is missing"))?;
+                members.push(member);
+            }
+            validate_existing_group_materialization_context(
+                &deployment,
+                PlacementGroupDeploymentContext {
+                    workload: &workload,
+                    policy: &control.spec.placement_policy,
+                    revision: &revision,
+                    replica: &replica,
+                    group,
+                    members: &members,
+                },
+                &member_bindings,
+                group_binding,
+            )
+            .map_err(invariant)?;
+        }
+        return materialization_from_existing(
+            candidate,
+            deployment,
+            member_bindings,
+            placement_group_binding,
+        )
+        .map(Some)
+        .map_err(invariant);
     }
 
-    let revision = queries::revision_in_transaction(
-        transaction,
-        candidate.organization_id,
-        candidate.revision_id,
-        false,
-    )
-    .await?
-    .ok_or_else(|| invariant("replica deployment revision is missing"))?;
-    let member_id = WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid());
-    let member = replicas::member_for_update(
-        transaction,
-        candidate.organization_id,
-        candidate.replica_id,
-        member_id,
-    )
-    .await?
-    .ok_or_else(|| invariant("replica deployment member is missing"))?;
-    let write = build_replica_deployment_write(
-        candidate,
-        &workload,
-        &revision,
-        &replica,
-        &member,
-        requested_at,
-    )
-    .map_err(invariant)?;
+    let write = match topology {
+        PlacementTopology::SingleNode => {
+            let member_id = WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid());
+            let member = replicas::member_for_update(
+                transaction,
+                candidate.organization_id,
+                candidate.replica_id,
+                member_id,
+            )
+            .await?
+            .ok_or_else(|| invariant("replica deployment member is missing"))?;
+            build_replica_deployment_write(
+                candidate,
+                &workload,
+                &revision,
+                &replica,
+                &member,
+                requested_at,
+            )
+            .map_err(invariant)?
+        }
+        PlacementTopology::MultiNode => {
+            let group = placement_group
+                .as_ref()
+                .ok_or_else(|| invariant("placement-group Deployment plan disappeared"))?;
+            let mut members = Vec::with_capacity(group.members.len());
+            for planned in &group.members {
+                let member = replicas::member_for_update(
+                    transaction,
+                    candidate.organization_id,
+                    candidate.replica_id,
+                    planned.member_id,
+                )
+                .await?
+                .filter(|member| member.ordinal == planned.ordinal)
+                .ok_or_else(|| {
+                    invariant("placement-group Deployment member is missing or inconsistent")
+                })?;
+                members.push(member);
+            }
+            build_group_deployment_write(
+                candidate,
+                PlacementGroupDeploymentContext {
+                    workload: &workload,
+                    policy: &control.spec.placement_policy,
+                    revision: &revision,
+                    replica: &replica,
+                    group,
+                    members: &members,
+                },
+                requested_at,
+            )
+            .map_err(invariant)?
+        }
+    };
     operation_requests::insert(transaction, &write.operation).await?;
     create::insert_deployment(transaction, &write.deployment).await?;
     replicas::insert_binding(transaction, &write.binding).await?;
+    for binding in write.member_bindings.iter().skip(1) {
+        deployment_group_bindings::insert_member_binding(transaction, binding).await?;
+    }
+    if let Some(binding) = &write.placement_group_binding {
+        deployment_group_bindings::insert_group_binding(transaction, binding).await?;
+    }
     store_outbox(transaction, &write.event).await?;
     Ok(Some(created_materialization(candidate, write)))
 }
@@ -159,6 +296,37 @@ fn candidate_query(limit: u64) -> a3s_orm::query::SelectQuery<WorkloadReplicas, 
             DeploymentReplicaBindings::replica_generation()
                 .eq_column(WorkloadReplicas::generation()),
         );
+    let placement_group = select_from::<WorkloadPlacementGroups>()
+        .select(WorkloadPlacementGroups::id())
+        .filter(
+            WorkloadPlacementGroups::organization_id()
+                .eq_column(WorkloadReplicas::organization_id()),
+        )
+        .filter(WorkloadPlacementGroups::replica_id().eq_column(WorkloadReplicas::id()))
+        .filter(WorkloadPlacementGroups::workload_id().eq_column(WorkloadReplicas::workload_id()))
+        .filter(WorkloadPlacementGroups::revision_id().eq_column(WorkloadReplicas::revision_id()))
+        .filter(
+            WorkloadPlacementGroups::revision_generation()
+                .eq_column(WorkloadReplicas::revision_generation()),
+        )
+        .filter(
+            WorkloadPlacementGroups::replica_generation().eq_column(WorkloadReplicas::generation()),
+        )
+        .filter(
+            WorkloadPlacementGroups::placement_policy_digest()
+                .eq_column(WorkloadControls::placement_policy_digest()),
+        )
+        .filter(
+            WorkloadPlacementGroups::member_count()
+                .eq_column(WorkloadControls::members_per_replica()),
+        )
+        .filter(WorkloadPlacementGroups::state().eq("planned"));
+    let supported_shape = WorkloadControls::placement_topology()
+        .eq("single_node")
+        .and(WorkloadControls::members_per_replica().eq(1_u32))
+        .or(WorkloadControls::placement_topology()
+            .eq("multi_node")
+            .and(exists(placement_group)));
     select_from::<WorkloadReplicas>()
         .select((
             WorkloadReplicas::organization_id(),
@@ -181,8 +349,7 @@ fn candidate_query(limit: u64) -> a3s_orm::query::SelectQuery<WorkloadReplicas, 
         )
         .filter(WorkloadReplicas::lifecycle().eq("desired"))
         .filter(Workloads::desired_state().eq("running"))
-        .filter(WorkloadControls::placement_topology().eq("single_node"))
-        .filter(WorkloadControls::members_per_replica().eq(1_u32))
+        .filter(supported_shape)
         .filter(
             Workloads::active_revision_id()
                 .is_null()
@@ -253,6 +420,12 @@ mod tests {
         assert!(query
             .sql
             .contains("\"replica_generation\" = \"workload_replicas\".\"generation\""));
+        assert!(query.sql.contains(
+            "\"placement_policy_digest\" = \"workload_controls\".\"placement_policy_digest\""
+        ));
+        assert!(query
+            .sql
+            .contains("\"revision_generation\" = \"workload_replicas\".\"revision_generation\""));
         assert!(query.sql.contains("\"lifecycle\" ="));
         assert!(query.sql.contains(" limit $"));
         assert!(query.parameters.len() >= 3);

@@ -3,8 +3,8 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, Workload, WorkloadRevision, MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS,
-    MAX_WORKLOAD_REPLICAS,
+    Deployment, Workload, WorkloadPlacementGroupMemberPlan, WorkloadRevision,
+    MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS, MAX_WORKLOAD_REPLICAS,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -598,7 +598,41 @@ impl DeploymentReplicaBinding {
         replica: &WorkloadReplica,
         member: &WorkloadReplicaMember,
     ) -> Result<Self, String> {
-        let binding = Self {
+        let binding = Self::create_with_runtime_unit_id(
+            deployment,
+            replica,
+            member,
+            replica.runtime_unit_id(revision)?,
+        );
+        binding.validate_against(deployment, revision, replica, member)?;
+        Ok(binding)
+    }
+
+    pub fn create_for_placement_group_member(
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+        plan: &WorkloadPlacementGroupMemberPlan,
+    ) -> Result<Self, String> {
+        let binding = Self::create_with_runtime_unit_id(
+            deployment,
+            replica,
+            member,
+            plan.runtime_unit_id.clone(),
+        );
+        binding
+            .validate_against_placement_group_member(deployment, revision, replica, member, plan)?;
+        Ok(binding)
+    }
+
+    fn create_with_runtime_unit_id(
+        deployment: &Deployment,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+        runtime_unit_id: String,
+    ) -> Self {
+        Self {
             deployment_id: deployment.id,
             organization_id: replica.organization_id,
             project_id: replica.project_id,
@@ -610,13 +644,11 @@ impl DeploymentReplicaBinding {
             member_id: member.id,
             node_id: deployment.node_id,
             placement_generation: member.placement_generation,
-            runtime_unit_id: replica.runtime_unit_id(revision)?,
+            runtime_unit_id,
             runtime_generation: replica.generation,
             created_at: deployment.requested_at,
             updated_at: deployment.updated_at,
-        };
-        binding.validate_against(deployment, revision, replica, member)?;
-        Ok(binding)
+        }
     }
 
     pub fn assign(
@@ -658,6 +690,40 @@ impl DeploymentReplicaBinding {
         replica: &WorkloadReplica,
         member: &WorkloadReplicaMember,
     ) -> Result<(), String> {
+        self.validate_common(deployment, revision, replica, member)?;
+        if self.runtime_unit_id != replica.runtime_unit_id(revision)? {
+            return Err("deployment replica binding is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub fn validate_against_placement_group_member(
+        &self,
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+        plan: &WorkloadPlacementGroupMemberPlan,
+    ) -> Result<(), String> {
+        self.validate_common(deployment, revision, replica, member)?;
+        if plan.member_id != member.id
+            || plan.ordinal != member.ordinal
+            || plan.runtime_unit_id != self.runtime_unit_id
+            || plan.template.digest()? != plan.template_digest
+            || replica.runtime_unit_id_for_member(revision, member)? != self.runtime_unit_id
+        {
+            return Err("deployment placement-group member binding is invalid".into());
+        }
+        Ok(())
+    }
+
+    fn validate_common(
+        &self,
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+    ) -> Result<(), String> {
         if self.deployment_id != deployment.id
             || self.organization_id != deployment.organization_id
             || self.workload_id != deployment.workload_id
@@ -676,7 +742,6 @@ impl DeploymentReplicaBinding {
             || self.node_id != deployment.node_id
             || self.node_id.is_some() && self.node_id != member.node_id
             || self.placement_generation != member.placement_generation
-            || self.runtime_unit_id != replica.runtime_unit_id(revision)?
             || self.runtime_generation != replica.generation
             || self.runtime_unit_id.trim().is_empty()
             || self.runtime_unit_id.len() > 512

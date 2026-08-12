@@ -284,6 +284,45 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct DeploymentReplicaMemberBindings => "deployment_replica_member_bindings" {
+        deployment_id: Uuid => "deployment_id",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        workload_id: Uuid => "workload_id",
+        revision_id: Uuid => "revision_id",
+        replica_id: Uuid => "replica_id",
+        replica_generation: u64 => "replica_generation",
+        member_id: Uuid => "member_id",
+        node_id: Option<Uuid> => "node_id",
+        placement_generation: u64 => "placement_generation",
+        runtime_unit_id: String => "runtime_unit_id",
+        runtime_generation: u64 => "runtime_generation",
+        created_at: DateTime<Utc> => "created_at",
+        updated_at: DateTime<Utc> => "updated_at",
+    }
+}
+
+orm_table! {
+    pub(super) struct DeploymentPlacementGroupBindings => "deployment_placement_group_bindings" {
+        deployment_id: Uuid => "deployment_id",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        workload_id: Uuid => "workload_id",
+        revision_id: Uuid => "revision_id",
+        revision_generation: u64 => "revision_generation",
+        replica_id: Uuid => "replica_id",
+        replica_generation: u64 => "replica_generation",
+        group_id: Uuid => "group_id",
+        group_plan_digest: String => "group_plan_digest",
+        member_count: u32 => "member_count",
+        created_at: DateTime<Utc> => "created_at",
+        updated_at: DateTime<Utc> => "updated_at",
+    }
+}
+
+orm_table! {
     pub(super) struct ResourceClaims => "resource_claims" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

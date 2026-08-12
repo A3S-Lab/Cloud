@@ -151,7 +151,7 @@ Resource Grants and records immutable authorization evidence in the existing
 audit store. Workflow persists the returned decision reference with the Form
 submission and atomically commits its decision, idempotency, audit, Outbox, and
 Flow-resume delivery. Lists never carry an interaction request, and only the
-current claimant receives it. Migration `095` adds deterministic automatic
+current claimant receives it. Migration `096` adds deterministic automatic
 expiry through the same coordinator and resume Outbox: Workflow recomputes the
 deadline from the immutable Run/Plan/task generation, records one expiry
 decision attributed to the initiating principal, and settles delivery from

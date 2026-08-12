@@ -1,4 +1,5 @@
 mod create;
+mod deployment_group_bindings;
 mod operation_requests;
 mod placement_groups;
 mod queries;
@@ -22,8 +23,8 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
-    WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, OciArtifact, Workload,
+    WorkloadControl, WorkloadReplica, WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
@@ -206,6 +207,32 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
         deployment_id: DeploymentId,
     ) -> Result<DeploymentReplicaBinding, RepositoryError> {
         replicas::find_binding(&self.executor, organization_id, deployment_id).await
+    }
+
+    async fn list_deployment_replica_member_bindings(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<Vec<DeploymentReplicaBinding>, RepositoryError> {
+        deployment_group_bindings::list_member_bindings(
+            &self.executor,
+            organization_id,
+            deployment_id,
+        )
+        .await
+    }
+
+    async fn find_deployment_placement_group_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<DeploymentPlacementGroupBinding, RepositoryError> {
+        deployment_group_bindings::find_group_binding(
+            &self.executor,
+            organization_id,
+            deployment_id,
+        )
+        .await
     }
 
     async fn list_workloads(

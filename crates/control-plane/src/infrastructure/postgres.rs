@@ -831,10 +831,18 @@ fn cloud_migrations() -> Vec<Migration> {
         ),
         Migration::new(
             "095",
+            "Workload placement-group Deployments",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/095_workload_group_deployments.sql"
+            )),
+        ),
+        Migration::new(
+            "096",
             "HumanTask expiry coordination",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/095_human_task_expiry_coordination.sql"
+                "/../../migrations/096_human_task_expiry_coordination.sql"
             )),
         ),
     ]

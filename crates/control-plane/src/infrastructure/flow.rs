@@ -113,7 +113,8 @@ impl FlowRuntime for FlowRuntimeRouter {
         use crate::modules::workflow::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
         use crate::modules::workloads::infrastructure::{
             DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
-            LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
+            LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
             STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
         };
 
@@ -130,6 +131,10 @@ impl FlowRuntime for FlowRuntimeRouter {
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
+            | (
+                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+            )
             | (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => &self.deployments,
             _ => {
                 return Err(FlowError::Runtime(format!(
@@ -595,6 +600,7 @@ mod tests {
         for (name, version, expected) in [
             ("cloud.deployment", "1", "deployment"),
             ("cloud.deployment", "2", "deployment"),
+            ("cloud.placement-group-deployment", "1", "deployment"),
             ("cloud.workload.stop", "1", "deployment"),
             ("cloud.build", "5", "build"),
             ("cloud.execution", "1", "execution"),

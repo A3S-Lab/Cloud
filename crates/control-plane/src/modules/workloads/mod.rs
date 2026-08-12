@@ -20,15 +20,15 @@ pub use application::{
 };
 pub use domain::entities::{
     AgentWorkloadRevisionBinding, AtomicResourceClaimReservation, CompiledResourceRequirements,
-    Deployment, DeploymentReplicaBinding, DeploymentStatus, EffectivePlacementPolicy,
-    ExternalBuildReference, HttpHealthCheck, ManagedOwnerKind, ManagedOwnerReference,
-    McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference, PlacementTopology,
-    ReplicaAntiAffinity, RequestedServiceTemplate, ResourceAllocation, ResourceClaim,
-    ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence, ResourceClaimReservation,
-    ResourceClaimState, ResourceKind, ResourceSlotBinding, ResourceSlotEvidence,
-    ResourceSlotRequest, ResourceUnit, SecretBinding, SecretBindingTarget, ServicePort,
-    ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding, Workload,
-    WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadPlacementGroup,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, DeploymentStatus,
+    EffectivePlacementPolicy, ExternalBuildReference, HttpHealthCheck, ManagedOwnerKind,
+    ManagedOwnerReference, McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference,
+    PlacementTopology, ReplicaAntiAffinity, RequestedServiceTemplate, ResourceAllocation,
+    ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
+    ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotBinding,
+    ResourceSlotEvidence, ResourceSlotRequest, ResourceUnit, SecretBinding, SecretBindingTarget,
+    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
+    Workload, WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadPlacementGroup,
     WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
     WorkloadPlacementGroupState, WorkloadPlacementGroupWrite, WorkloadReplica,
     WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
@@ -68,6 +68,7 @@ pub use infrastructure::{
     ReplicaDeploymentMaterializer, ReplicaRetirementFailure, ReplicaRetirementReconciler,
     ReplicaRetirementReport, SecretRotationRestartFailure, SecretRotationRestartReconciler,
     SecretRotationRestartReport, WorkloadReconciliationFailure, WorkloadReconciliationReport,
-    WorkloadRuntimeReconciler,
+    WorkloadRuntimeReconciler, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+    PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
 };
 pub use presentation::WorkloadsModule;

@@ -37,12 +37,13 @@ use crate::modules::workloads::domain::entities::{
     HttpHealthCheck, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
     ResourceClaimReservation, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
     ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec, WorkloadDesiredState,
-    WorkloadReplicaLifecycle, WorkloadRevision,
+    WorkloadPlacementGroup, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{DeploymentRequested, WorkloadStopRequested};
 use crate::modules::workloads::domain::repositories::{
-    CreateDeploymentBundle, IResourceClaimRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadRepository, ReconfigureReplicaSetWrite, RequestWorkloadStopBundle,
+    CreateDeploymentBundle, IResourceClaimRepository, IWorkloadPlacementGroupRepository,
+    IWorkloadReplicaDeploymentRepository, IWorkloadRepository, ReconfigureReplicaSetWrite,
+    RequestWorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
     DeploymentRouteStage, DeploymentRouteUpdateRequest, IDeploymentRouteUpdater,
@@ -79,6 +80,115 @@ mod routed_update;
 mod support;
 
 use support::*;
+
+#[tokio::test]
+async fn placement_group_deployment_flow_waits_without_partial_dispatch_and_cancels_cleanly(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("placement-group Deployment Flow")?,
+        base,
+    );
+    let leader = template('1');
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        leader.clone(),
+        base,
+    )?;
+    let spec = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?;
+    let policy = spec.placement_policy.clone();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let replica = workloads
+        .seed_placement_group_foundation(workload.clone(), spec, revision.clone())
+        .await?;
+    let group = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        vec![leader, template('2'), template('3')],
+        base + Duration::milliseconds(1),
+    )?;
+    workloads.materialize_placement_group(group).await?;
+    let candidate = workloads
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("placement-group Deployment Flow has no candidate")?;
+    let materialization = workloads
+        .materialize_replica_deployment(candidate, base + Duration::milliseconds(2))
+        .await?
+        .ok_or("placement-group Deployment Flow materialization was skipped")?;
+
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let engine = FlowEngine::in_memory(Arc::new(runtime(
+        &workloads,
+        &nodes,
+        Duration::seconds(10),
+    )?));
+    let run_id = materialization.operation.id.to_string();
+    engine
+        .start_with_id(
+            run_id.clone(),
+            WorkflowSpec::rust_embedded(
+                materialization.operation.workflow.name(),
+                materialization.operation.workflow.version(),
+                "a3s-cloud",
+                "main",
+            ),
+            materialization.operation.input,
+        )
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Suspended
+    );
+    let queued = workloads
+        .find_deployment(organization_id, materialization.deployment.id)
+        .await?;
+    assert_eq!(queued.status, DeploymentStatus::Queued);
+    assert!(queued.node_id.is_none() && queued.command_id.is_none());
+
+    let cancelling = workloads
+        .mark_cancellation_requested(
+            queued.id,
+            queued.aggregate_version,
+            base + Duration::seconds(1),
+        )
+        .await?;
+    assert_eq!(cancelling.status, DeploymentStatus::Cancelling);
+    engine
+        .resume_due_waits(Utc::now() + Duration::minutes(1))
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    let cancelled = workloads
+        .find_deployment(organization_id, materialization.deployment.id)
+        .await?;
+    assert_eq!(cancelled.status, DeploymentStatus::Cancelled);
+    assert!(cancelled.node_id.is_none() && cancelled.command_id.is_none());
+    let replay = workloads
+        .materialize_replica_deployment(candidate, base + Duration::seconds(2))
+        .await?
+        .ok_or("cancelled placement-group Deployment replay was skipped")?;
+    assert!(!replay.created);
+    assert_eq!(replay.deployment, cancelled);
+    assert_eq!(
+        replay.placement_group_binding,
+        materialization.placement_group_binding
+    );
+    Ok(())
+}
 
 #[tokio::test]
 async fn replica_set_creation_materializes_stable_ordered_identities_once(

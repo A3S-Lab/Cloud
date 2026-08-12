@@ -1,7 +1,7 @@
-use super::replicas;
 use super::resource_claim_rows::{restore_claim, ClaimWithSlotRow, ClaimWithSlotSelection};
 use super::resource_claim_writes;
 use super::schema::{ResourceClaimSlots, ResourceClaims, WorkloadControls};
+use super::{deployment_group_bindings, replicas};
 use crate::infrastructure::{
     fetch_all, fetch_optional, transaction_error, PostgresPersistenceError,
 };
@@ -311,10 +311,11 @@ async fn reserve_new_claim_in_transaction(
         reservation.node_id,
     )
     .await?;
-    let persisted_binding = replicas::binding_in_transaction(
+    let persisted_binding = deployment_group_bindings::find_member_binding_in_transaction(
         transaction,
         reservation.binding.organization_id,
         reservation.binding.deployment_id,
+        reservation.binding.member_id,
     )
     .await?
     .ok_or(RepositoryError::NotFound)?;

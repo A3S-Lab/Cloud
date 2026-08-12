@@ -83,6 +83,27 @@ pub(super) async fn find_for_replica_generation(
         .map_err(transaction_error)
 }
 
+pub(super) async fn find_for_replica_generation_in_transaction(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    replica_id: WorkloadReplicaId,
+    replica_generation: u64,
+    for_update: bool,
+) -> Result<Option<WorkloadPlacementGroup>, PostgresPersistenceError> {
+    let Some(group_id) = group_id_for_replica_generation(
+        transaction,
+        organization_id,
+        replica_id,
+        replica_generation,
+        for_update,
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    group_in_transaction(transaction, organization_id, group_id, false).await
+}
+
 async fn materialize_in_transaction(
     transaction: &PostgresTransaction,
     write: WorkloadPlacementGroupWrite,
