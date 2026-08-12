@@ -213,10 +213,14 @@ global Search view with the organization-scoped Registry name, bounded endpoint
 description, state, and detail link; it adds no catalog index or synchronization
 worker. Stable CI now runs the production `PublicInternet` catalog adapter
 against the metadata-only signed fixture at the exact pinned Use revision. The
-gate certifies public HTTPS refresh, exact root and role versions, online and
-offline-bounded reads, root/cache drift, SSRF and cursor rejection, and the
-absence of a downloadable package target. Real PostgreSQL execution remains
-open, so `U0.2` is implemented and provider-verified but not yet complete.
+provider gate certifies public HTTPS refresh, exact root and role versions,
+online and offline-bounded reads, root/cache drift, SSRF and cursor rejection,
+and the absence of a downloadable package target. An independent PostgreSQL 17
+gate certifies final-transaction authorization, atomic concurrent enrollment,
+idempotent replay, rollback residue, tenant-scoped reads and Search, canonical
+row validation, and migrations `084`-`085`. Together they verify `U0.2` without
+adding another Registry, authorization, Outbox, audit, idempotency, or Search
+mechanism; assignments remain unavailable until the `U0.3` dependencies close.
 
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one
