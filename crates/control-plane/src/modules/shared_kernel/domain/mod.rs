@@ -21,7 +21,7 @@ pub use identifiers::{
     PluginRegistryId, PrincipalId, ProjectId, ResourceClaimId, ResourceGrantId, RouteId, SecretId,
     SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
-    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

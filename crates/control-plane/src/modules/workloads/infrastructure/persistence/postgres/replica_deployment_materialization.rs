@@ -1,4 +1,4 @@
-use super::schema::{DeploymentReplicaBindings, WorkloadReplicas, Workloads};
+use super::schema::{DeploymentReplicaBindings, WorkloadControls, WorkloadReplicas, Workloads};
 use super::{create, operation_requests, queries, replicas};
 use crate::infrastructure::{store_outbox, transaction_error, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
@@ -91,6 +91,8 @@ async fn materialize_in_transaction(
         || replica.generation != candidate.replica_generation
         || replica.lifecycle != WorkloadReplicaLifecycle::Desired
         || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+        || control.spec.placement_policy.topology()
+            != crate::modules::workloads::domain::entities::PlacementTopology::SingleNode
         || workload.desired_state != WorkloadDesiredState::Running
         || workload
             .active_revision_id
@@ -172,8 +174,15 @@ fn candidate_query(limit: u64) -> a3s_orm::query::SelectQuery<WorkloadReplicas, 
                 .eq_column(WorkloadReplicas::organization_id())
                 .and(Workloads::id().eq_column(WorkloadReplicas::workload_id())),
         )
+        .inner_join::<WorkloadControls>(
+            WorkloadControls::organization_id()
+                .eq_column(WorkloadReplicas::organization_id())
+                .and(WorkloadControls::workload_id().eq_column(WorkloadReplicas::workload_id())),
+        )
         .filter(WorkloadReplicas::lifecycle().eq("desired"))
         .filter(Workloads::desired_state().eq("running"))
+        .filter(WorkloadControls::placement_topology().eq("single_node"))
+        .filter(WorkloadControls::members_per_replica().eq(1_u32))
         .filter(
             Workloads::active_revision_id()
                 .is_null()

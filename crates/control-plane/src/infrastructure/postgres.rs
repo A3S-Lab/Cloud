@@ -821,6 +821,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/093_safe_node_pool_member_removal.sql"
             )),
         ),
+        Migration::new(
+            "094",
+            "Workload placement-group plans",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/094_workload_placement_group_plans.sql"
+            )),
+        ),
     ]
 }
 

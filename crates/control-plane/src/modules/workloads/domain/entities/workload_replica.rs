@@ -3,7 +3,8 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, Workload, WorkloadRevision, MAX_WORKLOAD_REPLICAS,
+    Deployment, Workload, WorkloadRevision, MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS,
+    MAX_WORKLOAD_REPLICAS,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -11,6 +12,7 @@ use uuid::Uuid;
 
 pub const CANONICAL_REPLICA_ORDINAL: u32 = 0;
 const REPLICA_ID_DOMAIN: &str = "a3s.cloud.workload-replica.v1";
+const REPLICA_MEMBER_ID_DOMAIN: &str = "a3s.cloud.workload-replica-member.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -127,6 +129,29 @@ impl WorkloadReplica {
             "workload:{}:replica:{}:revision:{}",
             self.workload_id, self.id, revision.id
         ))
+    }
+
+    pub fn runtime_unit_id_for_member(
+        &self,
+        revision: &WorkloadRevision,
+        member: &WorkloadReplicaMember,
+    ) -> Result<String, String> {
+        member.validate()?;
+        if member.organization_id != self.organization_id
+            || member.project_id != self.project_id
+            || member.environment_id != self.environment_id
+            || member.replica_id != self.id
+            || member.workload_id != self.workload_id
+            || WorkloadReplicaMember::deterministic_id(self.id, member.ordinal).ok()
+                != Some(member.id)
+        {
+            return Err("Workload Runtime member identity is inconsistent".into());
+        }
+        let base = self.runtime_unit_id(revision)?;
+        if member.ordinal == CANONICAL_REPLICA_ORDINAL {
+            return Ok(base);
+        }
+        Ok(format!("{base}:member:{}", member.id))
     }
 
     pub fn advance(
@@ -418,17 +443,30 @@ impl WorkloadReplicaMember {
     }
 
     pub fn for_replica(workload: &Workload, replica: &WorkloadReplica) -> Result<Self, String> {
-        if replica.workload_id != workload.id {
+        Self::for_ordinal(workload, replica, CANONICAL_REPLICA_ORDINAL)
+    }
+
+    pub fn for_ordinal(
+        workload: &Workload,
+        replica: &WorkloadReplica,
+        ordinal: u32,
+    ) -> Result<Self, String> {
+        replica.validate()?;
+        if replica.organization_id != workload.organization_id
+            || replica.project_id != workload.project_id
+            || replica.environment_id != workload.environment_id
+            || replica.workload_id != workload.id
+        {
             return Err("Workload replica member has the wrong replica".into());
         }
         let member = Self {
-            id: WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid()),
+            id: Self::deterministic_id(replica.id, ordinal)?,
             organization_id: workload.organization_id,
             project_id: workload.project_id,
             environment_id: workload.environment_id,
             workload_id: workload.id,
             replica_id: replica.id,
-            ordinal: CANONICAL_REPLICA_ORDINAL,
+            ordinal,
             node_id: None,
             placement_generation: 0,
             aggregate_version: 1,
@@ -437,6 +475,25 @@ impl WorkloadReplicaMember {
         };
         member.validate()?;
         Ok(member)
+    }
+
+    pub fn deterministic_id(
+        replica_id: WorkloadReplicaId,
+        ordinal: u32,
+    ) -> Result<WorkloadReplicaMemberId, String> {
+        if ordinal >= MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS {
+            return Err(format!(
+                "Workload placement-group member ordinal must be smaller than {MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS}"
+            ));
+        }
+        if ordinal == CANONICAL_REPLICA_ORDINAL {
+            return Ok(WorkloadReplicaMemberId::from_uuid(replica_id.as_uuid()));
+        }
+        let name = format!("{REPLICA_MEMBER_ID_DOMAIN}:{ordinal}");
+        Ok(WorkloadReplicaMemberId::from_uuid(Uuid::new_v5(
+            &replica_id.as_uuid(),
+            name.as_bytes(),
+        )))
     }
 
     pub fn place(&mut self, node_id: NodeId, at: DateTime<Utc>) -> Result<(), String> {
@@ -450,8 +507,7 @@ impl WorkloadReplicaMember {
                 Ok(())
             }
             Some(_) => Err(
-                "single-node Workload replica cannot move without explicit release or fencing"
-                    .into(),
+                "Workload replica member cannot move without explicit release or fencing".into(),
             ),
             None => {
                 self.node_id = Some(node_id);
@@ -505,8 +561,7 @@ impl WorkloadReplicaMember {
             || self.environment_id.as_uuid().is_nil()
             || self.workload_id.as_uuid().is_nil()
             || self.replica_id.as_uuid().is_nil()
-            || self.ordinal != CANONICAL_REPLICA_ORDINAL
-            || self.id.as_uuid() != self.replica_id.as_uuid()
+            || Self::deterministic_id(self.replica_id, self.ordinal).ok() != Some(self.id)
             || self.node_id.is_some() && self.placement_generation == 0
             || self.aggregate_version == 0
             || self.updated_at < self.created_at

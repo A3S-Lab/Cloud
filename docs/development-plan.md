@@ -3183,7 +3183,7 @@ reconciliation, process death, and provider recovery.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
-| `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, placement groups and gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
+| `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
@@ -3454,9 +3454,22 @@ node, inventory, anti-affinity, and slot checks run inside the transaction;
 exact replay succeeds only when every requested Claim already matches; and a
 partial replay, stale inventory, or any capacity/member conflict rolls back the
 whole batch. In-memory and PostgreSQL 17 gates prove zero partial Claim or slot
-residue and unchanged slot generations after rollback. Durable placement-group
-identity, multi-member execution-plan and Deployment materialization, concurrent
-Agent preparation with whole-group compensation, group health, bounded rolling
+residue and unchanged slot generations after rollback. Migration 094 then
+admits the bounded `multi_node` policy shape and persists one deterministic
+placement-group identity per replica generation with a canonical leader/worker
+plan. The immutable plan binds stable member and Runtime Unit identities, exact
+Service templates and their digests, the effective placement-policy
+generation/digest, and one whole-plan digest. One transaction inserts every
+missing stable replica member, the group, and all member plans. Concurrent
+exact writers converge to one create plus one replay; a different plan for the
+same replica generation conflicts; stale policy or replica state rolls back
+without member/group residue; and a later replica generation reuses reliably
+released members without resetting their placement generation or aggregate
+version. Typed A3S ORM queries retain tenant and generation fences, and the
+legacy single-member Deployment materializer explicitly rejects and skips
+multi-node policies rather than dispatching a partial group. Group-aware
+Deployment materialization, Claim-to-member assignment, concurrent Agent
+preparation with whole-group compensation, group health, bounded rolling
 updates, independent Gateway placement, provider-neutral private networking,
 and stateful moves remain open.
 

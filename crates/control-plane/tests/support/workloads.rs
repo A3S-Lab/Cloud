@@ -15,13 +15,14 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentReplicaBinding, DeploymentRequested,
-    DeploymentStatus, HttpHealthCheck, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, OciArtifact, PostgresWorkloadRepository,
-    ReconfigureReplicaSetWrite, ReplicaAntiAffinity, ReplicaEvacuationRequest,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence, ServicePort,
-    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
-    WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
+    DeploymentStatus, HttpHealthCheck, IWorkloadPlacementGroupRepository,
+    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ReplicaAntiAffinity,
+    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
+    ReplicaRuntimeFence, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
+    WorkloadControl, WorkloadControlSpec, WorkloadPlacementGroup, WorkloadReplicaLifecycle,
+    WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -207,11 +208,24 @@ pub async fn exercise_replica_policy_v1_upgrade(
 alter table workload_controls
     drop constraint workload_controls_placement_policy_check;
 
+drop index workload_controls_execution_shape_idx;
 drop index workload_controls_node_pool_idx;
 
 alter table workload_controls
     drop constraint workload_controls_node_pool_fk,
-    drop column node_pool_id;
+    drop column node_pool_id,
+    drop column members_per_replica,
+    drop column placement_topology;
+
+drop table workload_placement_group_members;
+drop table workload_placement_groups;
+
+alter table workload_replica_members
+    drop constraint workload_replica_members_identity_check,
+    add constraint workload_replica_members_ordinal_check
+        check (ordinal = 0),
+    add constraint workload_replica_members_identity_check
+        check (ordinal = 0 and id = replica_id);
 
 with policy_values as (
     select
@@ -349,6 +363,11 @@ drop index resource_claims_active_workload_node_replica_idx;
         "/../../migrations/092_workload_node_pool_selection.sql"
     ));
     client.batch_execute(node_pool_migration).await?;
+    let placement_group_migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/094_workload_placement_group_plans.sql"
+    ));
+    client.batch_execute(placement_group_migration).await?;
 
     for (workload_id, (generation, desired_replicas, aggregate_version, updated_at)) in before {
         let control = repository
@@ -1122,6 +1141,351 @@ pub async fn exercise_replica_set(
     Ok(ReplicaSetFixture {
         bindings: replica_bindings,
     })
+}
+
+pub async fn exercise_placement_group_plans(
+    executor: &PostgresExecutor,
+    organization_uuid: Uuid,
+    project_uuid: Uuid,
+    environment_uuid: Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(organization_uuid);
+    let repository = PostgresWorkloadRepository::new(executor.clone());
+    let database = Database::new(PostgresDialect, executor.clone());
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::from_uuid(project_uuid),
+        EnvironmentId::from_uuid(environment_uuid),
+        ResourceName::parse("PostgreSQL placement group")?,
+        now,
+    );
+    let bundle = request(
+        workload.clone(),
+        1,
+        '7',
+        "postgres-placement-group-foundation",
+        now,
+    )?;
+    let revision = bundle.revision.clone();
+    let initial_deployment_id = bundle.deployment.id;
+    let mut rejected_partial_dispatch = bundle.clone();
+    rejected_partial_dispatch.control = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?;
+    assert!(matches!(
+        repository
+            .create_deployment(rejected_partial_dispatch)
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    repository.create_deployment(bundle).await?;
+    database
+        .execute(
+            sql_query::<()>("delete from deployments where id = ")
+                .bind(initial_deployment_id.as_uuid()),
+        )
+        .await?;
+
+    let spec = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?;
+    let policy = spec.placement_policy.clone();
+    database
+        .execute(
+            sql_query::<()>("update workload_controls set placement_policy = ")
+                .bind(policy.document()?)
+                .append(", placement_policy_digest = ")
+                .bind(policy.digest())
+                .append(", aggregate_version = aggregate_version + 1, updated_at = greatest(updated_at, ")
+                .bind(now + Duration::milliseconds(1))
+                .append(") where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and workload_id = ")
+                .bind(workload.id.as_uuid()),
+        )
+        .await?;
+    let replica = repository
+        .list_workload_replicas(organization_id, workload.id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("placement-group fixture has no replica")?;
+    assert!(repository
+        .pending_replica_deployments(100)
+        .await?
+        .iter()
+        .all(|candidate| candidate.workload_id != workload.id));
+
+    let templates = vec![
+        revision.resolved_template()?.clone(),
+        template('8'),
+        template('9'),
+    ];
+    let write = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        templates,
+        now + Duration::milliseconds(2),
+    )?;
+    let (left, right) = tokio::join!(
+        repository.materialize_placement_group(write.clone()),
+        repository.materialize_placement_group(write.clone()),
+    );
+    let left = left.map_err(|error| format!("left placement-group writer failed: {error:?}"))?;
+    let right = right.map_err(|error| format!("right placement-group writer failed: {error:?}"))?;
+    assert_ne!(left.replayed, right.replayed);
+    assert_eq!(left.group, right.group);
+    assert_eq!(left.replica_members, right.replica_members);
+    assert_eq!(
+        repository
+            .find_placement_group(organization_id, write.group.id)
+            .await?,
+        write.group
+    );
+    assert_eq!(
+        repository
+            .find_placement_group_for_replica_generation(
+                organization_id,
+                replica.id,
+                replica.generation,
+            )
+            .await?,
+        write.group
+    );
+    assert_eq!(
+        repository
+            .find_placement_group(OrganizationId::new(), write.group.id)
+            .await,
+        Err(RepositoryError::NotFound)
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, i64, i64)>(
+                    "select (select count(*) from workload_placement_groups where id = ",
+                )
+                .bind(write.group.id.as_uuid())
+                .append(
+                    "), (select count(*) from workload_placement_group_members where group_id = "
+                )
+                .bind(write.group.id.as_uuid())
+                .append("), (select count(*) from workload_replica_members where replica_id = ")
+                .bind(replica.id.as_uuid())
+                .append(")"),
+            )
+            .await?,
+        (1, 3, 3)
+    );
+
+    let mut changed_templates = vec![
+        revision.resolved_template()?.clone(),
+        template('8'),
+        template('a'),
+    ];
+    changed_templates[1].process.args.push("--changed".into());
+    let changed = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        changed_templates,
+        write.group.created_at,
+    )?;
+    assert_eq!(
+        repository.materialize_placement_group(changed).await,
+        Err(RepositoryError::IdempotencyConflict)
+    );
+
+    let released_at = now + Duration::milliseconds(3);
+    database
+        .execute(
+            sql_query::<()>(
+                "update workload_replica_members set placement_generation = 2, aggregate_version = aggregate_version + 2, updated_at = greatest(updated_at, ",
+            )
+            .bind(released_at)
+            .append(") where organization_id = ")
+            .bind(organization_uuid)
+            .append(" and replica_id = ")
+            .bind(replica.id.as_uuid())
+            .append(" and ordinal > 0"),
+        )
+        .await?;
+    let advanced_at = now + Duration::milliseconds(4);
+    database
+        .execute(
+            sql_query::<()>(
+                "update workload_replicas set generation = generation + 1, aggregate_version = aggregate_version + 1, updated_at = greatest(updated_at, ",
+            )
+            .bind(advanced_at)
+            .append(") where organization_id = ")
+            .bind(organization_uuid)
+            .append(" and id = ")
+            .bind(replica.id.as_uuid())
+            .append(" and generation = ")
+            .bind(replica.generation),
+        )
+        .await?;
+    let advanced_replica = repository
+        .list_workload_replicas(organization_id, workload.id)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.id == replica.id)
+        .ok_or("advanced placement-group replica disappeared")?;
+    assert_eq!(advanced_replica.generation, replica.generation + 1);
+    let next_write = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &advanced_replica,
+        vec![
+            revision.resolved_template()?.clone(),
+            template('8'),
+            template('9'),
+        ],
+        now + Duration::milliseconds(5),
+    )?;
+    let next = repository
+        .materialize_placement_group(next_write.clone())
+        .await?;
+    assert!(!next.replayed);
+    assert_eq!(next.group, next_write.group);
+    assert!(next
+        .replica_members
+        .iter()
+        .filter(|member| member.ordinal > 0)
+        .all(|member| member.node_id.is_none()
+            && member.placement_generation == 2
+            && member.aggregate_version == 3));
+    assert_eq!(
+        repository
+            .find_placement_group_for_replica_generation(
+                organization_id,
+                replica.id,
+                advanced_replica.generation,
+            )
+            .await?,
+        next_write.group
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, i64, i64)>(
+                    "select (select count(*) from workload_placement_groups where replica_id = ",
+                )
+                .bind(replica.id.as_uuid())
+                .append(
+                    "), (select count(*) from workload_placement_group_members where replica_id = "
+                )
+                .bind(replica.id.as_uuid())
+                .append("), (select count(*) from workload_replica_members where replica_id = ")
+                .bind(replica.id.as_uuid())
+                .append(")"),
+            )
+            .await?,
+        (2, 6, 3)
+    );
+
+    exercise_stale_placement_group_plan_rollback(
+        executor,
+        organization_uuid,
+        project_uuid,
+        environment_uuid,
+    )
+    .await
+}
+
+async fn exercise_stale_placement_group_plan_rollback(
+    executor: &PostgresExecutor,
+    organization_uuid: Uuid,
+    project_uuid: Uuid,
+    environment_uuid: Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(organization_uuid);
+    let repository = PostgresWorkloadRepository::new(executor.clone());
+    let database = Database::new(PostgresDialect, executor.clone());
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::from_uuid(project_uuid),
+        EnvironmentId::from_uuid(environment_uuid),
+        ResourceName::parse("PostgreSQL stale placement group")?,
+        now,
+    );
+    let bundle = request(
+        workload.clone(),
+        1,
+        'b',
+        "postgres-stale-placement-group",
+        now,
+    )?;
+    let revision = bundle.revision.clone();
+    let deployment_id = bundle.deployment.id;
+    repository.create_deployment(bundle).await?;
+    database
+        .execute(
+            sql_query::<()>("delete from deployments where id = ").bind(deployment_id.as_uuid()),
+        )
+        .await?;
+    let initial_policy = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?.placement_policy;
+    database
+        .execute(
+            sql_query::<()>("update workload_controls set placement_policy = ")
+                .bind(initial_policy.document()?)
+                .append(", placement_policy_digest = ")
+                .bind(initial_policy.digest())
+                .append(", aggregate_version = aggregate_version + 1 where workload_id = ")
+                .bind(workload.id.as_uuid()),
+        )
+        .await?;
+    let replica = repository
+        .list_workload_replicas(organization_id, workload.id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("stale placement-group fixture has no replica")?;
+    let stale = WorkloadPlacementGroup::plan(
+        &workload,
+        &initial_policy,
+        &revision,
+        &replica,
+        vec![
+            revision.resolved_template()?.clone(),
+            template('c'),
+            template('d'),
+        ],
+        now + Duration::milliseconds(1),
+    )?;
+    let next_policy = WorkloadControlSpec::unmanaged_placement_group(2, 1, 3)?.placement_policy;
+    database
+        .execute(
+            sql_query::<()>("update workload_controls set placement_policy = ")
+                .bind(next_policy.document()?)
+                .append(", placement_policy_digest = ")
+                .bind(next_policy.digest())
+                .append(", aggregate_version = aggregate_version + 1 where workload_id = ")
+                .bind(workload.id.as_uuid()),
+        )
+        .await?;
+    assert!(matches!(
+        repository.materialize_placement_group(stale.clone()).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, i64)>(
+                    "select (select count(*) from workload_placement_groups where id = ",
+                )
+                .bind(stale.group.id.as_uuid())
+                .append("), (select count(*) from workload_replica_members where replica_id = ")
+                .bind(replica.id.as_uuid())
+                .append(")"),
+            )
+            .await?,
+        (0, 1)
+    );
+    Ok(())
 }
 
 pub async fn exercise_replica_evacuation(

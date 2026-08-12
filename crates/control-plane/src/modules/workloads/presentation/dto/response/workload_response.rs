@@ -260,6 +260,7 @@ impl From<WorkloadControl> for WorkloadControlResponse {
         let policy = control.spec.placement_policy;
         let topology = match policy.topology() {
             PlacementTopology::SingleNode => "single_node",
+            PlacementTopology::MultiNode => "multi_node",
         };
         Self {
             managed_owner,

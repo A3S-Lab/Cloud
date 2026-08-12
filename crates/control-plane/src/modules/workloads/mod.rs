@@ -28,9 +28,12 @@ pub use domain::entities::{
     ResourceClaimState, ResourceKind, ResourceSlotBinding, ResourceSlotEvidence,
     ResourceSlotRequest, ResourceUnit, SecretBinding, SecretBindingTarget, ServicePort,
     ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding, Workload,
-    WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica,
+    WorkloadControl, WorkloadControlSpec, WorkloadDesiredState, WorkloadPlacementGroup,
+    WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
+    WorkloadPlacementGroupState, WorkloadPlacementGroupWrite, WorkloadReplica,
     WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, CANONICAL_REPLICA_ORDINAL,
-    MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS, MAX_WORKLOAD_REPLICAS,
+    MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS, MAX_WORKLOAD_PLACEMENT_GROUP_MEMBERS,
+    MAX_WORKLOAD_REPLICAS,
 };
 pub use domain::events::{
     DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaEvacuated,
@@ -39,14 +42,15 @@ pub use domain::events::{
 };
 pub use domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IResourceClaimRepository,
-    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
-    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
-    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
-    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
-    SecretRotationReconciliation, WorkloadStopBundle,
+    ISecretRotationRestartRepository, IWorkloadPlacementGroupRepository,
+    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    PlacementGroupMaterialization, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
+    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    RetiringReplicaTarget, SecretRotation, SecretRotationCompletion, SecretRotationReconciliation,
+    WorkloadStopBundle,
 };
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,

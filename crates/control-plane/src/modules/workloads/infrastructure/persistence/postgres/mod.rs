@@ -1,5 +1,6 @@
 mod create;
 mod operation_requests;
+mod placement_groups;
 mod queries;
 mod replica_deployment_materialization;
 mod replica_evacuations;
@@ -17,8 +18,8 @@ mod transitions;
 
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
-    WorkloadRevisionId,
+    ProjectId, RepositoryError, WorkloadId, WorkloadPlacementGroupId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
@@ -26,14 +27,14 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
-    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
-    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate,
-    ReplicaEvacuationRequest, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
-    ReplicaRuntimeFence, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation,
-    WorkloadStopBundle,
+    ISecretRotationRestartRepository, IWorkloadPlacementGroupRepository,
+    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    PlacementGroupMaterialization, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
+    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -49,6 +50,41 @@ pub struct PostgresWorkloadRepository {
 impl PostgresWorkloadRepository {
     pub const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
+    }
+}
+
+#[async_trait]
+impl IWorkloadPlacementGroupRepository for PostgresWorkloadRepository {
+    async fn materialize_placement_group(
+        &self,
+        write: crate::modules::workloads::domain::entities::WorkloadPlacementGroupWrite,
+    ) -> Result<PlacementGroupMaterialization, RepositoryError> {
+        placement_groups::materialize(&self.executor, write).await
+    }
+
+    async fn find_placement_group(
+        &self,
+        organization_id: OrganizationId,
+        group_id: WorkloadPlacementGroupId,
+    ) -> Result<crate::modules::workloads::domain::entities::WorkloadPlacementGroup, RepositoryError>
+    {
+        placement_groups::find(&self.executor, organization_id, group_id).await
+    }
+
+    async fn find_placement_group_for_replica_generation(
+        &self,
+        organization_id: OrganizationId,
+        replica_id: WorkloadReplicaId,
+        replica_generation: u64,
+    ) -> Result<crate::modules::workloads::domain::entities::WorkloadPlacementGroup, RepositoryError>
+    {
+        placement_groups::find_for_replica_generation(
+            &self.executor,
+            organization_id,
+            replica_id,
+            replica_generation,
+        )
+        .await
     }
 }
 

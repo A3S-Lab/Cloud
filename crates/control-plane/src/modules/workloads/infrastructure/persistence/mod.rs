@@ -1,4 +1,6 @@
 mod in_memory;
+#[cfg(test)]
+mod in_memory_placement_groups_tests;
 mod in_memory_resource_claims;
 #[cfg(test)]
 mod in_memory_resource_claims_tests;
