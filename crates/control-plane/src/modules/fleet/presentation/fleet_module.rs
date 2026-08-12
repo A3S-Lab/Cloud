@@ -1,5 +1,6 @@
 use super::controllers::{
-    enrollment_controller, node_management_controller, node_queries_controller,
+    enrollment_controller, node_management_controller, node_pool_management_controller,
+    node_pool_queries_controller, node_queries_controller,
 };
 use a3s_boot::{CommandBus, ControllerDefinition, Module, ModuleRef, QueryBus, Result};
 use chrono::Duration;
@@ -27,10 +28,13 @@ impl Module for FleetModule {
 
     fn controllers(&self, module_ref: &ModuleRef) -> Result<Vec<ControllerDefinition>> {
         let commands = module_ref.get::<CommandBus>()?;
+        let queries = module_ref.get::<QueryBus>()?;
         Ok(vec![
             enrollment_controller(commands.clone())?,
-            node_management_controller(commands, self.heartbeat_timeout)?,
-            node_queries_controller(module_ref.get::<QueryBus>()?)?,
+            node_management_controller(commands.clone(), self.heartbeat_timeout)?,
+            node_pool_management_controller(commands)?,
+            node_queries_controller(queries.clone())?,
+            node_pool_queries_controller(queries)?,
         ])
     }
 }

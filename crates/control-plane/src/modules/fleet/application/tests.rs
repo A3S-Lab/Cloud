@@ -1,14 +1,16 @@
 use super::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, ChangeNodeState, ChangeNodeStateHandler,
     EnqueueNodeCommand, EnqueueNodeCommandHandler, EnrollNode, EnrollNodeHandler, GetNode,
-    GetNodeHandler, IssueEnrollmentToken, IssueEnrollmentTokenHandler, LeaseNodeCommands,
-    LeaseNodeCommandsHandler, ListNodes, ListNodesHandler, LogCompactionWorker, LogRetentionWorker,
-    RecordNodeLogChunks, RecordNodeLogChunksHandler, RotateNodeCertificate,
-    RotateNodeCertificateHandler,
+    GetNodeHandler, GetNodePool, GetNodePoolHandler, IssueEnrollmentToken,
+    IssueEnrollmentTokenHandler, LeaseNodeCommands, LeaseNodeCommandsHandler, ListNodePools,
+    ListNodePoolsHandler, ListNodes, ListNodesHandler, LogCompactionWorker, LogRetentionWorker,
+    ManageNodePool, ManageNodePoolHandler, NodePoolMutation, RecordNodeLogChunks,
+    RecordNodeLogChunksHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
 };
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeHeartbeatUpdate, NodeLogChunkQuery,
+    INodeControlRepository, INodeRepository, INodeSchedulingRepository, NodeHeartbeatUpdate,
+    NodeLogChunkQuery,
 };
 use crate::modules::fleet::domain::services::{ILogChunkStore, RetrievedLogChunk};
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
@@ -18,7 +20,7 @@ use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::infrastructure::persistence::InMemoryIdentityRepository;
 use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
-use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeCommandId, NodeId};
+use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeCommandId, NodeId, NodePoolId};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
@@ -200,6 +202,111 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         .await
         .expect("heartbeat");
     assert_eq!(ready.state, NodeState::Ready);
+
+    let node_pool_handler = ManageNodePoolHandler::new(nodes.clone());
+    let node_pool_id = NodePoolId::new();
+    let create_pool = ManageNodePool {
+        organization_id: organization.id,
+        node_pool_id,
+        mutation: NodePoolMutation::Create {
+            name: "Primary Workers".into(),
+            member_node_ids: vec![node_id],
+        },
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "create-primary-pool".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: now + Duration::seconds(3),
+    };
+    let created_pool = node_pool_handler
+        .execute(create_pool.clone(), context())
+        .await
+        .expect("framework result")
+        .expect("create node pool");
+    assert_eq!(created_pool.node_pool.aggregate_version, 1);
+    let mut replay_with_new_server_id = create_pool;
+    replay_with_new_server_id.node_pool_id = NodePoolId::new();
+    replay_with_new_server_id.requested_at = now + Duration::days(2);
+    let replayed_pool = node_pool_handler
+        .execute(replay_with_new_server_id, context())
+        .await
+        .expect("framework result")
+        .expect("replay node pool creation");
+    assert!(replayed_pool.replayed);
+    assert_eq!(replayed_pool.node_pool.id, node_pool_id);
+
+    let schedule = ManageNodePool {
+        organization_id: organization.id,
+        node_pool_id,
+        mutation: NodePoolMutation::ScheduleMaintenance {
+            expected_version: 1,
+            target_node_ids: vec![node_id],
+            starts_at: now + Duration::seconds(4),
+            ends_at: now + Duration::minutes(30),
+            reason: "kernel upgrade".into(),
+        },
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "schedule-primary-pool".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: now + Duration::seconds(3),
+    };
+    let scheduled_pool = node_pool_handler
+        .execute(schedule.clone(), context())
+        .await
+        .expect("framework result")
+        .expect("schedule maintenance");
+    assert_eq!(scheduled_pool.node_pool.aggregate_version, 2);
+    let mut delayed_replay = schedule;
+    delayed_replay.requested_at = now + Duration::hours(1);
+    assert!(
+        node_pool_handler
+            .execute(delayed_replay, context())
+            .await
+            .expect("framework result")
+            .expect("delayed maintenance replay")
+            .replayed
+    );
+    assert!(nodes
+        .list_scheduling_candidates(organization.id, now + Duration::seconds(5))
+        .await
+        .expect("scheduling projection")
+        .is_empty());
+
+    let get_pool = GetNodePoolHandler::new(nodes.clone())
+        .execute(
+            GetNodePool {
+                organization_id: organization.id,
+                node_pool_id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .expect("get node pool");
+    assert_eq!(get_pool.id, node_pool_id);
+    let listed_pools = ListNodePoolsHandler::new(nodes.clone())
+        .execute(
+            ListNodePools {
+                organization_id: organization.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .expect("list node pools");
+    assert_eq!(listed_pools.len(), 1);
+    assert!(ListNodePoolsHandler::new(nodes.clone())
+        .execute(
+            ListNodePools {
+                organization_id: organization.id,
+                resource_access: ResourceAccessEvaluator::restricted([]),
+            },
+            context(),
+        )
+        .await
+        .expect("framework result")
+        .is_err());
 
     let enqueue_handler = EnqueueNodeCommandHandler::new(nodes.clone());
     let issued_at = now + Duration::seconds(4);

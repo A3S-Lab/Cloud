@@ -61,17 +61,19 @@ use crate::modules::executions::{
     IExecutionRepository, ListExecutionsHandler, PostgresExecutionRepository,
 };
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodeRepository,
+    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
+    INodeRepository, INodeSchedulingRepository,
 };
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
-    EnrollNodeHandler, FleetModule, GetNodeHandler, IGatewayAcknowledgementProjector,
-    IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodesHandler,
-    LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore, LogCompactionWorker,
-    LogRetentionWorker, NodeControlApi, NodeControlServer, PostgresNodeRepository,
-    RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
-    RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
+    EnrollNodeHandler, FleetModule, GetNodeHandler, GetNodePoolHandler,
+    IGatewayAcknowledgementProjector, IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler,
+    ListNodePoolsHandler, ListNodesHandler, LocalCertificateAuthority, LocalKeyEncryptionService,
+    LogChunkObjectStore, LogCompactionWorker, LogRetentionWorker, ManageNodePoolHandler,
+    NodeControlApi, NodeControlServer, PostgresNodeRepository, RecordGatewayAcknowledgementHandler,
+    RecordNodeLogChunksHandler, RecordNodeObservationsHandler, RotateNodeCertificateHandler,
+    VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 use crate::modules::forms::{
     CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
@@ -323,6 +325,8 @@ pub async fn build_application_with_source_resolver(
     );
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
+    let scheduling_nodes: Arc<dyn INodeSchedulingRepository> = node_repository.clone();
+    let node_pools: Arc<dyn INodePoolRepository> = node_repository.clone();
     let draining_nodes: Arc<dyn INodeDrainRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
@@ -691,7 +695,7 @@ pub async fn build_application_with_source_resolver(
             Arc::clone(&workloads),
             Arc::clone(&resource_claims),
             artifacts,
-            Arc::clone(&nodes),
+            scheduling_nodes,
             Arc::clone(&node_control),
             deployment_route_updates,
         ),
@@ -993,6 +997,7 @@ pub async fn build_application_with_source_resolver(
             gateway_projector,
             operations: operation_repository,
             nodes,
+            node_pools,
             node_control,
             log_chunks: log_chunks.clone(),
             certificate_authority: certificate_authority.clone(),
@@ -1087,6 +1092,7 @@ struct ApplicationDependencies {
     gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
     nodes: Arc<dyn INodeRepository>,
+    node_pools: Arc<dyn INodePoolRepository>,
     node_control: Arc<dyn INodeControlRepository>,
     log_chunks: Arc<dyn ILogChunkStore>,
     certificate_authority: Arc<dyn ICertificateAuthority>,
@@ -1146,6 +1152,7 @@ fn build_application_with_health(
         gateway_projector,
         operations,
         nodes,
+        node_pools,
         node_control,
         log_chunks,
         certificate_authority,
@@ -1274,6 +1281,9 @@ fn build_application_with_health(
     let rotation_nodes = Arc::clone(&nodes);
     let state_nodes = Arc::clone(&nodes);
     let get_nodes = Arc::clone(&nodes);
+    let manage_node_pools = Arc::clone(&node_pools);
+    let get_node_pools = Arc::clone(&node_pools);
+    let list_node_pools = node_pools;
     let gateway_scope_nodes = Arc::clone(&nodes);
     let enqueue_commands = Arc::clone(&node_control);
     let lease_commands = Arc::clone(&node_control);
@@ -1753,6 +1763,9 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::fleet::ChangeNodeState, _>(
                     ChangeNodeStateHandler::new(state_nodes, certificate_authority),
                 )
+                .command_handler::<crate::modules::fleet::ManageNodePool, _>(
+                    ManageNodePoolHandler::new(manage_node_pools),
+                )
                 .command_handler::<crate::modules::fleet::EnqueueNodeCommand, _>(
                     EnqueueNodeCommandHandler::new(enqueue_commands),
                 )
@@ -1998,6 +2011,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::fleet::ListNodes, _>(
                     ListNodesHandler::new(nodes, heartbeat_timeout).map_err(BootError::Internal)?,
+                )
+                .query_handler::<crate::modules::fleet::GetNodePool, _>(
+                    GetNodePoolHandler::new(get_node_pools),
+                )
+                .query_handler::<crate::modules::fleet::ListNodePools, _>(
+                    ListNodePoolsHandler::new(list_node_pools),
                 )
                 .query_handler::<crate::modules::edge::ListRoutes, _>(ListRoutesHandler::new(
                     list_routes,

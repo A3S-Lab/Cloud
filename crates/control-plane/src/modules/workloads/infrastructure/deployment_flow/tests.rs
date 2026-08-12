@@ -14,9 +14,11 @@ use crate::modules::edge::infrastructure::{
     GatewaySnapshotCompilerConfig, WorkloadRouteTargetReader,
 };
 use crate::modules::edge::InMemoryEdgeRepository;
-use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft};
+use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft, NodePool};
+use crate::modules::fleet::domain::events::{NodePoolChangeKind, NodePoolChanged};
 use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
+    INodeControlRepository, INodePoolRepository, INodeRepository, INodeSchedulingRepository,
+    NodeEnrollmentDraft, NodeHeartbeatUpdate, NodePoolWrite,
 };
 use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName,
@@ -26,9 +28,9 @@ use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, GatewayCertificateId,
-    GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
-    ProjectId, RepositoryError, ResourceClaimId, ResourceName, RouteId, SecretId, WorkloadId,
-    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, NodePoolId, OperationId,
+    OrganizationId, ProjectId, RepositoryError, ResourceClaimId, ResourceName, RouteId, SecretId,
+    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, DeploymentStatus,
@@ -782,7 +784,7 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
     let second_digest = format!("sha256:{}", "2".repeat(64));
     let resolver = Arc::new(MovingArtifactResolver::new(first_digest.clone()));
     let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
-    let node_port: Arc<dyn INodeRepository> = nodes.clone();
+    let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
     let runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
@@ -1605,6 +1607,112 @@ async fn durable_reservation_recovers_a_crash_before_placement_persistence(
 }
 
 #[tokio::test]
+async fn active_node_pool_maintenance_is_a_hard_scheduler_filter(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (left, _, _) = ready_node(&nodes, organization_id, base).await?;
+    let (right, _, _) = ready_node_with_capacity(
+        &nodes,
+        organization_id,
+        base,
+        "maintenance-right",
+        'e',
+        8_000,
+        8 * 1024 * 1024 * 1024,
+    )
+    .await?;
+    let (maintained_node, eligible_node) = if left < right {
+        (left, right)
+    } else {
+        (right, left)
+    };
+    let mut pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("maintenance scheduler fixture")?,
+        vec![left, right],
+        base + Duration::milliseconds(10),
+    )?;
+    nodes
+        .save(NodePoolWrite {
+            expected_version: None,
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::Created,
+                pool.created_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "test/node-pools",
+                "create-maintenance-scheduler",
+                b"create",
+            )?,
+            pool: pool.clone(),
+        })
+        .await?;
+    let previous_version = pool.aggregate_version;
+    pool.schedule_maintenance(
+        vec![maintained_node],
+        base + Duration::milliseconds(30),
+        base + Duration::hours(1),
+        "kernel upgrade",
+        base + Duration::milliseconds(20),
+    )?;
+    nodes
+        .save(NodePoolWrite {
+            expected_version: Some(previous_version),
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::MaintenanceScheduled,
+                pool.updated_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "test/node-pools/maintenance",
+                "schedule-maintenance-scheduler",
+                b"schedule",
+            )?,
+            pool,
+        })
+        .await?;
+
+    let runtime = runtime(&workloads, &nodes, Duration::seconds(10))?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let bundle = deployment_bundle(
+        Workload::create(
+            WorkloadId::new(),
+            organization_id,
+            ProjectId::new(),
+            EnvironmentId::new(),
+            ResourceName::parse("maintenance scheduler")?,
+            base,
+        ),
+        1,
+        'd',
+        base,
+        "maintenance-scheduler",
+    )?;
+    let deployment = bundle.deployment.clone();
+    let operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+    engine
+        .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
+        .await?;
+
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, deployment.id)
+            .await?
+            .node_id,
+        Some(eligible_node)
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn capacity_exhaustion_on_the_first_node_falls_through_to_the_next_node(
 ) -> Result<(), Box<dyn std::error::Error>> {
     const CPU_MILLIS: u64 = 8_000;
@@ -1819,7 +1927,7 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
-    let node_port: Arc<dyn INodeRepository> = nodes.clone();
+    let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes;
     let runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(

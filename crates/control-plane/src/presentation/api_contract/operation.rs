@@ -414,6 +414,11 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
+    } else if is_node_pool_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({ "schema": node_pool_request_schema(path) }),
+        );
     } else if is_workflow_run_start_path(path) {
         content.insert(
             "application/json".into(),
@@ -694,6 +699,7 @@ fn operation_tag(path: &str) -> &'static str {
         "Identity"
     } else if path.starts_with("/node-control")
         || path.contains("/nodes")
+        || path.contains("/node-pools")
         || path.contains("enrollment-tokens")
     {
         "Fleet"
@@ -830,6 +836,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/memberships")
         || is_resource_grant_create_path(path)
         || path.ends_with("/enrollment-tokens")
+        || path.ends_with("/node-pools")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")
         || path.ends_with("/mcp-credentials")
@@ -853,6 +860,69 @@ fn is_resource_grant_create_path(path: &str) -> bool {
 
 fn is_resource_grant_revocation_path(path: &str) -> bool {
     path.ends_with("/resource-grants/{resource_grant_id}/revocation")
+}
+
+fn is_node_pool_mutation_path(path: &str) -> bool {
+    path.ends_with("/node-pools")
+        || path.ends_with("/node-pools/{node_pool_id}/members")
+        || path.ends_with("/node-pools/{node_pool_id}/maintenance")
+        || path.ends_with("/node-pools/{node_pool_id}/maintenance/cancel")
+}
+
+fn node_pool_request_schema(path: &str) -> Value {
+    let expected_version = json!({ "type": "integer", "minimum": 1 });
+    let node_ids = json!({
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 10000,
+        "uniqueItems": true,
+        "items": { "type": "string", "format": "uuid" }
+    });
+    if path.ends_with("/members") {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion", "memberNodeIds"],
+            "properties": {
+                "expectedVersion": expected_version,
+                "memberNodeIds": node_ids
+            }
+        });
+    }
+    if path.ends_with("/maintenance/cancel") {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion", "maintenanceGeneration"],
+            "properties": {
+                "expectedVersion": expected_version,
+                "maintenanceGeneration": { "type": "integer", "minimum": 1 }
+            }
+        });
+    }
+    if path.ends_with("/maintenance") {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion", "targetNodeIds", "startsAt", "endsAt", "reason"],
+            "properties": {
+                "expectedVersion": expected_version,
+                "targetNodeIds": node_ids,
+                "startsAt": { "type": "string", "format": "date-time" },
+                "endsAt": { "type": "string", "format": "date-time" },
+                "reason": { "type": "string", "minLength": 1, "maxLength": 1024 }
+            }
+        });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "memberNodeIds"],
+        "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 63 },
+            "memberNodeIds": node_ids
+        }
+    })
 }
 
 fn is_mcp_service_profile_path(path: &str) -> bool {

@@ -12,11 +12,12 @@ pub use commands::{
     ChangeNodeState, ChangeNodeStateHandler, ChangeNodeStateResult, EnqueueNodeCommand,
     EnqueueNodeCommandHandler, EnqueueNodeCommandResult, EnrollNode, EnrollNodeHandler,
     EnrollNodeResult, IssueEnrollmentToken, IssueEnrollmentTokenHandler,
-    IssueEnrollmentTokenResult, LeaseNodeCommands, LeaseNodeCommandsHandler,
-    RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler, RecordNodeLogChunks,
-    RecordNodeLogChunksHandler, RecordNodeObservations, RecordNodeObservationsHandler,
-    RecordNodeResourceInventory, RecordNodeResourceInventoryHandler, RotateNodeCertificate,
-    RotateNodeCertificateHandler, RotateNodeCertificateResult,
+    IssueEnrollmentTokenResult, LeaseNodeCommands, LeaseNodeCommandsHandler, ManageNodePool,
+    ManageNodePoolHandler, NodePoolMutation, NodePoolMutationResult, RecordGatewayAcknowledgement,
+    RecordGatewayAcknowledgementHandler, RecordNodeLogChunks, RecordNodeLogChunksHandler,
+    RecordNodeObservations, RecordNodeObservationsHandler, RecordNodeResourceInventory,
+    RecordNodeResourceInventoryHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
+    RotateNodeCertificateResult,
 };
 pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
 pub use log_compaction::LogCompactionWorker;
@@ -26,7 +27,10 @@ pub use log_reader::{
 };
 pub use log_retention::LogRetentionWorker;
 pub use node_artifact_authorizer::NodeArtifactAuthorizer;
-pub use queries::{GetNode, GetNodeHandler, ListNodes, ListNodesHandler, NodeQueryResult};
+pub use queries::{
+    GetNode, GetNodeHandler, GetNodePool, GetNodePoolHandler, ListNodePools, ListNodePoolsHandler,
+    ListNodes, ListNodesHandler, NodeQueryResult,
+};
 
 #[cfg(test)]
 mod tests;

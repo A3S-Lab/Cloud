@@ -7,7 +7,8 @@ use a3s_cloud_contracts::{
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::fleet::domain::entities::EnrollmentToken;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
+    INodeControlRepository, INodeRepository, INodeSchedulingRepository, NodeEnrollmentDraft,
+    NodeHeartbeatUpdate,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName,
@@ -82,7 +83,7 @@ pub async fn exercise_deployment_flow(
     let (node_id, agent_instance_id, capabilities, _inventory) =
         ready_node(&node_repository, organization_id).await?;
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
-    let nodes: Arc<dyn INodeRepository> = node_repository.clone();
+    let nodes: Arc<dyn INodeSchedulingRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let resource_claims = Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let runtime = DeploymentFlowRuntime::new(

@@ -1063,10 +1063,10 @@ pub async fn exercise_replica_evacuation(
         .await?;
     let node_repository = PostgresNodeRepository::new(executor.clone());
     assert!(node_repository
-        .list_draining(100)
+        .list_evacuation_sources(Utc::now(), 100)
         .await?
         .iter()
-        .any(|node| node.id == source_node_id));
+        .any(|source| source.node.id == source_node_id));
 
     let candidates = repository
         .pending_replica_evacuations(organization_id, source_node_id, 100)

@@ -1,19 +1,20 @@
 use super::InMemoryNodeRepository;
 use crate::modules::fleet::domain::entities::{
-    EnrollmentToken, NodeCertificate, NodeCertificateMaterial, NodeCommandDraft,
+    EnrollmentToken, NodeCertificate, NodeCertificateMaterial, NodeCommandDraft, NodePool,
 };
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodeRepository,
-    NodeCertificateRotationCompletion, NodeCertificateRotationDraft, NodeEnrollmentDraft,
-    NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery,
-    NodeLogChunkReceiptDraft, NodeStateChange,
+    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
+    INodeRepository, INodeSchedulingRepository, NodeCertificateRotationCompletion,
+    NodeCertificateRotationDraft, NodeEnrollmentDraft, NodeEvacuationCause, NodeHeartbeatUpdate,
+    NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery, NodeLogChunkReceiptDraft,
+    NodePoolWrite, NodeStateChange,
 };
 use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeAvailability, NodeCapabilities, NodeName, NodeState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId,
-    NodeId, OrganizationId,
+    NodeId, NodePoolId, OrganizationId, ResourceName,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCommandAck, NodeCommandFailure,
@@ -36,6 +37,152 @@ use uuid::Uuid;
 mod support;
 
 use support::*;
+
+#[tokio::test]
+async fn node_pool_maintenance_is_replay_safe_and_drives_one_scheduling_projection() {
+    let repository = InMemoryNodeRepository::new();
+    let organization_id = OrganizationId::new();
+    let now = canonical_timestamp(Utc::now());
+    let first = pool_node(&repository, organization_id, "pool-worker-a", 'a', now).await;
+    let second = pool_node(&repository, organization_id, "pool-worker-b", 'b', now).await;
+    let pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("primary workers").expect("pool name"),
+        vec![second, first],
+        now + Duration::seconds(1),
+    )
+    .expect("pool");
+    let create_idempotency =
+        IdempotencyRequest::new("fleet/node-pools", "create-primary", b"primary")
+            .expect("create idempotency");
+    let created = repository
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: None,
+            event: event(
+                organization_id,
+                pool.id.as_uuid(),
+                pool.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: create_idempotency.clone(),
+        })
+        .await
+        .expect("create pool");
+    assert!(!created.replayed);
+    assert_eq!(
+        repository
+            .replay(&create_idempotency)
+            .await
+            .expect("lookup replay"),
+        Some(pool.clone())
+    );
+
+    let mut scheduled = pool.clone();
+    scheduled
+        .schedule_maintenance(
+            vec![first],
+            now + Duration::seconds(3),
+            now + Duration::hours(1),
+            "kernel upgrade",
+            now + Duration::seconds(2),
+        )
+        .expect("schedule maintenance");
+    let maintenance_idempotency = IdempotencyRequest::new(
+        "fleet/node-pools/maintenance",
+        "schedule-primary",
+        b"kernel-upgrade",
+    )
+    .expect("maintenance idempotency");
+    repository
+        .save(NodePoolWrite {
+            pool: scheduled.clone(),
+            expected_version: Some(pool.aggregate_version),
+            event: event(
+                organization_id,
+                scheduled.id.as_uuid(),
+                scheduled.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: maintenance_idempotency.clone(),
+        })
+        .await
+        .expect("persist maintenance");
+    assert!(
+        repository
+            .save(NodePoolWrite {
+                pool: scheduled.clone(),
+                expected_version: Some(pool.aggregate_version),
+                event: event(
+                    organization_id,
+                    scheduled.id.as_uuid(),
+                    scheduled.aggregate_version,
+                    "fleet.node-pool.changed",
+                ),
+                idempotency: maintenance_idempotency,
+            })
+            .await
+            .expect("maintenance replay")
+            .replayed
+    );
+
+    let evaluated_at = now + Duration::seconds(4);
+    assert_eq!(
+        repository
+            .list_scheduling_candidates(organization_id, evaluated_at)
+            .await
+            .expect("scheduling candidates")
+            .into_iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![second]
+    );
+    let sources = repository
+        .list_evacuation_sources(evaluated_at, 10)
+        .await
+        .expect("evacuation sources");
+    assert_eq!(sources.len(), 1);
+    assert_eq!(sources[0].node.id, first);
+    assert!(matches!(
+        sources[0].cause,
+        NodeEvacuationCause::PoolMaintenance {
+            pool_id,
+            generation: 1,
+            ..
+        } if pool_id == pool.id
+    ));
+
+    let conflicting_pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("conflicting workers").expect("pool name"),
+        vec![first],
+        now + Duration::seconds(5),
+    )
+    .expect("conflicting pool");
+    assert!(matches!(
+        repository
+            .save(NodePoolWrite {
+                pool: conflicting_pool.clone(),
+                expected_version: None,
+                event: event(
+                    organization_id,
+                    conflicting_pool.id.as_uuid(),
+                    1,
+                    "fleet.node-pool.changed",
+                ),
+                idempotency: IdempotencyRequest::new(
+                    "fleet/node-pools",
+                    "conflicting-pool",
+                    b"conflicting",
+                )
+                .expect("conflict idempotency"),
+            })
+            .await,
+        Err(crate::modules::shared_kernel::domain::RepositoryError::Conflict(_))
+    ));
+}
 
 #[tokio::test]
 async fn resource_inventory_is_monotonic_replay_safe_and_required_by_v2_heartbeats() {
@@ -1067,19 +1214,26 @@ async fn heartbeat_draining_rotation_and_revocation_preserve_node_identity() {
     assert!(!draining.accepts_new_work_at(now + Duration::seconds(3), Duration::seconds(10)));
     assert_eq!(
         repository
-            .list_draining(1)
+            .list_evacuation_sources(now + Duration::seconds(3), 1)
             .await
-            .expect("list draining nodes"),
-        vec![draining.clone()]
+            .expect("list draining nodes")
+            .into_iter()
+            .map(|source| source.node)
+            .collect::<Vec<_>>(),
+        vec![draining.clone()],
     );
     assert_eq!(
         repository
-            .find_drain_node(organization_id, draining.id)
+            .find_evacuation_source(organization_id, draining.id, now + Duration::seconds(3),)
             .await
-            .expect("find drain node"),
+            .expect("find drain node")
+            .node,
         draining
     );
-    assert!(repository.list_draining(0).await.is_err());
+    assert!(repository
+        .list_evacuation_sources(now + Duration::seconds(3), 0)
+        .await
+        .is_err());
     let revoked = repository
         .set_state(NodeStateChange {
             organization_id,
@@ -1284,4 +1438,70 @@ async fn heartbeat_and_state_replays_are_exact_and_do_not_advance_versions() {
             .await,
         Err(crate::modules::shared_kernel::domain::RepositoryError::IdempotencyConflict)
     );
+}
+
+async fn pool_node(
+    repository: &InMemoryNodeRepository,
+    organization_id: OrganizationId,
+    name: &str,
+    suffix: char,
+    now: chrono::DateTime<Utc>,
+) -> NodeId {
+    let secret = format!("a3sn_{}", suffix.to_string().repeat(64));
+    let credential = EnrollmentTokenCredential::from_secret(&secret).expect("pool credential");
+    let token = EnrollmentToken::new(
+        EnrollmentTokenId::new(),
+        organization_id,
+        format!("{name} token"),
+        credential.clone(),
+        now,
+        now + Duration::minutes(10),
+    )
+    .expect("pool token");
+    repository
+        .issue_enrollment_token(
+            token.clone(),
+            event(
+                organization_id,
+                token.id.as_uuid(),
+                token.aggregate_version,
+                "fleet.enrollment-token.issued",
+            ),
+            IdempotencyRequest::new(
+                "fleet/pool-node-tokens",
+                format!("issue-{suffix}"),
+                name.as_bytes(),
+            )
+            .expect("token idempotency"),
+        )
+        .await
+        .expect("issue pool token");
+    let node_id = NodeId::new();
+    let agent_instance_id = Uuid::now_v7();
+    repository
+        .reserve_enrollment(
+            &credential,
+            NodeEnrollmentDraft {
+                proposed_node_id: node_id,
+                name: NodeName::new(name).expect("pool node name"),
+                agent_instance_id,
+                agent_version: "0.1.0".into(),
+                capabilities: capabilities(name),
+                request_digest: format!("sha256:{}", suffix.to_string().repeat(64)),
+                requested_at: now,
+            },
+        )
+        .await
+        .expect("reserve pool node");
+    repository
+        .record_heartbeat(NodeHeartbeatUpdate {
+            node_id,
+            agent_instance_id,
+            agent_version: "0.1.0".into(),
+            capabilities: capabilities(name),
+            observed_at: now + Duration::milliseconds(1),
+        })
+        .await
+        .expect("ready pool node");
+    node_id
 }

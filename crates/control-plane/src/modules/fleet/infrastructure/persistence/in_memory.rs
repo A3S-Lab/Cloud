@@ -1,13 +1,15 @@
-use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
+use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate, NodePool};
 use crate::modules::fleet::domain::repositories::{
-    INodeRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
+    INodePoolRepository, INodeRepository, INodeSchedulingRepository,
+    NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
-    NodeHeartbeatUpdate, NodeLogCompactionRange, NodeResourceInventoryRecord, NodeStateChange,
+    NodeEvacuationCause, NodeEvacuationSource, NodeHeartbeatUpdate, NodeLogCompactionRange,
+    NodePoolWrite, NodeResourceInventoryRecord, NodeStateChange,
 };
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId,
-    NodeCommandId, NodeId, OrganizationId, RepositoryError,
+    NodeCommandId, NodeId, NodePoolId, OrganizationId, RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -30,6 +32,10 @@ pub(super) struct State {
     rotation_idempotency: BTreeMap<(String, String), CertificateRotationRecord>,
     active_rotation_by_node: BTreeMap<NodeId, (String, String)>,
     state_idempotency: BTreeMap<(String, String), (String, Node)>,
+    node_pools: BTreeMap<(OrganizationId, NodePoolId), NodePool>,
+    node_pool_by_name: BTreeMap<(OrganizationId, String), NodePoolId>,
+    node_pool_by_node: BTreeMap<(OrganizationId, NodeId), NodePoolId>,
+    node_pool_idempotency: BTreeMap<(String, String), (String, NodePool)>,
     pub(super) commands: BTreeMap<NodeCommandId, super::in_memory_control::StoredNodeCommand>,
     pub(super) observations: BTreeMap<Uuid, super::in_memory_control::StoredObservation>,
     pub(super) resource_inventories: BTreeMap<(NodeId, u64), NodeResourceInventoryRecord>,
@@ -590,39 +596,248 @@ impl INodeRepository for InMemoryNodeRepository {
 
 #[async_trait]
 impl crate::modules::fleet::domain::repositories::INodeDrainRepository for InMemoryNodeRepository {
-    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError> {
+    async fn list_evacuation_sources(
+        &self,
+        evaluated_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<NodeEvacuationSource>, RepositoryError> {
         if limit == 0 || limit > 10_000 {
             return Err(RepositoryError::Conflict(
-                "node state query limit must be between 1 and 10000".into(),
+                "node evacuation source query limit must be between 1 and 10000".into(),
             ));
         }
-        let mut nodes = self
-            .state
-            .read()
-            .await
+        let state = self.state.read().await;
+        let mut nodes = state
             .nodes
             .values()
-            .filter(|node| node.state == NodeState::Draining)
-            .cloned()
+            .filter_map(|node| evacuation_source(&state, node, evaluated_at))
             .collect::<Vec<_>>();
-        nodes.sort_by_key(|node| (node.organization_id, node.id));
+        nodes.sort_by_key(|source| (source.node.organization_id, source.node.id));
         nodes.truncate(limit);
         Ok(nodes)
     }
 
-    async fn find_drain_node(
+    async fn find_evacuation_source(
         &self,
         organization_id: OrganizationId,
         node_id: NodeId,
-    ) -> Result<Node, RepositoryError> {
+        evaluated_at: DateTime<Utc>,
+    ) -> Result<NodeEvacuationSource, RepositoryError> {
+        let state = self.state.read().await;
+        let node = state
+            .nodes
+            .get(&(organization_id, node_id))
+            .ok_or(RepositoryError::NotFound)?;
+        evacuation_source(&state, node, evaluated_at).ok_or(RepositoryError::NotFound)
+    }
+}
+
+#[async_trait]
+impl INodeSchedulingRepository for InMemoryNodeRepository {
+    async fn list_scheduling_candidates(
+        &self,
+        organization_id: OrganizationId,
+        evaluated_at: DateTime<Utc>,
+    ) -> Result<Vec<Node>, RepositoryError> {
+        let state = self.state.read().await;
+        let mut nodes = state
+            .nodes
+            .values()
+            .filter(|node| {
+                node.organization_id == organization_id
+                    && !node_is_in_active_maintenance(&state, node, evaluated_at)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        nodes.sort_by_key(|node| (node.name.uniqueness_key().to_owned(), node.id));
+        Ok(nodes)
+    }
+}
+
+#[async_trait]
+impl INodePoolRepository for InMemoryNodeRepository {
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<NodePool>, RepositoryError> {
+        let state = self.state.read().await;
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some((digest, pool)) = state.node_pool_idempotency.get(&key) else {
+            return Ok(None);
+        };
+        if digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        Ok(Some(pool.clone()))
+    }
+
+    async fn save(
+        &self,
+        write: NodePoolWrite,
+    ) -> Result<IdempotentWrite<NodePool>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let idempotency_key = (
+            write.idempotency.scope.clone(),
+            write.idempotency.key.clone(),
+        );
+        if let Some((digest, pool)) = state.node_pool_idempotency.get(&idempotency_key) {
+            if digest != &write.idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            return Ok(IdempotentWrite {
+                value: pool.clone(),
+                replayed: true,
+            });
+        }
+        write.pool.validate().map_err(RepositoryError::Conflict)?;
+        if write.event.organization_id != write.pool.organization_id.as_uuid()
+            || write.event.aggregate_id != write.pool.id.as_uuid()
+            || write.event.aggregate_version != write.pool.aggregate_version
+        {
+            return Err(RepositoryError::Storage(
+                "node pool event identity does not match the aggregate".into(),
+            ));
+        }
+        let key = (write.pool.organization_id, write.pool.id);
+        match write.expected_version {
+            None => {
+                if write.pool.aggregate_version != 1 || state.node_pools.contains_key(&key) {
+                    return Err(RepositoryError::Conflict(
+                        "node pool already exists or has an invalid initial version".into(),
+                    ));
+                }
+                if state
+                    .node_pool_by_name
+                    .contains_key(&(write.pool.organization_id, write.pool.name.key().to_owned()))
+                {
+                    return Err(RepositoryError::Conflict(
+                        "node pool name already exists".into(),
+                    ));
+                }
+            }
+            Some(expected_version) => {
+                let current = state
+                    .node_pools
+                    .get(&key)
+                    .ok_or(RepositoryError::NotFound)?;
+                if current.aggregate_version != expected_version
+                    || write.pool.aggregate_version != expected_version.saturating_add(1)
+                    || write.pool.name != current.name
+                    || write.pool.created_at != current.created_at
+                    || current
+                        .member_node_ids
+                        .iter()
+                        .any(|node_id| write.pool.member_node_ids.binary_search(node_id).is_err())
+                {
+                    return Err(RepositoryError::Conflict(
+                        "node pool aggregate version or immutable membership changed".into(),
+                    ));
+                }
+            }
+        }
+        for node_id in &write.pool.member_node_ids {
+            if !state
+                .nodes
+                .contains_key(&(write.pool.organization_id, *node_id))
+            {
+                return Err(RepositoryError::NotFound);
+            }
+            if state
+                .node_pool_by_node
+                .get(&(write.pool.organization_id, *node_id))
+                .is_some_and(|pool_id| *pool_id != write.pool.id)
+            {
+                return Err(RepositoryError::Conflict(
+                    "node already belongs to another node pool".into(),
+                ));
+            }
+        }
+        for node_id in &write.pool.member_node_ids {
+            state
+                .node_pool_by_node
+                .insert((write.pool.organization_id, *node_id), write.pool.id);
+        }
+        state.node_pool_by_name.insert(
+            (write.pool.organization_id, write.pool.name.key().to_owned()),
+            write.pool.id,
+        );
+        state.node_pools.insert(key, write.pool.clone());
+        state.node_pool_idempotency.insert(
+            idempotency_key,
+            (write.idempotency.request_digest, write.pool.clone()),
+        );
+        Ok(IdempotentWrite {
+            value: write.pool,
+            replayed: false,
+        })
+    }
+
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        pool_id: NodePoolId,
+    ) -> Result<NodePool, RepositoryError> {
         self.state
             .read()
             .await
-            .nodes
-            .get(&(organization_id, node_id))
+            .node_pools
+            .get(&(organization_id, pool_id))
             .cloned()
             .ok_or(RepositoryError::NotFound)
     }
+
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<NodePool>, RepositoryError> {
+        let mut pools = self
+            .state
+            .read()
+            .await
+            .node_pools
+            .values()
+            .filter(|pool| pool.organization_id == organization_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        pools.sort_by_key(|pool| (pool.name.key().to_owned(), pool.id));
+        Ok(pools)
+    }
+}
+
+fn node_is_in_active_maintenance(state: &State, node: &Node, evaluated_at: DateTime<Utc>) -> bool {
+    state
+        .node_pool_by_node
+        .get(&(node.organization_id, node.id))
+        .and_then(|pool_id| state.node_pools.get(&(node.organization_id, *pool_id)))
+        .is_some_and(|pool| pool.node_is_in_active_maintenance(node.id, evaluated_at))
+}
+
+fn evacuation_source(
+    state: &State,
+    node: &Node,
+    evaluated_at: DateTime<Utc>,
+) -> Option<NodeEvacuationSource> {
+    let cause = if node.state == NodeState::Draining {
+        NodeEvacuationCause::ManualDrain
+    } else {
+        let pool_id = *state
+            .node_pool_by_node
+            .get(&(node.organization_id, node.id))?;
+        let pool = state.node_pools.get(&(node.organization_id, pool_id))?;
+        let window = pool.maintenance.as_ref()?;
+        if !window.is_active_for(node.id, evaluated_at) {
+            return None;
+        }
+        NodeEvacuationCause::PoolMaintenance {
+            pool_id,
+            generation: window.generation,
+            ends_at: window.ends_at,
+        }
+    };
+    Some(NodeEvacuationSource {
+        node: node.clone(),
+        cause,
+    })
 }
 
 pub(super) fn project_heartbeat(

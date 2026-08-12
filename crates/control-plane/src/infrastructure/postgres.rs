@@ -795,6 +795,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/090_workload_replica_evacuation_intent.sql"
             )),
         ),
+        Migration::new(
+            "091",
+            "Fleet node pools and maintenance windows",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/091_fleet_node_pools.sql"
+            )),
+        ),
     ]
 }
 

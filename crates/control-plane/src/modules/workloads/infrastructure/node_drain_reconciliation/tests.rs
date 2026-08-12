@@ -1,6 +1,6 @@
 use super::*;
 use crate::modules::fleet::domain::entities::Node;
-use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeName};
+use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeName, NodeState};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
@@ -22,32 +22,78 @@ use serde_json::json;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 
+#[test]
+fn manual_drain_correlation_id_remains_backward_compatible() {
+    let replica_id = crate::modules::shared_kernel::domain::WorkloadReplicaId::new();
+    let source_node_id = NodeId::new();
+    let candidate = ReplicaEvacuationCandidate {
+        organization_id: OrganizationId::new(),
+        workload_id: WorkloadId::new(),
+        replica_id,
+        replica_generation: 11,
+        expected_replica_version: 3,
+        member_id: crate::modules::shared_kernel::domain::WorkloadReplicaMemberId::new(),
+        expected_member_version: 2,
+        source_node_id,
+        placement_generation: 7,
+    };
+    let legacy_identity = format!(
+        "{EVACUATION_CORRELATION_DOMAIN}:{}:{}",
+        candidate.replica_generation, source_node_id
+    );
+
+    assert_eq!(
+        evacuation_correlation_id(candidate, &NodeEvacuationCause::ManualDrain),
+        Uuid::new_v5(&replica_id.as_uuid(), legacy_identity.as_bytes())
+    );
+}
+
 struct FakeDrainNodes {
     node: RwLock<Node>,
+    cause: NodeEvacuationCause,
 }
 
 #[async_trait]
 impl INodeDrainRepository for FakeDrainNodes {
-    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError> {
+    async fn list_evacuation_sources(
+        &self,
+        _evaluated_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<NodeEvacuationSource>, RepositoryError> {
         if limit == 0 {
             return Err(RepositoryError::Conflict("limit is zero".into()));
         }
         let node = self.node.read().await.clone();
-        Ok((node.state == NodeState::Draining)
-            .then_some(node)
+        let eligible = match self.cause {
+            NodeEvacuationCause::ManualDrain => node.state == NodeState::Draining,
+            NodeEvacuationCause::PoolMaintenance { .. } => true,
+        };
+        Ok(eligible
+            .then_some(NodeEvacuationSource {
+                node,
+                cause: self.cause.clone(),
+            })
             .into_iter()
             .take(limit)
             .collect())
     }
 
-    async fn find_drain_node(
+    async fn find_evacuation_source(
         &self,
         organization_id: OrganizationId,
         node_id: NodeId,
-    ) -> Result<Node, RepositoryError> {
+        _evaluated_at: DateTime<Utc>,
+    ) -> Result<NodeEvacuationSource, RepositoryError> {
         let node = self.node.read().await.clone();
-        if node.organization_id == organization_id && node.id == node_id {
-            Ok(node)
+        let eligible = match self.cause {
+            NodeEvacuationCause::ManualDrain => node.state == NodeState::Draining,
+            NodeEvacuationCause::PoolMaintenance { .. } => true,
+        };
+        if node.organization_id == organization_id && node.id == node_id && eligible {
+            Ok(NodeEvacuationSource {
+                node,
+                cause: self.cause.clone(),
+            })
         } else {
             Err(RepositoryError::NotFound)
         }
@@ -55,7 +101,7 @@ impl INodeDrainRepository for FakeDrainNodes {
 }
 
 #[tokio::test]
-async fn draining_node_requests_one_generation_fenced_evacuation(
+async fn maintenance_target_requests_one_generation_fenced_evacuation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now() - ChronoDuration::minutes(1);
     let organization_id = OrganizationId::new();
@@ -70,9 +116,13 @@ async fn draining_node_requests_one_generation_fenced_evacuation(
         now,
     )?;
     node.mark_ready()?;
-    node.drain()?;
     let nodes = Arc::new(FakeDrainNodes {
         node: RwLock::new(node),
+        cause: NodeEvacuationCause::PoolMaintenance {
+            pool_id: crate::modules::shared_kernel::domain::NodePoolId::new(),
+            generation: 7,
+            ends_at: now + ChronoDuration::hours(1),
+        },
     });
     let repository = Arc::new(InMemoryWorkloadRepository::new());
     let workload = Workload::create(
@@ -112,7 +162,9 @@ async fn draining_node_requests_one_generation_fenced_evacuation(
     let report = reconciler
         .run_once(now + ChronoDuration::seconds(3))
         .await?;
-    assert_eq!(report.draining_nodes, 1);
+    assert_eq!(report.source_nodes, 1);
+    assert_eq!(report.manual_drain_nodes, 0);
+    assert_eq!(report.maintenance_nodes, 1);
     assert_eq!(report.candidates, 1);
     assert_eq!(report.requested, 1);
     assert!(report.failures.is_empty());

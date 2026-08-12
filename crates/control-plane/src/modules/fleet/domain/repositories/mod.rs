@@ -1,5 +1,6 @@
 mod log_retention_repository;
 mod node_control_repository;
+mod node_pool_repository;
 mod node_repository;
 
 pub use log_retention_repository::{
@@ -11,8 +12,10 @@ pub use node_control_repository::{
     NodeLogChunkQuery, NodeLogChunkReceiptDraft, NodeLogGapMetadata, NodeLogGapReceiptDraft,
     NodeObservationSubmission, NodeResourceInventoryRecord, RuntimeObservationRecord,
 };
+pub use node_pool_repository::{INodePoolRepository, NodePoolWrite};
 pub use node_repository::{
-    INodeDrainRepository, INodeRepository, NodeCertificateRotationCompletion,
-    NodeCertificateRotationDraft, NodeCertificateRotationReservation, NodeEnrollmentDraft,
-    NodeEnrollmentReservation, NodeHeartbeatUpdate, NodeStateChange,
+    INodeDrainRepository, INodeRepository, INodeSchedulingRepository,
+    NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
+    NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
+    NodeEvacuationCause, NodeEvacuationSource, NodeHeartbeatUpdate, NodeStateChange,
 };

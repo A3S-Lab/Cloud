@@ -196,11 +196,18 @@ export type {
   ResourceGrantScope,
 } from './identity';
 export type {
+  AddNodePoolMembersInput,
+  CancelNodePoolMaintenanceInput,
+  CreateNodePoolInput,
   EnrollmentToken,
   IssueEnrollmentTokenInput,
   Node,
   NodeAvailability,
+  NodePool,
+  NodePoolMaintenance,
+  NodePoolMaintenanceStatus,
   NodeState,
+  ScheduleNodePoolMaintenanceInput,
 } from './node';
 export type { SearchResourceKind, SearchResult } from './search';
 
