@@ -41,6 +41,8 @@ fi
 install -d -m 0755 "$install_root"
 archive="$install_root/$BOX_ARCHIVE"
 curl --fail --location --silent --show-error \
+  --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
+  --connect-timeout 15 \
   "https://github.com/A3S-Lab/Box/releases/download/v$BOX_RELEASE_VERSION/$BOX_ARCHIVE" \
   --output "$archive"
 printf '%s  %s\n' "$BOX_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
