@@ -354,6 +354,66 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
     let mut content = Map::new();
     if let Some(schema) = plugin_catalog_read_request_schema(path) {
         content.insert("application/json".into(), json!({ "schema": schema }));
+    } else if is_resource_grant_create_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["scope"],
+                    "properties": {
+                        "scope": {
+                            "oneOf": [
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "projectId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["project"]},
+                                        "projectId": {"type": "string", "format": "uuid"}
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "projectId", "environmentId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["environment"]},
+                                        "projectId": {"type": "string", "format": "uuid"},
+                                        "environmentId": {"type": "string", "format": "uuid"}
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "nodeId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["node"]},
+                                        "nodeId": {"type": "string", "format": "uuid"}
+                                    }
+                                }
+                            ],
+                            "discriminator": {"propertyName": "kind"}
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_resource_grant_revocation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["expectedVersion"],
+                    "properties": {
+                        "expectedVersion": {"type": "integer", "minimum": 1}
+                    }
+                }
+            }),
+        );
     } else if is_workflow_run_start_path(path) {
         content.insert(
             "application/json".into(),
@@ -629,6 +689,7 @@ fn operation_tag(path: &str) -> &'static str {
     } else if path.starts_with("/bootstrap")
         || path.contains("api-tokens")
         || path.contains("memberships")
+        || path.contains("resource-grants")
     {
         "Identity"
     } else if path.starts_with("/node-control")
@@ -767,6 +828,7 @@ fn creates_resource(path: &str) -> bool {
         || is_form_mutation_path(path)
         || path.ends_with("/api-tokens")
         || path.ends_with("/memberships")
+        || is_resource_grant_create_path(path)
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")
@@ -783,6 +845,14 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/releases")
         || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
+}
+
+fn is_resource_grant_create_path(path: &str) -> bool {
+    path.ends_with("/memberships/{membership_id}/resource-grants")
+}
+
+fn is_resource_grant_revocation_path(path: &str) -> bool {
+    path.ends_with("/resource-grants/{resource_grant_id}/revocation")
 }
 
 fn is_mcp_service_profile_path(path: &str) -> bool {

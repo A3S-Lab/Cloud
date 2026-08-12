@@ -1,6 +1,6 @@
 use super::controllers::{
     api_token_controller, bootstrap_controller, membership_controller, organization_controller,
-    organizations_query_controller,
+    organizations_query_controller, resource_grant_controller,
 };
 use super::BootstrapGuard;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
@@ -33,7 +33,8 @@ impl Module for IdentityModule {
             )?,
             organization_controller(command_bus.clone())?,
             api_token_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
-            membership_controller(command_bus, module_ref.get::<QueryBus>()?)?,
+            membership_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
+            resource_grant_controller(command_bus, module_ref.get::<QueryBus>()?)?,
             organizations_query_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }

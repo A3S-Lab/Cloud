@@ -5,6 +5,7 @@ use crate::modules::identity::domain::repositories::{
     CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
     MAX_ACTIVE_RESOURCE_GRANTS_PER_MEMBERSHIP,
 };
+use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, MembershipId, OrganizationId, RepositoryError, ResourceGrantId,
 };
@@ -43,6 +44,11 @@ impl IResourceGrantRepository for InMemoryIdentityRepository {
         if !target.is_active() {
             return Err(RepositoryError::Conflict(
                 "Resource Grants require an active membership".into(),
+            ));
+        }
+        if target.role != MembershipRole::Restricted {
+            return Err(RepositoryError::Conflict(
+                "Resource Grants require a restricted membership".into(),
             ));
         }
         if !write.grant.is_active()
@@ -330,6 +336,27 @@ mod tests {
             .await
             .expect_err("member must not manage grants");
         assert!(matches!(error, RepositoryError::Forbidden(_)));
+    }
+
+    #[tokio::test]
+    async fn organization_wide_memberships_reject_redundant_grants() {
+        let (repository, organization_id, actor_principal_id, membership_id) =
+            repository_with_memberships(MembershipRole::Admin, MembershipRole::Member).await;
+        let grant = ResourceGrant::create(
+            ResourceGrantId::new(),
+            organization_id,
+            membership_id,
+            ResourceGrantScope::Project {
+                project_id: ProjectId::new(),
+            },
+            Utc::now(),
+        );
+
+        let error = repository
+            .create_resource_grant(create_write(grant, actor_principal_id, "redundant"))
+            .await
+            .expect_err("organization-wide membership must not need grants");
+        assert!(matches!(error, RepositoryError::Conflict(_)));
     }
 
     #[tokio::test]

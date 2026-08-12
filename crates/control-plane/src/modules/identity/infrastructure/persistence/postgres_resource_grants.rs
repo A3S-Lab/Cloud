@@ -14,7 +14,7 @@ use crate::modules::identity::domain::repositories::{
     CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
     MAX_ACTIVE_RESOURCE_GRANTS_PER_MEMBERSHIP,
 };
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotentWrite, MembershipId, NodeId, OrganizationId, ProjectId,
     RepositoryError, ResourceGrantId,
@@ -234,6 +234,12 @@ impl IResourceGrantRepository for PostgresIdentityRepository {
                     if !target.is_active() {
                         return Err(RepositoryError::Conflict(
                             "Resource Grants require an active membership".into(),
+                        )
+                        .into());
+                    }
+                    if target.role != MembershipRole::Restricted {
+                        return Err(RepositoryError::Conflict(
+                            "Resource Grants require a restricted membership".into(),
                         )
                         .into());
                     }

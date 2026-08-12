@@ -150,6 +150,28 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                     && parameter["required"] == true
             })));
     }
+    let resource_grants = &document["paths"]
+        ["/organizations/{organization_id}/memberships/{membership_id}/resource-grants"];
+    assert_eq!(resource_grants["get"]["tags"], json!(["Identity"]));
+    assert!(resource_grants["get"]["responses"]["200"].is_object());
+    assert_eq!(resource_grants["post"]["tags"], json!(["Identity"]));
+    assert_eq!(
+        resource_grants["post"]["requestBody"]["content"]["application/json"]["schema"]
+            ["properties"]["scope"]["discriminator"]["propertyName"],
+        "kind"
+    );
+    assert!(resource_grants["post"]["responses"]["201"].is_object());
+    let resource_grant = &document["paths"]
+        ["/organizations/{organization_id}/resource-grants/{resource_grant_id}"]["get"];
+    assert_eq!(resource_grant["tags"], json!(["Identity"]));
+    let resource_grant_revocation = &document["paths"]
+        ["/organizations/{organization_id}/resource-grants/{resource_grant_id}/revocation"]["post"];
+    assert_eq!(resource_grant_revocation["tags"], json!(["Identity"]));
+    assert_eq!(
+        resource_grant_revocation["requestBody"]["content"]["application/json"]["schema"]
+            ["properties"]["expectedVersion"]["minimum"],
+        1
+    );
     let plugin_registries =
         &document["paths"]["/organizations/{organization_id}/plugin-registries"];
     assert_eq!(plugin_registries["get"]["tags"], json!(["Plugins"]));

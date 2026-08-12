@@ -16,12 +16,7 @@ use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMa
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::forms::{InMemoryFormRepository, NativeFormSemanticCore};
-use crate::modules::identity::domain::entities::ResourceGrant;
-use crate::modules::identity::domain::events::ResourceGrantChanged;
-use crate::modules::identity::domain::repositories::{
-    CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
-};
-use crate::modules::identity::domain::value_objects::{ApiTokenScope, ResourceGrantScope};
+use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
@@ -36,8 +31,7 @@ use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GatewayScopeId, IdempotencyRequest, MembershipId, OrganizationId, PrincipalId,
-    ProjectId, RepositoryError, ResourceGrantId, RouteId,
+    EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
@@ -1653,48 +1647,57 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         .await?;
     assert_eq!(restricted_access.status(), 403);
 
-    let organization_id = OrganizationId::from_uuid(
-        organization
-            .parse::<Uuid>()
-            .map_err(|error| BootError::Internal(format!("invalid organization ID: {error}")))?,
+    let resource_grants_path =
+        format!("/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants");
+    let grant_body = json!({
+        "scope": {
+            "kind": "project",
+            "projectId": granted_project_id,
+        }
+    });
+    let granted = app
+        .call(post_json(
+            &resource_grants_path,
+            "membership:grant-project",
+            grant_body.clone(),
+        ))
+        .await?;
+    assert_eq!(granted.status(), 201);
+    let granted_json = response_json(&granted)?;
+    assert_eq!(granted_json["data"]["membershipId"], membership_id);
+    assert_eq!(granted_json["data"]["scope"], grant_body["scope"]);
+    assert_eq!(granted_json["data"]["aggregateVersion"], 1);
+    assert_eq!(granted_json["data"]["replayed"], false);
+    let resource_grant_id = granted_json["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("created Resource Grant has no ID".into()))?;
+
+    let replayed_grant = app
+        .call(post_json(
+            &resource_grants_path,
+            "membership:grant-project",
+            grant_body,
+        ))
+        .await?;
+    assert_eq!(replayed_grant.status(), 200);
+    assert_eq!(response_json(&replayed_grant)?["data"]["replayed"], true);
+
+    let listed_grants = app.call(get_as(&resource_grants_path, ADMIN_TOKEN)).await?;
+    assert_eq!(listed_grants.status(), 200);
+    assert_eq!(
+        response_json(&listed_grants)?["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
     );
-    let restricted_membership_id = MembershipId::from_uuid(
-        membership_id
-            .parse::<Uuid>()
-            .map_err(|error| BootError::Internal(format!("invalid membership ID: {error}")))?,
+    let resource_grant_path =
+        format!("/api/v1/organizations/{organization}/resource-grants/{resource_grant_id}");
+    let found_grant = app.call(get_as(&resource_grant_path, ADMIN_TOKEN)).await?;
+    assert_eq!(found_grant.status(), 200);
+    assert_eq!(
+        response_json(&found_grant)?["data"]["id"],
+        resource_grant_id
     );
-    let owner_principal_id = PrincipalId::from_uuid(
-        owner_principal_id
-            .parse::<Uuid>()
-            .map_err(|error| BootError::Internal(format!("invalid principal ID: {error}")))?,
-    );
-    let resource_grant = ResourceGrant::create(
-        ResourceGrantId::new(),
-        organization_id,
-        restricted_membership_id,
-        ResourceGrantScope::Project {
-            project_id: ProjectId::from_uuid(granted_project_id),
-        },
-        Utc::now(),
-    );
-    let grant_request_id = Uuid::now_v7();
-    identity
-        .create_resource_grant(CreateResourceGrantWrite {
-            event: ResourceGrantChanged::created(&resource_grant, grant_request_id)
-                .map_err(|error| BootError::Internal(error.to_string()))?,
-            grant: resource_grant.clone(),
-            actor_principal_id: owner_principal_id,
-            actor_is_platform_admin: false,
-            request_id: grant_request_id,
-            idempotency: IdempotencyRequest::new(
-                "test/resource-grants",
-                "membership:grant-project",
-                b"grant-project",
-            )
-            .map_err(BootError::Internal)?,
-        })
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
 
     let granted_access = app
         .call(get_as(
@@ -1729,24 +1732,18 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         .await?;
     assert_eq!(ungranted_access.status(), 403);
 
-    identity
-        .revoke_resource_grant(RevokeResourceGrantWrite {
-            organization_id,
-            resource_grant_id: resource_grant.id,
-            expected_version: resource_grant.aggregate_version,
-            actor_principal_id: owner_principal_id,
-            actor_is_platform_admin: false,
-            revoked_at: Utc::now(),
-            request_id: Uuid::now_v7(),
-            idempotency: IdempotencyRequest::new(
-                "test/resource-grant-revocations",
-                "membership:revoke-project",
-                b"revoke-project",
-            )
-            .map_err(BootError::Internal)?,
-        })
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let revoked_grant = app
+        .call(post_json(
+            format!("{resource_grant_path}/revocation"),
+            "membership:revoke-project",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(revoked_grant.status(), 200);
+    assert_eq!(
+        response_json(&revoked_grant)?["data"]["aggregateVersion"],
+        2
+    );
     let revoked_access = app
         .call(get_as(
             format!(
