@@ -1,5 +1,7 @@
-use super::request::request_id;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use super::request::{request_id, resource_access};
+use crate::modules::identity::presentation::{
+    with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, OrganizationId, ProjectId,
 };
@@ -13,7 +15,9 @@ use crate::modules::workflow::presentation::dto::{
     OntologyRevisionSummaryResponse,
 };
 use crate::presentation::application_error_response;
-use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{
+    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -52,110 +56,126 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
             },
         )?
-        .get(
-            "/{organization_id}/ontologies/{ontology_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetOntology {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            ontology_id: OntologyId::from_uuid(
-                                request.param_as::<Uuid>("ontology_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&OntologyResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/ontologies/{ontology_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetOntology {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                ontology_id: OntologyId::from_uuid(
+                                    request.param_as::<Uuid>("ontology_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&OntologyResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/ontologies/{ontology_id}/revisions",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&revisions_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ListOntologyRevisions {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/ontologies/{ontology_id}/revisions",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&revisions_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(ListOntologyRevisions {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                ontology_id: OntologyId::from_uuid(
+                                    request.param_as::<Uuid>("ontology_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(values) => BootResponse::json(
+                                &values
+                                    .into_iter()
+                                    .map(OntologyRevisionSummaryResponse::from)
+                                    .collect::<Vec<_>>(),
                             ),
-                            ontology_id: OntologyId::from_uuid(
-                                request.param_as::<Uuid>("ontology_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(values) => BootResponse::json(
-                            &values
-                                .into_iter()
-                                .map(OntologyRevisionSummaryResponse::from)
-                                .collect::<Vec<_>>(),
-                        ),
-                        Err(error) => application_error_response(error, request_id),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/ontologies/{ontology_id}/revisions/{revision_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&revision_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetOntologyRevision {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            ontology_id: OntologyId::from_uuid(
-                                request.param_as::<Uuid>("ontology_id")?,
-                            ),
-                            revision_id: OntologyRevisionId::from_uuid(
-                                request.param_as::<Uuid>("revision_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&OntologyRevisionResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/ontologies/{ontology_id}/revisions/{revision_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&revision_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetOntologyRevision {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                ontology_id: OntologyId::from_uuid(
+                                    request.param_as::<Uuid>("ontology_id")?,
+                                ),
+                                revision_id: OntologyRevisionId::from_uuid(
+                                    request.param_as::<Uuid>("revision_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&OntologyRevisionResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/ontologies/{ontology_id}/revisions/{from_revision_id}/diff/{to_revision_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(DiffOntologyRevisions {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            ontology_id: OntologyId::from_uuid(
-                                request.param_as::<Uuid>("ontology_id")?,
-                            ),
-                            from_revision_id: OntologyRevisionId::from_uuid(
-                                request.param_as::<Uuid>("from_revision_id")?,
-                            ),
-                            to_revision_id: OntologyRevisionId::from_uuid(
-                                request.param_as::<Uuid>("to_revision_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&OntologyDiffResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/ontologies/{ontology_id}/revisions/{from_revision_id}/diff/{to_revision_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(DiffOntologyRevisions {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                ontology_id: OntologyId::from_uuid(
+                                    request.param_as::<Uuid>("ontology_id")?,
+                                ),
+                                from_revision_id: OntologyRevisionId::from_uuid(
+                                    request.param_as::<Uuid>("from_revision_id")?,
+                                ),
+                                to_revision_id: OntologyRevisionId::from_uuid(
+                                    request.param_as::<Uuid>("to_revision_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&OntologyDiffResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }

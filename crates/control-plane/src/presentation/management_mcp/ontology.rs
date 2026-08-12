@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
@@ -94,12 +95,14 @@ pub async fn revise_ontology(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: ReviseOntologyArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ReviseOntology {
             organization_id,
             ontology_id: OntologyId::from_uuid(arguments.ontology_id),
+            resource_access,
             acl: arguments.acl,
             expected_version: arguments.expected_version,
             migration_rule_id: arguments.migration_rule_id,
@@ -147,12 +150,14 @@ pub async fn get_ontology(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: OntologyArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetOntology {
             organization_id,
             ontology_id: OntologyId::from_uuid(arguments.ontology_id),
+            resource_access,
         })
         .await?
     {
@@ -165,12 +170,14 @@ pub async fn list_revisions(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: OntologyArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListOntologyRevisions {
             organization_id,
             ontology_id: OntologyId::from_uuid(arguments.ontology_id),
+            resource_access,
         })
         .await?
     {
@@ -190,6 +197,7 @@ pub async fn get_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: OntologyRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -197,6 +205,7 @@ pub async fn get_revision(
             organization_id,
             ontology_id: OntologyId::from_uuid(arguments.ontology_id),
             revision_id: OntologyRevisionId::from_uuid(arguments.revision_id),
+            resource_access,
         })
         .await?
     {
@@ -209,6 +218,7 @@ pub async fn diff_revisions(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: OntologyDiffArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -217,6 +227,7 @@ pub async fn diff_revisions(
             ontology_id: OntologyId::from_uuid(arguments.ontology_id),
             from_revision_id: OntologyRevisionId::from_uuid(arguments.from_revision_id),
             to_revision_id: OntologyRevisionId::from_uuid(arguments.to_revision_id),
+            resource_access,
         })
         .await?
     {

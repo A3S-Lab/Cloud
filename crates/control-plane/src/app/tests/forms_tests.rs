@@ -466,7 +466,7 @@ async fn restricted_form_boundaries_resolve_project_before_reads_mutations_and_r
     .await?;
 
     let mcp_allowed = app
-        .call(form_mcp_call(
+        .call(mcp_tool_call_as(
             1,
             "a3s_cloud_forms_get",
             json!({"formId": granted_form}),
@@ -475,7 +475,7 @@ async fn restricted_form_boundaries_resolve_project_before_reads_mutations_and_r
         .await?;
     assert_eq!(response_json(&mcp_allowed)?["result"]["isError"], false);
     let mcp_denied = app
-        .call(form_mcp_call(
+        .call(mcp_tool_call_as(
             2,
             "a3s_cloud_forms_get",
             json!({"formId": environment_form}),
@@ -483,7 +483,7 @@ async fn restricted_form_boundaries_resolve_project_before_reads_mutations_and_r
         ))
         .await?;
     let mcp_missing = app
-        .call(form_mcp_call(
+        .call(mcp_tool_call_as(
             3,
             "a3s_cloud_forms_get",
             json!({"formId": missing_form}),
@@ -535,7 +535,7 @@ async fn restricted_form_boundaries_resolve_project_before_reads_mutations_and_r
         200
     );
     let mcp_release = app
-        .call(form_mcp_call(
+        .call(mcp_tool_call_as(
             4,
             "a3s_cloud_form_releases_get",
             json!({"formId": granted_form, "releaseId": granted_release}),
@@ -596,7 +596,7 @@ async fn restricted_form_boundaries_resolve_project_before_reads_mutations_and_r
     )
     .await?;
     let revoked_mcp = app
-        .call(form_mcp_call(
+        .call(mcp_tool_call_as(
             5,
             "a3s_cloud_forms_get",
             json!({"formId": granted_form}),
@@ -604,7 +604,7 @@ async fn restricted_form_boundaries_resolve_project_before_reads_mutations_and_r
         ))
         .await?;
     let missing_mcp = app
-        .call(form_mcp_call(
+        .call(mcp_tool_call_as(
             6,
             "a3s_cloud_forms_get",
             json!({"formId": missing_form}),
@@ -685,51 +685,4 @@ async fn create_form_fixture(
         .await?;
     assert_eq!(response.status(), 201);
     required_form_string(&response_json(&response)?["data"]["form"]["id"], "Form ID")
-}
-
-fn form_mcp_call(id: u64, name: &str, arguments: Value, token: &str) -> BootRequest {
-    let body = json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": "tools/call",
-        "params": {
-            "name": name,
-            "arguments": arguments,
-            "_meta": {
-                "io.modelcontextprotocol/protocolVersion": a3s_cloud_contracts::MCP_PROTOCOL_VERSION,
-                "io.modelcontextprotocol/clientInfo": {
-                    "name": "a3s-cloud-form-test",
-                    "version": "1.0.0"
-                },
-                "io.modelcontextprotocol/clientCapabilities": {}
-            }
-        }
-    });
-    BootRequest::new(HttpMethod::Post, "/api/v1/mcp")
-        .with_header("content-type", "application/json")
-        .with_header("accept", "application/json, text/event-stream")
-        .with_header("authorization", format!("Bearer {token}"))
-        .with_header(
-            "mcp-protocol-version",
-            a3s_cloud_contracts::MCP_PROTOCOL_VERSION,
-        )
-        .with_header("mcp-method", "tools/call")
-        .with_header("mcp-name", name)
-        .with_body(body.to_string().into_bytes())
-}
-
-fn assert_mcp_not_found_equivalent(denied: &BootResponse, missing: &BootResponse) -> Result<()> {
-    let denied = response_json(denied)?;
-    let missing = response_json(missing)?;
-    assert_eq!(denied["result"]["isError"], true);
-    assert_eq!(missing["result"]["isError"], true);
-    assert_eq!(denied["result"]["structuredContent"]["code"], 404);
-    assert_eq!(missing["result"]["structuredContent"]["code"], 404);
-    for field in ["code", "statusCode", "message", "details"] {
-        assert_eq!(
-            denied["result"]["structuredContent"][field],
-            missing["result"]["structuredContent"][field]
-        );
-    }
-    Ok(())
 }

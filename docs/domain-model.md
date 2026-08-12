@@ -597,6 +597,17 @@ contexts' tables.
   environment-only grant does not. Releases inherit that draft scope, while
   FormSubmission and HumanTask stay under their Workflow-owned authorization
   boundary rather than introducing a second or inferred Form ownership path.
+- Indirect Ontology, WorkflowDefinition, WorkflowGoal, and WorkflowRun reads
+  and mutations resolve the owning aggregate through Workflow and authorize
+  its canonical project before child revision/plan/history/output access,
+  idempotency replay, or side effects. OntologyRevision, WorkflowRevision, and
+  PlanRevision inherit their parent aggregate's project identity. Explicit
+  project create/list/start routes keep their direct scope check; an exact
+  environment grant does not authorize these project-scoped aggregates. REST
+  and Management MCP reuse the same Workflow application resolver, and denied
+  or missing aggregate IDs share the established `404` contract. HumanTask
+  remains a separate Workflow-owned boundary and cannot borrow Goal or Form
+  authorization implicitly.
 - Indirect Asset catalog detail, release, selection, and mutation requests,
   hosted Git Smart HTTP, and MCP Service profile reads and bindings resolve the
   canonical Asset through one Assets-owned application boundary before replay

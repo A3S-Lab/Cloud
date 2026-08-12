@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, WorkflowDefinitionId};
 use crate::modules::workflow::application::{WorkflowDefinitionMutationResult, WorkflowPayloadAcl};
@@ -8,6 +9,7 @@ use uuid::Uuid;
 pub struct ReviseWorkflowDefinition {
     pub organization_id: OrganizationId,
     pub workflow_definition_id: WorkflowDefinitionId,
+    pub resource_access: ResourceAccessEvaluator,
     pub expected_version: u64,
     pub definition_acl: String,
     pub payloads: Vec<WorkflowPayloadAcl>,

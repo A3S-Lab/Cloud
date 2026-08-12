@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, WorkflowRunId};
 use crate::modules::workflow::domain::WorkflowRunRecord;
@@ -10,6 +11,7 @@ pub const WORKFLOW_RUN_WAIT_MAX_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct WaitWorkflowRun {
     pub organization_id: OrganizationId,
     pub workflow_run_id: WorkflowRunId,
+    pub resource_access: ResourceAccessEvaluator,
     pub timeout: Duration,
 }
 

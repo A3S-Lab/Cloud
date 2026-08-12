@@ -1,6 +1,7 @@
 use super::CancelWorkflowRun;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::application::WorkflowRunMutationResult;
 use crate::modules::workflow::domain::{
     CancelWorkflowRunWrite, IWorkflowRunRepository, WorkflowRunCancellationRequested,
@@ -27,6 +28,17 @@ impl CommandHandler<CancelWorkflowRun> for CancelWorkflowRunHandler {
     {
         let runs = Arc::clone(&self.runs);
         Box::pin(async move {
+            let mut record = match resource_access::workflow_run(
+                runs.as_ref(),
+                command.organization_id,
+                command.workflow_run_id,
+                &command.resource_access,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
                 "workflowRunId": command.workflow_run_id,
@@ -53,18 +65,6 @@ impl CommandHandler<CancelWorkflowRun> for CancelWorkflowRunHandler {
                     replayed: true,
                 }));
             }
-            let mut record = match runs
-                .find(command.organization_id, command.workflow_run_id)
-                .await
-            {
-                Ok(Some(value)) => value,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "WorkflowRun not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
             let expected_version = record.run.aggregate_version;
             if let Err(error) = record
                 .run

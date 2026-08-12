@@ -1,5 +1,6 @@
 use super::{GetWorkflowRunHistory, WORKFLOW_RUN_HISTORY_MAX_LIMIT};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{
     IWorkflowRunHistoryReader, IWorkflowRunRepository, WorkflowRunHistoryPage,
 };
@@ -38,17 +39,16 @@ impl QueryHandler<GetWorkflowRunHistory> for GetWorkflowRunHistoryHandler {
                     "WorkflowRun history limit must be between 1 and {WORKFLOW_RUN_HISTORY_MAX_LIMIT}"
                 ))));
             }
-            let record = match repository
-                .find(query.organization_id, query.workflow_run_id)
-                .await
+            let record = match resource_access::workflow_run(
+                repository.as_ref(),
+                query.organization_id,
+                query.workflow_run_id,
+                &query.resource_access,
+            )
+            .await
             {
-                Ok(Some(record)) => record,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "WorkflowRun not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Ok(record) => record,
+                Err(error) => return Ok(Err(error)),
             };
             Ok(history
                 .read(&record.run.flow_run_id, query.after_sequence, query.limit)

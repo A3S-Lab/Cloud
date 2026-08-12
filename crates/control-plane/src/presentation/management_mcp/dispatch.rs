@@ -282,6 +282,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
                 request_id,
             )
             .await
@@ -292,19 +293,47 @@ pub async fn execute(
         }
         ManagementTool::OntologiesGet => {
             let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
-            ontology::get_ontology(query_bus, organization_id, arguments, request_id).await
+            ontology::get_ontology(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::OntologyRevisionsList => {
             let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
-            ontology::list_revisions(query_bus, organization_id, arguments, request_id).await
+            ontology::list_revisions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::OntologyRevisionsGet => {
             let arguments = arguments::parse::<OntologyRevisionArguments>(arguments).ok()?;
-            ontology::get_revision(query_bus, organization_id, arguments, request_id).await
+            ontology::get_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::OntologyRevisionsDiff => {
             let arguments = arguments::parse::<OntologyDiffArguments>(arguments).ok()?;
-            ontology::diff_revisions(query_bus, organization_id, arguments, request_id).await
+            ontology::diff_revisions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowDefinitionsCreate => {
             let arguments =
@@ -326,6 +355,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
                 request_id,
             )
             .await
@@ -336,15 +366,36 @@ pub async fn execute(
         }
         ManagementTool::WorkflowDefinitionsGet => {
             let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
-            workflow::get_definition(query_bus, organization_id, arguments, request_id).await
+            workflow::get_definition(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRevisionsList => {
             let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
-            workflow::list_revisions(query_bus, organization_id, arguments, request_id).await
+            workflow::list_revisions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRevisionsGet => {
             let arguments = arguments::parse::<WorkflowRevisionArguments>(arguments).ok()?;
-            workflow::get_revision(query_bus, organization_id, arguments, request_id).await
+            workflow::get_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowGoalsCreate => {
             let arguments = arguments::parse::<CreateWorkflowGoalArguments>(arguments).ok()?;
@@ -363,11 +414,25 @@ pub async fn execute(
         }
         ManagementTool::WorkflowGoalsGet => {
             let arguments = arguments::parse::<WorkflowGoalArguments>(arguments).ok()?;
-            workflow::get_goal(query_bus, organization_id, arguments, request_id).await
+            workflow::get_goal(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowPlanRevisionsGet => {
             let arguments = arguments::parse::<WorkflowPlanRevisionArguments>(arguments).ok()?;
-            workflow::get_plan_revision(query_bus, organization_id, arguments, request_id).await
+            workflow::get_plan_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRunsStart => {
             let arguments = arguments::parse::<StartWorkflowRunArguments>(arguments).ok()?;
@@ -387,6 +452,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
                 request_id,
             )
             .await
@@ -397,19 +463,47 @@ pub async fn execute(
         }
         ManagementTool::WorkflowRunsGet => {
             let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
-            workflow::get_run(query_bus, organization_id, arguments, request_id).await
+            workflow::get_run(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRunsWait => {
             let arguments = arguments::parse::<WaitWorkflowRunArguments>(arguments).ok()?;
-            workflow::wait_run(query_bus, organization_id, arguments, request_id).await
+            workflow::wait_run(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRunOutputGet => {
             let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
-            workflow::get_run_output(query_bus, organization_id, arguments, request_id).await
+            workflow::get_run_output(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRunHistoryGet => {
             let arguments = arguments::parse::<WorkflowRunHistoryArguments>(arguments).ok()?;
-            workflow::get_run_history(query_bus, organization_id, arguments, request_id).await
+            workflow::get_run_history(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::Search => {
             let arguments = arguments::parse::<SearchArguments>(arguments).ok()?;

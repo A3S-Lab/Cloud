@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, WorkflowDefinitionId, WorkflowRevisionId,
@@ -10,6 +11,7 @@ pub struct GetWorkflowRevision {
     pub organization_id: OrganizationId,
     pub workflow_definition_id: WorkflowDefinitionId,
     pub workflow_revision_id: WorkflowRevisionId,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for GetWorkflowRevision {

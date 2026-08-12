@@ -1,5 +1,6 @@
 use super::{DiffOntologyRevisions, OntologyRevisionDiff};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{diff_ontology_contracts, IOntologyRepository};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -23,6 +24,16 @@ impl QueryHandler<DiffOntologyRevisions> for DiffOntologyRevisionsHandler {
     {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
+            if let Err(error) = resource_access::ontology(
+                repository.as_ref(),
+                query.organization_id,
+                query.ontology_id,
+                &query.resource_access,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
             let from = match repository
                 .find_revision(
                     query.organization_id,

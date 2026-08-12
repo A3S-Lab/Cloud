@@ -1,6 +1,7 @@
 use super::ReviseOntology;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, OntologyRevisionId};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::application::OntologyMutationResult;
 use crate::modules::workflow::domain::{
     diff_ontology_contracts, resolve_migration_policy, IOntologyRepository, OntologyContract,
@@ -38,15 +39,16 @@ impl CommandHandler<ReviseOntology> for ReviseOntologyHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let current = match ontologies
-                .find(command.organization_id, command.ontology_id)
-                .await
+            let current = match resource_access::ontology(
+                ontologies.as_ref(),
+                command.organization_id,
+                command.ontology_id,
+                &command.resource_access,
+            )
+            .await
             {
-                Ok(Some(value)) => value,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound("Ontology not found".into())))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
             };
             let revisions = match ontologies
                 .list_revisions(command.organization_id, command.ontology_id)

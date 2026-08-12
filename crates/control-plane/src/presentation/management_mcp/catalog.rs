@@ -444,6 +444,22 @@ impl ManagementTool {
             | Self::FormReleasesGet
             | Self::FormReleasesList
             | Self::FormReleasesPublish
+            | Self::OntologiesGet
+            | Self::OntologiesRevise
+            | Self::OntologyRevisionsGet
+            | Self::OntologyRevisionsList
+            | Self::OntologyRevisionsDiff
+            | Self::WorkflowDefinitionsGet
+            | Self::WorkflowDefinitionsRevise
+            | Self::WorkflowRevisionsGet
+            | Self::WorkflowRevisionsList
+            | Self::WorkflowGoalsGet
+            | Self::WorkflowPlanRevisionsGet
+            | Self::WorkflowRunsCancel
+            | Self::WorkflowRunsGet
+            | Self::WorkflowRunsWait
+            | Self::WorkflowRunOutputGet
+            | Self::WorkflowRunHistoryGet
             | Self::WorkloadLogsGet
             | Self::WorkloadsStop
             | Self::WorkloadsRollback
@@ -1566,6 +1582,8 @@ mod tests {
             .with_scope(ApiTokenScope::BUILD_WRITE)
             .with_scope(ApiTokenScope::ROUTE_WRITE)
             .with_scope(ApiTokenScope::FORM_WRITE)
+            .with_scope(ApiTokenScope::ONTOLOGY_WRITE)
+            .with_scope(ApiTokenScope::WORKFLOW_WRITE)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -1599,6 +1617,34 @@ mod tests {
         assert!(ManagementTool::BuildEvidenceGet.visible_to(&principal));
         assert!(ManagementTool::BuildRunsCancel.visible_to(&principal));
         assert!(ManagementTool::BuildRunsRetry.visible_to(&principal));
+        for tool in [
+            ManagementTool::OntologiesCreate,
+            ManagementTool::OntologiesGet,
+            ManagementTool::OntologiesList,
+            ManagementTool::OntologiesRevise,
+            ManagementTool::OntologyRevisionsGet,
+            ManagementTool::OntologyRevisionsList,
+            ManagementTool::OntologyRevisionsDiff,
+            ManagementTool::WorkflowDefinitionsCreate,
+            ManagementTool::WorkflowDefinitionsGet,
+            ManagementTool::WorkflowDefinitionsList,
+            ManagementTool::WorkflowDefinitionsRevise,
+            ManagementTool::WorkflowRevisionsGet,
+            ManagementTool::WorkflowRevisionsList,
+            ManagementTool::WorkflowGoalsCreate,
+            ManagementTool::WorkflowGoalsGet,
+            ManagementTool::WorkflowGoalsList,
+            ManagementTool::WorkflowPlanRevisionsGet,
+            ManagementTool::WorkflowRunsStart,
+            ManagementTool::WorkflowRunsCancel,
+            ManagementTool::WorkflowRunsGet,
+            ManagementTool::WorkflowRunsList,
+            ManagementTool::WorkflowRunsWait,
+            ManagementTool::WorkflowRunOutputGet,
+            ManagementTool::WorkflowRunHistoryGet,
+        ] {
+            assert!(tool.visible_to(&principal), "{}", tool.name());
+        }
     }
 
     #[test]
@@ -1624,5 +1670,33 @@ mod tests {
         assert!(!ManagementTool::RoutesGet.visible_to(&principal));
         assert!(!ManagementTool::BuildRunsGet.visible_to(&principal));
         assert!(!ManagementTool::BuildRunsCancel.visible_to(&principal));
+        for tool in [
+            ManagementTool::OntologiesCreate,
+            ManagementTool::OntologiesGet,
+            ManagementTool::OntologiesList,
+            ManagementTool::OntologiesRevise,
+            ManagementTool::OntologyRevisionsGet,
+            ManagementTool::OntologyRevisionsList,
+            ManagementTool::OntologyRevisionsDiff,
+            ManagementTool::WorkflowDefinitionsCreate,
+            ManagementTool::WorkflowDefinitionsGet,
+            ManagementTool::WorkflowDefinitionsList,
+            ManagementTool::WorkflowDefinitionsRevise,
+            ManagementTool::WorkflowRevisionsGet,
+            ManagementTool::WorkflowRevisionsList,
+            ManagementTool::WorkflowGoalsCreate,
+            ManagementTool::WorkflowGoalsGet,
+            ManagementTool::WorkflowGoalsList,
+            ManagementTool::WorkflowPlanRevisionsGet,
+            ManagementTool::WorkflowRunsStart,
+            ManagementTool::WorkflowRunsCancel,
+            ManagementTool::WorkflowRunsGet,
+            ManagementTool::WorkflowRunsList,
+            ManagementTool::WorkflowRunsWait,
+            ManagementTool::WorkflowRunOutputGet,
+            ManagementTool::WorkflowRunHistoryGet,
+        ] {
+            assert!(!tool.visible_to(&principal), "{}", tool.name());
+        }
     }
 }

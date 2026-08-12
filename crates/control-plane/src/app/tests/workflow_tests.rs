@@ -12,6 +12,8 @@ const ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/w0.1/ontology.acl"
 ));
+const RESTRICTED_WORKFLOW_TOKEN: &str =
+    "a3s_8888888888888888888888888888888888888888888888888888888888888888";
 
 #[tokio::test]
 async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() -> Result<()> {
@@ -375,6 +377,701 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
         .await?;
     assert_eq!(conflicting_cancel.status(), 409);
     Ok(())
+}
+
+#[tokio::test]
+async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_replay(
+) -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "workflow-grants", "Workflow grants").await?;
+
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "workflow-grants-membership",
+            json!({"name": "Restricted Workflow operator", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let membership_id = membership["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted Workflow membership has no ID".into()))?;
+    let principal_id = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted Workflow principal has no ID".into()))?;
+    let token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "workflow-grants-token",
+            json!({
+                "name": "Restricted Workflow operator",
+                "token": RESTRICTED_WORKFLOW_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::WORKFLOW_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(token.status(), 201);
+
+    let granted_project =
+        create_project(&app, &organization, "workflow-granted-project", "Granted").await?;
+    let environment_only_project = create_project(
+        &app,
+        &organization,
+        "workflow-environment-project",
+        "Environment only",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{environment_only_project}/environments"
+            ),
+            "workflow-environment",
+            json!({"name": "Environment only"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment_id = response_id(&environment)?;
+
+    let granted =
+        create_workflow_access_fixture(&app, &organization, &granted_project, "workflow-granted")
+            .await?;
+    let denied = create_workflow_access_fixture(
+        &app,
+        &organization,
+        &environment_only_project,
+        "workflow-environment",
+    )
+    .await?;
+
+    let resource_grants =
+        format!("/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants");
+    let project_grant = app
+        .call(post_json(
+            &resource_grants,
+            "workflow-grants-create-project",
+            json!({"scope": {"kind": "project", "projectId": granted_project}}),
+        ))
+        .await?;
+    assert_eq!(project_grant.status(), 201);
+    let project_grant_id = response_json(&project_grant)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("Workflow Resource Grant has no ID".into()))?
+        .to_owned();
+    let environment_grant = app
+        .call(post_json(
+            &resource_grants,
+            "workflow-grants-create-environment",
+            json!({
+                "scope": {
+                    "kind": "environment",
+                    "projectId": environment_only_project,
+                    "environmentId": environment_id
+                }
+            }),
+        ))
+        .await?;
+    assert_eq!(environment_grant.status(), 201);
+
+    let granted_collections = [
+        format!(
+            "/api/v1/organizations/{organization}/projects/{granted_project}/workflow-definitions"
+        ),
+        format!("/api/v1/organizations/{organization}/projects/{granted_project}/workflow-goals"),
+        format!("/api/v1/organizations/{organization}/projects/{granted_project}/workflow-runs"),
+    ];
+    let denied_collections = [
+        format!(
+            "/api/v1/organizations/{organization}/projects/{environment_only_project}/workflow-definitions"
+        ),
+        format!(
+            "/api/v1/organizations/{organization}/projects/{environment_only_project}/workflow-goals"
+        ),
+        format!(
+            "/api/v1/organizations/{organization}/projects/{environment_only_project}/workflow-runs"
+        ),
+    ];
+    for path in granted_collections {
+        assert_eq!(
+            app.call(get_as(path, RESTRICTED_WORKFLOW_TOKEN))
+                .await?
+                .status(),
+            200
+        );
+    }
+    for path in denied_collections {
+        assert_eq!(
+            app.call(get_as(path, RESTRICTED_WORKFLOW_TOKEN))
+                .await?
+                .status(),
+            403
+        );
+    }
+
+    let granted_definition_root = format!(
+        "/api/v1/organizations/{organization}/workflow-definitions/{}",
+        granted.definition_id
+    );
+    let granted_goal_root = format!(
+        "/api/v1/organizations/{organization}/workflow-goals/{}",
+        granted.goal_id
+    );
+    let granted_run_root = format!(
+        "/api/v1/organizations/{organization}/workflow-runs/{}",
+        granted.run_id
+    );
+    for path in [
+        granted_definition_root.clone(),
+        format!("{granted_definition_root}/revisions"),
+        format!(
+            "{granted_definition_root}/revisions/{}",
+            granted.revision_id
+        ),
+        granted_goal_root.clone(),
+        format!(
+            "{granted_goal_root}/plan-revisions/{}",
+            granted.plan_revision_id
+        ),
+        granted_run_root.clone(),
+        format!("{granted_run_root}/wait?timeoutSeconds=0"),
+        format!("{granted_run_root}/history?limit=10"),
+    ] {
+        assert_eq!(
+            app.call(get_as(path, RESTRICTED_WORKFLOW_TOKEN))
+                .await?
+                .status(),
+            200
+        );
+    }
+    assert_eq!(
+        app.call(get_as(
+            format!("{granted_run_root}/output"),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+
+    let denied_definition_root = format!(
+        "/api/v1/organizations/{organization}/workflow-definitions/{}",
+        denied.definition_id
+    );
+    let denied_goal_root = format!(
+        "/api/v1/organizations/{organization}/workflow-goals/{}",
+        denied.goal_id
+    );
+    let denied_run_root = format!(
+        "/api/v1/organizations/{organization}/workflow-runs/{}",
+        denied.run_id
+    );
+    let missing_definition_root = format!(
+        "/api/v1/organizations/{organization}/workflow-definitions/{}",
+        Uuid::now_v7()
+    );
+    let missing_goal_root = format!(
+        "/api/v1/organizations/{organization}/workflow-goals/{}",
+        Uuid::now_v7()
+    );
+    let missing_run_root = format!(
+        "/api/v1/organizations/{organization}/workflow-runs/{}",
+        Uuid::now_v7()
+    );
+    for (denied_path, missing_path) in [
+        (
+            denied_definition_root.clone(),
+            missing_definition_root.clone(),
+        ),
+        (
+            format!("{denied_definition_root}/revisions"),
+            format!("{missing_definition_root}/revisions"),
+        ),
+        (
+            format!("{denied_definition_root}/revisions/{}", denied.revision_id),
+            format!("{missing_definition_root}/revisions/{}", Uuid::now_v7()),
+        ),
+        (denied_goal_root.clone(), missing_goal_root.clone()),
+        (
+            format!(
+                "{denied_goal_root}/plan-revisions/{}",
+                denied.plan_revision_id
+            ),
+            format!("{missing_goal_root}/plan-revisions/{}", Uuid::now_v7()),
+        ),
+        (denied_run_root.clone(), missing_run_root.clone()),
+        (
+            format!("{denied_run_root}/wait?timeoutSeconds=0"),
+            format!("{missing_run_root}/wait?timeoutSeconds=0"),
+        ),
+        (
+            format!("{denied_run_root}/output"),
+            format!("{missing_run_root}/output"),
+        ),
+        (
+            format!("{denied_run_root}/history?limit=10"),
+            format!("{missing_run_root}/history?limit=10"),
+        ),
+    ] {
+        assert_resource_not_found_equivalent(
+            &app,
+            get_as(denied_path, RESTRICTED_WORKFLOW_TOKEN),
+            get_as(missing_path, RESTRICTED_WORKFLOW_TOKEN),
+        )
+        .await?;
+    }
+
+    for (id, name, arguments, expected_code) in [
+        (
+            20,
+            "a3s_cloud_workflow_definitions_get",
+            json!({"workflowDefinitionId": granted.definition_id}),
+            200,
+        ),
+        (
+            21,
+            "a3s_cloud_workflow_revisions_list",
+            json!({"workflowDefinitionId": granted.definition_id}),
+            200,
+        ),
+        (
+            22,
+            "a3s_cloud_workflow_revisions_get",
+            json!({
+                "workflowDefinitionId": granted.definition_id,
+                "workflowRevisionId": granted.revision_id
+            }),
+            200,
+        ),
+        (
+            23,
+            "a3s_cloud_workflow_goals_get",
+            json!({"workflowGoalId": granted.goal_id}),
+            200,
+        ),
+        (
+            24,
+            "a3s_cloud_workflow_plan_revisions_get",
+            json!({
+                "workflowGoalId": granted.goal_id,
+                "planRevisionId": granted.plan_revision_id
+            }),
+            200,
+        ),
+        (
+            25,
+            "a3s_cloud_workflow_runs_get",
+            json!({"workflowRunId": granted.run_id}),
+            200,
+        ),
+        (
+            26,
+            "a3s_cloud_workflow_runs_wait",
+            json!({"workflowRunId": granted.run_id, "timeoutSeconds": 0}),
+            200,
+        ),
+        (
+            27,
+            "a3s_cloud_workflow_run_history_get",
+            json!({"workflowRunId": granted.run_id, "limit": 10}),
+            200,
+        ),
+        (
+            28,
+            "a3s_cloud_workflow_run_output_get",
+            json!({"workflowRunId": granted.run_id}),
+            409,
+        ),
+    ] {
+        let response = app
+            .call(mcp_tool_call_as(
+                id,
+                name,
+                arguments,
+                RESTRICTED_WORKFLOW_TOKEN,
+            ))
+            .await?;
+        let response = response_json(&response)?;
+        assert_eq!(
+            response["result"]["structuredContent"]["code"], expected_code,
+            "{name}"
+        );
+        assert_eq!(response["result"]["isError"], expected_code != 200);
+    }
+    for (id, name, denied_arguments, missing_arguments) in [
+        (
+            40,
+            "a3s_cloud_workflow_definitions_get",
+            json!({"workflowDefinitionId": denied.definition_id}),
+            json!({"workflowDefinitionId": Uuid::now_v7()}),
+        ),
+        (
+            42,
+            "a3s_cloud_workflow_revisions_list",
+            json!({"workflowDefinitionId": denied.definition_id}),
+            json!({"workflowDefinitionId": Uuid::now_v7()}),
+        ),
+        (
+            44,
+            "a3s_cloud_workflow_revisions_get",
+            json!({
+                "workflowDefinitionId": denied.definition_id,
+                "workflowRevisionId": denied.revision_id
+            }),
+            json!({
+                "workflowDefinitionId": Uuid::now_v7(),
+                "workflowRevisionId": Uuid::now_v7()
+            }),
+        ),
+        (
+            46,
+            "a3s_cloud_workflow_goals_get",
+            json!({"workflowGoalId": denied.goal_id}),
+            json!({"workflowGoalId": Uuid::now_v7()}),
+        ),
+        (
+            48,
+            "a3s_cloud_workflow_plan_revisions_get",
+            json!({
+                "workflowGoalId": denied.goal_id,
+                "planRevisionId": denied.plan_revision_id
+            }),
+            json!({
+                "workflowGoalId": Uuid::now_v7(),
+                "planRevisionId": Uuid::now_v7()
+            }),
+        ),
+        (
+            50,
+            "a3s_cloud_workflow_runs_get",
+            json!({"workflowRunId": denied.run_id}),
+            json!({"workflowRunId": Uuid::now_v7()}),
+        ),
+        (
+            52,
+            "a3s_cloud_workflow_runs_wait",
+            json!({"workflowRunId": denied.run_id, "timeoutSeconds": 0}),
+            json!({"workflowRunId": Uuid::now_v7(), "timeoutSeconds": 0}),
+        ),
+        (
+            54,
+            "a3s_cloud_workflow_run_output_get",
+            json!({"workflowRunId": denied.run_id}),
+            json!({"workflowRunId": Uuid::now_v7()}),
+        ),
+        (
+            56,
+            "a3s_cloud_workflow_run_history_get",
+            json!({"workflowRunId": denied.run_id, "limit": 10}),
+            json!({"workflowRunId": Uuid::now_v7(), "limit": 10}),
+        ),
+    ] {
+        let denied_response = app
+            .call(mcp_tool_call_as(
+                id,
+                name,
+                denied_arguments,
+                RESTRICTED_WORKFLOW_TOKEN,
+            ))
+            .await?;
+        let missing_response = app
+            .call(mcp_tool_call_as(
+                id + 1,
+                name,
+                missing_arguments,
+                RESTRICTED_WORKFLOW_TOKEN,
+            ))
+            .await?;
+        assert_mcp_not_found_equivalent(&denied_response, &missing_response)?;
+    }
+
+    let denied_revision = workflow_fixture("Denied Workflow revision")
+        .map_err(BootError::Internal)?
+        .transport;
+    let denied_revision_mcp = app
+        .call(mcp_tool_call_as(
+            60,
+            "a3s_cloud_workflow_definitions_revise",
+            {
+                let mut arguments = denied_revision.clone();
+                let object = arguments.as_object_mut().ok_or_else(|| {
+                    BootError::Internal("Workflow revision fixture is not an object".into())
+                })?;
+                object.insert("workflowDefinitionId".into(), json!(denied.definition_id));
+                object.insert("expectedVersion".into(), json!(1));
+                object.insert("idempotencyKey".into(), json!("workflow-mcp-revise-denied"));
+                arguments
+            },
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let missing_revision_mcp = app
+        .call(mcp_tool_call_as(
+            61,
+            "a3s_cloud_workflow_definitions_revise",
+            {
+                let mut arguments = denied_revision.clone();
+                let object = arguments.as_object_mut().ok_or_else(|| {
+                    BootError::Internal("Workflow revision fixture is not an object".into())
+                })?;
+                object.insert("workflowDefinitionId".into(), json!(Uuid::now_v7()));
+                object.insert("expectedVersion".into(), json!(1));
+                object.insert(
+                    "idempotencyKey".into(),
+                    json!("workflow-mcp-revise-missing"),
+                );
+                arguments
+            },
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    assert_mcp_not_found_equivalent(&denied_revision_mcp, &missing_revision_mcp)?;
+    let denied_cancel_mcp = app
+        .call(mcp_tool_call_as(
+            62,
+            "a3s_cloud_workflow_runs_cancel",
+            json!({
+                "workflowRunId": denied.run_id,
+                "reason": "Must not cancel",
+                "idempotencyKey": "workflow-mcp-cancel-denied"
+            }),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let missing_cancel_mcp = app
+        .call(mcp_tool_call_as(
+            63,
+            "a3s_cloud_workflow_runs_cancel",
+            json!({
+                "workflowRunId": Uuid::now_v7(),
+                "reason": "Must not cancel",
+                "idempotencyKey": "workflow-mcp-cancel-missing"
+            }),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    assert_mcp_not_found_equivalent(&denied_cancel_mcp, &missing_cancel_mcp)?;
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!("{denied_definition_root}/revisions"),
+            "workflow-revise-denied",
+            denied_revision.clone(),
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+        .with_header("x-a3s-expected-version", "1"),
+        post_json_as(
+            format!("{missing_definition_root}/revisions"),
+            "workflow-revise-missing",
+            denied_revision,
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+        .with_header("x-a3s-expected-version", "1"),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!("{denied_run_root}/cancel"),
+            "workflow-cancel-denied",
+            json!({"reason": "Must not cancel"}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ),
+        post_json_as(
+            format!("{missing_run_root}/cancel"),
+            "workflow-cancel-missing",
+            json!({"reason": "Must not cancel"}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ),
+    )
+    .await?;
+
+    let granted_revision = workflow_fixture("Granted Workflow revision")
+        .map_err(BootError::Internal)?
+        .transport;
+    let revise_granted = || {
+        post_json_as(
+            format!("{granted_definition_root}/revisions"),
+            "workflow-revise-granted",
+            granted_revision.clone(),
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+        .with_header("x-a3s-expected-version", "1")
+    };
+    assert_eq!(app.call(revise_granted()).await?.status(), 201);
+    let revise_replay = app.call(revise_granted()).await?;
+    assert_eq!(revise_replay.status(), 200);
+    assert_eq!(response_json(&revise_replay)?["data"]["replayed"], true);
+
+    let cancel_granted = || {
+        post_json_as(
+            format!("{granted_run_root}/cancel"),
+            "workflow-cancel-granted",
+            json!({"reason": "Authorized cancellation"}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+    };
+    assert_eq!(app.call(cancel_granted()).await?.status(), 202);
+    let cancel_replay = app.call(cancel_granted()).await?;
+    assert_eq!(cancel_replay.status(), 200);
+    assert_eq!(response_json(&cancel_replay)?["data"]["replayed"], true);
+
+    let revoked = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/resource-grants/{project_grant_id}/revocation"
+            ),
+            "workflow-grants-revoke",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(revoked.status(), 200);
+    assert_resource_not_found_equivalent(
+        &app,
+        revise_granted(),
+        post_json_as(
+            format!("{missing_definition_root}/revisions"),
+            "workflow-revise-missing-after-revoke",
+            granted_revision,
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+        .with_header("x-a3s-expected-version", "1"),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        cancel_granted(),
+        post_json_as(
+            format!("{missing_run_root}/cancel"),
+            "workflow-cancel-missing-after-revoke",
+            json!({"reason": "Authorized cancellation"}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        get_as(&granted_definition_root, RESTRICTED_WORKFLOW_TOKEN),
+        get_as(&missing_definition_root, RESTRICTED_WORKFLOW_TOKEN),
+    )
+    .await?;
+    Ok(())
+}
+
+struct WorkflowAccessFixture {
+    definition_id: String,
+    revision_id: String,
+    goal_id: String,
+    plan_revision_id: String,
+    run_id: String,
+}
+
+async fn create_workflow_access_fixture(
+    app: &BootApplication,
+    organization: &str,
+    project: &str,
+    key: &str,
+) -> Result<WorkflowAccessFixture> {
+    let ontology = app
+        .call(post_acl(
+            format!("/api/v1/organizations/{organization}/projects/{project}/ontologies"),
+            &format!("{key}-ontology"),
+            ONTOLOGY_ACL.as_bytes().to_vec(),
+        ))
+        .await?;
+    assert_eq!(ontology.status(), 201);
+    let ontology = response_json(&ontology)?;
+
+    let fixture = workflow_fixture(key).map_err(BootError::Internal)?;
+    let definition = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/workflow-definitions"),
+            &format!("{key}-definition"),
+            fixture.transport,
+        ))
+        .await?;
+    assert_eq!(definition.status(), 201);
+    let definition = response_json(&definition)?;
+    let definition_id = required_string(
+        &definition["data"]["workflowDefinition"]["id"],
+        "WorkflowDefinition ID",
+    )?;
+    let revision_id = required_string(
+        &definition["data"]["revision"]["id"],
+        "Workflow revision ID",
+    )?;
+    let workflow_digest = required_string(
+        &definition["data"]["revision"]["contentDigest"],
+        "Workflow revision digest",
+    )?;
+
+    let goal_contract = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+        name: format!("{key} goal"),
+        workflow_definition_id: WorkflowDefinitionId::from_uuid(
+            Uuid::parse_str(&definition_id)
+                .map_err(|error| BootError::Internal(error.to_string()))?,
+        ),
+        workflow_revision_id: WorkflowRevisionId::from_uuid(
+            Uuid::parse_str(&revision_id)
+                .map_err(|error| BootError::Internal(error.to_string()))?,
+        ),
+        workflow_digest: Sha256Digest::parse(workflow_digest).map_err(BootError::Internal)?,
+        ontology_id: OntologyId::from_uuid(required_uuid(
+            &ontology["data"]["ontology"]["id"],
+            "Ontology ID",
+        )?),
+        ontology_revision_id: OntologyRevisionId::from_uuid(required_uuid(
+            &ontology["data"]["revision"]["id"],
+            "Ontology revision ID",
+        )?),
+        ontology_digest: Sha256Digest::parse(required_string(
+            &ontology["data"]["revision"]["contentDigest"],
+            "Ontology digest",
+        )?)
+        .map_err(BootError::Internal)?,
+        environment_id: None,
+        input: json!({"key": key}),
+    })
+    .map_err(BootError::Internal)?;
+    let goal = app
+        .call(post_acl(
+            format!("/api/v1/organizations/{organization}/projects/{project}/workflow-goals"),
+            &format!("{key}-goal"),
+            goal_contract.canonical_acl().as_bytes().to_vec(),
+        ))
+        .await?;
+    assert_eq!(goal.status(), 201);
+    let goal = response_json(&goal)?;
+    let goal_id = required_string(&goal["data"]["goal"]["id"], "WorkflowGoal ID")?;
+    let plan_revision_id =
+        required_string(&goal["data"]["planRevision"]["id"], "Plan revision ID")?;
+
+    let run = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/workflow-runs"),
+            &format!("{key}-run"),
+            json!({
+                "workflowGoalId": goal_id,
+                "planRevisionId": plan_revision_id,
+                "timeoutSeconds": 60
+            }),
+        ))
+        .await?;
+    assert_eq!(run.status(), 202);
+    let run = response_json(&run)?;
+    let run_id = required_string(&run["data"]["workflowRun"]["id"], "WorkflowRun ID")?;
+
+    Ok(WorkflowAccessFixture {
+        definition_id,
+        revision_id,
+        goal_id,
+        plan_revision_id,
+        run_id,
+    })
 }
 
 pub(super) struct WorkflowFixture {

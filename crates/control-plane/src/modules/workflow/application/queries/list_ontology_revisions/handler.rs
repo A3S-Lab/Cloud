@@ -1,5 +1,6 @@
 use super::ListOntologyRevisions;
 use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{IOntologyRepository, OntologyRevision};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -23,6 +24,16 @@ impl QueryHandler<ListOntologyRevisions> for ListOntologyRevisionsHandler {
     {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
+            if let Err(error) = resource_access::ontology(
+                repository.as_ref(),
+                query.organization_id,
+                query.ontology_id,
+                &query.resource_access,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
             Ok(repository
                 .list_revisions(query.organization_id, query.ontology_id)
                 .await

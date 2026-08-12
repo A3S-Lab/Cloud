@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod queries;
+mod resource_access;
 mod workflow_run_reconciler;
 
 pub use workflow_run_reconciler::{

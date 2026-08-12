@@ -291,6 +291,16 @@ authority. The minimal executor supports only Workflow-local `input`,
 `transform`, `branch`, and `output`; it does not expose HumanTask,
 service/finite-task, typed capability, or compensation behavior.
 
+For a restricted Membership, Ontology and Workflow create/list/start tools
+authorize their explicit `projectId` before dispatch. Indirect Ontology,
+definition, Goal, and Run tools receive only coarse project-family admission
+from the MCP catalog; the shared Workflow application resolver loads the
+owning aggregate and authorizes its canonical project before revision, Plan,
+wait, output, history, revise, cancel, or idempotency replay. Revisions and
+plans inherit their parent scope, an environment-only grant cannot authorize a
+project aggregate, denied and missing IDs share one `404`, and revocation takes
+effect on the next stateless MCP request.
+
 ## Native Form draft and release lifecycle
 
 `a3s_cloud_forms_create` accepts `projectId`, a bounded name and optional

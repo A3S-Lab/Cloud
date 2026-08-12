@@ -1702,6 +1702,17 @@ node.
   closed even when they hold a project, environment, or node grant. Assets and
   Identity do not fabricate project ownership or persist a second ownership
   index.
+  The Workflow vertical slice resolves Ontology, WorkflowDefinition,
+  WorkflowGoal, and WorkflowRun through their existing repositories and
+  authorizes each aggregate's canonical project before indirect reads,
+  revision/plan/history/output access, revision publication, cancellation, or
+  idempotency replay. Revisions and PlanRevision inherit their parent
+  aggregate's project identity. Explicit project create/list/start paths keep
+  their direct guard; an environment-only grant cannot authorize a
+  project-scoped Workflow aggregate. REST and Management MCP share the same
+  application resolver and denied or missing aggregate IDs return the same
+  `404` contract. HumanTask remains a separate Workflow-owned public boundary
+  that must close before its surfaces are exposed.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1722,8 +1733,10 @@ node.
   the Workloads application layer resolves the existing entity and makes the
   final shared-evaluator decision before replay or side effects.
   Form draft/release detail, revision, publication, and release queries now
-  implement the same pattern through the Forms repository. The remaining
-  Workflow, Agent execution, and Operation
+  implement the same pattern through the Forms repository. Ontology,
+  WorkflowDefinition, WorkflowGoal, WorkflowRun, and their inherited child
+  records now implement it through one Workflow application resolver. The
+  remaining Agent execution and Operation
   boundaries resolve their existing project/environment/node identity through
   their owning repositories and pass
   that canonical scope to the shared `ResourceAccessEvaluator`.

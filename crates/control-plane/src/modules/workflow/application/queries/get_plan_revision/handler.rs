@@ -1,5 +1,6 @@
 use super::GetPlanRevision;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{IWorkflowGoalRepository, PlanRevision};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -22,6 +23,16 @@ impl QueryHandler<GetPlanRevision> for GetPlanRevisionHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<PlanRevision>>> {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
+            if let Err(error) = resource_access::workflow_goal(
+                repository.as_ref(),
+                query.organization_id,
+                query.workflow_goal_id,
+                &query.resource_access,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
             match repository
                 .find_plan_revision(
                     query.organization_id,

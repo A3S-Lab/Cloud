@@ -351,19 +351,6 @@ async fn restricted_asset_boundaries_fail_closed_across_catalog_git_and_mcp_prof
     Ok(())
 }
 
-fn post_acl_as(
-    path: impl Into<String>,
-    idempotency_key: &str,
-    body: impl Into<Vec<u8>>,
-    token: &str,
-) -> BootRequest {
-    BootRequest::new(HttpMethod::Post, path.into())
-        .with_header("content-type", "application/vnd.a3s.acl; charset=utf-8")
-        .with_header("idempotency-key", idempotency_key)
-        .with_header("authorization", format!("Bearer {token}"))
-        .with_body(body)
-}
-
 fn git_rpc_as(path: impl Into<String>, media_type: &str, token: &str) -> BootRequest {
     BootRequest::new(HttpMethod::Post, path.into())
         .with_header("content-type", media_type)

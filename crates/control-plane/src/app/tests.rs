@@ -649,10 +649,19 @@ fn post_acl(
     idempotency_key: &str,
     body: impl Into<Vec<u8>>,
 ) -> BootRequest {
+    post_acl_as(path, idempotency_key, body, ADMIN_TOKEN)
+}
+
+fn post_acl_as(
+    path: impl Into<String>,
+    idempotency_key: &str,
+    body: impl Into<Vec<u8>>,
+    token: &str,
+) -> BootRequest {
     BootRequest::new(HttpMethod::Post, path.into())
         .with_header("content-type", "application/vnd.a3s.acl; charset=utf-8")
         .with_header("idempotency-key", idempotency_key)
-        .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+        .with_header("authorization", format!("Bearer {token}"))
         .with_body(body)
 }
 
@@ -668,6 +677,37 @@ fn get_as(path: impl Into<String>, token: &str) -> BootRequest {
         .with_header("authorization", format!("Bearer {token}"))
 }
 
+fn mcp_tool_call_as(id: u64, name: &str, arguments: Value, token: &str) -> BootRequest {
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": "tools/call",
+        "params": {
+            "name": name,
+            "arguments": arguments,
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": a3s_cloud_contracts::MCP_PROTOCOL_VERSION,
+                "io.modelcontextprotocol/clientInfo": {
+                    "name": "a3s-cloud-test",
+                    "version": "1.0.0"
+                },
+                "io.modelcontextprotocol/clientCapabilities": {}
+            }
+        }
+    });
+    BootRequest::new(HttpMethod::Post, "/api/v1/mcp")
+        .with_header("content-type", "application/json")
+        .with_header("accept", "application/json, text/event-stream")
+        .with_header("authorization", format!("Bearer {token}"))
+        .with_header(
+            "mcp-protocol-version",
+            a3s_cloud_contracts::MCP_PROTOCOL_VERSION,
+        )
+        .with_header("mcp-method", "tools/call")
+        .with_header("mcp-name", name)
+        .with_body(body.to_string().into_bytes())
+}
+
 async fn assert_resource_not_found_equivalent(
     app: &BootApplication,
     denied_request: BootRequest,
@@ -681,6 +721,22 @@ async fn assert_resource_not_found_equivalent(
     let missing = response_json(&missing)?;
     for field in ["code", "statusCode", "message", "details"] {
         assert_eq!(denied[field], missing[field]);
+    }
+    Ok(())
+}
+
+fn assert_mcp_not_found_equivalent(denied: &BootResponse, missing: &BootResponse) -> Result<()> {
+    let denied = response_json(denied)?;
+    let missing = response_json(missing)?;
+    assert_eq!(denied["result"]["isError"], true);
+    assert_eq!(missing["result"]["isError"], true);
+    assert_eq!(denied["result"]["structuredContent"]["code"], 404);
+    assert_eq!(missing["result"]["structuredContent"]["code"], 404);
+    for field in ["code", "statusCode", "message", "details"] {
+        assert_eq!(
+            denied["result"]["structuredContent"][field],
+            missing["result"]["structuredContent"][field]
+        );
     }
     Ok(())
 }

@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PlanRevisionId, PrincipalId, ProjectId, WorkflowDefinitionId, WorkflowGoalId,
     WorkflowRevisionId, WorkflowRunId,
@@ -278,6 +279,7 @@ pub async fn revise_definition(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: ReviseWorkflowDefinitionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -286,6 +288,7 @@ pub async fn revise_definition(
             workflow_definition_id: WorkflowDefinitionId::from_uuid(
                 arguments.workflow_definition_id,
             ),
+            resource_access,
             expected_version: arguments.expected_version,
             definition_acl: arguments.definition_acl,
             payloads: arguments
@@ -364,6 +367,7 @@ pub async fn get_definition(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowDefinitionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -372,6 +376,7 @@ pub async fn get_definition(
             workflow_definition_id: WorkflowDefinitionId::from_uuid(
                 arguments.workflow_definition_id,
             ),
+            resource_access,
         })
         .await?
     {
@@ -384,6 +389,7 @@ pub async fn list_revisions(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowDefinitionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -392,6 +398,7 @@ pub async fn list_revisions(
             workflow_definition_id: WorkflowDefinitionId::from_uuid(
                 arguments.workflow_definition_id,
             ),
+            resource_access,
         })
         .await?
     {
@@ -411,6 +418,7 @@ pub async fn get_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -420,6 +428,7 @@ pub async fn get_revision(
                 arguments.workflow_definition_id,
             ),
             workflow_revision_id: WorkflowRevisionId::from_uuid(arguments.workflow_revision_id),
+            resource_access,
         })
         .await?
     {
@@ -457,12 +466,14 @@ pub async fn get_goal(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowGoalArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetWorkflowGoal {
             organization_id,
             workflow_goal_id: WorkflowGoalId::from_uuid(arguments.workflow_goal_id),
+            resource_access,
         })
         .await?
     {
@@ -475,6 +486,7 @@ pub async fn get_plan_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowPlanRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -482,6 +494,7 @@ pub async fn get_plan_revision(
             organization_id,
             workflow_goal_id: WorkflowGoalId::from_uuid(arguments.workflow_goal_id),
             plan_revision_id: PlanRevisionId::from_uuid(arguments.plan_revision_id),
+            resource_access,
         })
         .await?
     {
@@ -525,12 +538,14 @@ pub async fn cancel_run(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: CancelWorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CancelWorkflowRun {
             organization_id,
             workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
+            resource_access,
             reason: arguments.reason,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
@@ -578,12 +593,14 @@ pub async fn get_run(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetWorkflowRun {
             organization_id,
             workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
+            resource_access,
         })
         .await?
     {
@@ -596,6 +613,7 @@ pub async fn wait_run(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WaitWorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -603,6 +621,7 @@ pub async fn wait_run(
             organization_id,
             workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
             timeout: std::time::Duration::from_secs(arguments.timeout_seconds.unwrap_or(30)),
+            resource_access,
         })
         .await?
     {
@@ -615,12 +634,14 @@ pub async fn get_run_output(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetWorkflowRunOutput {
             organization_id,
             workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
+            resource_access,
         })
         .await?
     {
@@ -633,6 +654,7 @@ pub async fn get_run_history(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkflowRunHistoryArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -641,6 +663,7 @@ pub async fn get_run_history(
             workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
             after_sequence: arguments.after_sequence.unwrap_or(0),
             limit: arguments.limit.unwrap_or(100),
+            resource_access,
         })
         .await?
     {

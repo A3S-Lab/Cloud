@@ -1,5 +1,6 @@
 use super::{GetWorkflowRunOutput, WorkflowRunOutput};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{IWorkflowRunRepository, WorkflowRunStatus};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -22,17 +23,16 @@ impl QueryHandler<GetWorkflowRunOutput> for GetWorkflowRunOutputHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkflowRunOutput>>> {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
-            let record = match repository
-                .find(query.organization_id, query.workflow_run_id)
-                .await
+            let record = match resource_access::workflow_run(
+                repository.as_ref(),
+                query.organization_id,
+                query.workflow_run_id,
+                &query.resource_access,
+            )
+            .await
             {
-                Ok(Some(record)) => record,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "WorkflowRun not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Ok(record) => record,
+                Err(error) => return Ok(Err(error)),
             };
             if record.run.status != WorkflowRunStatus::Completed {
                 return Ok(Err(ApplicationError::Conflict(format!(

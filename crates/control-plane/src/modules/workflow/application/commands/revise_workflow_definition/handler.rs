@@ -1,6 +1,7 @@
 use super::ReviseWorkflowDefinition;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, WorkflowRevisionId};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::application::WorkflowDefinitionMutationResult;
 use crate::modules::workflow::domain::{
     IWorkflowDefinitionRepository, ReviseWorkflowDefinitionWrite, WorkflowContract,
@@ -49,17 +50,16 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let current = match workflows
-                .find(command.organization_id, command.workflow_definition_id)
-                .await
+            let current = match resource_access::workflow_definition(
+                workflows.as_ref(),
+                command.organization_id,
+                command.workflow_definition_id,
+                &command.resource_access,
+            )
+            .await
             {
-                Ok(Some(value)) => value,
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "WorkflowDefinition not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
             };
             let parent = match workflows
                 .list_revisions(command.organization_id, command.workflow_definition_id)

@@ -1,5 +1,6 @@
 use super::GetWorkflowGoal;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{IWorkflowGoalRepository, WorkflowGoalRecord};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -22,16 +23,13 @@ impl QueryHandler<GetWorkflowGoal> for GetWorkflowGoalHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkflowGoalRecord>>> {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
-            match repository
-                .find(query.organization_id, query.workflow_goal_id)
-                .await
-            {
-                Ok(Some(value)) => Ok(Ok(value)),
-                Ok(None) => Ok(Err(ApplicationError::NotFound(
-                    "WorkflowGoal not found".into(),
-                ))),
-                Err(error) => Ok(Err(error.into())),
-            }
+            Ok(resource_access::workflow_goal(
+                repository.as_ref(),
+                query.organization_id,
+                query.workflow_goal_id,
+                &query.resource_access,
+            )
+            .await)
         })
     }
 }

@@ -1,5 +1,6 @@
 use super::GetWorkflowRevision;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{IWorkflowDefinitionRepository, WorkflowRevision};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -22,6 +23,16 @@ impl QueryHandler<GetWorkflowRevision> for GetWorkflowRevisionHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkflowRevision>>> {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
+            if let Err(error) = resource_access::workflow_definition(
+                repository.as_ref(),
+                query.organization_id,
+                query.workflow_definition_id,
+                &query.resource_access,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
             match repository
                 .find_revision(
                     query.organization_id,

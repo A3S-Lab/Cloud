@@ -1,5 +1,7 @@
-use super::request::request_id;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use super::request::{request_id, resource_access};
+use crate::modules::identity::presentation::{
+    with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PlanRevisionId, ProjectId, WorkflowDefinitionId, WorkflowGoalId,
     WorkflowRevisionId, WorkflowRunId,
@@ -15,7 +17,9 @@ use crate::modules::workflow::{
     ListWorkflowRevisions, ListWorkflowRuns, WaitWorkflowRun,
 };
 use crate::presentation::application_error_response;
-use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{
+    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+};
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -63,85 +67,97 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
             },
         )?
-        .get(
-            "/{organization_id}/workflow-definitions/{workflow_definition_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_definition_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetWorkflowDefinition {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_definition_id: WorkflowDefinitionId::from_uuid(
-                                request.param_as::<Uuid>("workflow_definition_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => {
-                            BootResponse::json(&WorkflowDefinitionResponse::from(value))
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-definitions/{workflow_definition_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_definition_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetWorkflowDefinition {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_definition_id: WorkflowDefinitionId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_definition_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => {
+                                BootResponse::json(&WorkflowDefinitionResponse::from(value))
+                            }
+                            Err(error) => application_error_response(error, request_id),
                         }
-                        Err(error) => application_error_response(error, request_id),
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&list_revisions_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ListWorkflowRevisions {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&list_revisions_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(ListWorkflowRevisions {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_definition_id: WorkflowDefinitionId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_definition_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(values) => BootResponse::json(
+                                &values
+                                    .into_iter()
+                                    .map(WorkflowRevisionSummaryResponse::from)
+                                    .collect::<Vec<_>>(),
                             ),
-                            workflow_definition_id: WorkflowDefinitionId::from_uuid(
-                                request.param_as::<Uuid>("workflow_definition_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(values) => BootResponse::json(
-                            &values
-                                .into_iter()
-                                .map(WorkflowRevisionSummaryResponse::from)
-                                .collect::<Vec<_>>(),
-                        ),
-                        Err(error) => application_error_response(error, request_id),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions/{workflow_revision_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_revision_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetWorkflowRevision {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_definition_id: WorkflowDefinitionId::from_uuid(
-                                request.param_as::<Uuid>("workflow_definition_id")?,
-                            ),
-                            workflow_revision_id: WorkflowRevisionId::from_uuid(
-                                request.param_as::<Uuid>("workflow_revision_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&WorkflowRevisionResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions/{workflow_revision_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_revision_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetWorkflowRevision {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_definition_id: WorkflowDefinitionId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_definition_id")?,
+                                ),
+                                workflow_revision_id: WorkflowRevisionId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_revision_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&WorkflowRevisionResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
         .get(
             "/{organization_id}/projects/{project_id}/workflow-goals",
             move |request: BootRequest| {
@@ -170,55 +186,63 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
             },
         )?
-        .get(
-            "/{organization_id}/workflow-goals/{workflow_goal_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_goal_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetWorkflowGoal {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_goal_id: WorkflowGoalId::from_uuid(
-                                request.param_as::<Uuid>("workflow_goal_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&WorkflowGoalResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-goals/{workflow_goal_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_goal_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetWorkflowGoal {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_goal_id: WorkflowGoalId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_goal_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&WorkflowGoalResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_plan_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetPlanRevision {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_goal_id: WorkflowGoalId::from_uuid(
-                                request.param_as::<Uuid>("workflow_goal_id")?,
-                            ),
-                            plan_revision_id: PlanRevisionId::from_uuid(
-                                request.param_as::<Uuid>("plan_revision_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&PlanRevisionResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_plan_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetPlanRevision {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_goal_id: WorkflowGoalId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_goal_id")?,
+                                ),
+                                plan_revision_id: PlanRevisionId::from_uuid(
+                                    request.param_as::<Uuid>("plan_revision_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&PlanRevisionResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
         .get(
             "/{organization_id}/projects/{project_id}/workflow-runs",
             move |request: BootRequest| {
@@ -249,103 +273,121 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
             },
         )?
-        .get(
-            "/{organization_id}/workflow-runs/{workflow_run_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_run_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetWorkflowRun {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_run_id: WorkflowRunId::from_uuid(
-                                request.param_as::<Uuid>("workflow_run_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&WorkflowRunResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-runs/{workflow_run_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_run_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetWorkflowRun {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_run_id: WorkflowRunId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_run_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&WorkflowRunResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/workflow-runs/{workflow_run_id}/wait",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&wait_run_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    let parameters: WorkflowRunWaitQuery = request.query()?;
-                    match bus
-                        .execute(WaitWorkflowRun {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_run_id: WorkflowRunId::from_uuid(
-                                request.param_as::<Uuid>("workflow_run_id")?,
-                            ),
-                            timeout: Duration::from_secs(parameters.timeout_seconds),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&WorkflowRunResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-runs/{workflow_run_id}/wait",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&wait_run_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let parameters: WorkflowRunWaitQuery = request.query()?;
+                        match bus
+                            .execute(WaitWorkflowRun {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_run_id: WorkflowRunId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_run_id")?,
+                                ),
+                                timeout: Duration::from_secs(parameters.timeout_seconds),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&WorkflowRunResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/workflow-runs/{workflow_run_id}/output",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&output_run_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetWorkflowRunOutput {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_run_id: WorkflowRunId::from_uuid(
-                                request.param_as::<Uuid>("workflow_run_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&WorkflowRunOutputResponse::from(value)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-runs/{workflow_run_id}/output",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&output_run_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetWorkflowRunOutput {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_run_id: WorkflowRunId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_run_id")?,
+                                ),
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => {
+                                BootResponse::json(&WorkflowRunOutputResponse::from(value))
+                            }
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/workflow-runs/{workflow_run_id}/history",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    let parameters: WorkflowRunHistoryQuery = request.query()?;
-                    match bus
-                        .execute(GetWorkflowRunHistory {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            workflow_run_id: WorkflowRunId::from_uuid(
-                                request.param_as::<Uuid>("workflow_run_id")?,
-                            ),
-                            after_sequence: parameters.after_sequence,
-                            limit: parameters.limit,
-                        })
-                        .await?
-                    {
-                        Ok(value) => BootResponse::json(&value),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/workflow-runs/{workflow_run_id}/history",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let parameters: WorkflowRunHistoryQuery = request.query()?;
+                        match bus
+                            .execute(GetWorkflowRunHistory {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                workflow_run_id: WorkflowRunId::from_uuid(
+                                    request.param_as::<Uuid>("workflow_run_id")?,
+                                ),
+                                after_sequence: parameters.after_sequence,
+                                limit: parameters.limit,
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&value),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
 
 #[derive(Debug, Deserialize)]

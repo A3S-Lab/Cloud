@@ -1,5 +1,6 @@
 use super::{WaitWorkflowRun, WORKFLOW_RUN_WAIT_MAX_TIMEOUT};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::workflow::application::resource_access;
 use crate::modules::workflow::domain::{IWorkflowRunRepository, WorkflowRunRecord};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -33,17 +34,16 @@ impl QueryHandler<WaitWorkflowRun> for WaitWorkflowRunHandler {
             }
             let deadline = tokio::time::Instant::now() + query.timeout;
             loop {
-                let record = match repository
-                    .find(query.organization_id, query.workflow_run_id)
-                    .await
+                let record = match resource_access::workflow_run(
+                    repository.as_ref(),
+                    query.organization_id,
+                    query.workflow_run_id,
+                    &query.resource_access,
+                )
+                .await
                 {
-                    Ok(Some(record)) => record,
-                    Ok(None) => {
-                        return Ok(Err(ApplicationError::NotFound(
-                            "WorkflowRun not found".into(),
-                        )))
-                    }
-                    Err(error) => return Ok(Err(error.into())),
+                    Ok(record) => record,
+                    Err(error) => return Ok(Err(error)),
                 };
                 if record.run.status.is_terminal() || tokio::time::Instant::now() >= deadline {
                     return Ok(Ok(record));
