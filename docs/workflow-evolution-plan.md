@@ -121,8 +121,8 @@ Search index authoritative.
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
 `W0.1`, the backend implementation of `W0.2`, and the planning/persistence plus
-internal Workflow-local and HumanTask execution portions of `W0.3` are now
-present. Migration
+internal Workflow-local, HumanTask, and finite Execution portions of `W0.3`
+are now present. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
 and deterministic diff are exposed through REST `1.15.0`, the maintained
@@ -162,7 +162,7 @@ A3S Flow test covers concurrent coordinators, tenant scope, atomic
 submission/decision storage, replay, and receipt evidence. REST `1.16.0`, the
 maintained client, CLI, and seven additional Management MCP tools continue to
 expose start, cancel, list, get, wait, output, and history through the same CQRS
-handlers. REST `1.23.0`, the client, `human-tasks` CLI commands, and five
+handlers. REST `1.24.0`, the client, `human-tasks` CLI commands, and five
 Management MCP tools now expose bounded protected task reads plus versioned
 claim/release/submission through the same Workflow repository, domain state machine,
 transaction-bound idempotency/Outbox/audit path, and shared Identity Resource
@@ -173,10 +173,22 @@ automatic expiry; it recomputes the exact Run/Plan deadline authority and
 settles only from matching `HookReceived` or parent `RunTimedOut` evidence.
 Migration `097` records the exact cancelling Principal and uses that same
 decision/Outbox path for cancellation-over-expiry precedence and exact parent
-`RunCancellationRequested`/`RunCancelled` evidence. Human/service/finite-task
-dispatch beyond the internal coordinator, typed capability steps,
-compensation, expanded cross-surface evidence, and public Workflow
-availability remain open.
+`RunCancellationRequested`/`RunCancelled` evidence. Migrations `098` and `099`
+add Executions-owned immutable, project-scoped, ACL-native ExecutionTemplate
+revisions plus the exact Run/Plan/step/attempt/template/digest columns and
+composite foreign keys on the existing Execution aggregate. An `execution`
+plan step accepts only owner `executions`, type `execution_template`, exact UUID
+revision, exact digest, and capability `execution.run`; its plan also requires
+one exact environment. The Workflow coordinator uses one typed Executions
+application port to create or adopt the child, links the existing Execution
+Operation as the A3S Flow child, resumes the hook only from a digest-bound
+terminal result, and waits for cleanup-first child cancellation before parent
+cancellation or timeout. REST/OpenAPI `1.24.0`, the maintained client,
+`execution-templates` CLI commands, and three Management MCP tools reuse the
+same CQRS and persistence path. Focused tests pass; clean real-PostgreSQL and
+provider recovery evidence still blocks verification. Business-service and
+remaining Agent/MCP/model/Tool capability dispatch, compensation, expanded
+cross-surface evidence, and public Workflow availability remain open.
 
 ### 4.3 Compiler rules
 

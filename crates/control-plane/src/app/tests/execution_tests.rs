@@ -1,4 +1,9 @@
 use super::*;
+use crate::modules::executions::{
+    ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplateDefinition,
+    ExecutionTemplateDefinitionSpec,
+};
+use std::collections::BTreeMap;
 
 const EXECUTION_TOKEN: &str =
     "a3s_f111111111111111111111111111111111111111111111111111111111111111";
@@ -133,6 +138,144 @@ async fn execution_api_is_scoped_idempotent_and_queryable() -> Result<()> {
         .await?;
     assert_eq!(cancel_replay.status(), 200);
     assert_eq!(response_json(&cancel_replay)?["data"]["replayed"], true);
+    Ok(())
+}
+
+#[tokio::test]
+async fn execution_template_api_is_acl_native_immutable_and_replay_safe() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "execution-template-bootstrap", "Execution templates").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "execution-template-project",
+        "Execution templates",
+    )
+    .await?;
+    let other_project = create_project(
+        &app,
+        &organization,
+        "execution-template-other-project",
+        "Other templates",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "execution-template-writer-token",
+        "execution-template-writer",
+        EXECUTION_TOKEN,
+        &[ApiTokenScope::EXECUTION_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "execution-template-reader-token",
+        "execution-template-reader",
+        READ_ONLY_TOKEN,
+        &[ApiTokenScope::CLOUD_READ],
+        None,
+    )
+    .await?;
+
+    let templates_path =
+        format!("/api/v1/organizations/{organization}/projects/{project}/execution-templates");
+    let definition_acl = execution_template_acl()?;
+    let body = json!({"definitionAcl": definition_acl});
+    let denied = app
+        .call(post_json_as(
+            &templates_path,
+            "execution-template-denied",
+            body.clone(),
+            READ_ONLY_TOKEN,
+        ))
+        .await?;
+    assert_eq!(denied.status(), 403);
+
+    let created = app
+        .call(post_json_as(
+            &templates_path,
+            "execution-template-create",
+            body.clone(),
+            EXECUTION_TOKEN,
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created = response_json(&created)?;
+    assert_eq!(created["data"]["replayed"], false);
+    let revision = &created["data"]["executionTemplate"];
+    assert_eq!(revision["definitionAcl"], definition_acl);
+    assert_eq!(revision["capability"], "execution.run");
+    let template_id = required_execution_string(&revision["templateId"], "template ID")?;
+    let revision_id = required_execution_string(&revision["revisionId"], "revision ID")?;
+    let definition_digest = required_execution_string(
+        &revision["definitionDigest"],
+        "ExecutionTemplate definition digest",
+    )?;
+
+    let replay = app
+        .call(post_json_as(
+            &templates_path,
+            "execution-template-create",
+            body,
+            EXECUTION_TOKEN,
+        ))
+        .await?;
+    assert_eq!(replay.status(), 200);
+    let replay = response_json(&replay)?;
+    assert_eq!(replay["data"]["replayed"], true);
+    assert_eq!(
+        replay["data"]["executionTemplate"]["revisionId"],
+        revision_id
+    );
+
+    let conflicting_acl = definition_acl.replace("bounded", "changed");
+    let conflict = app
+        .call(post_json_as(
+            &templates_path,
+            "execution-template-create",
+            json!({"definitionAcl": conflicting_acl}),
+            EXECUTION_TOKEN,
+        ))
+        .await?;
+    assert_eq!(conflict.status(), 409);
+
+    let listed = app.call(get_as(&templates_path, READ_ONLY_TOKEN)).await?;
+    assert_eq!(listed.status(), 200);
+    let listed = response_json(&listed)?;
+    assert_eq!(listed["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(listed["data"][0]["templateId"], template_id);
+    assert_eq!(
+        app.call(get_as(
+            format!("{templates_path}?limit=201"),
+            READ_ONLY_TOKEN,
+        ))
+        .await?
+        .status(),
+        400
+    );
+
+    let revision_path = format!("{templates_path}/{template_id}/revisions/{revision_id}");
+    let fetched = app.call(get_as(&revision_path, READ_ONLY_TOKEN)).await?;
+    assert_eq!(fetched.status(), 200);
+    assert_eq!(
+        response_json(&fetched)?["data"]["definitionDigest"],
+        definition_digest
+    );
+    let wrong_project_path = format!(
+        "/api/v1/organizations/{organization}/projects/{other_project}/execution-templates/{template_id}/revisions/{revision_id}"
+    );
+    assert_eq!(
+        app.call(get_as(&wrong_project_path, READ_ONLY_TOKEN))
+            .await?
+            .status(),
+        404
+    );
     Ok(())
 }
 
@@ -431,4 +574,32 @@ fn execution_request() -> Value {
             "timeoutMs": 5000
         }
     })
+}
+
+pub(super) fn execution_template_acl() -> Result<String> {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    ExecutionTemplateDefinition::from_spec(ExecutionTemplateDefinitionSpec {
+        name: "workflow-echo-task".into(),
+        description: "Runs one bounded finite task".into(),
+        artifact: ExecutionArtifact {
+            uri: format!("oci://registry.example/tasks/echo@{digest}"),
+            digest,
+            media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+        },
+        process: ExecutionProcess {
+            command: vec!["/bin/echo".into()],
+            args: vec!["invoke".into()],
+            working_directory: Some("/workspace".into()),
+            environment: BTreeMap::from([("MODE".into(), "workflow".into())]),
+        },
+        resources: ExecutionResources {
+            cpu_millis: 100,
+            memory_bytes: 64 * 1024 * 1024,
+            pids: 32,
+            ephemeral_storage_bytes: Some(1024 * 1024),
+            timeout_ms: 30_000,
+        },
+    })
+    .map(|definition| definition.canonical_acl().to_owned())
+    .map_err(BootError::Internal)
 }

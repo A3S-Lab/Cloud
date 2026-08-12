@@ -26,6 +26,7 @@ import {
   requireToken,
 } from './context';
 import { executeEdgeCommand } from './edge-commands';
+import { executeExecutionTemplateCommand } from './execution-template-commands';
 import { usageError } from './errors';
 import { executeFormCommand } from './form-commands';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
@@ -140,6 +141,16 @@ export async function executeCommand(
   });
   if (formResult !== undefined) {
     return formResult;
+  }
+  const executionTemplateResult = await executeExecutionTemplateCommand(
+    command,
+    arguments_,
+    context,
+    cloudApi,
+    { readFile: dependencies.readFile }
+  );
+  if (executionTemplateResult !== undefined) {
+    return executionTemplateResult;
   }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

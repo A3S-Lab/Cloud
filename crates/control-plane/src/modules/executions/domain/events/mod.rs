@@ -1,5 +1,7 @@
 mod execution_cancellation_requested;
 mod execution_requested;
+mod execution_template_published;
 
 pub use execution_cancellation_requested::ExecutionCancellationRequested;
 pub use execution_requested::ExecutionRequested;
+pub use execution_template_published::ExecutionTemplatePublished;

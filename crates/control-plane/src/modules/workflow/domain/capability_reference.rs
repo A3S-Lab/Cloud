@@ -122,14 +122,21 @@ impl CapabilityReference {
             ));
         }
         validate_revision("Workflow capability revision", &self.revision)?;
-        if self.capability_type == CapabilityType::FormRelease {
+        if matches!(
+            self.capability_type,
+            CapabilityType::FormRelease | CapabilityType::ExecutionTemplate
+        ) {
             let release_id = Uuid::parse_str(&self.revision).map_err(|_| {
-                "Workflow FormRelease capability revision must be an exact UUID".to_owned()
+                format!(
+                    "Workflow {} capability revision must be an exact UUID",
+                    self.capability_type.as_str()
+                )
             })?;
             if release_id.is_nil() {
-                return Err(
-                    "Workflow FormRelease capability revision must be a non-nil UUID".into(),
-                );
+                return Err(format!(
+                    "Workflow {} capability revision must be a non-nil UUID",
+                    self.capability_type.as_str()
+                ));
             }
         }
         validate_text("Workflow capability name", &self.capability, 1, 128)?;
@@ -139,6 +146,13 @@ impl CapabilityReference {
                 || matches!(byte, b'-' | b'_' | b'.' | b'/')
         }) {
             return Err("Workflow capability name must use portable lowercase syntax".into());
+        }
+        if self.capability_type == CapabilityType::ExecutionTemplate
+            && self.capability != "execution.run"
+        {
+            return Err(
+                "Workflow ExecutionTemplate capability must be exactly execution.run".into(),
+            );
         }
         Ok(())
     }

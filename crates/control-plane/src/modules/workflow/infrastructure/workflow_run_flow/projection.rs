@@ -1,11 +1,15 @@
-use super::workflow::{human_decision_result, inactive_step_ids};
+use super::workflow::{
+    execution_result, human_decision_result, inactive_step_ids, ExecutionResolution,
+};
 use super::WorkflowLocalStepResult;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::domain::{
-    flow_step_id, IWorkflowRunHistoryReader, WorkflowHumanDecisionHookMetadata,
-    WorkflowRunFlowState, WorkflowRunHistoryEvent, WorkflowRunHistoryPage, WorkflowRunInput,
-    WorkflowRunRecord, WorkflowRunStatus, WorkflowStepFlowState, WorkflowStepKind,
-    WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    flow_step_id, IWorkflowRunHistoryReader, WorkflowExecutionChildReferenceMetadata,
+    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
+    WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunFlowState,
+    WorkflowRunHistoryEvent, WorkflowRunHistoryPage, WorkflowRunInput, WorkflowRunRecord,
+    WorkflowRunStatus, WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
+    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
     WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use a3s_flow::{
@@ -70,30 +74,64 @@ pub fn project_workflow_run_record(
         .into_iter()
         .map(|result| (result.step_id.clone(), result))
         .collect::<BTreeMap<_, _>>();
+    let mut execution_failures = BTreeMap::<String, String>::new();
     for resolved in &resolved_steps {
-        if resolved.plan.kind != WorkflowStepKind::HumanDecision {
-            continue;
-        }
-        let Some((hook, metadata)) =
-            human_decision_hook(&record.run.execution_input, resolved, snapshot)?
-        else {
-            continue;
-        };
-        if hook.status == HookStatus::Received {
-            let payload = hook.payload.as_ref().ok_or_else(|| {
-                format!(
-                    "Workflow human-decision hook {:?} is received without a payload",
-                    hook.hook_id
-                )
-            })?;
-            let result = human_decision_result(
-                &snapshot.run_id,
-                &metadata.flow_hook_id(),
-                resolved,
-                payload,
-            )
-            .map_err(|error| error.to_string())?;
-            completed.insert(result.step_id.clone(), result);
+        match resolved.plan.kind {
+            WorkflowStepKind::HumanDecision => {
+                let Some((hook, metadata)) =
+                    human_decision_hook(&record.run.execution_input, resolved, snapshot)?
+                else {
+                    continue;
+                };
+                if hook.status == HookStatus::Received {
+                    let payload = hook.payload.as_ref().ok_or_else(|| {
+                        format!(
+                            "Workflow human-decision hook {:?} is received without a payload",
+                            hook.hook_id
+                        )
+                    })?;
+                    let result = human_decision_result(
+                        &snapshot.run_id,
+                        &metadata.flow_hook_id(),
+                        resolved,
+                        payload,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    completed.insert(result.step_id.clone(), result);
+                }
+            }
+            WorkflowStepKind::Execution => {
+                let Some((hook, metadata)) =
+                    execution_hook(&record.run.execution_input, resolved, snapshot)?
+                else {
+                    continue;
+                };
+                if hook.status == HookStatus::Received {
+                    let payload = hook.payload.as_ref().ok_or_else(|| {
+                        format!(
+                            "Workflow execution hook {:?} is received without a payload",
+                            hook.hook_id
+                        )
+                    })?;
+                    match execution_result(
+                        &snapshot.run_id,
+                        &metadata.flow_hook_id(),
+                        resolved,
+                        &metadata,
+                        payload,
+                    )
+                    .map_err(|error| error.to_string())?
+                    {
+                        ExecutionResolution::Succeeded(result) => {
+                            completed.insert(result.step_id.clone(), result);
+                        }
+                        ExecutionResolution::Failed(error) => {
+                            execution_failures.insert(resolved.plan.id.clone(), error);
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     }
     let inactive = inactive_step_ids(&record.run.execution_input, &completed)?;
@@ -107,6 +145,11 @@ pub fn project_workflow_run_record(
         let flow_step = snapshot.steps.get(&durable_step_id);
         let human_hook = if resolved.plan.kind == WorkflowStepKind::HumanDecision {
             human_decision_hook(&record.run.execution_input, resolved, snapshot)?
+        } else {
+            None
+        };
+        let execution_hook = if resolved.plan.kind == WorkflowStepKind::Execution {
+            execution_hook(&record.run.execution_input, resolved, snapshot)?
         } else {
             None
         };
@@ -154,6 +197,56 @@ pub fn project_workflow_run_record(
                     result,
                     None,
                     None,
+                    sequence,
+                    at,
+                )
+            } else if let Some((hook, metadata)) = execution_hook {
+                let sequence = if hook.status == HookStatus::Cancelled {
+                    snapshot.last_sequence
+                } else {
+                    last_hook_sequence(history, &hook.hook_id)
+                        .ok_or_else(|| format!("Flow hook {:?} has no history", hook.hook_id))?
+                };
+                let at = history
+                    .iter()
+                    .find(|event| event.sequence == sequence)
+                    .map(|event| event.timestamp)
+                    .ok_or_else(|| format!("Flow hook {:?} time is missing", hook.hook_id))?;
+                let failure = execution_failures.get(&projection.step_id).cloned();
+                let step_status = match hook.status {
+                    HookStatus::Active => WorkflowStepProjectionStatus::Running,
+                    HookStatus::Received if failure.is_some() => {
+                        WorkflowStepProjectionStatus::Failed
+                    }
+                    HookStatus::Received => WorkflowStepProjectionStatus::Completed,
+                    HookStatus::Disposed | HookStatus::Cancelled => {
+                        WorkflowStepProjectionStatus::Cancelled
+                    }
+                };
+                let result = if step_status == WorkflowStepProjectionStatus::Completed {
+                    Some(
+                        completed
+                            .get(&projection.step_id)
+                            .ok_or_else(|| {
+                                format!(
+                                    "Workflow execution step {:?} has no received result",
+                                    projection.step_id
+                                )
+                            })?
+                            .output
+                            .clone(),
+                    )
+                } else {
+                    None
+                };
+                (
+                    step_status,
+                    u32::try_from(metadata.step_attempt).map_err(|_| {
+                        "Workflow execution attempt exceeds projection bounds".to_owned()
+                    })?,
+                    result,
+                    None,
+                    failure,
                     sequence,
                     at,
                 )
@@ -250,7 +343,7 @@ pub fn project_workflow_run_record(
     Ok(Some(projected))
 }
 
-fn verify_flow_authority(
+pub(super) fn verify_flow_authority(
     record: &WorkflowRunRecord,
     snapshot: &WorkflowRunSnapshot,
     history: &[FlowEventEnvelope],
@@ -275,15 +368,25 @@ fn verify_flow_authority(
     let resolved_steps = record.run.execution_input.resolved_steps()?;
     let mut expected_hooks = std::collections::BTreeSet::new();
     for resolved in &resolved_steps {
-        if resolved.plan.kind != WorkflowStepKind::HumanDecision {
-            continue;
+        match resolved.plan.kind {
+            WorkflowStepKind::HumanDecision => {
+                let expected = WorkflowHumanDecisionHookMetadata::from_run_step(
+                    &record.run.execution_input,
+                    resolved,
+                )?;
+                expected_hooks.insert(expected.flow_hook_id());
+                human_decision_hook(&record.run.execution_input, resolved, snapshot)?;
+            }
+            WorkflowStepKind::Execution => {
+                let hook_id = format!(
+                    "workflow-execution:{}:{}",
+                    resolved.plan.id, WORKFLOW_EXECUTION_STEP_ATTEMPT
+                );
+                expected_hooks.insert(hook_id);
+                execution_hook(&record.run.execution_input, resolved, snapshot)?;
+            }
+            _ => {}
         }
-        let expected = WorkflowHumanDecisionHookMetadata::from_run_step(
-            &record.run.execution_input,
-            resolved,
-        )?;
-        expected_hooks.insert(expected.flow_hook_id());
-        human_decision_hook(&record.run.execution_input, resolved, snapshot)?;
     }
     if snapshot
         .hooks
@@ -292,7 +395,129 @@ fn verify_flow_authority(
     {
         return Err("WorkflowRun correlated Flow contains an unexpected hook".into());
     }
+    verify_execution_child_references(record, snapshot)?;
     Ok(())
+}
+
+fn verify_execution_child_references(
+    record: &WorkflowRunRecord,
+    snapshot: &WorkflowRunSnapshot,
+) -> Result<(), String> {
+    let resolved_steps = record.run.execution_input.resolved_steps()?;
+    let mut observed = BTreeMap::new();
+    for resolved in &resolved_steps {
+        if resolved.plan.kind != WorkflowStepKind::Execution {
+            continue;
+        }
+        let Some((hook, metadata)) =
+            execution_hook(&record.run.execution_input, resolved, snapshot)?
+        else {
+            continue;
+        };
+        observed.insert(metadata.flow_hook_id(), (hook, metadata));
+    }
+    for (reference_id, child) in &snapshot.child_operations {
+        let Some((hook, metadata)) = observed.get(reference_id) else {
+            return Err(
+                "WorkflowRun correlated Flow contains an unexpected child operation".into(),
+            );
+        };
+        let operation_id = uuid::Uuid::parse_str(&child.operation_id)
+            .map_err(|_| "Workflow child Execution operation identity is invalid".to_owned())?;
+        if child.reference_id != *reference_id
+            || child.kind != "execution"
+            || operation_id.is_nil()
+            || child.flow_run_id.as_deref() != Some(child.operation_id.as_str())
+        {
+            return Err("Workflow child Execution reference identity drifted".into());
+        }
+        let child_metadata = serde_json::from_value::<WorkflowExecutionChildReferenceMetadata>(
+            child.metadata.clone(),
+        )
+        .map_err(|error| format!("Workflow child Execution metadata is invalid: {error}"))?;
+        child_metadata.validate(metadata)?;
+        if hook.status != HookStatus::Received {
+            continue;
+        }
+        let payload = hook
+            .payload
+            .as_ref()
+            .ok_or_else(|| "received Workflow execution hook has no payload".to_owned())?;
+        let payload = serde_json::from_value::<WorkflowExecutionResumePayload>(payload.clone())
+            .map_err(|error| format!("Workflow execution resume payload is invalid: {error}"))?;
+        payload.validate(metadata)?;
+        match payload.resolution {
+            WorkflowExecutionResumeResolution::Completed { output, .. }
+                if output.execution_id.as_uuid() == operation_id
+                    && output.operation_id.as_uuid() == operation_id
+                    && output.invocation_template_digest
+                        == child_metadata.invocation_template_digest => {}
+            WorkflowExecutionResumeResolution::Completed { .. } => {
+                return Err(
+                    "Workflow execution result changed its child operation authority".into(),
+                )
+            }
+            WorkflowExecutionResumeResolution::Rejected { .. } => {
+                return Err(
+                    "rejected Workflow execution dispatch unexpectedly linked a child".into(),
+                )
+            }
+        }
+    }
+    for (reference_id, (hook, metadata)) in observed {
+        if hook.status != HookStatus::Received {
+            continue;
+        }
+        let payload = hook
+            .payload
+            .as_ref()
+            .ok_or_else(|| "received Workflow execution hook has no payload".to_owned())?;
+        let payload = serde_json::from_value::<WorkflowExecutionResumePayload>(payload.clone())
+            .map_err(|error| format!("Workflow execution resume payload is invalid: {error}"))?;
+        payload.validate(&metadata)?;
+        let linked = snapshot.child_operations.contains_key(&reference_id);
+        match payload.resolution {
+            WorkflowExecutionResumeResolution::Completed { .. } if !linked => {
+                return Err(
+                    "completed Workflow execution result has no durable child reference".into(),
+                )
+            }
+            WorkflowExecutionResumeResolution::Rejected { .. } if linked => {
+                return Err(
+                    "rejected Workflow execution dispatch unexpectedly linked a child".into(),
+                )
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+pub(super) fn execution_hook<'a>(
+    input: &WorkflowRunInput,
+    resolved: &crate::modules::workflow::domain::ResolvedWorkflowRunStep,
+    snapshot: &'a WorkflowRunSnapshot,
+) -> Result<Option<(&'a HookSnapshot, WorkflowExecutionHookMetadata)>, String> {
+    let hook_id = format!(
+        "workflow-execution:{}:{}",
+        resolved.plan.id, WORKFLOW_EXECUTION_STEP_ATTEMPT
+    );
+    let Some(hook) = snapshot.hooks.get(&hook_id) else {
+        return Ok(None);
+    };
+    let observed =
+        serde_json::from_value::<WorkflowExecutionHookMetadata>(hook.metadata.clone())
+            .map_err(|error| format!("Workflow execution hook metadata is invalid: {error}"))?;
+    observed.validate()?;
+    let expected = WorkflowExecutionHookMetadata::from_run_step(
+        input,
+        resolved,
+        observed.effective_input.clone(),
+    )?;
+    if hook.hook_id != hook_id || hook.token != expected.flow_hook_token() || observed != expected {
+        return Err("Workflow execution hook authority drifted".into());
+    }
+    Ok(Some((hook, observed)))
 }
 
 fn human_decision_hook<'a>(

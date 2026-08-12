@@ -12,6 +12,8 @@ Cloud owns:
 
 - tenant identity, idempotency, desired state, placement, cancellation, and the
   public API;
+- immutable project-scoped `ExecutionTemplate` revisions expressed only as
+  canonical A3S ACL;
 - the durable A3S Flow operation and recovery decisions;
 - capability matching against the latest ready Fleet node; and
 - terminal outcome publication after cleanup.
@@ -34,6 +36,9 @@ All routes use the normal `/api/v1` prefix and response envelope.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `POST` | `/organizations/{organization_id}/projects/{project_id}/execution-templates` | Publish an immutable ExecutionTemplate revision |
+| `GET` | `/organizations/{organization_id}/projects/{project_id}/execution-templates` | List bounded template revisions |
+| `GET` | `/organizations/{organization_id}/projects/{project_id}/execution-templates/{template_id}/revisions/{revision_id}` | Read one exact template revision |
 | `POST` | `/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions` | Create an Execution |
 | `GET` | `/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions` | List recent Executions |
 | `GET` | `/organizations/{organization_id}/executions/{execution_id}` | Read authoritative state |
@@ -43,6 +48,46 @@ Mutations require an `idempotency-key` header and the `execution:write` scope.
 Reads require an authenticated tenant principal. Create and cancel replay the
 original resource for the same key and canonical request, and reject reuse with
 different input.
+
+Template publication also requires `execution:write` and an idempotency key.
+It accepts a bounded canonical A3S ACL definition inside the normal transport
+request and returns its immutable template ID, revision ID, canonical ACL, and
+semantic digest. There is no mutable template row or update endpoint. The
+maintained client, CLI, and Management MCP call the same application handlers;
+they do not parse or store another template format.
+
+Example ExecutionTemplate ACL:
+
+```acl
+execution_template "release-check" {
+  schema = "cloud.execution-template.v1"
+  description = "Run one bounded release check"
+
+  artifact {
+    uri = "oci://registry.example/tasks/release-check@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    media_type = "application/vnd.oci.image.manifest.v1+json"
+  }
+
+  process {
+    command = ["/app/release-check"]
+    args = ["verify"]
+    working_directory = "/workspace"
+
+    environment "MODE" {
+      value = "workflow"
+    }
+  }
+
+  resources {
+    cpu_millis = 250
+    memory_bytes = 134217728
+    pids = 64
+    ephemeral_storage_bytes = 16777216
+    timeout_ms = 30000
+  }
+}
+```
 
 Example create body:
 
@@ -80,6 +125,31 @@ Input and process environment are desired state: Cloud persists them in the
 Execution and its idempotency response. They must not contain credentials or
 other secret material. Typed Secret references and output artifacts are
 intentionally outside this initial Execution shape.
+
+## Workflow finite-task binding
+
+A Workflow `execution` step may reference only a capability whose owner is
+`executions`, type is `execution_template`, revision is an exact UUID, and
+capability is exactly `execution.run`. The plan must also bind one exact target
+environment. The capability digest is the canonical ExecutionTemplate digest;
+Workflow never copies or edits the template definition.
+
+When A3S Flow exposes the authority-bound step hook, the Workflow coordinator
+calls the Executions-owned `IWorkflowExecutionPort`. That port resolves the
+exact revision, validates its digest and environment, materializes only the
+schema-checked effective input, and creates or adopts the ordinary Execution.
+The Execution persists the parent WorkflowRun, Plan revision and digest, step
+ID and attempt, and template identity and digest. PostgreSQL foreign keys bind
+all of those immutable authorities, while a unique step-attempt index prevents
+duplicate children even across coordinator races.
+
+The coordinator links the existing Execution Operation as the A3S Flow child;
+it does not create a Workflow scheduler, worker queue, task store, or Runtime
+provider. A terminal child resumes the parent with a digest-bound result.
+Parent cancellation and timeout request the existing Execution cancellation
+path and wait until cleanup makes every child terminal before settling the
+parent Flow run. Restarted coordinators adopt the same child by
+`(organization, workflow run, step, attempt)`.
 
 ## Lifecycle
 

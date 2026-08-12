@@ -6,6 +6,12 @@ use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateExecutionTemplateRequest {
+    pub definition_acl: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateExecutionRequest {
     pub artifact: ExecutionArtifactRequest,
     pub process: ExecutionProcessRequest,

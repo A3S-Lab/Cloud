@@ -6,6 +6,9 @@ export const MCP_PROTOCOL_VERSION = '2026-07-28';
 export const ADMIN_TOOLS = [
   'a3s_cloud_environments_create',
   'a3s_cloud_environments_list',
+  'a3s_cloud_execution_templates_create',
+  'a3s_cloud_execution_templates_get',
+  'a3s_cloud_execution_templates_list',
   'a3s_cloud_memberships_list',
   'a3s_cloud_memberships_get',
   'a3s_cloud_service_memberships_create',
@@ -82,6 +85,8 @@ export const ADMIN_TOOLS = [
 
 export const READ_ONLY_TOOLS = [
   'a3s_cloud_environments_list',
+  'a3s_cloud_execution_templates_get',
+  'a3s_cloud_execution_templates_list',
   'a3s_cloud_projects_list',
   'a3s_cloud_forms_get',
   'a3s_cloud_forms_list',

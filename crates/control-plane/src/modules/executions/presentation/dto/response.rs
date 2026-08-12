@@ -1,12 +1,60 @@
-use crate::modules::executions::application::{CancelExecutionResult, CreateExecutionResult};
+use crate::modules::executions::application::{
+    CancelExecutionResult, CreateExecutionResult, CreateExecutionTemplateResult,
+};
 use crate::modules::executions::domain::{
     Execution, ExecutionArtifact, ExecutionOutcome, ExecutionProcess, ExecutionResources,
-    ExecutionStatus, ExecutionTemplate,
+    ExecutionStatus, ExecutionTemplate, ExecutionTemplateRevision, WorkflowExecutionBinding,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::collections::BTreeMap;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionTemplateMutationResponse {
+    pub execution_template: ExecutionTemplateRevisionResponse,
+    pub replayed: bool,
+}
+
+impl From<CreateExecutionTemplateResult> for ExecutionTemplateMutationResponse {
+    fn from(result: CreateExecutionTemplateResult) -> Self {
+        Self {
+            execution_template: result.revision.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionTemplateRevisionResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub template_id: Uuid,
+    pub revision_id: Uuid,
+    pub definition_acl: String,
+    pub definition_digest: String,
+    pub capability: &'static str,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<ExecutionTemplateRevision> for ExecutionTemplateRevisionResponse {
+    fn from(revision: ExecutionTemplateRevision) -> Self {
+        Self {
+            organization_id: revision.organization_id.as_uuid(),
+            project_id: revision.project_id.as_uuid(),
+            template_id: revision.template_id.as_uuid(),
+            revision_id: revision.revision_id.as_uuid(),
+            definition_acl: revision.definition.canonical_acl().to_owned(),
+            definition_digest: revision.definition.digest().to_string(),
+            capability: crate::modules::executions::domain::EXECUTION_TEMPLATE_CAPABILITY,
+            created_by: revision.created_by.as_uuid(),
+            created_at: revision.created_at,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,6 +89,7 @@ pub struct ExecutionResponse {
     pub environment_id: Uuid,
     pub id: Uuid,
     pub operation_id: Uuid,
+    pub workflow: Option<WorkflowExecutionBindingResponse>,
     pub template: ExecutionTemplateResponse,
     pub template_digest: String,
     pub status: ExecutionStatus,
@@ -61,6 +110,7 @@ impl From<Execution> for ExecutionResponse {
             environment_id: execution.environment_id.as_uuid(),
             id: execution.id.as_uuid(),
             operation_id: execution.operation_id.as_uuid(),
+            workflow: execution.workflow.map(Into::into),
             template: execution.template.into(),
             template_digest: execution.template_digest,
             status: execution.status,
@@ -71,6 +121,34 @@ impl From<Execution> for ExecutionResponse {
             started_at: execution.started_at,
             cancellation_requested_at: execution.cancellation_requested_at,
             finished_at: execution.finished_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowExecutionBindingResponse {
+    pub workflow_run_id: Uuid,
+    pub plan_revision_id: Uuid,
+    pub plan_digest: String,
+    pub step_id: String,
+    pub step_attempt: u64,
+    pub execution_template_id: Uuid,
+    pub execution_template_revision_id: Uuid,
+    pub execution_template_digest: String,
+}
+
+impl From<WorkflowExecutionBinding> for WorkflowExecutionBindingResponse {
+    fn from(binding: WorkflowExecutionBinding) -> Self {
+        Self {
+            workflow_run_id: binding.workflow_run_id.as_uuid(),
+            plan_revision_id: binding.plan_revision_id.as_uuid(),
+            plan_digest: binding.plan_digest.to_string(),
+            step_id: binding.step_id,
+            step_attempt: binding.step_attempt,
+            execution_template_id: binding.execution_template_id.as_uuid(),
+            execution_template_revision_id: binding.execution_template_revision_id.as_uuid(),
+            execution_template_digest: binding.execution_template_digest.to_string(),
         }
     }
 }

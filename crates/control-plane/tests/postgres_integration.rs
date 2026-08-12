@@ -287,7 +287,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (97, "097".into()));
+    assert_eq!(migration_state, (99, "099".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -403,6 +403,19 @@ async fn postgres_human_task_lifecycle_is_atomic_tenant_scoped_and_replay_safe()
     )
     .await
     .expect("PostgreSQL HumanTask lifecycle gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_workflow_execution_binding_is_atomic_tenant_scoped_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        human_tasks_support::exercise_workflow_execution_persistence,
+    )
+    .await
+    .expect("PostgreSQL Workflow finite Execution persistence gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

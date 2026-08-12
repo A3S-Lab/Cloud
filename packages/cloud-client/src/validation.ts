@@ -18,6 +18,7 @@ export const MAX_WORKFLOW_REVISION_PAYLOAD_BYTES = 8 * 1024 * 1024;
 export const MAX_WORKFLOW_REVISION_PAYLOADS = 2048;
 export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
 export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
+export const MAX_EXECUTION_TEMPLATE_ACL_BYTES = 128 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
@@ -217,6 +218,10 @@ export function validateWorkflowRevisionControl(expectedVersion: number): void {
 
 export function validateWorkflowGoalAcl(acl: string): void {
   validateAclBytes(acl, MAX_WORKFLOW_GOAL_ACL_BYTES, 'Workflow goal ACL');
+}
+
+export function validateExecutionTemplateAcl(acl: string): void {
+  validateAclBytes(acl, MAX_EXECUTION_TEMPLATE_ACL_BYTES, 'ExecutionTemplate ACL');
 }
 
 export function validateFormDraftInput(input: {

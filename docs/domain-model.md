@@ -1246,7 +1246,7 @@ contexts' tables.
   Harness plus exact A3S Runtime and Box checkpoint contracts pass crash,
   integrity, compatibility, adoption, and cleanup certification.
 
-### Workflow, ontology, and plan execution (`W0.1`, backend `W0.2`, and minimal `W0.3` execution implemented)
+### Workflow, ontology, and plan execution (`W0.1`, backend `W0.2`, and finite `W0.3` execution implemented)
 
 - An OntologyRevision is immutable and binds one closed ACL digest, compiler
   schema version, parent revision, migration policy, and canonical semantic
@@ -1267,16 +1267,22 @@ contexts' tables.
   execution history. Immutable Plan, input, payload, branch, and replay drift
   fail closed.
 - The implemented executor admits Workflow-local `input`, `transform`,
-  `branch`, `human_decision`, and `output` steps. Each deterministic result is
+  `branch`, `human_decision`, finite `execution`, and `output` steps. Each result is
   digest-bound and projected from the correlated A3S Flow history; unselected
   branch steps become `skipped`. A human decision suspends the same Flow run on
   an authority-bound hook and resumes it only from the immutable decision.
-- Internal HumanTask dispatch and resume recovery plus protected reads and
-  claim/release are implemented. Public task submission,
-  service/finite-task, Agent, MCP, model, Tool, memory, and subworkflow dispatch
-  remain future gates. When admitted, each
-  child stores one exact owning-context identity so ambiguous dispatch can be
-  adopted without creating a second child.
+- Internal HumanTask dispatch/resume, protected reads, claim/release, native
+  submission, automatic expiry, and parent cancellation are implemented.
+- Executions owns immutable project-scoped `ExecutionTemplate` revisions in
+  canonical A3S ACL. A Workflow `execution` capability binds one exact
+  template/revision/digest and environment. Its ordinary Execution persists
+  the exact Run/Plan/step/attempt authority, is adopted through the typed
+  Executions port after coordinator restart, and reuses the existing
+  Operation, Flow child reference, Runtime Task, and cleanup lifecycle.
+- Business-service, Agent, MCP, model, Tool, memory, and subworkflow dispatch
+  remain future gates. When admitted, each child must retain the same exact
+  owning-context identity and adoption rule; no owner lifecycle may be copied
+  into Workflow.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
   decision, and evidence. It cannot hide non-deterministic mutation inside
   Flow replay.

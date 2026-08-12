@@ -217,6 +217,9 @@ workflow-runs wait <workflow-run-id> [--wait-seconds=<0..30>]
 workflow-runs cancel <workflow-run-id> [--reason=<text>]
 workflow-runs output <workflow-run-id>
 workflow-runs history <workflow-run-id> [--cursor=<sequence>] [--limit=<1..100>]
+execution-templates list
+execution-templates get <template-id> <revision-id>
+execution-templates create --file=<template.acl>
 forms list
 forms get <form-id>
 forms create --file=<form.json>
@@ -350,11 +353,18 @@ compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
 persistence. `workflow-runs` starts and cancels the exact Plan idempotently,
 lists and reads current semantic step projections, waits for bounded terminal
 progress, returns completed output, and pages redacted A3S Flow history. The
-minimal runtime supports Workflow-local `input`, `transform`, `branch`, and
-`output`; HumanTask, service/finite-task, typed capability, and compensation
-surfaces remain unavailable. The CLI does not retain a graph, compile or run a
-plan locally, start a provider, or recreate the retired standalone Workflow
-control plane.
+runtime supports Workflow-local `input`, `transform`, `branch`,
+`human_decision`, `execution`, and `output`. Business-service and remaining
+provider capability steps plus compensation remain unavailable. The CLI does
+not retain a graph, compile or run a plan locally, start a provider, or
+recreate the retired standalone Workflow control plane.
+
+`execution-templates` publishes and reads the Executions-owned immutable
+finite-task definition used by a Workflow `execution` step. Create reads one
+bounded `.acl` file and requires the normal caller-owned idempotency key; list
+and get return canonical ACL and exact template/revision/digest identity. The
+CLI does not parse the ACL, materialize invocation input, schedule a Task, or
+store template state.
 
 `forms` creates, revises, lists, and reads project-scoped canonical native Form
 drafts. `form-releases` publishes, lists, and reads immutable releases carrying

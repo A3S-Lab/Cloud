@@ -853,6 +853,22 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/097_human_task_parent_cancellation.sql"
             )),
         ),
+        Migration::new(
+            "098",
+            "immutable ExecutionTemplate revisions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/098_execution_template_revisions.sql"
+            )),
+        ),
+        Migration::new(
+            "099",
+            "Workflow finite-task Execution bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/099_workflow_execution_bindings.sql"
+            )),
+        ),
     ]
 }
 

@@ -1,3 +1,4 @@
+use crate::modules::shared_kernel::domain::PrincipalId;
 use a3s_boot::{BootError, BootRequest, Result};
 use uuid::Uuid;
 
@@ -8,6 +9,16 @@ pub(super) fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> 
         .ok_or_else(|| BootError::BadRequest("idempotency-key header is required".into()))?
         .to_owned();
     Ok((idempotency_key, request_id(request)?))
+}
+
+pub(super) fn actor_principal_id(request: &BootRequest) -> Result<PrincipalId> {
+    Uuid::parse_str(request.require_auth_principal()?.subject())
+        .map(PrincipalId::from_uuid)
+        .map_err(|error| {
+            BootError::Internal(format!(
+                "authenticated principal identity is invalid: {error}"
+            ))
+        })
 }
 
 pub(super) fn request_id(request: &BootRequest) -> Result<Uuid> {

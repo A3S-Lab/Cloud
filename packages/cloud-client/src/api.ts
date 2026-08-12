@@ -29,6 +29,7 @@ import type {
   CreateAssetInput,
   CreateAssetReleaseInput,
   CreateExecutionInput,
+  CreateExecutionTemplateInput,
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
   CreateMcpCredentialInput,
@@ -43,6 +44,8 @@ import type {
   EnvironmentMutationResult,
   Execution,
   ExecutionMutationResult,
+  ExecutionTemplateMutationResult,
+  ExecutionTemplateRevision,
   FormDraft,
   FormDraftInput,
   FormDraftMutationResult,
@@ -138,6 +141,7 @@ import type {
 import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
+  validateExecutionTemplateAcl,
   validateExpectedHumanTaskVersion,
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipVersion,
@@ -172,7 +176,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.23.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.24.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -180,6 +184,7 @@ export const MAX_WORKFLOW_RUN_LIST_LIMIT = 200;
 export const MAX_WORKFLOW_RUN_HISTORY_LIMIT = 100;
 export const MAX_WORKFLOW_RUN_WAIT_SECONDS = 30;
 export const MAX_HUMAN_TASK_LIST_LIMIT = 200;
+export const MAX_EXECUTION_TEMPLATE_LIST_LIMIT = 200;
 export const DEFAULT_WORKFLOW_RUN_WAIT_SECONDS = 25;
 const HUMAN_TASK_STATUSES: ReadonlySet<HumanTaskStatus> = new Set([
   'pending_activation',
@@ -195,6 +200,7 @@ export type { CloudSequenceQuery } from './sequence-query';
 export {
   MAX_ACL_DOCUMENT_BYTES,
   MAX_FORM_DOCUMENT_BYTES,
+  MAX_EXECUTION_TEMPLATE_ACL_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
@@ -207,6 +213,7 @@ export {
   MAX_WORKLOAD_ACL_BYTES,
   validateFormDraftInput,
   validateFormVersionControl,
+  validateExecutionTemplateAcl,
 } from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
@@ -1467,6 +1474,51 @@ export class CloudApi {
   getExecution(organizationId: string, executionId: string, signal?: AbortSignal): Promise<Execution> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/executions/${encodeURIComponent(executionId)}`,
+      signal
+    );
+  }
+
+  listExecutionTemplates(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<ExecutionTemplateRevision[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/execution-templates?limit=100`,
+      signal
+    );
+  }
+
+  getExecutionTemplate(
+    organizationId: string,
+    projectId: string,
+    templateId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<ExecutionTemplateRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/execution-templates/${encodeURIComponent(templateId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  createExecutionTemplate(
+    organizationId: string,
+    projectId: string,
+    input: CreateExecutionTemplateInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ExecutionTemplateMutationResult> {
+    validateExecutionTemplateAcl(input.definitionAcl);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/execution-templates`,
+      idempotencyKey,
+      input,
       signal
     );
   }

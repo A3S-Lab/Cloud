@@ -58,9 +58,12 @@ use crate::modules::edge::{
     VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
-    CancelExecutionHandler, CreateExecutionHandler, ExecutionFlowRuntime,
-    ExecutionFlowRuntimeDependencies, ExecutionReconciler, ExecutionsModule, GetExecutionHandler,
-    IExecutionRepository, ListExecutionsHandler, PostgresExecutionRepository,
+    CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
+    ExecutionFlowRuntime, ExecutionFlowRuntimeDependencies, ExecutionReconciler, ExecutionsModule,
+    GetExecutionHandler, GetExecutionTemplateHandler, IExecutionRepository,
+    IExecutionTemplateRepository, IWorkflowExecutionPort, ListExecutionTemplatesHandler,
+    ListExecutionsHandler, PostgresExecutionRepository, PostgresExecutionTemplateRepository,
+    WorkflowExecutionApplicationService,
 };
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
@@ -345,6 +348,8 @@ pub async fn build_application_with_source_resolver(
         Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let executions: Arc<dyn IExecutionRepository> =
         Arc::new(PostgresExecutionRepository::new(executor.clone()));
+    let execution_templates: Arc<dyn IExecutionTemplateRepository> =
+        Arc::new(PostgresExecutionTemplateRepository::new(executor.clone()));
     let agents: Arc<dyn IAgentRepository> =
         Arc::new(PostgresAgentRepository::new(executor.clone()));
     let log_retention_repository: Arc<dyn ILogRetentionRepository> = node_repository.clone();
@@ -764,8 +769,16 @@ pub async fn build_application_with_source_resolver(
             .with_lease_duration(operation_lease),
     )
     .await?;
-    let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> =
-        Arc::new(FlowWorkflowRunCoordinator::new(flow.engine()));
+    let workflow_execution_environments: Arc<dyn IEnvironmentRepository> = projects.clone();
+    let workflow_execution_port: Arc<dyn IWorkflowExecutionPort> =
+        Arc::new(WorkflowExecutionApplicationService::new(
+            workflow_execution_environments,
+            Arc::clone(&execution_templates),
+            Arc::clone(&executions),
+        ));
+    let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> = Arc::new(
+        FlowWorkflowRunCoordinator::with_executions(flow.engine(), workflow_execution_port),
+    );
     let workflow_run_history: Arc<dyn IWorkflowRunHistoryReader> =
         Arc::new(WorkflowRunHistoryReader::new(flow.engine()));
     let workflow_run_reconciler = WorkflowRunReconciler::new(
@@ -990,6 +1003,7 @@ pub async fn build_application_with_source_resolver(
             workloads,
             builds,
             executions,
+            execution_templates,
             agents,
             routes,
             mcp_credentials,
@@ -1087,6 +1101,7 @@ struct ApplicationDependencies {
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     executions: Arc<dyn IExecutionRepository>,
+    execution_templates: Arc<dyn IExecutionTemplateRepository>,
     agents: Arc<dyn IAgentRepository>,
     routes: Arc<dyn IEdgeRepository>,
     mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
@@ -1149,6 +1164,7 @@ fn build_application_with_health(
         workloads,
         builds,
         executions,
+        execution_templates,
         agents,
         routes,
         mcp_credentials,
@@ -1364,6 +1380,10 @@ fn build_application_with_health(
     let agent_execution_builds = Arc::clone(&builds);
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
+    let create_execution_template_projects = Arc::clone(&projects);
+    let create_execution_templates = Arc::clone(&execution_templates);
+    let list_execution_templates = Arc::clone(&execution_templates);
+    let get_execution_templates = execution_templates;
     let create_executions = Arc::clone(&executions);
     let cancel_executions = Arc::clone(&executions);
     let list_executions = Arc::clone(&executions);
@@ -1735,6 +1755,12 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::executions::CreateExecutionCommand, _>(
                     CreateExecutionHandler::new(execution_environments, create_executions),
                 )
+                .command_handler::<crate::modules::executions::CreateExecutionTemplateCommand, _>(
+                    CreateExecutionTemplateHandler::new(
+                        create_execution_template_projects,
+                        create_execution_templates,
+                    ),
+                )
                 .command_handler::<crate::modules::executions::CancelExecution, _>(
                     CancelExecutionHandler::new(cancel_executions),
                 )
@@ -2012,6 +2038,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::executions::GetExecution, _>(
                     GetExecutionHandler::new(get_executions),
+                )
+                .query_handler::<crate::modules::executions::ListExecutionTemplates, _>(
+                    ListExecutionTemplatesHandler::new(list_execution_templates),
+                )
+                .query_handler::<crate::modules::executions::GetExecutionTemplate, _>(
+                    GetExecutionTemplateHandler::new(get_execution_templates),
                 )
                 .query_handler::<crate::modules::agents::ListAgentConversations, _>(
                     ListAgentConversationsHandler::new(list_agent_conversations),

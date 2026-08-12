@@ -77,7 +77,12 @@ pub use workflow_payload::{
 };
 pub use workflow_run_contract::{
     workflow_run_timeout_seconds, ResolvedWorkflowPayload, ResolvedWorkflowRunStep,
-    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
+    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
+    WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
+    WorkflowExecutionStepOutput, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
+    WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA, WORKFLOW_EXECUTION_HOOK_SCHEMA,
+    WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_EXECUTION_RESUME_SCHEMA,
+    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
     WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
     WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_MAX_BYTES,
     WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,

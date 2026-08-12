@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.23.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.24.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1002,6 +1002,14 @@ describe('CloudApi', () => {
 
     await api.listExecutions('organization / one', 'project', 'environment');
     await api.getExecution('organization / one', 'execution');
+    await api.listExecutionTemplates('organization / one', 'project');
+    await api.getExecutionTemplate('organization / one', 'project', 'template / one', 'revision / one');
+    await api.createExecutionTemplate(
+      'organization / one',
+      'project',
+      { definitionAcl: 'execution_template "echo" { schema = "cloud.execution-template.v1" }' },
+      'execution-template:create'
+    );
     await api.createExecution('organization / one', 'project', 'environment', input, 'execution:create');
     await api.cancelExecution('organization / one', 'execution', 'execution:cancel');
 
@@ -1012,14 +1020,26 @@ describe('CloudApi', () => {
       ],
       ['/api/v1/organizations/organization%20%2F%20one/executions/execution', 'GET'],
       [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/execution-templates?limit=100',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/execution-templates/template%20%2F%20one/revisions/revision%20%2F%20one',
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/projects/project/execution-templates', 'POST'],
+      [
         '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/executions',
         'POST',
       ],
       ['/api/v1/organizations/organization%20%2F%20one/executions/execution', 'DELETE'],
     ]);
-    expect((calls[2]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:create');
-    expect(calls[2]?.[1]?.body).toBe(JSON.stringify(input));
-    expect((calls[3]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:cancel');
+    expect((calls[4]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe(
+      'execution-template:create'
+    );
+    expect((calls[5]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:create');
+    expect(calls[5]?.[1]?.body).toBe(JSON.stringify(input));
+    expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:cancel');
   });
 
   it('exposes Agent conversations, executions, and resumable semantic events', async () => {

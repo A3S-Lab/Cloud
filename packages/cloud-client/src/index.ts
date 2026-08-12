@@ -12,6 +12,8 @@ export {
   isValidIdempotencyKey,
   MAX_ACL_DOCUMENT_BYTES,
   MAX_FORM_DOCUMENT_BYTES,
+  MAX_EXECUTION_TEMPLATE_ACL_BYTES,
+  MAX_EXECUTION_TEMPLATE_LIST_LIMIT,
   MAX_HUMAN_TASK_LIST_LIMIT,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
@@ -30,6 +32,7 @@ export {
   MAX_WORKLOAD_ACL_BYTES,
   validateFormDraftInput,
   validateFormVersionControl,
+  validateExecutionTemplateAcl,
 } from './api';
 export * from './diagnostics';
 export * from './search';

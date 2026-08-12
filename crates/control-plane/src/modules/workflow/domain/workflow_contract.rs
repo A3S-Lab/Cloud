@@ -519,13 +519,20 @@ mod tests {
             owner: capability_type.owner(),
             capability_type,
             resource_id: Uuid::now_v7(),
-            revision: if capability_type == CapabilityType::FormRelease {
+            revision: if matches!(
+                capability_type,
+                CapabilityType::FormRelease | CapabilityType::ExecutionTemplate
+            ) {
                 Uuid::now_v7().to_string()
             } else {
                 "revision-1".into()
             },
             digest: digest('d'),
-            capability: "workflow.test".into(),
+            capability: if capability_type == CapabilityType::ExecutionTemplate {
+                "execution.run".into()
+            } else {
+                "workflow.test".into()
+            },
         }
     }
 

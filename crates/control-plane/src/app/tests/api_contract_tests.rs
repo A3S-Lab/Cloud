@@ -622,6 +622,30 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/executions/{execution_id}"];
     assert!(execution["get"].is_object());
     assert!(execution["delete"].is_object());
+    let execution_templates = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/execution-templates"];
+    assert!(execution_templates["get"].is_object());
+    assert!(execution_templates["post"]["requestBody"]["content"]["application/json"].is_object());
+    assert!(execution_templates["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let execution_template_revision = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/execution-templates/{template_id}/revisions/{revision_id}"]
+        ["get"];
+    assert!(execution_template_revision.is_object());
+    for parameter_name in ["template_id", "revision_id"] {
+        assert!(execution_template_revision["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == parameter_name
+                    && parameter["in"] == "path"
+                    && parameter["schema"]["format"] == "uuid"
+            })));
+    }
 
     let conversations = &document["paths"]
         ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"];

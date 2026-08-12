@@ -88,6 +88,14 @@ impl WorkflowPlan {
             edges: self.edges.clone(),
         };
         let order = workflow.topological_order(WorkflowContractQuotas::default())?;
+        if self.environment_id.is_none()
+            && self
+                .steps
+                .iter()
+                .any(|step| step.kind == WorkflowStepKind::Execution)
+        {
+            return Err("Workflow plans with Execution steps require one exact environment".into());
+        }
         let stored_order = self
             .steps
             .iter()

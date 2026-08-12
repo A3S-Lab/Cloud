@@ -5,6 +5,10 @@ use super::arguments::{
 };
 use super::artifacts::BuildRunMutationArguments;
 use super::catalog::ManagementTool;
+use super::execution_templates::{
+    CreateExecutionTemplateArguments, GetExecutionTemplateArguments,
+    ListExecutionTemplatesArguments,
+};
 use super::forms::{
     CreateFormDraftArguments, FormDraftArguments, FormReleaseArguments, ListFormDraftsArguments,
     PublishFormReleaseArguments, ReviseFormDraftArguments,
@@ -35,8 +39,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, edge, forms, identity, nodes, ontology, operations, plugins, projects, search,
-    workflow, workloads,
+    artifacts, edge, execution_templates, forms, identity, nodes, ontology, operations, plugins,
+    projects, search, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -106,6 +110,25 @@ pub async fn execute(
                 request_id,
             )
             .await
+        }
+        ManagementTool::ExecutionTemplatesCreate => {
+            let arguments = arguments::parse::<CreateExecutionTemplateArguments>(arguments).ok()?;
+            execution_templates::create(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ExecutionTemplatesList => {
+            let arguments = arguments::parse::<ListExecutionTemplatesArguments>(arguments).ok()?;
+            execution_templates::list(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::ExecutionTemplatesGet => {
+            let arguments = arguments::parse::<GetExecutionTemplateArguments>(arguments).ok()?;
+            execution_templates::get(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::MembershipsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;

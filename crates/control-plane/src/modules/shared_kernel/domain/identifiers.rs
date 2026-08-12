@@ -71,6 +71,8 @@ identifier!(SourceConnectionId);
 identifier!(SourceSubscriptionId);
 identifier!(BuildRunId);
 identifier!(ExecutionId);
+identifier!(ExecutionTemplateId);
+identifier!(ExecutionTemplateRevisionId);
 identifier!(AssetId);
 identifier!(AssetReleaseId);
 identifier!(AgentConversationId);

@@ -97,7 +97,7 @@ scheduler, event log, identity store, or data plane.
 
 | Reference outcome worth retaining | A3S-owned outcome | Owning gate and current boundary | Deliberately not copied |
 | --- | --- | --- | --- |
-| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` is implemented and `W0.2` is verified; the `W0.3` immutable definition/payload/goal/deterministic-plan, minimal WorkflowRun, internal authority-bound HumanTask decision loop, protected task reads, and claim/release are implemented; public submission, provider binding, typed capability steps, compensation, production recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
+| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` is implemented and `W0.2` is verified; the `W0.3` immutable definition/payload/goal/deterministic-plan, WorkflowRun, authority-bound HumanTask decision/submission/expiry/cancellation loop, protected task reads, and finite Execution capability step are implemented; business-service and remaining provider bindings, compensation, production recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and route-health diagnostics | Inference owns immutable model, Provider, route, and policy revisions; Edge owns route intent; Gateway applies the typed protocol/data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` protocol/provider expansion | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
 | TokenHub-style consumer, project-steward, and platform-operator workspaces with project/environment keys, enterprise sign-in, RBAC, quotas, and concurrency policy | Identity owns Principals, external OIDC subject links, Memberships, Resource Grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential and project/environment/node Resource Grant foundation is implemented; invitations, external OIDC federation, and role-focused surfaces remain planned; model/key self-service is planned in `I0.2e` | Browser-only filtering, another user/key store, plaintext credential recovery, credential-owned roles, or UI modes as authorization |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; Project attribution and authorized views belong to `C0` | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts or responses in management telemetry, commercial balance/invoice/settlement authority, or client-side usage truth |
@@ -348,7 +348,7 @@ not business ownership or convenience wrappers.
 | Sources | External source identities, revisions, webhooks, and subscriptions | Current |
 | Assets | Agent, MCP, and Skill identities, hosted Git, immutable release lifecycle, Agent deployment, and Skill-to-Agent-Workload release binding | `A0.1` and `A0.2` verified; `A0.3` through `A0.5` implemented but awaiting retained provider and PostgreSQL/Box lifecycle evidence |
 | Artifacts | Immutable admitted bytes, receipts, evidence, and retention | Current |
-| Executions | Generic finite Runtime Task product and cancellation lifecycle | Current |
+| Executions | Generic finite Runtime Task product, immutable ACL-native ExecutionTemplate revisions, cancellation lifecycle, and one typed Workflow child port | Current; finite Workflow binding implemented, retained real-provider verification pending |
 | Workloads | Service desired state, placement, replicas, claims, deployment, rollout, and autoscaling policy | Current foundation; later `H0` gates planned |
 | Fleet | Nodes, enrollment, inventory, command leases, observations, claims, and fencing | Current |
 | Edge | Domains, certificates, logical Gateway scopes, routes, snapshots, and applied projection | Current |
@@ -356,7 +356,7 @@ not business ownership or convenience wrappers.
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
-| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, HumanTasks, human decisions, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; the `W0.3` planning/persistence/API plus `input`/`transform`/`branch`/`human_decision`/`output` execution and the authority-bound HumanTask read/claim/release/submission/automatic-expiry/parent-cancellation loop are implemented; service/finite-task and typed capability execution, compensation, expanded `W0.3` conformance, and `W0.4`-`W0.5` remain |
+| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, HumanTasks, human decisions, finite-child coordination, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; the `W0.3` planning/API, Workflow-local steps, HumanTask loop, and exact finite `execution` step are implemented. Business-service and remaining provider steps, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
 | Evolution | Authorized evidence-dataset manifests, evaluation suites, experiments, candidate revisions, promotion decisions, and rollback evidence | Planned `EV0` |
 | Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
 | Agents | Conversations, heterogeneous-provider Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented; the `A1.2` native Code provider is implemented locally with publication and Linux recovery verification pending; provider-neutral `A1.3` and `A1.4` through `A1.6` are planned |
@@ -375,6 +375,14 @@ evaluation, candidates, and promotion decisions. Both delegate every durable
 run and provider side effect to the same Operations, Flow, Workloads, Fleet,
 Runtime, and Box mechanisms. The complete contracts are defined in the
 [Workflow and evolution plan](workflow-evolution-plan.md).
+
+For a finite step, Workflow stores only the exact Executions-owned template
+identity/digest and parent-local step authority. It calls
+`IWorkflowExecutionPort`, then links the ordinary Execution's existing
+Operation as an A3S Flow child. Executions alone resolves and materializes the
+template, persists the child, and owns cancellation/cleanup. This dependency
+direction prevents a Workflow-owned task repository, scheduler, queue, Runtime
+adapter, or copied execution state machine.
 
 ### 6.3 Hosted Asset Git boundary
 

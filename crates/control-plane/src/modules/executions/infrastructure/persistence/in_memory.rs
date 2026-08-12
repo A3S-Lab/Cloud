@@ -3,7 +3,7 @@ use crate::modules::executions::domain::{
     IExecutionRepository, TransitionExecution,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, ExecutionId, OrganizationId, ProjectId, RepositoryError,
+    EnvironmentId, ExecutionId, OrganizationId, ProjectId, RepositoryError, WorkflowRunId,
 };
 use async_trait::async_trait;
 use std::collections::{BTreeMap, BTreeSet};
@@ -17,6 +17,7 @@ pub struct InMemoryExecutionRepository {
 #[derive(Default)]
 struct State {
     executions: BTreeMap<(OrganizationId, ExecutionId), Execution>,
+    workflow_steps: BTreeMap<(OrganizationId, WorkflowRunId, String, u64), ExecutionId>,
     idempotency: BTreeMap<(String, String), (String, Execution)>,
     operation_starts: BTreeSet<ExecutionId>,
     outbox: Vec<a3s_cloud_contracts::DomainEventEnvelope>,
@@ -67,7 +68,28 @@ impl IExecutionRepository for InMemoryExecutionRepository {
                 "execution identity is already in use".into(),
             ));
         }
+        let workflow_step = request.execution.workflow.as_ref().map(|binding| {
+            (
+                request.execution.organization_id,
+                binding.workflow_run_id,
+                binding.step_id.clone(),
+                binding.step_attempt,
+            )
+        });
+        if workflow_step
+            .as_ref()
+            .is_some_and(|key| state.workflow_steps.contains_key(key))
+        {
+            return Err(RepositoryError::Conflict(
+                "Workflow step attempt is already bound to an execution".into(),
+            ));
+        }
         state.executions.insert(identity, request.execution.clone());
+        if let Some(workflow_step) = workflow_step {
+            state
+                .workflow_steps
+                .insert(workflow_step, request.execution.id);
+        }
         state.idempotency.insert(
             key,
             (
@@ -93,6 +115,30 @@ impl IExecutionRepository for InMemoryExecutionRepository {
             .await
             .executions
             .get(&(organization_id, execution_id))
+            .cloned())
+    }
+
+    async fn find_for_workflow(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+        step_id: &str,
+        step_attempt: u64,
+    ) -> Result<Option<Execution>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .executions
+            .values()
+            .find(|execution| {
+                execution.organization_id == organization_id
+                    && execution.workflow.as_ref().is_some_and(|binding| {
+                        binding.workflow_run_id == workflow_run_id
+                            && binding.step_id == step_id
+                            && binding.step_attempt == step_attempt
+                    })
+            })
             .cloned())
     }
 
@@ -230,8 +276,12 @@ mod tests {
     use super::*;
     use crate::modules::executions::domain::{
         ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
+        WorkflowExecutionBinding,
     };
-    use crate::modules::shared_kernel::domain::{IdempotencyRequest, NodeId};
+    use crate::modules::shared_kernel::domain::{
+        ExecutionTemplateId, ExecutionTemplateRevisionId, IdempotencyRequest, NodeId,
+        PlanRevisionId, Sha256Digest,
+    };
     use chrono::Utc;
     use std::collections::BTreeMap;
     use uuid::Uuid;
@@ -270,6 +320,14 @@ mod tests {
     }
 
     fn create_request(execution: Execution, body: &[u8]) -> CreateExecution {
+        create_request_with_key(execution, "request-1", body)
+    }
+
+    fn create_request_with_key(
+        execution: Execution,
+        idempotency_key: &str,
+        body: &[u8],
+    ) -> CreateExecution {
         CreateExecution {
             event: crate::modules::executions::domain::events::ExecutionRequested::envelope(
                 &execution,
@@ -278,7 +336,7 @@ mod tests {
             .expect("event"),
             idempotency: IdempotencyRequest::new(
                 format!("organizations/{}/executions", execution.organization_id),
-                "request-1",
+                idempotency_key,
                 body,
             )
             .expect("idempotency"),
@@ -339,5 +397,65 @@ mod tests {
             repository.save(forged, scheduled.aggregate_version).await,
             Err(RepositoryError::Conflict(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn workflow_step_attempt_has_one_execution_across_idempotency_keys() {
+        let repository = InMemoryExecutionRepository::new();
+        let base = execution();
+        let binding = WorkflowExecutionBinding {
+            workflow_run_id: WorkflowRunId::new(),
+            plan_revision_id: PlanRevisionId::new(),
+            plan_digest: Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))
+                .expect("plan digest"),
+            step_id: "run_task".into(),
+            step_attempt: 1,
+            execution_template_id: ExecutionTemplateId::new(),
+            execution_template_revision_id: ExecutionTemplateRevisionId::new(),
+            execution_template_digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+                .expect("template digest"),
+        };
+        let first = Execution::create_with_workflow(
+            base.organization_id,
+            base.project_id,
+            base.environment_id,
+            ExecutionId::new(),
+            base.template.clone(),
+            Some(binding.clone()),
+            base.requested_at,
+        )
+        .expect("first Workflow execution");
+        repository
+            .create(create_request_with_key(first.clone(), "first", b"first"))
+            .await
+            .expect("create first Workflow execution");
+        let second = Execution::create_with_workflow(
+            base.organization_id,
+            base.project_id,
+            base.environment_id,
+            ExecutionId::new(),
+            base.template,
+            Some(binding.clone()),
+            base.requested_at,
+        )
+        .expect("second Workflow execution");
+        assert!(matches!(
+            repository
+                .create(create_request_with_key(second, "second", b"second"))
+                .await,
+            Err(RepositoryError::Conflict(_))
+        ));
+        assert_eq!(
+            repository
+                .find_for_workflow(
+                    first.organization_id,
+                    binding.workflow_run_id,
+                    &binding.step_id,
+                    binding.step_attempt,
+                )
+                .await
+                .expect("find Workflow execution"),
+            Some(first)
+        );
     }
 }

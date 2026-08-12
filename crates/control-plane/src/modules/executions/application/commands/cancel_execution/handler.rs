@@ -1,10 +1,11 @@
 use super::{CancelExecution, CancelExecutionResult};
+use crate::modules::executions::application::execution_cancellation::{
+    ExecutionCancellation, ExecutionCancellationService,
+};
 use crate::modules::executions::application::resource_access::ExecutionResourceAccess;
-use crate::modules::executions::domain::events::ExecutionCancellationRequested;
-use crate::modules::executions::domain::{IExecutionRepository, TransitionExecution};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::IdempotencyRequest;
-use a3s_boot::{BootError, CommandHandler, CqrsContext};
+use crate::modules::executions::domain::IExecutionRepository;
+use crate::modules::shared_kernel::application::ApplicationResult;
+use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct CancelExecutionHandler {
@@ -26,7 +27,7 @@ impl CommandHandler<CancelExecution> for CancelExecutionHandler {
     {
         let executions = Arc::clone(&self.executions);
         Box::pin(async move {
-            let mut execution = match ExecutionResourceAccess::new(Arc::clone(&executions))
+            let execution = match ExecutionResourceAccess::new(Arc::clone(&executions))
                 .execution(
                     command.organization_id,
                     command.execution_id,
@@ -37,61 +38,14 @@ impl CommandHandler<CancelExecution> for CancelExecutionHandler {
                 Ok(execution) => execution,
                 Err(error) => return Ok(Err(error)),
             };
-            let canonical = serde_json::to_vec(&serde_json::json!({
-                "organizationId": command.organization_id,
-                "executionId": command.execution_id,
-            }))
-            .map_err(|error| BootError::Internal(error.to_string()))?;
-            let idempotency = match IdempotencyRequest::new(
-                format!(
-                    "organizations/{}/executions/{}/cancellation",
-                    command.organization_id, command.execution_id
-                ),
-                command.idempotency_key,
-                &canonical,
-            ) {
-                Ok(idempotency) => idempotency,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            if let Some(replay) = match executions.replay(&idempotency).await {
-                Ok(replay) => replay,
-                Err(error) => return Ok(Err(error.into())),
-            } {
-                if replay.organization_id != execution.organization_id
-                    || replay.project_id != execution.project_id
-                    || replay.environment_id != execution.environment_id
-                    || replay.id != execution.id
-                {
-                    return Err(BootError::Internal(
-                        "execution cancellation replay changed its immutable identity".into(),
-                    ));
-                }
-                return Ok(Ok(CancelExecutionResult {
-                    execution: replay,
-                    replayed: true,
-                }));
-            }
-            let expected_version = execution.aggregate_version;
-            if let Err(error) = execution.request_cancellation(command.requested_at) {
-                return Ok(Err(ApplicationError::Conflict(error)));
-            }
-            let event = ExecutionCancellationRequested::envelope(&execution, command.request_id)
-                .map_err(|error| BootError::Internal(error.to_string()))?;
-            match executions
-                .request_cancellation(TransitionExecution {
+            Ok(ExecutionCancellationService::new(executions)
+                .cancel(ExecutionCancellation {
                     execution,
-                    expected_version,
-                    idempotency,
-                    event,
+                    idempotency_key: command.idempotency_key,
+                    request_id: command.request_id,
+                    requested_at: command.requested_at,
                 })
-                .await
-            {
-                Ok(write) => Ok(Ok(CancelExecutionResult {
-                    execution: write.execution,
-                    replayed: write.replayed,
-                })),
-                Err(error) => Ok(Err(error.into())),
-            }
+                .await)
         })
     }
 }

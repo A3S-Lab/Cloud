@@ -1,8 +1,9 @@
 use crate::modules::forms::domain::{AcceptedFormSubmission, FormSubmission};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, sha256_digest, AuthorizationDecisionRef, FormId, FormReleaseId,
-    FormSubmissionId, HumanTaskId, OntologyId, OntologyRevisionId, OrganizationId, PlanRevisionId,
-    PrincipalId, ProjectId, Sha256Digest, WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId,
+    canonical_json_bounded, sha256_digest, AuthorizationDecisionRef, EnvironmentId,
+    ExecutionTemplateId, ExecutionTemplateRevisionId, FormId, FormReleaseId, FormSubmissionId,
+    HumanTaskId, OntologyId, OntologyRevisionId, OrganizationId, PlanRevisionId, PrincipalId,
+    ProjectId, Sha256Digest, WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId,
     WorkflowRunId,
 };
 use crate::modules::workflow::domain::entities::digest_payload_set;
@@ -27,6 +28,7 @@ use chrono::{DateTime, TimeZone, Utc};
 
 pub(crate) const TEST_HOOK_ID: &str = "human_review-2";
 pub(crate) const TEST_HUMAN_STEP_ID: &str = "human_review";
+pub(crate) const TEST_EXECUTION_STEP_ID: &str = "execute";
 
 pub(crate) fn pending_task() -> (HumanTask, PrincipalId) {
     let organization_id = OrganizationId::new();
@@ -393,6 +395,112 @@ pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, St
         &plan,
         WORKFLOW_PLAN_MAX_BYTES,
         "WorkflowRun human-decision test plan",
+    )?))?;
+    let input = WorkflowRunInput {
+        schema: WORKFLOW_RUN_INPUT_SCHEMA.into(),
+        runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION.into(),
+        flow_workflow_name: WORKFLOW_RUN_FLOW_NAME.into(),
+        flow_workflow_version: WORKFLOW_RUN_FLOW_VERSION.into(),
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        workflow_run_id: WorkflowRunId::new(),
+        workflow_goal_id: WorkflowGoalId::new(),
+        plan_revision_id: PlanRevisionId::new(),
+        plan_digest,
+        plan,
+        goal_input,
+        payloads: payloads
+            .iter()
+            .map(ResolvedWorkflowPayload::from_payload)
+            .collect(),
+        requested_at: timestamp(8, 0),
+        deadline_at: timestamp(9, 0),
+    };
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let goal_input = serde_json::json!({"command": "verify"});
+    let input_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &goal_input,
+        1024 * 1024,
+        "WorkflowRun execution test input",
+    )?))?;
+    let data_schema =
+        WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
+            value_type: WorkflowDataType::Any,
+            fields: Vec::new(),
+        }))?;
+    let input_configuration =
+        configuration(WorkflowStepConfiguration::empty(WorkflowStepKind::Input))?;
+    let execution_configuration = configuration(WorkflowStepConfiguration::empty(
+        WorkflowStepKind::Execution,
+    ))?;
+    let output_configuration =
+        configuration(WorkflowStepConfiguration::empty(WorkflowStepKind::Output))?;
+    let schema_digest = data_schema.digest().clone();
+    let mut payloads = vec![
+        data_schema,
+        input_configuration.clone(),
+        execution_configuration.clone(),
+        output_configuration.clone(),
+    ];
+    payloads.sort_by(|left, right| left.digest().cmp(right.digest()));
+    let workflow_payload_set_digest = digest_payload_set(&payloads)?;
+    let template_id = ExecutionTemplateId::new();
+    let revision_id = ExecutionTemplateRevisionId::new();
+    let mut execution_step = plan_step(
+        TEST_EXECUTION_STEP_ID,
+        WorkflowStepKind::Execution,
+        &execution_configuration,
+        &schema_digest,
+    );
+    execution_step.capability = Some(CapabilityReference {
+        owner: CapabilityOwner::Executions,
+        capability_type: CapabilityType::ExecutionTemplate,
+        resource_id: template_id.as_uuid(),
+        revision: revision_id.to_string(),
+        digest: Sha256Digest::parse(digest('e'))?,
+        capability: "execution.run".into(),
+    });
+    let plan = WorkflowPlan {
+        schema: WORKFLOW_PLAN_SCHEMA.into(),
+        compiler_revision: WORKFLOW_PLAN_COMPILER_REVISION.into(),
+        workflow_definition_id: WorkflowDefinitionId::new(),
+        workflow_revision_id: WorkflowRevisionId::new(),
+        workflow_digest: Sha256Digest::parse(digest('1'))?,
+        workflow_payload_set_digest,
+        ontology_id: OntologyId::new(),
+        ontology_revision_id: OntologyRevisionId::new(),
+        ontology_digest: Sha256Digest::parse(digest('2'))?,
+        environment_id: Some(EnvironmentId::new()),
+        input_digest,
+        steps: vec![
+            plan_step(
+                "input",
+                WorkflowStepKind::Input,
+                &input_configuration,
+                &schema_digest,
+            ),
+            execution_step,
+            plan_step(
+                "output",
+                WorkflowStepKind::Output,
+                &output_configuration,
+                &schema_digest,
+            ),
+        ],
+        edges: vec![
+            edge("input-execute", "input", TEST_EXECUTION_STEP_ID, None),
+            edge("execute-output", TEST_EXECUTION_STEP_ID, "output", None),
+        ],
+    };
+    plan.validate()?;
+    let plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun execution test plan",
     )?))?;
     let input = WorkflowRunInput {
         schema: WORKFLOW_RUN_INPUT_SCHEMA.into(),

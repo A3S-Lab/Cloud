@@ -49,11 +49,8 @@ struct Authorities {
     form_release_id: FormReleaseId,
 }
 
-pub(super) async fn exercise_human_task_persistence(
-    url: String,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = connect_and_migrate(&url, 4).await?;
-    let authorities = Authorities {
+fn authority_fixture() -> Authorities {
+    Authorities {
         organization_id: OrganizationId::new(),
         project_id: ProjectId::new(),
         other_organization_id: OrganizationId::new(),
@@ -64,7 +61,14 @@ pub(super) async fn exercise_human_task_persistence(
         workflow_run_id: WorkflowRunId::new(),
         form_id: FormId::new(),
         form_release_id: FormReleaseId::new(),
-    };
+    }
+}
+
+pub(super) async fn exercise_human_task_persistence(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let authorities = authority_fixture();
     seed_authorities(&executor, authorities).await?;
 
     let repository = PostgresHumanTaskRepository::new(executor.clone());
@@ -393,6 +397,23 @@ pub(super) async fn exercise_human_task_persistence(
         .is_empty());
     assert_resume_receipt_rows(&executor, authorities, decision_record.decision.id).await?;
     Ok(())
+}
+
+pub(super) async fn exercise_workflow_execution_persistence(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let authorities = authority_fixture();
+    seed_authorities(&executor, authorities).await?;
+    super::executions_support::exercise_workflow_execution_persistence(
+        &executor,
+        authorities.organization_id,
+        authorities.other_organization_id,
+        authorities.project_id,
+        authorities.actor,
+        authorities.workflow_run_id,
+    )
+    .await
 }
 
 async fn assert_expired_claim_is_rejected(

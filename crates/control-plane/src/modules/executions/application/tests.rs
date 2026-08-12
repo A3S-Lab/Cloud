@@ -1,13 +1,19 @@
 use super::{
     CancelExecution, CancelExecutionHandler, CreateExecutionCommand, CreateExecutionHandler,
-    ExecutionReconciler, GetExecution, GetExecutionHandler, EXECUTION_WORKFLOW_NAME,
+    ExecutionReconciler, GetExecution, GetExecutionHandler, IWorkflowExecutionPort,
+    WorkflowExecutionApplicationService, WorkflowExecutionRequest, EXECUTION_WORKFLOW_NAME,
     EXECUTION_WORKFLOW_VERSION,
 };
+use crate::modules::executions::domain::events::ExecutionTemplatePublished;
 use crate::modules::executions::domain::{
-    ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
-    IExecutionRepository,
+    CreateExecutionTemplateRevision, ExecutionArtifact, ExecutionProcess, ExecutionResources,
+    ExecutionStatus, ExecutionTemplate, ExecutionTemplateDefinition,
+    ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
+    IExecutionTemplateRepository, EXECUTION_TEMPLATE_CAPABILITY,
 };
-use crate::modules::executions::infrastructure::InMemoryExecutionRepository;
+use crate::modules::executions::infrastructure::{
+    InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
+};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::domain::repositories::IOperationRepository;
@@ -16,12 +22,15 @@ use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::projects::infrastructure::persistence::InMemoryProjectsRepository;
+use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId,
+    canonical_timestamp, EnvironmentId, ExecutionTemplateId, ExecutionTemplateRevisionId,
+    IdempotencyRequest, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, Sha256Digest,
+    WorkflowRunId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::DomainEventEnvelope;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -94,6 +103,50 @@ async fn environment() -> (
         .await
         .expect("create environment");
     (organization_id, project_id, environment_id, repository)
+}
+
+async fn publish_execution_template(
+    repository: &InMemoryExecutionTemplateRepository,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+) -> ExecutionTemplateRevision {
+    let source = template(0);
+    let revision = ExecutionTemplateRevision::create(
+        organization_id,
+        project_id,
+        ExecutionTemplateId::new(),
+        ExecutionTemplateRevisionId::new(),
+        ExecutionTemplateDefinition::from_spec(ExecutionTemplateDefinitionSpec {
+            name: "workflow-function".into(),
+            description: "One bounded Workflow function".into(),
+            artifact: source.artifact,
+            process: source.process,
+            resources: source.resources,
+        })
+        .expect("template definition"),
+        PrincipalId::new(),
+        canonical_timestamp(Utc::now()),
+    )
+    .expect("template revision");
+    repository
+        .create(CreateExecutionTemplateRevision {
+            event: ExecutionTemplatePublished::envelope(&revision, Uuid::now_v7())
+                .expect("template event"),
+            actor_principal_id: revision.created_by,
+            request_id: Uuid::now_v7(),
+            idempotency: IdempotencyRequest::new(
+                format!(
+                    "organizations/{organization_id}/projects/{project_id}/execution-templates"
+                ),
+                "workflow-function",
+                revision.definition.canonical_acl().as_bytes(),
+            )
+            .expect("template idempotency"),
+            revision: revision.clone(),
+        })
+        .await
+        .expect("publish template");
+    revision
 }
 
 #[tokio::test]
@@ -345,4 +398,94 @@ async fn create_requires_an_existing_environment() {
         .await
         .expect("framework");
     assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn workflow_execution_start_adopts_exact_child_and_cancels_idempotently() {
+    let (organization_id, project_id, environment_id, environments) = environment().await;
+    let templates = Arc::new(InMemoryExecutionTemplateRepository::new());
+    let revision = publish_execution_template(&templates, organization_id, project_id).await;
+    let executions = Arc::new(InMemoryExecutionRepository::new());
+    let service = WorkflowExecutionApplicationService::new(
+        environments,
+        templates.clone(),
+        executions.clone(),
+    );
+    let requested_at = canonical_timestamp(Utc::now());
+    let request = WorkflowExecutionRequest {
+        organization_id,
+        project_id,
+        environment_id,
+        workflow_run_id: WorkflowRunId::new(),
+        plan_revision_id: PlanRevisionId::new(),
+        plan_digest: Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))
+            .expect("plan digest"),
+        step_id: "run_function".into(),
+        step_attempt: u64::from(u32::MAX) + 1,
+        execution_template_id: revision.template_id,
+        execution_template_revision_id: revision.revision_id,
+        execution_template_digest: revision.definition.digest().clone(),
+        capability: EXECUTION_TEMPLATE_CAPABILITY.into(),
+        input: serde_json::json!({"value": 42}),
+        requested_at,
+    };
+
+    let (left, right) = tokio::join!(
+        service.start_or_adopt(&request),
+        service.start_or_adopt(&request)
+    );
+    let left = left.expect("start Workflow child");
+    let right = right.expect("adopt Workflow child");
+    assert_eq!(left, right);
+    assert_eq!(left.template.input, request.input);
+    assert_eq!(
+        left.workflow.as_ref().expect("binding").step_attempt,
+        request.step_attempt
+    );
+    assert_eq!(executions.outbox_events().await.len(), 1);
+    assert_eq!(templates.outbox_events().await.len(), 1);
+
+    let drifted_input = WorkflowExecutionRequest {
+        input: serde_json::json!({"value": 43}),
+        ..request.clone()
+    };
+    assert!(matches!(
+        service.adopt(&drifted_input).await,
+        Err(ApplicationError::Conflict(_))
+    ));
+    let drifted_digest = WorkflowExecutionRequest {
+        execution_template_digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+            .expect("other template digest"),
+        ..request.clone()
+    };
+    assert!(matches!(
+        service.start_or_adopt(&drifted_digest).await,
+        Err(ApplicationError::Conflict(_))
+    ));
+    let wrong_capability = WorkflowExecutionRequest {
+        capability: "agent.run".into(),
+        ..request.clone()
+    };
+    assert!(matches!(
+        service.start_or_adopt(&wrong_capability).await,
+        Err(ApplicationError::Invalid(_))
+    ));
+
+    let cancelled = service
+        .request_cancellation(&request, requested_at + Duration::milliseconds(1))
+        .await
+        .expect("cancel Workflow child")
+        .expect("existing Workflow child");
+    assert_eq!(cancelled.status, ExecutionStatus::Cancelling);
+    assert_eq!(
+        service
+            .request_cancellation(&request, requested_at + Duration::milliseconds(2))
+            .await
+            .expect("repeat cancellation"),
+        Some(cancelled)
+    );
+    let events = executions.outbox_events().await;
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].event_key, "execution.run.requested");
+    assert_eq!(events[1].event_key, "execution.run.cancellation-requested");
 }

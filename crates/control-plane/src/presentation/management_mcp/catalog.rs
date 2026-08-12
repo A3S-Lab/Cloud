@@ -1,4 +1,5 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
+use crate::modules::executions::EXECUTION_TEMPLATE_MAX_ACL_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
@@ -20,6 +21,9 @@ pub const DEPLOYMENTS_CANCEL: &str = "a3s_cloud_deployments_cancel";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
+pub const EXECUTION_TEMPLATES_CREATE: &str = "a3s_cloud_execution_templates_create";
+pub const EXECUTION_TEMPLATES_GET: &str = "a3s_cloud_execution_templates_get";
+pub const EXECUTION_TEMPLATES_LIST: &str = "a3s_cloud_execution_templates_list";
 pub const FORMS_CREATE: &str = "a3s_cloud_forms_create";
 pub const FORMS_GET: &str = "a3s_cloud_forms_get";
 pub const FORMS_LIST: &str = "a3s_cloud_forms_list";
@@ -89,6 +93,9 @@ pub const WORKLOAD_LOGS_GET: &str = "a3s_cloud_workload_logs_get";
 pub enum ManagementTool {
     EnvironmentsCreate,
     EnvironmentsList,
+    ExecutionTemplatesCreate,
+    ExecutionTemplatesGet,
+    ExecutionTemplatesList,
     MembershipsList,
     MembershipsGet,
     ServiceMembershipsCreate,
@@ -177,9 +184,12 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 74] = [
+    const ALL: [Self; 77] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
+        Self::ExecutionTemplatesCreate,
+        Self::ExecutionTemplatesGet,
+        Self::ExecutionTemplatesList,
         Self::MembershipsList,
         Self::MembershipsGet,
         Self::ServiceMembershipsCreate,
@@ -282,6 +292,9 @@ impl ManagementTool {
         match self {
             Self::EnvironmentsCreate => ENVIRONMENTS_CREATE,
             Self::EnvironmentsList => ENVIRONMENTS_LIST,
+            Self::ExecutionTemplatesCreate => EXECUTION_TEMPLATES_CREATE,
+            Self::ExecutionTemplatesGet => EXECUTION_TEMPLATES_GET,
+            Self::ExecutionTemplatesList => EXECUTION_TEMPLATES_LIST,
             Self::MembershipsList => MEMBERSHIPS_LIST,
             Self::MembershipsGet => MEMBERSHIPS_GET,
             Self::ServiceMembershipsCreate => SERVICE_MEMBERSHIPS_CREATE,
@@ -360,6 +373,7 @@ impl ManagementTool {
     const fn required_scope(self) -> Option<&'static str> {
         match self {
             Self::EnvironmentsCreate => Some(ApiTokenScope::ENVIRONMENT_WRITE),
+            Self::ExecutionTemplatesCreate => Some(ApiTokenScope::EXECUTION_WRITE),
             Self::MembershipsList
             | Self::MembershipsGet
             | Self::ServiceMembershipsCreate
@@ -387,6 +401,8 @@ impl ManagementTool {
             }
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
             Self::EnvironmentsList
+            | Self::ExecutionTemplatesGet
+            | Self::ExecutionTemplatesList
             | Self::ProjectsList
             | Self::FormsGet
             | Self::FormsList
@@ -452,6 +468,9 @@ impl ManagementTool {
     pub(super) const fn resource_binding(self) -> Option<ManagementResourceBinding> {
         match self {
             Self::EnvironmentsCreate
+            | Self::ExecutionTemplatesCreate
+            | Self::ExecutionTemplatesGet
+            | Self::ExecutionTemplatesList
             | Self::FormsCreate
             | Self::FormsList
             | Self::OntologiesCreate
@@ -554,6 +573,24 @@ impl ManagementTool {
                 "List environments",
                 "List environments in one tenant-authorized project.",
                 project_id_schema(),
+                true,
+            ),
+            Self::ExecutionTemplatesCreate => (
+                "Create ExecutionTemplate",
+                "Publish one immutable project-scoped ExecutionTemplate revision from canonical A3S ACL with explicit idempotency.",
+                create_execution_template_schema(),
+                false,
+            ),
+            Self::ExecutionTemplatesGet => (
+                "Get ExecutionTemplate revision",
+                "Get one exact immutable tenant-authorized ExecutionTemplate revision and its canonical A3S ACL.",
+                get_execution_template_schema(),
+                true,
+            ),
+            Self::ExecutionTemplatesList => (
+                "List ExecutionTemplate revisions",
+                "List a bounded set of immutable ExecutionTemplate revisions in one tenant-authorized project.",
+                list_execution_templates_schema(),
                 true,
             ),
             Self::MembershipsList => (
@@ -1224,6 +1261,48 @@ fn create_environment_schema() -> Value {
     })
 }
 
+fn create_execution_template_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": EXECUTION_TEMPLATE_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "definitionAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn get_execution_template_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "templateId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "templateId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_execution_templates_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
 fn form_document_schema() -> Value {
     json!({
         "type": "object",
@@ -1696,6 +1775,7 @@ mod tests {
             .with_scope(ApiTokenScope::FORM_WRITE)
             .with_scope(ApiTokenScope::ONTOLOGY_WRITE)
             .with_scope(ApiTokenScope::WORKFLOW_WRITE)
+            .with_scope(ApiTokenScope::EXECUTION_WRITE)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -1708,6 +1788,9 @@ mod tests {
             project_id: ProjectId::new(),
         });
         assert!(ManagementTool::EnvironmentsList.visible_to(&principal));
+        assert!(ManagementTool::ExecutionTemplatesCreate.visible_to(&principal));
+        assert!(ManagementTool::ExecutionTemplatesGet.visible_to(&principal));
+        assert!(ManagementTool::ExecutionTemplatesList.visible_to(&principal));
         assert!(ManagementTool::FormsList.visible_to(&principal));
         assert!(ManagementTool::FormsGet.visible_to(&principal));
         assert!(ManagementTool::FormsRevise.visible_to(&principal));
@@ -1773,6 +1856,9 @@ mod tests {
         assert!(ManagementTool::NodesList.visible_to(&principal));
         assert!(ManagementTool::Search.visible_to(&principal));
         assert!(!ManagementTool::EnvironmentsList.visible_to(&principal));
+        assert!(!ManagementTool::ExecutionTemplatesCreate.visible_to(&principal));
+        assert!(!ManagementTool::ExecutionTemplatesGet.visible_to(&principal));
+        assert!(!ManagementTool::ExecutionTemplatesList.visible_to(&principal));
         assert!(!ManagementTool::ProjectsList.visible_to(&principal));
         assert!(!ManagementTool::FormsList.visible_to(&principal));
         assert!(!ManagementTool::FormsGet.visible_to(&principal));

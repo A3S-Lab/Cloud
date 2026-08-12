@@ -141,7 +141,7 @@ where
     parse(if value.is_null() { json!({}) } else { value })
 }
 
-const fn default_list_limit() -> usize {
+pub(super) const fn default_list_limit() -> usize {
     50
 }
 
@@ -149,7 +149,7 @@ const fn default_log_limit() -> u16 {
     DEFAULT_LOG_LIMIT
 }
 
-fn deserialize_list_limit<'de, D>(deserializer: D) -> Result<usize, D::Error>
+pub(super) fn deserialize_list_limit<'de, D>(deserializer: D) -> Result<usize, D::Error>
 where
     D: Deserializer<'de>,
 {

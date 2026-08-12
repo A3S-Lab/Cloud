@@ -64,6 +64,9 @@ Commands:
   workflow-runs cancel ID Request WorkflowRun cancellation idempotently
   workflow-runs output ID Read the bounded output of a completed WorkflowRun
   workflow-runs history ID Read bounded, redacted A3S Flow history
+  execution-templates list List immutable finite-task templates in the selected project
+  execution-templates get ID REV Get one exact immutable ExecutionTemplate revision
+  execution-templates create Publish an ACL-native ExecutionTemplate revision
   forms list            List Form drafts in the selected project
   forms get ID          Get one Form draft
   forms create          Create a Form draft from native Form JSON

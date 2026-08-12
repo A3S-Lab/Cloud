@@ -346,6 +346,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         tool_names(&read_only_tools),
         vec![
             "a3s_cloud_environments_list",
+            "a3s_cloud_execution_templates_get",
+            "a3s_cloud_execution_templates_list",
             "a3s_cloud_projects_list",
             "a3s_cloud_forms_get",
             "a3s_cloud_forms_list",
@@ -434,6 +436,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         vec![
             "a3s_cloud_environments_create",
             "a3s_cloud_environments_list",
+            "a3s_cloud_execution_templates_create",
+            "a3s_cloud_execution_templates_get",
+            "a3s_cloud_execution_templates_list",
             "a3s_cloud_memberships_list",
             "a3s_cloud_memberships_get",
             "a3s_cloud_service_memberships_create",
@@ -534,6 +539,24 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             .as_array()
             .map(Vec::len),
         Some(3)
+    );
+    let create_execution_template =
+        listed_tool(&administrator_tools, "a3s_cloud_execution_templates_create")?;
+    assert_eq!(
+        create_execution_template["inputSchema"]["required"],
+        json!(["projectId", "definitionAcl", "idempotencyKey"])
+    );
+    assert_eq!(
+        create_execution_template["inputSchema"]["properties"]["definitionAcl"]["maxLength"],
+        crate::modules::executions::EXECUTION_TEMPLATE_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        create_execution_template["inputSchema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        create_execution_template["annotations"]["readOnlyHint"],
+        false
     );
     for name in [
         "a3s_cloud_human_tasks_claim",
@@ -1702,6 +1725,21 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             "a3s_cloud_human_tasks_submit",
             json!({"humanTaskId": missing_resource_id, "submission": {}}),
         ),
+        (
+            52,
+            "a3s_cloud_execution_templates_list",
+            json!({"projectId": project, "limit": 201}),
+        ),
+        (
+            53,
+            "a3s_cloud_execution_templates_create",
+            json!({
+                "projectId": project,
+                "definitionAcl": "invalid",
+                "idempotencyKey": "invalid-execution-template",
+                "organizationId": organization
+            }),
+        ),
     ] {
         let response = app
             .call(mcp_request(
@@ -1711,6 +1749,121 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             .await?;
         assert_eq!(response_json(&response)?["error"]["code"], -32602, "{name}");
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_the_execution_template_lifecycle() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-execution-template", "Acme").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "mcp-execution-template-project",
+        "Automation",
+    )
+    .await?;
+    let definition_acl = super::execution_tests::execution_template_acl()?;
+    let create_arguments = json!({
+        "projectId": project,
+        "definitionAcl": definition_acl,
+        "idempotencyKey": "mcp-execution-template-create"
+    });
+
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_execution_templates_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    let revision = &created["result"]["structuredContent"]["data"]["executionTemplate"];
+    let template_id = revision["templateId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP ExecutionTemplate has no template ID".into()))?;
+    let revision_id = revision["revisionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP ExecutionTemplate has no revision ID".into()))?;
+    assert_eq!(revision["capability"], "execution.run");
+    assert_eq!(revision["definitionAcl"], definition_acl);
+
+    let replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_execution_templates_create", create_arguments),
+        ))
+        .await?;
+    let replay = response_json(&replay)?;
+    assert_eq!(replay["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    assert_eq!(
+        replay["result"]["structuredContent"]["data"]["executionTemplate"]["revisionId"],
+        revision_id
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_execution_templates_list",
+                json!({"projectId": project, "limit": 1}),
+            ),
+        ))
+        .await?;
+    let listed = response_json(&listed)?;
+    assert_eq!(
+        listed["result"]["structuredContent"]["data"][0]["templateId"],
+        template_id
+    );
+
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_execution_templates_get",
+                json!({
+                    "projectId": project,
+                    "templateId": template_id,
+                    "revisionId": revision_id
+                }),
+            ),
+        ))
+        .await?;
+    let fetched = response_json(&fetched)?;
+    assert_eq!(
+        fetched["result"]["structuredContent"]["data"]["definitionDigest"],
+        revision["definitionDigest"]
+    );
+
+    let missing = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_execution_templates_get",
+                json!({
+                    "projectId": project,
+                    "templateId": Uuid::now_v7(),
+                    "revisionId": Uuid::now_v7()
+                }),
+            ),
+        ))
+        .await?;
+    let missing = response_json(&missing)?;
+    assert_eq!(missing["result"]["isError"], true);
+    assert_eq!(missing["result"]["structuredContent"]["code"], 404);
     Ok(())
 }
 

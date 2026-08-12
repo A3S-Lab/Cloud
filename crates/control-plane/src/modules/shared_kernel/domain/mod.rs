@@ -14,14 +14,15 @@ pub use git_commit_sha::GitCommitSha;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     AgentConversationId, AgentExecutionId, ApiTokenId, AssetId, AssetReleaseId, BuildRunId,
-    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId, FormId,
-    FormReleaseId, FormSubmissionId, GatewayCertificateId, GatewayRolloutId, GatewayScopeId,
-    HumanTaskId, McpCredentialId, MembershipId, NodeCertificateId, NodeCommandId, NodeId,
-    NodePoolId, OntologyId, OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId,
-    PluginRegistryId, PrincipalId, ProjectId, ResourceClaimId, ResourceGrantId, RouteId, SecretId,
-    SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
-    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
-    WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, ExecutionId,
+    ExecutionTemplateId, ExecutionTemplateRevisionId, FormId, FormReleaseId, FormSubmissionId,
+    GatewayCertificateId, GatewayRolloutId, GatewayScopeId, HumanTaskId, McpCredentialId,
+    MembershipId, NodeCertificateId, NodeCommandId, NodeId, NodePoolId, OntologyId,
+    OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId, PluginRegistryId, PrincipalId,
+    ProjectId, ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId,
+    SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId, WorkflowDefinitionId,
+    WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId, WorkloadPlacementGroupId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

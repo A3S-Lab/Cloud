@@ -3,6 +3,7 @@ mod artifacts;
 mod catalog;
 mod dispatch;
 mod edge;
+mod execution_templates;
 mod forms;
 mod handler;
 mod identity;

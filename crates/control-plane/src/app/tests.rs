@@ -11,7 +11,9 @@ use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
 };
 use crate::modules::edge::domain::McpRoutePolicy;
-use crate::modules::executions::InMemoryExecutionRepository;
+use crate::modules::executions::{
+    InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
+};
 use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMaterial};
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -1612,6 +1614,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             workloads: workload_port,
             builds,
             executions: executions.unwrap_or_else(|| Arc::new(InMemoryExecutionRepository::new())),
+            execution_templates: Arc::new(InMemoryExecutionTemplateRepository::new()),
             agents: test_agents.unwrap_or_else(|| Arc::new(InMemoryAgentRepository::new())),
             routes,
             mcp_credentials,

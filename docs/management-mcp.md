@@ -22,7 +22,7 @@ The `W0.3` planning slice adds ten Workflow definition, immutable revision,
 Goal, and deterministic Plan tools over the same CQRS handlers used by REST,
 the maintained client, and CLI. It adds no MCP-owned planner, run engine,
 payload store, or authorization path.
-The protected HumanTask slice adds two reads and two claim/release mutations
+The protected HumanTask slice adds two reads and three claim/release/submission mutations
 over the same Workflow commands, queries, domain state machine, response DTOs,
 repository, idempotency, audit, and Outbox path used by REST, the maintained
 client, and CLI. It adds no MCP-owned assignment policy, task store, Form
@@ -31,6 +31,12 @@ The native Form lifecycle adds seven draft/release tools over the same Form
 commands, queries, owner compiler port, A3S ORM repository, audit, and Outbox
 used by REST, the maintained client, and CLI. It adds no MCP-owned Form parser,
 compiler, validator, store, or submission path.
+The Executions slice adds create/list/exact-get tools for immutable,
+project-scoped, ACL-native ExecutionTemplate revisions. They reuse the same
+CQRS handlers, `execution:write` scope, Resource Grant checks, idempotency,
+A3S ORM repository, audit, Outbox, and REST response DTOs used by contract
+`1.24.0`. MCP does not gain a template parser, mutable template store,
+scheduler, Runtime provider, or Workflow dispatch path.
 
 ## Transport contract
 
@@ -304,10 +310,10 @@ output, and page redacted A3S Flow history with a non-negative sequence and a
 limit from 1 through 100. All seven tools derive organization and actor from
 the authenticated principal and reuse the REST CQRS handlers, A3S ORM
 repository, Operation, A3S Flow history, audit, Outbox, and idempotency
-authority. The minimal executor supports only Workflow-local `input`,
-`transform`, `branch`, `human_decision`, and `output`; it does not expose
-HumanTask submission, service/finite-task, typed capability, or
-compensation behavior.
+authority. The executor supports Workflow-local `input`, `transform`,
+`branch`, `human_decision`, finite `execution`, and `output`. HumanTask
+submission is exposed by the protected tool below. Business-service and
+remaining provider capability steps plus compensation are not exposed.
 
 `a3s_cloud_human_tasks_list` accepts one explicit `projectId`, the closed
 optional task status, and an optional limit from 1 through 200. It returns
@@ -318,6 +324,21 @@ interaction only when the authenticated principal is the current claimant.
 Both calls use Identity's shared Resource Grant evaluator; an environment-only
 grant cannot authorize the project-scoped task, denied and missing IDs share a
 `404`, and an unknown assignment-policy revision fails closed.
+
+## Immutable ExecutionTemplate lifecycle
+
+`a3s_cloud_execution_templates_create` requires `projectId`, bounded
+`definitionAcl`, and `idempotencyKey`, and requires `execution:write`.
+`a3s_cloud_execution_templates_list` requires `projectId` and accepts a limit
+from 1 through 200, defaulting to 50. The exact-get tool additionally requires
+`templateId` and `revisionId`. The latter two are read-only and visible to a
+`cloud:read` principal with project access.
+
+All three derive the organization from authentication, reject unknown
+arguments, and reuse the REST command/query handlers and response DTOs. Create
+returns `201`, or `200` with `replayed: true` for the exact idempotent replay.
+The returned definition is canonical A3S ACL with its semantic digest; MCP
+does not compile Workflow input, mutate a revision, or invoke a Runtime Task.
 
 `a3s_cloud_human_tasks_claim` and `a3s_cloud_human_tasks_release` require one
 task ID, a positive `expectedVersion`, and an `idempotencyKey`. They require
@@ -415,7 +436,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 73-tool administrator and 45-tool
+current expanded runner requires exact 77-tool administrator and 47-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -444,6 +465,11 @@ protected HumanTask read/claim/release/privacy, tenant/role boundary, determinis
 strict-boundary, and replay tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.
+Focused conformance also publishes an ExecutionTemplate through MCP, proves
+exact replay, lists and reads the immutable revision through both role
+catalogs, rejects missing identities without disclosure, and validates the
+closed ACL and argument bounds. Its retained real PostgreSQL extension remains
+required before the finite Workflow step is called verified.
 
 ## Current limits
 

@@ -1,7 +1,8 @@
 use super::execution_template::{valid_sha256, ExecutionTemplate};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, ExecutionId, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId,
+    canonical_timestamp, EnvironmentId, ExecutionId, ExecutionTemplateId,
+    ExecutionTemplateRevisionId, NodeCommandId, NodeId, OperationId, OrganizationId,
+    PlanRevisionId, ProjectId, Sha256Digest, WorkflowRunId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -91,12 +92,46 @@ impl ExecutionOutcome {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowExecutionBinding {
+    pub workflow_run_id: WorkflowRunId,
+    pub plan_revision_id: PlanRevisionId,
+    pub plan_digest: Sha256Digest,
+    pub step_id: String,
+    pub step_attempt: u64,
+    pub execution_template_id: ExecutionTemplateId,
+    pub execution_template_revision_id: ExecutionTemplateRevisionId,
+    pub execution_template_digest: Sha256Digest,
+}
+
+impl WorkflowExecutionBinding {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.workflow_run_id.as_uuid().is_nil()
+            || self.plan_revision_id.as_uuid().is_nil()
+            || self.execution_template_id.as_uuid().is_nil()
+            || self.execution_template_revision_id.as_uuid().is_nil()
+            || self.step_attempt == 0
+            || self.step_id.is_empty()
+            || self.step_id.len() > 96
+            || !self
+                .step_id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        {
+            return Err("Workflow execution binding is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Execution {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub id: ExecutionId,
     pub operation_id: OperationId,
+    pub workflow: Option<WorkflowExecutionBinding>,
     pub template: ExecutionTemplate,
     pub template_digest: String,
     pub status: ExecutionStatus,
@@ -124,6 +159,27 @@ impl Execution {
         template: ExecutionTemplate,
         requested_at: DateTime<Utc>,
     ) -> Result<Self, String> {
+        Self::create_with_workflow(
+            organization_id,
+            project_id,
+            environment_id,
+            id,
+            template,
+            None,
+            requested_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_with_workflow(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        id: ExecutionId,
+        template: ExecutionTemplate,
+        workflow: Option<WorkflowExecutionBinding>,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
         if organization_id.as_uuid().is_nil()
             || project_id.as_uuid().is_nil()
             || environment_id.as_uuid().is_nil()
@@ -139,6 +195,7 @@ impl Execution {
             environment_id,
             id,
             operation_id: OperationId::from_uuid(id.as_uuid()),
+            workflow,
             template,
             template_digest,
             status: ExecutionStatus::Queued,
@@ -289,6 +346,9 @@ impl Execution {
 
     pub fn validate(&self) -> Result<(), String> {
         self.template.validate()?;
+        if let Some(workflow) = &self.workflow {
+            workflow.validate()?;
+        }
         if self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.environment_id.as_uuid().is_nil()

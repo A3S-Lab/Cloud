@@ -3,8 +3,9 @@ use super::{
 };
 use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep, WorkflowEdgeSpec,
-    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WorkflowStepKind,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
+    WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
+    WorkflowStepKind, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -65,6 +66,7 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             resolved.insert(step.plan.id.clone(), ResolvedState::Inactive);
             continue;
         };
+        let effective_input = effective_input(&dependencies, &input.goal_input);
         if step.plan.kind == WorkflowStepKind::HumanDecision {
             let metadata = WorkflowHumanDecisionHookMetadata::from_run_step(&input, step)
                 .map_err(FlowError::InvalidWorkflow)?;
@@ -79,6 +81,43 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                 let result = human_decision_result(&invocation.run_id, &hook_id, step, payload)?;
                 resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
                 continue;
+            }
+            return Ok(context.create_hook(
+                hook_id,
+                metadata.flow_hook_token(),
+                serde_json::to_value(metadata)?,
+            ));
+        }
+        if step.plan.kind == WorkflowStepKind::Execution {
+            super::execution::validate_data_schema(
+                &step.input_schema,
+                &effective_input,
+                "Workflow execution step input",
+            )
+            .map_err(FlowError::InvalidWorkflow)?;
+            let metadata =
+                WorkflowExecutionHookMetadata::from_run_step(&input, step, effective_input.clone())
+                    .map_err(FlowError::InvalidWorkflow)?;
+            let hook_id = metadata.flow_hook_id();
+            if context.hook_disposed(&hook_id) {
+                return Ok(context.fail(format!(
+                    "Workflow execution hook for step {:?} was disposed",
+                    step.plan.id
+                )));
+            }
+            if let Some(payload) = context.hook_payload(&hook_id) {
+                match execution_result(&invocation.run_id, &hook_id, step, &metadata, payload)? {
+                    ExecutionResolution::Succeeded(result) => {
+                        resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
+                        continue;
+                    }
+                    ExecutionResolution::Failed(error) => {
+                        return Ok(context.fail(format!(
+                            "Workflow execution step {:?} failed: {error}",
+                            step.plan.id
+                        )));
+                    }
+                }
             }
             return Ok(context.create_hook(
                 hook_id,
@@ -107,7 +146,6 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
             continue;
         }
-        let effective_input = effective_input(&dependencies, &input.goal_input);
         let all_steps = resolved
             .iter()
             .filter_map(|(id, state)| match state {
@@ -134,6 +172,64 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
         Ok(context.fail("WorkflowRun graph stalled before its output completed"))
     } else {
         Ok(context.schedule_steps(ready))
+    }
+}
+
+pub(super) enum ExecutionResolution {
+    Succeeded(WorkflowLocalStepResult),
+    Failed(String),
+}
+
+pub(super) fn execution_result(
+    run_id: &str,
+    hook_id: &str,
+    step: &ResolvedWorkflowRunStep,
+    metadata: &WorkflowExecutionHookMetadata,
+    observed: &Value,
+) -> Result<ExecutionResolution, FlowError> {
+    let payload = serde_json::from_value::<WorkflowExecutionResumePayload>(observed.clone())
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    payload
+        .validate(metadata)
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    if payload.flow_run_id != run_id || payload.flow_hook_id != hook_id {
+        return Err(execution_payload_drift(run_id, &step.plan.id));
+    }
+    let (output, output_digest) = match payload.resolution {
+        WorkflowExecutionResumeResolution::Rejected { reason } => {
+            return Ok(ExecutionResolution::Failed(reason));
+        }
+        WorkflowExecutionResumeResolution::Completed {
+            output,
+            output_digest,
+        } => {
+            if let Some(error) = output.outcome.failure_message() {
+                return Ok(ExecutionResolution::Failed(error));
+            }
+            (output, output_digest)
+        }
+    };
+    let output = serde_json::to_value(&output)
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    let result = WorkflowLocalStepResult {
+        step_id: step.plan.id.clone(),
+        kind: WorkflowStepKind::Execution,
+        output,
+        output_digest,
+        selected_handle: None,
+    };
+    result
+        .validate(step)
+        .map_err(|_| execution_payload_drift(run_id, &step.plan.id))?;
+    Ok(ExecutionResolution::Succeeded(result))
+}
+
+fn execution_payload_drift(run_id: &str, step_id: &str) -> FlowError {
+    FlowError::NonDeterministic {
+        run_id: run_id.into(),
+        reason: format!(
+            "Workflow execution step {step_id:?} received an invalid authority-bound payload"
+        ),
     }
 }
 

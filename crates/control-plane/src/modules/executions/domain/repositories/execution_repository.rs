@@ -1,6 +1,7 @@
 use crate::modules::executions::domain::Execution;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
+    WorkflowRunId,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -26,6 +27,14 @@ pub trait IExecutionRepository: Send + Sync {
         &self,
         organization_id: OrganizationId,
         execution_id: ExecutionId,
+    ) -> Result<Option<Execution>, RepositoryError>;
+
+    async fn find_for_workflow(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+        step_id: &str,
+        step_attempt: u64,
     ) -> Result<Option<Execution>, RepositoryError>;
 
     async fn list(

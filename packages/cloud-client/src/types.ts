@@ -415,6 +415,38 @@ export interface CreateExecutionInput {
   resources: ExecutionResources;
 }
 
+export interface CreateExecutionTemplateInput {
+  definitionAcl: string;
+}
+
+export interface ExecutionTemplateRevision {
+  organizationId: string;
+  projectId: string;
+  templateId: string;
+  revisionId: string;
+  definitionAcl: string;
+  definitionDigest: string;
+  capability: 'execution.run';
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface ExecutionTemplateMutationResult {
+  executionTemplate: ExecutionTemplateRevision;
+  replayed: boolean;
+}
+
+export interface WorkflowExecutionBinding {
+  workflowRunId: string;
+  planRevisionId: string;
+  planDigest: string;
+  stepId: string;
+  stepAttempt: number;
+  executionTemplateId: string;
+  executionTemplateRevisionId: string;
+  executionTemplateDigest: string;
+}
+
 export type ExecutionOutcome =
   | { kind: 'succeeded'; exitCode: number }
   | { kind: 'failed'; exitCode: number | null; reason: string }
@@ -426,6 +458,7 @@ export interface Execution {
   environmentId: string;
   id: string;
   operationId: string;
+  workflow: WorkflowExecutionBinding | null;
   template: CreateExecutionInput;
   templateDigest: string;
   status: ExecutionStatus;

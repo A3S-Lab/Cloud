@@ -1,14 +1,16 @@
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, store_idempotency, store_outbox,
-    transaction_error, PostgresPersistenceError,
+    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
+    store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::executions::domain::{
     validate_execution_transition, CreateExecution, Execution, ExecutionOutcome, ExecutionStatus,
     ExecutionTemplate, ExecutionWrite, IExecutionRepository, TransitionExecution,
+    WorkflowExecutionBinding,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, ExecutionId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, RepositoryError,
+    EnvironmentId, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId,
+    IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId, PlanRevisionId,
+    ProjectId, RepositoryError, Sha256Digest, WorkflowRunId,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
@@ -18,7 +20,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_EXECUTIONS: &str = "select e.organization_id, e.project_id, e.environment_id, e.id, e.operation_id, e.template, e.template_digest, e.status, e.node_id, e.command_id, e.cleanup_command_id, e.runtime_spec_digest, e.outcome, e.aggregate_version, e.requested_at, e.updated_at, e.started_at, e.cancellation_requested_at, e.finished_at from executions e";
+const SELECT_EXECUTIONS: &str = "select e.organization_id, e.project_id, e.environment_id, e.id, e.operation_id, e.workflow_run_id, e.workflow_plan_revision_id, e.workflow_plan_digest, e.workflow_step_id, e.workflow_step_attempt, e.execution_template_id, e.execution_template_revision_id, e.execution_template_definition_digest, e.template, e.template_digest, e.status, e.node_id, e.command_id, e.cleanup_command_id, e.runtime_spec_digest, e.outcome, e.aggregate_version, e.requested_at, e.updated_at, e.started_at, e.cancellation_requested_at, e.finished_at from executions e";
 
 #[derive(Clone)]
 pub struct PostgresExecutionRepository {
@@ -109,6 +111,31 @@ impl IExecutionRepository for PostgresExecutionRepository {
             .into_iter()
             .map(map_row)
             .collect()
+    }
+
+    async fn find_for_workflow(
+        &self,
+        organization_id: OrganizationId,
+        workflow_run_id: WorkflowRunId,
+        step_id: &str,
+        step_attempt: u64,
+    ) -> Result<Option<Execution>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<ExecutionRow>(SELECT_EXECUTIONS)
+                    .append(" where e.organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and e.workflow_run_id = ")
+                    .bind(workflow_run_id.as_uuid())
+                    .append(" and e.workflow_step_id = ")
+                    .bind(step_id)
+                    .append(" and e.workflow_step_attempt = ")
+                    .bind(step_attempt),
+            )
+            .await
+            .map_err(|error| RepositoryError::Storage(error.to_string()))?
+            .map(map_row)
+            .transpose()
     }
 
     async fn replay(
@@ -216,10 +243,10 @@ async fn insert_execution(
     transaction: &a3s_orm::PostgresTransaction,
     execution: &Execution,
 ) -> Result<(), PostgresPersistenceError> {
-    let rows = execute(
+    let inserted = execute(
         transaction,
         sql_query::<()>(
-            "insert into executions (organization_id, project_id, environment_id, id, operation_id, template, template_digest, status, aggregate_version, requested_at, updated_at) values (",
+            "insert into executions (organization_id, project_id, environment_id, id, operation_id, workflow_run_id, workflow_plan_revision_id, workflow_plan_digest, workflow_step_id, workflow_step_attempt, execution_template_id, execution_template_revision_id, execution_template_definition_digest, template, template_digest, status, aggregate_version, requested_at, updated_at) values (",
         )
         .bind(execution.organization_id.as_uuid())
         .append(", ")
@@ -230,6 +257,59 @@ async fn insert_execution(
         .bind(execution.id.as_uuid())
         .append(", ")
         .bind(execution.operation_id.as_uuid())
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.workflow_run_id.as_uuid()),
+        )
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.plan_revision_id.as_uuid()),
+        )
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.plan_digest.as_str()),
+        )
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.step_id.as_str()),
+        )
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.step_attempt),
+        )
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.execution_template_id.as_uuid()),
+        )
+        .append(", ")
+        .bind(execution.workflow.as_ref().map(|binding| {
+            binding.execution_template_revision_id.as_uuid()
+        }))
+        .append(", ")
+        .bind(
+            execution
+                .workflow
+                .as_ref()
+                .map(|binding| binding.execution_template_digest.as_str()),
+        )
         .append(", ")
         .bind(serde_json::to_value(&execution.template)?)
         .append(", ")
@@ -244,7 +324,20 @@ async fn insert_execution(
         .bind(execution.updated_at)
         .append(")"),
     )
-    .await?;
+    .await;
+    let rows = match inserted {
+        Ok(rows) => rows,
+        Err(error) if is_unique_violation(&error) => {
+            return Err(RepositoryError::Conflict(
+                "execution identity or Workflow step attempt is already in use".into(),
+            )
+            .into())
+        }
+        Err(error) if is_foreign_key_violation(&error) => {
+            return Err(RepositoryError::NotFound.into())
+        }
+        Err(error) => return Err(error),
+    };
     if rows != 1 {
         return Err(PostgresPersistenceError::Invariant(format!(
             "creating execution affected {rows} rows"
@@ -350,6 +443,14 @@ struct ExecutionRow {
     environment_id: Uuid,
     id: Uuid,
     operation_id: Uuid,
+    workflow_run_id: Option<Uuid>,
+    workflow_plan_revision_id: Option<Uuid>,
+    workflow_plan_digest: Option<String>,
+    workflow_step_id: Option<String>,
+    workflow_step_attempt: Option<u64>,
+    execution_template_id: Option<Uuid>,
+    execution_template_revision_id: Option<Uuid>,
+    execution_template_definition_digest: Option<String>,
     template: Value,
     template_digest: String,
     status: String,
@@ -374,20 +475,28 @@ impl FromRow for ExecutionRow {
             environment_id: decode(row, 2)?,
             id: decode(row, 3)?,
             operation_id: decode(row, 4)?,
-            template: decode(row, 5)?,
-            template_digest: decode(row, 6)?,
-            status: decode(row, 7)?,
-            node_id: decode(row, 8)?,
-            command_id: decode(row, 9)?,
-            cleanup_command_id: decode(row, 10)?,
-            runtime_spec_digest: decode(row, 11)?,
-            outcome: decode(row, 12)?,
-            aggregate_version: decode(row, 13)?,
-            requested_at: decode(row, 14)?,
-            updated_at: decode(row, 15)?,
-            started_at: decode(row, 16)?,
-            cancellation_requested_at: decode(row, 17)?,
-            finished_at: decode(row, 18)?,
+            workflow_run_id: decode(row, 5)?,
+            workflow_plan_revision_id: decode(row, 6)?,
+            workflow_plan_digest: decode(row, 7)?,
+            workflow_step_id: decode(row, 8)?,
+            workflow_step_attempt: decode(row, 9)?,
+            execution_template_id: decode(row, 10)?,
+            execution_template_revision_id: decode(row, 11)?,
+            execution_template_definition_digest: decode(row, 12)?,
+            template: decode(row, 13)?,
+            template_digest: decode(row, 14)?,
+            status: decode(row, 15)?,
+            node_id: decode(row, 16)?,
+            command_id: decode(row, 17)?,
+            cleanup_command_id: decode(row, 18)?,
+            runtime_spec_digest: decode(row, 19)?,
+            outcome: decode(row, 20)?,
+            aggregate_version: decode(row, 21)?,
+            requested_at: decode(row, 22)?,
+            updated_at: decode(row, 23)?,
+            started_at: decode(row, 24)?,
+            cancellation_requested_at: decode(row, 25)?,
+            finished_at: decode(row, 26)?,
         })
     }
 }
@@ -408,12 +517,48 @@ fn map_row(row: ExecutionRow) -> Result<Execution, RepositoryError> {
         .map(serde_json::from_value::<ExecutionOutcome>)
         .transpose()
         .map_err(|error| corrupt(format!("stored execution outcome is invalid: {error}")))?;
+    let workflow = match (
+        row.workflow_run_id,
+        row.workflow_plan_revision_id,
+        row.workflow_plan_digest,
+        row.workflow_step_id,
+        row.workflow_step_attempt,
+        row.execution_template_id,
+        row.execution_template_revision_id,
+        row.execution_template_definition_digest,
+    ) {
+        (None, None, None, None, None, None, None, None) => None,
+        (
+            Some(workflow_run_id),
+            Some(plan_revision_id),
+            Some(plan_digest),
+            Some(step_id),
+            Some(step_attempt),
+            Some(execution_template_id),
+            Some(execution_template_revision_id),
+            Some(execution_template_digest),
+        ) => Some(WorkflowExecutionBinding {
+            workflow_run_id: WorkflowRunId::from_uuid(workflow_run_id),
+            plan_revision_id: PlanRevisionId::from_uuid(plan_revision_id),
+            plan_digest: Sha256Digest::parse(plan_digest).map_err(corrupt)?,
+            step_id,
+            step_attempt,
+            execution_template_id: ExecutionTemplateId::from_uuid(execution_template_id),
+            execution_template_revision_id: ExecutionTemplateRevisionId::from_uuid(
+                execution_template_revision_id,
+            ),
+            execution_template_digest: Sha256Digest::parse(execution_template_digest)
+                .map_err(corrupt)?,
+        }),
+        _ => return Err(corrupt("stored Workflow execution binding is partial")),
+    };
     Execution {
         organization_id: OrganizationId::from_uuid(row.organization_id),
         project_id: ProjectId::from_uuid(row.project_id),
         environment_id: EnvironmentId::from_uuid(row.environment_id),
         id: ExecutionId::from_uuid(row.id),
         operation_id: OperationId::from_uuid(row.operation_id),
+        workflow,
         template,
         template_digest: row.template_digest,
         status: ExecutionStatus::parse(&row.status)

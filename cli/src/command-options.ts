@@ -12,8 +12,8 @@ export function requireListCommand(arguments_: ParsedArguments): void {
   rejectGatewayRolloutOptions(arguments_);
 }
 
-export function requireReadCommand(arguments_: ParsedArguments, usage: string): void {
-  requireArity(arguments_.positionals, 3, usage);
+export function requireReadCommand(arguments_: ParsedArguments, usage: string, arity = 3): void {
+  requireArity(arguments_.positionals, arity, usage);
   rejectLogOptions(arguments_);
   rejectIdempotencyOption(arguments_);
   rejectFileOption(arguments_);

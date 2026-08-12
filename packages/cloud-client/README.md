@@ -113,7 +113,7 @@ cancellation, timeout, output digest, and redacted history.
 
 `listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
 `submitHumanTask` expose the protected HumanTask surface in REST contract
-`1.23.0`. Lists accept only the closed status set and a limit from 1 through 200
+`1.24.0`. Lists accept only the closed status set and a limit from 1 through 200
 and return summaries without interaction payloads. Detail may return the
 request-bound native A3S Form interaction only when the bearer principal is the
 current claimant. Claim/release use explicit version and idempotency headers;
@@ -176,7 +176,17 @@ expose the finite Runtime Task lifecycle through the tenant-scoped Execution
 controllers. Create and cancel require caller-owned idempotency keys. The
 client transports the typed digest-pinned template and authoritative projection
 without inferring placement or provider state; input and process environment
-are persisted desired state and must not contain secret material.
+are persisted desired state and must not contain secret material. Workflow-
+owned children additionally expose their immutable Run/Plan/step/attempt and
+ExecutionTemplate binding; the client does not create or interpret it.
+
+`listExecutionTemplates`, `getExecutionTemplate`, and
+`createExecutionTemplate` expose the immutable project-scoped finite-task
+definition lifecycle added by REST contract `1.24.0`. Create transports one
+bounded A3S ACL document and caller-owned idempotency key. Cloud alone parses,
+canonicalizes, digest-binds, persists, and materializes the template; the
+client retains no parser, revision store, Workflow dispatcher, scheduler, or
+Runtime provider.
 
 `listAgentConversations`, `getAgentConversation`, and
 `createAgentConversation` expose the `A1.1` conversation lifecycle.

@@ -1,7 +1,10 @@
-use super::request::request_identity;
-use crate::modules::executions::application::{CancelExecution, CreateExecutionCommand};
+use super::request::{actor_principal_id, request_identity};
+use crate::modules::executions::application::{
+    CancelExecution, CreateExecutionCommand, CreateExecutionTemplateCommand,
+};
 use crate::modules::executions::presentation::dto::{
-    CreateExecutionRequest, ExecutionMutationResponse,
+    CreateExecutionRequest, CreateExecutionTemplateRequest, ExecutionMutationResponse,
+    ExecutionTemplateMutationResponse,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
@@ -22,9 +25,45 @@ use uuid::Uuid;
 
 pub fn execution_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let cancel_bus = Arc::clone(&bus);
+    let template_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::EXECUTION_WRITE])?
+        .post(
+            "/{organization_id}/projects/{project_id}/execution-templates",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&template_bus);
+                async move {
+                    let body: CreateExecutionTemplateRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateExecutionTemplateCommand {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            definition_acl: body.definition_acl,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 201 };
+                            BootResponse::json_with_status(
+                                status,
+                                &ExecutionTemplateMutationResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .post(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/executions",
             move |request: BootRequest| {
