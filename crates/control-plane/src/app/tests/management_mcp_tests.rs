@@ -368,6 +368,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_runs_wait",
             "a3s_cloud_workflow_run_output_get",
             "a3s_cloud_workflow_run_history_get",
+            "a3s_cloud_human_tasks_get",
+            "a3s_cloud_human_tasks_list",
             "a3s_cloud_search",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
@@ -474,6 +476,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_runs_wait",
             "a3s_cloud_workflow_run_output_get",
             "a3s_cloud_workflow_run_history_get",
+            "a3s_cloud_human_tasks_get",
+            "a3s_cloud_human_tasks_list",
             "a3s_cloud_search",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
@@ -1495,6 +1499,11 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             "a3s_cloud_workflow_run_history_get",
             json!({"workflowRunId": missing_resource_id}),
         ),
+        (
+            44,
+            "a3s_cloud_human_tasks_get",
+            json!({"humanTaskId": missing_resource_id}),
+        ),
     ] {
         let response = app
             .call(mcp_request(
@@ -1605,6 +1614,16 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             43,
             "a3s_cloud_workflow_run_history_get",
             json!({"workflowRunId": missing_resource_id, "limit": 0}),
+        ),
+        (
+            45,
+            "a3s_cloud_human_tasks_list",
+            json!({"projectId": project, "limit": 201}),
+        ),
+        (
+            46,
+            "a3s_cloud_human_tasks_list",
+            json!({"projectId": project, "status": "assigned"}),
         ),
     ] {
         let response = app

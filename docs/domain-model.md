@@ -446,9 +446,12 @@ creates a resume receipt only after observing the exact matching
 `HookReceived` event, never from Outbox delivery alone. Worker-role coordination
 validates the exact interaction-mode FormRelease and hook metadata before task
 creation, and recovers a resume committed before receipt acknowledgement.
-Draft/release commands and APIs are implemented; public protected submission,
-HumanTask/tasklist surfaces, Resource Grant enforcement on those public surfaces, and expiry/cancellation
-coordination remain later slices.
+Draft/release commands and APIs are implemented. Protected HumanTask
+list/detail reads resolve the task through the existing Workflow repository and
+authorize its canonical project with Identity's shared Resource Grant
+evaluator. Lists omit interaction requests; detail returns the native
+request-bound interaction only to the current claimant. Public claim, release,
+submission, and expiry/cancellation coordination remain later slices.
 
 The first closed Workflow contract uses these semantic step kinds:
 
@@ -618,8 +621,9 @@ contexts' tables.
   environment grant does not authorize these project-scoped aggregates. REST
   and Management MCP reuse the same Workflow application resolver, and denied
   or missing aggregate IDs share the established `404` contract. HumanTask
-  remains a separate Workflow-owned boundary and cannot borrow Goal or Form
-  authorization implicitly.
+  uses its own canonical project through that resolver; it cannot borrow Goal
+  or Form authorization implicitly. An environment-only grant does not expose
+  a task, and unknown assignment-policy revisions fail closed.
 - Indirect Asset catalog detail, release, selection, and mutation requests,
   hosted Git Smart HTTP, and MCP Service profile reads and bindings resolve the
   canonical Asset through one Assets-owned application boundary before replay
@@ -1260,9 +1264,10 @@ contexts' tables.
   digest-bound and projected from the correlated A3S Flow history; unselected
   branch steps become `skipped`. A human decision suspends the same Flow run on
   an authority-bound hook and resumes it only from the immutable decision.
-- Internal HumanTask dispatch and resume recovery are implemented. Public task
-  commands and authorization, service/finite-task, Agent, MCP, model, Tool,
-  memory, and subworkflow dispatch remain future gates. When admitted, each
+- Internal HumanTask dispatch and resume recovery plus protected list/detail
+  reads are implemented. Public task claim/release/submission,
+  service/finite-task, Agent, MCP, model, Tool, memory, and subworkflow dispatch
+  remain future gates. When admitted, each
   child stores one exact owning-context identity so ambiguous dispatch can be
   adopted without creating a second child.
 - Dynamic planning is an explicit policy step with a recorded candidate set,

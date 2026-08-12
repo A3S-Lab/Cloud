@@ -1,4 +1,6 @@
 import type {
+  HumanTask,
+  HumanTaskSummary,
   WorkflowDefinition,
   WorkflowDefinitionMutationResult,
   WorkflowGoal,
@@ -175,4 +177,22 @@ export function workflowRunHistoryResult(page: WorkflowRunHistoryPage): CommandR
       { header: 'OCCURRED AT', value: (event) => event.occurredAt },
     ]),
   };
+}
+
+const HUMAN_TASK_COLUMNS = [
+  { header: 'ID', value: (row: HumanTaskSummary) => row.id },
+  { header: 'RUN', value: (row: HumanTaskSummary) => row.workflowRunId },
+  { header: 'STEP', value: (row: HumanTaskSummary) => row.stepId },
+  { header: 'STATUS', value: (row: HumanTaskSummary) => row.status },
+  { header: 'CLAIMED BY', value: (row: HumanTaskSummary) => row.claimedBy },
+  { header: 'DUE AT', value: (row: HumanTaskSummary) => row.dueAt },
+  { header: 'UPDATED AT', value: (row: HumanTaskSummary) => row.updatedAt },
+] as const;
+
+export function humanTasksResult(rows: HumanTaskSummary[]): CommandResult {
+  return { json: rows, table: renderTable(rows, HUMAN_TASK_COLUMNS) };
+}
+
+export function humanTaskResult(row: HumanTask): CommandResult {
+  return { json: row, table: renderTable([row], HUMAN_TASK_COLUMNS) };
 }

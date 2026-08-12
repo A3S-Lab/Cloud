@@ -1,4 +1,5 @@
 pub mod commands;
+pub(crate) mod human_task_access;
 pub mod queries;
 pub(crate) mod resource_access;
 mod workflow_run_reconciler;

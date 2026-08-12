@@ -2,12 +2,13 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    OntologyId, OrganizationId, ProjectId, RepositoryError, WorkflowDefinitionId, WorkflowGoalId,
-    WorkflowRunId,
+    HumanTaskId, OntologyId, OrganizationId, ProjectId, RepositoryError, WorkflowDefinitionId,
+    WorkflowGoalId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunRepository, Ontology, WorkflowDefinition, WorkflowGoalRecord, WorkflowRunRecord,
+    HumanTaskRecord, IHumanTaskRepository, IOntologyRepository, IWorkflowDefinitionRepository,
+    IWorkflowGoalRepository, IWorkflowRunRepository, Ontology, WorkflowDefinition,
+    WorkflowGoalRecord, WorkflowRunRecord,
 };
 use std::future::Future;
 
@@ -75,6 +76,28 @@ pub(crate) async fn workflow_run(
         "WorkflowRun not found",
     )
     .await
+}
+
+pub(crate) async fn human_task(
+    repository: &dyn IHumanTaskRepository,
+    organization_id: OrganizationId,
+    human_task_id: HumanTaskId,
+    evaluator: &ResourceAccessEvaluator,
+) -> ApplicationResult<HumanTaskRecord> {
+    project_owned(
+        repository.find_task(organization_id, human_task_id),
+        |value| value.task.project_id,
+        evaluator,
+        "HumanTask not found",
+    )
+    .await
+}
+
+pub(crate) fn human_task_project(
+    project_id: ProjectId,
+    evaluator: &ResourceAccessEvaluator,
+) -> ApplicationResult<()> {
+    authorize_project(project_id, evaluator, "HumanTask project not found")
 }
 
 async fn project_owned<T>(

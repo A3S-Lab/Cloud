@@ -22,6 +22,10 @@ The `W0.3` planning slice adds ten Workflow definition, immutable revision,
 Goal, and deterministic Plan tools over the same CQRS handlers used by REST,
 the maintained client, and CLI. It adds no MCP-owned planner, run engine,
 payload store, or authorization path.
+The protected HumanTask read slice adds two tools over the same Workflow
+queries and response DTOs used by REST, the maintained client, and CLI. It
+adds no MCP-owned assignment policy, task store, Form contract, or grant
+evaluator.
 The native Form lifecycle adds seven draft/release tools over the same Form
 commands, queries, owner compiler port, A3S ORM repository, audit, and Outbox
 used by REST, the maintained client, and CLI. It adds no MCP-owned Form parser,
@@ -127,6 +131,8 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_workflow_goals_list` | Query | None |
 | `a3s_cloud_workflow_goals_get` | Query | None |
 | `a3s_cloud_workflow_plan_revisions_get` | Query | None |
+| `a3s_cloud_human_tasks_list` | Query | None |
+| `a3s_cloud_human_tasks_get` | Query | None |
 | `a3s_cloud_workflow_definitions_create` | Command | `workflow:write` |
 | `a3s_cloud_workflow_definitions_revise` | Command | `workflow:write` |
 | `a3s_cloud_workflow_goals_create` | Command | `workflow:write` |
@@ -298,18 +304,30 @@ limit from 1 through 100. All seven tools derive organization and actor from
 the authenticated principal and reuse the REST CQRS handlers, A3S ORM
 repository, Operation, A3S Flow history, audit, Outbox, and idempotency
 authority. The minimal executor supports only Workflow-local `input`,
-`transform`, `branch`, and `output`; it does not expose HumanTask,
-service/finite-task, typed capability, or compensation behavior.
+`transform`, `branch`, `human_decision`, and `output`; it does not expose
+HumanTask mutation/submission, service/finite-task, typed capability, or
+compensation behavior.
+
+`a3s_cloud_human_tasks_list` accepts one explicit `projectId`, the closed
+optional task status, and an optional limit from 1 through 200. It returns
+bounded summaries and never includes an interaction request or large detail
+payload. `a3s_cloud_human_tasks_get` resolves one task through Workflow's
+existing repository and returns the exact request-bound native A3S Form
+interaction only when the authenticated principal is the current claimant.
+Both calls use Identity's shared Resource Grant evaluator; an environment-only
+grant cannot authorize the project-scoped task, denied and missing IDs share a
+`404`, and an unknown assignment-policy revision fails closed.
 
 For a restricted Membership, Ontology and Workflow create/list/start tools
 authorize their explicit `projectId` before dispatch. Indirect Ontology,
-definition, Goal, and Run tools receive only coarse project-family admission
+definition, Goal, Run, and HumanTask detail tools receive only coarse project-family admission
 from the MCP catalog; the shared Workflow application resolver loads the
 owning aggregate and authorizes its canonical project before revision, Plan,
-wait, output, history, revise, cancel, or idempotency replay. Revisions and
-plans inherit their parent scope, an environment-only grant cannot authorize a
-project aggregate, denied and missing IDs share one `404`, and revocation takes
-effect on the next stateless MCP request.
+wait, output, history, task detail, revise, cancel, or idempotency replay.
+Revisions and plans inherit their parent scope, while HumanTask uses its stored
+canonical project. An environment-only grant cannot authorize a project
+aggregate, denied and missing IDs share one `404`, and revocation takes effect
+on the next stateless MCP request.
 
 ## Native Form draft and release lifecycle
 
@@ -328,7 +346,7 @@ publish replay returns the historical accepted projection even after the
 aggregate advances. The adapter derives organization and actor identity from
 the principal and never accepts either as an argument. It does not compile or
 validate Form semantics itself and does not expose Form submission or
-HumanTask execution.
+HumanTask mutation.
 
 For a restricted Membership, create/list use their explicit `projectId` while
 get, revise, publish, and release tools receive only coarse project-family
@@ -387,7 +405,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 65-tool administrator and 43-tool
+current expanded runner requires exact 71-tool administrator and 45-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -412,10 +430,10 @@ PostgreSQL only through A3S ORM repositories.
 
 The expanded focused catalog, permission, Ontology migration, Workflow
 definition/Goal/Plan lifecycle, native Form lifecycle, minimal WorkflowRun,
-tenant/role boundary, deterministic-plan, strict-boundary, and replay tests
-pass. The updated clean PostgreSQL/A3S Box scenario and its Ontology, Workflow,
-Form, and WorkflowRun persistence/idempotency assertions must pass before these
-slices are verified.
+protected HumanTask read/privacy, tenant/role boundary, deterministic-plan,
+strict-boundary, and replay tests pass. The updated clean PostgreSQL/A3S Box
+scenario and its Ontology, Workflow, Form, and WorkflowRun
+persistence/idempotency assertions must pass before these slices are verified.
 
 ## Current limits
 

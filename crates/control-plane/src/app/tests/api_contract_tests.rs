@@ -363,6 +363,34 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         ["/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}"]
         ["get"];
     assert_eq!(workflow_plan["tags"], json!(["Workflow"]));
+    let human_task_collection = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/human-tasks"]["get"];
+    assert_eq!(human_task_collection["tags"], json!(["Workflow"]));
+    assert!(human_task_collection["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "limit"
+                && parameter["in"] == "query"
+                && parameter["schema"]["minimum"] == 1
+                && parameter["schema"]["maximum"] == 200
+        }) && parameters.iter().any(|parameter| {
+            parameter["name"] == "status"
+                && parameter["in"] == "query"
+                && parameter["schema"]["enum"]
+                    == json!([
+                        "pending_activation",
+                        "ready",
+                        "claimed",
+                        "completed",
+                        "expired",
+                        "cancelled"
+                    ])
+        })));
+    assert!(human_task_collection["responses"]["200"].is_object());
+    let human_task =
+        &document["paths"]["/organizations/{organization_id}/human-tasks/{human_task_id}"]["get"];
+    assert_eq!(human_task["tags"], json!(["Workflow"]));
+    assert!(human_task["responses"]["200"].is_object());
     let form_collection =
         &document["paths"]["/organizations/{organization_id}/projects/{project_id}/forms"];
     assert_eq!(form_collection["get"]["tags"], json!(["Forms"]));

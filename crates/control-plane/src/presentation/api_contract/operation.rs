@@ -239,13 +239,28 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             || path.ends_with("/build-runs")
             || path.ends_with("/agent-conversations")
             || path.ends_with("/executions")
-            || path.ends_with("/workflow-runs"))
+            || path.ends_with("/workflow-runs")
+            || path.ends_with("/human-tasks"))
     {
         upsert_parameter(
             parameters,
             json!({
                 "name": "limit", "in": "query", "required": false,
                 "schema": { "type": "integer", "minimum": 1, "maximum": 200 }
+            }),
+        );
+    }
+    if method == "get" && path.ends_with("/human-tasks") {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "status", "in": "query", "required": false,
+                "schema": {
+                    "type": "string",
+                    "enum": [
+                        "pending_activation", "ready", "claimed", "completed", "expired", "cancelled"
+                    ]
+                }
             }),
         );
     }
@@ -726,7 +741,10 @@ fn operation_tag(path: &str) -> &'static str {
         "Edge"
     } else if path.contains("workloads") || path.contains("deployments") {
         "Workloads"
-    } else if path.contains("ontologies") || path.contains("workflow-") {
+    } else if path.contains("ontologies")
+        || path.contains("workflow-")
+        || path.contains("human-tasks")
+    {
         "Workflow"
     } else if path.contains("/forms") {
         "Forms"

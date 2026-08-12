@@ -52,6 +52,8 @@ Commands:
   workflow-goals get ID  Get one exact WorkflowGoal
   workflow-goals create  Compile a WorkflowGoal from A3S ACL
   workflow-goals plan ID REV Get one immutable deterministic PlanRevision
+  human-tasks list [STATUS] List bounded task summaries in the selected project
+  human-tasks get ID     Get one protected HumanTask detail
   workflow-runs list     List recent WorkflowRuns in the selected project
   workflow-runs get ID   Get one WorkflowRun and its step projections
   workflow-runs start GOAL PLAN Start one exact PlanRevision idempotently

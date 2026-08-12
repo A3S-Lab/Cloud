@@ -64,6 +64,8 @@ pub const WORKFLOW_RUNS_LIST: &str = "a3s_cloud_workflow_runs_list";
 pub const WORKFLOW_RUNS_WAIT: &str = "a3s_cloud_workflow_runs_wait";
 pub const WORKFLOW_RUN_OUTPUT_GET: &str = "a3s_cloud_workflow_run_output_get";
 pub const WORKFLOW_RUN_HISTORY_GET: &str = "a3s_cloud_workflow_run_history_get";
+pub const HUMAN_TASKS_GET: &str = "a3s_cloud_human_tasks_get";
+pub const HUMAN_TASKS_LIST: &str = "a3s_cloud_human_tasks_list";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
@@ -125,6 +127,8 @@ pub enum ManagementTool {
     WorkflowRunsWait,
     WorkflowRunOutputGet,
     WorkflowRunHistoryGet,
+    HumanTasksGet,
+    HumanTasksList,
     Search,
     PluginRegistriesList,
     PluginRegistriesGet,
@@ -166,7 +170,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 69] = [
+    const ALL: [Self; 71] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -211,6 +215,8 @@ impl ManagementTool {
         Self::WorkflowRunsWait,
         Self::WorkflowRunOutputGet,
         Self::WorkflowRunHistoryGet,
+        Self::HumanTasksGet,
+        Self::HumanTasksList,
         Self::Search,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
@@ -308,6 +314,8 @@ impl ManagementTool {
             Self::WorkflowRunsWait => WORKFLOW_RUNS_WAIT,
             Self::WorkflowRunOutputGet => WORKFLOW_RUN_OUTPUT_GET,
             Self::WorkflowRunHistoryGet => WORKFLOW_RUN_HISTORY_GET,
+            Self::HumanTasksGet => HUMAN_TASKS_GET,
+            Self::HumanTasksList => HUMAN_TASKS_LIST,
             Self::Search => SEARCH,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
@@ -385,6 +393,8 @@ impl ManagementTool {
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
             | Self::WorkflowRunHistoryGet
+            | Self::HumanTasksGet
+            | Self::HumanTasksList
             | Self::Search
             | Self::PluginRegistriesList
             | Self::PluginRegistriesGet
@@ -435,7 +445,8 @@ impl ManagementTool {
             | Self::WorkflowGoalsCreate
             | Self::WorkflowGoalsList
             | Self::WorkflowRunsStart
-            | Self::WorkflowRunsList => Some(ManagementResourceBinding::ProjectArgument),
+            | Self::WorkflowRunsList
+            | Self::HumanTasksList => Some(ManagementResourceBinding::ProjectArgument),
             Self::WorkloadsList | Self::RoutesList | Self::BuildRunsList => {
                 Some(ManagementResourceBinding::EnvironmentArguments)
             }
@@ -461,6 +472,7 @@ impl ManagementTool {
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
             | Self::WorkflowRunHistoryGet
+            | Self::HumanTasksGet
             | Self::WorkloadLogsGet
             | Self::WorkloadsStop
             | Self::WorkloadsRollback
@@ -775,6 +787,18 @@ impl ManagementTool {
                 "Get Workflow run history",
                 "Get one bounded, redacted page of the correlated A3S Flow history.",
                 workflow_run_history_schema(),
+                true,
+            ),
+            Self::HumanTasksGet => (
+                "Get HumanTask",
+                "Get one tenant-authorized HumanTask; only its current claimant receives the request-bound A3S Form interaction.",
+                uuid_id_schema("humanTaskId"),
+                true,
+            ),
+            Self::HumanTasksList => (
+                "List HumanTasks",
+                "List bounded HumanTask summaries in one tenant-authorized project without interaction payloads.",
+                list_human_tasks_schema(),
                 true,
             ),
             Self::Search => (
@@ -1450,6 +1474,29 @@ fn workflow_run_history_schema() -> Value {
     })
 }
 
+fn list_human_tasks_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "status": {
+                "type": "string",
+                "enum": [
+                    "pending_activation",
+                    "ready",
+                    "claimed",
+                    "completed",
+                    "expired",
+                    "cancelled"
+                ]
+            },
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 100}
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
 fn membership_role_schema() -> Value {
     json!({"type": "string", "enum": ["owner", "admin", "member", "restricted"]})
 }
@@ -1645,6 +1692,8 @@ mod tests {
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
             ManagementTool::WorkflowRunHistoryGet,
+            ManagementTool::HumanTasksGet,
+            ManagementTool::HumanTasksList,
         ] {
             assert!(tool.visible_to(&principal), "{}", tool.name());
         }
@@ -1698,6 +1747,8 @@ mod tests {
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
             ManagementTool::WorkflowRunHistoryGet,
+            ManagementTool::HumanTasksGet,
+            ManagementTool::HumanTasksList,
         ] {
             assert!(!tool.visible_to(&principal), "{}", tool.name());
         }

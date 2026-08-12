@@ -44,7 +44,7 @@ the existing Fleet controller and returns one credential-free enrollment-token
 projection. `listNodePools`, `getNodePool`, `createNodePool`,
 `addNodePoolMembers`, `scheduleNodePoolMaintenance`, and
 `cancelNodePoolMaintenance` expose Fleet-owned additive membership and bounded
-maintenance policy through REST contract `1.18.0`. Workload ACL creation and
+maintenance policy through the current REST contract `1.19.0`. Workload ACL creation and
 update methods carry an optional immutable `placement { node_pool_id = ... }`
 selection through that same contract. The package is internal and
 versioned with Cloud until public package compatibility and deprecation policy
@@ -108,9 +108,16 @@ bounded optional deadline, and requires caller-owned idempotency. Cancel is
 also replay-safe; list, wait, and history enforce the server's finite bounds
 before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
-cancellation, timeout, output digest, and redacted history. This client surface
-does not claim HumanTask, service/finite-task, typed capability, compensation,
-or production-recovery support.
+cancellation, timeout, output digest, and redacted history.
+
+`listHumanTasks` and `getHumanTask` add the protected HumanTask read surface in
+REST contract `1.19.0`. Lists accept only the closed status set and a limit from
+1 through 200 and return summaries without interaction payloads. Detail may
+return the request-bound native A3S Form interaction only when the bearer
+principal is the current claimant; the server remains authoritative for that
+authorization decision. The client does not expose claim, release, submission,
+service/finite-task, typed capability, compensation, or production-recovery
+support.
 
 `listFormDrafts`, `getFormDraft`, `createFormDraft`, `reviseFormDraft`,
 `listFormReleases`, `getFormRelease`, and `publishFormRelease` expose the native

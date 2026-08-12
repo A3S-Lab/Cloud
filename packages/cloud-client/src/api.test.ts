@@ -8,6 +8,7 @@ import {
   type CloudFetch,
   DEFAULT_CLOUD_API_BASE_PATH,
   DEFAULT_WORKFLOW_RUN_WAIT_SECONDS,
+  MAX_HUMAN_TASK_LIST_LIMIT,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
@@ -36,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.18.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.19.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -754,6 +755,48 @@ describe('CloudApi', () => {
         limit: MAX_WORKFLOW_RUN_HISTORY_LIMIT + 1,
       })
     ).toThrow('WorkflowRun history limit must be between');
+    expect(called).toBe(false);
+  });
+
+  it('uses bounded project-scoped HumanTask list and protected detail paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async (...args) => {
+        calls.push(args);
+        return jsonResponse([]);
+      },
+    });
+
+    await api.listHumanTasks('organization / one', 'project / one', {
+      status: 'claimed',
+      limit: 25,
+    });
+    await api.getHumanTask('organization / one', 'task / one');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/human-tasks?status=claimed&limit=25',
+      '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one',
+    ]);
+  });
+
+  it('rejects invalid HumanTask filters before transport', () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse([]);
+      },
+    });
+
+    expect(() => api.listHumanTasks('organization', 'project', { limit: 0 })).toThrow(
+      'HumanTask list limit must be between'
+    );
+    expect(() =>
+      api.listHumanTasks('organization', 'project', { limit: MAX_HUMAN_TASK_LIST_LIMIT + 1 })
+    ).toThrow('HumanTask list limit must be between');
+    expect(() => api.listHumanTasks('organization', 'project', { status: 'unknown' as never })).toThrow(
+      'HumanTask status is invalid'
+    );
     expect(called).toBe(false);
   });
 

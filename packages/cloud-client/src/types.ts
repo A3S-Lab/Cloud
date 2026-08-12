@@ -921,6 +921,17 @@ export type {
 } from './source';
 export type {
   CancelWorkflowRunInput,
+  HumanTask,
+  HumanTaskAssignmentPolicy,
+  HumanTaskInteractionAssignment,
+  HumanTaskInteractionBinding,
+  HumanTaskInteractionIdentity,
+  HumanTaskInteractionOutcome,
+  HumanTaskInteractionOutputMapping,
+  HumanTaskInteractionRequest,
+  HumanTaskStatus,
+  HumanTaskSummary,
+  ListHumanTasksOptions,
   ListWorkflowRunsOptions,
   PublishWorkflowDefinitionInput,
   ReviseWorkflowDefinitionOptions,

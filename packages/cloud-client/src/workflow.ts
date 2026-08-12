@@ -1,3 +1,5 @@
+import type { FormReleaseRef } from './form';
+
 export type WorkflowPayloadKind = 'configuration' | 'data_schema' | 'policy';
 
 export interface WorkflowPayloadAclInput {
@@ -282,4 +284,97 @@ export interface WorkflowRunHistoryEvent {
 export interface WorkflowRunHistoryPage {
   events: WorkflowRunHistoryEvent[];
   nextSequence: number | null;
+}
+
+export type HumanTaskStatus =
+  | 'pending_activation'
+  | 'ready'
+  | 'claimed'
+  | 'completed'
+  | 'expired'
+  | 'cancelled';
+
+export type HumanTaskInteractionOutcome = 'submit' | 'approve' | 'reject';
+
+export type HumanTaskInteractionOutputMapping =
+  | { kind: 'identity' }
+  | { kind: 'registry'; registryKey: string; revision: number; digest: string };
+
+export interface HumanTaskAssignmentPolicy {
+  id: string;
+  revision: number;
+  digest: string;
+}
+
+export interface HumanTaskInteractionIdentity {
+  workflowRunId: string;
+  flowRunId: string;
+  stepId: string;
+  stepAttempt: number;
+  humanTaskId: string;
+  flowHookId: string;
+}
+
+export interface HumanTaskInteractionAssignment {
+  policyId: string;
+  policyRevision: number;
+  policyDigest: string;
+  claimedPrincipalId: string;
+}
+
+export interface HumanTaskInteractionBinding {
+  version: number;
+  createdAt: string;
+  dueAt?: string;
+  expiresAt?: string;
+}
+
+export interface HumanTaskInteractionRequest {
+  apiVersion: 'a3s.dev/form-interaction-request/v1';
+  requestId: string;
+  identity: HumanTaskInteractionIdentity;
+  form: FormReleaseRef;
+  assignment: HumanTaskInteractionAssignment;
+  task: HumanTaskInteractionBinding;
+  allowedOutcomes: HumanTaskInteractionOutcome[];
+  outputMapping: HumanTaskInteractionOutputMapping;
+  maxValueBytes: number;
+  initialValue?: Record<string, unknown>;
+  digest: string;
+}
+
+export interface HumanTaskSummary {
+  organizationId: string;
+  projectId: string;
+  id: string;
+  workflowRunId: string;
+  stepId: string;
+  stepAttempt: number;
+  formRelease: FormReleaseRef;
+  assignmentPolicy: HumanTaskAssignmentPolicy;
+  status: HumanTaskStatus;
+  claimedBy: string | null;
+  decisionId: string | null;
+  aggregateVersion: number;
+  message: string;
+  allowedOutcomes: HumanTaskInteractionOutcome[];
+  createdAt: string;
+  updatedAt: string;
+  dueAt: string | null;
+  expiresAt: string | null;
+  claimedAt: string | null;
+  terminalAt: string | null;
+}
+
+export interface HumanTask extends HumanTaskSummary {
+  details: string | null;
+  outputMapping: HumanTaskInteractionOutputMapping;
+  maxValueBytes: number;
+  initialValue: Record<string, unknown> | null;
+  interactionRequest: HumanTaskInteractionRequest | null;
+}
+
+export interface ListHumanTasksOptions {
+  status?: HumanTaskStatus;
+  limit?: number;
 }

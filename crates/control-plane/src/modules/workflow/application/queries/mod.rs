@@ -1,4 +1,5 @@
 pub mod diff_ontology_revisions;
+pub mod get_human_task;
 pub mod get_ontology;
 pub mod get_ontology_revision;
 pub mod get_plan_revision;
@@ -8,6 +9,7 @@ pub mod get_workflow_revision;
 pub mod get_workflow_run;
 pub mod get_workflow_run_history;
 pub mod get_workflow_run_output;
+pub mod list_human_tasks;
 pub mod list_ontologies;
 pub mod list_ontology_revisions;
 pub mod list_workflow_definitions;

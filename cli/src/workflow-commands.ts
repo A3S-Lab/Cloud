@@ -1,5 +1,7 @@
 import {
   type CloudApi,
+  type HumanTaskStatus,
+  MAX_HUMAN_TASK_LIST_LIMIT,
   MAX_WORKFLOW_RUN_HISTORY_LIMIT,
   MAX_WORKFLOW_RUN_LIST_LIMIT,
   MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
@@ -35,6 +37,8 @@ import {
   workflowGoalResult,
   workflowGoalsResult,
   workflowPlanRevisionResult,
+  humanTaskResult,
+  humanTasksResult,
   workflowRevisionResult,
   workflowRevisionsResult,
   workflowRunHistoryResult,
@@ -159,6 +163,36 @@ export async function executeWorkflowCommand(
           requireOrganization(context),
           positionalUuid(positionals, 2, 'WorkflowGoal ID'),
           positionalUuid(positionals, 3, 'Plan revision ID')
+        )
+      );
+    case 'human-tasks list': {
+      if (positionals.length < 2 || positionals.length > 3) {
+        throw usageError('usage: a3s-cloud human-tasks list [status]');
+      }
+      rejectWorkflowRunReadMutationOptions(arguments_);
+      if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+        throw usageError('--cursor and --stream are not valid for HumanTask list');
+      }
+      const status = parseHumanTaskStatus(positionals[2]);
+      const limit = parseBoundedIntegerOption(
+        arguments_.limit,
+        'HumanTask list limit',
+        1,
+        MAX_HUMAN_TASK_LIST_LIMIT
+      );
+      return humanTasksResult(
+        await cloudApi().listHumanTasks(requireOrganization(context), requireProject(context), {
+          status,
+          limit,
+        })
+      );
+    }
+    case 'human-tasks get':
+      requireReadCommand(arguments_, 'human-tasks get <human-task-id>');
+      return humanTaskResult(
+        await cloudApi().getHumanTask(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'HumanTask ID')
         )
       );
     case 'workflow-runs list': {
@@ -290,6 +324,16 @@ export async function executeWorkflowCommand(
     default:
       return undefined;
   }
+}
+
+function parseHumanTaskStatus(raw: string | undefined): HumanTaskStatus | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  if (!['pending_activation', 'ready', 'claimed', 'completed', 'expired', 'cancelled'].includes(raw)) {
+    throw usageError('HumanTask status is invalid');
+  }
+  return raw as HumanTaskStatus;
 }
 
 function rejectMisplacedWorkflowRunOptions(arguments_: ParsedArguments): void {

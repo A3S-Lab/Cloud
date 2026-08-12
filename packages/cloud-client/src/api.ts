@@ -55,7 +55,11 @@ import type {
   GithubConnectionInstall,
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
+  HumanTask,
+  HumanTaskStatus,
+  HumanTaskSummary,
   IssueEnrollmentTokenInput,
+  ListHumanTasksOptions,
   ListWorkflowRunsOptions,
   McpCredential,
   McpCredentialDeliveryResult,
@@ -164,14 +168,23 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.18.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.19.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
 export const MAX_WORKFLOW_RUN_LIST_LIMIT = 200;
 export const MAX_WORKFLOW_RUN_HISTORY_LIMIT = 100;
 export const MAX_WORKFLOW_RUN_WAIT_SECONDS = 30;
+export const MAX_HUMAN_TASK_LIST_LIMIT = 200;
 export const DEFAULT_WORKFLOW_RUN_WAIT_SECONDS = 25;
+const HUMAN_TASK_STATUSES: ReadonlySet<HumanTaskStatus> = new Set([
+  'pending_activation',
+  'ready',
+  'claimed',
+  'completed',
+  'expired',
+  'cancelled',
+]);
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
@@ -828,6 +841,42 @@ export class CloudApi {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/workflow-runs/${encodeURIComponent(workflowRunId)}/history${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  listHumanTasks(
+    organizationId: string,
+    projectId: string,
+    options: ListHumanTasksOptions = {},
+    signal?: AbortSignal
+  ): Promise<HumanTaskSummary[]> {
+    const parameters = new URLSearchParams();
+    if (options.status !== undefined) {
+      if (!HUMAN_TASK_STATUSES.has(options.status)) {
+        throw new TypeError('HumanTask status is invalid');
+      }
+      parameters.set('status', options.status);
+    }
+    setBoundedInteger(
+      parameters,
+      'limit',
+      options.limit,
+      1,
+      MAX_HUMAN_TASK_LIST_LIMIT,
+      'HumanTask list limit'
+    );
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/human-tasks${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  getHumanTask(organizationId: string, humanTaskId: string, signal?: AbortSignal): Promise<HumanTask> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/human-tasks/${encodeURIComponent(humanTaskId)}`,
       signal
     );
   }

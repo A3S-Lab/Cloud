@@ -1,21 +1,22 @@
 use super::tool_result;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
-    OrganizationId, PlanRevisionId, PrincipalId, ProjectId, WorkflowDefinitionId, WorkflowGoalId,
-    WorkflowRevisionId, WorkflowRunId,
+    HumanTaskId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, WorkflowDefinitionId,
+    WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::presentation::{
-    PlanRevisionResponse, WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse,
-    WorkflowGoalMutationResponse, WorkflowGoalResponse, WorkflowRevisionResponse,
-    WorkflowRevisionSummaryResponse, WorkflowRunMutationResponse, WorkflowRunOutputResponse,
-    WorkflowRunResponse,
+    HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse,
+    WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse, WorkflowGoalMutationResponse,
+    WorkflowGoalResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
+    WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
 };
 use crate::modules::workflow::{
-    CancelWorkflowRun, CreateWorkflowDefinition, CreateWorkflowGoal, GetPlanRevision,
+    CancelWorkflowRun, CreateWorkflowDefinition, CreateWorkflowGoal, GetHumanTask, GetPlanRevision,
     GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision, GetWorkflowRun,
-    GetWorkflowRunHistory, GetWorkflowRunOutput, ListWorkflowDefinitions, ListWorkflowGoals,
-    ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun,
-    WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind, WORKFLOW_RUN_HISTORY_MAX_LIMIT,
+    GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskStatus, ListHumanTasks,
+    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
+    ReviseWorkflowDefinition, StartWorkflowRun, WaitWorkflowRun, WorkflowPayloadAcl,
+    WorkflowPayloadKind, HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT,
     WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
@@ -157,6 +158,22 @@ pub struct WorkflowRunHistoryArguments {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanTaskArguments {
+    human_task_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListHumanTasksArguments {
+    project_id: Uuid,
+    #[serde(default)]
+    status: Option<HumanTaskStatus>,
+    #[serde(default, deserialize_with = "deserialize_optional_human_task_limit")]
+    limit: Option<usize>,
+}
+
 fn deserialize_optional_workflow_run_timeout<'de, D>(
     deserializer: D,
 ) -> std::result::Result<Option<u64>, D::Error>
@@ -197,6 +214,21 @@ where
     if value == 0 || value > WORKFLOW_RUN_LIST_MAX_LIMIT {
         return Err(D::Error::custom(format!(
             "WorkflowRun list limit must be between 1 and {WORKFLOW_RUN_LIST_MAX_LIMIT}"
+        )));
+    }
+    Ok(Some(value))
+}
+
+fn deserialize_optional_human_task_limit<'de, D>(
+    deserializer: D,
+) -> std::result::Result<Option<usize>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = usize::deserialize(deserializer)?;
+    if value == 0 || value > HUMAN_TASK_LIST_MAX_LIMIT {
+        return Err(D::Error::custom(format!(
+            "HumanTask list limit must be between 1 and {HUMAN_TASK_LIST_MAX_LIMIT}"
         )));
     }
     Ok(Some(value))
@@ -585,6 +617,57 @@ pub async fn list_runs(
                 .collect::<Vec<_>>(),
             request_id,
         ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_human_tasks(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListHumanTasksArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListHumanTasks {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            status: arguments.status,
+            limit: arguments.limit.unwrap_or(100),
+            resource_access,
+        })
+        .await?
+    {
+        Ok(values) => tool_result::success(
+            200,
+            values
+                .into_iter()
+                .map(HumanTaskSummaryResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_human_task(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: HumanTaskArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetHumanTask {
+            organization_id,
+            human_task_id: HumanTaskId::from_uuid(arguments.human_task_id),
+            actor_principal_id,
+            resource_access,
+        })
+        .await?
+    {
+        Ok(value) => tool_result::success(200, HumanTaskResponse::from(value), request_id),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

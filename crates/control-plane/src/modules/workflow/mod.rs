@@ -21,6 +21,7 @@ pub use application::commands::start_workflow_run::{StartWorkflowRun, StartWorkf
 pub use application::queries::diff_ontology_revisions::{
     DiffOntologyRevisions, DiffOntologyRevisionsHandler, OntologyRevisionDiff,
 };
+pub use application::queries::get_human_task::{GetHumanTask, GetHumanTaskHandler};
 pub use application::queries::get_ontology::{GetOntology, GetOntologyHandler};
 pub use application::queries::get_ontology_revision::{
     GetOntologyRevision, GetOntologyRevisionHandler,
@@ -39,6 +40,9 @@ pub use application::queries::get_workflow_run_history::{
 };
 pub use application::queries::get_workflow_run_output::{
     GetWorkflowRunOutput, GetWorkflowRunOutputHandler, WorkflowRunOutput,
+};
+pub use application::queries::list_human_tasks::{
+    ListHumanTasks, ListHumanTasksHandler, HUMAN_TASK_LIST_MAX_LIMIT,
 };
 pub use application::queries::list_ontologies::{ListOntologies, ListOntologiesHandler};
 pub use application::queries::list_ontology_revisions::{

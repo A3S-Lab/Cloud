@@ -31,7 +31,8 @@ use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    EnvironmentId, GatewayScopeId, HumanTaskId, IdempotentWrite, OrganizationId, PrincipalId,
+    ProjectId, RepositoryError, RouteId, WorkflowDecisionId,
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
@@ -44,8 +45,11 @@ use crate::modules::sources::{
     GithubWebhookVerifier, InMemoryGithubConnectionRepository, InMemorySourceRevisionRepository,
 };
 use crate::modules::workflow::{
-    IWorkflowRunHistoryReader, InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
-    InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, WorkflowRunHistoryPage,
+    ChangeHumanTaskWrite, CreateHumanTaskWrite, DecideHumanTaskWrite, FlowResumeReceipt,
+    HumanTaskDecisionRecord, HumanTaskRecord, HumanTaskResumeDelivery, HumanTaskStatus,
+    IHumanTaskRepository, IWorkflowRunHistoryReader, InMemoryOntologyRepository,
+    InMemoryWorkflowDefinitionRepository, InMemoryWorkflowGoalRepository,
+    InMemoryWorkflowRunRepository, WorkflowRunHistoryPage,
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
@@ -120,9 +124,154 @@ struct TestPluginRegistryEnrollmentAuthorizer;
 struct UnavailablePluginRegistryCatalog;
 
 #[derive(Default)]
+struct TestHumanTaskRepository {
+    records: std::sync::RwLock<Vec<HumanTaskRecord>>,
+}
+
+impl TestHumanTaskRepository {
+    fn new(records: Vec<HumanTaskRecord>) -> Self {
+        Self {
+            records: std::sync::RwLock::new(records),
+        }
+    }
+
+    fn read_records(
+        &self,
+    ) -> std::result::Result<std::sync::RwLockReadGuard<'_, Vec<HumanTaskRecord>>, RepositoryError>
+    {
+        self.records
+            .read()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))
+    }
+
+    fn insert(&self, record: HumanTaskRecord) -> std::result::Result<(), RepositoryError> {
+        self.records
+            .write()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?
+            .push(record);
+        Ok(())
+    }
+}
+
+#[async_trait::async_trait]
+impl IHumanTaskRepository for TestHumanTaskRepository {
+    async fn create_from_hook(
+        &self,
+        _write: CreateHumanTaskWrite,
+    ) -> std::result::Result<IdempotentWrite<HumanTaskRecord>, RepositoryError> {
+        Err(test_human_task_write_unavailable())
+    }
+
+    async fn find_task(
+        &self,
+        organization_id: OrganizationId,
+        human_task_id: HumanTaskId,
+    ) -> std::result::Result<Option<HumanTaskRecord>, RepositoryError> {
+        Ok(self
+            .read_records()?
+            .iter()
+            .find(|record| {
+                record.task.organization_id == organization_id && record.task.id == human_task_id
+            })
+            .cloned())
+    }
+
+    async fn list_tasks(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        status: Option<HumanTaskStatus>,
+        limit: usize,
+    ) -> std::result::Result<Vec<HumanTaskRecord>, RepositoryError> {
+        Ok(self
+            .read_records()?
+            .iter()
+            .filter(|record| {
+                record.task.organization_id == organization_id
+                    && record.task.project_id == project_id
+                    && status.is_none_or(|status| record.task.status == status)
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn change_task(
+        &self,
+        _write: ChangeHumanTaskWrite,
+    ) -> std::result::Result<IdempotentWrite<HumanTaskRecord>, RepositoryError> {
+        Err(test_human_task_write_unavailable())
+    }
+
+    async fn decide_task(
+        &self,
+        _write: DecideHumanTaskWrite,
+    ) -> std::result::Result<IdempotentWrite<HumanTaskDecisionRecord>, RepositoryError> {
+        Err(test_human_task_write_unavailable())
+    }
+
+    async fn find_decision(
+        &self,
+        _organization_id: OrganizationId,
+        _workflow_decision_id: WorkflowDecisionId,
+    ) -> std::result::Result<Option<HumanTaskDecisionRecord>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn claim_resume_deliveries(
+        &self,
+        _owner: Uuid,
+        _limit: usize,
+        _claimed_at: DateTime<Utc>,
+        _lease_duration: std::time::Duration,
+    ) -> std::result::Result<Vec<HumanTaskResumeDelivery>, RepositoryError> {
+        Ok(Vec::new())
+    }
+
+    async fn retry_resume_delivery(
+        &self,
+        _organization_id: OrganizationId,
+        _workflow_decision_id: WorkflowDecisionId,
+        _owner: Uuid,
+        _error: &str,
+        _failed_at: DateTime<Utc>,
+        _retry_after: std::time::Duration,
+    ) -> std::result::Result<(), RepositoryError> {
+        Err(test_human_task_write_unavailable())
+    }
+
+    async fn conflict_resume_delivery(
+        &self,
+        _organization_id: OrganizationId,
+        _workflow_decision_id: WorkflowDecisionId,
+        _owner: Uuid,
+        _error: &str,
+        _conflicted_at: DateTime<Utc>,
+    ) -> std::result::Result<(), RepositoryError> {
+        Err(test_human_task_write_unavailable())
+    }
+
+    async fn record_resume_receipt(
+        &self,
+        _organization_id: OrganizationId,
+        _workflow_decision_id: WorkflowDecisionId,
+        _owner: Uuid,
+        _receipt: FlowResumeReceipt,
+        _recorded_at: DateTime<Utc>,
+    ) -> std::result::Result<HumanTaskDecisionRecord, RepositoryError> {
+        Err(test_human_task_write_unavailable())
+    }
+}
+
+fn test_human_task_write_unavailable() -> RepositoryError {
+    RepositoryError::Storage("HumanTask test fixture is read-only".into())
+}
+
+#[derive(Default)]
 struct TestRuntimeRepositories {
     executions: Option<Arc<InMemoryExecutionRepository>>,
     operations: Option<Arc<InMemoryOperationRepository>>,
+    human_tasks: Option<Arc<TestHumanTaskRepository>>,
 }
 
 #[async_trait::async_trait]
@@ -854,6 +1003,34 @@ fn build_test_application_with_execution_and_operation_repositories(
         TestRuntimeRepositories {
             executions: Some(executions),
             operations: Some(operations),
+            human_tasks: None,
+        },
+    )
+}
+
+fn build_test_application_with_human_tasks(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    human_tasks: Arc<TestHumanTaskRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            human_tasks: Some(human_tasks),
+            ..TestRuntimeRepositories::default()
         },
     )
 }
@@ -1164,6 +1341,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let TestRuntimeRepositories {
         executions,
         operations,
+        human_tasks,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -1227,6 +1405,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             workflow_definitions: Arc::new(InMemoryWorkflowDefinitionRepository::new()),
             workflow_goals: Arc::new(InMemoryWorkflowGoalRepository::new()),
             workflow_runs: Arc::new(InMemoryWorkflowRunRepository::new()),
+            human_tasks: human_tasks
+                .unwrap_or_else(|| Arc::new(TestHumanTaskRepository::default())),
             workflow_run_history: Arc::new(EmptyWorkflowRunHistoryReader),
             forms: Arc::new(InMemoryFormRepository::new()),
             form_semantic_core: Arc::new(NativeFormSemanticCore::new()),

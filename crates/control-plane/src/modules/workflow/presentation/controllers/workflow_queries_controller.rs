@@ -1,20 +1,21 @@
-use super::request::{request_id, resource_access};
+use super::request::{actor_principal_id, request_id, resource_access};
 use crate::modules::identity::presentation::{
     with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
 };
 use crate::modules::shared_kernel::domain::{
-    OrganizationId, PlanRevisionId, ProjectId, WorkflowDefinitionId, WorkflowGoalId,
+    HumanTaskId, OrganizationId, PlanRevisionId, ProjectId, WorkflowDefinitionId, WorkflowGoalId,
     WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::presentation::dto::{
-    PlanRevisionResponse, WorkflowDefinitionResponse, WorkflowGoalResponse,
-    WorkflowRevisionResponse, WorkflowRevisionSummaryResponse, WorkflowRunOutputResponse,
-    WorkflowRunResponse,
+    HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse, WorkflowDefinitionResponse,
+    WorkflowGoalResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
+    WorkflowRunOutputResponse, WorkflowRunResponse,
 };
 use crate::modules::workflow::{
-    GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision, GetWorkflowRun,
-    GetWorkflowRunHistory, GetWorkflowRunOutput, ListWorkflowDefinitions, ListWorkflowGoals,
-    ListWorkflowRevisions, ListWorkflowRuns, WaitWorkflowRun,
+    GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision,
+    GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskStatus, ListHumanTasks,
+    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
+    WaitWorkflowRun,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -34,6 +35,8 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
     let get_goal_bus = Arc::clone(&bus);
     let get_plan_bus = Arc::clone(&bus);
     let list_runs_bus = Arc::clone(&bus);
+    let list_tasks_bus = Arc::clone(&bus);
+    let get_task_bus = Arc::clone(&bus);
     let get_run_bus = Arc::clone(&bus);
     let wait_run_bus = Arc::clone(&bus);
     let output_run_bus = Arc::clone(&bus);
@@ -273,6 +276,66 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
             },
         )?
+        .get(
+            "/{organization_id}/projects/{project_id}/human-tasks",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_tasks_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let parameters: HumanTaskListQuery = request.query()?;
+                    match bus
+                        .execute(ListHumanTasks {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            status: parameters.status,
+                            limit: parameters.limit,
+                            resource_access: resource_access(&request)?,
+                        })
+                        .await?
+                    {
+                        Ok(values) => BootResponse::json(
+                            &values
+                                .into_iter()
+                                .map(HumanTaskSummaryResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/human-tasks/{human_task_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_task_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(GetHumanTask {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                human_task_id: HumanTaskId::from_uuid(
+                                    request.param_as::<Uuid>("human_task_id")?,
+                                ),
+                                actor_principal_id: actor_principal_id(&request)?,
+                                resource_access: resource_access(&request)?,
+                            })
+                            .await?
+                        {
+                            Ok(value) => BootResponse::json(&HumanTaskResponse::from(value)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
         .route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/workflow-runs/{workflow_run_id}",
@@ -399,6 +462,15 @@ struct WorkflowRunListQuery {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct HumanTaskListQuery {
+    #[serde(default)]
+    status: Option<HumanTaskStatus>,
+    #[serde(default = "default_human_task_limit")]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WorkflowRunWaitQuery {
     #[serde(default = "default_workflow_run_wait_seconds")]
     timeout_seconds: u64,
@@ -414,6 +486,10 @@ struct WorkflowRunHistoryQuery {
 }
 
 const fn default_workflow_run_limit() -> usize {
+    100
+}
+
+const fn default_human_task_limit() -> usize {
     100
 }
 

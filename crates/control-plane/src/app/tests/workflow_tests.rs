@@ -3,9 +3,10 @@ use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::{
-    WorkflowContract, WorkflowDataSchema, WorkflowDataType, WorkflowEdgeSpec, WorkflowGoalContract,
-    WorkflowGoalSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowSpec,
-    WorkflowStepConfiguration, WorkflowStepKind, WorkflowStepSpec,
+    AssignmentPolicyRef, HumanTaskInteractionSpec, WorkflowContract, WorkflowDataSchema,
+    WorkflowDataType, WorkflowEdgeSpec, WorkflowGoalContract, WorkflowGoalSpec, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowSpec, WorkflowStepConfiguration, WorkflowStepKind,
+    WorkflowStepSpec,
 };
 
 const ONTOLOGY_ACL: &str = include_str!(concat!(
@@ -14,6 +15,330 @@ const ONTOLOGY_ACL: &str = include_str!(concat!(
 ));
 const RESTRICTED_WORKFLOW_TOKEN: &str =
     "a3s_8888888888888888888888888888888888888888888888888888888888888888";
+
+#[tokio::test]
+async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claimant() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let human_tasks = Arc::new(TestHumanTaskRepository::new(Vec::new()));
+    let app =
+        build_test_application_with_human_tasks(identity, projects, Arc::clone(&human_tasks))?;
+    let organization = bootstrap_organization(&app, "human-task-reads", "Human task reads").await?;
+    let project = create_project(&app, &organization, "human-task-project", "Human tasks").await?;
+
+    let memberships_path = format!("/api/v1/organizations/{organization}/memberships");
+    let owner_memberships = app.call(get_as(&memberships_path, ADMIN_TOKEN)).await?;
+    let owner_memberships = response_json(&owner_memberships)?;
+    let owner_principal_id = owner_memberships["data"][0]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("HumanTask owner principal has no ID".into()))?
+        .to_owned();
+    let owner_principal_id =
+        PrincipalId::from_uuid(Uuid::parse_str(&owner_principal_id).map_err(|error| {
+            BootError::Internal(format!("invalid owner principal ID: {error}"))
+        })?);
+
+    let observer = app
+        .call(post_json(
+            &memberships_path,
+            "human-task-observer",
+            json!({"name": "HumanTask observer", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(observer.status(), 201);
+    let observer = response_json(&observer)?;
+    let observer_membership_id = observer["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("HumanTask observer membership has no ID".into()))?;
+    let observer_principal_id = observer["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("HumanTask observer principal has no ID".into()))?
+        .to_owned();
+    let observer_token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "human-task-observer-token",
+            json!({
+                "name": "HumanTask observer",
+                "token": RESTRICTED_WORKFLOW_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ],
+                "principalId": observer_principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(observer_token.status(), 201);
+
+    let environment_only_project = create_project(
+        &app,
+        &organization,
+        "human-task-environment-project",
+        "Environment only",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{environment_only_project}/environments"
+            ),
+            "human-task-environment",
+            json!({"name": "Environment only"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment_id = response_id(&environment)?;
+
+    let resource_grants = format!(
+        "/api/v1/organizations/{organization}/memberships/{observer_membership_id}/resource-grants"
+    );
+    let project_grant = app
+        .call(post_json(
+            &resource_grants,
+            "human-task-project-grant",
+            json!({"scope": {"kind": "project", "projectId": project}}),
+        ))
+        .await?;
+    assert_eq!(project_grant.status(), 201);
+    let environment_grant = app
+        .call(post_json(
+            &resource_grants,
+            "human-task-environment-grant",
+            json!({
+                "scope": {
+                    "kind": "environment",
+                    "projectId": environment_only_project,
+                    "environmentId": environment_id
+                }
+            }),
+        ))
+        .await?;
+    assert_eq!(environment_grant.status(), 201);
+
+    let claimed = human_task_read_fixture(
+        &organization,
+        &project,
+        Some(owner_principal_id),
+        "Review production change",
+    )?;
+    let claimed_id = claimed.task.id;
+    human_tasks
+        .insert(claimed)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let ready = human_task_read_fixture(&organization, &project, None, "Review staging change")?;
+    let ready_id = ready.task.id;
+    human_tasks
+        .insert(ready)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let denied = human_task_read_fixture(
+        &organization,
+        &environment_only_project,
+        None,
+        "Review environment-only change",
+    )?;
+    let denied_id = denied.task.id;
+    human_tasks
+        .insert(denied)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let collection = format!("/api/v1/organizations/{organization}/projects/{project}/human-tasks");
+    let listed = app
+        .call(get_as(
+            format!("{collection}?status=claimed&limit=1"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    let listed = response_json(&listed)?;
+    assert_eq!(listed["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(listed["data"][0]["id"], claimed_id.to_string());
+    for private_field in [
+        "details",
+        "outputMapping",
+        "maxValueBytes",
+        "initialValue",
+        "interactionRequest",
+    ] {
+        assert!(
+            listed["data"][0].get(private_field).is_none(),
+            "{private_field}"
+        );
+    }
+    let ready_list = app
+        .call(get_as(
+            format!("{collection}?status=ready&limit=200"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&ready_list)?["data"][0]["id"],
+        ready_id.to_string()
+    );
+    assert_eq!(
+        app.call(get_as(format!("{collection}?limit=201"), ADMIN_TOKEN))
+            .await?
+            .status(),
+        422
+    );
+    assert_eq!(
+        app.call(get_as(&collection, RESTRICTED_WORKFLOW_TOKEN))
+            .await?
+            .status(),
+        200
+    );
+    let denied_collection = format!(
+        "/api/v1/organizations/{organization}/projects/{environment_only_project}/human-tasks"
+    );
+    assert_eq!(
+        app.call(get_as(&denied_collection, RESTRICTED_WORKFLOW_TOKEN))
+            .await?
+            .status(),
+        403
+    );
+
+    let task_path = format!("/api/v1/organizations/{organization}/human-tasks/{claimed_id}");
+    let claimant_view = app.call(get_as(&task_path, ADMIN_TOKEN)).await?;
+    assert_eq!(claimant_view.status(), 200);
+    let claimant_view = response_json(&claimant_view)?;
+    assert_eq!(
+        claimant_view["data"]["details"],
+        "Approve or reject the change"
+    );
+    assert!(claimant_view["data"]["interactionRequest"].is_object());
+    assert_eq!(
+        claimant_view["data"]["interactionRequest"]["assignment"]["claimedPrincipalId"],
+        owner_principal_id.to_string()
+    );
+
+    let observer_view = app
+        .call(get_as(&task_path, RESTRICTED_WORKFLOW_TOKEN))
+        .await?;
+    assert_eq!(observer_view.status(), 200);
+    assert!(response_json(&observer_view)?["data"]["interactionRequest"].is_null());
+    assert_resource_not_found_equivalent(
+        &app,
+        get_as(
+            format!("/api/v1/organizations/{organization}/human-tasks/{denied_id}"),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ),
+        get_as(
+            format!(
+                "/api/v1/organizations/{organization}/human-tasks/{}",
+                Uuid::now_v7()
+            ),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ),
+    )
+    .await?;
+
+    let mcp_list = app
+        .call(mcp_tool_call_as(
+            1,
+            "a3s_cloud_human_tasks_list",
+            json!({"projectId": project, "status": "claimed", "limit": 1}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    let mcp_list = response_json(&mcp_list)?;
+    assert_eq!(mcp_list["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        mcp_list["result"]["structuredContent"]["data"][0]["id"],
+        claimed_id.to_string()
+    );
+    assert!(mcp_list["result"]["structuredContent"]["data"][0]
+        .get("interactionRequest")
+        .is_none());
+
+    let mcp_observer_view = app
+        .call(mcp_tool_call_as(
+            2,
+            "a3s_cloud_human_tasks_get",
+            json!({"humanTaskId": claimed_id}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let mcp_observer_view = response_json(&mcp_observer_view)?;
+    assert_eq!(
+        mcp_observer_view["result"]["structuredContent"]["code"],
+        200
+    );
+    assert!(
+        mcp_observer_view["result"]["structuredContent"]["data"]["interactionRequest"].is_null()
+    );
+    let mcp_denied_list = app
+        .call(mcp_tool_call_as(
+            3,
+            "a3s_cloud_human_tasks_list",
+            json!({"projectId": environment_only_project}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&mcp_denied_list)?["result"]["structuredContent"]["code"],
+        404
+    );
+    let mcp_denied = app
+        .call(mcp_tool_call_as(
+            4,
+            "a3s_cloud_human_tasks_get",
+            json!({"humanTaskId": denied_id}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let mcp_missing = app
+        .call(mcp_tool_call_as(
+            5,
+            "a3s_cloud_human_tasks_get",
+            json!({"humanTaskId": Uuid::now_v7()}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    assert_mcp_not_found_equivalent(&mcp_denied, &mcp_missing)?;
+    Ok(())
+}
+
+fn human_task_read_fixture(
+    organization: &str,
+    project: &str,
+    claimant: Option<PrincipalId>,
+    message: &str,
+) -> Result<HumanTaskRecord> {
+    let organization_id = OrganizationId::from_uuid(
+        Uuid::parse_str(organization)
+            .map_err(|error| BootError::Internal(format!("invalid organization ID: {error}")))?,
+    );
+    let project_id = ProjectId::from_uuid(
+        Uuid::parse_str(project)
+            .map_err(|error| BootError::Internal(format!("invalid project ID: {error}")))?,
+    );
+    let (mut task, _) = crate::modules::workflow::test_support::pending_task();
+    task.organization_id = organization_id;
+    task.project_id = project_id;
+    task.form_release.organization_id = organization_id.to_string();
+    task.form_release.project_id = project_id.to_string();
+    task.assignment_policy = AssignmentPolicyRef::workflow_organization_member_exclusive()
+        .map_err(BootError::Internal)?;
+    let interaction = HumanTaskInteractionSpec::approval(
+        message,
+        Some("Approve or reject the change".into()),
+        None,
+    )
+    .map_err(BootError::Internal)?;
+    let mut record = HumanTaskRecord::create(task, interaction, 1, Uuid::now_v7())
+        .map_err(BootError::Internal)?;
+    record
+        .activate(1, crate::modules::workflow::test_support::timestamp(8, 1))
+        .map_err(BootError::Internal)?;
+    if let Some(claimant) = claimant {
+        record
+            .claim(
+                2,
+                claimant,
+                crate::modules::workflow::test_support::timestamp(8, 2),
+            )
+            .map_err(BootError::Internal)?;
+    }
+    Ok(record)
+}
 
 #[tokio::test]
 async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() -> Result<()> {

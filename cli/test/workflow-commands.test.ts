@@ -11,6 +11,7 @@ const GOAL_ID = '019c0000-0000-7000-8000-000000000005';
 const PLAN_ID = '019c0000-0000-7000-8000-000000000006';
 const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000007';
 const RUN_ID = '019c0000-0000-7000-8000-000000000008';
+const HUMAN_TASK_ID = '019c0000-0000-7000-8000-000000000009';
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 const DEFINITION_ACL = 'workflow { schema = "cloud.workflow.definition.v1" }\n';
 const PAYLOAD_ACL = 'configuration { schema = "cloud.workflow.configuration.v1" }\n';
@@ -56,6 +57,16 @@ describe('a3s-cloud Workflow commands', () => {
       ['workflow-goals', 'plan', GOAL_ID, PLAN_ID],
       `/organizations/${ORGANIZATION_ID}/workflow-goals/${GOAL_ID}/plan-revisions/${PLAN_ID}`,
       planRevision(),
+    ],
+    [
+      ['human-tasks', 'list', 'claimed', '--limit=2'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/human-tasks?status=claimed&limit=2`,
+      [humanTask()],
+    ],
+    [
+      ['human-tasks', 'get', HUMAN_TASK_ID],
+      `/organizations/${ORGANIZATION_ID}/human-tasks/${HUMAN_TASK_ID}`,
+      humanTask(),
     ],
     [
       ['workflow-runs', 'list', '--limit=2'],
@@ -300,6 +311,37 @@ describe('a3s-cloud Workflow commands', () => {
     expect(called).toBe(false);
   });
 
+  it('rejects invalid HumanTask filters before transport', async () => {
+    let called = false;
+    const execute = (argv: string[]) => {
+      const output = capture();
+      return {
+        output,
+        result: runCli(argv, {
+          ...output.runtime,
+          environment: completeEnvironment(),
+          fetch: async () => {
+            called = true;
+            return envelope({});
+          },
+        }),
+      };
+    };
+    const invalidStatus = execute(['human-tasks', 'list', 'assigned']);
+    const invalidLimit = execute(['human-tasks', 'list', '--limit=201']);
+    const invalidDetailOption = execute(['human-tasks', 'get', HUMAN_TASK_ID, '--limit=1']);
+
+    expect(await invalidStatus.result).toBe(ExitCode.Usage);
+    expect(await invalidLimit.result).toBe(ExitCode.Usage);
+    expect(await invalidDetailOption.result).toBe(ExitCode.Usage);
+    expect(invalidStatus.output.stderr()).toContain('HumanTask status is invalid');
+    expect(invalidLimit.output.stderr()).toContain('HumanTask list limit must be between');
+    expect(invalidDetailOption.output.stderr()).toContain(
+      '--limit is valid only for search and log commands'
+    );
+    expect(called).toBe(false);
+  });
+
   it('rejects malformed publication and oversized goal ACL before transport', async () => {
     let called = false;
     const malformed = capture();
@@ -521,6 +563,52 @@ function workflowRunHistory() {
       },
     ],
     nextSequence: null,
+  };
+}
+
+function humanTask() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    id: HUMAN_TASK_ID,
+    workflowRunId: RUN_ID,
+    stepId: 'human_review',
+    stepAttempt: 1,
+    formRelease: {
+      apiVersion: 'a3s.dev/form-release-ref/v1',
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      formId: DEFINITION_ID,
+      releaseId: REVISION_ID,
+      uri: `a3s://forms/${DEFINITION_ID}/releases/${REVISION_ID}`,
+      revision: 1,
+      digest: DIGEST,
+      compilerRevision: 'a3s-form-core@0.1.0',
+      schemaProfile: 'a3s.dev/form-schema-profile/1',
+      mode: 'interaction',
+    },
+    assignmentPolicy: {
+      id: 'cloud.workflow.assignment.organization-member-exclusive',
+      revision: 1,
+      digest: DIGEST,
+    },
+    status: 'claimed',
+    claimedBy: PRINCIPAL_ID,
+    decisionId: null,
+    aggregateVersion: 3,
+    message: 'Review this change',
+    allowedOutcomes: ['approve', 'reject'],
+    createdAt: '2026-08-09T00:00:00.000Z',
+    updatedAt: '2026-08-09T00:01:00.000Z',
+    dueAt: null,
+    expiresAt: '2026-08-09T01:00:00.000Z',
+    claimedAt: '2026-08-09T00:01:00.000Z',
+    terminalAt: null,
+    details: null,
+    outputMapping: { kind: 'identity' },
+    maxValueBytes: 4096,
+    initialValue: null,
+    interactionRequest: null,
   };
 }
 

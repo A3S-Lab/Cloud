@@ -33,7 +33,7 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 1. proves `server/discover`, mandatory per-request protocol/client metadata,
    matching transport headers, unsupported-version errors, complete-result
    metadata, and removal of the legacy initialization flow;
-2. compares the 65-tool administrator and 43-tool `cloud:read` catalogs and
+2. compares the 71-tool administrator and 45-tool `cloud:read` catalogs and
    verifies their behavioral annotations;
 3. proves a hidden mutation cannot be invoked and leaves no Project row;
 4. creates a Project through REST and replays the same command and idempotency

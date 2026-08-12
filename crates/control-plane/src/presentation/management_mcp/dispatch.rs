@@ -25,10 +25,11 @@ use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, Projec
 use super::search::SearchArguments;
 use super::workflow::{
     CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
-    ListProjectWorkflowArguments, ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments,
-    StartWorkflowRunArguments, WaitWorkflowRunArguments, WorkflowDefinitionArguments,
-    WorkflowGoalArguments, WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
-    WorkflowRunArguments, WorkflowRunHistoryArguments,
+    HumanTaskArguments, ListHumanTasksArguments, ListProjectWorkflowArguments,
+    ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments, StartWorkflowRunArguments,
+    WaitWorkflowRunArguments, WorkflowDefinitionArguments, WorkflowGoalArguments,
+    WorkflowPlanRevisionArguments, WorkflowRevisionArguments, WorkflowRunArguments,
+    WorkflowRunHistoryArguments,
 };
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
@@ -497,6 +498,29 @@ pub async fn execute(
         ManagementTool::WorkflowRunHistoryGet => {
             let arguments = arguments::parse::<WorkflowRunHistoryArguments>(arguments).ok()?;
             workflow::get_run_history(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::HumanTasksGet => {
+            let arguments = arguments::parse::<HumanTaskArguments>(arguments).ok()?;
+            workflow::get_human_task(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::HumanTasksList => {
+            let arguments = arguments::parse::<ListHumanTasksArguments>(arguments).ok()?;
+            workflow::list_human_tasks(
                 query_bus,
                 organization_id,
                 arguments,

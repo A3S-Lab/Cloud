@@ -147,18 +147,19 @@ use crate::modules::sources::{
 use crate::modules::workflow::{
     CancelWorkflowRunHandler, CreateOntologyHandler, CreateWorkflowDefinitionHandler,
     CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler, FlowWorkflowRunCoordinator,
-    GetOntologyHandler, GetOntologyRevisionHandler, GetPlanRevisionHandler,
+    GetHumanTaskHandler, GetOntologyHandler, GetOntologyRevisionHandler, GetPlanRevisionHandler,
     GetWorkflowDefinitionHandler, GetWorkflowGoalHandler, GetWorkflowRevisionHandler,
     GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
     HumanTaskCoordinator, HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository,
     IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
     IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
-    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
-    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
-    PostgresHumanTaskRepository, PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
-    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
-    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WaitWorkflowRunHandler,
-    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
+    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    ListWorkflowRunsHandler, PostgresHumanTaskRepository, PostgresOntologyRepository,
+    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
+    PostgresWorkflowRunRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
+    StartWorkflowRunHandler, WaitWorkflowRunHandler, WorkflowModule, WorkflowRunFlowRuntime,
+    WorkflowRunHistoryReader, WorkflowRunReconciler,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -777,7 +778,7 @@ pub async fn build_application_with_source_resolver(
     )
     .map_err(ControlPlaneStartupError::HumanTask)?;
     let human_task_resume_worker = HumanTaskResumeWorker::new(
-        human_tasks,
+        Arc::clone(&human_tasks),
         flow.engine(),
         HumanTaskResumeWorkerConfig {
             batch_size: config.human_tasks.resume_batch_size,
@@ -962,6 +963,7 @@ pub async fn build_application_with_source_resolver(
             workflow_definitions,
             workflow_goals,
             workflow_runs,
+            human_tasks,
             workflow_run_history,
             forms,
             form_semantic_core,
@@ -1057,6 +1059,7 @@ struct ApplicationDependencies {
     workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
     workflow_goals: Arc<dyn IWorkflowGoalRepository>,
     workflow_runs: Arc<dyn IWorkflowRunRepository>,
+    human_tasks: Arc<dyn IHumanTaskRepository>,
     workflow_run_history: Arc<dyn IWorkflowRunHistoryReader>,
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
@@ -1117,6 +1120,7 @@ fn build_application_with_health(
         workflow_definitions,
         workflow_goals,
         workflow_runs,
+        human_tasks,
         workflow_run_history,
         forms,
         form_semantic_core,
@@ -1202,6 +1206,8 @@ fn build_application_with_health(
     let wait_workflow_runs = Arc::clone(&workflow_runs);
     let get_workflow_run_outputs = Arc::clone(&workflow_runs);
     let get_workflow_run_history_runs = workflow_runs;
+    let get_human_tasks = Arc::clone(&human_tasks);
+    let list_human_tasks = human_tasks;
     let create_form_projects = Arc::clone(&projects);
     let create_form_drafts = Arc::clone(&forms);
     let revise_form_drafts = Arc::clone(&forms);
@@ -1892,6 +1898,12 @@ fn build_application_with_health(
                         get_workflow_run_history_runs,
                         workflow_run_history,
                     ),
+                )
+                .query_handler::<crate::modules::workflow::GetHumanTask, _>(
+                    GetHumanTaskHandler::new(get_human_tasks),
+                )
+                .query_handler::<crate::modules::workflow::ListHumanTasks, _>(
+                    ListHumanTasksHandler::new(list_human_tasks),
                 )
                 .query_handler::<crate::modules::forms::GetFormDraft, _>(
                     GetFormDraftHandler::new(get_form_drafts),
