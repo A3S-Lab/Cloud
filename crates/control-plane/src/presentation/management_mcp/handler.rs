@@ -1,5 +1,5 @@
 use super::arguments::{parse, parse_optional, EmptyArguments};
-use super::catalog::ManagementTool;
+use super::catalog::{ManagementResourceBinding, ManagementTool};
 use super::dispatch;
 use super::protocol::{
     self, BodyError, JsonRpcRequest, RequestMetadataError, TransportMetadataError,
@@ -8,7 +8,12 @@ use super::protocol::{
     JSON_RPC_UNSUPPORTED_PROTOCOL_VERSION,
 };
 use super::MANAGEMENT_MCP_PROTOCOL_VERSION;
-use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::identity::presentation::resource_access_evaluator;
+use crate::modules::shared_kernel::application::ApplicationError;
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, NodeId, OrganizationId, PrincipalId, ProjectId,
+};
 use a3s_boot::{AuthPrincipal, BootError, BootRequest, BootResponse, CommandBus, QueryBus, Result};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -247,6 +252,25 @@ impl ManagementMcpHandler {
         };
         let actor_is_platform_admin = principal.has_role("platform_admin");
         let arguments = call.arguments.unwrap_or_else(|| json!({}));
+        let evaluator = resource_access_evaluator(&principal)?;
+        let authorized = match management_resource_scope(tool, &arguments) {
+            Ok(resource) => evaluator.allows(resource),
+            Err(ManagementResourceScopeError::NotResourceScoped) => {
+                evaluator.is_organization_wide()
+            }
+            Err(ManagementResourceScopeError::InvalidArguments) => {
+                return invalid_tool_arguments(id)
+            }
+        };
+        if !authorized {
+            return protocol::result_response(
+                id,
+                super::tool_result::application_error(
+                    ApplicationError::NotFound("resource not found".into()),
+                    request_id,
+                )?,
+            );
+        }
         let Some(result) = dispatch::execute(
             tool,
             Arc::clone(&self.command_bus),
@@ -270,6 +294,40 @@ impl ManagementMcpHandler {
                 protocol::error_response(200, id, JSON_RPC_INTERNAL_ERROR, "Internal error")
             }
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManagementResourceScopeError {
+    NotResourceScoped,
+    InvalidArguments,
+}
+
+fn management_resource_scope(
+    tool: ManagementTool,
+    arguments: &Value,
+) -> std::result::Result<ResourceGrantScope, ManagementResourceScopeError> {
+    let uuid_argument = |name: &str| {
+        arguments
+            .get(name)
+            .and_then(Value::as_str)
+            .and_then(|value| Uuid::parse_str(value).ok())
+            .ok_or(ManagementResourceScopeError::InvalidArguments)
+    };
+    match tool.resource_binding() {
+        Some(ManagementResourceBinding::ProjectArgument) => Ok(ResourceGrantScope::Project {
+            project_id: ProjectId::from_uuid(uuid_argument("projectId")?),
+        }),
+        Some(ManagementResourceBinding::EnvironmentArguments) => {
+            Ok(ResourceGrantScope::Environment {
+                project_id: ProjectId::from_uuid(uuid_argument("projectId")?),
+                environment_id: EnvironmentId::from_uuid(uuid_argument("environmentId")?),
+            })
+        }
+        Some(ManagementResourceBinding::NodeArgument) => Ok(ResourceGrantScope::Node {
+            node_id: NodeId::from_uuid(uuid_argument("nodeId")?),
+        }),
+        None => Err(ManagementResourceScopeError::NotResourceScoped),
     }
 }
 
@@ -328,4 +386,50 @@ fn principal_id(principal: &AuthPrincipal) -> Result<PrincipalId> {
 
 fn invalid_tool_arguments(id: Value) -> Result<BootResponse> {
     protocol::error_response(200, id, JSON_RPC_INVALID_PARAMS, "Invalid tool arguments")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direct_tool_arguments_map_to_closed_resource_scopes() {
+        let project_id = Uuid::now_v7();
+        let environment_id = Uuid::now_v7();
+        let node_id = Uuid::now_v7();
+        assert_eq!(
+            management_resource_scope(ManagementTool::FormsList, &json!({"projectId": project_id})),
+            Ok(ResourceGrantScope::Project {
+                project_id: ProjectId::from_uuid(project_id),
+            })
+        );
+        assert_eq!(
+            management_resource_scope(
+                ManagementTool::WorkloadsList,
+                &json!({"projectId": project_id, "environmentId": environment_id})
+            ),
+            Ok(ResourceGrantScope::Environment {
+                project_id: ProjectId::from_uuid(project_id),
+                environment_id: EnvironmentId::from_uuid(environment_id),
+            })
+        );
+        assert_eq!(
+            management_resource_scope(ManagementTool::NodesGet, &json!({"nodeId": node_id})),
+            Ok(ResourceGrantScope::Node {
+                node_id: NodeId::from_uuid(node_id),
+            })
+        );
+    }
+
+    #[test]
+    fn indirect_and_malformed_tools_fail_closed() {
+        assert_eq!(
+            management_resource_scope(ManagementTool::FormsGet, &json!({"formId": Uuid::now_v7()})),
+            Err(ManagementResourceScopeError::NotResourceScoped)
+        );
+        assert_eq!(
+            management_resource_scope(ManagementTool::FormsList, &json!({"projectId": "bad"})),
+            Err(ManagementResourceScopeError::InvalidArguments)
+        );
+    }
 }

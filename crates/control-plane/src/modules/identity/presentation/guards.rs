@@ -1,5 +1,9 @@
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
+use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::identity::presentation::resource_access_evaluator;
+use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
 use a3s_boot::{BootError, BoxFuture, ExecutionContext, Guard, Result};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct BootstrapGuard {
@@ -58,18 +62,56 @@ impl Guard for OrganizationTenantGuard {
                     "authenticated token cannot access another organization".to_string(),
                 ));
             }
-            if principal
-                .claim("organization_role")
-                .and_then(serde_json::Value::as_str)
-                == Some("restricted")
-            {
-                return Err(BootError::Forbidden(
-                    "restricted membership requires an explicit resource grant".to_string(),
-                ));
+            let evaluator = resource_access_evaluator(&principal)?;
+            if evaluator.is_organization_wide() {
+                return Ok(true);
             }
-            Ok(true)
+            let resource = resource_scope(&context.request)?;
+            if resource.is_some_and(|resource| evaluator.allows(resource)) {
+                return Ok(true);
+            }
+            Err(BootError::Forbidden(
+                "restricted membership has no grant for the requested resource".to_string(),
+            ))
         })
     }
+}
+
+fn resource_scope(request: &a3s_boot::BootRequest) -> Result<Option<ResourceGrantScope>> {
+    let project_id = request
+        .param("project_id")
+        .map(parse_uuid)
+        .transpose()?
+        .map(ProjectId::from_uuid);
+    let environment_id = request
+        .param("environment_id")
+        .map(parse_uuid)
+        .transpose()?
+        .map(EnvironmentId::from_uuid);
+    let node_id = request
+        .param("node_id")
+        .map(parse_uuid)
+        .transpose()?
+        .map(NodeId::from_uuid);
+    match (project_id, environment_id, node_id) {
+        (Some(project_id), Some(environment_id), None) => {
+            Ok(Some(ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            }))
+        }
+        (Some(project_id), None, None) => Ok(Some(ResourceGrantScope::Project { project_id })),
+        (None, None, Some(node_id)) => Ok(Some(ResourceGrantScope::Node { node_id })),
+        (None, None, None) => Ok(None),
+        _ => Err(BootError::Internal(
+            "resource-scoped route parameters are inconsistent".into(),
+        )),
+    }
+}
+
+fn parse_uuid(value: &str) -> Result<Uuid> {
+    Uuid::parse_str(value)
+        .map_err(|error| BootError::BadRequest(format!("invalid resource identifier: {error}")))
 }
 
 #[derive(Debug, Clone, Copy, Default)]

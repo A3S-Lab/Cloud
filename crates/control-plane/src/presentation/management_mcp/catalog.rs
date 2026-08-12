@@ -1,6 +1,7 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::identity::presentation::resource_access_evaluator;
 use a3s_boot::AuthPrincipal;
 use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
@@ -143,6 +144,13 @@ pub enum ManagementTool {
     BuildRunsRetry,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ManagementResourceBinding {
+    ProjectArgument,
+    EnvironmentArguments,
+    NodeArgument,
+}
+
 impl ManagementTool {
     const ALL: [Self; 65] = [
         Self::EnvironmentsCreate,
@@ -213,14 +221,13 @@ impl ManagementTool {
     ];
 
     pub fn visible_to(self, principal: &AuthPrincipal) -> bool {
-        !principal.has_role("organization_restricted")
-            && self
-                .required_scope()
-                .is_none_or(|scope| principal.has_scope(scope))
+        self.required_scope()
+            .is_none_or(|scope| principal.has_scope(scope))
             && (!self.requires_identity_administrator()
                 || principal.has_role("platform_admin")
                 || principal.has_role("organization_owner")
                 || principal.has_role("organization_admin"))
+            && self.resource_binding_is_visible(principal)
     }
 
     pub fn resolve(name: &str, principal: &AuthPrincipal) -> Option<Self> {
@@ -384,6 +391,45 @@ impl ManagementTool {
                 | Self::MembershipsChangeRole
                 | Self::MembershipsRevoke
         )
+    }
+
+    pub(super) const fn resource_binding(self) -> Option<ManagementResourceBinding> {
+        match self {
+            Self::EnvironmentsCreate
+            | Self::EnvironmentsList
+            | Self::FormsCreate
+            | Self::FormsList
+            | Self::OntologiesCreate
+            | Self::OntologiesList
+            | Self::WorkflowDefinitionsCreate
+            | Self::WorkflowDefinitionsList
+            | Self::WorkflowGoalsCreate
+            | Self::WorkflowGoalsList
+            | Self::WorkflowRunsStart
+            | Self::WorkflowRunsList => Some(ManagementResourceBinding::ProjectArgument),
+            Self::WorkloadsList | Self::RoutesList | Self::BuildRunsList => {
+                Some(ManagementResourceBinding::EnvironmentArguments)
+            }
+            Self::NodesGet => Some(ManagementResourceBinding::NodeArgument),
+            _ => None,
+        }
+    }
+
+    fn resource_binding_is_visible(self, principal: &AuthPrincipal) -> bool {
+        if !principal.has_role("organization_restricted") {
+            return true;
+        }
+        let Ok(evaluator) = resource_access_evaluator(principal) else {
+            return false;
+        };
+        match self.resource_binding() {
+            Some(ManagementResourceBinding::ProjectArgument) => evaluator.has_project_authority(),
+            Some(ManagementResourceBinding::EnvironmentArguments) => {
+                evaluator.has_project_visibility()
+            }
+            Some(ManagementResourceBinding::NodeArgument) => evaluator.has_node_visibility(),
+            None => false,
+        }
     }
 
     fn definition(self) -> Value {
@@ -1358,4 +1404,43 @@ fn search_schema() -> Value {
         "required": ["query"],
         "additionalProperties": false
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::identity::application::RESOURCE_GRANT_SCOPES_CLAIM;
+    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+    use crate::modules::shared_kernel::domain::{NodeId, ProjectId};
+
+    fn restricted_principal(scope: ResourceGrantScope) -> AuthPrincipal {
+        AuthPrincipal::new("principal")
+            .with_role("organization_restricted")
+            .with_claim("organization_role", "restricted")
+            .expect("role")
+            .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
+            .expect("grants")
+    }
+
+    #[test]
+    fn restricted_catalog_only_exposes_directly_authorizable_tools() {
+        let principal = restricted_principal(ResourceGrantScope::Project {
+            project_id: ProjectId::new(),
+        });
+        assert!(ManagementTool::EnvironmentsList.visible_to(&principal));
+        assert!(ManagementTool::FormsList.visible_to(&principal));
+        assert!(!ManagementTool::FormsGet.visible_to(&principal));
+        assert!(!ManagementTool::NodesGet.visible_to(&principal));
+        assert!(!ManagementTool::ProjectsList.visible_to(&principal));
+    }
+
+    #[test]
+    fn node_grant_does_not_expose_project_or_environment_tools() {
+        let principal = restricted_principal(ResourceGrantScope::Node {
+            node_id: NodeId::new(),
+        });
+        assert!(ManagementTool::NodesGet.visible_to(&principal));
+        assert!(!ManagementTool::EnvironmentsList.visible_to(&principal));
+        assert!(!ManagementTool::FormsList.visible_to(&principal));
+    }
 }

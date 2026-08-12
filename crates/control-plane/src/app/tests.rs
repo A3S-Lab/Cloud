@@ -16,7 +16,12 @@ use crate::modules::fleet::domain::entities::{NodeCertificate, NodeCertificateMa
 use crate::modules::fleet::domain::services::{CertificateAuthorityError, NodeCertificateRequest};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::forms::{InMemoryFormRepository, NativeFormSemanticCore};
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::identity::domain::entities::ResourceGrant;
+use crate::modules::identity::domain::events::ResourceGrantChanged;
+use crate::modules::identity::domain::repositories::{
+    CreateResourceGrantWrite, IResourceGrantRepository, RevokeResourceGrantWrite,
+};
+use crate::modules::identity::domain::value_objects::{ApiTokenScope, ResourceGrantScope};
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
@@ -31,7 +36,8 @@ use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    EnvironmentId, GatewayScopeId, IdempotencyRequest, MembershipId, OrganizationId, PrincipalId,
+    ProjectId, RepositoryError, ResourceGrantId, RouteId,
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
@@ -962,7 +968,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         ApplicationDependencies {
             organizations: identity.clone(),
             api_tokens: identity.clone(),
-            memberships: identity,
+            memberships: identity.clone(),
+            resource_grants: identity,
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),
@@ -1475,7 +1482,7 @@ async fn revoked_and_expired_tokens_stop_authenticating_immediately() -> Result<
 async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediately() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(identity, projects)?;
+    let app = build_test_application(Arc::clone(&identity), projects)?;
     let organization = bootstrap_organization(&app, "membership-bootstrap", "Acme").await?;
     let memberships_path = format!("/api/v1/organizations/{organization}/memberships");
 
@@ -1614,6 +1621,11 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(own_project.status(), 201);
+    let granted_project_id = response_json(&own_project)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("created project has no ID".into()))?
+        .parse::<Uuid>()
+        .map_err(|error| BootError::Internal(format!("invalid project ID: {error}")))?;
 
     let restricted = app
         .call(post_json(
@@ -1632,6 +1644,97 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(restricted_access.status(), 403);
+
+    let organization_id = OrganizationId::from_uuid(
+        organization
+            .parse::<Uuid>()
+            .map_err(|error| BootError::Internal(format!("invalid organization ID: {error}")))?,
+    );
+    let restricted_membership_id = MembershipId::from_uuid(
+        membership_id
+            .parse::<Uuid>()
+            .map_err(|error| BootError::Internal(format!("invalid membership ID: {error}")))?,
+    );
+    let owner_principal_id = PrincipalId::from_uuid(
+        owner_principal_id
+            .parse::<Uuid>()
+            .map_err(|error| BootError::Internal(format!("invalid principal ID: {error}")))?,
+    );
+    let resource_grant = ResourceGrant::create(
+        ResourceGrantId::new(),
+        organization_id,
+        restricted_membership_id,
+        ResourceGrantScope::Project {
+            project_id: ProjectId::from_uuid(granted_project_id),
+        },
+        Utc::now(),
+    );
+    let grant_request_id = Uuid::now_v7();
+    identity
+        .create_resource_grant(CreateResourceGrantWrite {
+            event: ResourceGrantChanged::created(&resource_grant, grant_request_id)
+                .map_err(|error| BootError::Internal(error.to_string()))?,
+            grant: resource_grant.clone(),
+            actor_principal_id: owner_principal_id,
+            actor_is_platform_admin: false,
+            request_id: grant_request_id,
+            idempotency: IdempotencyRequest::new(
+                "test/resource-grants",
+                "membership:grant-project",
+                b"grant-project",
+            )
+            .map_err(BootError::Internal)?,
+        })
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let granted_access = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{granted_project_id}/environments"
+            ),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(granted_access.status(), 200);
+    let ungranted_access = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{}/environments",
+                Uuid::now_v7()
+            ),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(ungranted_access.status(), 403);
+
+    identity
+        .revoke_resource_grant(RevokeResourceGrantWrite {
+            organization_id,
+            resource_grant_id: resource_grant.id,
+            expected_version: resource_grant.aggregate_version,
+            actor_principal_id: owner_principal_id,
+            actor_is_platform_admin: false,
+            revoked_at: Utc::now(),
+            request_id: Uuid::now_v7(),
+            idempotency: IdempotencyRequest::new(
+                "test/resource-grant-revocations",
+                "membership:revoke-project",
+                b"revoke-project",
+            )
+            .map_err(BootError::Internal)?,
+        })
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let revoked_access = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{granted_project_id}/environments"
+            ),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(revoked_access.status(), 403);
 
     let restored = app
         .call(post_json(

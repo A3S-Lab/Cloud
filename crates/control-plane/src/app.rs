@@ -80,16 +80,17 @@ use crate::modules::forms::{
     ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
+    IApiTokenRepository, IMembershipRepository, IOrganizationRepository, IResourceGrantRepository,
 };
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
     BootstrapIdentityHandler, ChangeMembershipRoleHandler, CreateApiTokenHandler,
-    CreateOrganizationHandler, CreateServiceMembershipHandler, GetApiTokenHandler,
-    GetMembershipHandler, IdentityModule, ListApiTokensHandler, ListMembershipsHandler,
-    ListOrganizationsHandler, PostgresIdentityRepository, RevokeApiTokenHandler,
-    RevokeMembershipHandler,
+    CreateOrganizationHandler, CreateResourceGrantHandler, CreateServiceMembershipHandler,
+    GetApiTokenHandler, GetMembershipHandler, GetResourceGrantHandler, IdentityModule,
+    ListApiTokensHandler, ListMembershipsHandler, ListOrganizationsHandler,
+    ListResourceGrantsHandler, PostgresIdentityRepository, RevokeApiTokenHandler,
+    RevokeMembershipHandler, RevokeResourceGrantHandler,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
@@ -284,7 +285,8 @@ pub async fn build_application_with_source_resolver(
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
-    let memberships: Arc<dyn IMembershipRepository> = identity;
+    let memberships: Arc<dyn IMembershipRepository> = identity.clone();
+    let resource_grants: Arc<dyn IResourceGrantRepository> = identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let ontologies: Arc<dyn IOntologyRepository> =
         Arc::new(PostgresOntologyRepository::new(executor.clone()));
@@ -919,6 +921,7 @@ pub async fn build_application_with_source_resolver(
             organizations,
             api_tokens,
             memberships,
+            resource_grants,
             projects: projects.clone(),
             environments: projects,
             ontologies,
@@ -1010,6 +1013,7 @@ struct ApplicationDependencies {
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
     memberships: Arc<dyn IMembershipRepository>,
+    resource_grants: Arc<dyn IResourceGrantRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -1068,6 +1072,7 @@ fn build_application_with_health(
         organizations,
         api_tokens,
         memberships,
+        resource_grants,
         projects,
         environments,
         ontologies,
@@ -1205,6 +1210,10 @@ fn build_application_with_health(
     let revoke_memberships = Arc::clone(&memberships);
     let list_memberships = Arc::clone(&memberships);
     let get_memberships = Arc::clone(&memberships);
+    let create_resource_grants = Arc::clone(&resource_grants);
+    let revoke_resource_grants = Arc::clone(&resource_grants);
+    let list_resource_grants = Arc::clone(&resource_grants);
+    let get_resource_grants = Arc::clone(&resource_grants);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
     let list_environment_projects = Arc::clone(&projects);
@@ -1385,7 +1394,10 @@ fn build_application_with_health(
         .import(PublicHealthModule::new(readiness))
         .import(
             AuthModule::new("cloud-auth")
-                .bearer(ApiTokenVerifier::new(Arc::clone(&api_tokens)))
+                .bearer(ApiTokenVerifier::new(
+                    Arc::clone(&api_tokens),
+                    Arc::clone(&resource_grants),
+                ))
                 .global(),
         )
         .import(
@@ -1410,6 +1422,12 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::RevokeMembership, _>(
                     RevokeMembershipHandler::new(revoke_memberships),
+                )
+                .command_handler::<crate::modules::identity::CreateResourceGrant, _>(
+                    CreateResourceGrantHandler::new(create_resource_grants),
+                )
+                .command_handler::<crate::modules::identity::RevokeResourceGrant, _>(
+                    RevokeResourceGrantHandler::new(revoke_resource_grants),
                 )
                 .command_handler::<crate::modules::projects::CreateProject, _>(
                     CreateProjectHandler::new(project_organizations, projects),
@@ -1742,6 +1760,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::identity::GetMembership, _>(
                     GetMembershipHandler::new(get_memberships),
+                )
+                .query_handler::<crate::modules::identity::ListResourceGrants, _>(
+                    ListResourceGrantsHandler::new(list_resource_grants),
+                )
+                .query_handler::<crate::modules::identity::GetResourceGrant, _>(
+                    GetResourceGrantHandler::new(get_resource_grants),
                 )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),

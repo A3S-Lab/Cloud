@@ -1,1 +1,3 @@
-// Domain service interfaces will be added when behavior spans aggregates.
+mod resource_access_evaluator;
+
+pub use resource_access_evaluator::ResourceAccessEvaluator;
