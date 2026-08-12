@@ -339,9 +339,10 @@ fn management_resource_is_authorized(
         Some(ManagementResourceBinding::EnvironmentCollection) => Ok(evaluator
             .project_is_visible_in_collection(ProjectId::from_uuid(uuid_argument("projectId")?))),
         Some(ManagementResourceBinding::NodeCollection) => Ok(evaluator.has_node_visibility()),
-        Some(ManagementResourceBinding::SearchCollection) => {
-            Ok(evaluator.has_any_visible_resource())
-        }
+        Some(
+            ManagementResourceBinding::SearchCollection
+            | ManagementResourceBinding::PolymorphicCollection,
+        ) => Ok(evaluator.has_any_visible_resource()),
         None => Ok(evaluator.is_organization_wide()),
     }
 }

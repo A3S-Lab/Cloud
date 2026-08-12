@@ -1,4 +1,6 @@
-use crate::infrastructure::{ImmutableObjectClient, S3ImmutableObjectOptions};
+use crate::infrastructure::{
+    ImmutableObjectClient, OperationResourceAccessResolver, S3ImmutableObjectOptions,
+};
 use crate::modules::agents::{
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionReconciler,
     AgentsModule, AppendAgentExecutionEventsHandler, CancelAgentExecutionHandler,
@@ -1159,6 +1161,13 @@ fn build_application_with_health(
         bootstrap_credential,
         readiness,
     } = dependencies;
+    let operation_resource_access = Arc::new(OperationResourceAccessResolver::new(
+        Arc::clone(&workloads),
+        Arc::clone(&builds),
+        Arc::clone(&executions),
+        Arc::clone(&agents),
+        Arc::clone(&workflow_runs),
+    ));
     let project_organizations = Arc::clone(&organizations);
     let environment_projects = Arc::clone(&projects);
     let create_ontology_projects = Arc::clone(&projects);
@@ -1939,7 +1948,7 @@ fn build_application_with_health(
                     ),
                 )
                 .query_handler::<crate::modules::operations::ListOperations, _>(
-                    ListOperationsHandler::new(operations),
+                    ListOperationsHandler::new(operations, operation_resource_access),
                 )
                 .query_handler::<crate::modules::artifacts::ListBuildRuns, _>(
                     ListBuildRunsHandler::new(list_builds),

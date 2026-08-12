@@ -1,7 +1,7 @@
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRecord, OperationRequest,
 };
-use crate::modules::operations::domain::repositories::IOperationRepository;
+use crate::modules::operations::domain::repositories::{IOperationRepository, OperationListCursor};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
 };
@@ -118,16 +118,24 @@ impl IOperationRepository for InMemoryOperationRepository {
             .cloned())
     }
 
-    async fn list(
+    async fn list_page(
         &self,
         organization_id: OrganizationId,
+        after: Option<OperationListCursor>,
         limit: usize,
     ) -> Result<Vec<OperationRecord>, RepositoryError> {
         let state = self.state.read().await;
         let mut records = state
             .requests
             .values()
-            .filter(|request| request.organization_id == organization_id)
+            .filter(|request| {
+                request.organization_id == organization_id
+                    && after.is_none_or(|after| {
+                        request.requested_at < after.requested_at
+                            || (request.requested_at == after.requested_at
+                                && request.id.as_uuid() > after.operation_id.as_uuid())
+                    })
+            })
             .map(|request| OperationRecord {
                 request: request.clone(),
                 projection: state.projections.get(&request.id).cloned(),

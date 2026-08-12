@@ -1,6 +1,7 @@
 use super::GetExecution;
+use crate::modules::executions::application::resource_access::ExecutionResourceAccess;
 use crate::modules::executions::domain::{Execution, IExecutionRepository};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
@@ -22,16 +23,13 @@ impl QueryHandler<GetExecution> for GetExecutionHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Execution>>> {
         let executions = Arc::clone(&self.executions);
         Box::pin(async move {
-            Ok(
-                match executions
-                    .find(query.organization_id, query.execution_id)
-                    .await
-                {
-                    Ok(Some(execution)) => Ok(execution),
-                    Ok(None) => Err(ApplicationError::NotFound("execution not found".into())),
-                    Err(error) => Err(error.into()),
-                },
-            )
+            Ok(ExecutionResourceAccess::new(executions)
+                .execution(
+                    query.organization_id,
+                    query.execution_id,
+                    &query.resource_access,
+                )
+                .await)
         })
     }
 }

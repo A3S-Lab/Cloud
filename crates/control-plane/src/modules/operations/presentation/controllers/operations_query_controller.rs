@@ -1,4 +1,8 @@
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::operations::application::queries::list_operations::ListOperations;
 use crate::modules::operations::presentation::dto::OperationListItemResponse;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -6,8 +10,8 @@ use crate::presentation::{
     application_error_response, polling_sse_stream, PollingSseInitial, PollingSseOptions,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, SseEvent,
-    SseStream,
+    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+    SseEvent, SseStream,
 };
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -20,65 +24,81 @@ pub fn operations_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
     let snapshot_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
-        .get(
-            "/{organization_id}/operations",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let limit = request
-                        .optional_query_value_as::<usize>("limit")?
-                        .unwrap_or(50);
-                    if limit == 0 || limit > 200 {
-                        return Err(BootError::BadRequest(
-                            "limit must be between 1 and 200".into(),
-                        ));
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/operations",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let organization_id =
+                            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                        let limit = request
+                            .optional_query_value_as::<usize>("limit")?
+                            .unwrap_or(50);
+                        if limit == 0 || limit > 200 {
+                            return Err(BootError::BadRequest(
+                                "limit must be between 1 and 200".into(),
+                            ));
+                        }
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(ListOperations {
+                                organization_id,
+                                resource_access: resource_access_evaluator(
+                                    &request.require_auth_principal()?,
+                                )?,
+                                limit,
+                            })
+                            .await?
+                        {
+                            Ok(operations) => BootResponse::json(
+                                &operations
+                                    .into_iter()
+                                    .map(OperationListItemResponse::from)
+                                    .collect::<Vec<_>>(),
+                            ),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ListOperations {
+                },
+            )?,
+            DeferredResourceScope::Any,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::sse(
+                "/{organization_id}/operations/stream",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&snapshot_bus);
+                    async move {
+                        let organization_id =
+                            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                        let last_event_id = request
+                            .header("last-event-id")
+                            .unwrap_or_default()
+                            .to_owned();
+                        operation_snapshot_stream(
+                            bus,
                             organization_id,
-                            limit,
-                        })
-                        .await?
-                    {
-                        Ok(operations) => BootResponse::json(
-                            &operations
-                                .into_iter()
-                                .map(OperationListItemResponse::from)
-                                .collect::<Vec<_>>(),
-                        ),
-                        Err(error) => application_error_response(error, request_id),
+                            resource_access_evaluator(&request.require_auth_principal()?)?,
+                            last_event_id,
+                        )
                     }
-                }
-            },
-        )?
-        .sse(
-            "/{organization_id}/operations/stream",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&snapshot_bus);
-                async move {
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let last_event_id = request
-                        .header("last-event-id")
-                        .unwrap_or_default()
-                        .to_owned();
-                    operation_snapshot_stream(bus, organization_id, last_event_id)
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Any,
+        )?)
 }
 
 struct OperationSnapshotStreamState {
     organization_id: OrganizationId,
+    resource_access: ResourceAccessEvaluator,
     last_event_id: String,
 }
 
 fn operation_snapshot_stream(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
+    resource_access: ResourceAccessEvaluator,
     last_event_id: String,
 ) -> Result<SseStream> {
     let options = PollingSseOptions::new(
@@ -89,6 +109,7 @@ fn operation_snapshot_stream(
     Ok(polling_sse_stream(
         OperationSnapshotStreamState {
             organization_id,
+            resource_access,
             last_event_id,
         },
         PollingSseInitial::Deferred,
@@ -98,6 +119,7 @@ fn operation_snapshot_stream(
                 let operations = bus
                     .execute(ListOperations {
                         organization_id: state.organization_id,
+                        resource_access: state.resource_access.clone(),
                         limit: 100,
                     })
                     .await?

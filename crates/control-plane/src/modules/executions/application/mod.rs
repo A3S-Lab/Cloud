@@ -2,6 +2,7 @@ pub mod commands;
 pub mod queries;
 
 mod execution_reconciler;
+pub(crate) mod resource_access;
 
 pub use commands::{
     CancelExecution, CancelExecutionHandler, CancelExecutionResult, CreateExecutionCommand,

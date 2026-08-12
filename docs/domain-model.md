@@ -354,6 +354,14 @@ planned boundary is defined in [`inference-plan.md`](inference-plan.md).
 Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
 tables directly. Audit records are append-only and separate from event delivery.
+An Operation subject is a polymorphic reference, not a copied ownership record.
+The current query adapter recognizes the production subject kinds `workload`,
+`deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`
+and asks the owning context to resolve canonical scope. Restricted feeds use
+keyset pages to return the requested number of visible records consistently
+across REST, SSE, and Management MCP. Unknown, missing, and denied subjects are
+hidden; workflow input cannot supply ownership, and Operations does not persist
+a resource-scope index.
 Planned `C0.3` security incident timelines correlate authorized audit and
 AnySentry/OpenTelemetry evidence references for investigation and notification;
 they cannot enforce policy or mutate an owning aggregate.
@@ -628,6 +636,15 @@ contexts' tables.
   observes grant changes on reconnect. Internal provider binding and event
   ingestion remain authority-bound commands and do not reuse an end-user
   Resource Grant evaluator or create a second ownership index.
+- Indirect generic Execution detail and cancellation resolve the canonical
+  project/environment pair through Executions before reads or idempotency
+  replay. Exact environment and parent project grants authorize it; denied and
+  missing IDs share one `404` contract.
+- Operation visibility is derived only from its subject kind and ID. The one
+  composition adapter delegates to Workloads, Artifacts, Executions, Agents,
+  or Workflow; it never derives grants from Operation input and never copies
+  owner scope into Identity or Operations. Restricted REST, SSE, and Management
+  MCP feeds use the same evaluator snapshot and keyset filtering.
 
 ### Project and Environment
 

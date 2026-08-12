@@ -1724,6 +1724,16 @@ node.
   applies on reconnect; internal provider binding and event-ingestion commands
   remain separate authority boundaries and do not receive an end-user grant
   evaluator.
+  The generic Executions slice resolves finite Task detail and cancellation
+  through the stored project/environment pair before reads or idempotency
+  replay. The Operations slice is the single polymorphic composition boundary:
+  it dispatches the closed `workload`, `deployment`, `build_run`, `execution`,
+  `agent_execution`, and `workflow_run` subject kinds to their existing owning
+  resolvers. Restricted lists keyset-page until they have the requested visible
+  records; REST, the snapshot SSE connection, and Management MCP pass the same
+  evaluator. Unknown, missing, or denied subjects are hidden, workflow input is
+  never treated as ownership evidence, and no Operation or Identity ownership
+  table is added.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1748,10 +1758,11 @@ node.
   WorkflowDefinition, WorkflowGoal, WorkflowRun, and their inherited child
   records now implement it through one Workflow application resolver. The
   AgentConversation and AgentExecution REST boundaries now implement it
-  through one Agents application resolver. The remaining Operation boundary
-  resolves its existing project/environment/node identity through its owning
-  repository and passes that canonical scope to the shared
-  `ResourceAccessEvaluator`.
+  through one Agents application resolver. Generic Execution detail and
+  cancellation use the Executions-owned environment resolver. The Operation
+  collection, snapshot stream, and Management MCP tool compose those owner
+  resolvers from the subject kind and ID and filter at the application query
+  boundary using keyset pages.
   Collection queries receive the evaluator and filter at the authoritative
   query boundary. Do not add an Identity cross-context ownership table, a
   context-local grant evaluator, presentation-only filtering, or an MCP-only

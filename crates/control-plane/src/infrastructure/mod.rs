@@ -2,6 +2,7 @@ mod flow;
 mod git;
 mod immutable_object;
 mod oci_registry_client;
+mod operation_resource_access;
 mod postgres;
 mod postgres_schema;
 mod vault_client;
@@ -22,6 +23,7 @@ pub(crate) use immutable_object::{
 pub(crate) use oci_registry_client::{
     required_registry_header, OciRegistryClient, OciRegistryClientError,
 };
+pub(crate) use operation_resource_access::OperationResourceAccessResolver;
 pub(crate) use postgres::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
     is_unique_violation, lock_idempotency_key, require_one_row, store_audit, store_idempotency,

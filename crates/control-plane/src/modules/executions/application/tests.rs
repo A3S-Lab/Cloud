@@ -1,12 +1,15 @@
 use super::{
     CancelExecution, CancelExecutionHandler, CreateExecutionCommand, CreateExecutionHandler,
-    ExecutionReconciler, EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
+    ExecutionReconciler, GetExecution, GetExecutionHandler, EXECUTION_WORKFLOW_NAME,
+    EXECUTION_WORKFLOW_VERSION,
 };
 use crate::modules::executions::domain::{
     ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
     IExecutionRepository,
 };
 use crate::modules::executions::infrastructure::InMemoryExecutionRepository;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::projects::domain::entities::Environment;
@@ -16,7 +19,7 @@ use crate::modules::projects::infrastructure::persistence::InMemoryProjectsRepos
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId,
 };
-use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use chrono::Utc;
 use std::collections::BTreeMap;
@@ -143,6 +146,7 @@ async fn create_and_cancel_are_idempotent_and_emit_cloud_events() {
     let cancellation = CancelExecution {
         organization_id,
         execution_id: first.execution.id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         idempotency_key: "cancel-1".into(),
         request_id: Uuid::now_v7(),
         requested_at,
@@ -165,6 +169,112 @@ async fn create_and_cancel_are_idempotent_and_emit_cloud_events() {
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].event_key, "execution.run.requested");
     assert_eq!(events[1].event_key, "execution.run.cancellation-requested");
+}
+
+#[tokio::test]
+async fn indirect_access_uses_execution_environment_and_authorizes_before_replay() {
+    let (organization_id, project_id, environment_id, environments) = environment().await;
+    let executions = Arc::new(InMemoryExecutionRepository::new());
+    let requested_at = Utc::now();
+    let execution = CreateExecutionHandler::new(environments, executions.clone())
+        .execute(
+            CreateExecutionCommand {
+                organization_id,
+                project_id,
+                environment_id,
+                template: template(1),
+                idempotency_key: "restricted-invoke".into(),
+                request_id: Uuid::now_v7(),
+                requested_at,
+            },
+            context(),
+        )
+        .await
+        .expect("framework")
+        .expect("create")
+        .execution;
+    let environment_access =
+        ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+            project_id,
+            environment_id,
+        }]);
+    let project_access =
+        ResourceAccessEvaluator::restricted([ResourceGrantScope::Project { project_id }]);
+    let revoked_access = ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+        project_id: ProjectId::new(),
+    }]);
+    let get = GetExecutionHandler::new(executions.clone());
+    for resource_access in [environment_access.clone(), project_access] {
+        assert_eq!(
+            get.execute(
+                GetExecution {
+                    organization_id,
+                    execution_id: execution.id,
+                    resource_access,
+                },
+                context(),
+            )
+            .await
+            .expect("framework")
+            .expect("authorized execution"),
+            execution
+        );
+    }
+    let denied = get
+        .execute(
+            GetExecution {
+                organization_id,
+                execution_id: execution.id,
+                resource_access: revoked_access.clone(),
+            },
+            context(),
+        )
+        .await
+        .expect("framework")
+        .expect_err("revoked access");
+    let missing = get
+        .execute(
+            GetExecution {
+                organization_id,
+                execution_id: crate::modules::shared_kernel::domain::ExecutionId::new(),
+                resource_access: environment_access.clone(),
+            },
+            context(),
+        )
+        .await
+        .expect("framework")
+        .expect_err("missing execution");
+    assert_eq!(denied, missing);
+
+    let cancel = CancelExecutionHandler::new(executions);
+    let command = CancelExecution {
+        organization_id,
+        execution_id: execution.id,
+        resource_access: environment_access,
+        idempotency_key: "restricted-cancel".into(),
+        request_id: Uuid::now_v7(),
+        requested_at,
+    };
+    assert!(
+        !cancel
+            .execute(command.clone(), context())
+            .await
+            .expect("framework")
+            .expect("cancel")
+            .replayed
+    );
+    let replay_after_revocation = cancel
+        .execute(
+            CancelExecution {
+                resource_access: revoked_access,
+                ..command
+            },
+            context(),
+        )
+        .await
+        .expect("framework")
+        .expect_err("revocation must block cancellation replay");
+    assert_eq!(replay_after_revocation, missing);
 }
 
 #[tokio::test]

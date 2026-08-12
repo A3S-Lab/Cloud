@@ -163,6 +163,16 @@ A tool that is unavailable to the current principal is absent from
 scope check is repeated during invocation; hiding a tool is never the
 authorization boundary.
 
+For a restricted Membership, `a3s_cloud_operations_list` is discoverable only
+when the caller has at least one active Resource Grant. That is coarse
+admission, not the final decision. `ListOperations` resolves each closed
+polymorphic subject kind through its owning Workloads, Artifacts, Executions,
+Agents, or Workflow repository, keyset-pages past invisible records, and
+returns the same filtered projection used by REST and the Operation snapshot
+stream. Unknown, missing, and denied subjects are omitted. The resolver never
+reads Operation workflow input as ownership evidence and adds no MCP-local
+filter, ownership table, or grant evaluator.
+
 `a3s_cloud_build_run_logs_get` remains discoverable for API compatibility but
 returns the standard `503 Service Unavailable` business envelope until Box
 exposes an authoritative durable build-log contract. It does not return an

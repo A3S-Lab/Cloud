@@ -557,7 +557,14 @@ pub async fn execute(
         }
         ManagementTool::OperationsList => {
             let arguments = arguments::parse::<OperationListArguments>(arguments).ok()?;
-            operations::list_operations(query_bus, organization_id, arguments, request_id).await
+            operations::list_operations(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkloadsList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;

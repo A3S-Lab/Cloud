@@ -1,4 +1,5 @@
 use crate::modules::executions::domain::Execution;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{ExecutionId, OrganizationId};
 use a3s_boot::Command;
@@ -10,6 +11,7 @@ use uuid::Uuid;
 pub struct CancelExecution {
     pub organization_id: OrganizationId,
     pub execution_id: ExecutionId,
+    pub resource_access: ResourceAccessEvaluator,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,

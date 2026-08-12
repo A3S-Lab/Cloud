@@ -237,12 +237,15 @@ membership state, idempotency, Outbox facts, and audit together. Closed
 project/environment/node Resource Grants now use one shared evaluator for
 direct scopes, filtered collections, and owner-resolved indirect resources.
 Workloads, external-source BuildRuns, ordinary Routes, Secrets, Forms, Assets,
-and Workflow aggregates reuse their owning repositories; denied and missing
-indirect IDs share one `404`, and authorization precedes mutation replay.
-Agent execution, Operation, protected HumanTask surfaces, the real PostgreSQL
-cross-surface matrix, OIDC, invitations, and frontend identity projections
-remain open. Future OIDC subjects attach to the same Principal instead of
-creating another identity or RBAC mechanism.
+Workflow aggregates, generic Executions, and Agent execution reuse their owning
+repositories; denied and missing indirect IDs share one `404`, and
+authorization precedes mutation replay. The polymorphic Operation feed resolves
+each subject through that same owner set, keyset-pages until it has the requested
+visible records, and shares one filtered boundary across REST, SSE, and
+Management MCP. Protected HumanTask surfaces, the real PostgreSQL cross-surface
+matrix, OIDC, invitations, and frontend identity projections remain open.
+Future OIDC subjects attach to the same Principal instead of creating another
+identity or RBAC mechanism.
 
 ### One concern, one authority
 
@@ -370,7 +373,7 @@ mechanisms of the reference products.
 | Reference outcome | A3S-owned design | Availability boundary | Not copied |
 | --- | --- | --- | --- |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential and Resource Grant lifecycle is implemented, with indirect owner-resolution still open for Operation and the real PostgreSQL cross-surface matrix pending; external OIDC, invitations, role-focused projections, and `I0.2e` model/key self-service remain planned | A second identity/key store, browser-only authorization, or plaintext credential recovery |
+| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential and Resource Grant lifecycle plus indirect owner-resolution through the current Operation surface are implemented; the real PostgreSQL cross-surface matrix remains pending, while external OIDC, invitations, role-focused projections, and `I0.2e` model/key self-service remain planned | A second identity/key store, browser-only authorization, or plaintext credential recovery |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
 | TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |

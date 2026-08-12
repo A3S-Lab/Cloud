@@ -1,5 +1,6 @@
 use super::arguments::OperationListArguments;
 use super::tool_result;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::operations::presentation::OperationListItemResponse;
 use crate::modules::operations::ListOperations;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -12,11 +13,13 @@ pub async fn list_operations(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: OperationListArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListOperations {
             organization_id,
+            resource_access,
             limit: arguments.limit,
         })
         .await?

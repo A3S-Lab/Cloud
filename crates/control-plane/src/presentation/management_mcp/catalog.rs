@@ -162,6 +162,7 @@ pub(super) enum ManagementResourceBinding {
     EnvironmentCollection,
     NodeCollection,
     SearchCollection,
+    PolymorphicCollection,
 }
 
 impl ManagementTool {
@@ -476,6 +477,7 @@ impl ManagementTool {
             Self::EnvironmentsList => Some(ManagementResourceBinding::EnvironmentCollection),
             Self::NodesList => Some(ManagementResourceBinding::NodeCollection),
             Self::Search => Some(ManagementResourceBinding::SearchCollection),
+            Self::OperationsList => Some(ManagementResourceBinding::PolymorphicCollection),
             _ => None,
         }
     }
@@ -501,9 +503,10 @@ impl ManagementTool {
                 | ManagementResourceBinding::EnvironmentCollection,
             ) => evaluator.has_project_visibility(),
             Some(ManagementResourceBinding::NodeCollection) => evaluator.has_node_visibility(),
-            Some(ManagementResourceBinding::SearchCollection) => {
-                evaluator.has_any_visible_resource()
-            }
+            Some(
+                ManagementResourceBinding::SearchCollection
+                | ManagementResourceBinding::PolymorphicCollection,
+            ) => evaluator.has_any_visible_resource(),
             None => false,
         }
     }

@@ -8,7 +8,7 @@ use crate::infrastructure::{
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRecord, OperationRequest, OperationStatus,
 };
-use crate::modules::operations::domain::repositories::IOperationRepository;
+use crate::modules::operations::domain::repositories::{IOperationRepository, OperationListCursor};
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
@@ -235,16 +235,32 @@ impl IOperationRepository for PostgresOperationRepository {
             .transpose()
     }
 
-    async fn list(
+    async fn list_page(
         &self,
         organization_id: OrganizationId,
+        after: Option<OperationListCursor>,
         limit: usize,
     ) -> Result<Vec<OperationRecord>, RepositoryError> {
         let database = Database::new(PostgresDialect, self.executor.clone());
+        let mut requests_query = operation_request_select()
+            .filter(OperationRequests::organization_id().eq(organization_id.as_uuid()));
+        let mut projections_query = operation_projection_select()
+            .inner_join::<OperationRequests>(
+                OperationRequests::operation_id().eq_column(OperationProjections::operation_id()),
+            )
+            .filter(OperationRequests::organization_id().eq(organization_id.as_uuid()));
+        if let Some(after) = after {
+            let after_filter = OperationRequests::requested_at().lt(after.requested_at).or(
+                OperationRequests::requested_at()
+                    .eq(after.requested_at)
+                    .and(OperationRequests::operation_id().gt(after.operation_id.as_uuid())),
+            );
+            requests_query = requests_query.filter(after_filter.clone());
+            projections_query = projections_query.filter(after_filter);
+        }
         let requests = database
             .fetch_all_as(
-                operation_request_select()
-                    .filter(OperationRequests::organization_id().eq(organization_id.as_uuid()))
+                requests_query
                     .order_by(OperationRequests::requested_at(), OrderDirection::Desc)
                     .order_by(OperationRequests::operation_id(), OrderDirection::Asc)
                     .limit(limit.max(1) as u64),
@@ -257,12 +273,10 @@ impl IOperationRepository for PostgresOperationRepository {
             .collect::<Result<Vec<_>, _>>()?;
         let projections = database
             .fetch_all_as(
-                operation_projection_select()
-                    .inner_join::<OperationRequests>(
-                        OperationRequests::operation_id()
-                            .eq_column(OperationProjections::operation_id()),
-                    )
-                    .filter(OperationRequests::organization_id().eq(organization_id.as_uuid())),
+                projections_query
+                    .order_by(OperationRequests::requested_at(), OrderDirection::Desc)
+                    .order_by(OperationRequests::operation_id(), OrderDirection::Asc)
+                    .limit(limit.max(1) as u64),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?

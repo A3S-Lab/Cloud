@@ -72,6 +72,7 @@ mod forms_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
 mod ontology_tests;
+mod operation_tests;
 mod platform_tests;
 mod plugin_tests;
 mod route_tests;
@@ -117,6 +118,12 @@ struct EmptyWorkflowRunHistoryReader;
 struct TestPluginRegistryEnrollmentAuthorizer;
 
 struct UnavailablePluginRegistryCatalog;
+
+#[derive(Default)]
+struct TestRuntimeRepositories {
+    executions: Option<Arc<InMemoryExecutionRepository>>,
+    operations: Option<Arc<InMemoryOperationRepository>>,
+}
 
 #[async_trait::async_trait]
 impl IPluginRegistryEnrollmentAuthorizer for TestPluginRegistryEnrollmentAuthorizer {
@@ -823,6 +830,34 @@ fn build_test_application_with_agent_repositories(
     )
 }
 
+fn build_test_application_with_execution_and_operation_repositories(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    executions: Arc<InMemoryExecutionRepository>,
+    operations: Arc<InMemoryOperationRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            executions: Some(executions),
+            operations: Some(operations),
+        },
+    )
+}
+
 fn build_test_application_with_search(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -1089,6 +1124,47 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     test_assets: Option<Arc<UnavailableAssetStore>>,
     test_agents: Option<Arc<InMemoryAgentRepository>>,
 ) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        secrets,
+        workloads,
+        sources,
+        source_resolver,
+        github_connections,
+        github_authorization,
+        github_installation_tokens,
+        builds,
+        search,
+        edge,
+        test_assets,
+        test_agents,
+        TestRuntimeRepositories::default(),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    secrets: Arc<InMemorySecretRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    sources: Arc<InMemorySourceRevisionRepository>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    github_connections: Arc<InMemoryGithubConnectionRepository>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
+    builds: Arc<dyn IBuildRunRepository>,
+    search: Arc<dyn ISearchRepository>,
+    edge: Arc<crate::modules::edge::InMemoryEdgeRepository>,
+    test_assets: Option<Arc<UnavailableAssetStore>>,
+    test_agents: Option<Arc<InMemoryAgentRepository>>,
+    runtime_repositories: TestRuntimeRepositories,
+) -> Result<BootApplication> {
+    let TestRuntimeRepositories {
+        executions,
+        operations,
+    } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
@@ -1169,7 +1245,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             assets: unavailable_assets,
             workloads: workload_port,
             builds,
-            executions: Arc::new(InMemoryExecutionRepository::new()),
+            executions: executions.unwrap_or_else(|| Arc::new(InMemoryExecutionRepository::new())),
             agents: test_agents.unwrap_or_else(|| Arc::new(InMemoryAgentRepository::new())),
             routes,
             mcp_credentials,
@@ -1192,7 +1268,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             gateway_node_desired_state_planner: None,
             domain_verifier: Arc::new(LocalDomainOwnershipVerifier),
             gateway_projector,
-            operations: Arc::new(InMemoryOperationRepository::new()),
+            operations: operations.unwrap_or_else(|| Arc::new(InMemoryOperationRepository::new())),
             nodes: nodes.clone(),
             node_pools: nodes.clone(),
             node_control,
