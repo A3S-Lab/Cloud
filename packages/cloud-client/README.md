@@ -44,7 +44,9 @@ the existing Fleet controller and returns one credential-free enrollment-token
 projection. `listNodePools`, `getNodePool`, `createNodePool`,
 `addNodePoolMembers`, `scheduleNodePoolMaintenance`, and
 `cancelNodePoolMaintenance` expose Fleet-owned additive membership and bounded
-maintenance policy through REST contract `1.17.0`. It is internal and
+maintenance policy through REST contract `1.18.0`. Workload ACL creation and
+update methods carry an optional immutable `placement { node_pool_id = ... }`
+selection through that same contract. The package is internal and
 versioned with Cloud until public package compatibility and deprecation policy
 are completed.
 

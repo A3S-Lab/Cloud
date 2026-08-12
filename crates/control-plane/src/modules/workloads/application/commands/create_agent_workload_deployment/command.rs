@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, EnvironmentId, OrganizationId, ProjectId,
+    AssetId, AssetReleaseId, EnvironmentId, NodePoolId, OrganizationId, ProjectId,
 };
 use crate::modules::workloads::application::{
     CreateWorkloadDeploymentResult, SourceWorkloadTemplate,
@@ -17,6 +17,7 @@ pub struct CreateAgentWorkloadDeployment {
     pub asset_id: AssetId,
     pub asset_release_id: AssetReleaseId,
     pub name: String,
+    pub node_pool_id: Option<NodePoolId>,
     pub template: SourceWorkloadTemplate,
     pub idempotency_key: String,
     pub request_id: Uuid,

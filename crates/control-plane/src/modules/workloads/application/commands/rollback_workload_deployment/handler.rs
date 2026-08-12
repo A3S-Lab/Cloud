@@ -9,7 +9,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    commands::load_direct_workload_control, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, WorkloadDesiredState,
@@ -98,6 +98,17 @@ impl CommandHandler<RollbackWorkloadDeployment> for RollbackWorkloadDeploymentHa
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
+
+            let control = match load_direct_workload_control(
+                workloads.as_ref(),
+                command.organization_id,
+                command.workload_id,
+            )
+            .await
+            {
+                Ok(control) => control,
+                Err(error) => return Ok(Err(error)),
+            };
 
             if workload.desired_state != WorkloadDesiredState::Running {
                 return Ok(Err(ApplicationError::Conflict(
@@ -227,7 +238,7 @@ impl CommandHandler<RollbackWorkloadDeployment> for RollbackWorkloadDeploymentHa
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
-                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
+                    control,
                     revision,
                     deployment,
                     operation,

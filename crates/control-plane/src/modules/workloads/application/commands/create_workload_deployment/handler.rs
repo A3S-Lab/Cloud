@@ -1,5 +1,6 @@
 use super::super::validate_secret_bindings;
 use super::{CreateWorkloadDeployment, CreateWorkloadDeploymentResult};
+use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -9,9 +10,11 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    commands::validate_node_pool_selection, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
-use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadRevision};
+use crate::modules::workloads::domain::entities::{
+    Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
+};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
@@ -23,6 +26,7 @@ pub struct CreateWorkloadDeploymentHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn ISecretRepository>,
+    node_pools: Arc<dyn INodePoolRepository>,
 }
 
 impl CreateWorkloadDeploymentHandler {
@@ -30,11 +34,13 @@ impl CreateWorkloadDeploymentHandler {
         environments: Arc<dyn IEnvironmentRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn ISecretRepository>,
+        node_pools: Arc<dyn INodePoolRepository>,
     ) -> Self {
         Self {
             environments,
             workloads,
             secrets,
+            node_pools,
         }
     }
 }
@@ -51,6 +57,7 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
         let environments = Arc::clone(&self.environments);
         let workloads = Arc::clone(&self.workloads);
         let secrets = Arc::clone(&self.secrets);
+        let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
             match environments
                 .find(
@@ -75,6 +82,15 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             if let Err(error) = command.template.validate_request() {
                 return Ok(Err(ApplicationError::Invalid(error)));
             }
+            if let Err(error) = validate_node_pool_selection(
+                node_pools.as_ref(),
+                command.organization_id,
+                command.node_pool_id,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
             if let Err(error) = validate_secret_bindings(
                 secrets.as_ref(),
                 command.organization_id,
@@ -86,14 +102,18 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             {
                 return Ok(Err(error));
             }
-            let canonical = serde_json::to_vec(&serde_json::json!({
+            let mut canonical_document = serde_json::json!({
                 "organizationId": command.organization_id,
                 "projectId": command.project_id,
                 "environmentId": command.environment_id,
                 "name": name.as_str(),
                 "template": command.template,
-            }))
-            .map_err(|error| BootError::Internal(error.to_string()))?;
+            });
+            if let Some(node_pool_id) = command.node_pool_id {
+                canonical_document["nodePoolId"] = serde_json::json!(node_pool_id);
+            }
+            let canonical = serde_json::to_vec(&canonical_document)
+                .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
                 format!(
                     "organizations/{}/projects/{}/environments/{}/workloads",
@@ -149,10 +169,18 @@ impl CommandHandler<CreateWorkloadDeployment> for CreateWorkloadDeploymentHandle
             );
             let event = DeploymentRequested::envelope(&deployment, &revision, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
+            let control = match WorkloadControlSpec::unmanaged_replica_set_in_pool(
+                1,
+                1,
+                command.node_pool_id,
+            ) {
+                Ok(control) => control,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
-                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
+                    control,
                     revision,
                     deployment,
                     operation,

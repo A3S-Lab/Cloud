@@ -255,7 +255,11 @@ tenant-authorized query that maps one exact revision and assigned deployment to
 ordered Fleet log metadata; it does not become the owner of log bodies.
 One current single-instance Workload maps to canonical replica/member ordinal
 zero. A deployment binding records the exact replica, placement, and opaque
-Runtime unit generation. Resource claims bind stable slots to that projection;
+Runtime unit generation. The digest-bound effective placement policy may hold
+one immutable, same-organization Node Pool ID declared by the Workload ACL;
+Fleet remains the sole owner of Pool membership and maintenance state, and the
+Workloads scheduler consumes Fleet's filtered candidate projection rather than
+copying either into the Workload aggregate. Resource claims bind stable slots to that projection;
 CPU, memory, and ephemeral-storage slots are shared scalar capacities, while
 accelerator, host-port, and volume slots are exclusive. A reservation binds
 the exact current Fleet inventory generation and digest, and Deployment Flow

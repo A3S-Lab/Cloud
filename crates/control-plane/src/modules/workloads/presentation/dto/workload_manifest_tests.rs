@@ -4,6 +4,9 @@ const DIRECT: &str = r#"
 version = 1
 
 workload "api" {
+  placement {
+    node_pool_id = "019c0000-0000-7000-8000-000000000010"
+  }
   artifact {
     uri = "oci://registry.example.test/api@sha256:abc"
     expected_digest = "sha256:abc"
@@ -49,6 +52,10 @@ fn parses_closed_direct_workload_manifest() {
     let manifest = parse_workload_manifest(DIRECT.as_bytes()).expect("valid workload ACL");
     assert_eq!(manifest.name, "api");
     assert_eq!(
+        manifest.node_pool_id,
+        Some(Uuid::parse_str("019c0000-0000-7000-8000-000000000010").expect("node pool ID"))
+    );
+    assert_eq!(
         manifest.template.artifact.expected_digest.as_deref(),
         Some("sha256:abc")
     );
@@ -69,6 +76,7 @@ fn parses_source_manifest_only_without_artifact() {
     let manifest =
         parse_source_workload_manifest(source.as_bytes()).expect("valid source workload ACL");
     assert_eq!(manifest.name, "api");
+    assert!(manifest.node_pool_id.is_some());
     assert_eq!(manifest.template.process.command, ["/app"]);
 }
 
@@ -156,6 +164,14 @@ fn rejects_invalid_versions_targets_numbers_and_utf8() {
         .expect_err("invalid UTF-8 manifest must be rejected")
         .to_string()
         .contains("valid UTF-8"));
+    assert!(parse_workload_manifest(
+        DIRECT
+            .replace("019c0000-0000-7000-8000-000000000010", "not-a-node-pool-id")
+            .as_bytes()
+    )
+    .expect_err("invalid node Pool ID must be rejected")
+    .to_string()
+    .contains("node_pool_id must be a UUID"));
 }
 
 #[test]

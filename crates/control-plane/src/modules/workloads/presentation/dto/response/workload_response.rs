@@ -58,6 +58,7 @@ pub struct EffectivePlacementPolicyResponse {
     pub members_per_replica: u32,
     pub topology: String,
     pub replica_anti_affinity: String,
+    pub node_pool_id: Option<Uuid>,
     pub digest: String,
 }
 
@@ -273,6 +274,9 @@ impl From<WorkloadControl> for WorkloadControlResponse {
                         "required".into()
                     }
                 },
+                node_pool_id: policy
+                    .node_pool_id()
+                    .map(|node_pool_id| node_pool_id.as_uuid()),
                 digest: policy.digest().to_owned(),
             },
             aggregate_version: control.aggregate_version,

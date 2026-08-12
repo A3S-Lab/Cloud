@@ -637,6 +637,7 @@ impl INodeSchedulingRepository for InMemoryNodeRepository {
     async fn list_scheduling_candidates(
         &self,
         organization_id: OrganizationId,
+        node_pool_id: Option<NodePoolId>,
         evaluated_at: DateTime<Utc>,
     ) -> Result<Vec<Node>, RepositoryError> {
         let state = self.state.read().await;
@@ -645,6 +646,10 @@ impl INodeSchedulingRepository for InMemoryNodeRepository {
             .values()
             .filter(|node| {
                 node.organization_id == organization_id
+                    && node_pool_id.is_none_or(|node_pool_id| {
+                        state.node_pool_by_node.get(&(organization_id, node.id))
+                            == Some(&node_pool_id)
+                    })
                     && !node_is_in_active_maintenance(&state, node, evaluated_at)
             })
             .cloned()

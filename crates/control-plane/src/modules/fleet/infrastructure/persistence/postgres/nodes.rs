@@ -10,7 +10,7 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::value_objects::NodeState;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId,
+    canonical_timestamp, IdempotencyRequest, IdempotentWrite, NodeId, NodePoolId, OrganizationId,
     RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -234,20 +234,27 @@ pub(super) async fn list(
 pub(super) async fn list_scheduling_candidates(
     executor: &PostgresExecutor,
     organization_id: OrganizationId,
+    node_pool_id: Option<NodePoolId>,
     evaluated_at: DateTime<Utc>,
 ) -> Result<Vec<Node>, RepositoryError> {
+    let mut query = sql_query::<NodeRow>(SELECT_NODES)
+        .append(" where organization_id = ")
+        .bind(organization_id.as_uuid());
+    if let Some(node_pool_id) = node_pool_id {
+        query = query
+            .append(" and exists (select 1 from node_pool_members selected_pool where selected_pool.organization_id = nodes.organization_id and selected_pool.node_id = nodes.id and selected_pool.node_pool_id = ")
+            .bind(node_pool_id.as_uuid())
+            .append(")");
+    }
+    query = query
+        .append(" and not ")
+        .append(active_maintenance_exists())
+        .bind(evaluated_at)
+        .append(" and p.maintenance_ends_at > ")
+        .bind(evaluated_at)
+        .append(") order by name_key asc, id asc");
     Database::new(PostgresDialect, executor.clone())
-        .fetch_all_as(
-            sql_query::<NodeRow>(SELECT_NODES)
-                .append(" where organization_id = ")
-                .bind(organization_id.as_uuid())
-                .append(" and not ")
-                .append(active_maintenance_exists())
-                .bind(evaluated_at)
-                .append(" and p.maintenance_ends_at > ")
-                .bind(evaluated_at)
-                .append(") order by name_key asc, id asc"),
-        )
+        .fetch_all_as(query)
         .await
         .map_err(|error| RepositoryError::Storage(error.to_string()))?
         .rows

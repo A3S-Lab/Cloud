@@ -1607,7 +1607,7 @@ async fn durable_reservation_recovers_a_crash_before_placement_persistence(
 }
 
 #[tokio::test]
-async fn active_node_pool_maintenance_is_a_hard_scheduler_filter(
+async fn selected_node_pool_and_maintenance_are_hard_scheduler_filters(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base = Utc::now() - Duration::seconds(1);
     let organization_id = OrganizationId::new();
@@ -1624,18 +1624,29 @@ async fn active_node_pool_maintenance_is_a_hard_scheduler_filter(
         8 * 1024 * 1024 * 1024,
     )
     .await?;
-    let (maintained_node, eligible_node) = if left < right {
-        (left, right)
-    } else {
-        (right, left)
-    };
+    let (third, _, _) = ready_node_with_capacity(
+        &nodes,
+        organization_id,
+        base,
+        "maintenance-third",
+        'f',
+        8_000,
+        8 * 1024 * 1024 * 1024,
+    )
+    .await?;
+    let mut ordered_nodes = [left, right, third];
+    ordered_nodes.sort_unstable();
+    let outsider = ordered_nodes[0];
+    let maintained_node = ordered_nodes[1];
+    let eligible_node = ordered_nodes[2];
     let mut pool = NodePool::create(
         NodePoolId::new(),
         organization_id,
         ResourceName::parse("maintenance scheduler fixture")?,
-        vec![left, right],
+        vec![maintained_node, eligible_node],
         base + Duration::milliseconds(10),
     )?;
+    let pool_id = pool.id;
     nodes
         .save(NodePoolWrite {
             expected_version: None,
@@ -1681,7 +1692,7 @@ async fn active_node_pool_maintenance_is_a_hard_scheduler_filter(
 
     let runtime = runtime(&workloads, &nodes, Duration::seconds(10))?;
     let engine = FlowEngine::in_memory(Arc::new(runtime));
-    let bundle = deployment_bundle(
+    let mut bundle = deployment_bundle(
         Workload::create(
             WorkloadId::new(),
             organization_id,
@@ -1695,6 +1706,7 @@ async fn active_node_pool_maintenance_is_a_hard_scheduler_filter(
         base,
         "maintenance-scheduler",
     )?;
+    bundle.control = WorkloadControlSpec::unmanaged_single_replica_in_pool(pool_id)?;
     let deployment = bundle.deployment.clone();
     let operation = bundle.operation.clone();
     workloads.create_deployment(bundle).await?;
@@ -1709,6 +1721,7 @@ async fn active_node_pool_maintenance_is_a_hard_scheduler_filter(
             .node_id,
         Some(eligible_node)
     );
+    assert_ne!(eligible_node, outsider);
     Ok(())
 }
 

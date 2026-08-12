@@ -79,7 +79,7 @@ impl ICertificateAuthority for FailFirstRevokeAuthority {
 pub async fn exercise_fleet(
     executor: &PostgresExecutor,
     organization_uuid: Uuid,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<NodePoolId, Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity;
@@ -213,6 +213,23 @@ pub async fn exercise_fleet(
     let replayed = replayed?;
     assert_ne!(created.replayed, replayed.replayed);
     assert_eq!(created.value, replayed.value);
+    assert_eq!(
+        nodes
+            .list_scheduling_candidates(organization_id, Some(pool.id), now + Duration::seconds(2),)
+            .await?
+            .into_iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![node_id]
+    );
+    assert!(nodes
+        .list_scheduling_candidates(
+            organization_id,
+            Some(NodePoolId::new()),
+            now + Duration::seconds(2),
+        )
+        .await?
+        .is_empty());
     let conflicting_pool = NodePool::create(
         NodePoolId::new(),
         organization_id,
@@ -271,7 +288,7 @@ pub async fn exercise_fleet(
         pool
     );
     assert!(reopened
-        .list_scheduling_candidates(organization_id, now + Duration::seconds(4))
+        .list_scheduling_candidates(organization_id, None, now + Duration::seconds(4))
         .await?
         .is_empty());
     let sources = reopened
@@ -418,7 +435,7 @@ pub async fn exercise_fleet(
             .await?,
         4
     );
-    Ok(())
+    Ok(pool.id)
 }
 
 async fn exercise_resource_inventory(

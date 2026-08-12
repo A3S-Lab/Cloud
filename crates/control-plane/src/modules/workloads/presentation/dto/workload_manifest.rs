@@ -22,12 +22,14 @@ const MAX_SAFE_INTEGER: f64 = 9_007_199_254_740_991.0;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct WorkloadManifest {
     pub name: String,
+    pub node_pool_id: Option<Uuid>,
     pub template: ServiceTemplateDto,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SourceWorkloadManifest {
     pub name: String,
+    pub node_pool_id: Option<Uuid>,
     pub template: SourceWorkloadTemplateDto,
 }
 
@@ -39,6 +41,7 @@ enum ArtifactPolicy {
 
 struct ParsedManifest {
     name: String,
+    node_pool_id: Option<Uuid>,
     artifact: Option<OciArtifactReferenceDto>,
     process: ServiceProcessDto,
     secrets: Vec<SecretBindingDto>,
@@ -54,6 +57,7 @@ pub(crate) fn parse_workload_manifest(source: &[u8]) -> Result<WorkloadManifest>
     })?;
     Ok(WorkloadManifest {
         name: manifest.name,
+        node_pool_id: manifest.node_pool_id,
         template: ServiceTemplateDto {
             artifact,
             process: manifest.process,
@@ -69,6 +73,7 @@ pub(crate) fn parse_source_workload_manifest(source: &[u8]) -> Result<SourceWork
     let manifest = parse_manifest(source, ArtifactPolicy::Forbidden)?;
     Ok(SourceWorkloadManifest {
         name: manifest.name,
+        node_pool_id: manifest.node_pool_id,
         template: SourceWorkloadTemplateDto {
             process: manifest.process,
             secrets: manifest.secrets,
@@ -104,6 +109,13 @@ fn parse_manifest(source: &[u8], artifact_policy: ArtifactPolicy) -> Result<Pars
     let name = workload.labels.first().cloned().ok_or_else(|| {
         BootError::BadRequest("workload ACL must declare one workload name".into())
     })?;
+    let node_pool_id = optional_block(workload, "placement")?
+        .map(|placement| {
+            Uuid::parse_str(&required_string(placement, "node_pool_id")?).map_err(|_| {
+                BootError::BadRequest("workload ACL placement node_pool_id must be a UUID".into())
+            })
+        })
+        .transpose()?;
     let artifact = match artifact_policy {
         ArtifactPolicy::Required => Some(parse_artifact(one_block(workload, "artifact")?)?),
         ArtifactPolicy::Forbidden => None,
@@ -120,6 +132,7 @@ fn parse_manifest(source: &[u8], artifact_policy: ArtifactPolicy) -> Result<Pars
         .transpose()?;
     Ok(ParsedManifest {
         name,
+        node_pool_id,
         artifact,
         process,
         secrets,
@@ -248,6 +261,13 @@ fn manifest_schema(artifact_policy: ArtifactPolicy) -> Schema {
         )
         .block("registry_credential", optional_one(Schema::new()));
     let mut workload = Schema::new()
+        .block(
+            "placement",
+            optional_one(Schema::new().attribute(
+                "node_pool_id",
+                AttributeSchema::required(ValueSchema::string()),
+            )),
+        )
         .block("process", optional_one(process))
         .block("resources", required_one(resources))
         .block(

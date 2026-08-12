@@ -1,5 +1,5 @@
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, OrganizationId, ProjectId, WorkloadId,
+    canonical_timestamp, NodePoolId, OrganizationId, ProjectId, WorkloadId,
 };
 use crate::modules::workloads::domain::entities::Workload;
 use chrono::{DateTime, Utc};
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-const EFFECTIVE_PLACEMENT_POLICY_SCHEMA: &str = "a3s.cloud.effective-placement-policy.v2";
+const EFFECTIVE_PLACEMENT_POLICY_SCHEMA: &str = "a3s.cloud.effective-placement-policy.v3";
 const MAX_OWNER_KIND_LENGTH: usize = 64;
 pub const MAX_WORKLOAD_REPLICAS: u32 = 100;
 
@@ -115,6 +115,7 @@ pub struct EffectivePlacementPolicy {
     members_per_replica: u32,
     topology: PlacementTopology,
     replica_anti_affinity: ReplicaAntiAffinity,
+    node_pool_id: Option<NodePoolId>,
     digest: String,
 }
 
@@ -124,6 +125,14 @@ impl EffectivePlacementPolicy {
     }
 
     pub fn replica_set(generation: u64, desired_replicas: u32) -> Result<Self, String> {
+        Self::replica_set_in_pool(generation, desired_replicas, None)
+    }
+
+    pub fn replica_set_in_pool(
+        generation: u64,
+        desired_replicas: u32,
+        node_pool_id: Option<NodePoolId>,
+    ) -> Result<Self, String> {
         let mut policy = Self {
             schema: EFFECTIVE_PLACEMENT_POLICY_SCHEMA.into(),
             generation,
@@ -131,6 +140,7 @@ impl EffectivePlacementPolicy {
             members_per_replica: 1,
             topology: PlacementTopology::SingleNode,
             replica_anti_affinity: ReplicaAntiAffinity::Required,
+            node_pool_id,
             digest: String::new(),
         };
         policy.digest = policy.calculate_digest()?;
@@ -144,6 +154,9 @@ impl EffectivePlacementPolicy {
             || self.desired_replicas > MAX_WORKLOAD_REPLICAS
             || self.members_per_replica != 1
             || self.topology != PlacementTopology::SingleNode
+            || self
+                .node_pool_id
+                .is_some_and(|node_pool_id| node_pool_id.as_uuid().is_nil())
             || !is_sha256_digest(&self.digest)
             || self.calculate_digest()? != self.digest
         {
@@ -184,6 +197,10 @@ impl EffectivePlacementPolicy {
         self.replica_anti_affinity
     }
 
+    pub const fn node_pool_id(&self) -> Option<NodePoolId> {
+        self.node_pool_id
+    }
+
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -198,6 +215,7 @@ impl EffectivePlacementPolicy {
             members_per_replica: u32,
             topology: PlacementTopology,
             replica_anti_affinity: ReplicaAntiAffinity,
+            node_pool_id: Option<NodePoolId>,
         }
 
         let encoded = serde_json::to_vec(&DigestDocument {
@@ -207,6 +225,7 @@ impl EffectivePlacementPolicy {
             members_per_replica: self.members_per_replica,
             topology: self.topology,
             replica_anti_affinity: self.replica_anti_affinity,
+            node_pool_id: self.node_pool_id,
         })
         .map_err(|error| format!("could not digest effective placement policy: {error}"))?;
         Ok(format!("sha256:{:x}", Sha256::digest(encoded)))
@@ -234,9 +253,25 @@ impl WorkloadControlSpec {
     }
 
     pub fn unmanaged_replica_set(generation: u64, desired_replicas: u32) -> Result<Self, String> {
+        Self::unmanaged_replica_set_in_pool(generation, desired_replicas, None)
+    }
+
+    pub fn unmanaged_single_replica_in_pool(node_pool_id: NodePoolId) -> Result<Self, String> {
+        Self::unmanaged_replica_set_in_pool(1, 1, Some(node_pool_id))
+    }
+
+    pub fn unmanaged_replica_set_in_pool(
+        generation: u64,
+        desired_replicas: u32,
+        node_pool_id: Option<NodePoolId>,
+    ) -> Result<Self, String> {
         Ok(Self {
             managed_owner: None,
-            placement_policy: EffectivePlacementPolicy::replica_set(generation, desired_replicas)?,
+            placement_policy: EffectivePlacementPolicy::replica_set_in_pool(
+                generation,
+                desired_replicas,
+                node_pool_id,
+            )?,
         })
     }
 
@@ -249,10 +284,23 @@ impl WorkloadControlSpec {
         generation: u64,
         desired_replicas: u32,
     ) -> Result<Self, String> {
+        Self::managed_replica_set_in_pool(owner, generation, desired_replicas, None)
+    }
+
+    pub fn managed_replica_set_in_pool(
+        owner: ManagedOwnerReference,
+        generation: u64,
+        desired_replicas: u32,
+        node_pool_id: Option<NodePoolId>,
+    ) -> Result<Self, String> {
         owner.validate()?;
         Ok(Self {
             managed_owner: Some(owner),
-            placement_policy: EffectivePlacementPolicy::replica_set(generation, desired_replicas)?,
+            placement_policy: EffectivePlacementPolicy::replica_set_in_pool(
+                generation,
+                desired_replicas,
+                node_pool_id,
+            )?,
         })
     }
 
@@ -363,8 +411,11 @@ impl WorkloadControl {
             .aggregate_version
             .checked_add(1)
             .ok_or_else(|| "workload control version overflowed".to_string())?;
-        let placement_policy =
-            EffectivePlacementPolicy::replica_set(next_policy_generation, desired_replicas)?;
+        let placement_policy = EffectivePlacementPolicy::replica_set_in_pool(
+            next_policy_generation,
+            desired_replicas,
+            self.spec.placement_policy.node_pool_id(),
+        )?;
 
         self.spec.placement_policy = placement_policy;
         self.aggregate_version = next_aggregate_version;

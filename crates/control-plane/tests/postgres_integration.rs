@@ -272,7 +272,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (91, "091".into()));
+    assert_eq!(migration_state, (92, "092".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -325,7 +325,15 @@ async fn exercise_postgres_replica_set_foundation(
         environment_id,
     )
     .await?;
-    fleet_support::exercise_fleet(&executor, organization_id).await?;
+    let node_pool_id = fleet_support::exercise_fleet(&executor, organization_id).await?;
+    workloads_support::exercise_workload_node_pool_selection(
+        &executor,
+        organization_id,
+        project_id,
+        environment_id,
+        node_pool_id,
+    )
+    .await?;
     workloads_support::exercise_replica_evacuation(&executor, organization_id, &mut replica_set)
         .await?;
     workloads_support::exercise_replica_policy_v1_upgrade(
@@ -3587,7 +3595,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(listed[0]["control"]["managedOwner"], Value::Null);
     assert_eq!(
         listed[0]["control"]["placementPolicy"]["schema"],
-        "a3s.cloud.effective-placement-policy.v2"
+        "a3s.cloud.effective-placement-policy.v3"
     );
     assert_eq!(
         listed[0]["control"]["placementPolicy"]["desiredReplicas"],
@@ -3596,6 +3604,10 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(
         listed[0]["control"]["placementPolicy"]["replicaAntiAffinity"],
         "required"
+    );
+    assert_eq!(
+        listed[0]["control"]["placementPolicy"]["nodePoolId"],
+        Value::Null
     );
     assert_eq!(listed[0]["replicas"].as_array().map(Vec::len), Some(1));
     assert_eq!(listed[0]["replicas"][0]["id"], workload_id);

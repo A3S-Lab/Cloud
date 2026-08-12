@@ -1227,6 +1227,9 @@ fn build_application_with_health(
     let create_workloads = Arc::clone(&workloads);
     let source_create_workloads = Arc::clone(&workloads);
     let agent_create_workloads = Arc::clone(&workloads);
+    let workload_node_pools = Arc::clone(&node_pools);
+    let source_workload_node_pools = Arc::clone(&node_pools);
+    let agent_workload_node_pools = Arc::clone(&node_pools);
     let agent_update_workloads = Arc::clone(&workloads);
     let bind_skill_workloads = Arc::clone(&workloads);
     let unbind_skill_workloads = Arc::clone(&workloads);
@@ -1631,6 +1634,7 @@ fn build_application_with_health(
                         workload_environments,
                         create_workloads,
                         workload_secrets,
+                        workload_node_pools,
                     ),
                 )
                 .command_handler::<crate::modules::workloads::CreateSourceWorkloadDeployment, _>(
@@ -1640,6 +1644,7 @@ fn build_application_with_health(
                         source_workload_builds,
                         source_create_workloads,
                         source_workload_secrets,
+                        source_workload_node_pools,
                     ),
                 )
                 .command_handler::<crate::modules::workloads::CreateAgentWorkloadDeployment, _>(
@@ -1649,6 +1654,7 @@ fn build_application_with_health(
                         agent_create_builds,
                         agent_create_workloads,
                         agent_create_workload_secrets,
+                        agent_workload_node_pools,
                     ),
                 )
                 .command_handler::<crate::modules::workloads::UpdateAgentWorkloadDeployment, _>(

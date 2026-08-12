@@ -234,9 +234,16 @@ impl INodeSchedulingRepository for PostgresNodeRepository {
     async fn list_scheduling_candidates(
         &self,
         organization_id: OrganizationId,
+        node_pool_id: Option<crate::modules::shared_kernel::domain::NodePoolId>,
         evaluated_at: DateTime<Utc>,
     ) -> Result<Vec<Node>, RepositoryError> {
-        nodes::list_scheduling_candidates(&self.executor, organization_id, evaluated_at).await
+        nodes::list_scheduling_candidates(
+            &self.executor,
+            organization_id,
+            node_pool_id,
+            evaluated_at,
+        )
+        .await
     }
 }
 

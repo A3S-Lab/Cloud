@@ -8,12 +8,10 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{
-    commands::validate_secret_bindings, UpdateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME,
-    DEPLOYMENT_WORKFLOW_VERSION,
+    commands::{load_direct_workload_control, validate_secret_bindings},
+    UpdateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
-use crate::modules::workloads::domain::entities::{
-    Deployment, WorkloadControlSpec, WorkloadDesiredState,
-};
+use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
@@ -99,6 +97,17 @@ impl CommandHandler<UnbindSkillWorkloadDeployment> for UnbindSkillWorkloadDeploy
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
+
+            let control = match load_direct_workload_control(
+                workloads.as_ref(),
+                command.organization_id,
+                command.workload_id,
+            )
+            .await
+            {
+                Ok(control) => control,
+                Err(error) => return Ok(Err(error)),
+            };
 
             if workload.desired_state != WorkloadDesiredState::Running {
                 return Ok(Err(ApplicationError::Conflict(
@@ -194,7 +203,7 @@ impl CommandHandler<UnbindSkillWorkloadDeployment> for UnbindSkillWorkloadDeploy
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
-                    control: WorkloadControlSpec::unmanaged_single_replica(),
+                    control,
                     revision,
                     deployment,
                     operation,

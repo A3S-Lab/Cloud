@@ -1,5 +1,5 @@
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
+    EnvironmentId, NodePoolId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     HttpHealthCheck, OciArtifact, SecretBinding, ServicePort, ServiceProcess, ServiceResources,
@@ -39,6 +39,7 @@ pub struct CreateSourceWorkloadDeployment {
     pub environment_id: EnvironmentId,
     pub source_revision_id: SourceRevisionId,
     pub name: String,
+    pub node_pool_id: Option<NodePoolId>,
     pub template: SourceWorkloadTemplate,
     pub idempotency_key: String,
     pub request_id: Uuid,
