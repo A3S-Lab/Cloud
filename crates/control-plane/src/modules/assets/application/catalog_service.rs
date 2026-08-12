@@ -137,6 +137,8 @@ impl AssetCatalogApplicationService {
             .map_err(ApplicationError::from)
     }
 
+    // This application facade deliberately mirrors the complete release command boundary.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_release(
         &self,
         organization_id: OrganizationId,

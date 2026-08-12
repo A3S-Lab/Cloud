@@ -1,5 +1,6 @@
 use super::{CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentResult};
 use crate::modules::artifacts::{BuildRunStatus, IBuildRunRepository};
+use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -11,10 +12,12 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::sources::domain::ISourceRevisionRepository;
 use crate::modules::workloads::application::{
-    commands::validate_secret_bindings, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    commands::{validate_node_pool_selection, validate_secret_bindings},
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, ExternalBuildReference, OciArtifact, Workload, WorkloadRevision,
+    Deployment, ExternalBuildReference, OciArtifact, Workload, WorkloadControlSpec,
+    WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -29,6 +32,7 @@ pub struct CreateSourceWorkloadDeploymentHandler {
     builds: Arc<dyn IBuildRunRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn ISecretRepository>,
+    node_pools: Arc<dyn INodePoolRepository>,
 }
 
 impl CreateSourceWorkloadDeploymentHandler {
@@ -38,6 +42,7 @@ impl CreateSourceWorkloadDeploymentHandler {
         builds: Arc<dyn IBuildRunRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn ISecretRepository>,
+        node_pools: Arc<dyn INodePoolRepository>,
     ) -> Self {
         Self {
             environments,
@@ -45,6 +50,7 @@ impl CreateSourceWorkloadDeploymentHandler {
             builds,
             workloads,
             secrets,
+            node_pools,
         }
     }
 }
@@ -63,6 +69,7 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
         let builds = Arc::clone(&self.builds);
         let workloads = Arc::clone(&self.workloads);
         let secrets = Arc::clone(&self.secrets);
+        let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
             match environments
                 .find(
@@ -141,7 +148,16 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                 Ok(name) => name,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let canonical = serde_json::to_vec(&serde_json::json!({
+            if let Err(error) = validate_node_pool_selection(
+                node_pools.as_ref(),
+                command.organization_id,
+                command.node_pool_id,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
+            let mut canonical_document = serde_json::json!({
                 "organizationId": command.organization_id,
                 "projectId": command.project_id,
                 "environmentId": command.environment_id,
@@ -150,8 +166,12 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                 "publishedArtifactDigest": published.digest,
                 "name": name.as_str(),
                 "template": &command.template,
-            }))
-            .map_err(|error| BootError::Internal(error.to_string()))?;
+            });
+            if let Some(node_pool_id) = command.node_pool_id {
+                canonical_document["nodePoolId"] = serde_json::json!(node_pool_id);
+            }
+            let canonical = serde_json::to_vec(&canonical_document)
+                .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
                 format!(
                     "organizations/{}/projects/{}/environments/{}/source-revisions/{}/workloads",
@@ -232,10 +252,18 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
             );
             let event = DeploymentRequested::envelope(&deployment, &revision, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
+            let control = match WorkloadControlSpec::unmanaged_replica_set_in_pool(
+                1,
+                1,
+                command.node_pool_id,
+            ) {
+                Ok(control) => control,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
-                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
+                    control,
                     revision,
                     deployment,
                     operation,

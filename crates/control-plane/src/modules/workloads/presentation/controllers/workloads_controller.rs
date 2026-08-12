@@ -4,7 +4,7 @@ use crate::modules::identity::presentation::{
     OrganizationTenantGuard,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, OrganizationId, ProjectId,
+    AssetId, AssetReleaseId, DeploymentId, EnvironmentId, NodePoolId, OrganizationId, ProjectId,
     SourceRevisionId, WorkloadId,
 };
 use crate::modules::workloads::application::{
@@ -59,6 +59,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             project_id,
                             environment_id,
                             name: body.name,
+                            node_pool_id: body.node_pool_id.map(NodePoolId::from_uuid),
                             template: body.template.into(),
                             idempotency_key,
                             request_id,
@@ -100,6 +101,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             environment_id,
                             source_revision_id,
                             name: body.name,
+                            node_pool_id: body.node_pool_id.map(NodePoolId::from_uuid),
                             template: body.template.into(),
                             idempotency_key,
                             request_id,
@@ -143,6 +145,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             asset_id,
                             asset_release_id,
                             name: body.name,
+                            node_pool_id: body.node_pool_id.map(NodePoolId::from_uuid),
                             template: body.template.into(),
                             idempotency_key,
                             request_id,
@@ -168,7 +171,8 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                 move |request: BootRequest| {
                 let bus = Arc::clone(&update_bus);
                 async move {
-                    let (body, expected_name) = update_workload_request(&request)?;
+                    let (body, expected_name, expected_node_pool_id) =
+                        update_workload_request(&request)?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
@@ -182,6 +186,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             workload_id,
                             resource_access,
                             expected_name,
+                            expected_node_pool_id,
                             template: body.template.into(),
                             idempotency_key,
                             request_id,
@@ -209,7 +214,8 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                 move |request: BootRequest| {
                 let bus = Arc::clone(&agent_update_bus);
                 async move {
-                    let (body, expected_name) = update_agent_workload_request(&request)?;
+                    let (body, expected_name, expected_node_pool_id) =
+                        update_agent_workload_request(&request)?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let workload_id =
@@ -229,6 +235,7 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                             asset_id,
                             asset_release_id,
                             expected_name,
+                            expected_node_pool_id,
                             template: body.template.into(),
                             idempotency_key,
                             request_id,
@@ -459,6 +466,7 @@ fn create_workload_request(request: &BootRequest) -> Result<CreateWorkloadReques
         let manifest = parse_workload_manifest(request.body())?;
         Ok(CreateWorkloadRequest {
             name: manifest.name,
+            node_pool_id: manifest.node_pool_id,
             template: manifest.template,
         })
     } else {
@@ -471,6 +479,7 @@ fn create_source_workload_request(request: &BootRequest) -> Result<CreateSourceW
         let manifest = parse_source_workload_manifest(request.body())?;
         Ok(CreateSourceWorkloadRequest {
             name: manifest.name,
+            node_pool_id: manifest.node_pool_id,
             template: manifest.template,
         })
     } else {
@@ -480,7 +489,11 @@ fn create_source_workload_request(request: &BootRequest) -> Result<CreateSourceW
 
 fn update_workload_request(
     request: &BootRequest,
-) -> Result<(UpdateWorkloadRequest, Option<String>)> {
+) -> Result<(
+    UpdateWorkloadRequest,
+    Option<String>,
+    Option<Option<NodePoolId>>,
+)> {
     if is_acl_request(request) {
         let manifest = parse_workload_manifest(request.body())?;
         Ok((
@@ -488,15 +501,20 @@ fn update_workload_request(
                 template: manifest.template,
             },
             Some(manifest.name),
+            Some(manifest.node_pool_id.map(NodePoolId::from_uuid)),
         ))
     } else {
-        Ok((request.json_with_content_type()?, None))
+        Ok((request.json_with_content_type()?, None, None))
     }
 }
 
 fn update_agent_workload_request(
     request: &BootRequest,
-) -> Result<(UpdateAgentWorkloadRequest, Option<String>)> {
+) -> Result<(
+    UpdateAgentWorkloadRequest,
+    Option<String>,
+    Option<Option<NodePoolId>>,
+)> {
     if is_acl_request(request) {
         let manifest = parse_source_workload_manifest(request.body())?;
         Ok((
@@ -504,9 +522,10 @@ fn update_agent_workload_request(
                 template: manifest.template,
             },
             Some(manifest.name),
+            Some(manifest.node_pool_id.map(NodePoolId::from_uuid)),
         ))
     } else {
-        Ok((request.json_with_content_type()?, None))
+        Ok((request.json_with_content_type()?, None, None))
     }
 }
 

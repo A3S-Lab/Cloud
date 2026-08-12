@@ -11,7 +11,9 @@ use rustls::client::danger::ServerCertVerifier;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer, ServerName, UnixTime};
 use rustls::{RootCertStore, ServerConfig};
 use sha2::{Digest, Sha256};
-use std::fs::{File, OpenOptions};
+#[cfg(unix)]
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -584,7 +586,7 @@ fn read_bounded(
 fn atomic_write_new(
     path: &Path,
     bytes: &[u8],
-    mode: u32,
+    _mode: u32,
 ) -> Result<(), GatewayCertificateProvisioningError> {
     if path.exists() {
         return Err(GatewayCertificateProvisioningError::Invalid(format!(
@@ -606,7 +608,7 @@ fn atomic_write_new(
         use std::os::unix::fs::PermissionsExt;
         temporary
             .as_file()
-            .set_permissions(std::fs::Permissions::from_mode(mode))
+            .set_permissions(std::fs::Permissions::from_mode(_mode))
             .map_err(storage("secure managed staging file"))?;
     }
     temporary

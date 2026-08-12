@@ -45,6 +45,7 @@ async fn node_pool_maintenance_is_replay_safe_and_drives_one_scheduling_projecti
     let now = canonical_timestamp(Utc::now());
     let first = pool_node(&repository, organization_id, "pool-worker-a", 'a', now).await;
     let second = pool_node(&repository, organization_id, "pool-worker-b", 'b', now).await;
+    let outsider = pool_node(&repository, organization_id, "outside-worker", 'c', now).await;
     let pool = NodePool::create(
         NodePoolId::new(),
         organization_id,
@@ -130,7 +131,7 @@ async fn node_pool_maintenance_is_replay_safe_and_drives_one_scheduling_projecti
     let evaluated_at = now + Duration::seconds(4);
     assert_eq!(
         repository
-            .list_scheduling_candidates(organization_id, evaluated_at)
+            .list_scheduling_candidates(organization_id, Some(pool.id), evaluated_at)
             .await
             .expect("scheduling candidates")
             .into_iter()
@@ -138,6 +139,15 @@ async fn node_pool_maintenance_is_replay_safe_and_drives_one_scheduling_projecti
             .collect::<Vec<_>>(),
         vec![second]
     );
+    let all_candidates = repository
+        .list_scheduling_candidates(organization_id, None, evaluated_at)
+        .await
+        .expect("unconstrained scheduling candidates")
+        .into_iter()
+        .map(|node| node.id)
+        .collect::<Vec<_>>();
+    assert!(all_candidates.contains(&second));
+    assert!(all_candidates.contains(&outsider));
     let sources = repository
         .list_evacuation_sources(evaluated_at, 10)
         .await

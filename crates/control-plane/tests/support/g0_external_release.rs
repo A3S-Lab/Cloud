@@ -10,6 +10,8 @@ use a3s_cloud_control_plane::modules::artifacts::{
     LocalNodeArtifactStore, OciPublicationRequest, PostgresBuildRunRepository,
     VaultBuildEvidenceSigner,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodePoolRepository;
+use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::projects::domain::repositories::IEnvironmentRepository;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{ISecretRepository, PostgresSecretRepository};
@@ -444,12 +446,15 @@ async fn create_workload_handoff(
         Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let node_pools: Arc<dyn INodePoolRepository> =
+        Arc::new(PostgresNodeRepository::new(executor.clone()));
     let handler = CreateSourceWorkloadDeploymentHandler::new(
         environments,
         sources,
         builds,
         workloads,
         secrets,
+        node_pools,
     );
     let template = source_workload_template();
     let first = execute_workload(
@@ -506,6 +511,7 @@ fn source_workload_command(
         environment_id: inputs.source.revision.environment_id,
         source_revision_id: inputs.source.revision.id,
         name: "G0 published workload".into(),
+        node_pool_id: None,
         template,
         idempotency_key: "g0-external-release-workload".into(),
         request_id: Uuid::now_v7(),

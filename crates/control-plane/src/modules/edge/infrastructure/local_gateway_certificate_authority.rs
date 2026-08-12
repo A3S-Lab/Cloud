@@ -282,14 +282,14 @@ fn public_write(path: &Path, value: &str) -> Result<(), GatewayCertificateAuthor
 fn write_new(
     path: &Path,
     value: &str,
-    private: bool,
+    _private: bool,
 ) -> Result<(), GatewayCertificateAuthorityError> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;
-        options.mode(if private { 0o600 } else { 0o644 });
+        options.mode(if _private { 0o600 } else { 0o644 });
     }
     let mut file = options
         .open(path)
@@ -297,7 +297,7 @@ fn write_new(
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        file.set_permissions(fs::Permissions::from_mode(if private {
+        file.set_permissions(fs::Permissions::from_mode(if _private {
             0o600
         } else {
             0o644

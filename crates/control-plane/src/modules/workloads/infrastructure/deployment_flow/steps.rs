@@ -558,7 +558,11 @@ async fn schedule(
     }
     let mut nodes = runtime
         .nodes
-        .list_scheduling_candidates(deployment.organization_id, now)
+        .list_scheduling_candidates(
+            deployment.organization_id,
+            control.spec.placement_policy.node_pool_id(),
+            now,
+        )
         .await
         .map_err(|error| flow_error("could not list deployment scheduling candidates", error))?;
     nodes.sort_by_key(|node| node.id);

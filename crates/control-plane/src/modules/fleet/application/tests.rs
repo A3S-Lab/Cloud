@@ -266,7 +266,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .replayed
     );
     assert!(nodes
-        .list_scheduling_candidates(organization.id, now + Duration::seconds(5))
+        .list_scheduling_candidates(organization.id, None, now + Duration::seconds(5))
         .await
         .expect("scheduling projection")
         .is_empty());

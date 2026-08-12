@@ -29,6 +29,8 @@ impl McpServiceProfileApplicationService {
         }
     }
 
+    // This application facade deliberately mirrors the complete profile binding command boundary.
+    #[allow(clippy::too_many_arguments)]
     pub async fn bind(
         &self,
         organization_id: OrganizationId,

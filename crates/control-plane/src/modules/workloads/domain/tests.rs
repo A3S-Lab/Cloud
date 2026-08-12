@@ -7,8 +7,8 @@ use crate::modules::assets::domain::{
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId,
-    GitCommitSha, NodeCommandId, NodeId, OperationId, OrganizationId, ProjectId, ResourceName,
-    SecretId, Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
+    GitCommitSha, NodeCommandId, NodeId, NodePoolId, OperationId, OrganizationId, ProjectId,
+    ResourceName, SecretId, Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot, MCP_PROTOCOL_VERSION};
 use chrono::{Duration, Timelike, Utc};
@@ -115,8 +115,9 @@ fn managed_owner_and_effective_placement_are_closed_and_digest_bound() {
     );
     assert_eq!(
         spec.placement_policy.schema(),
-        "a3s.cloud.effective-placement-policy.v2"
+        "a3s.cloud.effective-placement-policy.v3"
     );
+    assert_eq!(spec.placement_policy.node_pool_id(), None);
     assert!(spec.placement_policy.digest().starts_with("sha256:"));
 
     let mut corrupt = spec.placement_policy.document().expect("policy document");
@@ -372,9 +373,11 @@ fn replica_set_reconfiguration_retires_only_the_tail_and_reuses_stable_identitie
         now,
     )
     .expect("revision");
+    let node_pool_id = NodePoolId::new();
     let control = WorkloadControl::create(
         &workload,
-        WorkloadControlSpec::unmanaged_replica_set(1, 3).expect("replica-set policy"),
+        WorkloadControlSpec::unmanaged_replica_set_in_pool(1, 3, Some(node_pool_id))
+            .expect("replica-set policy"),
     )
     .expect("control");
     let mut members = Vec::new();
@@ -407,6 +410,10 @@ fn replica_set_reconfiguration_retires_only_the_tail_and_reuses_stable_identitie
     assert_eq!(
         scaled_down.control.spec.placement_policy.desired_replicas(),
         1
+    );
+    assert_eq!(
+        scaled_down.control.spec.placement_policy.node_pool_id(),
+        Some(node_pool_id)
     );
     assert_eq!(
         scaled_down

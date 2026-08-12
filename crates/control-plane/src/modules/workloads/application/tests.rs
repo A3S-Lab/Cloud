@@ -12,6 +12,8 @@ use crate::modules::assets::domain::{
     AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetRepository,
     TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
+use crate::modules::fleet::domain::entities::NodePool;
+use crate::modules::fleet::domain::repositories::{INodePoolRepository, NodePoolWrite};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -20,7 +22,7 @@ use crate::modules::secrets::InMemorySecretRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest,
-    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError,
+    IdempotentWrite, NodeCommandId, NodeId, NodePoolId, OrganizationId, ProjectId, RepositoryError,
     ResourceName, Sha256Digest,
 };
 use crate::modules::workloads::domain::entities::{
@@ -43,6 +45,16 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let environment_id = EnvironmentId::new();
     let node_id = NodeId::new();
     let drafted_at = canonical_timestamp(Utc::now() - Duration::minutes(1));
+    let node_pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("agent workers").expect("node pool name"),
+        vec![node_id],
+        drafted_at,
+    )
+    .expect("node pool");
+    let node_pool_id = node_pool.id;
+    let node_pools = Arc::new(TestNodePoolRepository { pool: node_pool });
     let asset = Asset::create(
         AssetId::new(),
         organization_id,
@@ -78,6 +90,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         builds.clone(),
         workloads.clone(),
         secrets.clone(),
+        node_pools,
     );
     let create = CreateAgentWorkloadDeployment {
         organization_id,
@@ -86,6 +99,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         asset_id: asset.id,
         asset_release_id: release_one.id,
         name: "research-runtime".into(),
+        node_pool_id: Some(node_pool_id),
         template: source_template(),
         idempotency_key: "agent-release:create".into(),
         request_id: Uuid::now_v7(),
@@ -106,6 +120,16 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     assert_eq!(create_binding.asset_release_id(), release_one.id);
     assert_eq!(create_binding.build_run_id(), build_one.id);
     assert_eq!(
+        workloads
+            .find_workload_control(organization_id, created.bundle.workload.id)
+            .await
+            .expect("workload control")
+            .spec
+            .placement_policy
+            .node_pool_id(),
+        Some(node_pool_id)
+    );
+    assert_eq!(
         created
             .bundle
             .revision
@@ -119,6 +143,18 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
             .expect("published artifact")
             .uri
     );
+    let mut missing_pool_create = create.clone();
+    missing_pool_create.name = "research-runtime-missing-pool".into();
+    missing_pool_create.node_pool_id = Some(NodePoolId::new());
+    missing_pool_create.idempotency_key = "agent-release:create-missing-pool".into();
+    let missing_pool = create_handler
+        .execute(missing_pool_create, context())
+        .await
+        .expect("missing node pool handler");
+    assert!(matches!(
+        missing_pool,
+        Err(ApplicationError::NotFound(message)) if message.contains("node pool")
+    ));
     let create_replay = create_handler
         .execute(create, context())
         .await
@@ -151,11 +187,23 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         asset_id: asset.id,
         asset_release_id: release_two.id,
         expected_name: Some("research-runtime".into()),
+        expected_node_pool_id: Some(Some(node_pool_id)),
         template: source_template(),
         idempotency_key: "agent-release:update".into(),
         request_id: Uuid::now_v7(),
         requested_at: requested_at + Duration::seconds(2),
     };
+    let mut mismatched_placement = update.clone();
+    mismatched_placement.expected_node_pool_id = Some(Some(NodePoolId::new()));
+    mismatched_placement.idempotency_key = "agent-release:update-wrong-pool".into();
+    let mismatch = update_handler
+        .execute(mismatched_placement, context())
+        .await
+        .expect("mismatched placement handler");
+    assert!(matches!(
+        mismatch,
+        Err(ApplicationError::Conflict(message)) if message.contains("immutable target node pool")
+    ));
     let updated = update_handler
         .execute(update.clone(), context())
         .await
@@ -202,6 +250,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
                 workload_id: created.bundle.workload.id,
                 resource_access: ResourceAccessEvaluator::organization_wide(),
                 expected_name: None,
+                expected_node_pool_id: None,
                 template: created.bundle.revision.request.clone(),
                 idempotency_key: "agent-release:ordinary-update".into(),
                 request_id: Uuid::now_v7(),
@@ -225,6 +274,15 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let environment_id = EnvironmentId::new();
     let node_id = NodeId::new();
     let drafted_at = canonical_timestamp(Utc::now() - Duration::minutes(1));
+    let node_pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("skill host workers").expect("node pool name"),
+        vec![node_id],
+        drafted_at,
+    )
+    .expect("node pool");
+    let node_pool_id = node_pool.id;
     let agent = Asset::create(
         AssetId::new(),
         organization_id,
@@ -277,6 +335,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         builds.clone(),
         workloads.clone(),
         secrets.clone(),
+        Arc::new(TestNodePoolRepository { pool: node_pool }),
     )
     .execute(
         CreateAgentWorkloadDeployment {
@@ -286,6 +345,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
             asset_id: agent.id,
             asset_release_id: agent_release.id,
             name: "skill-host-runtime".into(),
+            node_pool_id: Some(node_pool_id),
             template: source_template(),
             idempotency_key: "skill-binding:create-agent".into(),
             request_id: Uuid::now_v7(),
@@ -422,6 +482,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
             asset_id: agent.id,
             asset_release_id: agent_release.id,
             expected_name: None,
+            expected_node_pool_id: None,
             template: source_template(),
             idempotency_key: "skill-binding:update-agent".into(),
             request_id: Uuid::now_v7(),
@@ -478,6 +539,16 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     assert_eq!(
         unbind_replay.bundle.deployment.id,
         unbound.bundle.deployment.id
+    );
+    assert_eq!(
+        workloads
+            .find_workload_control(organization_id, created.bundle.workload.id)
+            .await
+            .expect("preserved Workload control")
+            .spec
+            .placement_policy
+            .node_pool_id(),
+        Some(node_pool_id)
     );
 }
 
@@ -623,6 +694,49 @@ fn context() -> CqrsContext {
 
 struct TestEnvironmentRepository {
     environment: Environment,
+}
+
+struct TestNodePoolRepository {
+    pool: NodePool,
+}
+
+#[async_trait]
+impl INodePoolRepository for TestNodePoolRepository {
+    async fn replay(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<NodePool>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn save(
+        &self,
+        _write: NodePoolWrite,
+    ) -> Result<IdempotentWrite<NodePool>, RepositoryError> {
+        Err(RepositoryError::Storage("unused node pool write".into()))
+    }
+
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        pool_id: NodePoolId,
+    ) -> Result<NodePool, RepositoryError> {
+        if self.pool.organization_id == organization_id && self.pool.id == pool_id {
+            Ok(self.pool.clone())
+        } else {
+            Err(RepositoryError::NotFound)
+        }
+    }
+
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<NodePool>, RepositoryError> {
+        Ok((self.pool.organization_id == organization_id)
+            .then(|| self.pool.clone())
+            .into_iter()
+            .collect())
+    }
 }
 
 #[async_trait]

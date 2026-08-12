@@ -8,9 +8,9 @@ use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
-    OrganizationId, ProjectId, RepositoryError, ResourceName, WorkloadId, WorkloadReplicaId,
-    WorkloadReplicaMemberId, WorkloadRevisionId,
+    DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, NodePoolId,
+    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
@@ -43,6 +43,73 @@ pub struct WorkloadFixture {
 
 pub struct ReplicaSetFixture {
     pub bindings: Vec<DeploymentReplicaBinding>,
+}
+
+pub async fn exercise_workload_node_pool_selection(
+    executor: &PostgresExecutor,
+    organization_uuid: Uuid,
+    project_uuid: Uuid,
+    environment_uuid: Uuid,
+    node_pool_id: NodePoolId,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(organization_uuid);
+    let project_id = ProjectId::from_uuid(project_uuid);
+    let environment_id = EnvironmentId::from_uuid(environment_uuid);
+    let repository = PostgresWorkloadRepository::new(executor.clone());
+    let now = Utc::now();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        ResourceName::parse("Pool-selected fixture")?,
+        now,
+    );
+    let mut selected = request(workload, 1, 'e', "pool-selected-fixture", now)?;
+    selected.control = WorkloadControlSpec::unmanaged_single_replica_in_pool(node_pool_id)?;
+    let workload_id = selected.workload.id;
+    repository.create_deployment(selected).await?;
+
+    let control = repository
+        .find_workload_control(organization_id, workload_id)
+        .await?;
+    assert_eq!(
+        control.spec.placement_policy.node_pool_id(),
+        Some(node_pool_id)
+    );
+    assert_eq!(
+        Database::new(PostgresDialect, executor.clone())
+            .fetch_one_as(
+                sql_query::<Option<Uuid>>(
+                    "select node_pool_id from workload_controls where workload_id = ",
+                )
+                .bind(workload_id.as_uuid()),
+            )
+            .await?,
+        Some(node_pool_id.as_uuid())
+    );
+
+    let invalid_workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        ResourceName::parse("Missing-pool fixture")?,
+        now + Duration::milliseconds(1),
+    );
+    let mut invalid = request(
+        invalid_workload,
+        1,
+        'f',
+        "missing-pool-fixture",
+        now + Duration::milliseconds(1),
+    )?;
+    invalid.control = WorkloadControlSpec::unmanaged_single_replica_in_pool(NodePoolId::new())?;
+    assert!(matches!(
+        repository.create_deployment(invalid).await,
+        Err(RepositoryError::Storage(_))
+    ));
+    Ok(())
 }
 
 pub async fn exercise_replica_policy_v1_upgrade(
@@ -84,6 +151,12 @@ pub async fn exercise_replica_policy_v1_upgrade(
             r#"
 alter table workload_controls
     drop constraint workload_controls_placement_policy_check;
+
+drop index workload_controls_node_pool_idx;
+
+alter table workload_controls
+    drop constraint workload_controls_node_pool_fk,
+    drop column node_pool_id;
 
 with policy_values as (
     select
@@ -216,6 +289,11 @@ drop index resource_claims_active_workload_node_replica_idx;
             .await?;
     }
     client.batch_execute(migration).await?;
+    let node_pool_migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/092_workload_node_pool_selection.sql"
+    ));
+    client.batch_execute(node_pool_migration).await?;
 
     for (workload_id, (generation, desired_replicas, aggregate_version, updated_at)) in before {
         let control = repository
@@ -228,12 +306,12 @@ drop index resource_claims_active_workload_node_replica_idx;
             ),
             (
                 generation
-                    .checked_add(1)
+                    .checked_add(2)
                     .ok_or("placement policy generation overflowed in migration fixture")?,
                 desired_replicas,
             )
         );
-        assert_eq!(control.aggregate_version, aggregate_version + 1);
+        assert_eq!(control.aggregate_version, aggregate_version + 2);
         assert!(control.updated_at >= updated_at);
         assert_eq!(
             control.spec.placement_policy.replica_anti_affinity(),
@@ -241,8 +319,9 @@ drop index resource_claims_active_workload_node_replica_idx;
         );
         assert_eq!(
             control.spec.placement_policy.schema(),
-            "a3s.cloud.effective-placement-policy.v2"
+            "a3s.cloud.effective-placement-policy.v3"
         );
+        assert_eq!(control.spec.placement_policy.node_pool_id(), None);
     }
     Ok(())
 }

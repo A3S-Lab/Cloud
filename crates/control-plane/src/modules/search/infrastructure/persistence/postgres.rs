@@ -170,7 +170,8 @@ impl ISearchRepository for PostgresSearchRepository {
 
 fn resource_visibility_predicate(resource_access: &ResourceAccessEvaluator) -> Expression {
     if resource_access.is_organization_wide() {
-        return bound::<bool>(true).eq(true);
+        return AuthorizedSearchProjections::organization_id()
+            .eq_column(AuthorizedSearchProjections::organization_id());
     }
     let mut predicates = resource_access.granted_scopes().map(|scope| match scope {
         ResourceGrantScope::Project { project_id } => AuthorizedSearchProjections::project_id()
@@ -188,7 +189,8 @@ fn resource_visibility_predicate(resource_access: &ResourceAccessEvaluator) -> E
             .and(AuthorizedSearchProjections::resource_id().eq(node_id.as_uuid())),
     });
     let Some(first) = predicates.next() else {
-        return bound::<bool>(false).eq(true);
+        return AuthorizedSearchProjections::organization_id()
+            .ne_column(AuthorizedSearchProjections::organization_id());
     };
     predicates.fold(first, Expression::or)
 }

@@ -160,6 +160,7 @@ pub trait INodeSchedulingRepository: Send + Sync {
     async fn list_scheduling_candidates(
         &self,
         organization_id: OrganizationId,
+        node_pool_id: Option<NodePoolId>,
         evaluated_at: DateTime<Utc>,
     ) -> Result<Vec<Node>, RepositoryError>;
 }

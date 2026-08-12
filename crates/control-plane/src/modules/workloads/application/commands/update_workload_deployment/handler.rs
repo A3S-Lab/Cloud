@@ -10,6 +10,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{
+    commands::{load_direct_workload_control, require_acl_node_pool_selection},
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
@@ -65,6 +66,21 @@ impl CommandHandler<UpdateWorkloadDeployment> for UpdateWorkloadDeploymentHandle
                     "only an active running workload can be updated".into(),
                 )));
             }
+            let control = match load_direct_workload_control(
+                workloads.as_ref(),
+                command.organization_id,
+                command.workload_id,
+            )
+            .await
+            {
+                Ok(control) => control,
+                Err(error) => return Ok(Err(error)),
+            };
+            if let Err(error) =
+                require_acl_node_pool_selection(&control, command.expected_node_pool_id)
+            {
+                return Ok(Err(error));
+            }
             let Some(active_revision_id) = workload.active_revision_id else {
                 return Ok(Err(ApplicationError::Conflict(
                     "only an active running workload can be updated".into(),
@@ -113,12 +129,16 @@ impl CommandHandler<UpdateWorkloadDeployment> for UpdateWorkloadDeploymentHandle
             {
                 return Ok(Err(error));
             }
-            let canonical = serde_json::to_vec(&serde_json::json!({
+            let mut canonical_document = serde_json::json!({
                 "organizationId": command.organization_id,
                 "workloadId": command.workload_id,
                 "template": command.template,
-            }))
-            .map_err(|error| BootError::Internal(error.to_string()))?;
+            });
+            if let Some(node_pool_id) = command.expected_node_pool_id.flatten() {
+                canonical_document["nodePoolId"] = serde_json::json!(node_pool_id);
+            }
+            let canonical = serde_json::to_vec(&canonical_document)
+                .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
                 format!(
                     "organizations/{}/workloads/{}/deployments",
@@ -189,7 +209,7 @@ impl CommandHandler<UpdateWorkloadDeployment> for UpdateWorkloadDeploymentHandle
             let bundle = match workloads
                 .create_deployment(CreateDeploymentBundle {
                     workload,
-                    control: crate::modules::workloads::domain::entities::WorkloadControlSpec::unmanaged_single_replica(),
+                    control,
                     revision,
                     deployment,
                     operation,
