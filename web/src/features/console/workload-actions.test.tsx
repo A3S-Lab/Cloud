@@ -152,11 +152,12 @@ function workloadControl(timestamp: string): Workload['control'] {
   return {
     managedOwner: null,
     placementPolicy: {
-      schema: 'a3s.workload-placement.v1',
+      schema: 'a3s.cloud.effective-placement-policy.v2',
       generation: 1,
       desiredReplicas: 1,
       membersPerReplica: 1,
       topology: 'single_node',
+      replicaAntiAffinity: 'required',
       digest: 'sha256:placement',
     },
     aggregateVersion: 1,

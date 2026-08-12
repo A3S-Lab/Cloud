@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 const CAPACITY_UNAVAILABLE_PREFIX: &str = "resource capacity unavailable: ";
+const PLACEMENT_UNAVAILABLE_PREFIX: &str = "replica placement unavailable: ";
 
 pub(crate) fn capacity_unavailable(message: impl Into<String>) -> RepositoryError {
     RepositoryError::Conflict(format!("{CAPACITY_UNAVAILABLE_PREFIX}{}", message.into()))
@@ -18,6 +19,17 @@ pub(crate) fn is_capacity_unavailable(error: &RepositoryError) -> bool {
     matches!(
         error,
         RepositoryError::Conflict(message) if message.starts_with(CAPACITY_UNAVAILABLE_PREFIX)
+    )
+}
+
+pub(crate) fn placement_unavailable(message: impl Into<String>) -> RepositoryError {
+    RepositoryError::Conflict(format!("{PLACEMENT_UNAVAILABLE_PREFIX}{}", message.into()))
+}
+
+pub(crate) fn is_placement_unavailable(error: &RepositoryError) -> bool {
+    matches!(
+        error,
+        RepositoryError::Conflict(message) if message.starts_with(PLACEMENT_UNAVAILABLE_PREFIX)
     )
 }
 

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-const EFFECTIVE_PLACEMENT_POLICY_SCHEMA: &str = "a3s.cloud.effective-placement-policy.v1";
+const EFFECTIVE_PLACEMENT_POLICY_SCHEMA: &str = "a3s.cloud.effective-placement-policy.v2";
 const MAX_OWNER_KIND_LENGTH: usize = 64;
 pub const MAX_WORKLOAD_REPLICAS: u32 = 100;
 
@@ -100,6 +100,12 @@ pub enum PlacementTopology {
     SingleNode,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplicaAntiAffinity {
+    Required,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EffectivePlacementPolicy {
@@ -108,6 +114,7 @@ pub struct EffectivePlacementPolicy {
     desired_replicas: u32,
     members_per_replica: u32,
     topology: PlacementTopology,
+    replica_anti_affinity: ReplicaAntiAffinity,
     digest: String,
 }
 
@@ -123,6 +130,7 @@ impl EffectivePlacementPolicy {
             desired_replicas,
             members_per_replica: 1,
             topology: PlacementTopology::SingleNode,
+            replica_anti_affinity: ReplicaAntiAffinity::Required,
             digest: String::new(),
         };
         policy.digest = policy.calculate_digest()?;
@@ -172,6 +180,10 @@ impl EffectivePlacementPolicy {
         self.topology
     }
 
+    pub const fn replica_anti_affinity(&self) -> ReplicaAntiAffinity {
+        self.replica_anti_affinity
+    }
+
     pub fn digest(&self) -> &str {
         &self.digest
     }
@@ -185,6 +197,7 @@ impl EffectivePlacementPolicy {
             desired_replicas: u32,
             members_per_replica: u32,
             topology: PlacementTopology,
+            replica_anti_affinity: ReplicaAntiAffinity,
         }
 
         let encoded = serde_json::to_vec(&DigestDocument {
@@ -193,6 +206,7 @@ impl EffectivePlacementPolicy {
             desired_replicas: self.desired_replicas,
             members_per_replica: self.members_per_replica,
             topology: self.topology,
+            replica_anti_affinity: self.replica_anti_affinity,
         })
         .map_err(|error| format!("could not digest effective placement policy: {error}"))?;
         Ok(format!("sha256:{:x}", Sha256::digest(encoded)))

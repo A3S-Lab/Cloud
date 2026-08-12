@@ -2,22 +2,27 @@ use super::replicas;
 use super::resource_claim_rows::{restore_claim, ClaimWithSlotRow, ClaimWithSlotSelection};
 use super::resource_claim_writes;
 use super::schema::{ResourceClaimSlots, ResourceClaims};
-use crate::infrastructure::{fetch_all, transaction_error, PostgresPersistenceError};
+use crate::infrastructure::{
+    fetch_all, fetch_optional, transaction_error, PostgresPersistenceError,
+};
 use crate::modules::fleet::infrastructure::require_current_inventory;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, OrganizationId, RepositoryError, ResourceClaimId,
 };
 use crate::modules::workloads::domain::entities::{
     ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation,
+    ResourceClaimReservation, ResourceClaimState,
 };
-use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
+use crate::modules::workloads::domain::repositories::{
+    placement_unavailable, IResourceClaimRepository,
+};
 use a3s_orm::{
     select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
     Query,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct PostgresResourceClaimRepository {
@@ -260,6 +265,7 @@ async fn reserve_in_transaction(
         )
         .into());
     }
+    require_replica_anti_affinity(transaction, &reservation).await?;
     require_current_inventory(
         transaction,
         reservation.binding.organization_id,
@@ -273,6 +279,41 @@ async fn reserve_in_transaction(
         value: claim,
         replayed: false,
     })
+}
+
+async fn require_replica_anti_affinity(
+    transaction: &PostgresTransaction,
+    reservation: &ResourceClaimReservation,
+) -> Result<(), PostgresPersistenceError> {
+    let binding = &reservation.binding;
+    transaction
+        .advisory_xact_lock(
+            "a3s.cloud.workload-replica-anti-affinity",
+            &format!(
+                "{}:{}:{}",
+                binding.organization_id, binding.workload_id, reservation.node_id
+            ),
+        )
+        .await?;
+    let conflicting_claim = fetch_optional::<Uuid, _>(
+        transaction,
+        select_from::<ResourceClaims>()
+            .select(ResourceClaims::id())
+            .filter(ResourceClaims::organization_id().eq(binding.organization_id.as_uuid()))
+            .filter(ResourceClaims::workload_id().eq(binding.workload_id.as_uuid()))
+            .filter(ResourceClaims::node_id().eq(reservation.node_id.as_uuid()))
+            .filter(ResourceClaims::replica_id().ne(binding.replica_id.as_uuid()))
+            .filter(ResourceClaims::state().ne(ResourceClaimState::Released.as_str()))
+            .limit(1),
+    )
+    .await?;
+    if conflicting_claim.is_some() {
+        return Err(placement_unavailable(
+            "required anti-affinity excludes a node with another active Workload replica",
+        )
+        .into());
+    }
+    Ok(())
 }
 
 async fn mutate_in_transaction(

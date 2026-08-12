@@ -1,6 +1,8 @@
-use crate::workloads_support::WorkloadFixture;
+use crate::workloads_support::{ReplicaSetFixture, WorkloadFixture};
 use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
-use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeRepository,
+};
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     OrganizationId, RepositoryError, ResourceClaimId, ResourceName, WorkloadId,
@@ -16,10 +18,47 @@ use chrono::{Duration, Utc};
 use std::sync::Arc;
 use tokio::sync::Barrier;
 
+pub async fn exercise_replica_anti_affinity(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    replica_set: &ReplicaSetFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let nodes = PostgresNodeRepository::new(executor.clone());
+    let node = nodes
+        .list(organization_id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("replica anti-affinity fixture has no node")?;
+    let inventory = nodes
+        .current_resource_inventory(node.id)
+        .await?
+        .ok_or("replica anti-affinity fixture node has no inventory")?
+        .inventory;
+    let binding_time = replica_set
+        .bindings
+        .iter()
+        .map(|binding| binding.updated_at)
+        .max()
+        .ok_or("replica anti-affinity fixture has no bindings")?;
+    let base = Utc::now()
+        .max(binding_time + Duration::seconds(1))
+        .max(inventory.observed_at + Duration::seconds(1));
+    exercise_required_replica_anti_affinity(
+        &Arc::new(PostgresResourceClaimRepository::new(executor.clone())),
+        node.id,
+        replica_set,
+        inventory,
+        base,
+    )
+    .await
+}
+
 pub async fn exercise_resource_claims(
     executor: &PostgresExecutor,
     organization_id: OrganizationId,
     workload: &WorkloadFixture,
+    replica_set: &ReplicaSetFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
     const CONCURRENCY: usize = 100;
     let workload_repository = PostgresWorkloadRepository::new(executor.clone());
@@ -337,6 +376,14 @@ pub async fn exercise_resource_claims(
         now + Duration::seconds(16),
     )
     .await?;
+    exercise_required_replica_anti_affinity(
+        &repository,
+        workload.node_id,
+        replica_set,
+        shared_inventory.clone(),
+        now + Duration::seconds(16),
+    )
+    .await?;
     let first_shared = repository
         .reserve(shared_reservation(
             ResourceClaimId::new(),
@@ -405,6 +452,93 @@ pub async fn exercise_resource_claims(
         .await?
         .value;
     assert!(third_shared.slots[0].slot_generation > second_shared.slots[0].slot_generation);
+    Ok(())
+}
+
+async fn exercise_required_replica_anti_affinity(
+    repository: &Arc<PostgresResourceClaimRepository>,
+    node_id: a3s_cloud_control_plane::modules::shared_kernel::domain::NodeId,
+    replica_set: &ReplicaSetFixture,
+    inventory: NodeResourceInventory,
+    base: chrono::DateTime<Utc>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let first_binding = replica_set
+        .bindings
+        .first()
+        .ok_or("replica-set fixture omitted its first binding")?
+        .propose_assignment(node_id, base + Duration::milliseconds(100))?;
+    let second_binding = replica_set
+        .bindings
+        .get(1)
+        .ok_or("replica-set fixture omitted its second binding")?
+        .propose_assignment(node_id, base + Duration::milliseconds(100))?;
+    if first_binding.replica_id == second_binding.replica_id {
+        return Err("replica-set fixture reused one stable replica identity".into());
+    }
+    let candidates = [
+        shared_reservation(
+            ResourceClaimId::new(),
+            first_binding,
+            inventory.clone(),
+            1,
+            base + Duration::milliseconds(200),
+        ),
+        shared_reservation(
+            ResourceClaimId::new(),
+            second_binding,
+            inventory,
+            1,
+            base + Duration::milliseconds(200),
+        ),
+    ];
+    let barrier = Arc::new(Barrier::new(candidates.len()));
+    let mut tasks = Vec::with_capacity(candidates.len());
+    for reservation in candidates {
+        let repository = Arc::clone(repository);
+        let barrier = Arc::clone(&barrier);
+        let attempted = reservation.clone();
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            (attempted, repository.reserve(reservation).await)
+        }));
+    }
+
+    let mut winner = None;
+    let mut loser = None;
+    for task in tasks {
+        let (reservation, outcome) = task.await?;
+        match outcome {
+            Ok(result) if winner.is_none() => winner = Some(result.value),
+            Ok(_) => return Err("two sibling replicas claimed one node".into()),
+            Err(RepositoryError::Conflict(message))
+                if message.starts_with("replica placement unavailable: ") && loser.is_none() =>
+            {
+                loser = Some(reservation);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let winner = winner.ok_or("required replica anti-affinity produced no winner")?;
+    let mut loser = loser.ok_or("required replica anti-affinity produced no conflict")?;
+    repository
+        .cancel_database_reservation(
+            winner.organization_id,
+            winner.id,
+            winner.aggregate_version,
+            base + Duration::milliseconds(400),
+        )
+        .await?;
+
+    loser.reserved_at = base + Duration::milliseconds(500);
+    let retried = repository.reserve(loser).await?.value;
+    repository
+        .cancel_database_reservation(
+            retried.organization_id,
+            retried.id,
+            retried.aggregate_version,
+            base + Duration::milliseconds(700),
+        )
+        .await?;
     Ok(())
 }
 

@@ -6,7 +6,7 @@ use crate::modules::workloads::domain::entities::{
     ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotBinding,
 };
 use crate::modules::workloads::domain::repositories::{
-    capacity_unavailable, IResourceClaimRepository,
+    capacity_unavailable, placement_unavailable, IResourceClaimRepository,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -94,6 +94,17 @@ impl IResourceClaimRepository for InMemoryResourceClaimRepository {
                 value: existing.clone(),
                 replayed: true,
             });
+        }
+        if state.claims.values().any(|claim| {
+            claim.organization_id == reservation.binding.organization_id
+                && claim.workload_id == reservation.binding.workload_id
+                && claim.node_id == reservation.node_id
+                && claim.replica_id != reservation.binding.replica_id
+                && claim.state != ResourceClaimState::Released
+        }) {
+            return Err(placement_unavailable(
+                "required anti-affinity excludes a node with another active Workload replica",
+            ));
         }
 
         let mut reserved_slots = Vec::with_capacity(reservation.slots.len());

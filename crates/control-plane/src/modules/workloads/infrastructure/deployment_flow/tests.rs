@@ -205,8 +205,8 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             base,
             "replica-node-a",
             'a',
-            100,
-            32 * 1024 * 1024,
+            1_000,
+            512 * 1024 * 1024,
             first_proposed,
             capabilities(),
         )
@@ -218,8 +218,8 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             base,
             "replica-node-b",
             'b',
-            100,
-            32 * 1024 * 1024,
+            1_000,
+            512 * 1024 * 1024,
             second_proposed,
             capabilities(),
         )
@@ -230,8 +230,8 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
         base,
         "replica-node-c",
         'c',
-        100,
-        32 * 1024 * 1024,
+        1_000,
+        512 * 1024 * 1024,
         third_proposed,
         capabilities(),
     )

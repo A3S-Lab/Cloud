@@ -752,6 +752,7 @@ export interface EffectivePlacementPolicy {
   desiredReplicas: number;
   membersPerReplica: number;
   topology: 'single_node';
+  replicaAntiAffinity: 'required';
   digest: string;
 }
 
