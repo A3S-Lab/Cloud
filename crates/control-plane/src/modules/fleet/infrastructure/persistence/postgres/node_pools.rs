@@ -1,4 +1,4 @@
-use super::schema::NodePoolMembers;
+use super::schema::{NodePoolMembers, Nodes};
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
     is_unique_violation, lock_idempotency_key, lock_node_placement, require_one_row,
@@ -283,6 +283,18 @@ pub(crate) async fn node_pool_placement_is_eligible(
     node_id: NodeId,
 ) -> Result<bool, PostgresPersistenceError> {
     lock_node_placement(transaction, organization_id, node_id).await?;
+    let node_exists = fetch_optional::<Uuid, _>(
+        transaction,
+        select_from::<Nodes>()
+            .select(Nodes::id())
+            .filter(Nodes::organization_id().eq(organization_id.as_uuid()))
+            .filter(Nodes::id().eq(node_id.as_uuid()))
+            .limit(1),
+    )
+    .await?;
+    if node_exists.is_none() {
+        return Ok(false);
+    }
     let pending_removal = fetch_optional::<Uuid, _>(
         transaction,
         select_from::<NodePoolMembers>()

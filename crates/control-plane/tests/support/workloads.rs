@@ -3,6 +3,7 @@ use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeDrainRepository, INodeRepository,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
@@ -1408,6 +1409,42 @@ pub async fn exercise_placement_group_plans(
         placements,
         scheduled_at: deployment_requested_at,
     };
+    assert!(matches!(
+        repository
+            .schedule_placement_group(schedule_write.clone())
+            .await,
+        Err(RepositoryError::Conflict(message))
+            if message.starts_with("replica placement unavailable: ")
+    ));
+    let node_capabilities = NodeCapabilities::new("test-runtime", "test-runtime-1", json!({}))?;
+    for (ordinal, placement) in schedule_write.placements.iter().enumerate() {
+        let name = format!("postgres-placement-group-worker-{ordinal}");
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
+                )
+                .bind(organization_uuid)
+                .append(", ")
+                .bind(placement.node_id.as_uuid())
+                .append(", ")
+                .bind(name.as_str())
+                .append(", ")
+                .bind(name.as_str())
+                .append(", 'ready', ")
+                .bind(Uuid::now_v7())
+                .append(", 'test', 'test-runtime', 'test-runtime-1', ")
+                .bind(node_capabilities.digest())
+                .append(", ")
+                .bind(node_capabilities.document().clone())
+                .append(", ")
+                .bind(deployment_requested_at)
+                .append(", ")
+                .bind(deployment_requested_at)
+                .append(", 0, 1)"),
+            )
+            .await?;
+    }
     let (left_schedule, right_schedule) = tokio::join!(
         repository.schedule_placement_group(schedule_write.clone()),
         repository.schedule_placement_group(schedule_write),
