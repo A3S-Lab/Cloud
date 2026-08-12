@@ -7,12 +7,16 @@ use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
     WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
 };
-use crate::modules::workloads::domain::events::WorkloadReplicaSetReconfigured;
+use crate::modules::workloads::domain::events::{
+    WorkloadReplicaRetired, WorkloadReplicaSetReconfigured,
+};
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    IWorkloadReplicaDeploymentRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite,
+    ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization, ReplicaRetirementCompletion,
+    ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
+    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
     WorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
@@ -760,7 +764,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         expected_version: u64,
         at: DateTime<Utc>,
     ) -> Result<Deployment, RepositoryError> {
-        mutate(&self.state, deployment_id, expected_version, |deployment| {
+        mutate_desired(&self.state, deployment_id, expected_version, |deployment| {
             deployment.resolve(at)
         })
         .await
@@ -785,6 +789,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 deployment.aggregate_version,
             ));
         }
+        require_current_desired_replica(&state, &deployment)?;
         deployment.schedule(node_id, at).map_err(transition_error)?;
         let mut binding = state
             .deployment_replica_bindings
@@ -823,7 +828,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         command_id: NodeCommandId,
         at: DateTime<Utc>,
     ) -> Result<Deployment, RepositoryError> {
-        mutate(&self.state, deployment_id, expected_version, |deployment| {
+        mutate_desired(&self.state, deployment_id, expected_version, |deployment| {
             deployment.dispatch(command_id, at)
         })
         .await
@@ -835,7 +840,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
         expected_version: u64,
         at: DateTime<Utc>,
     ) -> Result<Deployment, RepositoryError> {
-        mutate(&self.state, deployment_id, expected_version, |deployment| {
+        mutate_desired(&self.state, deployment_id, expected_version, |deployment| {
             deployment.verify(at)
         })
         .await
@@ -884,6 +889,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .get(&deployment_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
+        require_current_desired_replica(&state, &deployment)?;
         let mut workload = state
             .workloads
             .get(&workload_id)
@@ -1168,6 +1174,265 @@ fn replica_set_repository_error(error: ReplicaSetReconfigurationError) -> Reposi
 }
 
 #[async_trait]
+impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
+    async fn pending_replica_retirements(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<RetiringReplicaTarget>, RepositoryError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "replica retirement target limit must be between 1 and 10000".into(),
+            ));
+        }
+        let state = self.state.read().await;
+        let mut replicas = state
+            .replicas
+            .values()
+            .filter(|replica| replica.lifecycle == WorkloadReplicaLifecycle::Retiring)
+            .cloned()
+            .collect::<Vec<_>>();
+        replicas.sort_by_key(|replica| {
+            (
+                replica.updated_at,
+                replica.workload_id,
+                replica.ordinal,
+                replica.id,
+            )
+        });
+        let mut targets = Vec::with_capacity(limit.min(replicas.len()));
+        for replica in replicas.into_iter().take(limit) {
+            let revision = state
+                .revisions
+                .get(&replica.revision_id)
+                .filter(|revision| revision.workload_id == replica.workload_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "retiring replica references a missing revision".into(),
+                    )
+                })?;
+            let member_id = WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid());
+            let member = state
+                .replica_members
+                .get(&member_id)
+                .filter(|member| member.replica_id == replica.id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "retiring replica references a missing canonical member".into(),
+                    )
+                })?;
+            let replica_binding = state
+                .deployment_replica_bindings
+                .values()
+                .find(|binding| {
+                    binding.replica_id == replica.id
+                        && binding.replica_generation == replica.generation
+                })
+                .cloned();
+            let deployment = replica_binding
+                .as_ref()
+                .map(|binding| {
+                    state
+                        .deployments
+                        .get(&binding.deployment_id)
+                        .cloned()
+                        .ok_or_else(|| {
+                            RepositoryError::Storage(
+                                "retiring replica binding references a missing deployment".into(),
+                            )
+                        })
+                })
+                .transpose()?;
+            if member.node_id.is_some() && replica_binding.is_none() {
+                return Err(RepositoryError::Storage(
+                    "placed retiring replica has no deployment binding".into(),
+                ));
+            }
+            targets.push(RetiringReplicaTarget {
+                revision,
+                replica,
+                member,
+                deployment,
+                replica_binding,
+            });
+        }
+        Ok(targets)
+    }
+
+    async fn dispatch_replica_retirement(
+        &self,
+        dispatch: ReplicaRetirementDispatch,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        let mut state = self.state.write().await;
+        let mut replica = state
+            .replicas
+            .get(&dispatch.replica_id)
+            .filter(|replica| {
+                replica.organization_id == dispatch.organization_id
+                    && replica.workload_id == dispatch.workload_id
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if replica.generation != dispatch.replica_generation {
+            return Err(RepositoryError::Conflict(
+                "replica retirement dispatch changed generation".into(),
+            ));
+        }
+        if replica.lifecycle == WorkloadReplicaLifecycle::Retiring
+            && replica.retirement_command_id == Some(dispatch.command_id)
+        {
+            return Ok(replica);
+        }
+        require_replica_version(&replica, dispatch.expected_replica_version)?;
+        replica
+            .dispatch_retirement(dispatch.command_id, dispatch.dispatched_at)
+            .map_err(RepositoryError::Conflict)?;
+        state.replicas.insert(replica.id, replica.clone());
+        Ok(replica)
+    }
+
+    async fn record_replica_runtime_fenced(
+        &self,
+        fence: ReplicaRuntimeFence,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        let mut state = self.state.write().await;
+        let mut replica = state
+            .replicas
+            .get(&fence.replica_id)
+            .filter(|replica| {
+                replica.organization_id == fence.organization_id
+                    && replica.workload_id == fence.workload_id
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if replica.generation != fence.replica_generation {
+            return Err(RepositoryError::Conflict(
+                "replica Runtime fence changed generation".into(),
+            ));
+        }
+        if replica.lifecycle == WorkloadReplicaLifecycle::Retiring
+            && replica.retirement_command_id == Some(fence.command_id)
+            && replica.runtime_fenced_at == Some(fence.fenced_at)
+        {
+            return Ok(replica);
+        }
+        require_replica_version(&replica, fence.expected_replica_version)?;
+        replica
+            .record_runtime_fenced(fence.command_id, fence.fenced_at)
+            .map_err(RepositoryError::Conflict)?;
+        state.replicas.insert(replica.id, replica.clone());
+        Ok(replica)
+    }
+
+    async fn complete_replica_retirement(
+        &self,
+        completion: ReplicaRetirementCompletion,
+    ) -> Result<
+        crate::modules::shared_kernel::domain::IdempotentWrite<WorkloadReplica>,
+        RepositoryError,
+    > {
+        let mut state = self.state.write().await;
+        let mut replica = state
+            .replicas
+            .get(&completion.replica_id)
+            .filter(|replica| {
+                replica.organization_id == completion.organization_id
+                    && replica.workload_id == completion.workload_id
+            })
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let mut member = state
+            .replica_members
+            .get(&completion.member_id)
+            .filter(|member| member.replica_id == completion.replica_id)
+            .cloned()
+            .ok_or_else(|| RepositoryError::Storage("retiring replica member is missing".into()))?;
+        if replica.generation != completion.replica_generation {
+            return Err(RepositoryError::Conflict(
+                "replica retirement completion changed generation".into(),
+            ));
+        }
+        if replica.lifecycle == WorkloadReplicaLifecycle::Retired && member.node_id.is_none() {
+            return Ok(crate::modules::shared_kernel::domain::IdempotentWrite {
+                value: replica,
+                replayed: true,
+            });
+        }
+        require_replica_version(&replica, completion.expected_replica_version)?;
+        if member.aggregate_version != completion.expected_member_version {
+            return Err(RepositoryError::Conflict(format!(
+                "Workload replica member changed from expected version {} to {}",
+                completion.expected_member_version, member.aggregate_version
+            )));
+        }
+        let control = state.controls.get(&replica.workload_id).ok_or_else(|| {
+            RepositoryError::Storage("retiring replica Workload has no control record".into())
+        })?;
+        if replica.lifecycle != WorkloadReplicaLifecycle::Retiring
+            || replica.ordinal < control.spec.placement_policy.desired_replicas()
+            || member.node_id != completion.fenced_node_id
+        {
+            return Err(RepositoryError::Conflict(
+                "Workload replica is no longer eligible for retirement completion".into(),
+            ));
+        }
+        let dispatched_runtime = state
+            .deployment_replica_bindings
+            .values()
+            .find(|binding| {
+                binding.organization_id == completion.organization_id
+                    && binding.workload_id == completion.workload_id
+                    && binding.replica_id == completion.replica_id
+                    && binding.replica_generation == completion.replica_generation
+            })
+            .map(|binding| {
+                state
+                    .deployments
+                    .get(&binding.deployment_id)
+                    .ok_or_else(|| {
+                        RepositoryError::Storage(
+                            "retiring replica binding references a missing deployment".into(),
+                        )
+                    })
+                    .map(|deployment| deployment.command_id.is_some())
+            })
+            .transpose()?
+            .unwrap_or(false);
+        if dispatched_runtime && replica.runtime_fenced_at.is_none() {
+            return Err(RepositoryError::Conflict(
+                "Workload replica Runtime is not durably fenced".into(),
+            ));
+        }
+        let previous_replica = replica.clone();
+        let previous_member = member.clone();
+        if let Some(node_id) = completion.fenced_node_id {
+            member
+                .release_after_fencing(node_id, completion.completed_at)
+                .map_err(RepositoryError::Conflict)?;
+        }
+        replica
+            .complete_retirement(&member, completion.completed_at)
+            .map_err(RepositoryError::Conflict)?;
+        let event = WorkloadReplicaRetired::envelope(
+            &previous_replica,
+            &replica,
+            &previous_member,
+            &member,
+            completion.correlation_id,
+        )
+        .map_err(RepositoryError::Storage)?;
+        state.replica_members.insert(member.id, member);
+        state.replicas.insert(replica.id, replica.clone());
+        state.outbox.push(event);
+        Ok(crate::modules::shared_kernel::domain::IdempotentWrite {
+            value: replica,
+            replayed: false,
+        })
+    }
+}
+
+#[async_trait]
 impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
     async fn list_active_runtime_targets(
         &self,
@@ -1378,10 +1643,99 @@ async fn mutate(
     Ok(deployment.clone())
 }
 
+async fn mutate_desired(
+    state: &RwLock<State>,
+    deployment_id: DeploymentId,
+    expected_version: u64,
+    transition: impl FnOnce(&mut Deployment) -> Result<(), String>,
+) -> Result<Deployment, RepositoryError> {
+    let mut state = state.write().await;
+    let mut deployment = state
+        .deployments
+        .get(&deployment_id)
+        .cloned()
+        .ok_or(RepositoryError::NotFound)?;
+    if deployment.aggregate_version != expected_version {
+        return Err(version_conflict(
+            expected_version,
+            deployment.aggregate_version,
+        ));
+    }
+    require_current_desired_replica(&state, &deployment)?;
+    transition(&mut deployment).map_err(transition_error)?;
+    state.deployments.insert(deployment_id, deployment.clone());
+    Ok(deployment)
+}
+
+fn require_current_desired_replica(
+    state: &State,
+    deployment: &Deployment,
+) -> Result<(), RepositoryError> {
+    let workload = state
+        .workloads
+        .get(&deployment.workload_id)
+        .filter(|workload| workload.organization_id == deployment.organization_id)
+        .ok_or_else(|| {
+            RepositoryError::Storage("deployment references a missing Workload".into())
+        })?;
+    let control = state.controls.get(&deployment.workload_id).ok_or_else(|| {
+        RepositoryError::Storage("deployment Workload is missing its control record".into())
+    })?;
+    let binding = state
+        .deployment_replica_bindings
+        .get(&deployment.id)
+        .ok_or_else(|| {
+            RepositoryError::Storage("deployment is missing its replica binding".into())
+        })?;
+    let replica = state.replicas.get(&binding.replica_id).ok_or_else(|| {
+        RepositoryError::Storage("deployment binding references a missing replica".into())
+    })?;
+    let member = state
+        .replica_members
+        .get(&binding.member_id)
+        .ok_or_else(|| {
+            RepositoryError::Storage("deployment binding references a missing member".into())
+        })?;
+    if workload.desired_state
+        != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+        || binding.organization_id != deployment.organization_id
+        || binding.workload_id != deployment.workload_id
+        || binding.revision_id != deployment.revision_id
+        || binding.replica_generation != replica.generation
+        || binding.replica_id != replica.id
+        || replica.lifecycle != WorkloadReplicaLifecycle::Desired
+        || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+        || replica.revision_id != deployment.revision_id
+        || member.replica_id != replica.id
+        || binding.member_id != member.id
+        || binding.node_id != deployment.node_id
+        || binding.node_id.is_some() && binding.node_id != member.node_id
+    {
+        return Err(RepositoryError::Conflict(
+            "deployment replica generation is no longer desired".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn version_conflict(expected: u64, actual: u64) -> RepositoryError {
     RepositoryError::Conflict(format!(
         "deployment changed from expected version {expected} to {actual}"
     ))
+}
+
+fn require_replica_version(
+    replica: &WorkloadReplica,
+    expected_version: u64,
+) -> Result<(), RepositoryError> {
+    if replica.aggregate_version == expected_version {
+        Ok(())
+    } else {
+        Err(RepositoryError::Conflict(format!(
+            "Workload replica changed from expected version {expected_version} to {}",
+            replica.aggregate_version
+        )))
+    }
 }
 
 fn transition_error(error: String) -> RepositoryError {

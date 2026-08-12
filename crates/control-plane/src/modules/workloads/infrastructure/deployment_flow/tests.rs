@@ -585,6 +585,17 @@ async fn replica_set_reconfiguration_is_idempotent_versioned_and_concurrency_saf
         Err(RepositoryError::IdempotencyConflict)
     ));
 
+    let retiring_candidate = repository
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.replica_ordinal == 1)
+        .ok_or("replica candidate to fence during scale-down")?;
+    let retiring_materialization = repository
+        .materialize_replica_deployment(retiring_candidate, requested_at + Duration::seconds(1))
+        .await?
+        .ok_or("replica deployment to fence during scale-down")?;
+
     let scaled_down = repository
         .reconfigure_replica_set(replica_set_write(
             &winner.control,
@@ -607,6 +618,16 @@ async fn replica_set_reconfiguration_is_idempotent_versioned_and_concurrency_saf
             WorkloadReplicaLifecycle::Retiring,
         ]
     );
+    assert!(matches!(
+        repository
+            .mark_resolving(
+                retiring_materialization.deployment.id,
+                retiring_materialization.deployment.aggregate_version,
+                requested_at + Duration::seconds(3),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
     assert_eq!(
         repository
             .outbox_events()

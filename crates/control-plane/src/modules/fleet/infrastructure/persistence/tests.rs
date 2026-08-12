@@ -23,11 +23,14 @@ use a3s_cloud_contracts::{
     RuntimeObservationReport,
 };
 use a3s_runtime::contract::{
-    IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeFeature,
-    RuntimeObservation, RuntimeUnitClass, RuntimeUnitState,
+    ArtifactRef, IsolationLevel, NetworkMode, ResourceControl, ResourceLimits, RestartPolicy,
+    RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeFeature,
+    RuntimeNetworkSpec, RuntimeObservation, RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec,
+    RuntimeUnitState,
 };
 use chrono::{Duration, Timelike, Utc};
 use serde_json::json;
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 mod support;
@@ -325,6 +328,122 @@ async fn command_queue_is_sequenced_leased_redelivered_and_acknowledged_exactly(
         .acknowledge_command(replacement_ack, now + Duration::seconds(16))
         .await
         .expect("acknowledge replacement lease");
+}
+
+#[tokio::test]
+async fn runtime_removal_fences_late_apply_for_the_exact_aggregate_generation() {
+    let repository = InMemoryNodeRepository::new();
+    let now = canonical_timestamp(Utc::now());
+    let (node_id, _) = command_node(&repository, now).await;
+    let aggregate_id = Uuid::now_v7();
+    let unit_id = format!("workload:{aggregate_id}:replica");
+    repository
+        .enqueue_command(NodeCommandDraft {
+            proposed_command_id: NodeCommandId::new(),
+            node_id,
+            aggregate_id,
+            payload: NodeCommandPayload::RuntimeRemove {
+                request: RuntimeActionRequest {
+                    schema: RuntimeActionRequest::SCHEMA.into(),
+                    request_id: format!("retire:{aggregate_id}:1"),
+                    unit_id: unit_id.clone(),
+                    generation: 1,
+                    deadline_at_ms: None,
+                },
+            },
+            issued_at: now,
+            not_after: now + Duration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        })
+        .await
+        .expect("enqueue Runtime removal fence");
+
+    let late_apply = runtime_apply_draft(
+        NodeCommandId::new(),
+        node_id,
+        aggregate_id,
+        &unit_id,
+        1,
+        now + Duration::milliseconds(1),
+    );
+    assert!(matches!(
+        repository.enqueue_command(late_apply).await,
+        Err(crate::modules::shared_kernel::domain::RepositoryError::Conflict(message))
+            if message.contains("fenced by a removal command")
+    ));
+    repository
+        .enqueue_command(runtime_apply_draft(
+            NodeCommandId::new(),
+            node_id,
+            aggregate_id,
+            &unit_id,
+            2,
+            now + Duration::milliseconds(2),
+        ))
+        .await
+        .expect("a new aggregate generation is not fenced");
+}
+
+fn runtime_apply_draft(
+    command_id: NodeCommandId,
+    node_id: NodeId,
+    aggregate_id: Uuid,
+    unit_id: &str,
+    generation: u64,
+    issued_at: chrono::DateTime<Utc>,
+) -> NodeCommandDraft {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    NodeCommandDraft {
+        proposed_command_id: command_id,
+        node_id,
+        aggregate_id,
+        payload: NodeCommandPayload::RuntimeApply {
+            request: Box::new(RuntimeApplyRequest {
+                schema: RuntimeApplyRequest::SCHEMA.into(),
+                request_id: format!("apply:{aggregate_id}:{generation}"),
+                deadline_at_ms: None,
+                spec: RuntimeUnitSpec {
+                    schema: RuntimeUnitSpec::SCHEMA.into(),
+                    unit_id: unit_id.into(),
+                    generation,
+                    class: RuntimeUnitClass::Service,
+                    artifact: ArtifactRef {
+                        uri: format!("oci://registry.example/cloud/fence@{digest}"),
+                        digest,
+                        media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+                    },
+                    process: RuntimeProcessSpec {
+                        command: vec!["/service".into()],
+                        args: Vec::new(),
+                        working_directory: None,
+                        environment: BTreeMap::new(),
+                    },
+                    mounts: Vec::new(),
+                    secrets: Vec::new(),
+                    network: RuntimeNetworkSpec {
+                        mode: NetworkMode::None,
+                        ports: Vec::new(),
+                    },
+                    resources: ResourceLimits {
+                        cpu_millis: 100,
+                        memory_bytes: 32 * 1024 * 1024,
+                        pids: 32,
+                        ephemeral_storage_bytes: None,
+                        execution_timeout_ms: None,
+                    },
+                    isolation: IsolationLevel::Container,
+                    health: None,
+                    restart: RestartPolicy::Always,
+                    outputs: Vec::new(),
+                    semantics_profile_digest: None,
+                },
+            }),
+            resource_claim: None,
+        },
+        issued_at,
+        not_after: issued_at + Duration::minutes(1),
+        correlation_id: Uuid::now_v7(),
+    }
 }
 
 #[tokio::test]

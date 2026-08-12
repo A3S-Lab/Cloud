@@ -778,7 +778,11 @@ export interface WorkloadReplica {
   id: string;
   ordinal: number;
   revisionId: string;
+  revisionGeneration: number;
   generation: number;
+  lifecycle: 'desired' | 'retiring' | 'retired';
+  retirementCommandId: string | null;
+  runtimeFencedAt: string | null;
   members: WorkloadReplicaMember[];
   aggregateVersion: number;
   createdAt: string;

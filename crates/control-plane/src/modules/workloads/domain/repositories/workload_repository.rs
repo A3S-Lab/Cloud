@@ -1,8 +1,8 @@
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,
-    ProjectId, RepositoryError, SecretId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
-    WorkloadRevisionId,
+    DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, RepositoryError, SecretId, WorkloadId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, ManagedOwnerReference, OciArtifact, Workload,
@@ -107,6 +107,51 @@ pub struct ActiveRuntimeTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RetiringReplicaTarget {
+    pub revision: WorkloadRevision,
+    pub replica: WorkloadReplica,
+    pub member: WorkloadReplicaMember,
+    pub deployment: Option<Deployment>,
+    pub replica_binding: Option<DeploymentReplicaBinding>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplicaRetirementDispatch {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub expected_replica_version: u64,
+    pub command_id: NodeCommandId,
+    pub dispatched_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplicaRuntimeFence {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub expected_replica_version: u64,
+    pub command_id: NodeCommandId,
+    pub fenced_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReplicaRetirementCompletion {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub expected_replica_version: u64,
+    pub member_id: WorkloadReplicaMemberId,
+    pub expected_member_version: u64,
+    pub fenced_node_id: Option<NodeId>,
+    pub completed_at: DateTime<Utc>,
+    pub correlation_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecretRotation {
     pub event_id: Uuid,
     pub correlation_id: Uuid,
@@ -169,6 +214,29 @@ pub trait IWorkloadRuntimeTargetRepository: Send + Sync {
         &self,
         limit: usize,
     ) -> Result<Vec<ActiveRuntimeTarget>, RepositoryError>;
+}
+
+#[async_trait]
+pub trait IWorkloadReplicaRetirementRepository: Send + Sync {
+    async fn pending_replica_retirements(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<RetiringReplicaTarget>, RepositoryError>;
+
+    async fn dispatch_replica_retirement(
+        &self,
+        dispatch: ReplicaRetirementDispatch,
+    ) -> Result<WorkloadReplica, RepositoryError>;
+
+    async fn record_replica_runtime_fenced(
+        &self,
+        fence: ReplicaRuntimeFence,
+    ) -> Result<WorkloadReplica, RepositoryError>;
+
+    async fn complete_replica_retirement(
+        &self,
+        completion: ReplicaRetirementCompletion,
+    ) -> Result<IdempotentWrite<WorkloadReplica>, RepositoryError>;
 }
 
 #[async_trait]

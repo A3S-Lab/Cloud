@@ -171,7 +171,17 @@ pub(super) async fn mutate(
                 }
                 require_expected_version(&deployment, expected_version)?;
                 let previous_version = deployment.aggregate_version;
+                let requires_desired_replica = matches!(
+                    &mutation,
+                    DeploymentMutation::Resolve { .. }
+                        | DeploymentMutation::Schedule { .. }
+                        | DeploymentMutation::Dispatch { .. }
+                        | DeploymentMutation::Verify { .. }
+                );
                 let updates_placement = matches!(&mutation, DeploymentMutation::Schedule { .. });
+                if requires_desired_replica {
+                    replicas::require_current_desired_deployment(transaction, &deployment).await?;
+                }
                 mutation.apply(&mut deployment).map_err(|error| {
                     RepositoryError::Conflict(format!(
                         "deployment transition was rejected: {error}"
@@ -397,6 +407,7 @@ pub(super) async fn activate(
                     return Ok((workload, deployment));
                 }
                 require_expected_version(&deployment, expected_version)?;
+                replicas::require_current_desired_deployment(transaction, &deployment).await?;
                 let at = if workload.active_revision_id == Some(deployment.revision_id) {
                     at.max(workload.updated_at)
                 } else {

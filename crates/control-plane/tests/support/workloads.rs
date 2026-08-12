@@ -15,11 +15,11 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentReplicaBinding, DeploymentRequested,
-    DeploymentStatus, HttpHealthCheck, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
-    IWorkloadRuntimeTargetRepository, OciArtifact, PostgresWorkloadRepository,
-    ReconfigureReplicaSetWrite, ReplicaAntiAffinity, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate, Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplicaLifecycle,
-    WorkloadRevision,
+    DeploymentStatus, HttpHealthCheck, IWorkloadReplicaDeploymentRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ReplicaAntiAffinity,
+    ReplicaRetirementCompletion, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
+    Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -811,12 +811,21 @@ pub async fn exercise_replica_set(
         Err(RepositoryError::IdempotencyConflict)
     ));
 
-    let stale_materialization = repository
+    let scalable_candidates = repository
         .pending_replica_deployments(10)
         .await?
         .into_iter()
-        .find(|candidate| candidate.workload_id == scalable_workload.id)
-        .ok_or("scaled replica deployment candidate")?;
+        .filter(|candidate| candidate.workload_id == scalable_workload.id)
+        .collect::<Vec<_>>();
+    assert_eq!(scalable_candidates.len(), 2);
+    let queued_materialization = repository
+        .materialize_replica_deployment(
+            scalable_candidates[0],
+            scalable_workload.created_at + Duration::seconds(1),
+        )
+        .await?
+        .ok_or("queued replica deployment materialization")?;
+    let stale_materialization = scalable_candidates[1];
 
     let scaled_down = repository
         .reconfigure_replica_set(replica_set_write(
@@ -844,6 +853,16 @@ pub async fn exercise_replica_set(
         .list_workload_replicas(organization_id, scalable_workload.id)
         .await?;
     assert_eq!(persisted, scaled_down.replicas);
+    assert!(matches!(
+        repository
+            .mark_resolving(
+                queued_materialization.deployment.id,
+                queued_materialization.deployment.aggregate_version,
+                scalable_workload.created_at + Duration::seconds(3),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
     assert!(
         repository
             .materialize_replica_deployment(
@@ -854,6 +873,86 @@ pub async fn exercise_replica_set(
             .is_none(),
         "a candidate retired before its lock was acquired must not create a deployment",
     );
+    let retiring_targets = repository.pending_replica_retirements(10).await?;
+    assert_eq!(retiring_targets.len(), 2);
+    for target in retiring_targets {
+        assert_eq!(target.replica.workload_id, scalable_workload.id);
+        assert_eq!(target.replica.lifecycle, WorkloadReplicaLifecycle::Retiring);
+        assert_eq!(target.member.node_id, None);
+        assert_eq!(target.replica.retirement_command_id, None);
+        assert_eq!(target.replica.runtime_fenced_at, None);
+        let completion = ReplicaRetirementCompletion {
+            organization_id,
+            workload_id: scalable_workload.id,
+            replica_id: target.replica.id,
+            replica_generation: target.replica.generation,
+            expected_replica_version: target.replica.aggregate_version,
+            member_id: target.member.id,
+            expected_member_version: target.member.aggregate_version,
+            fenced_node_id: None,
+            completed_at: scalable_workload.created_at + Duration::seconds(4),
+            correlation_id: Uuid::now_v7(),
+        };
+        let completed = repository.complete_replica_retirement(completion).await?;
+        assert!(!completed.replayed);
+        assert_eq!(completed.value.lifecycle, WorkloadReplicaLifecycle::Retired);
+        assert!(
+            repository
+                .complete_replica_retirement(completion)
+                .await?
+                .replayed
+        );
+    }
+    assert!(repository.pending_replica_retirements(10).await?.is_empty());
+    assert_eq!(
+        database
+            .fetch_one_as(sql_query::<i64>(
+                "select count(*) from outbox_events where event_key = 'workload.replica.retired'",
+            ))
+            .await?,
+        2
+    );
+    let retired = repository
+        .list_workload_replicas(organization_id, scalable_workload.id)
+        .await?;
+    assert_eq!(
+        retired
+            .iter()
+            .map(|replica| replica.lifecycle)
+            .collect::<Vec<_>>(),
+        vec![
+            WorkloadReplicaLifecycle::Desired,
+            WorkloadReplicaLifecycle::Retired,
+            WorkloadReplicaLifecycle::Retired,
+        ]
+    );
+    let retired_ids = retired.iter().map(|replica| replica.id).collect::<Vec<_>>();
+    let retired_control = repository
+        .find_workload_control(organization_id, scalable_workload.id)
+        .await?;
+    let reactivated = repository
+        .reconfigure_replica_set(replica_set_write(
+            &retired_control,
+            3,
+            "postgres-replica-set-reactivate",
+            scalable_workload.created_at + Duration::seconds(5),
+        )?)
+        .await?;
+    assert_eq!(
+        reactivated
+            .replicas
+            .iter()
+            .map(|replica| replica.id)
+            .collect::<Vec<_>>(),
+        retired_ids
+    );
+    assert!(reactivated.replicas.iter().all(|replica| {
+        replica.lifecycle == WorkloadReplicaLifecycle::Desired
+            && replica.retirement_command_id.is_none()
+            && replica.runtime_fenced_at.is_none()
+    }));
+    assert_eq!(reactivated.replicas[1].generation, 2);
+    assert_eq!(reactivated.replicas[2].generation, 2);
     assert_eq!(
         database
             .fetch_one_as(
@@ -875,7 +974,7 @@ pub async fn exercise_replica_set(
                     .append(" and event_key = 'workload.replica-set.reconfigured'"),
             )
             .await?,
-        2
+        3
     );
     assert!(
         repository
