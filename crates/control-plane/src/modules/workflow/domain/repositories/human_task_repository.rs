@@ -4,7 +4,8 @@ use crate::modules::shared_kernel::domain::{
     RepositoryError, Sha256Digest, WorkflowDecisionId,
 };
 use crate::modules::workflow::domain::{
-    FlowResumePayload, FlowResumeReceipt, HumanTaskRecord, HumanTaskStatus, WorkflowDecision,
+    FlowResumeDisposition, FlowResumePayload, FlowResumeReceipt, HumanTaskRecord, HumanTaskStatus,
+    WorkflowDecision, WorkflowDecisionOutcome,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -98,12 +99,22 @@ impl HumanTaskDecisionRecord {
         }
         if let Some(receipt) = &self.resume_receipt {
             receipt.validate()?;
-            if receipt.flow_run_id != self.resume_payload.flow_run_id
-                || receipt.flow_hook_id != self.resume_payload.flow_hook_id
-                || receipt.workflow_decision_id != self.decision.id
-                || receipt.payload_digest != self.resume_payload.digest
+            if receipt.flow_run_id() != self.resume_payload.flow_run_id
+                || receipt.flow_hook_id() != self.resume_payload.flow_hook_id
+                || receipt.workflow_decision_id() != self.decision.id
+                || receipt.payload_digest() != &self.resume_payload.digest
             {
                 return Err("HumanTask Flow resume receipt binding is inconsistent".into());
+            }
+            if receipt.disposition() == FlowResumeDisposition::RunTimedOut
+                && (self.decision.outcome != WorkflowDecisionOutcome::Expire
+                    || receipt.timeout_deadline() != self.task.task.expires_at
+                    || receipt.timeout_deadline() != Some(self.decision.decided_at))
+            {
+                return Err(
+                    "Flow RunTimedOut receipt does not exactly supersede the HumanTask expiry"
+                        .into(),
+                );
             }
         }
         Ok(())
@@ -198,6 +209,12 @@ pub trait IHumanTaskRepository: Send + Sync {
         organization_id: OrganizationId,
         project_id: ProjectId,
         status: Option<HumanTaskStatus>,
+        limit: usize,
+    ) -> Result<Vec<HumanTaskRecord>, RepositoryError>;
+
+    async fn pending_expirations(
+        &self,
+        expired_at: DateTime<Utc>,
         limit: usize,
     ) -> Result<Vec<HumanTaskRecord>, RepositoryError>;
 

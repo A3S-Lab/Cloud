@@ -1,12 +1,13 @@
 use crate::modules::forms::domain::IFormRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, HumanTaskId, IdempotencyRequest,
-    RepositoryError, Sha256Digest, WorkflowRunId,
+    RepositoryError, Sha256Digest, WorkflowDecisionId, WorkflowRunId,
 };
 use crate::modules::workflow::domain::{
-    AssignmentPolicyRef, ChangeHumanTaskWrite, CreateHumanTaskWrite, HumanTask,
-    HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStateChanged, HumanTaskStatus,
-    IHumanTaskRepository, IWorkflowRunRepository, NewHumanTask, ResolvedWorkflowRunStep,
+    expected_human_task_expiry, AssignmentPolicyRef, ChangeHumanTaskWrite, CreateHumanTaskWrite,
+    DecideHumanTaskWrite, FlowResumePayload, HumanTask, HumanTaskDeadlineAuthority,
+    HumanTaskDecisionRecord, HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStateChanged,
+    HumanTaskStatus, IHumanTaskRepository, IWorkflowRunRepository, NewHumanTask, WorkflowDecision,
     WorkflowHumanDecisionHookMetadata, WorkflowRunRecord, WorkflowStepKind,
 };
 use a3s_flow::{FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, HookStatus};
@@ -25,6 +26,13 @@ pub struct HumanTaskCoordinationFailure {
     pub error: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HumanTaskExpiryFailure {
+    pub workflow_run_id: WorkflowRunId,
+    pub human_task_id: HumanTaskId,
+    pub error: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HumanTaskCoordinationReport {
     pub inspected_runs: usize,
@@ -33,7 +41,12 @@ pub struct HumanTaskCoordinationReport {
     pub replayed_tasks: usize,
     pub activated_tasks: usize,
     pub deferred_tasks: usize,
+    pub inspected_expirations: usize,
+    pub expired_tasks: usize,
+    pub replayed_expirations: usize,
+    pub contended_expirations: usize,
     pub failures: Vec<HumanTaskCoordinationFailure>,
+    pub expiry_failures: Vec<HumanTaskExpiryFailure>,
 }
 
 #[derive(Default)]
@@ -43,6 +56,12 @@ struct RunCoordination {
     replayed_tasks: usize,
     activated_tasks: usize,
     deferred_tasks: usize,
+}
+
+enum ExpiryCoordination {
+    Expired,
+    Replayed,
+    Contended,
 }
 
 pub struct HumanTaskCoordinator {
@@ -82,10 +101,17 @@ impl HumanTaskCoordinator {
         &self,
         limit: usize,
     ) -> Result<HumanTaskCoordinationReport, RepositoryError> {
-        let runs = self
-            .workflow_runs
-            .pending_reconciliation(limit.max(1))
-            .await?;
+        self.run_once_at(limit, chrono::Utc::now()).await
+    }
+
+    pub async fn run_once_at(
+        &self,
+        limit: usize,
+        now: chrono::DateTime<chrono::Utc>,
+    ) -> Result<HumanTaskCoordinationReport, RepositoryError> {
+        let limit = limit.max(1);
+        let now = canonical_timestamp(now);
+        let runs = self.workflow_runs.pending_reconciliation(limit).await?;
         let mut report = HumanTaskCoordinationReport {
             inspected_runs: runs.len(),
             ..HumanTaskCoordinationReport::default()
@@ -101,6 +127,20 @@ impl HumanTaskCoordinator {
                 }
                 Err(error) => report.failures.push(HumanTaskCoordinationFailure {
                     workflow_run_id: run.run.id,
+                    error,
+                }),
+            }
+        }
+        let expirations = self.human_tasks.pending_expirations(now, limit).await?;
+        report.inspected_expirations = expirations.len();
+        for task in expirations {
+            match self.expire_task(task.clone()).await {
+                Ok(ExpiryCoordination::Expired) => report.expired_tasks += 1,
+                Ok(ExpiryCoordination::Replayed) => report.replayed_expirations += 1,
+                Ok(ExpiryCoordination::Contended) => report.contended_expirations += 1,
+                Err(error) => report.expiry_failures.push(HumanTaskExpiryFailure {
+                    workflow_run_id: task.task.workflow_run_id,
+                    human_task_id: task.task.id,
                     error,
                 }),
             }
@@ -126,6 +166,14 @@ impl HumanTaskCoordinator {
                                     workflow_run_id = %failure.workflow_run_id,
                                     error = %failure.error,
                                     "HumanTask Flow-hook coordination failed"
+                                );
+                            }
+                            for failure in report.expiry_failures {
+                                tracing::warn!(
+                                    workflow_run_id = %failure.workflow_run_id,
+                                    human_task_id = %failure.human_task_id,
+                                    error = %failure.error,
+                                    "HumanTask deadline coordination failed"
                                 );
                             }
                         }
@@ -256,7 +304,7 @@ impl HumanTaskCoordinator {
             }
 
             let created_at = canonical_timestamp(envelope.timestamp);
-            let expires_at = human_task_expiry(record, step, created_at)?;
+            let expires_at = expected_human_task_expiry(record, step, created_at)?;
             let task_id = deterministic_human_task_id(record.run.id, &expected, envelope.event_id);
             let task = HumanTask::create(NewHumanTask {
                 organization_id: expected.organization_id,
@@ -356,6 +404,76 @@ impl HumanTaskCoordinator {
         }
         Ok(progress)
     }
+
+    async fn expire_task(&self, mut task: HumanTaskRecord) -> Result<ExpiryCoordination, String> {
+        let run = self
+            .workflow_runs
+            .find(task.task.organization_id, task.task.workflow_run_id)
+            .await
+            .map_err(|error| format!("could not load HumanTask WorkflowRun: {error}"))?
+            .ok_or_else(|| "HumanTask WorkflowRun does not exist".to_owned())?;
+        let authority = HumanTaskDeadlineAuthority::derive(&run, &task)?;
+        let expected_version = task.task.aggregate_version;
+        let decision_id = deterministic_expiry_decision_id(&task);
+        let decision = WorkflowDecision::expire(
+            decision_id,
+            &task.task,
+            authority.decided_by,
+            authority.authorization_decision,
+            authority.decided_at,
+        )?;
+        task.expire(expected_version, &decision)?;
+        let resume_payload = FlowResumePayload::from_decision(&decision)?;
+        let event = HumanTaskStateChanged::envelope(&task, Some(decision.id.as_uuid()))
+            .map_err(|error| format!("could not encode HumanTask expiry event: {error}"))?;
+        let idempotency = IdempotencyRequest::new(
+            "workflow-human-task-expiry",
+            format!("{}:v{expected_version}", task.task.id),
+            decision.digest.as_str().as_bytes(),
+        )?;
+        let write = DecideHumanTaskWrite {
+            record: HumanTaskDecisionRecord {
+                task,
+                submission: None,
+                decision,
+                resume_payload,
+                resume_receipt: None,
+            },
+            expected_version,
+            event,
+            actor_principal_id: authority.decided_by,
+            request_id: Uuid::new_v5(&decision_id.as_uuid(), b"expire-request"),
+            idempotency,
+        };
+        let organization_id = write.record.task.task.organization_id;
+        let human_task_id = write.record.task.task.id;
+        match self.human_tasks.decide_task(write).await {
+            Ok(stored) if stored.replayed => Ok(ExpiryCoordination::Replayed),
+            Ok(_) => Ok(ExpiryCoordination::Expired),
+            Err(RepositoryError::Conflict(error)) => {
+                let current = self
+                    .human_tasks
+                    .find_task(organization_id, human_task_id)
+                    .await
+                    .map_err(|find_error| {
+                        format!(
+                            "HumanTask expiry conflicted ({error}) and recovery read failed: {find_error}"
+                        )
+                    })?;
+                if current.is_some_and(|record| {
+                    record.task.aggregate_version != expected_version
+                        || record.task.status.is_terminal()
+                }) {
+                    Ok(ExpiryCoordination::Contended)
+                } else {
+                    Err(format!(
+                        "HumanTask expiry conflicted without a concurrent state change: {error}"
+                    ))
+                }
+            }
+            Err(error) => Err(format!("could not persist HumanTask expiry: {error}")),
+        }
+    }
 }
 
 fn deterministic_human_task_id(
@@ -373,32 +491,16 @@ fn deterministic_human_task_id(
     ))
 }
 
-fn human_task_expiry(
-    record: &WorkflowRunRecord,
-    step: &ResolvedWorkflowRunStep,
-    created_at: chrono::DateTime<chrono::Utc>,
-) -> Result<chrono::DateTime<chrono::Utc>, String> {
-    let configured = step
-        .configuration
-        .expires_after_seconds
-        .map(|seconds| {
-            i64::try_from(seconds)
-                .map(chrono::Duration::seconds)
-                .map_err(|_| "human-decision expiry exceeds the supported range".to_owned())
-                .and_then(|duration| {
-                    created_at.checked_add_signed(duration).ok_or_else(|| {
-                        "human-decision expiry is outside the supported timestamp range".to_owned()
-                    })
-                })
-        })
-        .transpose()?;
-    let expires_at = configured
-        .map(|value| value.min(record.run.execution_input.deadline_at))
-        .unwrap_or(record.run.execution_input.deadline_at);
-    if expires_at <= created_at {
-        return Err("human-decision hook was observed after its deadline".into());
-    }
-    Ok(canonical_timestamp(expires_at))
+fn deterministic_expiry_decision_id(task: &HumanTaskRecord) -> WorkflowDecisionId {
+    let identity = format!(
+        "expire:v{}:{}",
+        task.task.aggregate_version,
+        task.task
+            .expires_at
+            .map(|value| value.timestamp_micros())
+            .unwrap_or_default()
+    );
+    WorkflowDecisionId::from_uuid(Uuid::new_v5(&task.task.id.as_uuid(), identity.as_bytes()))
 }
 
 fn flow_event_digest(envelope: &FlowEventEnvelope) -> Result<Sha256Digest, String> {

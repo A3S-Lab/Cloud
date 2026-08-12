@@ -136,9 +136,10 @@ orm_table! {
         flow_run_id: String => "flow_run_id",
         flow_hook_id: String => "flow_hook_id",
         payload_digest: String => "payload_digest",
-        hook_event_sequence: u64 => "hook_event_sequence",
-        hook_event_id: Uuid => "hook_event_id",
-        hook_received_at: DateTime<Utc> => "hook_received_at",
+        disposition: String => "disposition",
+        flow_event_sequence: u64 => "flow_event_sequence",
+        flow_event_id: Uuid => "flow_event_id",
+        flow_event_at: DateTime<Utc> => "flow_event_at",
         receipt_json: String => "receipt_json",
         recorded_at: DateTime<Utc> => "recorded_at",
     }

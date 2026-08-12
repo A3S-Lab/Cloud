@@ -20,17 +20,17 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workflow::domain::ResolvedWorkflowPayload;
 use a3s_cloud_control_plane::modules::workflow::{
     CapabilityOwner, CapabilityReference, CapabilityType, ChangeHumanTaskWrite,
-    CreateWorkflowRunWrite, DecideHumanTaskWrite, FlowResumePayload, FlowWorkflowRunCoordinator,
-    HumanTaskCoordinator, HumanTaskDecisionRecord, HumanTaskResumeWorker,
-    HumanTaskResumeWorkerConfig, HumanTaskStateChanged, HumanTaskStatus, IHumanTaskRepository,
-    IWorkflowRunCoordinator, IWorkflowRunRepository, PostgresHumanTaskRepository,
-    PostgresWorkflowRunRepository, WorkflowDataSchema, WorkflowDataType, WorkflowDecision,
-    WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPlan, WorkflowPlanStep,
-    WorkflowRun, WorkflowRunFlowRuntime, WorkflowRunInput, WorkflowRunReconciler,
-    WorkflowRunRecord, WorkflowRunRequested, WorkflowStepConfiguration, WorkflowStepKind,
-    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    CreateWorkflowRunWrite, DecideHumanTaskWrite, FlowResumeDisposition, FlowResumePayload,
+    FlowWorkflowRunCoordinator, HumanTaskCoordinator, HumanTaskDecisionRecord,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, HumanTaskStateChanged, HumanTaskStatus,
+    IHumanTaskRepository, IWorkflowRunCoordinator, IWorkflowRunRepository,
+    PostgresHumanTaskRepository, PostgresWorkflowRunRepository, WorkflowDataSchema,
+    WorkflowDataType, WorkflowDecision, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
+    WorkflowPlan, WorkflowPlanStep, WorkflowRun, WorkflowRunFlowRuntime, WorkflowRunInput,
+    WorkflowRunReconciler, WorkflowRunRecord, WorkflowRunRequested, WorkflowStepConfiguration,
+    WorkflowStepKind, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
 };
 use a3s_flow::WorkflowRunStatus as FlowRunStatus;
 use a3s_form_core::{
@@ -360,7 +360,7 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
     assert!(persisted_decision.resume_receipt.is_some());
     assert_eq!(persisted_decision.submission, Some(submission));
 
-    let database = Database::new(PostgresDialect, executor);
+    let database = Database::new(PostgresDialect, executor.clone());
     let rows = database
         .fetch_one_as(
             sql_query::<(i64, i64, i64, String, i32)>(
@@ -378,6 +378,176 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
         )
         .await?;
     assert_eq!(rows, (1, 1, 1, "delivered".into(), 2));
+
+    exercise_expiry_after_flow_timeout(
+        &executor,
+        authorities,
+        &input,
+        Arc::clone(&forms),
+        Arc::clone(&workflow_runs),
+        Arc::clone(&human_tasks),
+        &flow_coordinator,
+        &workflow_reconciler,
+        &engine,
+    )
+    .await?;
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn exercise_expiry_after_flow_timeout(
+    executor: &a3s_orm::PostgresExecutor,
+    authorities: Authorities,
+    base_input: &WorkflowRunInput,
+    forms: Arc<dyn IFormRepository>,
+    workflow_runs: Arc<dyn IWorkflowRunRepository>,
+    human_tasks: Arc<dyn IHumanTaskRepository>,
+    flow_coordinator: &FlowOperationCoordinator,
+    workflow_reconciler: &WorkflowRunReconciler,
+    engine: &a3s_flow::FlowEngine,
+) -> TestResult<()> {
+    let requested_at = canonical_timestamp(Utc::now());
+    let deadline_at = requested_at + ChronoDuration::seconds(5);
+    let mut input = base_input.clone();
+    input.workflow_run_id = WorkflowRunId::new();
+    input.requested_at = requested_at;
+    input.deadline_at = deadline_at;
+    input.validate()?;
+    let flow_run_id = input.workflow_run_id.to_string();
+    let (run, steps) = WorkflowRun::create(input.clone(), authorities.actor)?;
+    let requested = WorkflowRunRecord { run, steps };
+    workflow_runs
+        .create(CreateWorkflowRunWrite {
+            event: WorkflowRunRequested::envelope(&requested.run, Uuid::now_v7())?,
+            record: requested,
+            actor_principal_id: authorities.actor,
+            request_id: Uuid::now_v7(),
+            idempotency: idempotency(
+                "postgres-human-task-flow-expiry-runs",
+                "start",
+                input.workflow_run_id.to_string().as_bytes(),
+            ),
+        })
+        .await?;
+
+    drive_flow_until(
+        flow_coordinator,
+        workflow_reconciler,
+        engine,
+        &flow_run_id,
+        FlowRunStatus::Suspended,
+    )
+    .await?;
+    let coordinator = HumanTaskCoordinator::new(
+        Arc::clone(&workflow_runs),
+        forms,
+        Arc::clone(&human_tasks),
+        engine.clone(),
+        Duration::from_millis(5),
+        100,
+    )?;
+    let created = coordinator.run_once_at(100, requested_at).await?;
+    assert!(created.failures.is_empty(), "{created:#?}");
+    assert!(created.expiry_failures.is_empty(), "{created:#?}");
+    assert_eq!(created.created_tasks, 1, "{created:#?}");
+    assert_eq!(created.activated_tasks, 1, "{created:#?}");
+    assert_eq!(created.expired_tasks, 0, "{created:#?}");
+
+    let ready = human_tasks
+        .list_tasks(
+            authorities.organization_id,
+            authorities.project_id,
+            Some(HumanTaskStatus::Ready),
+            10,
+        )
+        .await?;
+    assert_eq!(ready.len(), 1);
+    assert_eq!(ready[0].task.workflow_run_id, input.workflow_run_id);
+    assert_eq!(ready[0].task.expires_at, Some(deadline_at));
+
+    let remaining = (deadline_at - Utc::now())
+        .to_std()
+        .unwrap_or_default()
+        .saturating_add(Duration::from_millis(25));
+    tokio::time::sleep(remaining).await;
+    let timeout_report = workflow_reconciler.run_once(100).await?;
+    assert!(timeout_report.failures.is_empty(), "{timeout_report:#?}");
+    let timeout_snapshot = engine.snapshot(&flow_run_id).await?;
+    assert!(matches!(
+        timeout_snapshot.terminal_outcome,
+        Some(a3s_flow::WorkflowTerminalOutcome::TimedOut { deadline, .. }) if deadline == deadline_at
+    ));
+
+    let expired = coordinator
+        .run_once_at(100, deadline_at + ChronoDuration::milliseconds(1))
+        .await?;
+    assert!(expired.failures.is_empty(), "{expired:#?}");
+    assert!(expired.expiry_failures.is_empty(), "{expired:#?}");
+    assert_eq!(expired.expired_tasks, 1, "{expired:#?}");
+    assert_eq!(expired.contended_expirations, 0, "{expired:#?}");
+
+    let worker = HumanTaskResumeWorker::new(
+        Arc::clone(&human_tasks),
+        engine.clone(),
+        HumanTaskResumeWorkerConfig {
+            batch_size: 10,
+            poll_interval: Duration::from_millis(5),
+            lease_duration: Duration::from_secs(5),
+            flow_operation_timeout: Duration::from_secs(1),
+            initial_backoff: Duration::from_millis(5),
+            maximum_backoff: Duration::from_secs(1),
+        },
+    )?;
+    let settled = worker.run_once().await?;
+    assert_eq!(settled.claimed, 1, "{settled:#?}");
+    assert_eq!(settled.delivered, 0, "{settled:#?}");
+    assert_eq!(settled.superseded, 1, "{settled:#?}");
+    assert_eq!(settled.conflicted, 0, "{settled:#?}");
+    assert!(settled.failures.is_empty(), "{settled:#?}");
+
+    let task = human_tasks
+        .find_task(authorities.organization_id, ready[0].task.id)
+        .await?
+        .expect("expired HumanTask");
+    assert_eq!(task.task.status, HumanTaskStatus::Expired);
+    let decision = human_tasks
+        .find_decision(
+            authorities.organization_id,
+            task.task.decision_id.expect("expiry decision id"),
+        )
+        .await?
+        .expect("expiry decision");
+    assert!(decision.submission.is_none());
+    assert_eq!(decision.decision.decided_at, deadline_at);
+    assert_eq!(
+        decision
+            .resume_receipt
+            .as_ref()
+            .expect("terminal receipt")
+            .disposition(),
+        FlowResumeDisposition::RunTimedOut
+    );
+    let run = workflow_runs
+        .find(authorities.organization_id, input.workflow_run_id)
+        .await?
+        .expect("timed-out WorkflowRun");
+    assert_eq!(
+        run.run.status,
+        a3s_cloud_control_plane::modules::workflow::WorkflowRunStatus::TimedOut
+    );
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    let state = database
+        .fetch_one_as(
+            sql_query::<(String, String, i64)>(
+                "select delivery.state, receipt.disposition, (select count(*) from form_submissions submission where submission.organization_id = delivery.organization_id and submission.human_task_id = delivery.human_task_id) from workflow_resume_outbox delivery join workflow_resume_receipts receipt on receipt.organization_id = delivery.organization_id and receipt.workflow_decision_id = delivery.workflow_decision_id where delivery.organization_id = ",
+            )
+            .bind(authorities.organization_id.as_uuid())
+            .append(" and delivery.human_task_id = ")
+            .bind(task.task.id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(state, ("delivered".into(), "run_timed_out".into(), 0));
     Ok(())
 }
 

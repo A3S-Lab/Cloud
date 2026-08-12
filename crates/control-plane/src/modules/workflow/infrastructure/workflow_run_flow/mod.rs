@@ -355,4 +355,114 @@ mod tests {
         );
         Ok(())
     }
+
+    #[tokio::test]
+    async fn expiry_resume_winning_the_race_commits_hook_evidence_before_typed_timeout(
+    ) -> Result<(), FlowError> {
+        let mut input = human_decision_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::seconds(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let run_id = input.workflow_run_id.to_string();
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        engine
+            .start_with_id(
+                &run_id,
+                WorkflowSpec::rust_embedded(
+                    WORKFLOW_RUN_FLOW_NAME,
+                    WORKFLOW_RUN_FLOW_VERSION,
+                    "cloud",
+                    "workflow_run",
+                ),
+                serde_json::to_value(&input)?,
+            )
+            .await?;
+        let history = engine.history(&run_id).await?;
+        let hook_id = format!("workflow-human:{TEST_HUMAN_STEP_ID}:1");
+        let hook_created = history
+            .iter()
+            .find(|event| {
+                matches!(
+                    &event.event,
+                    FlowEvent::HookCreated { hook_id: observed, .. } if observed == &hook_id
+                )
+            })
+            .expect("human hook");
+        let mut task = HumanTask::create(NewHumanTask {
+            organization_id: input.organization_id,
+            project_id: input.project_id,
+            id: HumanTaskId::new(),
+            workflow_run_id: input.workflow_run_id,
+            step_id: TEST_HUMAN_STEP_ID.into(),
+            step_attempt: 1,
+            form_release: human_decision_form_release(&input).map_err(FlowError::Runtime)?,
+            assignment_policy: AssignmentPolicyRef::workflow_organization_member_exclusive()
+                .map_err(FlowError::Runtime)?,
+            flow_run_id: run_id.clone(),
+            flow_hook_id: hook_id.clone(),
+            due_at: None,
+            expires_at: Some(input.deadline_at),
+            created_at: hook_created.timestamp,
+        })
+        .map_err(FlowError::Runtime)?;
+        task.activate(1, hook_created.timestamp)
+            .map_err(FlowError::Runtime)?;
+        let decision = WorkflowDecision::expire(
+            WorkflowDecisionId::new(),
+            &task,
+            PrincipalId::new(),
+            crate::modules::shared_kernel::domain::AuthorizationDecisionRef::new(
+                "deadline-authority",
+                Sha256Digest::parse(digest('d')).map_err(FlowError::Runtime)?,
+            )
+            .map_err(FlowError::Runtime)?,
+            input.deadline_at,
+        )
+        .map_err(FlowError::Runtime)?;
+        let payload = FlowResumePayload::from_decision(&decision).map_err(FlowError::Runtime)?;
+
+        let remaining = (input.deadline_at - chrono::Utc::now())
+            .to_std()
+            .unwrap_or_default()
+            .saturating_add(std::time::Duration::from_millis(5));
+        tokio::time::sleep(remaining).await;
+        engine
+            .resume_hook(
+                &run_id,
+                &hook_id,
+                payload.to_flow_value().map_err(FlowError::Runtime)?,
+            )
+            .await?;
+
+        let history = engine.history(&run_id).await?;
+        let hook_sequence = history
+            .iter()
+            .find_map(|event| {
+                matches!(
+                    &event.event,
+                    FlowEvent::HookReceived { hook_id: observed, .. } if observed == &hook_id
+                )
+                .then_some(event.sequence)
+            })
+            .expect("HookReceived evidence");
+        let timeout_sequence = history
+            .iter()
+            .find_map(|event| {
+                matches!(
+                    &event.event,
+                    FlowEvent::RunTimedOut { deadline, .. } if deadline == &input.deadline_at
+                )
+                .then_some(event.sequence)
+            })
+            .expect("RunTimedOut evidence");
+        assert!(hook_sequence < timeout_sequence);
+        let snapshot = engine.snapshot(&run_id).await?;
+        assert_eq!(snapshot.status, WorkflowRunStatus::Failed);
+        assert!(matches!(
+            snapshot.terminal_outcome,
+            Some(a3s_flow::WorkflowTerminalOutcome::TimedOut { deadline, .. })
+                if deadline == input.deadline_at
+        ));
+        Ok(())
+    }
 }

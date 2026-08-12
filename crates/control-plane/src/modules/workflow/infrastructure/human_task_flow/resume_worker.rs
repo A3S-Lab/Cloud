@@ -1,5 +1,7 @@
 use crate::modules::shared_kernel::domain::{RepositoryError, WorkflowDecisionId};
-use crate::modules::workflow::domain::{HumanTaskResumeDelivery, IHumanTaskRepository};
+use crate::modules::workflow::domain::{
+    FlowResumeDisposition, FlowResumeReceipt, HumanTaskResumeDelivery, IHumanTaskRepository,
+};
 use crate::modules::workflow::infrastructure::observe_flow_resume_receipt;
 use a3s_flow::{FlowEngine, FlowError, FlowEvent, FlowEventEnvelope};
 use std::sync::Arc;
@@ -43,6 +45,7 @@ pub struct HumanTaskResumeFailure {
 pub struct HumanTaskResumeReport {
     pub claimed: usize,
     pub delivered: usize,
+    pub superseded: usize,
     pub retried: usize,
     pub conflicted: usize,
     pub failures: Vec<HumanTaskResumeFailure>,
@@ -125,6 +128,7 @@ impl HumanTaskResumeWorker {
         let result = self.resume_and_observe(&delivery).await;
         match result {
             Ok(receipt) => {
+                let disposition = receipt.disposition();
                 match self
                     .repository
                     .record_resume_receipt(
@@ -136,7 +140,10 @@ impl HumanTaskResumeWorker {
                     )
                     .await
                 {
-                    Ok(_) => report.delivered += 1,
+                    Ok(_) => match disposition {
+                        FlowResumeDisposition::HookReceived => report.delivered += 1,
+                        FlowResumeDisposition::RunTimedOut => report.superseded += 1,
+                    },
                     Err(error) => report.failures.push(HumanTaskResumeFailure {
                         workflow_decision_id: decision_id,
                         error: format!(
@@ -225,12 +232,11 @@ impl HumanTaskResumeWorker {
         .map_err(|error| DeliveryFailure::Retry(error.to_string()))?;
 
         match matching_hook_received(&history, &payload.flow_hook_id) {
-            Ok(Some(envelope)) => observe_flow_resume_receipt(payload, envelope).map_err(|error| {
-                DeliveryFailure::Conflict(format!(
-                    "Flow HookReceived evidence conflicts with its resume intent: {error}"
-                ))
-            }),
+            Ok(Some(envelope)) => receipt_for_delivery(delivery, envelope),
             Ok(None) => {
+                if let Some(envelope) = matching_run_timed_out(&history)? {
+                    return receipt_for_delivery(delivery, envelope);
+                }
                 if history.iter().any(|envelope| {
                     matches!(
                         &envelope.event,
@@ -257,6 +263,28 @@ impl HumanTaskResumeWorker {
     }
 }
 
+fn receipt_for_delivery(
+    delivery: &HumanTaskResumeDelivery,
+    envelope: &FlowEventEnvelope,
+) -> Result<FlowResumeReceipt, DeliveryFailure> {
+    let receipt = observe_flow_resume_receipt(&delivery.record.resume_payload, envelope).map_err(
+        |error| {
+            DeliveryFailure::Conflict(format!(
+                "Flow settlement evidence conflicts with its resume intent: {error}"
+            ))
+        },
+    )?;
+    let mut settled = delivery.record.clone();
+    settled.resume_receipt = Some(receipt.clone());
+    settled.validate().map_err(|error| {
+        DeliveryFailure::Conflict(format!(
+            "Flow settlement evidence conflicts with its HumanTask decision: {error}"
+        ))
+    })?;
+    Ok(receipt)
+}
+
+#[derive(Debug)]
 enum DeliveryFailure {
     Retry(String),
     Conflict(String),
@@ -280,6 +308,22 @@ fn matching_hook_received<'a>(
         [envelope] => Ok(Some(*envelope)),
         _ => Err(format!(
             "Flow history contains duplicate HookReceived events for hook {hook_id:?}"
+        )),
+    }
+}
+
+fn matching_run_timed_out(
+    history: &[FlowEventEnvelope],
+) -> Result<Option<&FlowEventEnvelope>, DeliveryFailure> {
+    let matching = history
+        .iter()
+        .filter(|envelope| matches!(&envelope.event, FlowEvent::RunTimedOut { .. }))
+        .collect::<Vec<_>>();
+    match matching.as_slice() {
+        [] => Ok(None),
+        [envelope] => Ok(Some(*envelope)),
+        _ => Err(DeliveryFailure::Conflict(
+            "Flow history contains duplicate RunTimedOut events".into(),
         )),
     }
 }
@@ -310,6 +354,13 @@ fn retry_delay(config: &HumanTaskResumeWorkerConfig, attempts: u32) -> Duration 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::shared_kernel::domain::{AuthorizationDecisionRef, Sha256Digest};
+    use crate::modules::workflow::domain::{
+        FlowResumePayload, HumanTaskDecisionRecord, HumanTaskInteractionSpec, HumanTaskRecord,
+        WorkflowDecision,
+    };
+    use crate::modules::workflow::test_support::{pending_task, timestamp};
+    use a3s_flow::FlowEvent;
 
     #[test]
     fn validates_worker_timings_and_bounds_retry_backoff() {
@@ -329,5 +380,67 @@ mod tests {
         let mut invalid = config;
         invalid.lease_duration = Duration::from_secs(4);
         assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn settles_expiry_delivery_from_the_exact_flow_timeout_only() {
+        let (task, principal_id) = pending_task();
+        let mut record = HumanTaskRecord::create(
+            task,
+            HumanTaskInteractionSpec::approval("Approve?", None, None).expect("interaction"),
+            7,
+            Uuid::now_v7(),
+        )
+        .expect("task record");
+        record.activate(1, timestamp(8, 1)).expect("activation");
+        let decision = WorkflowDecision::expire(
+            WorkflowDecisionId::new(),
+            &record.task,
+            principal_id,
+            AuthorizationDecisionRef::new(
+                "deadline-authority",
+                Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("digest"),
+            )
+            .expect("authority"),
+            timestamp(10, 0),
+        )
+        .expect("expiry decision");
+        record.expire(2, &decision).expect("expiry");
+        let delivery = HumanTaskResumeDelivery {
+            record: HumanTaskDecisionRecord {
+                task: record,
+                submission: None,
+                resume_payload: FlowResumePayload::from_decision(&decision).expect("payload"),
+                resume_receipt: None,
+                decision,
+            },
+            attempt_count: 1,
+            lease_owner: Uuid::now_v7(),
+            claimed_at: timestamp(10, 1),
+            lease_expires_at: timestamp(10, 2),
+        };
+        delivery.validate().expect("delivery");
+        let timeout = FlowEventEnvelope {
+            run_id: delivery.record.resume_payload.flow_run_id.clone(),
+            sequence: 11,
+            event_id: Uuid::now_v7(),
+            timestamp: timestamp(10, 0),
+            event: FlowEvent::RunTimedOut {
+                deadline: timestamp(10, 0),
+                reason: Some("WorkflowRun exceeded its immutable deadline".into()),
+            },
+        };
+        let receipt = receipt_for_delivery(&delivery, &timeout).expect("terminal receipt");
+        assert_eq!(receipt.disposition(), FlowResumeDisposition::RunTimedOut);
+
+        let mut drifted = timeout;
+        drifted.event = FlowEvent::RunTimedOut {
+            deadline: timestamp(9, 59),
+            reason: Some("different deadline".into()),
+        };
+        assert!(matches!(
+            receipt_for_delivery(&delivery, &drifted),
+            Err(DeliveryFailure::Conflict(_))
+        ));
     }
 }

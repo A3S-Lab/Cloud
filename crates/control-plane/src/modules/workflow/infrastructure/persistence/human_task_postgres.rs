@@ -173,6 +173,49 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
             .map_err(transaction_error)
     }
 
+    async fn pending_expirations(
+        &self,
+        expired_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<HumanTaskRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        let limit = u64::try_from(limit).map_err(|_| {
+            RepositoryError::Conflict(
+                "HumanTask expiry scan limit exceeds the supported range".into(),
+            )
+        })?;
+        let expired_at = canonical_timestamp(expired_at);
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    fetch_all::<HumanTaskRow, _>(
+                        transaction,
+                        task_select()
+                            .filter(HumanTasks::expires_at().is_not_null())
+                            .filter(HumanTasks::expires_at().lte(Some(expired_at)))
+                            .filter(
+                                HumanTasks::status()
+                                    .eq(HumanTaskStatus::PendingActivation.as_str())
+                                    .or(HumanTasks::status().eq(HumanTaskStatus::Ready.as_str()))
+                                    .or(HumanTasks::status().eq(HumanTaskStatus::Claimed.as_str())),
+                            )
+                            .order_by(HumanTasks::expires_at(), OrderDirection::Asc)
+                            .order_by(HumanTasks::organization_id(), OrderDirection::Asc)
+                            .order_by(HumanTasks::id(), OrderDirection::Asc)
+                            .limit(limit),
+                    )
+                    .await?
+                    .into_iter()
+                    .map(decode_task)
+                    .collect()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn replay_change(
         &self,
         idempotency: &IdempotencyRequest,
@@ -601,11 +644,11 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                         )
                         .into());
                     }
-                    if receipt.workflow_decision_id != record.decision.id
-                        || receipt.payload_digest != record.resume_payload.digest
-                        || receipt.flow_run_id != record.resume_payload.flow_run_id
-                        || receipt.flow_hook_id != record.resume_payload.flow_hook_id
-                        || recorded_at < receipt.hook_received_at
+                    if receipt.workflow_decision_id() != record.decision.id
+                        || receipt.payload_digest() != &record.resume_payload.digest
+                        || receipt.flow_run_id() != record.resume_payload.flow_run_id
+                        || receipt.flow_hook_id() != record.resume_payload.flow_hook_id
+                        || recorded_at < receipt.flow_event_at()
                     {
                         return Err(RepositoryError::Conflict(
                             "Workflow resume receipt does not match the pending delivery".into(),

@@ -287,7 +287,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (94, "094".into()));
+    assert_eq!(migration_state, (95, "095".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1002,7 +1002,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 90);
+    assert_eq!(applied, 95);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -1060,6 +1060,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "workflow_step_projections_run_status_idx",
         "human_tasks_project_status_idx",
         "human_tasks_run_step_idx",
+        "human_tasks_expiry_candidates_idx",
         "workflow_resume_outbox_delivery_idx",
         "workflow_human_task_inbox_observed_idx",
     ] {
@@ -1902,7 +1903,12 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
                 .with_header("accept", "application/json"),
         )
         .await?;
-    assert_eq!(readiness.status(), 200);
+    let readiness_body = response_json(&readiness)?;
+    assert_eq!(
+        readiness.status(),
+        200,
+        "unexpected readiness response: {readiness_body}"
+    );
 
     let organization_request = || {
         post_json(

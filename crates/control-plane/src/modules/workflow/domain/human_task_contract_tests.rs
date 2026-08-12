@@ -1,6 +1,6 @@
 use super::{
-    FlowResumePayload, FlowResumeReceipt, HumanTaskInteractionSpec, HumanTaskRecord,
-    HumanTaskStatus, WorkflowDecision, WorkflowDecisionOutcome,
+    FlowResumeDisposition, FlowResumePayload, FlowResumeReceipt, HumanTaskInteractionSpec,
+    HumanTaskRecord, HumanTaskStatus, WorkflowDecision, WorkflowDecisionOutcome,
 };
 use crate::modules::shared_kernel::domain::{PrincipalId, WorkflowDecisionId};
 use crate::modules::workflow::test_support::{
@@ -161,6 +161,22 @@ fn records_expiry_and_cancellation_as_bound_decisions() {
         timestamp(10, 0),
     )
     .expect("expiry decision");
+    let expiry_payload = FlowResumePayload::from_decision(&expired).expect("expiry payload");
+    let timeout_receipt = FlowResumeReceipt::from_run_timed_out(
+        &expiry_payload,
+        &expiring.flow_run_id,
+        timestamp(10, 0),
+        Some("workflow deadline".into()),
+        12,
+        Uuid::now_v7(),
+        timestamp(10, 0),
+    )
+    .expect("matching timeout receipt");
+    assert_eq!(
+        timeout_receipt.disposition(),
+        FlowResumeDisposition::RunTimedOut
+    );
+    assert_eq!(timeout_receipt.timeout_deadline(), Some(timestamp(10, 0)));
     expiring.expire(2, &expired).expect("task expiry");
     assert_eq!(expiring.status, HumanTaskStatus::Expired);
 
@@ -205,8 +221,8 @@ fn derives_a_resume_receipt_only_from_matching_hook_evidence() {
         timestamp(8, 32),
     )
     .expect("matching receipt should be observed");
-    assert_eq!(receipt.hook_event_sequence, 11);
-    assert_eq!(receipt.payload_digest, payload.digest);
+    assert_eq!(receipt.flow_event_sequence(), 11);
+    assert_eq!(receipt.payload_digest(), &payload.digest);
 
     assert!(FlowResumeReceipt::from_hook_received(
         &payload,

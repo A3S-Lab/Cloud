@@ -10,8 +10,11 @@ use uuid::Uuid;
 
 pub const FLOW_RESUME_PAYLOAD_API_VERSION: &str = "a3s.dev/flow-resume-payload/v1";
 pub const FLOW_RESUME_RECEIPT_API_VERSION: &str = "a3s.dev/flow-resume-receipt/v1";
+pub const FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION: &str =
+    "a3s.dev/flow-resume-terminal-receipt/v1";
 const MAX_FLOW_RESUME_PAYLOAD_BYTES: usize = 1_100_000;
 const MAX_EXTERNAL_IDENTITY_BYTES: usize = 512;
+const MAX_TERMINAL_REASON_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -52,17 +55,49 @@ struct FlowResumePayloadDigestContent<'a> {
     output_digest: &'a Sha256Digest,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowResumeDisposition {
+    HookReceived,
+    RunTimedOut,
+}
+
+impl FlowResumeDisposition {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HookReceived => "hook_received",
+            Self::RunTimedOut => "run_timed_out",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct FlowResumeReceipt {
-    pub api_version: String,
-    pub flow_run_id: String,
-    pub flow_hook_id: String,
-    pub workflow_decision_id: WorkflowDecisionId,
-    pub payload_digest: Sha256Digest,
-    pub hook_event_sequence: u64,
-    pub hook_event_id: Uuid,
-    pub hook_received_at: DateTime<Utc>,
+#[serde(rename_all = "camelCase", untagged, deny_unknown_fields)]
+pub enum FlowResumeReceipt {
+    HookReceived {
+        api_version: String,
+        flow_run_id: String,
+        flow_hook_id: String,
+        workflow_decision_id: WorkflowDecisionId,
+        payload_digest: Sha256Digest,
+        hook_event_sequence: u64,
+        hook_event_id: Uuid,
+        hook_received_at: DateTime<Utc>,
+    },
+    RunTimedOut {
+        api_version: String,
+        disposition: FlowResumeDisposition,
+        flow_run_id: String,
+        flow_hook_id: String,
+        workflow_decision_id: WorkflowDecisionId,
+        payload_digest: Sha256Digest,
+        flow_event_sequence: u64,
+        flow_event_id: Uuid,
+        flow_event_at: DateTime<Utc>,
+        deadline: DateTime<Utc>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
 }
 
 impl FlowResumePayload {
@@ -170,7 +205,7 @@ impl FlowResumeReceipt {
         {
             return Err("Flow HookReceived event does not match the resume payload".into());
         }
-        let receipt = Self {
+        let receipt = Self::HookReceived {
             api_version: FLOW_RESUME_RECEIPT_API_VERSION.into(),
             flow_run_id: flow_run_id.into(),
             flow_hook_id: flow_hook_id.into(),
@@ -184,18 +219,180 @@ impl FlowResumeReceipt {
         Ok(receipt)
     }
 
-    pub fn validate(&self) -> Result<(), String> {
-        if self.api_version != FLOW_RESUME_RECEIPT_API_VERSION
-            || !valid_external_identity(&self.flow_run_id)
-            || !valid_external_identity(&self.flow_hook_id)
-            || self.workflow_decision_id.as_uuid().is_nil()
-            || self.hook_event_sequence == 0
-            || self.hook_event_id.is_nil()
-            || self.hook_received_at != canonical_timestamp(self.hook_received_at)
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_run_timed_out(
+        payload: &FlowResumePayload,
+        flow_run_id: &str,
+        deadline: DateTime<Utc>,
+        reason: Option<String>,
+        flow_event_sequence: u64,
+        flow_event_id: Uuid,
+        flow_event_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        payload.validate()?;
+        if payload.outcome != WorkflowDecisionOutcome::Expire
+            || flow_run_id != payload.flow_run_id
+            || flow_event_sequence == 0
+            || flow_event_id.is_nil()
         {
-            return Err("Flow resume receipt is invalid".into());
+            return Err(
+                "Flow RunTimedOut event does not supersede the expiry resume payload".into(),
+            );
+        }
+        let receipt = Self::RunTimedOut {
+            api_version: FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION.into(),
+            disposition: FlowResumeDisposition::RunTimedOut,
+            flow_run_id: flow_run_id.into(),
+            flow_hook_id: payload.flow_hook_id.clone(),
+            workflow_decision_id: payload.workflow_decision_id,
+            payload_digest: payload.digest.clone(),
+            flow_event_sequence,
+            flow_event_id,
+            flow_event_at: canonical_timestamp(flow_event_at),
+            deadline: canonical_timestamp(deadline),
+            reason,
+        };
+        receipt.validate()?;
+        Ok(receipt)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::HookReceived {
+                api_version,
+                flow_run_id,
+                flow_hook_id,
+                workflow_decision_id,
+                hook_event_sequence,
+                hook_event_id,
+                hook_received_at,
+                ..
+            } => {
+                if api_version != FLOW_RESUME_RECEIPT_API_VERSION
+                    || !valid_external_identity(flow_run_id)
+                    || !valid_external_identity(flow_hook_id)
+                    || workflow_decision_id.as_uuid().is_nil()
+                    || *hook_event_sequence == 0
+                    || hook_event_id.is_nil()
+                    || *hook_received_at != canonical_timestamp(*hook_received_at)
+                {
+                    return Err("Flow HookReceived resume receipt is invalid".into());
+                }
+            }
+            Self::RunTimedOut {
+                api_version,
+                disposition,
+                flow_run_id,
+                flow_hook_id,
+                workflow_decision_id,
+                flow_event_sequence,
+                flow_event_id,
+                flow_event_at,
+                deadline,
+                reason,
+                ..
+            } => {
+                if api_version != FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION
+                    || *disposition != FlowResumeDisposition::RunTimedOut
+                    || !valid_external_identity(flow_run_id)
+                    || !valid_external_identity(flow_hook_id)
+                    || workflow_decision_id.as_uuid().is_nil()
+                    || *flow_event_sequence == 0
+                    || flow_event_id.is_nil()
+                    || *flow_event_at != canonical_timestamp(*flow_event_at)
+                    || *deadline != canonical_timestamp(*deadline)
+                    || *flow_event_at < *deadline
+                    || reason.as_ref().is_some_and(|value| {
+                        value.is_empty()
+                            || value.trim() != value
+                            || value.len() > MAX_TERMINAL_REASON_BYTES
+                            || value.contains('\0')
+                    })
+                {
+                    return Err("Flow RunTimedOut resume receipt is invalid".into());
+                }
+            }
         }
         Ok(())
+    }
+
+    pub const fn disposition(&self) -> FlowResumeDisposition {
+        match self {
+            Self::HookReceived { .. } => FlowResumeDisposition::HookReceived,
+            Self::RunTimedOut { .. } => FlowResumeDisposition::RunTimedOut,
+        }
+    }
+
+    pub fn flow_run_id(&self) -> &str {
+        match self {
+            Self::HookReceived { flow_run_id, .. } | Self::RunTimedOut { flow_run_id, .. } => {
+                flow_run_id
+            }
+        }
+    }
+
+    pub fn flow_hook_id(&self) -> &str {
+        match self {
+            Self::HookReceived { flow_hook_id, .. } | Self::RunTimedOut { flow_hook_id, .. } => {
+                flow_hook_id
+            }
+        }
+    }
+
+    pub const fn workflow_decision_id(&self) -> WorkflowDecisionId {
+        match self {
+            Self::HookReceived {
+                workflow_decision_id,
+                ..
+            }
+            | Self::RunTimedOut {
+                workflow_decision_id,
+                ..
+            } => *workflow_decision_id,
+        }
+    }
+
+    pub fn payload_digest(&self) -> &Sha256Digest {
+        match self {
+            Self::HookReceived { payload_digest, .. }
+            | Self::RunTimedOut { payload_digest, .. } => payload_digest,
+        }
+    }
+
+    pub const fn flow_event_sequence(&self) -> u64 {
+        match self {
+            Self::HookReceived {
+                hook_event_sequence,
+                ..
+            } => *hook_event_sequence,
+            Self::RunTimedOut {
+                flow_event_sequence,
+                ..
+            } => *flow_event_sequence,
+        }
+    }
+
+    pub const fn flow_event_id(&self) -> Uuid {
+        match self {
+            Self::HookReceived { hook_event_id, .. } => *hook_event_id,
+            Self::RunTimedOut { flow_event_id, .. } => *flow_event_id,
+        }
+    }
+
+    pub const fn flow_event_at(&self) -> DateTime<Utc> {
+        match self {
+            Self::HookReceived {
+                hook_received_at, ..
+            } => *hook_received_at,
+            Self::RunTimedOut { flow_event_at, .. } => *flow_event_at,
+        }
+    }
+
+    pub const fn timeout_deadline(&self) -> Option<DateTime<Utc>> {
+        match self {
+            Self::HookReceived { .. } => None,
+            Self::RunTimedOut { deadline, .. } => Some(*deadline),
+        }
     }
 }
 

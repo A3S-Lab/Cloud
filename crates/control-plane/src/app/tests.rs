@@ -49,7 +49,7 @@ use crate::modules::workflow::{
     HumanTaskDecisionRecord, HumanTaskRecord, HumanTaskResumeDelivery, HumanTaskStatus,
     IHumanTaskRepository, IWorkflowRunHistoryReader, InMemoryOntologyRepository,
     InMemoryWorkflowDefinitionRepository, InMemoryWorkflowGoalRepository,
-    InMemoryWorkflowRunRepository, WorkflowRunHistoryPage,
+    InMemoryWorkflowRunRepository, WorkflowDecisionOutcome, WorkflowRunHistoryPage,
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
@@ -205,6 +205,34 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
             .collect())
     }
 
+    async fn pending_expirations(
+        &self,
+        expired_at: DateTime<Utc>,
+        limit: usize,
+    ) -> std::result::Result<Vec<HumanTaskRecord>, RepositoryError> {
+        let mut records = self
+            .read_records()?
+            .iter()
+            .filter(|record| {
+                !record.task.status.is_terminal()
+                    && record
+                        .task
+                        .expires_at
+                        .is_some_and(|expires| expires <= expired_at)
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        records.sort_by_key(|record| {
+            (
+                record.task.expires_at,
+                record.task.organization_id,
+                record.task.id,
+            )
+        });
+        records.truncate(limit);
+        Ok(records)
+    }
+
     async fn replay_change(
         &self,
         idempotency: &IdempotencyRequest,
@@ -304,11 +332,15 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
                     && record.task.id == write.record.task.task.id
             })
             .ok_or(RepositoryError::NotFound)?;
+        let completes_claim = current.task.status == HumanTaskStatus::Claimed
+            && current.task.claimed_by == Some(write.actor_principal_id)
+            && write.record.task.task.status == HumanTaskStatus::Completed;
+        let expires_non_terminal = !current.task.status.is_terminal()
+            && write.record.task.task.status == HumanTaskStatus::Expired
+            && write.record.decision.outcome == WorkflowDecisionOutcome::Expire;
         if current.task.aggregate_version != write.expected_version
             || write.record.task.task.aggregate_version != write.expected_version.saturating_add(1)
-            || current.task.status != HumanTaskStatus::Claimed
-            || current.task.claimed_by != Some(write.actor_principal_id)
-            || write.record.task.task.status != HumanTaskStatus::Completed
+            || (!completes_claim && !expires_non_terminal)
         {
             return Err(RepositoryError::Conflict(
                 "HumanTask decision conflicts with stored test state".into(),

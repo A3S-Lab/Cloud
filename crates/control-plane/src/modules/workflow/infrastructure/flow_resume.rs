@@ -5,22 +5,30 @@ pub fn observe_flow_resume_receipt(
     payload: &FlowResumePayload,
     envelope: &FlowEventEnvelope,
 ) -> Result<FlowResumeReceipt, String> {
-    let FlowEvent::HookReceived {
-        hook_id,
-        payload: observed_payload,
-    } = &envelope.event
-    else {
-        return Err("Flow event is not a HookReceived acknowledgement".into());
-    };
-    FlowResumeReceipt::from_hook_received(
-        payload,
-        &envelope.run_id,
-        hook_id,
-        observed_payload,
-        envelope.sequence,
-        envelope.event_id,
-        envelope.timestamp,
-    )
+    match &envelope.event {
+        FlowEvent::HookReceived {
+            hook_id,
+            payload: observed_payload,
+        } => FlowResumeReceipt::from_hook_received(
+            payload,
+            &envelope.run_id,
+            hook_id,
+            observed_payload,
+            envelope.sequence,
+            envelope.event_id,
+            envelope.timestamp,
+        ),
+        FlowEvent::RunTimedOut { deadline, reason } => FlowResumeReceipt::from_run_timed_out(
+            payload,
+            &envelope.run_id,
+            *deadline,
+            reason.clone(),
+            envelope.sequence,
+            envelope.event_id,
+            envelope.timestamp,
+        ),
+        _ => Err("Flow event is not resume settlement evidence".into()),
+    }
 }
 
 #[cfg(test)]

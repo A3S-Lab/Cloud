@@ -427,6 +427,19 @@ async fn assert_expired_claim_is_rejected(
         })
         .await?;
 
+    assert!(repository
+        .pending_expirations(timestamp(8, 11), 10)
+        .await?
+        .is_empty());
+    assert_eq!(
+        repository.pending_expirations(timestamp(8, 12), 10).await?,
+        vec![ready.clone()]
+    );
+    assert!(repository
+        .pending_expirations(timestamp(8, 12), 0)
+        .await?
+        .is_empty());
+
     let mut forged = ready.clone();
     forged.task.status = HumanTaskStatus::Claimed;
     forged.task.claimed_by = Some(authorities.claimant);

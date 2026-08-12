@@ -30,8 +30,8 @@ pub use events::{
     WorkflowRevisionPublished, WorkflowRunCancellationRequested, WorkflowRunRequested,
 };
 pub use flow_resume::{
-    FlowResumePayload, FlowResumeReceipt, FLOW_RESUME_PAYLOAD_API_VERSION,
-    FLOW_RESUME_RECEIPT_API_VERSION,
+    FlowResumeDisposition, FlowResumePayload, FlowResumeReceipt, FLOW_RESUME_PAYLOAD_API_VERSION,
+    FLOW_RESUME_RECEIPT_API_VERSION, FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION,
 };
 pub use ontology_contract::{
     OntologyContract, OntologyContractQuotas, OntologyObjectType, OntologyRelationCardinality,
@@ -47,11 +47,12 @@ pub use repositories::{
     WorkflowDefinitionRecord, WorkflowGoalRecord, WorkflowRunRecord,
 };
 pub use services::{
-    diff_ontology_contracts, resolve_migration_policy, CompiledWorkflowGoal, CompiledWorkflowRun,
-    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, OntologyChange,
-    OntologyChangeCompatibility, OntologyChangeKind, OntologyDiff, OntologyResourceKind,
-    WorkflowPlanCompiler, WorkflowRunCompiler, WorkflowRunCoordinationError,
-    WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
+    diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,
+    CompiledWorkflowGoal, CompiledWorkflowRun, HumanTaskDeadlineAuthority, IWorkflowRunCoordinator,
+    IWorkflowRunHistoryReader, OntologyChange, OntologyChangeCompatibility, OntologyChangeKind,
+    OntologyDiff, OntologyResourceKind, WorkflowPlanCompiler, WorkflowRunCompiler,
+    WorkflowRunCoordinationError, WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
+    HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
 };
 pub use value_objects::{
     AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName,

@@ -123,29 +123,30 @@ pub(in super::super) async fn insert_resume_receipt(
                     WorkflowResumeReceipts::human_task_id(),
                     record.decision.human_task_id.as_uuid(),
                 )
-                .value(
-                    WorkflowResumeReceipts::flow_run_id(),
-                    receipt.flow_run_id.as_str(),
-                )
+                .value(WorkflowResumeReceipts::flow_run_id(), receipt.flow_run_id())
                 .value(
                     WorkflowResumeReceipts::flow_hook_id(),
-                    receipt.flow_hook_id.as_str(),
+                    receipt.flow_hook_id(),
                 )
                 .value(
                     WorkflowResumeReceipts::payload_digest(),
-                    receipt.payload_digest.as_str(),
+                    receipt.payload_digest().as_str(),
                 )
                 .value(
-                    WorkflowResumeReceipts::hook_event_sequence(),
-                    receipt.hook_event_sequence,
+                    WorkflowResumeReceipts::disposition(),
+                    receipt.disposition().as_str(),
                 )
                 .value(
-                    WorkflowResumeReceipts::hook_event_id(),
-                    receipt.hook_event_id,
+                    WorkflowResumeReceipts::flow_event_sequence(),
+                    receipt.flow_event_sequence(),
                 )
                 .value(
-                    WorkflowResumeReceipts::hook_received_at(),
-                    receipt.hook_received_at,
+                    WorkflowResumeReceipts::flow_event_id(),
+                    receipt.flow_event_id(),
+                )
+                .value(
+                    WorkflowResumeReceipts::flow_event_at(),
+                    receipt.flow_event_at(),
                 )
                 .value(WorkflowResumeReceipts::receipt_json(), receipt_json)
                 .value(WorkflowResumeReceipts::recorded_at(), recorded_at),
