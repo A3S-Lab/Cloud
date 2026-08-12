@@ -222,7 +222,10 @@ gate certifies final-transaction authorization, atomic concurrent enrollment,
 idempotent replay, rollback residue, tenant-scoped reads and Search, canonical
 row validation, and migrations `084`-`085`. Together they verify `U0.2` without
 adding another Registry, authorization, Outbox, audit, idempotency, or Search
-mechanism; assignments remain unavailable until the `U0.3` dependencies close.
+mechanism. The root `a3s` compatibility lock now pins the same Use revision and
+all ten consumed plugin-host schemas, so `U0.1` is verified without introducing
+another Plugin Manager; assignments remain unavailable until the `U0.3`
+dependencies close.
 
 The backend also establishes the first `C0.3` identity foundation. One stable
 human or service Principal owns credentials; one Membership assigns exactly one
@@ -403,7 +406,7 @@ current Box-only provider contract.
 | `BX0` | Sole A3S Box execution/build path and re-certification of the complete baseline | In progress |
 | `PW0` | Immutable ACL-native Power Service profile and inference boundary | Planned |
 | `R0` | Universal Runtime Task and Service contract | Historical; Box re-certification pending |
-| `F0` | Boot API and PostgreSQL task queue, tenancy, identity, ORM-backed Flow history, Outbox, and projections | **Verified**; Flow `0.12.0`, Boot `0.2.0`, and ORM `0.3.0` compatibility refresh tested, root lock publication pending |
+| `F0` | Boot API and PostgreSQL task queue, tenancy, identity, ORM-backed Flow history, Outbox, and projections | **Verified**; Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, and the root compatibility lock pass together |
 | `N0` | Enrollment, outbound mTLS, commands, observations, journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` | Digest-pinned Workloads, scheduling, activation, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` | TLS, Gateway snapshots, Secrets, logs, update, rollback, and clean-host recovery | Historical; Box re-certification pending |
@@ -411,7 +414,7 @@ current Box-only provider contract.
 | `P0` | Build detection, workload profiles, previews, monorepos, and closed Compose import | Planned |
 | `C0` | REST/CLI/Management MCP parity, OIDC, grants, collaboration, investigation, notifications, audit, and bounded exec | In progress |
 | `A0` | Immutable Agent/MCP/Skill release catalog, Agent deployment, and Skill binding | In progress |
-| `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; trusted Registry/catalog reads available, assignments unavailable |
+| `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
 | `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified, while the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun lifecycle, internal authority-bound HumanTask loop, and Resource Grant enforcement for existing Ontology/definition/Goal/Run surfaces are implemented; public protected submission/task surfaces and their grant enforcement, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded `W0.3` cross-surface verification, and `W0.4`-`W0.5` remain) |

@@ -136,7 +136,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
 | `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
 | `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real provider conformance | Historical; Box re-certification pending |
-| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, API, and web shell | Verified; Flow `0.12.0`, Boot `0.2.0`, and ORM `0.3.0` compatibility refresh tested, root lock publication pending |
+| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, API, and web shell | Verified; Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, and the exact root compatibility lock pass together |
 | `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop | Historical; Box re-certification pending |
@@ -1343,7 +1343,7 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | Cloud slice implemented; stack integration pending | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud pins `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `7f731948`; the root compatibility lock and complete shared-manager composition still gate mutation |
+| `U0.1` | Verified | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud and the root compatibility lock pin `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `7f731948` plus every consumed host schema; complete shared-manager composition remains a `U0.3` mutation gate |
 | `U0.2` | Verified | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with authorized global Search and REST/client/CLI/Management MCP read parity and no package download; Web projection is retained for the later frontend phase | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
 | `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
@@ -1363,9 +1363,11 @@ canonical plan; it cannot mutate package state. The same apply command is the
 sole mutation path for package and enablement plans.
 Host capabilities are read from that sole Manager through the capabilities
 inspection command and returned as command-bound evidence; Cloud does not add
-another heartbeat capability schema or capability store. The root compatibility
-lock and production Manager composition remain open, so no registry,
-assignment, or user-facing plugin capability is claimed yet.
+another heartbeat capability schema or capability store. The root `a3s`
+compatibility lock now pins the exact Cloud/Use pair and every consumed host
+schema. Production Manager composition remains open, so the verified
+Registry/catalog read
+surface does not imply assignment or executable plugin capability.
 
 The first `U0.2` backend slices define the tenant-scoped `PluginRegistry`
 aggregate and exact content-addressed trust-root evidence, plus migration 084
@@ -1510,7 +1512,8 @@ Boot tasks use isolated `a3s_flow` and `a3s_boot` schemas. New Cloud Operation
 runs pin runtime build `a3s-cloud-workflows@1`, while legacy unpinned histories
 remain replayable. PostgreSQL tests cover queue draining, bounded retries,
 terminal-failure readiness, and the existing nine Build Flow `SIGKILL`
-boundaries. Publishing the exact root compatibility lock remains open. This
+boundaries. The exact root compatibility lock now publishes this
+Form/Flow/Boot/ORM composition. This
 supports the minimal WorkflowRun and internal HumanTask execution slices; it
 does not implement public protected submission or HumanTask product surfaces,
 Resource Grant enforcement on future protected task surfaces, expiry/cancellation coordination,
@@ -1623,8 +1626,8 @@ The default portfolio priority is:
    multi-host surfaces behind `U0.4` and `U0.5`;
 10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
     and `W0.3` definition/goal/deterministic-plan plus interaction-contract
-    slices plus the Form draft/release lifecycle; publish the exact Form/Flow
-    `0.12.0`/Boot `0.2.0`/ORM `0.3.0` compatibility lock, retain native submitted-value parity,
+    slices plus the Form draft/release lifecycle; retain the published exact
+    Form/Flow `0.12.0`/Boot `0.2.0`/ORM `0.3.0` compatibility lock and native submitted-value parity,
     close expanded real-PostgreSQL cross-surface evidence, then finish protected
     submission and WorkflowRun execution on Operations and A3S Flow without
     waiting for every external step provider;
