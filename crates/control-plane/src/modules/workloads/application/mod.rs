@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod queries;
+mod resource_access;
 mod workflow;
 
 #[cfg(test)]

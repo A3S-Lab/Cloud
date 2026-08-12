@@ -448,11 +448,25 @@ pub async fn execute(
         }
         ManagementTool::WorkloadsGet => {
             let arguments = arguments::parse::<WorkloadArguments>(arguments).ok()?;
-            workloads::get_workload(query_bus, organization_id, arguments, request_id).await
+            workloads::get_workload(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkloadLogsGet => {
             let arguments = arguments::parse::<WorkloadLogArguments>(arguments).ok()?;
-            workloads::get_workload_logs(query_bus, organization_id, arguments, request_id).await
+            workloads::get_workload_logs(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkloadsStop => {
             let arguments = arguments::parse::<StopWorkloadArguments>(arguments).ok()?;
@@ -464,7 +478,14 @@ pub async fn execute(
         }
         ManagementTool::DeploymentsGet => {
             let arguments = arguments::parse::<DeploymentArguments>(arguments).ok()?;
-            workloads::get_deployment(query_bus, organization_id, arguments, request_id).await
+            workloads::get_deployment(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::DeploymentsCancel => {
             let arguments = arguments::parse::<CancelDeploymentArguments>(arguments).ok()?;

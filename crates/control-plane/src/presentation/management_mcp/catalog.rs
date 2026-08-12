@@ -157,6 +157,7 @@ pub(super) enum ManagementResourceBinding {
     ProjectArgument,
     EnvironmentArguments,
     NodeArgument,
+    ProjectOwnedResource,
     ProjectCollection,
     EnvironmentCollection,
     NodeCollection,
@@ -437,6 +438,9 @@ impl ManagementTool {
             Self::WorkloadsList | Self::RoutesList | Self::BuildRunsList => {
                 Some(ManagementResourceBinding::EnvironmentArguments)
             }
+            Self::WorkloadsGet | Self::WorkloadLogsGet | Self::DeploymentsGet => {
+                Some(ManagementResourceBinding::ProjectOwnedResource)
+            }
             Self::NodesGet => Some(ManagementResourceBinding::NodeArgument),
             Self::ProjectsList => Some(ManagementResourceBinding::ProjectCollection),
             Self::EnvironmentsList => Some(ManagementResourceBinding::EnvironmentCollection),
@@ -459,6 +463,9 @@ impl ManagementTool {
                 evaluator.has_project_visibility()
             }
             Some(ManagementResourceBinding::NodeArgument) => evaluator.has_node_visibility(),
+            Some(ManagementResourceBinding::ProjectOwnedResource) => {
+                evaluator.has_project_visibility()
+            }
             Some(
                 ManagementResourceBinding::ProjectCollection
                 | ManagementResourceBinding::EnvironmentCollection,
@@ -1558,6 +1565,9 @@ mod tests {
         assert!(!ManagementTool::NodesGet.visible_to(&principal));
         assert!(ManagementTool::ProjectsList.visible_to(&principal));
         assert!(ManagementTool::Search.visible_to(&principal));
+        assert!(ManagementTool::WorkloadsGet.visible_to(&principal));
+        assert!(ManagementTool::WorkloadLogsGet.visible_to(&principal));
+        assert!(ManagementTool::DeploymentsGet.visible_to(&principal));
     }
 
     #[test]
@@ -1571,5 +1581,7 @@ mod tests {
         assert!(!ManagementTool::EnvironmentsList.visible_to(&principal));
         assert!(!ManagementTool::ProjectsList.visible_to(&principal));
         assert!(!ManagementTool::FormsList.visible_to(&principal));
+        assert!(!ManagementTool::WorkloadsGet.visible_to(&principal));
+        assert!(!ManagementTool::DeploymentsGet.visible_to(&principal));
     }
 }

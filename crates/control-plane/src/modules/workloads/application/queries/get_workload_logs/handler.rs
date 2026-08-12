@@ -5,12 +5,14 @@ use crate::modules::fleet::domain::services::ILogChunkStore;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::WorkloadLogPage;
+use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{BootError, CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct GetWorkloadLogsHandler {
     workloads: Arc<dyn IWorkloadRepository>,
+    resource_access: WorkloadResourceAccess,
     logs: NodeLogReader,
 }
 
@@ -21,7 +23,8 @@ impl GetWorkloadLogsHandler {
         objects: Arc<dyn ILogChunkStore>,
     ) -> Self {
         Self {
-            workloads,
+            workloads: Arc::clone(&workloads),
+            resource_access: WorkloadResourceAccess::new(workloads),
             logs: NodeLogReader::new(metadata, objects),
         }
     }
@@ -34,6 +37,7 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkloadLogPage>>> {
         let workloads = Arc::clone(&self.workloads);
+        let resource_access = self.resource_access.clone();
         let logs = self.logs.clone();
         Box::pin(async move {
             if query.limit == 0 || query.limit > MAX_LOG_PAGE_SIZE {
@@ -41,13 +45,17 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                     "workload log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
                 ))));
             }
-            let workload = match workloads
-                .find_workload(query.organization_id, query.workload_id)
+            let workload = match resource_access
+                .workload(
+                    query.organization_id,
+                    query.workload_id,
+                    &query.resource_access,
+                )
                 .await
             {
                 Ok(workload) => workload,
-                Err(RepositoryError::NotFound) => return Ok(Err(logs_not_found())),
-                Err(error) => return Ok(Err(error.into())),
+                Err(ApplicationError::NotFound(_)) => return Ok(Err(logs_not_found())),
+                Err(error) => return Ok(Err(error)),
             };
             let revision = match workloads
                 .find_revision(query.organization_id, query.revision_id)

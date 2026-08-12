@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, WorkloadId, WorkloadRevisionId};
 use crate::modules::workloads::application::queries::WorkloadLogPage;
@@ -9,6 +10,7 @@ pub struct GetWorkloadLogs {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
     pub revision_id: WorkloadRevisionId,
+    pub resource_access: ResourceAccessEvaluator,
     pub after_sequence: Option<u64>,
     pub limit: u16,
     pub stream: Option<RuntimeLogStream>,

@@ -1476,7 +1476,13 @@ async fn revoked_and_expired_tokens_stop_authenticating_immediately() -> Result<
 async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediately() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
-    let app = build_test_application(Arc::clone(&identity), projects)?;
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let app = build_test_application_with_repositories(
+        Arc::clone(&identity),
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::clone(&workloads),
+    )?;
     let organization = bootstrap_organization(&app, "membership-bootstrap", "Acme").await?;
     let memberships_path = format!("/api/v1/organizations/{organization}/memberships");
 
@@ -1628,6 +1634,84 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(ungranted_project.status(), 201);
+    let ungranted_project_id = response_id(&ungranted_project)?;
+
+    let granted_environment = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{granted_project_id}/environments"
+            ),
+            "membership:granted-environment",
+            json!({"name": "Granted environment"}),
+        ))
+        .await?;
+    assert_eq!(granted_environment.status(), 201);
+    let granted_environment_id = response_id(&granted_environment)?;
+    let ungranted_environment = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{ungranted_project_id}/environments"
+            ),
+            "membership:ungranted-environment",
+            json!({"name": "Ungranted environment"}),
+        ))
+        .await?;
+    assert_eq!(ungranted_environment.status(), 201);
+    let ungranted_environment_id = response_id(&ungranted_environment)?;
+
+    let granted_workload = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{granted_project_id}/environments/{granted_environment_id}/workloads"
+            ),
+            "membership:granted-workload",
+            json!({
+                "name": "granted-api",
+                "template": workload_tests::workload_template("granted", json!([]))
+            }),
+        ))
+        .await?;
+    assert_eq!(granted_workload.status(), 202);
+    let granted_workload = response_json(&granted_workload)?;
+    let granted_workload_id = granted_workload["data"]["workloadId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("granted workload has no ID".into()))?
+        .to_owned();
+    let granted_revision_id = granted_workload["data"]["revisionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("granted workload has no revision ID".into()))?
+        .to_owned();
+    let granted_deployment_id = granted_workload["data"]["deploymentId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("granted workload has no deployment ID".into()))?
+        .to_owned();
+
+    let ungranted_workload = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{ungranted_project_id}/environments/{ungranted_environment_id}/workloads"
+            ),
+            "membership:ungranted-workload",
+            json!({
+                "name": "ungranted-api",
+                "template": workload_tests::workload_template("ungranted", json!([]))
+            }),
+        ))
+        .await?;
+    assert_eq!(ungranted_workload.status(), 202);
+    let ungranted_workload = response_json(&ungranted_workload)?;
+    let ungranted_workload_id = ungranted_workload["data"]["workloadId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("ungranted workload has no ID".into()))?
+        .to_owned();
+    let ungranted_revision_id = ungranted_workload["data"]["revisionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("ungranted workload has no revision ID".into()))?
+        .to_owned();
+    let ungranted_deployment_id = ungranted_workload["data"]["deploymentId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("ungranted workload has no deployment ID".into()))?
+        .to_owned();
 
     let restricted = app
         .call(post_json(
@@ -1748,6 +1832,67 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         .ok_or_else(|| BootError::Internal("project list response is not an array".into()))?;
     assert_eq!(visible_projects.len(), 1);
     assert_eq!(visible_projects[0]["id"], granted_project_id.to_string());
+
+    for path in [
+        format!(
+            "/api/v1/organizations/{organization}/workloads/{granted_workload_id}"
+        ),
+        format!(
+            "/api/v1/organizations/{organization}/deployments/{granted_deployment_id}"
+        ),
+        format!(
+            "/api/v1/organizations/{organization}/workloads/{granted_workload_id}/revisions/{granted_revision_id}/logs?limit=1"
+        ),
+    ] {
+        let visible = app.call(get_as(path, SERVICE_MEMBER_TOKEN)).await?;
+        assert_eq!(visible.status(), 200);
+    }
+
+    for (denied_path, missing_path) in [
+        (
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}"
+            ),
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}",
+                Uuid::now_v7()
+            ),
+        ),
+        (
+            format!(
+                "/api/v1/organizations/{organization}/deployments/{ungranted_deployment_id}"
+            ),
+            format!(
+                "/api/v1/organizations/{organization}/deployments/{}",
+                Uuid::now_v7()
+            ),
+        ),
+        (
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}/revisions/{ungranted_revision_id}/logs?limit=1"
+            ),
+            format!(
+                "/api/v1/organizations/{organization}/workloads/{}/revisions/{}/logs?limit=1",
+                Uuid::now_v7(),
+                Uuid::now_v7()
+            ),
+        ),
+    ] {
+        let denied = app
+            .call(get_as(denied_path, SERVICE_MEMBER_TOKEN))
+            .await?;
+        let missing = app
+            .call(get_as(missing_path, SERVICE_MEMBER_TOKEN))
+            .await?;
+        assert_eq!(denied.status(), 404);
+        assert_eq!(missing.status(), 404);
+        let denied = response_json(&denied)?;
+        let missing = response_json(&missing)?;
+        for field in ["code", "statusCode", "message", "details"] {
+            assert_eq!(denied[field], missing[field]);
+        }
+    }
+
     let ungranted_access = app
         .call(get_as(
             format!(

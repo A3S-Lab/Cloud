@@ -9,6 +9,9 @@ pub use dto::{
     MembershipMutationResponse, MembershipResponse, ResourceGrantMutationResponse,
     ResourceGrantResponse, ResourceGrantScopeDto,
 };
-pub use guards::{BootstrapGuard, OrganizationAdministratorGuard, OrganizationTenantGuard};
+pub use guards::{
+    with_deferred_resource_scope, BootstrapGuard, DeferredResourceScope,
+    OrganizationAdministratorGuard, OrganizationTenantGuard,
+};
 pub use identity_module::IdentityModule;
 pub use resource_access::resource_access_evaluator;

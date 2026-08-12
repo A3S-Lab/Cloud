@@ -1,10 +1,8 @@
 use super::{DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResult};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::operations::domain::repositories::IOperationRepository;
-use crate::modules::shared_kernel::domain::{
-    DeploymentId, OrganizationId, RepositoryError, WorkloadId,
-};
-use crate::modules::workloads::domain::entities::{Workload, WorkloadReplicaLifecycle};
+use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
+use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadReplicaLifecycle};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -29,32 +27,15 @@ impl WorkloadQueryReader {
         }
     }
 
-    pub async fn workload(
+    pub async fn deployment_view(
         &self,
-        organization_id: OrganizationId,
-        workload_id: WorkloadId,
-    ) -> Result<WorkloadQueryResult, RepositoryError> {
-        let workload = self
-            .workloads
-            .find_workload(organization_id, workload_id)
-            .await?;
-        self.view(organization_id, workload).await
-    }
-
-    pub async fn deployment(
-        &self,
-        organization_id: OrganizationId,
-        deployment_id: DeploymentId,
+        deployment: Deployment,
     ) -> Result<DeploymentQueryResult, RepositoryError> {
-        let deployment = self
-            .workloads
-            .find_deployment(organization_id, deployment_id)
-            .await?;
         let revision = self
             .workloads
-            .find_revision(organization_id, deployment.revision_id)
+            .find_revision(deployment.organization_id, deployment.revision_id)
             .await?;
-        self.deployment_view(deployment, revision).await
+        self.build_deployment_view(deployment, revision).await
     }
 
     pub async fn view(
@@ -92,7 +73,7 @@ impl WorkloadQueryReader {
                         "deployment references a missing workload revision".into(),
                     )
                 })?;
-            deployment_views.push(self.deployment_view(deployment, revision).await?);
+            deployment_views.push(self.build_deployment_view(deployment, revision).await?);
         }
         let replicas = self
             .workloads
@@ -151,7 +132,7 @@ impl WorkloadQueryReader {
         })
     }
 
-    async fn deployment_view(
+    async fn build_deployment_view(
         &self,
         deployment: crate::modules::workloads::domain::entities::Deployment,
         revision: crate::modules::workloads::domain::entities::WorkloadRevision,

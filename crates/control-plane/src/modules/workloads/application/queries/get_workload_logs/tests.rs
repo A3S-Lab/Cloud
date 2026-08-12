@@ -8,6 +8,7 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::ApplicationError;
@@ -578,6 +579,7 @@ fn query(
         organization_id,
         workload_id: seeded.workload_id,
         revision_id: seeded.revision_id,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
         after_sequence,
         limit,
         stream: None,

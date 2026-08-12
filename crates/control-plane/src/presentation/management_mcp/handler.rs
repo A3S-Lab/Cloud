@@ -330,6 +330,9 @@ fn management_resource_is_authorized(
                 node_id: NodeId::from_uuid(uuid_argument("nodeId")?),
             }))
         }
+        Some(ManagementResourceBinding::ProjectOwnedResource) => {
+            Ok(evaluator.has_project_visibility())
+        }
         Some(ManagementResourceBinding::ProjectCollection) => {
             Ok(evaluator.has_project_visibility())
         }
@@ -437,6 +440,14 @@ mod tests {
             management_resource_is_authorized(
                 ManagementTool::NodesGet,
                 &json!({"nodeId": node_id}),
+                &evaluator,
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            management_resource_is_authorized(
+                ManagementTool::WorkloadsGet,
+                &json!({"workloadId": Uuid::now_v7()}),
                 &evaluator,
             ),
             Ok(true)

@@ -1663,8 +1663,13 @@ node.
   request enforcement, and collection filtering through one shared evaluator.
   REST/OpenAPI `1.16.0`, the maintained client, CLI, and nine
   administrator-only Management MCP tools reuse the same commands, queries,
-  guards, and DTOs. No frontend identity
-  surface, second RBAC evaluator, identity store, or audit path is introduced.
+  guards, and DTOs. The first `C0.3-RG2` vertical slice adds typed deferred
+  route metadata plus one Workloads-owned resolver: Workload, Deployment, and
+  workload-log reads derive the canonical environment scope from the existing
+  Workloads repository and reuse the shared evaluator across REST and
+  Management MCP, with denied and missing IDs returning the same `404`
+  contract. No frontend identity surface, second RBAC evaluator, identity
+  store, or audit path is introduced.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1677,11 +1682,16 @@ node.
   inferred from organization ownership. OIDC links and invitations must resolve
   the existing Principal/Membership authority rather than introduce
   provider-owned roles.
-- Close indirect Resource Grant authorization before adding any restricted-role
-  product surface. The context owning an Asset, Form, Workflow, Workload,
-  Deployment, BuildRun, Route, Secret, Agent execution, or Operation resolves
-  its existing project/environment/node identity through its current repository
-  and passes that canonical scope to the shared `ResourceAccessEvaluator`.
+- Continue closing indirect Resource Grant authorization before adding any
+  restricted-role product surface. Workload, Deployment, and workload-log read
+  boundaries now implement the required pattern; their route metadata grants
+  only coarse project-family admission, while the Workloads application layer
+  resolves the existing entity and makes the final shared-evaluator decision.
+  Each remaining boundary—including Asset, Form, Workflow, BuildRun, Route,
+  Secret, Agent execution, Operation, and indirect Workload/Deployment
+  mutations—resolves its existing project/environment/node identity through
+  its owning repository and passes that canonical scope to the shared
+  `ResourceAccessEvaluator`.
   Collection queries receive the evaluator and filter at the authoritative
   query boundary. Do not add an Identity cross-context ownership table, a
   context-local grant evaluator, presentation-only filtering, or an MCP-only

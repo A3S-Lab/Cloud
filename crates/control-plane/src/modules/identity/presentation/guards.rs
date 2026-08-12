@@ -3,8 +3,32 @@ use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
-use a3s_boot::{BootError, BootRequest, BoxFuture, ExecutionContext, Guard, HttpMethod, Result};
+use a3s_boot::{
+    BootError, BootRequest, BoxFuture, ExecutionContext, Guard, HttpMethod, Result, RouteDefinition,
+};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+const DEFERRED_RESOURCE_SCOPE_METADATA: &str = "a3s.cloud.resourceAccess.deferredScope";
+
+/// Declares which resource family an application handler will resolve from an indirect ID.
+///
+/// The tenant guard uses this only for coarse admission. The owning application module must load
+/// the resource, derive its canonical grant scope, and make the final authorization decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeferredResourceScope {
+    Project,
+    Node,
+    Any,
+}
+
+pub fn with_deferred_resource_scope(
+    route: RouteDefinition,
+    scope: DeferredResourceScope,
+) -> Result<RouteDefinition> {
+    route.with_metadata(DEFERRED_RESOURCE_SCOPE_METADATA, scope)
+}
 
 #[derive(Clone)]
 pub struct BootstrapGuard {
@@ -70,15 +94,38 @@ impl Guard for OrganizationTenantGuard {
             if collection_is_visible(&context.request, &context.route_path, &evaluator)? {
                 return Ok(true);
             }
+            if let Some(scope) =
+                context.metadata_as::<DeferredResourceScope>(DEFERRED_RESOURCE_SCOPE_METADATA)?
+            {
+                if deferred_resource_is_visible(scope, &evaluator) {
+                    return Ok(true);
+                }
+                return Err(missing_resource_grant());
+            }
             let resource = resource_scope(&context.request)?;
             if resource.is_some_and(|resource| evaluator.allows(resource)) {
                 return Ok(true);
             }
-            Err(BootError::Forbidden(
-                "restricted membership has no grant for the requested resource".to_string(),
-            ))
+            Err(missing_resource_grant())
         })
     }
+}
+
+fn deferred_resource_is_visible(
+    scope: DeferredResourceScope,
+    evaluator: &ResourceAccessEvaluator,
+) -> bool {
+    match scope {
+        DeferredResourceScope::Project => evaluator.has_project_visibility(),
+        DeferredResourceScope::Node => evaluator.has_node_visibility(),
+        DeferredResourceScope::Any => evaluator.has_any_visible_resource(),
+    }
+}
+
+fn missing_resource_grant() -> BootError {
+    BootError::Forbidden(
+        "restricted membership has no grant for the requested resource".to_string(),
+    )
 }
 
 fn collection_is_visible(
@@ -214,5 +261,50 @@ mod tests {
             &evaluator,
         )
         .expect("environment collection visibility"));
+    }
+
+    #[test]
+    fn deferred_scope_only_admits_a_matching_resource_family() {
+        let project_id = ProjectId::new();
+        let project =
+            ResourceAccessEvaluator::restricted([ResourceGrantScope::Project { project_id }]);
+        assert!(deferred_resource_is_visible(
+            DeferredResourceScope::Project,
+            &project
+        ));
+        assert!(!deferred_resource_is_visible(
+            DeferredResourceScope::Node,
+            &project
+        ));
+
+        let node = ResourceAccessEvaluator::restricted([ResourceGrantScope::Node {
+            node_id: NodeId::new(),
+        }]);
+        assert!(!deferred_resource_is_visible(
+            DeferredResourceScope::Project,
+            &node
+        ));
+        assert!(deferred_resource_is_visible(
+            DeferredResourceScope::Any,
+            &node
+        ));
+    }
+
+    #[test]
+    fn deferred_scope_route_metadata_is_typed_and_explicit() {
+        let route = with_deferred_resource_scope(
+            RouteDefinition::get("/workloads/{workload_id}", |_request: BootRequest| async {
+                Ok(a3s_boot::BootResponse::default())
+            })
+            .expect("route"),
+            DeferredResourceScope::Project,
+        )
+        .expect("deferred scope metadata");
+        assert_eq!(
+            route
+                .metadata_as::<DeferredResourceScope>(DEFERRED_RESOURCE_SCOPE_METADATA)
+                .expect("typed metadata"),
+            Some(DeferredResourceScope::Project)
+        );
     }
 }

@@ -370,7 +370,7 @@ fn repository_error(error: impl std::fmt::Display) -> BootError {
     BootError::Internal(error.to_string())
 }
 
-fn workload_template(tag: &str, secrets: Value) -> Value {
+pub(super) fn workload_template(tag: &str, secrets: Value) -> Value {
     json!({
         "artifact": {
             "uri": format!("oci://registry.example/cloud/api:{tag}"),

@@ -2,6 +2,7 @@ use super::arguments::{
     DeploymentArguments, EnvironmentScopeArguments, WorkloadArguments, WorkloadLogArguments,
 };
 use super::tool_result;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
 };
@@ -75,12 +76,14 @@ pub async fn get_workload(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkloadArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetWorkload {
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
+            resource_access,
         })
         .await?
     {
@@ -93,12 +96,14 @@ pub async fn get_deployment(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: DeploymentArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetDeployment {
             organization_id,
             deployment_id: DeploymentId::from_uuid(arguments.deployment_id),
+            resource_access,
         })
         .await?
     {
@@ -113,6 +118,7 @@ pub async fn get_workload_logs(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkloadLogArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -120,6 +126,7 @@ pub async fn get_workload_logs(
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
             revision_id: WorkloadRevisionId::from_uuid(arguments.revision_id),
+            resource_access,
             after_sequence: arguments.after_sequence,
             limit: arguments.limit,
             stream: arguments.stream.map(Into::into),
