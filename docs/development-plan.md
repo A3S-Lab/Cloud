@@ -1671,7 +1671,13 @@ node.
   missing IDs returning the same `404` contract. Mutation authorization occurs
   before idempotency replay, so grant revocation takes effect on the next
   request. No frontend identity surface, second RBAC evaluator, identity store,
-  or audit path is introduced.
+  or audit path is introduced. The Artifacts vertical slice applies the same
+  contract to BuildRun detail, evidence, logs, cancellation, and retry by
+  resolving the existing BuildRun before authorization. External-source runs
+  use their canonical project/environment identity. Hosted Asset-release runs
+  are organization-scoped today, so organization-wide roles retain access and
+  restricted memberships fail closed instead of receiving synthetic project
+  ownership.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1691,8 +1697,8 @@ node.
   Management MCP metadata grant only coarse project-family admission, while
   the Workloads application layer resolves the existing entity and makes the
   final shared-evaluator decision before replay or side effects.
-  Each remaining boundary—including Asset, Form, Workflow, BuildRun, Route,
-  Secret, Agent execution, and Operation—resolves its existing
+  The remaining Asset, Form, Workflow, Route, Secret, Agent execution, and
+  Operation boundaries resolve their existing
   project/environment/node identity through its owning repository and passes
   that canonical scope to the shared `ResourceAccessEvaluator`.
   Collection queries receive the evaluator and filter at the authoritative

@@ -1,6 +1,7 @@
 mod build_run_reconciler;
 mod commands;
 mod queries;
+mod resource_access;
 
 pub use build_run_reconciler::{
     BuildRunReconcileReport, BuildRunReconciler, BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION,

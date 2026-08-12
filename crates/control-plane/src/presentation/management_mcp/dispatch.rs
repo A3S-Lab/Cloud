@@ -526,23 +526,58 @@ pub async fn execute(
         }
         ManagementTool::BuildRunsGet => {
             let arguments = arguments::parse::<BuildRunArguments>(arguments).ok()?;
-            artifacts::get_build_run(query_bus, organization_id, arguments, request_id).await
+            artifacts::get_build_run(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::BuildRunLogsGet => {
             let arguments = arguments::parse::<BuildRunLogArguments>(arguments).ok()?;
-            artifacts::get_build_run_logs(query_bus, organization_id, arguments, request_id).await
+            artifacts::get_build_run_logs(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::BuildEvidenceGet => {
             let arguments = arguments::parse::<BuildRunArguments>(arguments).ok()?;
-            artifacts::get_build_evidence(query_bus, organization_id, arguments, request_id).await
+            artifacts::get_build_evidence(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::BuildRunsCancel => {
             let arguments = arguments::parse::<BuildRunMutationArguments>(arguments).ok()?;
-            artifacts::cancel_build_run(command_bus, organization_id, arguments, request_id).await
+            artifacts::cancel_build_run(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::BuildRunsRetry => {
             let arguments = arguments::parse::<BuildRunMutationArguments>(arguments).ok()?;
-            artifacts::retry_build_run(command_bus, organization_id, arguments, request_id).await
+            artifacts::retry_build_run(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
     };
     Some(result)

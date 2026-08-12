@@ -4,7 +4,10 @@ use crate::modules::artifacts::application::{
 use crate::modules::artifacts::presentation::dto::{
     BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,
 };
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
 use crate::presentation::{
     application_error_response, decode_sequence_cursor, default_live_sequence_limit,
@@ -12,7 +15,8 @@ use crate::presentation::{
     MAX_LIVE_SEQUENCE_RECORDS,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, SseStream,
+    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+    SseStream,
 };
 use a3s_runtime::contract::RuntimeLogStream;
 use serde::Deserialize;
@@ -66,116 +70,142 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                 }
             },
         )?
-        .get(
-            "/{organization_id}/build-runs/{build_run_id}/evidence",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_evidence_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetBuildEvidence {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            build_run_id: BuildRunId::from_uuid(
-                                request.param_as::<Uuid>("build_run_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(evidence) => BootResponse::json(&BuildEvidenceResponse::from(evidence)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/build-runs/{build_run_id}/evidence",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_evidence_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        match bus
+                            .execute(GetBuildEvidence {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                build_run_id: BuildRunId::from_uuid(
+                                    request.param_as::<Uuid>("build_run_id")?,
+                                ),
+                                resource_access,
+                            })
+                            .await?
+                        {
+                            Ok(evidence) => {
+                                BootResponse::json(&BuildEvidenceResponse::from(evidence))
+                            }
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/build-runs/{build_run_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetBuildRun {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            build_run_id: BuildRunId::from_uuid(
-                                request.param_as::<Uuid>("build_run_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(build_run) => BootResponse::json(&BuildRunResponse::from(build_run)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/build-runs/{build_run_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        match bus
+                            .execute(GetBuildRun {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                build_run_id: BuildRunId::from_uuid(
+                                    request.param_as::<Uuid>("build_run_id")?,
+                                ),
+                                resource_access,
+                            })
+                            .await?
+                        {
+                            Ok(build_run) => BootResponse::json(&BuildRunResponse::from(build_run)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/build-runs/{build_run_id}/logs",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_logs_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    let parameters: BuildLogsQuery = request.query()?;
-                    match bus
-                        .execute(GetBuildRunLogs {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            build_run_id: BuildRunId::from_uuid(
-                                request.param_as::<Uuid>("build_run_id")?,
-                            ),
-                            after_sequence: decode_sequence_cursor(
-                                parameters.cursor.as_deref(),
-                                "build log",
-                            )?,
-                            limit: parameters.limit,
-                            stream: parameters.stream.map(Into::into),
-                        })
-                        .await?
-                    {
-                        Ok(logs) => BootResponse::json(&BuildRunLogsResponse::from(logs)),
-                        Err(error) => application_error_response(error, request_id),
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/build-runs/{build_run_id}/logs",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_logs_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let parameters: BuildLogsQuery = request.query()?;
+                        match bus
+                            .execute(GetBuildRunLogs {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                build_run_id: BuildRunId::from_uuid(
+                                    request.param_as::<Uuid>("build_run_id")?,
+                                ),
+                                resource_access,
+                                after_sequence: decode_sequence_cursor(
+                                    parameters.cursor.as_deref(),
+                                    "build log",
+                                )?,
+                                limit: parameters.limit,
+                                stream: parameters.stream.map(Into::into),
+                            })
+                            .await?
+                        {
+                            Ok(logs) => BootResponse::json(&BuildRunLogsResponse::from(logs)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
-        .sse(
-            "/{organization_id}/build-runs/{build_run_id}/logs/stream",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&stream_logs_bus);
-                async move {
-                    let parameters: BuildLiveLogsQuery = request.query()?;
-                    if parameters.limit == 0 || parameters.limit > MAX_LIVE_SEQUENCE_RECORDS {
-                        return Err(BootError::BadRequest(format!(
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::sse(
+                "/{organization_id}/build-runs/{build_run_id}/logs/stream",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&stream_logs_bus);
+                    async move {
+                        let parameters: BuildLiveLogsQuery = request.query()?;
+                        if parameters.limit == 0 || parameters.limit > MAX_LIVE_SEQUENCE_RECORDS {
+                            return Err(BootError::BadRequest(format!(
                             "live build log limit must be between 1 and {MAX_LIVE_SEQUENCE_RECORDS}"
                         )));
+                        }
+                        let after_sequence = resolve_sequence_cursor(
+                            &request,
+                            parameters.cursor.as_deref(),
+                            "build log",
+                        )?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        build_run_log_stream(
+                            bus,
+                            GetBuildRunLogs {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                build_run_id: BuildRunId::from_uuid(
+                                    request.param_as::<Uuid>("build_run_id")?,
+                                ),
+                                resource_access,
+                                after_sequence,
+                                limit: parameters.limit,
+                                stream: parameters.stream.map(Into::into),
+                            },
+                        )
+                        .await
                     }
-                    let after_sequence = resolve_sequence_cursor(
-                        &request,
-                        parameters.cursor.as_deref(),
-                        "build log",
-                    )?;
-                    build_run_log_stream(
-                        bus,
-                        GetBuildRunLogs {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            build_run_id: BuildRunId::from_uuid(
-                                request.param_as::<Uuid>("build_run_id")?,
-                            ),
-                            after_sequence,
-                            limit: parameters.limit,
-                            stream: parameters.stream.map(Into::into),
-                        },
-                    )
-                    .await
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
 
 #[derive(Debug, Deserialize)]

@@ -571,6 +571,12 @@ contexts' tables.
   or side effects. Route and Management MCP metadata provide coarse
   discovery/admission only; denied and missing IDs share one `404` contract and
   no second ownership index is persisted.
+- Indirect BuildRun detail, evidence, log, cancellation, and retry requests use
+  the same boundary in Artifacts. External-source BuildRuns authorize their
+  stored project/environment scope before replay or side effects. Hosted
+  Asset-release BuildRuns have no canonical project/environment today, so
+  organization-wide roles may access them while restricted memberships fail
+  closed; neither Artifacts nor Identity fabricates a project association.
 
 ### Project and Environment
 

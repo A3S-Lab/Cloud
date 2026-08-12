@@ -1,7 +1,7 @@
 use super::GetBuildRun;
+use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
 use crate::modules::artifacts::domain::{BuildRun, IBuildRunRepository};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
@@ -23,15 +23,14 @@ impl QueryHandler<GetBuildRun> for GetBuildRunHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<BuildRun>>> {
         let builds = Arc::clone(&self.builds);
         Box::pin(async move {
-            Ok(
-                match builds.find(query.organization_id, query.build_run_id).await {
-                    Ok(build_run) => Ok(build_run),
-                    Err(RepositoryError::NotFound) => {
-                        Err(ApplicationError::NotFound("build run not found".into()))
-                    }
-                    Err(error) => Err(error.into()),
-                },
-            )
+            Ok(BuildRunResourceAccess::new(builds)
+                .build_run(
+                    query.organization_id,
+                    query.build_run_id,
+                    &query.resource_access,
+                    "build run not found",
+                )
+                .await)
         })
     }
 }

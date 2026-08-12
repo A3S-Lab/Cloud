@@ -1,7 +1,8 @@
 use super::{RetryBuildRun, RetryBuildRunResult};
+use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
 use crate::modules::artifacts::domain::{BuildRun, IBuildRunRepository, RequestBuildRetryBundle};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
+use crate::modules::shared_kernel::domain::IdempotencyRequest;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
@@ -24,13 +25,17 @@ impl CommandHandler<RetryBuildRun> for RetryBuildRunHandler {
     {
         let builds = Arc::clone(&self.builds);
         Box::pin(async move {
-            let previous = match builds
-                .find(command.organization_id, command.build_run_id)
+            let previous = match BuildRunResourceAccess::new(Arc::clone(&builds))
+                .build_run(
+                    command.organization_id,
+                    command.build_run_id,
+                    &command.resource_access,
+                    "build run not found",
+                )
                 .await
             {
                 Ok(build_run) => build_run,
-                Err(RepositoryError::NotFound) => return Ok(Err(build_not_found())),
-                Err(error) => return Ok(Err(error.into())),
+                Err(error) => return Ok(Err(error)),
             };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "buildRunId": command.build_run_id,
@@ -87,8 +92,4 @@ impl CommandHandler<RetryBuildRun> for RetryBuildRunHandler {
             }
         })
     }
-}
-
-fn build_not_found() -> ApplicationError {
-    ApplicationError::NotFound("build run not found".into())
 }

@@ -443,7 +443,12 @@ impl ManagementTool {
             | Self::WorkloadsStop
             | Self::WorkloadsRollback
             | Self::DeploymentsGet
-            | Self::DeploymentsCancel => Some(ManagementResourceBinding::ProjectOwnedResource),
+            | Self::DeploymentsCancel
+            | Self::BuildRunsGet
+            | Self::BuildRunLogsGet
+            | Self::BuildEvidenceGet
+            | Self::BuildRunsCancel
+            | Self::BuildRunsRetry => Some(ManagementResourceBinding::ProjectOwnedResource),
             Self::NodesGet => Some(ManagementResourceBinding::NodeArgument),
             Self::ProjectsList => Some(ManagementResourceBinding::ProjectCollection),
             Self::EnvironmentsList => Some(ManagementResourceBinding::EnvironmentCollection),
@@ -1552,6 +1557,7 @@ mod tests {
         AuthPrincipal::new("principal")
             .with_role("organization_restricted")
             .with_scope(ApiTokenScope::WORKLOAD_WRITE)
+            .with_scope(ApiTokenScope::BUILD_WRITE)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -1575,6 +1581,11 @@ mod tests {
         assert!(ManagementTool::WorkloadsRollback.visible_to(&principal));
         assert!(ManagementTool::DeploymentsGet.visible_to(&principal));
         assert!(ManagementTool::DeploymentsCancel.visible_to(&principal));
+        assert!(ManagementTool::BuildRunsGet.visible_to(&principal));
+        assert!(ManagementTool::BuildRunLogsGet.visible_to(&principal));
+        assert!(ManagementTool::BuildEvidenceGet.visible_to(&principal));
+        assert!(ManagementTool::BuildRunsCancel.visible_to(&principal));
+        assert!(ManagementTool::BuildRunsRetry.visible_to(&principal));
     }
 
     #[test]
@@ -1592,5 +1603,7 @@ mod tests {
         assert!(!ManagementTool::WorkloadsStop.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsGet.visible_to(&principal));
         assert!(!ManagementTool::DeploymentsCancel.visible_to(&principal));
+        assert!(!ManagementTool::BuildRunsGet.visible_to(&principal));
+        assert!(!ManagementTool::BuildRunsCancel.visible_to(&principal));
     }
 }

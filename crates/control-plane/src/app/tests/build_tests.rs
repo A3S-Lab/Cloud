@@ -6,6 +6,8 @@ use crate::modules::shared_kernel::domain::{
 
 const SOURCE_ONLY_TOKEN: &str =
     "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const RESTRICTED_BUILD_TOKEN: &str =
+    "a3s_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 #[tokio::test]
 async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Result<()> {
@@ -284,6 +286,284 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
     assert_eq!(attempts["data"][1]["id"], retry_id.to_string());
     assert_eq!(attempts["data"][1]["attempt"], 2);
     assert_eq!(attempts["data"][2]["attempt"], 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn restricted_build_run_boundaries_resolve_scope_before_reads_mutations_and_replay(
+) -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let builds = Arc::new(InMemoryBuildRunRepository::new());
+    let app = build_test_application_with_external_builds(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::clone(&builds),
+    )?;
+    let organization = bootstrap_organization(&app, "build-grants", "Build grants").await?;
+
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "build-grants-membership",
+            json!({"name": "Restricted build operator", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let membership_id = membership["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted build membership has no ID".into()))?;
+    let principal_id = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted build principal has no ID".into()))?;
+    let token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "build-grants-token",
+            json!({
+                "name": "Restricted build operator",
+                "token": RESTRICTED_BUILD_TOKEN,
+                "scopes": [ApiTokenScope::BUILD_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(token.status(), 201);
+
+    let granted_project =
+        create_project(&app, &organization, "build-granted-project", "Granted").await?;
+    let denied_project =
+        create_project(&app, &organization, "build-denied-project", "Denied").await?;
+    let granted_environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{granted_project}/environments"),
+            "build-granted-environment",
+            json!({"name": "Granted"}),
+        ))
+        .await?;
+    assert_eq!(granted_environment.status(), 201);
+    let granted_environment = response_id(&granted_environment)?;
+    let denied_environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{denied_project}/environments"),
+            "build-denied-environment",
+            json!({"name": "Denied"}),
+        ))
+        .await?;
+    assert_eq!(denied_environment.status(), 201);
+    let denied_environment = response_id(&denied_environment)?;
+
+    let organization_id = OrganizationId::from_uuid(
+        Uuid::parse_str(&organization).map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let granted_project_id = ProjectId::from_uuid(
+        Uuid::parse_str(&granted_project)
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let denied_project_id = ProjectId::from_uuid(
+        Uuid::parse_str(&denied_project).map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let granted_environment_id = EnvironmentId::from_uuid(
+        Uuid::parse_str(&granted_environment)
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let denied_environment_id = EnvironmentId::from_uuid(
+        Uuid::parse_str(&denied_environment)
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let granted_build = BuildRun::reserve(
+        organization_id,
+        granted_project_id,
+        granted_environment_id,
+        SourceRevisionId::new(),
+        Utc::now(),
+    );
+    let denied_build = BuildRun::reserve(
+        organization_id,
+        denied_project_id,
+        denied_environment_id,
+        SourceRevisionId::new(),
+        Utc::now(),
+    );
+    let asset_build = BuildRun::reserve_asset_release(
+        organization_id,
+        crate::modules::shared_kernel::domain::AssetId::new(),
+        crate::modules::shared_kernel::domain::AssetReleaseId::new(),
+        Utc::now(),
+    );
+    builds.seed_build(granted_build.clone()).await;
+    builds.seed_build(denied_build.clone()).await;
+    builds.seed_build(asset_build.clone()).await;
+
+    let resource_grants_path =
+        format!("/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants");
+    let granted = app
+        .call(post_json(
+            &resource_grants_path,
+            "build-grants-create",
+            json!({
+                "scope": {"kind": "project", "projectId": granted_project}
+            }),
+        ))
+        .await?;
+    assert_eq!(granted.status(), 201);
+    let granted_resource_id = response_json(&granted)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("Build Resource Grant has no ID".into()))?
+        .to_owned();
+
+    let granted_detail = format!(
+        "/api/v1/organizations/{organization}/build-runs/{}",
+        granted_build.id
+    );
+    let visible = app
+        .call(get_as(&granted_detail, RESTRICTED_BUILD_TOKEN))
+        .await?;
+    assert_eq!(visible.status(), 200);
+    let visible_list = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{granted_project}/environments/{granted_environment}/build-runs"
+            ),
+            RESTRICTED_BUILD_TOKEN,
+        ))
+        .await?;
+    assert_eq!(visible_list.status(), 200);
+
+    let asset_detail = format!(
+        "/api/v1/organizations/{organization}/build-runs/{}",
+        asset_build.id
+    );
+    let organization_wide_asset = app.call(get_as(&asset_detail, ADMIN_TOKEN)).await?;
+    assert_eq!(organization_wide_asset.status(), 200);
+
+    let denied_detail = format!(
+        "/api/v1/organizations/{organization}/build-runs/{}",
+        denied_build.id
+    );
+    for suffix in ["", "/evidence", "/logs"] {
+        assert_resource_not_found_equivalent(
+            &app,
+            get_as(format!("{denied_detail}{suffix}"), RESTRICTED_BUILD_TOKEN),
+            get_as(
+                format!(
+                    "/api/v1/organizations/{organization}/build-runs/{}{suffix}",
+                    BuildRunId::new()
+                ),
+                RESTRICTED_BUILD_TOKEN,
+            ),
+        )
+        .await?;
+    }
+    assert_resource_not_found_equivalent(
+        &app,
+        get_as(&asset_detail, RESTRICTED_BUILD_TOKEN),
+        get_as(
+            format!(
+                "/api/v1/organizations/{organization}/build-runs/{}",
+                BuildRunId::new()
+            ),
+            RESTRICTED_BUILD_TOKEN,
+        ),
+    )
+    .await?;
+
+    assert_resource_not_found_equivalent(
+        &app,
+        delete_as(
+            &denied_detail,
+            "build-cancel-denied",
+            RESTRICTED_BUILD_TOKEN,
+        ),
+        delete_as(
+            format!(
+                "/api/v1/organizations/{organization}/build-runs/{}",
+                BuildRunId::new()
+            ),
+            "build-cancel-missing",
+            RESTRICTED_BUILD_TOKEN,
+        ),
+    )
+    .await?;
+    assert_resource_not_found_equivalent(
+        &app,
+        post_json_as(
+            format!("{denied_detail}/retry"),
+            "build-retry-denied",
+            json!({}),
+            RESTRICTED_BUILD_TOKEN,
+        ),
+        post_json_as(
+            format!(
+                "/api/v1/organizations/{organization}/build-runs/{}/retry",
+                BuildRunId::new()
+            ),
+            "build-retry-missing",
+            json!({}),
+            RESTRICTED_BUILD_TOKEN,
+        ),
+    )
+    .await?;
+
+    let cancelled = app
+        .call(delete_as(
+            &granted_detail,
+            "build-cancel-granted",
+            RESTRICTED_BUILD_TOKEN,
+        ))
+        .await?;
+    assert_eq!(cancelled.status(), 202);
+    let replayed = app
+        .call(delete_as(
+            &granted_detail,
+            "build-cancel-granted",
+            RESTRICTED_BUILD_TOKEN,
+        ))
+        .await?;
+    assert_eq!(replayed.status(), 200);
+
+    let fallback_grant = app
+        .call(post_json(
+            &resource_grants_path,
+            "build-grants-fallback",
+            json!({
+                "scope": {"kind": "project", "projectId": denied_project}
+            }),
+        ))
+        .await?;
+    assert_eq!(fallback_grant.status(), 201);
+    let revoked = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/resource-grants/{granted_resource_id}/revocation"
+            ),
+            "build-grants-revoke",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(revoked.status(), 200);
+    assert_resource_not_found_equivalent(
+        &app,
+        delete_as(
+            &granted_detail,
+            "build-cancel-granted",
+            RESTRICTED_BUILD_TOKEN,
+        ),
+        delete_as(
+            format!(
+                "/api/v1/organizations/{organization}/build-runs/{}",
+                BuildRunId::new()
+            ),
+            "build-cancel-missing-after-revoke",
+            RESTRICTED_BUILD_TOKEN,
+        ),
+    )
+    .await?;
     Ok(())
 }
 

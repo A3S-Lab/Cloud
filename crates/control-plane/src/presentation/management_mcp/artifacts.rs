@@ -7,6 +7,7 @@ use crate::modules::artifacts::presentation::{
 use crate::modules::artifacts::{
     CancelBuildRun, GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns, RetryBuildRun,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::Utc;
@@ -54,12 +55,14 @@ pub async fn get_build_run(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetBuildRun {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            resource_access,
         })
         .await?
     {
@@ -72,12 +75,14 @@ pub async fn get_build_run_logs(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunLogArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetBuildRunLogs {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            resource_access,
             after_sequence: arguments.after_sequence,
             limit: arguments.limit,
             stream: arguments.stream.map(Into::into),
@@ -93,12 +98,14 @@ pub async fn get_build_evidence(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetBuildEvidence {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            resource_access,
         })
         .await?
     {
@@ -113,12 +120,14 @@ pub async fn cancel_build_run(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: BuildRunMutationArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CancelBuildRun {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            resource_access,
             idempotency_key: arguments.idempotency_key,
             requested_at: Utc::now(),
         })
@@ -136,12 +145,14 @@ pub async fn retry_build_run(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: BuildRunMutationArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(RetryBuildRun {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
+            resource_access,
             idempotency_key: arguments.idempotency_key,
             requested_at: Utc::now(),
         })

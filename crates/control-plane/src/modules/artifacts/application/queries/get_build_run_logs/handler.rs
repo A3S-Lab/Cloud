@@ -1,9 +1,9 @@
 use super::GetBuildRunLogs;
+use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
 use crate::modules::artifacts::application::BuildRunLogPage;
 use crate::modules::artifacts::domain::IBuildRunRepository;
 use crate::modules::fleet::application::MAX_LOG_PAGE_SIZE;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
@@ -33,10 +33,16 @@ impl QueryHandler<GetBuildRunLogs> for GetBuildRunLogsHandler {
                     "build log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
                 ))));
             }
-            match builds.find(query.organization_id, query.build_run_id).await {
-                Ok(_) => {}
-                Err(RepositoryError::NotFound) => return Ok(Err(logs_not_found())),
-                Err(error) => return Ok(Err(error.into())),
+            if let Err(error) = BuildRunResourceAccess::new(builds)
+                .build_run(
+                    query.organization_id,
+                    query.build_run_id,
+                    &query.resource_access,
+                    "build run logs not found",
+                )
+                .await
+            {
+                return Ok(Err(error));
             }
             Ok(Err(ApplicationError::Unavailable(
                 BOX_BUILD_LOGS_UNAVAILABLE.into(),
@@ -45,14 +51,11 @@ impl QueryHandler<GetBuildRunLogs> for GetBuildRunLogsHandler {
     }
 }
 
-fn logs_not_found() -> ApplicationError {
-    ApplicationError::NotFound("build run logs not found".into())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
+    use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
     };
@@ -86,6 +89,7 @@ mod tests {
                 GetBuildRunLogs {
                     organization_id,
                     build_run_id: build.id,
+                    resource_access: ResourceAccessEvaluator::organization_wide(),
                     after_sequence: None,
                     limit: 100,
                     stream: None,
