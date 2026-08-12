@@ -1,8 +1,8 @@
 use super::replicas;
 use super::rows::{self, DeploymentSelection, RevisionSelection, WorkloadSelection};
 use super::schema::{
-    ActiveWorkloads, Deployments, McpServiceProfiles, WorkloadRevisionSkillBindings,
-    WorkloadRevisions, Workloads,
+    ActiveWorkloads, DeploymentReplicaBindings, Deployments, McpServiceProfiles, WorkloadReplicas,
+    WorkloadRevisionSkillBindings, WorkloadRevisions, Workloads,
 };
 use crate::infrastructure::{fetch_all, fetch_optional, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
@@ -185,7 +185,29 @@ pub(super) async fn list_active_runtime_targets(
                                 .eq_column(ActiveWorkloads::active_revision_id()),
                         ),
                 )
+                .inner_join::<DeploymentReplicaBindings>(
+                    DeploymentReplicaBindings::deployment_id()
+                        .eq_column(Deployments::id())
+                        .and(
+                            DeploymentReplicaBindings::revision_id()
+                                .eq_column(Deployments::revision_id()),
+                        ),
+                )
+                .inner_join::<WorkloadReplicas>(
+                    WorkloadReplicas::id()
+                        .eq_column(DeploymentReplicaBindings::replica_id())
+                        .and(WorkloadReplicas::workload_id().eq_column(ActiveWorkloads::id()))
+                        .and(
+                            WorkloadReplicas::revision_id()
+                                .eq_column(DeploymentReplicaBindings::revision_id()),
+                        )
+                        .and(
+                            WorkloadReplicas::generation()
+                                .eq_column(DeploymentReplicaBindings::replica_generation()),
+                        ),
+                )
                 .filter(ActiveWorkloads::desired_state().eq("running"))
+                .filter(WorkloadReplicas::lifecycle().eq("desired"))
                 .filter(
                     Deployments::status()
                         .eq("retiring")
@@ -193,6 +215,7 @@ pub(super) async fn list_active_runtime_targets(
                 )
                 .order_by(ActiveWorkloads::updated_at(), OrderDirection::Asc)
                 .order_by(ActiveWorkloads::id(), OrderDirection::Asc)
+                .order_by(Deployments::id(), OrderDirection::Asc)
                 .limit(limit),
         )
         .await
@@ -221,6 +244,20 @@ pub(super) async fn list_active_runtime_targets(
         .await?;
         let replica_binding =
             replicas::find_binding(executor, organization_id, deployment.id).await?;
+        let replica = replicas::find_replica(
+            executor,
+            organization_id,
+            workload.id,
+            replica_binding.replica_id,
+        )
+        .await?;
+        let member = replicas::find_member(
+            executor,
+            organization_id,
+            replica.id,
+            replica_binding.member_id,
+        )
+        .await?;
         if workload.desired_state
             != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
             || workload.active_revision_id != Some(revision.id)
@@ -238,6 +275,8 @@ pub(super) async fn list_active_runtime_targets(
         targets.push(ActiveRuntimeTarget {
             workload,
             revision,
+            replica,
+            member,
             deployment,
             replica_binding,
         });

@@ -49,10 +49,11 @@ pub use domain::services::{
     ReplicaSetReconfigurationError, UnroutedDeploymentRouteUpdater,
 };
 pub use infrastructure::{
-    project_runtime_spec, DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
-    IWorkloadRuntimeControl, InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
-    OciRegistryArtifactResolver, PostgresResourceClaimRepository, PostgresWorkloadRepository,
-    SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,
-    WorkloadReconciliationFailure, WorkloadReconciliationReport, WorkloadRuntimeReconciler,
+    project_replica_runtime_spec, project_runtime_spec, DeploymentFlowConfig,
+    DeploymentFlowDependencies, DeploymentFlowRuntime, IWorkloadRuntimeControl,
+    InMemoryResourceClaimRepository, InMemoryWorkloadRepository, OciRegistryArtifactResolver,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, SecretRotationRestartFailure,
+    SecretRotationRestartReconciler, SecretRotationRestartReport, WorkloadReconciliationFailure,
+    WorkloadReconciliationReport, WorkloadRuntimeReconciler,
 };
 pub use presentation::WorkloadsModule;

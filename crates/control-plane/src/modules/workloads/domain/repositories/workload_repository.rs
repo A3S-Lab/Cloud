@@ -81,6 +81,8 @@ pub struct ReplicaSetWriteResult {
 pub struct ActiveRuntimeTarget {
     pub workload: Workload,
     pub revision: WorkloadRevision,
+    pub replica: WorkloadReplica,
+    pub member: WorkloadReplicaMember,
     pub deployment: Deployment,
     pub replica_binding: DeploymentReplicaBinding,
 }

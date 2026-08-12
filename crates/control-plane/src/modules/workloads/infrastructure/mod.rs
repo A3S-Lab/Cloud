@@ -19,7 +19,7 @@ pub use reconciliation::{
     IWorkloadRuntimeControl, WorkloadReconciliationFailure, WorkloadReconciliationReport,
     WorkloadRuntimeReconciler,
 };
-pub use runtime_spec::project_runtime_spec;
+pub use runtime_spec::{project_replica_runtime_spec, project_runtime_spec};
 pub use secret_rotation_reconciliation::{
     SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,
 };

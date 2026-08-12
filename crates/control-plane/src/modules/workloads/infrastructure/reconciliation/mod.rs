@@ -1,4 +1,4 @@
-use super::project_runtime_spec;
+use super::project_replica_runtime_spec;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, RuntimeObservationRecord,
@@ -8,6 +8,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::domain::entities::{
     DeploymentStatus, ResourceClaim, ResourceClaimState, WorkloadDesiredState,
+    WorkloadReplicaLifecycle,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, IResourceClaimRepository, IWorkloadRuntimeTargetRepository,
@@ -229,7 +230,7 @@ impl WorkloadRuntimeReconciler {
             .deployment
             .node_id
             .ok_or_else(|| "active deployment omitted its node".to_string())?;
-        let spec = project_runtime_spec(&target.revision)?;
+        let spec = project_replica_runtime_spec(&target.revision, &target.replica)?;
         let resource_binding = self.resource_binding(target, &spec, node_id).await?;
         let context = ReconciliationContext {
             target,
@@ -615,9 +616,27 @@ struct ReconciliationContext<'a> {
 }
 
 fn validate_target(target: &ActiveRuntimeTarget) -> Result<(), String> {
+    target.replica.validate()?;
+    target.member.validate()?;
+    target.replica_binding.validate_against(
+        &target.deployment,
+        &target.revision,
+        &target.replica,
+        &target.member,
+    )?;
     if target.workload.desired_state != WorkloadDesiredState::Running
         || target.workload.active_revision_id != Some(target.revision.id)
         || target.revision.workload_id != target.workload.id
+        || target.replica.lifecycle != WorkloadReplicaLifecycle::Desired
+        || target.replica.organization_id != target.workload.organization_id
+        || target.replica.project_id != target.workload.project_id
+        || target.replica.environment_id != target.workload.environment_id
+        || target.replica.workload_id != target.workload.id
+        || target.member.organization_id != target.workload.organization_id
+        || target.member.project_id != target.workload.project_id
+        || target.member.environment_id != target.workload.environment_id
+        || target.member.workload_id != target.workload.id
+        || target.member.replica_id != target.replica.id
         || target.deployment.organization_id != target.workload.organization_id
         || target.deployment.workload_id != target.workload.id
         || target.deployment.revision_id != target.revision.id
@@ -629,12 +648,16 @@ fn validate_target(target: &ActiveRuntimeTarget) -> Result<(), String> {
         || target.deployment.command_id.is_none()
         || target.replica_binding.deployment_id != target.deployment.id
         || target.replica_binding.organization_id != target.workload.organization_id
+        || target.replica_binding.project_id != target.workload.project_id
+        || target.replica_binding.environment_id != target.workload.environment_id
         || target.replica_binding.workload_id != target.workload.id
         || target.replica_binding.revision_id != target.revision.id
-        || target.replica_binding.replica_generation != target.revision.generation
+        || target.replica_binding.replica_id != target.replica.id
+        || target.replica_binding.replica_generation != target.replica.generation
+        || target.replica_binding.member_id != target.member.id
         || target.replica_binding.node_id != target.deployment.node_id
-        || target.replica_binding.runtime_unit_id != target.revision.runtime_unit_id()
-        || target.replica_binding.runtime_generation != target.revision.generation
+        || target.replica_binding.node_id != target.member.node_id
+        || target.replica_binding.placement_generation != target.member.placement_generation
     {
         return Err("active Runtime target is inconsistent".into());
     }
@@ -647,16 +670,16 @@ fn reconciliation_command_id(
     evidence_id: Uuid,
 ) -> NodeCommandId {
     let name = format!(
-        "a3s.cloud.workload-reconcile:{kind}:{}:{}:{evidence_id}",
-        target.workload.id, target.revision.id
+        "a3s.cloud.workload-reconcile:{kind}:{}:{}:{}:{}:{evidence_id}",
+        target.workload.id, target.revision.id, target.replica.id, target.replica.generation
     );
     NodeCommandId::from_uuid(Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes()))
 }
 
 fn reconciliation_correlation_id(target: &ActiveRuntimeTarget) -> Uuid {
     let name = format!(
-        "a3s.cloud.workload-reconcile:{}:{}",
-        target.workload.id, target.revision.id
+        "a3s.cloud.workload-reconcile:{}:{}:{}:{}",
+        target.workload.id, target.revision.id, target.replica.id, target.replica.generation
     );
     Uuid::new_v5(&Uuid::NAMESPACE_OID, name.as_bytes())
 }
@@ -672,7 +695,7 @@ fn inspection_draft(
     Ok(NodeCommandDraft {
         proposed_command_id: command_id,
         node_id,
-        aggregate_id: target.workload.id.as_uuid(),
+        aggregate_id: target.replica.id.as_uuid(),
         payload: NodeCommandPayload::RuntimeInspect {
             unit_id: spec.unit_id.clone(),
             generation: spec.generation,
@@ -702,7 +725,7 @@ fn recovery_draft(
     Ok(NodeCommandDraft {
         proposed_command_id: command_id,
         node_id,
-        aggregate_id: target.workload.id.as_uuid(),
+        aggregate_id: target.replica.id.as_uuid(),
         payload: NodeCommandPayload::RuntimeApply {
             request: Box::new(RuntimeApplyRequest {
                 schema: RuntimeApplyRequest::SCHEMA.into(),
@@ -727,7 +750,7 @@ fn validate_command(
 ) -> Result<(), String> {
     if command.id != command_id
         || command.node_id != node_id
-        || command.aggregate_id != target.workload.id.as_uuid()
+        || command.aggregate_id != target.replica.id.as_uuid()
         || command.correlation_id != reconciliation_correlation_id(target)
     {
         return Err("Runtime reconciliation command identity changed".into());
@@ -781,6 +804,10 @@ fn validate_reconciliation_claim(
     if claim.organization_id != target.workload.organization_id
         || claim.deployment_id != target.deployment.id
         || claim.workload_id != target.workload.id
+        || claim.replica_id != target.replica.id
+        || claim.replica_generation != target.replica.generation
+        || claim.member_id != target.member.id
+        || claim.placement_generation != target.member.placement_generation
         || claim.node_id != node_id
         || claim.runtime_unit_id != spec.unit_id
         || claim.runtime_generation != spec.generation

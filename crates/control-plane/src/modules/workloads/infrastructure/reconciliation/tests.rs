@@ -171,7 +171,7 @@ async fn missing_provider_evidence_reapplies_the_same_revision_once_and_stop_rem
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     let target = active_target(now - ChronoDuration::minutes(1))?;
-    let spec = project_runtime_spec(&target.revision)?;
+    let spec = project_replica_runtime_spec(&target.revision, &target.replica)?;
     let node_id = target.deployment.node_id.ok_or("target node")?;
     let targets = Arc::new(FakeTargets {
         targets: RwLock::new(vec![target.clone()]),
@@ -283,7 +283,7 @@ async fn bound_claim_recovery_reuses_the_exact_durable_prepare_binding(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     let target = active_target(now - ChronoDuration::minutes(1))?;
-    let spec = project_runtime_spec(&target.revision)?;
+    let spec = project_replica_runtime_spec(&target.revision, &target.replica)?;
     let node_id = target.deployment.node_id.ok_or("target node")?;
     let agent_instance_id = Uuid::now_v7();
     let inventory = NodeResourceInventory::new(
@@ -479,7 +479,7 @@ async fn retryable_inspect_failure_uses_a_new_deterministic_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     let target = active_target(now - ChronoDuration::minutes(1))?;
-    let spec = project_runtime_spec(&target.revision)?;
+    let spec = project_replica_runtime_spec(&target.revision, &target.replica)?;
     let node_id = target.deployment.node_id.ok_or("target node")?;
     let targets = Arc::new(FakeTargets {
         targets: RwLock::new(vec![target]),
@@ -525,6 +525,102 @@ async fn retryable_inspect_failure_uses_a_new_deterministic_command(
     assert_eq!(commands.len(), 2);
     assert_ne!(commands[0].id, commands[1].id);
     assert_eq!(commands[1].sequence, commands[0].sequence + 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn reconciliation_commands_are_scoped_to_the_stable_replica_generation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - ChronoDuration::minutes(1);
+    let primary = active_target(base)?;
+    let mut replica = WorkloadReplica::for_ordinal(&primary.workload, &primary.revision, 1)?;
+    let mut member = WorkloadReplicaMember::for_replica(&primary.workload, &replica)?;
+    replica.request_retirement(base + ChronoDuration::seconds(1))?;
+    replica.complete_retirement(&member, base + ChronoDuration::seconds(2))?;
+    replica.reactivate(&primary.revision, base + ChronoDuration::seconds(3))?;
+
+    let node_id = NodeId::new();
+    member.place(node_id, base + ChronoDuration::seconds(3))?;
+    let mut deployment = Deployment::create(
+        DeploymentId::new(),
+        primary.workload.organization_id,
+        primary.workload.id,
+        primary.revision.id,
+        OperationId::new(),
+        base + ChronoDuration::seconds(3),
+    );
+    deployment.resolve(base + ChronoDuration::seconds(3))?;
+    deployment.schedule(node_id, base + ChronoDuration::seconds(3))?;
+    deployment.dispatch(NodeCommandId::new(), base + ChronoDuration::seconds(3))?;
+    deployment.verify(base + ChronoDuration::seconds(3))?;
+    deployment.activate(false, base + ChronoDuration::seconds(3))?;
+    let replica_binding =
+        DeploymentReplicaBinding::create(&deployment, &primary.revision, &replica, &member)?;
+    let secondary = ActiveRuntimeTarget {
+        workload: primary.workload.clone(),
+        revision: primary.revision.clone(),
+        replica,
+        member,
+        deployment,
+        replica_binding,
+    };
+    let primary_spec = project_replica_runtime_spec(&primary.revision, &primary.replica)?;
+    let secondary_spec = project_replica_runtime_spec(&secondary.revision, &secondary.replica)?;
+    assert_ne!(primary_spec.unit_id, secondary_spec.unit_id);
+    assert_eq!(primary_spec.generation, primary.revision.generation);
+    assert_eq!(secondary_spec.generation, 2);
+    assert_ne!(secondary_spec.generation, secondary.revision.generation);
+
+    let expected_aggregates = vec![primary.replica.id.as_uuid(), secondary.replica.id.as_uuid()];
+    let targets = Arc::new(FakeTargets {
+        targets: RwLock::new(vec![primary, secondary]),
+    });
+    let control = Arc::new(FakeControl::default());
+    let reconciler = WorkloadRuntimeReconciler::new(
+        targets,
+        control.clone(),
+        Arc::new(crate::modules::workloads::infrastructure::InMemoryResourceClaimRepository::new()),
+        Duration::from_secs(10),
+        Duration::from_secs(60),
+        Duration::from_secs(30),
+        100,
+    )?;
+
+    let report = reconciler
+        .run_once(base + ChronoDuration::seconds(4))
+        .await?;
+    assert_eq!(report.targets, 2);
+    assert_eq!(report.inspect_commands, 2);
+    assert_eq!(report.pending_commands, 2);
+    assert!(report.failures.is_empty());
+    let commands = control.commands().await;
+    assert_eq!(commands.len(), 2);
+    assert_ne!(commands[0].correlation_id, commands[1].correlation_id);
+    let mut aggregate_ids = commands
+        .iter()
+        .map(|command| command.aggregate_id)
+        .collect::<Vec<_>>();
+    aggregate_ids.sort();
+    let mut expected_aggregates = expected_aggregates;
+    expected_aggregates.sort();
+    assert_eq!(aggregate_ids, expected_aggregates);
+    let mut runtime_identities = commands
+        .iter()
+        .map(|command| match &command.payload {
+            NodeCommandPayload::RuntimeInspect {
+                unit_id,
+                generation,
+            } => Ok((unit_id.clone(), *generation)),
+            _ => Err("replica reconciliation emitted a non-inspect command"),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    runtime_identities.sort();
+    let mut expected_runtime_identities = vec![
+        (primary_spec.unit_id, primary_spec.generation),
+        (secondary_spec.unit_id, secondary_spec.generation),
+    ];
+    expected_runtime_identities.sort();
+    assert_eq!(runtime_identities, expected_runtime_identities);
     Ok(())
 }
 
@@ -583,6 +679,8 @@ fn runtime_target(
     Ok(ActiveRuntimeTarget {
         workload,
         revision,
+        replica,
+        member,
         deployment,
         replica_binding,
     })

@@ -13,9 +13,9 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
-    IWorkloadRepository, OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite,
-    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
-    WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, OciArtifact, PostgresWorkloadRepository,
+    ReconfigureReplicaSetWrite, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
+    Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -595,6 +595,13 @@ pub async fn exercise_replica_set(
             )
             .await?,
         2
+    );
+    assert!(
+        repository
+            .list_active_runtime_targets(100)
+            .await?
+            .is_empty(),
+        "queued replica generations must not enter active Runtime reconciliation",
     );
     Ok(())
 }

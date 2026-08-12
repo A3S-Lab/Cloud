@@ -5,7 +5,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
-    WorkloadReplicaMember, WorkloadRevision,
+    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::WorkloadReplicaSetReconfigured;
 use crate::modules::workloads::domain::repositories::{
@@ -1002,67 +1002,100 @@ impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
             ));
         }
         let state = self.state.read().await;
-        let mut workloads = state
-            .workloads
+        let mut deployments = state
+            .deployments
             .values()
-            .filter(|workload| {
-                workload.desired_state
-                    == crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
-                    && workload.active_revision_id.is_some()
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        workloads.sort_by_key(|workload| (workload.updated_at, workload.id));
-        workloads.truncate(limit);
-
-        workloads
-            .into_iter()
-            .map(|workload| {
-                let revision_id = workload.active_revision_id.ok_or_else(|| {
-                    RepositoryError::Storage(
-                        "active Runtime target omitted its selected revision".into(),
-                    )
-                })?;
-                let revision = state.revisions.get(&revision_id).cloned().ok_or_else(|| {
-                    RepositoryError::Storage(
-                        "active Runtime target references a missing revision".into(),
-                    )
-                })?;
-                let deployment = state
-                    .deployments
-                    .values()
-                    .find(|deployment| {
-                        deployment.workload_id == workload.id
-                            && deployment.revision_id == revision_id
+            .filter(|deployment| {
+                state
+                    .workloads
+                    .get(&deployment.workload_id)
+                    .is_some_and(|workload| {
+                        workload.desired_state
+                            == crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+                            && workload.active_revision_id == Some(deployment.revision_id)
                             && matches!(
                                 deployment.status,
                                 crate::modules::workloads::domain::entities::DeploymentStatus::Retiring
                                     | crate::modules::workloads::domain::entities::DeploymentStatus::Active
                             )
                     })
-                    .cloned()
-                    .ok_or_else(|| {
-                        RepositoryError::Storage(
-                            "active Runtime target has no active deployment".into(),
-                        )
-                    })?;
-                let replica_binding = state
-                    .deployment_replica_bindings
-                    .get(&deployment.id)
-                    .cloned()
-                    .ok_or_else(|| {
-                        RepositoryError::Storage(
-                            "active Runtime target is missing its replica binding".into(),
-                        )
-                    })?;
-                Ok(ActiveRuntimeTarget {
-                    workload,
-                    revision,
-                    deployment,
-                    replica_binding,
-                })
             })
-            .collect()
+            .cloned()
+            .collect::<Vec<_>>();
+        deployments.sort_by_key(|deployment| {
+            state
+                .workloads
+                .get(&deployment.workload_id)
+                .map(|workload| (workload.updated_at, workload.id, deployment.id))
+                .unwrap_or((deployment.updated_at, deployment.workload_id, deployment.id))
+        });
+
+        let mut targets = Vec::with_capacity(limit.min(deployments.len()));
+        for deployment in deployments {
+            let workload = state
+                .workloads
+                .get(&deployment.workload_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "active Runtime target references a missing Workload".into(),
+                    )
+                })?;
+            let revision = state
+                .revisions
+                .get(&deployment.revision_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "active Runtime target references a missing revision".into(),
+                    )
+                })?;
+            let replica_binding = state
+                .deployment_replica_bindings
+                .get(&deployment.id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "active Runtime target is missing its replica binding".into(),
+                    )
+                })?;
+            let replica = state
+                .replicas
+                .get(&replica_binding.replica_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "active Runtime target references a missing replica".into(),
+                    )
+                })?;
+            if replica.lifecycle != WorkloadReplicaLifecycle::Desired
+                || replica.revision_id != replica_binding.revision_id
+                || replica.generation != replica_binding.replica_generation
+            {
+                continue;
+            }
+            let member = state
+                .replica_members
+                .get(&replica_binding.member_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "active Runtime target references a missing replica member".into(),
+                    )
+                })?;
+            targets.push(ActiveRuntimeTarget {
+                workload,
+                revision,
+                replica,
+                member,
+                deployment,
+                replica_binding,
+            });
+            if targets.len() == limit {
+                break;
+            }
+        }
+        Ok(targets)
     }
 }
 

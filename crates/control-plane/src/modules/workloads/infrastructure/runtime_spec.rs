@@ -1,4 +1,6 @@
-use crate::modules::workloads::domain::entities::WorkloadRevision;
+use crate::modules::workloads::domain::entities::{
+    WorkloadReplica, WorkloadReplicaLifecycle, WorkloadRevision,
+};
 use a3s_cloud_contracts::CloudSecretReference;
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
@@ -14,6 +16,21 @@ pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSp
             .mcp_binding()
             .map(|binding| binding.profile_digest().as_str()),
     )
+}
+
+pub fn project_replica_runtime_spec(
+    revision: &WorkloadRevision,
+    replica: &WorkloadReplica,
+) -> Result<RuntimeUnitSpec, String> {
+    replica.validate()?;
+    if replica.lifecycle == WorkloadReplicaLifecycle::Retired {
+        return Err("retired Workload replica has no Runtime projection".into());
+    }
+    let mut spec = project_runtime_spec(revision)?;
+    spec.unit_id = replica.runtime_unit_id(revision)?;
+    spec.generation = replica.generation;
+    spec.validate()?;
+    Ok(spec)
 }
 
 /// Project one ordinary Runtime Service while binding an optional immutable
