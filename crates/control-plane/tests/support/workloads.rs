@@ -3,6 +3,7 @@ use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeDrainRepository, INodeRepository,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
@@ -1399,6 +1400,38 @@ pub async fn exercise_placement_group_plans(
             })
         })
         .collect::<Result<Vec<_>, std::num::TryFromIntError>>()?;
+    let capabilities = NodeCapabilities::new(
+        "test-runtime",
+        "postgres-placement-group",
+        serde_json::json!({}),
+    )?;
+    for placement in &placements {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, aggregate_version) values (",
+                )
+                .bind(organization_uuid)
+                .append(", ")
+                .bind(placement.node_id.as_uuid())
+                .append(", ")
+                .bind(format!("PostgreSQL placement group {}", placement.ordinal + 1))
+                .append(", ")
+                .bind(format!("postgres-placement-group-{}", placement.node_id))
+                .append(", 'ready', ")
+                .bind(Uuid::now_v7())
+                .append(", 'test', 'test-runtime', 'postgres-placement-group', ")
+                .bind(capabilities.digest())
+                .append(", ")
+                .bind(capabilities.document().clone())
+                .append(", ")
+                .bind(deployment_requested_at)
+                .append(", ")
+                .bind(deployment_requested_at)
+                .append(", 1)"),
+            )
+            .await?;
+    }
     let schedule_write = PlacementGroupSchedulingWrite {
         organization_id,
         deployment_id: resolving.id,
@@ -1408,6 +1441,22 @@ pub async fn exercise_placement_group_plans(
         placements,
         scheduled_at: deployment_requested_at,
     };
+    let mut stale_candidate_write = schedule_write.clone();
+    stale_candidate_write.placements[0].node_id = NodeId::new();
+    assert!(matches!(
+        repository
+            .schedule_placement_group(stale_candidate_write)
+            .await,
+        Err(RepositoryError::Conflict(message))
+            if message.contains("node readiness or pool membership changed")
+    ));
+    assert_eq!(
+        repository
+            .find_deployment(organization_id, resolving.id)
+            .await?
+            .status,
+        DeploymentStatus::Resolving
+    );
     let (left_schedule, right_schedule) = tokio::join!(
         repository.schedule_placement_group(schedule_write.clone()),
         repository.schedule_placement_group(schedule_write),
