@@ -4,7 +4,10 @@ use super::super::types::{
     DispatchedCleanup,
 };
 use super::super::{cancel_database_reservation, flow_error, DeploymentFlowRuntime};
-use super::{bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment};
+use super::{
+    bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment,
+    validate_resolved_replica_binding,
+};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use crate::modules::workloads::domain::entities::DeploymentStatus;
@@ -139,6 +142,12 @@ async fn dispatch(
     if deployment.command_id.is_none() {
         return Ok(CleanupDispatchStepOutput::NotRequired { cleaned_at: now });
     }
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load replica binding for cleanup", error))?;
+    validate_resolved_replica_binding(&replica_binding, &deployment, &input.resolved)?;
     let node_id = deployment.node_id.ok_or_else(|| {
         FlowError::Runtime("dispatched deployment cleanup omitted its node".into())
     })?;
@@ -169,6 +178,11 @@ async fn dispatch(
             .await
             .map_err(|error| flow_error("could not reload Runtime cleanup command", error))?
             .ok_or_else(|| FlowError::Runtime("Runtime cleanup command is missing".into()))?;
+        if command.aggregate_id != replica_binding.replica_id.as_uuid() {
+            return Err(FlowError::Runtime(
+                "Runtime cleanup changed its replica aggregate".into(),
+            ));
+        }
         return Ok(CleanupDispatchStepOutput::Ready {
             dispatched: DispatchedCleanup {
                 node_id,
@@ -191,7 +205,7 @@ async fn dispatch(
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: command_id,
             node_id,
-            aggregate_id: deployment.workload_id.as_uuid(),
+            aggregate_id: replica_binding.replica_id.as_uuid(),
             payload,
             issued_at,
             not_after,
@@ -200,7 +214,10 @@ async fn dispatch(
         .await
         .map_err(|error| flow_error("could not enqueue Runtime cleanup", error))?
         .value;
-    if command.id != command_id || command.node_id != node_id {
+    if command.id != command_id
+        || command.node_id != node_id
+        || command.aggregate_id != replica_binding.replica_id.as_uuid()
+    {
         return Err(FlowError::Runtime(
             "node command repository changed the cleanup command identity".into(),
         ));
@@ -402,6 +419,12 @@ pub(super) async fn dispatch_failed(
     if deployment.command_id.is_none() {
         return Ok(CleanupDispatchStepOutput::NotRequired { cleaned_at: now });
     }
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load failed candidate replica binding", error))?;
+    validate_resolved_replica_binding(&replica_binding, &deployment, &input.resolved)?;
     let node_id = deployment
         .node_id
         .ok_or_else(|| FlowError::Runtime("failed candidate omitted its Runtime node".into()))?;
@@ -437,7 +460,7 @@ pub(super) async fn dispatch_failed(
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: command_id,
             node_id,
-            aggregate_id: deployment.workload_id.as_uuid(),
+            aggregate_id: replica_binding.replica_id.as_uuid(),
             payload,
             issued_at,
             not_after,
@@ -446,7 +469,10 @@ pub(super) async fn dispatch_failed(
         .await
         .map_err(|error| flow_error("could not enqueue failed Runtime cleanup", error))?
         .value;
-    if command.id != command_id || command.node_id != node_id {
+    if command.id != command_id
+        || command.node_id != node_id
+        || command.aggregate_id != replica_binding.replica_id.as_uuid()
+    {
         return Err(FlowError::Runtime(
             "failed Runtime cleanup command identity changed".into(),
         ));

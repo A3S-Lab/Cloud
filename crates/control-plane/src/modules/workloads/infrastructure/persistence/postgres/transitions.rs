@@ -397,6 +397,11 @@ pub(super) async fn activate(
                     return Ok((workload, deployment));
                 }
                 require_expected_version(&deployment, expected_version)?;
+                let at = if workload.active_revision_id == Some(deployment.revision_id) {
+                    at.max(workload.updated_at)
+                } else {
+                    at
+                };
                 let previous_deployment_version = deployment.aggregate_version;
                 let previous_workload_version = workload.aggregate_version;
                 deployment

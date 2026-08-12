@@ -9,9 +9,11 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::events::WorkloadReplicaSetReconfigured;
 use crate::modules::workloads::domain::repositories::{
-    ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IWorkloadRepository,
-    IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite, ReplicaSetWriteResult,
-    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, WorkloadStopBundle,
+    ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
+    IWorkloadReplicaDeploymentRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    WorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
     plan_replica_set_reconfiguration, ReplicaSetReconfigurationError,
@@ -20,6 +22,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
+
+use crate::modules::workloads::infrastructure::replica_deployment_materialization::{
+    build_replica_deployment_write, created_materialization, materialization_from_existing,
+};
 
 #[derive(Default)]
 pub struct InMemoryWorkloadRepository {
@@ -883,6 +889,11 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .get(&workload_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)?;
+        let at = if workload.active_revision_id == Some(revision_id) {
+            at.max(workload.updated_at)
+        } else {
+            at
+        };
         deployment
             .activate(retirement_required, at)
             .map_err(transition_error)?;
@@ -980,6 +991,172 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             deployment.cancel(at)
         })
         .await
+    }
+}
+
+#[async_trait]
+impl IWorkloadReplicaDeploymentRepository for InMemoryWorkloadRepository {
+    async fn pending_replica_deployments(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<ReplicaDeploymentCandidate>, RepositoryError> {
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "replica deployment candidate limit must be between 1 and 10000".into(),
+            ));
+        }
+        let state = self.state.read().await;
+        let mut candidates = state
+            .replicas
+            .values()
+            .filter_map(|replica| {
+                let workload = state.workloads.get(&replica.workload_id)?;
+                let control = state.controls.get(&replica.workload_id)?;
+                let already_bound = state.deployment_replica_bindings.values().any(|binding| {
+                    binding.replica_id == replica.id
+                        && binding.replica_generation == replica.generation
+                });
+                if replica.lifecycle != WorkloadReplicaLifecycle::Desired
+                    || workload.desired_state
+                        != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+                    || workload
+                        .active_revision_id
+                        .is_some_and(|active| active != replica.revision_id)
+                    || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+                    || already_bound
+                {
+                    return None;
+                }
+                Some((
+                    replica.updated_at,
+                    ReplicaDeploymentCandidate {
+                        organization_id: replica.organization_id,
+                        workload_id: replica.workload_id,
+                        replica_id: replica.id,
+                        replica_ordinal: replica.ordinal,
+                        revision_id: replica.revision_id,
+                        revision_generation: replica.revision_generation,
+                        replica_generation: replica.generation,
+                    },
+                ))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(updated_at, candidate)| {
+            (
+                *updated_at,
+                candidate.workload_id,
+                candidate.replica_ordinal,
+                candidate.replica_id,
+            )
+        });
+        Ok(candidates
+            .into_iter()
+            .take(limit)
+            .map(|(_, candidate)| candidate)
+            .collect())
+    }
+
+    async fn materialize_replica_deployment(
+        &self,
+        candidate: ReplicaDeploymentCandidate,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Option<ReplicaDeploymentMaterialization>, RepositoryError> {
+        let mut state = self.state.write().await;
+        let workload = state
+            .workloads
+            .get(&candidate.workload_id)
+            .filter(|workload| workload.organization_id == candidate.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let control = state
+            .controls
+            .get(&candidate.workload_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("Workload is missing its durable control record".into())
+            })?;
+        control
+            .validate_against(&workload)
+            .map_err(RepositoryError::Storage)?;
+        let replica = state
+            .replicas
+            .get(&candidate.replica_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("replica deployment candidate is missing".into())
+            })?;
+        if replica.workload_id != candidate.workload_id
+            || replica.ordinal != candidate.replica_ordinal
+            || replica.revision_id != candidate.revision_id
+            || replica.revision_generation != candidate.revision_generation
+            || replica.generation != candidate.replica_generation
+            || replica.lifecycle != WorkloadReplicaLifecycle::Desired
+            || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+            || workload.desired_state
+                != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+            || workload
+                .active_revision_id
+                .is_some_and(|active| active != replica.revision_id)
+        {
+            return Ok(None);
+        }
+        if let Some(binding) = state.deployment_replica_bindings.values().find(|binding| {
+            binding.replica_id == replica.id && binding.replica_generation == replica.generation
+        }) {
+            let deployment = state
+                .deployments
+                .get(&binding.deployment_id)
+                .cloned()
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "replica generation binding references a missing deployment".into(),
+                    )
+                })?;
+            return materialization_from_existing(candidate, deployment)
+                .map(Some)
+                .map_err(RepositoryError::Storage);
+        }
+        let revision = state
+            .revisions
+            .get(&candidate.revision_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("replica deployment revision is missing".into())
+            })?;
+        let member_id = WorkloadReplicaMemberId::from_uuid(replica.id.as_uuid());
+        let member = state
+            .replica_members
+            .get(&member_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage("replica deployment member is missing".into())
+            })?;
+        let write = build_replica_deployment_write(
+            candidate,
+            &workload,
+            &revision,
+            &replica,
+            &member,
+            requested_at,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        if state.deployments.contains_key(&write.deployment.id)
+            || state
+                .deployment_replica_bindings
+                .contains_key(&write.deployment.id)
+        {
+            return Err(RepositoryError::Storage(
+                "deterministic replica deployment identity is already bound inconsistently".into(),
+            ));
+        }
+        state
+            .deployments
+            .insert(write.deployment.id, write.deployment.clone());
+        state
+            .deployment_replica_bindings
+            .insert(write.deployment.id, write.binding.clone());
+        state.outbox.push(write.event.clone());
+        Ok(Some(created_materialization(candidate, write)))
     }
 }
 

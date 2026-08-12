@@ -4,7 +4,10 @@ use super::super::types::{
     RetirementObserveStepOutput,
 };
 use super::super::{cancel_database_reservation, flow_error, DeploymentFlowRuntime};
-use super::{bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment};
+use super::{
+    bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment,
+    validate_resolved_replica_binding,
+};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use crate::modules::workloads::domain::entities::DeploymentStatus;
@@ -63,6 +66,12 @@ pub(super) async fn dispatch(
             "one-node update changed nodes before Runtime retirement".into(),
         ));
     }
+    let replica_binding = runtime
+        .workloads
+        .find_deployment_replica_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load replica binding for retirement", error))?;
+    validate_resolved_replica_binding(&replica_binding, &deployment, &input.resolved)?;
     let retirement_deadline = activated_at
         .checked_add_signed(runtime.config.cleanup_timeout)
         .ok_or_else(|| FlowError::Runtime("Runtime retirement deadline overflowed".into()))?;
@@ -114,7 +123,7 @@ pub(super) async fn dispatch(
         .enqueue_command(NodeCommandDraft {
             proposed_command_id: command_id,
             node_id: previous.node_id,
-            aggregate_id: deployment.workload_id.as_uuid(),
+            aggregate_id: replica_binding.replica_id.as_uuid(),
             payload,
             issued_at,
             not_after,
@@ -123,7 +132,10 @@ pub(super) async fn dispatch(
         .await
         .map_err(|error| flow_error("could not enqueue Runtime retirement", error))?
         .value;
-    if command.id != command_id || command.node_id != previous.node_id {
+    if command.id != command_id
+        || command.node_id != previous.node_id
+        || command.aggregate_id != replica_binding.replica_id.as_uuid()
+    {
         return Err(FlowError::Runtime(
             "node command repository changed the retirement command identity".into(),
         ));

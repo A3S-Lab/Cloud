@@ -38,15 +38,16 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::events::{DeploymentRequested, WorkloadStopRequested};
 use crate::modules::workloads::domain::repositories::{
-    CreateDeploymentBundle, IResourceClaimRepository, IWorkloadRepository,
-    ReconfigureReplicaSetWrite, RequestWorkloadStopBundle,
+    CreateDeploymentBundle, IResourceClaimRepository, IWorkloadReplicaDeploymentRepository,
+    IWorkloadRepository, ReconfigureReplicaSetWrite, RequestWorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
     DeploymentRouteStage, DeploymentRouteUpdateRequest, IDeploymentRouteUpdater,
     IOciArtifactResolver, OciArtifactResolutionError,
 };
 use crate::modules::workloads::infrastructure::{
-    project_runtime_spec, InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
+    project_replica_runtime_spec, project_runtime_spec, InMemoryResourceClaimRepository,
+    InMemoryWorkloadRepository, ReplicaDeploymentMaterializer,
 };
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, NodeCommandAck, NodeCommandFailure,
@@ -98,7 +99,7 @@ async fn replica_set_creation_materializes_stable_ordered_identities_once(
     )?;
     bundle.control = WorkloadControlSpec::unmanaged_replica_set(1, 3)?;
     let replay = bundle.clone();
-    let repository = InMemoryWorkloadRepository::new();
+    let repository = Arc::new(InMemoryWorkloadRepository::new());
 
     repository.create_deployment(bundle).await?;
     assert!(repository.create_deployment(replay).await?.replayed);
@@ -117,7 +118,7 @@ async fn replica_set_creation_materializes_stable_ordered_identities_once(
         .all(|replica| replica.lifecycle == WorkloadReplicaLifecycle::Desired));
     assert_eq!(replicas[0].id.as_uuid(), workload.id.as_uuid());
     assert_ne!(replicas[1].id, replicas[2].id);
-    for replica in replicas {
+    for replica in &replicas {
         let members = repository
             .list_workload_replica_members(organization_id, replica.id)
             .await?;
@@ -125,6 +126,270 @@ async fn replica_set_creation_materializes_stable_ordered_identities_once(
         assert_eq!(members[0].id.as_uuid(), replica.id.as_uuid());
         assert_eq!(members[0].node_id, None);
     }
+    let candidates = repository.pending_replica_deployments(10).await?;
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|candidate| candidate.replica_ordinal)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let candidate = candidates[0];
+    let (left, right) = tokio::join!(
+        repository.materialize_replica_deployment(candidate, requested_at),
+        repository.materialize_replica_deployment(candidate, requested_at),
+    );
+    let left = left?.ok_or("left replica materialization was skipped")?;
+    let right = right?.ok_or("right replica materialization was skipped")?;
+    assert_ne!(left.created, right.created);
+    assert_eq!(left.deployment, right.deployment);
+    assert_eq!(left.operation, right.operation);
+
+    let materializer = ReplicaDeploymentMaterializer::new(
+        repository.clone(),
+        std::time::Duration::from_millis(1),
+        10,
+    )?;
+    let report = materializer
+        .run_once(requested_at + Duration::seconds(1))
+        .await?;
+    assert_eq!(report.candidates, 1);
+    assert_eq!(report.created, 1);
+    assert!(report.failures.is_empty());
+    assert_eq!(
+        materializer
+            .run_once(requested_at + Duration::seconds(2))
+            .await?,
+        crate::modules::workloads::infrastructure::ReplicaDeploymentMaterializationReport::default(
+        )
+    );
+    let deployments = repository
+        .list_deployments(organization_id, workload.id)
+        .await?;
+    assert_eq!(deployments.len(), 3);
+    assert_eq!(
+        deployments
+            .iter()
+            .map(|deployment| deployment.operation_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    assert_eq!(
+        repository
+            .outbox_events()
+            .await
+            .iter()
+            .filter(|event| event.event_key == "workload.deployment.requested")
+            .count(),
+        3
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id, capabilities) =
+        ready_node(&nodes, organization_id, base).await?;
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let runtime =
+        runtime_with_resource_claims(&workloads, &nodes, resource_claims, Duration::seconds(10))?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("replica deployment Flow")?,
+        base,
+    );
+    let mut bundle = deployment_bundle(workload.clone(), 1, '9', base, "replica-deployment-flow")?;
+    bundle.control = WorkloadControlSpec::unmanaged_replica_set(1, 3)?;
+    let revision = bundle.revision.clone();
+    let canonical_deployment = bundle.deployment.clone();
+    let canonical_operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+
+    engine
+        .start_with_id(
+            canonical_operation.id.to_string(),
+            workflow_spec(),
+            canonical_operation.input,
+        )
+        .await?;
+    let canonical_lease =
+        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
+    let canonical_apply = canonical_lease
+        .commands
+        .iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
+        .ok_or("canonical Runtime apply")?;
+    let canonical_sequence = canonical_apply.sequence;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        canonical_apply,
+        healthy_observation(
+            &project_runtime_spec(&revision)?,
+            RuntimeHealthState::Healthy,
+        )?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, canonical_deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Active
+    );
+
+    let candidate = workloads
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("noncanonical replica candidate")?;
+    assert_eq!(candidate.replica_ordinal, 1);
+    let materialization = workloads
+        .materialize_replica_deployment(candidate, base)
+        .await?
+        .ok_or("replica deployment materialization")?;
+    let replica = workloads
+        .find_workload_replica(
+            organization_id,
+            workload.id,
+            materialization.candidate.replica_id,
+        )
+        .await?;
+    let expected = project_replica_runtime_spec(&revision, &replica)?;
+
+    let operation_id = materialization.operation.id.to_string();
+    engine
+        .start_with_id(
+            operation_id.clone(),
+            workflow_spec(),
+            materialization.operation.input,
+        )
+        .await?;
+    let leased = prepare_and_lease_apply(
+        &engine,
+        &nodes,
+        node_id,
+        agent_instance_id,
+        canonical_sequence,
+    )
+    .await?;
+    let apply = leased
+        .commands
+        .iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
+        .ok_or("replica Runtime apply")?;
+    assert_eq!(apply.aggregate_id, replica.id.as_uuid());
+    let NodeCommandPayload::RuntimeApply { request, .. } = &apply.payload else {
+        return Err("replica deployment emitted a non-apply command".into());
+    };
+    assert_eq!(request.spec, expected);
+    assert_ne!(request.spec.unit_id, revision.runtime_unit_id());
+    let active_replica_sequence = apply.sequence;
+    record_observation(
+        &nodes,
+        node_id,
+        agent_instance_id,
+        &capabilities,
+        apply,
+        healthy_observation(&expected, RuntimeHealthState::Healthy)?,
+    )
+    .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+    assert_eq!(
+        engine.snapshot(&operation_id).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, materialization.deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Active
+    );
+
+    let cleanup_candidate = workloads
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("cleanup replica candidate")?;
+    assert_eq!(cleanup_candidate.replica_ordinal, 2);
+    let cleanup_materialization = workloads
+        .materialize_replica_deployment(cleanup_candidate, base)
+        .await?
+        .ok_or("cleanup replica deployment materialization")?;
+    let cleanup_replica = workloads
+        .find_workload_replica(
+            organization_id,
+            workload.id,
+            cleanup_materialization.candidate.replica_id,
+        )
+        .await?;
+    let cleanup_spec = project_replica_runtime_spec(&revision, &cleanup_replica)?;
+    engine
+        .start_with_id(
+            cleanup_materialization.operation.id.to_string(),
+            workflow_spec(),
+            cleanup_materialization.operation.input,
+        )
+        .await?;
+    let cleanup_apply_lease = prepare_and_lease_apply(
+        &engine,
+        &nodes,
+        node_id,
+        agent_instance_id,
+        active_replica_sequence,
+    )
+    .await?;
+    let cleanup_apply = cleanup_apply_lease
+        .commands
+        .iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
+        .ok_or("cleanup replica Runtime apply")?;
+    assert_eq!(cleanup_apply.aggregate_id, cleanup_replica.id.as_uuid());
+    let NodeCommandPayload::RuntimeApply { request, .. } = &cleanup_apply.payload else {
+        return Err("cleanup replica deployment emitted a non-apply command".into());
+    };
+    assert_eq!(request.spec, cleanup_spec);
+    let cleanup_apply_sequence = cleanup_apply.sequence;
+    let applying = workloads
+        .find_deployment(organization_id, cleanup_materialization.deployment.id)
+        .await?;
+    workloads
+        .mark_cancellation_requested(
+            applying.id,
+            applying.aggregate_version,
+            Utc::now().max(applying.updated_at),
+        )
+        .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(3))
+        .await?;
+    let cleanup_lease = lease(&nodes, node_id, agent_instance_id, cleanup_apply_sequence).await?;
+    let cleanup = cleanup_lease
+        .commands
+        .iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeRemove { .. }))
+        .ok_or("replica Runtime cleanup")?;
+    assert_eq!(cleanup.aggregate_id, cleanup_replica.id.as_uuid());
     Ok(())
 }
 

@@ -13,9 +13,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
-    IWorkloadRepository, IWorkloadRuntimeTargetRepository, OciArtifact, PostgresWorkloadRepository,
-    ReconfigureReplicaSetWrite, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
-    Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
+    IWorkloadReplicaDeploymentRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
+    WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -468,6 +469,44 @@ pub async fn exercise_replica_set(
         )
         .await?;
     assert_eq!(stored_count, 3);
+    let candidates = repository.pending_replica_deployments(10).await?;
+    assert_eq!(
+        candidates
+            .iter()
+            .map(|candidate| candidate.replica_ordinal)
+            .collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    let first_candidate = candidates[0];
+    let (left, right) = tokio::join!(
+        repository.materialize_replica_deployment(first_candidate, workload.created_at),
+        repository.materialize_replica_deployment(first_candidate, workload.created_at),
+    );
+    let left = left?.ok_or("left PostgreSQL replica materialization was skipped")?;
+    let right = right?.ok_or("right PostgreSQL replica materialization was skipped")?;
+    assert_ne!(left.created, right.created);
+    assert_eq!(left.deployment, right.deployment);
+    assert_eq!(left.operation, right.operation);
+    let remaining = repository.pending_replica_deployments(10).await?;
+    assert_eq!(remaining.len(), 1);
+    assert!(repository
+        .materialize_replica_deployment(remaining[0], workload.created_at)
+        .await?
+        .is_some_and(|result| result.created));
+    assert!(repository.pending_replica_deployments(10).await?.is_empty());
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<(i64, i64, i64, i64)>(
+                    "select count(*), count(distinct binding.runtime_unit_id), count(distinct deployment.operation_id), count(*) filter (where deployment.status = 'queued') from deployment_replica_bindings binding join deployments deployment on deployment.id = binding.deployment_id where binding.organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and binding.workload_id = ")
+                .bind(workload.id.as_uuid()),
+            )
+            .await?,
+        (3, 3, 3, 3)
+    );
 
     let scalable_workload = Workload::create(
         WorkloadId::new(),
@@ -547,6 +586,13 @@ pub async fn exercise_replica_set(
         Err(RepositoryError::IdempotencyConflict)
     ));
 
+    let stale_materialization = repository
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .find(|candidate| candidate.workload_id == scalable_workload.id)
+        .ok_or("scaled replica deployment candidate")?;
+
     let scaled_down = repository
         .reconfigure_replica_set(replica_set_write(
             &winner.control,
@@ -573,6 +619,16 @@ pub async fn exercise_replica_set(
         .list_workload_replicas(organization_id, scalable_workload.id)
         .await?;
     assert_eq!(persisted, scaled_down.replicas);
+    assert!(
+        repository
+            .materialize_replica_deployment(
+                stale_materialization,
+                scalable_workload.created_at + Duration::seconds(3),
+            )
+            .await?
+            .is_none(),
+        "a candidate retired before its lock was acquired must not create a deployment",
+    );
     assert_eq!(
         database
             .fetch_one_as(

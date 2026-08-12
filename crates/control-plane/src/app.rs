@@ -157,6 +157,7 @@ use crate::modules::workflow::{
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
+use crate::modules::workloads::domain::repositories::IWorkloadReplicaDeploymentRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
@@ -166,10 +167,10 @@ use crate::modules::workloads::{
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
     IWorkloadRuntimeControl, ListWorkloadsHandler, OciRegistryArtifactResolver,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository, RollbackWorkloadDeploymentHandler,
-    SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
-    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
-    WorkloadRuntimeReconciler, WorkloadsModule,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, ReplicaDeploymentMaterializer,
+    RollbackWorkloadDeploymentHandler, SecretRotationRestartReconciler, StopWorkloadHandler,
+    UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeploymentHandler,
+    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
@@ -333,6 +334,8 @@ pub async fn build_application_with_source_resolver(
     let resource_claims: Arc<dyn IResourceClaimRepository> =
         Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
     let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
+    let replica_deployments: Arc<dyn IWorkloadReplicaDeploymentRepository> =
+        workload_repository.clone();
     let workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository> = workload_repository.clone();
     let secret_rotation_restarts: Arc<dyn ISecretRotationRestartRepository> =
         workload_repository.clone();
@@ -897,6 +900,12 @@ pub async fn build_application_with_source_resolver(
         100,
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
+    let replica_deployment_materializer = ReplicaDeploymentMaterializer::new(
+        replica_deployments,
+        Duration::from_millis(config.deployments.reconcile_interval_ms),
+        100,
+    )
+    .map_err(ControlPlaneStartupError::NodeControl)?;
     let secret_rotation_restart_reconciler = SecretRotationRestartReconciler::new(
         secret_rotation_restarts,
         Duration::from_millis(config.deployments.reconcile_interval_ms),
@@ -987,6 +996,7 @@ pub async fn build_application_with_source_resolver(
             run_operations.then_some(gateway_replica_recovery_reconciler),
             run_operations.then_some(gateway_rollout_rollback_reconciler),
             run_operations.then_some(secret_rotation_restart_reconciler),
+            run_operations.then_some(replica_deployment_materializer),
             run_operations.then_some(workload_reconciler),
             run_operations.then_some(log_retention_worker),
             run_operations.then_some(log_compaction_worker),
