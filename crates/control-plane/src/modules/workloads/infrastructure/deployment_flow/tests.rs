@@ -3,6 +3,7 @@ use crate::modules::edge::domain::events::GatewayScopeCreated;
 use crate::modules::edge::domain::repositories::{
     CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
 };
+use crate::modules::edge::domain::services::IRouteTargetReader;
 use crate::modules::edge::domain::{
     DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial, GatewayPublication,
     GatewayRouteCutover, GatewayScope, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
@@ -10,7 +11,7 @@ use crate::modules::edge::domain::{
 };
 use crate::modules::edge::infrastructure::{
     EdgeDeploymentRouteUpdater, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig,
+    GatewaySnapshotCompilerConfig, WorkloadRouteTargetReader,
 };
 use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft};
@@ -194,8 +195,51 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
     let organization_id = OrganizationId::new();
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let nodes = Arc::new(InMemoryNodeRepository::new());
-    let (node_id, agent_instance_id, capabilities) =
-        ready_node(&nodes, organization_id, base).await?;
+    let first_proposed = NodeId::from_uuid(Uuid::from_u128(0x101));
+    let second_proposed = NodeId::from_uuid(Uuid::from_u128(0x102));
+    let third_proposed = NodeId::from_uuid(Uuid::from_u128(0x103));
+    let (first_node_id, first_agent_instance_id, first_capabilities) =
+        ready_node_with_capabilities(
+            &nodes,
+            organization_id,
+            base,
+            "replica-node-a",
+            'a',
+            100,
+            32 * 1024 * 1024,
+            first_proposed,
+            capabilities(),
+        )
+        .await?;
+    let (second_node_id, second_agent_instance_id, second_capabilities) =
+        ready_node_with_capabilities(
+            &nodes,
+            organization_id,
+            base,
+            "replica-node-b",
+            'b',
+            100,
+            32 * 1024 * 1024,
+            second_proposed,
+            capabilities(),
+        )
+        .await?;
+    let (third_node_id, third_agent_instance_id, _) = ready_node_with_capabilities(
+        &nodes,
+        organization_id,
+        base,
+        "replica-node-c",
+        'c',
+        100,
+        32 * 1024 * 1024,
+        third_proposed,
+        capabilities(),
+    )
+    .await?;
+    assert_eq!(
+        [first_node_id, second_node_id, third_node_id],
+        [first_proposed, second_proposed, third_proposed]
+    );
     let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
     let runtime =
         runtime_with_resource_claims(&workloads, &nodes, resource_claims, Duration::seconds(10))?;
@@ -223,18 +267,17 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
         )
         .await?;
     let canonical_lease =
-        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
+        prepare_and_lease_apply(&engine, &nodes, first_node_id, first_agent_instance_id, 0).await?;
     let canonical_apply = canonical_lease
         .commands
         .iter()
         .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
         .ok_or("canonical Runtime apply")?;
-    let canonical_sequence = canonical_apply.sequence;
     record_observation(
         &nodes,
-        node_id,
-        agent_instance_id,
-        &capabilities,
+        first_node_id,
+        first_agent_instance_id,
+        &first_capabilities,
         canonical_apply,
         healthy_observation(
             &project_runtime_spec(&revision)?,
@@ -251,6 +294,13 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             .await?
             .status,
         DeploymentStatus::Active
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, canonical_deployment.id)
+            .await?
+            .node_id,
+        Some(first_node_id)
     );
 
     let candidate = workloads
@@ -281,14 +331,9 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             materialization.operation.input,
         )
         .await?;
-    let leased = prepare_and_lease_apply(
-        &engine,
-        &nodes,
-        node_id,
-        agent_instance_id,
-        canonical_sequence,
-    )
-    .await?;
+    let leased =
+        prepare_and_lease_apply(&engine, &nodes, second_node_id, second_agent_instance_id, 0)
+            .await?;
     let apply = leased
         .commands
         .iter()
@@ -300,12 +345,11 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
     };
     assert_eq!(request.spec, expected);
     assert_ne!(request.spec.unit_id, revision.runtime_unit_id());
-    let active_replica_sequence = apply.sequence;
     record_observation(
         &nodes,
-        node_id,
-        agent_instance_id,
-        &capabilities,
+        second_node_id,
+        second_agent_instance_id,
+        &second_capabilities,
         apply,
         healthy_observation(&expected, RuntimeHealthState::Healthy)?,
     )
@@ -323,6 +367,44 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             .await?
             .status,
         DeploymentStatus::Active
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, materialization.deployment.id)
+            .await?
+            .node_id,
+        Some(second_node_id)
+    );
+
+    let route_reader =
+        WorkloadRouteTargetReader::new(workloads.clone(), nodes.clone(), Duration::seconds(30))?;
+    let port_name = RoutePortName::parse("http")?;
+    let target_set = route_reader
+        .resolve_healthy_target_set(
+            organization_id,
+            workload.project_id,
+            workload.environment_id,
+            revision.id,
+            &port_name,
+            &[first_node_id, second_node_id],
+            Utc::now(),
+        )
+        .await?;
+    assert_eq!(
+        target_set
+            .for_member(first_node_id)
+            .ok_or("canonical route target")?
+            .target
+            .runtime_unit_id,
+        revision.runtime_unit_id()
+    );
+    assert_eq!(
+        target_set
+            .for_member(second_node_id)
+            .ok_or("replica route target")?
+            .target
+            .runtime_unit_id,
+        expected.unit_id
     );
 
     let cleanup_candidate = workloads
@@ -351,14 +433,8 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             cleanup_materialization.operation.input,
         )
         .await?;
-    let cleanup_apply_lease = prepare_and_lease_apply(
-        &engine,
-        &nodes,
-        node_id,
-        agent_instance_id,
-        active_replica_sequence,
-    )
-    .await?;
+    let cleanup_apply_lease =
+        prepare_and_lease_apply(&engine, &nodes, third_node_id, third_agent_instance_id, 0).await?;
     let cleanup_apply = cleanup_apply_lease
         .commands
         .iter()
@@ -383,13 +459,46 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
     engine
         .resume_due_waits(Utc::now() + Duration::seconds(3))
         .await?;
-    let cleanup_lease = lease(&nodes, node_id, agent_instance_id, cleanup_apply_sequence).await?;
+    let cleanup_lease = lease(
+        &nodes,
+        third_node_id,
+        third_agent_instance_id,
+        cleanup_apply_sequence,
+    )
+    .await?;
     let cleanup = cleanup_lease
         .commands
         .iter()
         .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeRemove { .. }))
         .ok_or("replica Runtime cleanup")?;
     assert_eq!(cleanup.aggregate_id, cleanup_replica.id.as_uuid());
+
+    let control = workloads
+        .find_workload_control(organization_id, workload.id)
+        .await?;
+    workloads
+        .reconfigure_replica_set(replica_set_write(
+            &control,
+            1,
+            "route-target-scale-down",
+            Utc::now() + Duration::seconds(4),
+        )?)
+        .await?;
+    let single_target = route_reader
+        .resolve_healthy_target(
+            organization_id,
+            workload.project_id,
+            workload.environment_id,
+            revision.id,
+            &port_name,
+            Utc::now() + Duration::seconds(4),
+        )
+        .await?;
+    assert_eq!(single_target.node_id, first_node_id);
+    assert_eq!(
+        single_target.target.runtime_unit_id,
+        revision.runtime_unit_id()
+    );
     Ok(())
 }
 
