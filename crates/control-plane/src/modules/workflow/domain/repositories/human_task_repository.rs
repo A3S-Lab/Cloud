@@ -201,6 +201,11 @@ pub trait IHumanTaskRepository: Send + Sync {
         limit: usize,
     ) -> Result<Vec<HumanTaskRecord>, RepositoryError>;
 
+    async fn replay_change(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<HumanTaskRecord>, RepositoryError>;
+
     async fn change_task(
         &self,
         write: ChangeHumanTaskWrite,

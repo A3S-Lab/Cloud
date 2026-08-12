@@ -9,8 +9,15 @@ pub use workflow_run_reconciler::{
 };
 
 use crate::modules::workflow::domain::{
-    OntologyDiff, OntologyRecord, WorkflowDefinitionRecord, WorkflowGoalRecord, WorkflowPayloadKind,
+    HumanTaskRecord, OntologyDiff, OntologyRecord, WorkflowDefinitionRecord, WorkflowGoalRecord,
+    WorkflowPayloadKind,
 };
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct HumanTaskMutationResult {
+    pub record: HumanTaskRecord,
+    pub replayed: bool,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OntologyMutationResult {

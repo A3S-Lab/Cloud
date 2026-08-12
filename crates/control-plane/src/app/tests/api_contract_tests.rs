@@ -399,6 +399,30 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/human-tasks/{human_task_id}"]["get"];
     assert_eq!(human_task["tags"], json!(["Workflow"]));
     assert!(human_task["responses"]["200"].is_object());
+    for action in ["claim", "release"] {
+        let path =
+            format!("/organizations/{{organization_id}}/human-tasks/{{human_task_id}}/{action}");
+        let mutation = &document["paths"][&path]["post"];
+        assert_eq!(mutation["tags"], json!(["Workflow"]), "{action}");
+        assert!(mutation["requestBody"].is_null(), "{action}");
+        assert!(mutation["responses"]["200"].is_object(), "{action}");
+        assert!(mutation["responses"].get("202").is_none(), "{action}");
+        assert!(
+            mutation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }) && parameters.iter().any(|parameter| {
+                    parameter["name"] == "x-a3s-expected-version"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                        && parameter["schema"]["minimum"] == 1
+                })),
+            "{action}"
+        );
+    }
     let form_collection =
         &document["paths"]["/organizations/{organization_id}/projects/{project_id}/forms"];
     assert_eq!(form_collection["get"]["tags"], json!(["Forms"]));

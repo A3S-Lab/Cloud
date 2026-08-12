@@ -199,6 +199,10 @@ pub(super) async fn exercise_human_task_persistence(
         request_id: Uuid::now_v7(),
         idempotency: idempotency("human-task-claim", "claim", b"claimed-v3"),
     };
+    assert!(repository
+        .replay_change(&claim.idempotency)
+        .await?
+        .is_none());
     assert!(matches!(
         repository
             .change_task(ChangeHumanTaskWrite {
@@ -210,6 +214,19 @@ pub(super) async fn exercise_human_task_persistence(
         Err(RepositoryError::Conflict(_))
     ));
     assert!(!repository.change_task(claim.clone()).await?.replayed);
+    assert_eq!(
+        repository
+            .replay_change(&claim.idempotency)
+            .await?
+            .expect("claim replay"),
+        claimed
+    );
+    assert!(matches!(
+        repository
+            .replay_change(&idempotency("human-task-claim", "claim", b"drifted-claim"))
+            .await,
+        Err(RepositoryError::IdempotencyConflict)
+    ));
     assert!(repository.change_task(claim.clone()).await?.replayed);
     assert!(matches!(
         repository

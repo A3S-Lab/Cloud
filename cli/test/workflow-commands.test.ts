@@ -278,6 +278,61 @@ describe('a3s-cloud Workflow commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('claims and releases HumanTasks with one shared versioned mutation contract', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        return envelope({ humanTask: humanTask(), replayed: false });
+      },
+    };
+
+    const claimed = await runCli(
+      [
+        'human-tasks',
+        'claim',
+        HUMAN_TASK_ID,
+        '--expected-version=2',
+        '--idempotency-key=cli:human-task:claim',
+        '--output=json',
+      ],
+      runtime
+    );
+    const released = await runCli(
+      [
+        'human-tasks',
+        'release',
+        HUMAN_TASK_ID,
+        '--expected-version=3',
+        '--idempotency-key=cli:human-task:release',
+        '--output=json',
+      ],
+      runtime
+    );
+
+    expect(claimed).toBe(ExitCode.Success);
+    expect(released).toBe(ExitCode.Success);
+    expect(calls.map(([input]) => input)).toEqual([
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/human-tasks/${HUMAN_TASK_ID}/claim`,
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/human-tasks/${HUMAN_TASK_ID}/release`,
+    ]);
+    expect(calls.map(([, init]) => init?.headers)).toEqual([
+      expect.objectContaining({
+        'Idempotency-Key': 'cli:human-task:claim',
+        'x-a3s-expected-version': '2',
+      }),
+      expect.objectContaining({
+        'Idempotency-Key': 'cli:human-task:release',
+        'x-a3s-expected-version': '3',
+      }),
+    ]);
+    expect(calls.every(([, init]) => init?.body === undefined)).toBe(true);
+    expect(output.stderr()).toBe('');
+  });
+
   it('rejects out-of-range WorkflowRun options before transport', async () => {
     let called = false;
     const execute = (argv: string[]) => {
@@ -330,14 +385,35 @@ describe('a3s-cloud Workflow commands', () => {
     const invalidStatus = execute(['human-tasks', 'list', 'assigned']);
     const invalidLimit = execute(['human-tasks', 'list', '--limit=201']);
     const invalidDetailOption = execute(['human-tasks', 'get', HUMAN_TASK_ID, '--limit=1']);
+    const missingMutationVersion = execute([
+      'human-tasks',
+      'claim',
+      HUMAN_TASK_ID,
+      '--idempotency-key=cli:human-task:claim',
+    ]);
+    const invalidMutationVersion = execute([
+      'human-tasks',
+      'release',
+      HUMAN_TASK_ID,
+      '--expected-version=0',
+      '--idempotency-key=cli:human-task:release',
+    ]);
 
     expect(await invalidStatus.result).toBe(ExitCode.Usage);
     expect(await invalidLimit.result).toBe(ExitCode.Usage);
     expect(await invalidDetailOption.result).toBe(ExitCode.Usage);
+    expect(await missingMutationVersion.result).toBe(ExitCode.Usage);
+    expect(await invalidMutationVersion.result).toBe(ExitCode.Usage);
     expect(invalidStatus.output.stderr()).toContain('HumanTask status is invalid');
     expect(invalidLimit.output.stderr()).toContain('HumanTask list limit must be between');
     expect(invalidDetailOption.output.stderr()).toContain(
       '--limit is valid only for search and log commands'
+    );
+    expect(missingMutationVersion.output.stderr()).toContain(
+      '--expected-version must be a positive safe integer for HumanTask mutation'
+    );
+    expect(invalidMutationVersion.output.stderr()).toContain(
+      '--expected-version must be a positive safe integer for HumanTask mutation'
     );
     expect(called).toBe(false);
   });

@@ -31,8 +31,8 @@ use crate::modules::secrets::{
     EncryptedSecretValue, ISecretEncryptionService, InMemorySecretRepository, SecretEncryptionError,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GatewayScopeId, HumanTaskId, IdempotentWrite, OrganizationId, PrincipalId,
-    ProjectId, RepositoryError, RouteId, WorkflowDecisionId,
+    EnvironmentId, GatewayScopeId, HumanTaskId, IdempotencyRequest, IdempotentWrite,
+    OrganizationId, PrincipalId, ProjectId, RepositoryError, RouteId, WorkflowDecisionId,
 };
 use crate::modules::sources::domain::{
     GitReference, GithubAccountId, GithubAccountKind, GithubAppAuthorizationError,
@@ -126,12 +126,16 @@ struct UnavailablePluginRegistryCatalog;
 #[derive(Default)]
 struct TestHumanTaskRepository {
     records: std::sync::RwLock<Vec<HumanTaskRecord>>,
+    change_replays: std::sync::RwLock<
+        std::collections::BTreeMap<(String, String), (String, OrganizationId, HumanTaskId)>,
+    >,
 }
 
 impl TestHumanTaskRepository {
     fn new(records: Vec<HumanTaskRecord>) -> Self {
         Self {
             records: std::sync::RwLock::new(records),
+            change_replays: std::sync::RwLock::new(std::collections::BTreeMap::new()),
         }
     }
 
@@ -159,7 +163,7 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
         &self,
         _write: CreateHumanTaskWrite,
     ) -> std::result::Result<IdempotentWrite<HumanTaskRecord>, RepositoryError> {
-        Err(test_human_task_write_unavailable())
+        Err(test_human_task_operation_unavailable())
     }
 
     async fn find_task(
@@ -196,18 +200,88 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
             .collect())
     }
 
+    async fn replay_change(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> std::result::Result<Option<HumanTaskRecord>, RepositoryError> {
+        let (organization_id, human_task_id) = {
+            let replays = self.change_replays.read().map_err(|_| {
+                RepositoryError::Storage("HumanTask test fixture lock poisoned".into())
+            })?;
+            let Some((request_digest, organization_id, human_task_id)) =
+                replays.get(&(idempotency.scope.clone(), idempotency.key.clone()))
+            else {
+                return Ok(None);
+            };
+            if request_digest != &idempotency.request_digest {
+                return Err(RepositoryError::IdempotencyConflict);
+            }
+            (*organization_id, *human_task_id)
+        };
+        self.find_task(organization_id, human_task_id).await
+    }
+
     async fn change_task(
         &self,
-        _write: ChangeHumanTaskWrite,
+        write: ChangeHumanTaskWrite,
     ) -> std::result::Result<IdempotentWrite<HumanTaskRecord>, RepositoryError> {
-        Err(test_human_task_write_unavailable())
+        write.record.validate().map_err(RepositoryError::Storage)?;
+        if let Some(record) = self.replay_change(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: record,
+                replayed: true,
+            });
+        }
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?;
+        let current = records
+            .iter_mut()
+            .find(|record| {
+                record.task.organization_id == write.record.task.organization_id
+                    && record.task.id == write.record.task.id
+            })
+            .ok_or(RepositoryError::NotFound)?;
+        let valid_transition = current.task.aggregate_version == write.expected_version
+            && write.record.task.aggregate_version == write.expected_version.saturating_add(1)
+            && match (current.task.status, write.record.task.status) {
+                (HumanTaskStatus::Ready, HumanTaskStatus::Claimed) => {
+                    write.record.task.claimed_by == Some(write.actor_principal_id)
+                }
+                (HumanTaskStatus::Claimed, HumanTaskStatus::Ready) => {
+                    current.task.claimed_by == Some(write.actor_principal_id)
+                }
+                _ => false,
+            };
+        if !valid_transition {
+            return Err(RepositoryError::Conflict(
+                "HumanTask transition conflicts with stored test state".into(),
+            ));
+        }
+        *current = write.record.clone();
+        self.change_replays
+            .write()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?
+            .insert(
+                (write.idempotency.scope, write.idempotency.key),
+                (
+                    write.idempotency.request_digest,
+                    write.record.task.organization_id,
+                    write.record.task.id,
+                ),
+            );
+        Ok(IdempotentWrite {
+            value: write.record,
+            replayed: false,
+        })
     }
 
     async fn decide_task(
         &self,
         _write: DecideHumanTaskWrite,
     ) -> std::result::Result<IdempotentWrite<HumanTaskDecisionRecord>, RepositoryError> {
-        Err(test_human_task_write_unavailable())
+        Err(test_human_task_operation_unavailable())
     }
 
     async fn find_decision(
@@ -237,7 +311,7 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
         _failed_at: DateTime<Utc>,
         _retry_after: std::time::Duration,
     ) -> std::result::Result<(), RepositoryError> {
-        Err(test_human_task_write_unavailable())
+        Err(test_human_task_operation_unavailable())
     }
 
     async fn conflict_resume_delivery(
@@ -248,7 +322,7 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
         _error: &str,
         _conflicted_at: DateTime<Utc>,
     ) -> std::result::Result<(), RepositoryError> {
-        Err(test_human_task_write_unavailable())
+        Err(test_human_task_operation_unavailable())
     }
 
     async fn record_resume_receipt(
@@ -259,12 +333,12 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
         _receipt: FlowResumeReceipt,
         _recorded_at: DateTime<Utc>,
     ) -> std::result::Result<HumanTaskDecisionRecord, RepositoryError> {
-        Err(test_human_task_write_unavailable())
+        Err(test_human_task_operation_unavailable())
     }
 }
 
-fn test_human_task_write_unavailable() -> RepositoryError {
-    RepositoryError::Storage("HumanTask test fixture is read-only".into())
+fn test_human_task_operation_unavailable() -> RepositoryError {
+    RepositoryError::Storage("HumanTask test fixture operation is unavailable".into())
 }
 
 #[derive(Default)]

@@ -6,6 +6,9 @@ pub mod presentation;
 pub(crate) mod test_support;
 
 pub use application::commands::cancel_workflow_run::{CancelWorkflowRun, CancelWorkflowRunHandler};
+pub use application::commands::change_human_task_assignment::{
+    ChangeHumanTaskAssignment, ChangeHumanTaskAssignmentHandler, HumanTaskAssignmentAction,
+};
 pub use application::commands::create_ontology::{CreateOntology, CreateOntologyHandler};
 pub use application::commands::create_workflow_definition::{
     CreateWorkflowDefinition, CreateWorkflowDefinitionHandler,
@@ -62,9 +65,9 @@ pub use application::queries::wait_workflow_run::{
     WaitWorkflowRun, WaitWorkflowRunHandler, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 pub use application::{
-    OntologyMutationResult, WorkflowDefinitionMutationResult, WorkflowGoalMutationResult,
-    WorkflowPayloadAcl, WorkflowRunMutationResult, WorkflowRunReconcileFailure,
-    WorkflowRunReconcileReport, WorkflowRunReconciler,
+    HumanTaskMutationResult, OntologyMutationResult, WorkflowDefinitionMutationResult,
+    WorkflowGoalMutationResult, WorkflowPayloadAcl, WorkflowRunMutationResult,
+    WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,
 };
 
 pub use domain::{

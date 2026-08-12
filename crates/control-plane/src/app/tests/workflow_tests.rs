@@ -61,7 +61,7 @@ async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claima
             json!({
                 "name": "HumanTask observer",
                 "token": RESTRICTED_WORKFLOW_TOKEN,
-                "scopes": [ApiTokenScope::CLOUD_READ],
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::WORKFLOW_WRITE],
                 "principalId": observer_principal_id,
                 "expiresAt": null
             }),
@@ -128,6 +128,11 @@ async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claima
     let ready_id = ready.task.id;
     human_tasks
         .insert(ready)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    let mcp_ready = human_task_read_fixture(&organization, &project, None, "Review MCP change")?;
+    let mcp_ready_id = mcp_ready.task.id;
+    human_tasks
+        .insert(mcp_ready)
         .map_err(|error| BootError::Internal(error.to_string()))?;
     let denied = human_task_read_fixture(
         &organization,
@@ -214,6 +219,75 @@ async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claima
         .await?;
     assert_eq!(observer_view.status(), 200);
     assert!(response_json(&observer_view)?["data"]["interactionRequest"].is_null());
+
+    let ready_task_path = format!("/api/v1/organizations/{organization}/human-tasks/{ready_id}");
+    let claim_request = || {
+        post_empty_as(
+            format!("{ready_task_path}/claim"),
+            "human-task-observer-claim",
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+        .with_header("x-a3s-expected-version", "2")
+    };
+    let claimed = app.call(claim_request()).await?;
+    assert_eq!(claimed.status(), 200);
+    let claimed = response_json(&claimed)?;
+    assert_eq!(claimed["data"]["replayed"], false);
+    assert_eq!(claimed["data"]["humanTask"]["status"], "claimed");
+    assert_eq!(
+        claimed["data"]["humanTask"]["claimedBy"],
+        observer_principal_id
+    );
+    assert!(claimed["data"]["humanTask"]["interactionRequest"].is_object());
+    assert_eq!(
+        claimed["data"]["humanTask"]["interactionRequest"]["task"]["version"],
+        3
+    );
+    let claim_replay = app.call(claim_request()).await?;
+    assert_eq!(claim_replay.status(), 200);
+    assert_eq!(response_json(&claim_replay)?["data"]["replayed"], true);
+
+    let foreign_release = app
+        .call(
+            post_empty_as(
+                format!("{ready_task_path}/release"),
+                "human-task-foreign-release",
+                ADMIN_TOKEN,
+            )
+            .with_header("x-a3s-expected-version", "3"),
+        )
+        .await?;
+    assert_eq!(foreign_release.status(), 409);
+
+    let release_request = || {
+        post_empty_as(
+            format!("{ready_task_path}/release"),
+            "human-task-observer-release",
+            RESTRICTED_WORKFLOW_TOKEN,
+        )
+        .with_header("x-a3s-expected-version", "3")
+    };
+    let released = app.call(release_request()).await?;
+    assert_eq!(released.status(), 200);
+    let released = response_json(&released)?;
+    assert_eq!(released["data"]["humanTask"]["status"], "ready");
+    assert!(released["data"]["humanTask"]["claimedBy"].is_null());
+    assert!(released["data"]["humanTask"]["interactionRequest"].is_null());
+    let release_replay = app.call(release_request()).await?;
+    assert_eq!(release_replay.status(), 200);
+    assert_eq!(response_json(&release_replay)?["data"]["replayed"], true);
+
+    let changed_claim_replay = app
+        .call(
+            post_empty_as(
+                format!("{ready_task_path}/claim"),
+                "human-task-observer-claim",
+                RESTRICTED_WORKFLOW_TOKEN,
+            )
+            .with_header("x-a3s-expected-version", "4"),
+        )
+        .await?;
+    assert_eq!(changed_claim_replay.status(), 409);
     assert_resource_not_found_equivalent(
         &app,
         get_as(
@@ -263,6 +337,46 @@ async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claima
     );
     assert!(
         mcp_observer_view["result"]["structuredContent"]["data"]["interactionRequest"].is_null()
+    );
+    let mcp_claim = app
+        .call(mcp_tool_call_as(
+            6,
+            "a3s_cloud_human_tasks_claim",
+            json!({
+                "humanTaskId": mcp_ready_id,
+                "expectedVersion": 2,
+                "idempotencyKey": "human-task-mcp-claim"
+            }),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let mcp_claim = response_json(&mcp_claim)?;
+    assert_eq!(mcp_claim["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        mcp_claim["result"]["structuredContent"]["data"]["humanTask"]["claimedBy"],
+        observer_principal_id
+    );
+    assert!(
+        mcp_claim["result"]["structuredContent"]["data"]["humanTask"]["interactionRequest"]
+            .is_object()
+    );
+    let mcp_release = app
+        .call(mcp_tool_call_as(
+            7,
+            "a3s_cloud_human_tasks_release",
+            json!({
+                "humanTaskId": mcp_ready_id,
+                "expectedVersion": 3,
+                "idempotencyKey": "human-task-mcp-release"
+            }),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let mcp_release = response_json(&mcp_release)?;
+    assert_eq!(mcp_release["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        mcp_release["result"]["structuredContent"]["data"]["humanTask"]["status"],
+        "ready"
     );
     let mcp_denied_list = app
         .call(mcp_tool_call_as(
@@ -317,6 +431,8 @@ fn human_task_read_fixture(
     task.form_release.project_id = project_id.to_string();
     task.assignment_policy = AssignmentPolicyRef::workflow_organization_member_exclusive()
         .map_err(BootError::Internal)?;
+    task.due_at = None;
+    task.expires_at = None;
     let interaction = HumanTaskInteractionSpec::approval(
         message,
         Some("Approve or reject the change".into()),
@@ -338,6 +454,12 @@ fn human_task_read_fixture(
             .map_err(BootError::Internal)?;
     }
     Ok(record)
+}
+
+fn post_empty_as(path: impl Into<String>, idempotency_key: &str, token: &str) -> BootRequest {
+    BootRequest::new(HttpMethod::Post, path.into())
+        .with_header("idempotency-key", idempotency_key)
+        .with_header("authorization", format!("Bearer {token}"))
 }
 
 #[tokio::test]

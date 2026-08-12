@@ -64,8 +64,10 @@ pub const WORKFLOW_RUNS_LIST: &str = "a3s_cloud_workflow_runs_list";
 pub const WORKFLOW_RUNS_WAIT: &str = "a3s_cloud_workflow_runs_wait";
 pub const WORKFLOW_RUN_OUTPUT_GET: &str = "a3s_cloud_workflow_run_output_get";
 pub const WORKFLOW_RUN_HISTORY_GET: &str = "a3s_cloud_workflow_run_history_get";
+pub const HUMAN_TASKS_CLAIM: &str = "a3s_cloud_human_tasks_claim";
 pub const HUMAN_TASKS_GET: &str = "a3s_cloud_human_tasks_get";
 pub const HUMAN_TASKS_LIST: &str = "a3s_cloud_human_tasks_list";
+pub const HUMAN_TASKS_RELEASE: &str = "a3s_cloud_human_tasks_release";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
@@ -127,8 +129,10 @@ pub enum ManagementTool {
     WorkflowRunsWait,
     WorkflowRunOutputGet,
     WorkflowRunHistoryGet,
+    HumanTasksClaim,
     HumanTasksGet,
     HumanTasksList,
+    HumanTasksRelease,
     Search,
     PluginRegistriesList,
     PluginRegistriesGet,
@@ -170,7 +174,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 71] = [
+    const ALL: [Self; 73] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -215,8 +219,10 @@ impl ManagementTool {
         Self::WorkflowRunsWait,
         Self::WorkflowRunOutputGet,
         Self::WorkflowRunHistoryGet,
+        Self::HumanTasksClaim,
         Self::HumanTasksGet,
         Self::HumanTasksList,
+        Self::HumanTasksRelease,
         Self::Search,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
@@ -314,8 +320,10 @@ impl ManagementTool {
             Self::WorkflowRunsWait => WORKFLOW_RUNS_WAIT,
             Self::WorkflowRunOutputGet => WORKFLOW_RUN_OUTPUT_GET,
             Self::WorkflowRunHistoryGet => WORKFLOW_RUN_HISTORY_GET,
+            Self::HumanTasksClaim => HUMAN_TASKS_CLAIM,
             Self::HumanTasksGet => HUMAN_TASKS_GET,
             Self::HumanTasksList => HUMAN_TASKS_LIST,
+            Self::HumanTasksRelease => HUMAN_TASKS_RELEASE,
             Self::Search => SEARCH,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
@@ -365,7 +373,9 @@ impl ManagementTool {
             | Self::WorkflowDefinitionsRevise
             | Self::WorkflowGoalsCreate
             | Self::WorkflowRunsStart
-            | Self::WorkflowRunsCancel => Some(ApiTokenScope::WORKFLOW_WRITE),
+            | Self::WorkflowRunsCancel
+            | Self::HumanTasksClaim
+            | Self::HumanTasksRelease => Some(ApiTokenScope::WORKFLOW_WRITE),
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
@@ -472,7 +482,9 @@ impl ManagementTool {
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
             | Self::WorkflowRunHistoryGet
+            | Self::HumanTasksClaim
             | Self::HumanTasksGet
+            | Self::HumanTasksRelease
             | Self::WorkloadLogsGet
             | Self::WorkloadsStop
             | Self::WorkloadsRollback
@@ -795,11 +807,23 @@ impl ManagementTool {
                 uuid_id_schema("humanTaskId"),
                 true,
             ),
+            Self::HumanTasksClaim => (
+                "Claim HumanTask",
+                "Claim one ready tenant-authorized HumanTask with optimistic concurrency and explicit idempotency.",
+                human_task_mutation_schema(),
+                false,
+            ),
             Self::HumanTasksList => (
                 "List HumanTasks",
                 "List bounded HumanTask summaries in one tenant-authorized project without interaction payloads.",
                 list_human_tasks_schema(),
                 true,
+            ),
+            Self::HumanTasksRelease => (
+                "Release HumanTask",
+                "Release one claimed tenant-authorized HumanTask as its current claimant with optimistic concurrency and explicit idempotency.",
+                human_task_mutation_schema(),
+                false,
             ),
             Self::Search => (
                 "Search Cloud resources",
@@ -1497,6 +1521,19 @@ fn list_human_tasks_schema() -> Value {
     })
 }
 
+fn human_task_mutation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "humanTaskId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["humanTaskId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
 fn membership_role_schema() -> Value {
     json!({"type": "string", "enum": ["owner", "admin", "member", "restricted"]})
 }
@@ -1692,8 +1729,10 @@ mod tests {
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
             ManagementTool::WorkflowRunHistoryGet,
+            ManagementTool::HumanTasksClaim,
             ManagementTool::HumanTasksGet,
             ManagementTool::HumanTasksList,
+            ManagementTool::HumanTasksRelease,
         ] {
             assert!(tool.visible_to(&principal), "{}", tool.name());
         }
@@ -1747,8 +1786,10 @@ mod tests {
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
             ManagementTool::WorkflowRunHistoryGet,
+            ManagementTool::HumanTasksClaim,
             ManagementTool::HumanTasksGet,
             ManagementTool::HumanTasksList,
+            ManagementTool::HumanTasksRelease,
         ] {
             assert!(!tool.visible_to(&principal), "{}", tool.name());
         }

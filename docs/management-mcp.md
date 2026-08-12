@@ -22,10 +22,11 @@ The `W0.3` planning slice adds ten Workflow definition, immutable revision,
 Goal, and deterministic Plan tools over the same CQRS handlers used by REST,
 the maintained client, and CLI. It adds no MCP-owned planner, run engine,
 payload store, or authorization path.
-The protected HumanTask read slice adds two tools over the same Workflow
-queries and response DTOs used by REST, the maintained client, and CLI. It
-adds no MCP-owned assignment policy, task store, Form contract, or grant
-evaluator.
+The protected HumanTask slice adds two reads and two claim/release mutations
+over the same Workflow commands, queries, domain state machine, response DTOs,
+repository, idempotency, audit, and Outbox path used by REST, the maintained
+client, and CLI. It adds no MCP-owned assignment policy, task store, Form
+contract, grant evaluator, or write mechanism.
 The native Form lifecycle adds seven draft/release tools over the same Form
 commands, queries, owner compiler port, A3S ORM repository, audit, and Outbox
 used by REST, the maintained client, and CLI. It adds no MCP-owned Form parser,
@@ -305,7 +306,7 @@ the authenticated principal and reuse the REST CQRS handlers, A3S ORM
 repository, Operation, A3S Flow history, audit, Outbox, and idempotency
 authority. The minimal executor supports only Workflow-local `input`,
 `transform`, `branch`, `human_decision`, and `output`; it does not expose
-HumanTask mutation/submission, service/finite-task, typed capability, or
+HumanTask submission, service/finite-task, typed capability, or
 compensation behavior.
 
 `a3s_cloud_human_tasks_list` accepts one explicit `projectId`, the closed
@@ -317,6 +318,15 @@ interaction only when the authenticated principal is the current claimant.
 Both calls use Identity's shared Resource Grant evaluator; an environment-only
 grant cannot authorize the project-scoped task, denied and missing IDs share a
 `404`, and an unknown assignment-policy revision fails closed.
+
+`a3s_cloud_human_tasks_claim` and `a3s_cloud_human_tasks_release` require one
+task ID, a positive `expectedVersion`, and an `idempotencyKey`. They require
+`workflow:write`, resolve and authorize the stored project before replay, and
+reuse the same Workflow assignment state machine. Claim returns the exact
+request-bound Form interaction only to the new claimant; release is accepted
+only from that claimant. The repository atomically commits the versioned task,
+Outbox event, audit fact, and idempotency record. Neither command is marked
+destructive, and both reject unknown arguments and assignment-policy revisions.
 
 For a restricted Membership, Ontology and Workflow create/list/start tools
 authorize their explicit `projectId` before dispatch. Indirect Ontology,
@@ -346,7 +356,7 @@ publish replay returns the historical accepted projection even after the
 aggregate advances. The adapter derives organization and actor identity from
 the principal and never accepts either as an argument. It does not compile or
 validate Form semantics itself and does not expose Form submission or
-HumanTask mutation.
+HumanTask submission.
 
 For a restricted Membership, create/list use their explicit `projectId` while
 get, revise, publish, and release tools receive only coarse project-family
@@ -405,7 +415,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 71-tool administrator and 45-tool
+current expanded runner requires exact 73-tool administrator and 45-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -430,7 +440,7 @@ PostgreSQL only through A3S ORM repositories.
 
 The expanded focused catalog, permission, Ontology migration, Workflow
 definition/Goal/Plan lifecycle, native Form lifecycle, minimal WorkflowRun,
-protected HumanTask read/privacy, tenant/role boundary, deterministic-plan,
+protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
 strict-boundary, and replay tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.

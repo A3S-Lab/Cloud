@@ -31,6 +31,27 @@ export function requireMutationCommand(arguments_: ParsedArguments, arity: numbe
   return key;
 }
 
+export function requireVersionedMutationCommand(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string,
+  label: string
+): { expectedVersion: number; idempotencyKey: string } {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectLogOptions(arguments_);
+  rejectFileOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  const rawVersion = arguments_.expectedVersion;
+  if (rawVersion === undefined || !/^[0-9]+$/u.test(rawVersion)) {
+    throw usageError(`--expected-version must be a positive safe integer for ${label} mutation`);
+  }
+  const expectedVersion = Number(rawVersion);
+  if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+    throw usageError(`--expected-version must be a positive safe integer for ${label} mutation`);
+  }
+  return { expectedVersion, idempotencyKey: requireIdempotencyKey(arguments_) };
+}
+
 export function requireIdempotencyKey(arguments_: ParsedArguments): string {
   const key = arguments_.idempotencyKey;
   if (key === undefined) {

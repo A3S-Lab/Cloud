@@ -1,3 +1,4 @@
+use crate::modules::workflow::application::HumanTaskMutationResult;
 use crate::modules::workflow::domain::HumanTaskRecord;
 use a3s_form_core::{
     CanonicalValue, FormInteractionOutcome, FormInteractionOutputMapping, FormInteractionRequest,
@@ -99,6 +100,22 @@ impl From<HumanTaskRecord> for HumanTaskResponse {
             max_value_bytes: value.interaction.max_value_bytes,
             initial_value: value.interaction.initial_value,
             interaction_request: value.interaction_request,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HumanTaskMutationResponse {
+    pub human_task: HumanTaskResponse,
+    pub replayed: bool,
+}
+
+impl From<HumanTaskMutationResult> for HumanTaskMutationResponse {
+    fn from(value: HumanTaskMutationResult) -> Self {
+        Self {
+            human_task: HumanTaskResponse::from(value.record),
+            replayed: value.replayed,
         }
     }
 }

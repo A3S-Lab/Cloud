@@ -19,8 +19,8 @@ use crate::infrastructure::{
 };
 use crate::modules::forms::infrastructure::persistence::insert_form_submission;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, HumanTaskId, IdempotentWrite, OrganizationId, PrincipalId, ProjectId,
-    RepositoryError, WorkflowDecisionId,
+    canonical_timestamp, HumanTaskId, IdempotencyRequest, IdempotentWrite, OrganizationId,
+    PrincipalId, ProjectId, RepositoryError, WorkflowDecisionId,
 };
 use crate::modules::workflow::domain::repositories::{
     HumanTaskDecisionWriteReference, HumanTaskWriteReference,
@@ -167,6 +167,34 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                         .into_iter()
                         .map(decode_task)
                         .collect()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_change(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<HumanTaskRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(replay) =
+                        idempotency_replay::<HumanTaskWriteReference>(transaction, &idempotency)
+                            .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_task(
+                        transaction,
+                        replay.value.organization_id,
+                        replay.value.human_task_id,
+                        false,
+                    )
+                    .await
+                    .map(Some)
                 })
             })
             .await

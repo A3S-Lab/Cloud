@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.20.0" src="https://img.shields.io/badge/REST_contract-1.20.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.21.0" src="https://img.shields.io/badge/REST_contract-1.21.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -142,12 +142,14 @@ cancellation, deadlines, waiting, terminal output, and bounded redacted
 history. Migration `081` adds the internal authority-bound HumanTask decision
 loop described below. The maintained client, `workflow-runs` CLI commands, and
 seven Management MCP tools share start, cancel, list, get, wait, output, and
-history behavior. REST contract `1.20.0` now also exposes bounded HumanTask
-list/detail reads through the same Workflow repository and Identity Resource
-Grant evaluator; the client, `human-tasks` CLI commands, and two read-only MCP
-tools use the same handlers and DTOs. Lists never carry an interaction request,
-and detail returns the request-bound native A3S Form interaction only to the
-current claimant. Public claim, release, submission, expiry/cancellation
+history behavior. REST contract `1.21.0` now also exposes bounded HumanTask
+list/detail reads and versioned claim/release through the same Workflow
+repository and Identity Resource Grant evaluator; the client, `human-tasks`
+CLI commands, and four MCP tools use the same command/query handlers and DTOs.
+The mutations reuse the domain state machine and transaction-bound
+idempotency, audit, and Outbox mechanisms. Lists never carry an interaction
+request, and only the current claimant receives the request-bound native A3S
+Form interaction. Public submission, expiry/cancellation
 coordination, service/finite-task dispatch, typed capability steps,
 compensation, and production recovery remain open; no second engine,
 scheduler, queue, Runtime provider, authorization store, or frontend was added.
@@ -168,7 +170,7 @@ WorkflowRun projection, and committed cancellation before Flow delivery. Each
 restart preserves one WorkflowRun, Operation, Flow run, terminal history, and
 monotonic projection version. This is the reusable `F0` durability substrate
 used by the WorkflowRun and internal HumanTask slices, not a claim that public
-HumanTask mutation/submission, typed capability execution, or production
+HumanTask submission, typed capability execution, or production
 Workflow recovery is complete.
 
 The Form integration pins native `a3s-form-core` `0.1.0` at revision
@@ -196,11 +198,12 @@ resume worker retries transient failures, rejects stale leases, and records
 payload drift as a durable conflict. A real PostgreSQL plus A3S Flow test covers
 concurrent coordinators, claim/submission/decision, lease takeover, Flow commit
 before receipt acknowledgement, replay, and tenant isolation. Protected
-HumanTask list/detail reads now reuse the existing repository and shared
-Resource Grant evaluator across REST, client, CLI, and Management MCP. The
+HumanTask list/detail reads and claim/release now reuse the existing repository,
+domain state machine, shared Resource Grant evaluator, idempotency store,
+Outbox, and audit path across REST, client, CLI, and Management MCP. The
 built-in organization-member-exclusive assignment policy is revision/digest
 pinned and unknown policies fail closed; only the claimant receives the exact
-interaction request. Public claim, release, Form submission, and
+interaction request. Public Form submission and
 expiry/cancellation coordination remain unavailable.
 
 All ordinary migration `081` reads and writes use A3S ORM table markers and the
@@ -253,7 +256,7 @@ repositories; denied and missing indirect IDs share one `404`, and
 authorization precedes mutation replay. The polymorphic Operation feed resolves
 each subject through that same owner set, keyset-pages until it has the requested
 visible records, and shares one filtered boundary across REST, SSE, and
-Management MCP. Protected HumanTask mutation/submission surfaces, OIDC,
+Management MCP. Protected HumanTask submission surfaces, OIDC,
 invitations, and frontend identity projections remain open. The dedicated
 `RG3` PostgreSQL gate verifies
 the owner/admin/member/restricted, project ancestry, exact environment/node,
@@ -322,7 +325,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.20.0`.
+contract version `1.21.0`.
 
 ### Bootstrap the first organization
 
@@ -381,7 +384,7 @@ its authority.
 | Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
 | Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
 | Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |
-| Workflow and evolution | ACL-native versioned Ontologies, immutable Workflow definitions/payloads/goals, deterministic plans, Workflow-local runs, the internal authority-bound HumanTask decision loop, and protected task list/detail reads today; public task mutation/submission, typed capability steps, compensation, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback remain gate-driven | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
+| Workflow and evolution | ACL-native versioned Ontologies, immutable Workflow definitions/payloads/goals, deterministic plans, Workflow-local runs, the internal authority-bound HumanTask decision loop, protected task reads, and claim/release today; public submission, typed capability steps, compensation, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback remain gate-driven | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
 | Inference | Power-hosted model Services, accelerator Claims, model/provider policy, scoped keys, routing/fallback, durable usage, and governed self-service | Inference, Power, Workloads, Fleet, Edge, Gateway, `PW0`, `I0` |
 
 ### TokenHub and Google AX outcomes remain explicit
@@ -426,7 +429,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified, while the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun lifecycle, internal authority-bound HumanTask loop, protected task list/detail reads, and shared Resource Grant enforcement are implemented; public claim/release/submission, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded `W0.3` cross-surface verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified, while the `W0.3` definition/goal/deterministic-plan, native Form draft/release, minimal WorkflowRun lifecycle, internal authority-bound HumanTask loop, protected task reads, claim/release, and shared Resource Grant enforcement are implemented; public submission, expiry/cancellation coordination, service/finite-task dispatch, typed capability steps, compensation, expanded `W0.3` cross-surface verification, and `W0.4`-`W0.5` remain) |
 | `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
 | `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |

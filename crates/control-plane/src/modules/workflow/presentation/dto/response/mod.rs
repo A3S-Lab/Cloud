@@ -11,7 +11,9 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
-pub use human_task_response::{HumanTaskResponse, HumanTaskSummaryResponse};
+pub use human_task_response::{
+    HumanTaskMutationResponse, HumanTaskResponse, HumanTaskSummaryResponse,
+};
 pub use workflow_response::{
     PlanRevisionResponse, WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse,
     WorkflowGoalMutationResponse, WorkflowGoalResponse, WorkflowRevisionResponse,

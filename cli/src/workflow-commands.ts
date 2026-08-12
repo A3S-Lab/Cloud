@@ -23,6 +23,7 @@ import {
   requireListCommand,
   requireMutationCommand,
   requireReadCommand,
+  requireVersionedMutationCommand,
 } from './command-options';
 import type { CloudContext } from './context';
 import { requireOrganization, requireProject } from './context';
@@ -38,6 +39,7 @@ import {
   workflowGoalsResult,
   workflowPlanRevisionResult,
   humanTaskResult,
+  humanTaskMutationResult,
   humanTasksResult,
   workflowRevisionResult,
   workflowRevisionsResult,
@@ -195,6 +197,28 @@ export async function executeWorkflowCommand(
           positionalUuid(positionals, 2, 'HumanTask ID')
         )
       );
+    case 'human-tasks claim':
+    case 'human-tasks release': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        3,
+        `${command} <human-task-id>`,
+        'HumanTask'
+      );
+      const organizationId = requireOrganization(context);
+      const humanTaskId = positionalUuid(positionals, 2, 'HumanTask ID');
+      const api = cloudApi();
+      return humanTaskMutationResult(
+        await (command === 'human-tasks claim'
+          ? api.claimHumanTask(organizationId, humanTaskId, mutation.expectedVersion, mutation.idempotencyKey)
+          : api.releaseHumanTask(
+              organizationId,
+              humanTaskId,
+              mutation.expectedVersion,
+              mutation.idempotencyKey
+            ))
+      );
+    }
     case 'workflow-runs list': {
       requireArity(positionals, 2, 'workflow-runs list');
       rejectWorkflowRunReadMutationOptions(arguments_);

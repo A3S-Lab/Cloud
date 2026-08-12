@@ -450,8 +450,10 @@ Draft/release commands and APIs are implemented. Protected HumanTask
 list/detail reads resolve the task through the existing Workflow repository and
 authorize its canonical project with Identity's shared Resource Grant
 evaluator. Lists omit interaction requests; detail returns the native
-request-bound interaction only to the current claimant. Public claim, release,
-submission, and expiry/cancellation coordination remain later slices.
+request-bound interaction only to the current claimant. Versioned claim/release
+reuse the same aggregate, repository transaction, idempotency, Outbox, audit,
+and shared project authorization. Public submission and expiry/cancellation
+coordination remain later slices.
 
 The first closed Workflow contract uses these semantic step kinds:
 
@@ -1264,8 +1266,8 @@ contexts' tables.
   digest-bound and projected from the correlated A3S Flow history; unselected
   branch steps become `skipped`. A human decision suspends the same Flow run on
   an authority-bound hook and resumes it only from the immutable decision.
-- Internal HumanTask dispatch and resume recovery plus protected list/detail
-  reads are implemented. Public task claim/release/submission,
+- Internal HumanTask dispatch and resume recovery plus protected reads and
+  claim/release are implemented. Public task submission,
   service/finite-task, Agent, MCP, model, Tool, memory, and subworkflow dispatch
   remain future gates. When admitted, each
   child stores one exact owning-context identity so ambiguous dispatch can be

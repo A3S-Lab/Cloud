@@ -931,6 +931,7 @@ export type {
   HumanTaskInteractionOutcome,
   HumanTaskInteractionOutputMapping,
   HumanTaskInteractionRequest,
+  HumanTaskMutationResult,
   HumanTaskStatus,
   HumanTaskSummary,
   ListHumanTasksOptions,

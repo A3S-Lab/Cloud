@@ -54,9 +54,7 @@ export function validateMembershipRole(role: MembershipRole): void {
 }
 
 export function validateExpectedMembershipVersion(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new RangeError('expected membership version must be a positive safe integer');
-  }
+  validateExpectedVersion(value, 'membership');
 }
 
 export function validateResourceGrantInput(input: CreateResourceGrantInput): void {
@@ -81,9 +79,7 @@ export function validateResourceGrantInput(input: CreateResourceGrantInput): voi
 }
 
 export function validateExpectedResourceGrantVersion(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new RangeError('expected Resource Grant version must be a positive safe integer');
-  }
+  validateExpectedVersion(value, 'Resource Grant');
 }
 
 function validateResourceGrantUuid(value: string, label: string): void {
@@ -129,9 +125,7 @@ export function validateEnrollmentTokenInput(input: IssueEnrollmentTokenInput): 
 }
 
 export function validateExpectedNodeVersion(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 1) {
-    throw new RangeError('expected node version must be a positive safe integer');
-  }
+  validateExpectedVersion(value, 'node');
 }
 
 export function validateMcpCredentialExpiry(value: string): void {
@@ -141,8 +135,16 @@ export function validateMcpCredentialExpiry(value: string): void {
 }
 
 export function validateExpectedMcpCredentialVersion(value: number): void {
+  validateExpectedVersion(value, 'MCP credential');
+}
+
+export function validateExpectedHumanTaskVersion(value: number): void {
+  validateExpectedVersion(value, 'HumanTask');
+}
+
+function validateExpectedVersion(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 1) {
-    throw new RangeError('expected MCP credential version must be a positive safe integer');
+    throw new RangeError(`expected ${label} version must be a positive safe integer`);
   }
 }
 

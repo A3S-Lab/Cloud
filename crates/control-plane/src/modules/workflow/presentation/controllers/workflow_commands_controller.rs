@@ -1,19 +1,21 @@
 use super::request::{
-    actor_principal_id, request_identity, resource_access, workflow_goal_acl,
-    workflow_revision_control,
+    actor_principal_id, expected_version, request_identity, resource_access, workflow_goal_acl,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
     with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
 };
-use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, WorkflowDefinitionId};
+use crate::modules::shared_kernel::domain::{
+    HumanTaskId, OrganizationId, ProjectId, WorkflowDefinitionId,
+};
 use crate::modules::workflow::presentation::dto::{
-    CancelWorkflowRunRequest, PublishWorkflowDefinitionRequest, StartWorkflowRunRequest,
-    WorkflowDefinitionMutationResponse, WorkflowGoalMutationResponse, WorkflowRunMutationResponse,
+    CancelWorkflowRunRequest, HumanTaskMutationResponse, PublishWorkflowDefinitionRequest,
+    StartWorkflowRunRequest, WorkflowDefinitionMutationResponse, WorkflowGoalMutationResponse,
+    WorkflowRunMutationResponse,
 };
 use crate::modules::workflow::{
-    CancelWorkflowRun, CreateWorkflowDefinition, CreateWorkflowGoal, ReviseWorkflowDefinition,
-    StartWorkflowRun,
+    CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
+    HumanTaskAssignmentAction, ReviseWorkflowDefinition, StartWorkflowRun,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -28,6 +30,9 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
     let revise_definition_bus = Arc::clone(&bus);
     let create_goal_bus = Arc::clone(&bus);
     let start_run_bus = Arc::clone(&bus);
+    let cancel_run_bus = Arc::clone(&bus);
+    let claim_human_task_bus = Arc::clone(&bus);
+    let release_human_task_bus = bus;
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::WORKFLOW_WRITE])?
@@ -80,7 +85,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             request.param_as::<Uuid>("workflow_definition_id")?,
                         );
                         let resource_access = resource_access(&request)?;
-                        let expected_version = workflow_revision_control(&request)?;
+                        let expected_version = expected_version(&request)?;
                         let actor_principal_id = actor_principal_id(&request)?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
                         match bus
@@ -183,7 +188,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
             RouteDefinition::post(
                 "/{organization_id}/workflow-runs/{workflow_run_id}/cancel",
                 move |request: BootRequest| {
-                    let bus = Arc::clone(&bus);
+                    let bus = Arc::clone(&cancel_run_bus);
                     async move {
                         let body: CancelWorkflowRunRequest = request.json_with_content_type()?;
                         let organization_id =
@@ -218,5 +223,65 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                 },
             )?,
             DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/human-tasks/{human_task_id}/claim",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&claim_human_task_bus);
+                    async move {
+                        change_human_task_assignment(bus, request, HumanTaskAssignmentAction::Claim)
+                            .await
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/human-tasks/{human_task_id}/release",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&release_human_task_bus);
+                    async move {
+                        change_human_task_assignment(
+                            bus,
+                            request,
+                            HumanTaskAssignmentAction::Release,
+                        )
+                        .await
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
         )?)
+}
+
+async fn change_human_task_assignment(
+    bus: Arc<CommandBus>,
+    request: BootRequest,
+    action: HumanTaskAssignmentAction,
+) -> Result<BootResponse> {
+    let organization_id = OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+    let human_task_id = HumanTaskId::from_uuid(request.param_as::<Uuid>("human_task_id")?);
+    let resource_access = resource_access(&request)?;
+    let expected_version = expected_version(&request)?;
+    let actor_principal_id = actor_principal_id(&request)?;
+    let (idempotency_key, request_id) = request_identity(&request)?;
+    match bus
+        .execute(ChangeHumanTaskAssignment {
+            organization_id,
+            human_task_id,
+            resource_access,
+            action,
+            expected_version,
+            actor_principal_id,
+            idempotency_key,
+            request_id,
+            requested_at: chrono::Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => BootResponse::json(&HumanTaskMutationResponse::from(result)),
+        Err(error) => application_error_response(error, request_id),
+    }
 }

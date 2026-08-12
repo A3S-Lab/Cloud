@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.20.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.21.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -769,7 +769,7 @@ describe('CloudApi', () => {
     expect(called).toBe(false);
   });
 
-  it('uses bounded project-scoped HumanTask list and protected detail paths', async () => {
+  it('uses bounded reads and versioned HumanTask assignment mutations', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const api = new CloudApi('token', '/api/v1', {
       fetch: async (...args) => {
@@ -783,10 +783,32 @@ describe('CloudApi', () => {
       limit: 25,
     });
     await api.getHumanTask('organization / one', 'task / one');
+    await api.claimHumanTask('organization / one', 'task / one', 2, 'human-task:claim');
+    await api.releaseHumanTask('organization / one', 'task / one', 3, 'human-task:release');
 
     expect(calls.map(([input]) => input)).toEqual([
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/human-tasks?status=claimed&limit=25',
       '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/claim',
+      '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/release',
+    ]);
+    expect(calls.slice(2).map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'human-task:claim',
+          'x-a3s-expected-version': '2',
+        }),
+        body: undefined,
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'human-task:release',
+          'x-a3s-expected-version': '3',
+        }),
+        body: undefined,
+      }),
     ]);
   });
 
@@ -808,6 +830,12 @@ describe('CloudApi', () => {
     expect(() => api.listHumanTasks('organization', 'project', { status: 'unknown' as never })).toThrow(
       'HumanTask status is invalid'
     );
+    expect(() => api.claimHumanTask('organization', 'task', 0, 'human-task:claim')).toThrow(
+      'expected HumanTask version must be a positive safe integer'
+    );
+    expect(() =>
+      api.releaseHumanTask('organization', 'task', Number.MAX_SAFE_INTEGER + 1, 'human-task:release')
+    ).toThrow('expected HumanTask version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

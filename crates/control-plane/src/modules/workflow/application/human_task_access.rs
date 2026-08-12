@@ -12,6 +12,16 @@ pub(crate) fn public_record(
     mut record: HumanTaskRecord,
     actor_principal_id: Option<PrincipalId>,
 ) -> ApplicationResult<HumanTaskRecord> {
+    ensure_supported_assignment_policy(&record)?;
+    if record.task.claimed_by != actor_principal_id {
+        record.interaction_request = None;
+    }
+    Ok(record)
+}
+
+pub(crate) fn ensure_supported_assignment_policy(
+    record: &HumanTaskRecord,
+) -> ApplicationResult<()> {
     let supported = AssignmentPolicyRef::workflow_organization_member_exclusive()
         .map_err(ApplicationError::Internal)?;
     if record.task.assignment_policy != supported {
@@ -19,10 +29,7 @@ pub(crate) fn public_record(
             "HumanTask assignment policy is not supported by this public API".into(),
         ));
     }
-    if record.task.claimed_by != actor_principal_id {
-        record.interaction_request = None;
-    }
-    Ok(record)
+    Ok(())
 }
 
 #[cfg(test)]

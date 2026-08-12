@@ -1,4 +1,5 @@
 pub mod cancel_workflow_run;
+pub mod change_human_task_assignment;
 pub mod create_ontology;
 pub mod create_workflow_definition;
 pub mod create_workflow_goal;

@@ -1,5 +1,6 @@
 import type {
   HumanTask,
+  HumanTaskMutationResult,
   HumanTaskSummary,
   WorkflowDefinition,
   WorkflowDefinitionMutationResult,
@@ -195,4 +196,20 @@ export function humanTasksResult(rows: HumanTaskSummary[]): CommandResult {
 
 export function humanTaskResult(row: HumanTask): CommandResult {
   return { json: row, table: renderTable([row], HUMAN_TASK_COLUMNS) };
+}
+
+export function humanTaskMutationResult(row: HumanTaskMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'ID', value: (value) => value.humanTask.id },
+        { header: 'STATUS', value: (value) => value.humanTask.status },
+        { header: 'CLAIMED BY', value: (value) => value.humanTask.claimedBy },
+        { header: 'VERSION', value: (value) => value.humanTask.aggregateVersion },
+        { header: 'REPLAYED', value: (value) => value.replayed },
+      ]
+    ),
+  };
 }

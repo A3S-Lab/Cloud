@@ -476,8 +476,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_workflow_runs_wait",
             "a3s_cloud_workflow_run_output_get",
             "a3s_cloud_workflow_run_history_get",
+            "a3s_cloud_human_tasks_claim",
             "a3s_cloud_human_tasks_get",
             "a3s_cloud_human_tasks_list",
+            "a3s_cloud_human_tasks_release",
             "a3s_cloud_search",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
@@ -532,6 +534,21 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             .map(Vec::len),
         Some(3)
     );
+    for name in [
+        "a3s_cloud_human_tasks_claim",
+        "a3s_cloud_human_tasks_release",
+    ] {
+        let tool = listed_tool(&administrator_tools, name)?;
+        assert_eq!(tool["annotations"]["readOnlyHint"], false, "{name}");
+        assert_eq!(tool["annotations"]["destructiveHint"], false, "{name}");
+        assert_eq!(tool["annotations"]["idempotentHint"], true, "{name}");
+        assert_eq!(
+            tool["inputSchema"]["required"],
+            json!(["humanTaskId", "expectedVersion", "idempotencyKey"]),
+            "{name}"
+        );
+        assert_eq!(tool["inputSchema"]["additionalProperties"], false, "{name}");
+    }
 
     let hidden_call = app
         .call(mcp_request(
@@ -1504,6 +1521,24 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             "a3s_cloud_human_tasks_get",
             json!({"humanTaskId": missing_resource_id}),
         ),
+        (
+            47,
+            "a3s_cloud_human_tasks_claim",
+            json!({
+                "humanTaskId": missing_resource_id,
+                "expectedVersion": 2,
+                "idempotencyKey": "missing-human-task-claim"
+            }),
+        ),
+        (
+            48,
+            "a3s_cloud_human_tasks_release",
+            json!({
+                "humanTaskId": missing_resource_id,
+                "expectedVersion": 3,
+                "idempotencyKey": "missing-human-task-release"
+            }),
+        ),
     ] {
         let response = app
             .call(mcp_request(
@@ -1624,6 +1659,25 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
             46,
             "a3s_cloud_human_tasks_list",
             json!({"projectId": project, "status": "assigned"}),
+        ),
+        (
+            49,
+            "a3s_cloud_human_tasks_claim",
+            json!({
+                "humanTaskId": missing_resource_id,
+                "expectedVersion": 0,
+                "idempotencyKey": "invalid-human-task-claim"
+            }),
+        ),
+        (
+            50,
+            "a3s_cloud_human_tasks_release",
+            json!({
+                "humanTaskId": missing_resource_id,
+                "expectedVersion": 3,
+                "idempotencyKey": "invalid-human-task-release",
+                "organizationId": organization
+            }),
         ),
     ] {
         let response = app

@@ -145,21 +145,21 @@ use crate::modules::sources::{
     ResolveExternalSourceRevisionHandler, RevalidatingGithubInstallationTokens, SourcesModule,
 };
 use crate::modules::workflow::{
-    CancelWorkflowRunHandler, CreateOntologyHandler, CreateWorkflowDefinitionHandler,
-    CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler, FlowWorkflowRunCoordinator,
-    GetHumanTaskHandler, GetOntologyHandler, GetOntologyRevisionHandler, GetPlanRevisionHandler,
-    GetWorkflowDefinitionHandler, GetWorkflowGoalHandler, GetWorkflowRevisionHandler,
-    GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
-    HumanTaskCoordinator, HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository,
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
-    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
-    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
-    ListWorkflowRunsHandler, PostgresHumanTaskRepository, PostgresOntologyRepository,
-    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
-    PostgresWorkflowRunRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
-    StartWorkflowRunHandler, WaitWorkflowRunHandler, WorkflowModule, WorkflowRunFlowRuntime,
-    WorkflowRunHistoryReader, WorkflowRunReconciler,
+    CancelWorkflowRunHandler, ChangeHumanTaskAssignmentHandler, CreateOntologyHandler,
+    CreateWorkflowDefinitionHandler, CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler,
+    FlowWorkflowRunCoordinator, GetHumanTaskHandler, GetOntologyHandler,
+    GetOntologyRevisionHandler, GetPlanRevisionHandler, GetWorkflowDefinitionHandler,
+    GetWorkflowGoalHandler, GetWorkflowRevisionHandler, GetWorkflowRunHandler,
+    GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler, HumanTaskCoordinator,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
+    IWorkflowRunHistoryReader, IWorkflowRunRepository, ListHumanTasksHandler,
+    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
+    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
+    PostgresHumanTaskRepository, PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
+    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WaitWorkflowRunHandler,
+    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -1208,6 +1208,7 @@ fn build_application_with_health(
     let wait_workflow_runs = Arc::clone(&workflow_runs);
     let get_workflow_run_outputs = Arc::clone(&workflow_runs);
     let get_workflow_run_history_runs = workflow_runs;
+    let change_human_task_assignments = Arc::clone(&human_tasks);
     let get_human_tasks = Arc::clone(&human_tasks);
     let list_human_tasks = human_tasks;
     let create_form_projects = Arc::clone(&projects);
@@ -1536,6 +1537,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workflow::CancelWorkflowRun, _>(
                     CancelWorkflowRunHandler::new(cancel_workflow_runs),
+                )
+                .command_handler::<crate::modules::workflow::ChangeHumanTaskAssignment, _>(
+                    ChangeHumanTaskAssignmentHandler::new(change_human_task_assignments),
                 )
                 .command_handler::<crate::modules::forms::CreateFormDraft, _>(
                     CreateFormDraftHandler::new(create_form_projects, create_form_drafts),

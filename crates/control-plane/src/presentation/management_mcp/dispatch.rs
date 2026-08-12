@@ -25,11 +25,11 @@ use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, Projec
 use super::search::SearchArguments;
 use super::workflow::{
     CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
-    HumanTaskArguments, ListHumanTasksArguments, ListProjectWorkflowArguments,
-    ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments, StartWorkflowRunArguments,
-    WaitWorkflowRunArguments, WorkflowDefinitionArguments, WorkflowGoalArguments,
-    WorkflowPlanRevisionArguments, WorkflowRevisionArguments, WorkflowRunArguments,
-    WorkflowRunHistoryArguments,
+    HumanTaskArguments, HumanTaskMutationArguments, ListHumanTasksArguments,
+    ListProjectWorkflowArguments, ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments,
+    StartWorkflowRunArguments, WaitWorkflowRunArguments, WorkflowDefinitionArguments,
+    WorkflowGoalArguments, WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
+    WorkflowRunArguments, WorkflowRunHistoryArguments,
 };
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
@@ -40,6 +40,7 @@ use super::{
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+use crate::modules::workflow::HumanTaskAssignmentAction;
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
@@ -513,6 +514,32 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::HumanTasksClaim => {
+            let arguments = arguments::parse::<HumanTaskMutationArguments>(arguments).ok()?;
+            workflow::change_human_task_assignment(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                HumanTaskAssignmentAction::Claim,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::HumanTasksRelease => {
+            let arguments = arguments::parse::<HumanTaskMutationArguments>(arguments).ok()?;
+            workflow::change_human_task_assignment(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                HumanTaskAssignmentAction::Release,
                 resource_access,
                 request_id,
             )

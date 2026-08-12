@@ -56,6 +56,7 @@ import type {
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
   HumanTask,
+  HumanTaskMutationResult,
   HumanTaskStatus,
   HumanTaskSummary,
   IssueEnrollmentTokenInput,
@@ -137,6 +138,7 @@ import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
   validateExpectedMcpCredentialVersion,
+  validateExpectedHumanTaskVersion,
   validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
   validateExpectedResourceGrantVersion,
@@ -169,7 +171,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.20.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.21.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -878,6 +880,40 @@ export class CloudApi {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/human-tasks/${encodeURIComponent(humanTaskId)}`,
+      signal
+    );
+  }
+
+  claimHumanTask(
+    organizationId: string,
+    humanTaskId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<HumanTaskMutationResult> {
+    return this.changeHumanTaskAssignment(
+      organizationId,
+      humanTaskId,
+      'claim',
+      expectedVersion,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  releaseHumanTask(
+    organizationId: string,
+    humanTaskId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<HumanTaskMutationResult> {
+    return this.changeHumanTaskAssignment(
+      organizationId,
+      humanTaskId,
+      'release',
+      expectedVersion,
+      idempotencyKey,
       signal
     );
   }
@@ -2410,12 +2446,35 @@ export class CloudApi {
     );
   }
 
+  private changeHumanTaskAssignment(
+    organizationId: string,
+    humanTaskId: string,
+    action: 'claim' | 'release',
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<HumanTaskMutationResult> {
+    validateExpectedHumanTaskVersion(expectedVersion);
+    return this.post(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/human-tasks/${encodeURIComponent(humanTaskId)}/${action}`,
+      idempotencyKey,
+      signal,
+      { 'x-a3s-expected-version': String(expectedVersion) }
+    );
+  }
+
   private delete<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
     return this.request('DELETE', path, { idempotencyKey, signal });
   }
 
-  private post<T>(path: string, idempotencyKey: string, signal?: AbortSignal): Promise<T> {
-    return this.request('POST', path, { idempotencyKey, signal });
+  private post<T>(
+    path: string,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+    additionalHeaders?: Readonly<Record<string, string>>
+  ): Promise<T> {
+    return this.request('POST', path, { idempotencyKey, signal, additionalHeaders });
   }
 
   private postJson<T>(

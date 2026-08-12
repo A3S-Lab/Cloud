@@ -45,7 +45,7 @@ projection. `listNodePools`, `getNodePool`, `createNodePool`,
 `addNodePoolMembers`, `requestNodePoolMemberRemoval`,
 `scheduleNodePoolMaintenance`, and `cancelNodePoolMaintenance` expose
 Fleet-owned membership, generation-fenced removal, and bounded maintenance
-policy through REST contract `1.20.0`. Workload ACL creation and
+policy through REST contract `1.21.0`. Workload ACL creation and
 update methods carry an optional immutable `placement { node_pool_id = ... }`
 selection through that same contract. The package is internal and
 versioned with Cloud until public package compatibility and deprecation policy
@@ -111,14 +111,16 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-`listHumanTasks` and `getHumanTask` add the protected HumanTask read surface in
-REST contract `1.20.0`. Lists accept only the closed status set and a limit from
+`listHumanTasks`, `getHumanTask`, `claimHumanTask`, and `releaseHumanTask` add
+the protected HumanTask read and assignment surface in
+REST contract `1.21.0`. Lists accept only the closed status set and a limit from
 1 through 200 and return summaries without interaction payloads. Detail may
 return the request-bound native A3S Form interaction only when the bearer
-principal is the current claimant; the server remains authoritative for that
-authorization decision. The client does not expose claim, release, submission,
-service/finite-task, typed capability, compensation, or production-recovery
-support.
+principal is the current claimant. Claim/release require an explicit positive
+aggregate version and caller-owned idempotency key, while the server remains
+authoritative for project access, assignment policy, claimant identity, state,
+audit, and replay. The client does not expose submission, service/finite-task,
+typed capability, compensation, or production-recovery support.
 
 `listFormDrafts`, `getFormDraft`, `createFormDraft`, `reviseFormDraft`,
 `listFormReleases`, `getFormRelease`, and `publishFormRelease` expose the native

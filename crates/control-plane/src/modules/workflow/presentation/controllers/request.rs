@@ -94,7 +94,7 @@ fn acl_body(request: &BootRequest, label: &str, maximum_bytes: usize) -> Result<
         .map_err(|_| BootError::BadRequest(format!("{label} ACL must be valid UTF-8")))
 }
 
-pub(super) fn workflow_revision_control(request: &BootRequest) -> Result<u64> {
+pub(super) fn expected_version(request: &BootRequest) -> Result<u64> {
     let expected_version = request
         .header("x-a3s-expected-version")
         .ok_or_else(|| BootError::BadRequest("x-a3s-expected-version header is required".into()))?

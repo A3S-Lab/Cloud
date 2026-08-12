@@ -5,19 +5,20 @@ use crate::modules::shared_kernel::domain::{
     WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::presentation::{
-    HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse,
+    HumanTaskMutationResponse, HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse,
     WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse, WorkflowGoalMutationResponse,
     WorkflowGoalResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
     WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
 };
 use crate::modules::workflow::{
-    CancelWorkflowRun, CreateWorkflowDefinition, CreateWorkflowGoal, GetHumanTask, GetPlanRevision,
-    GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision, GetWorkflowRun,
-    GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskStatus, ListHumanTasks,
-    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
-    ReviseWorkflowDefinition, StartWorkflowRun, WaitWorkflowRun, WorkflowPayloadAcl,
-    WorkflowPayloadKind, HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT,
-    WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
+    CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
+    GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision,
+    GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskAssignmentAction,
+    HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals,
+    ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun,
+    WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind, HUMAN_TASK_LIST_MAX_LIMIT,
+    WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+    WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde::de::Error as _;
@@ -162,6 +163,16 @@ pub struct WorkflowRunHistoryArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HumanTaskArguments {
     human_task_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanTaskMutationArguments {
+    human_task_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -668,6 +679,36 @@ pub async fn get_human_task(
         .await?
     {
         Ok(value) => tool_result::success(200, HumanTaskResponse::from(value), request_id),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn change_human_task_assignment(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: HumanTaskMutationArguments,
+    action: HumanTaskAssignmentAction,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ChangeHumanTaskAssignment {
+            organization_id,
+            human_task_id: HumanTaskId::from_uuid(arguments.human_task_id),
+            resource_access,
+            action,
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+            requested_at: chrono::Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => {
+            tool_result::success(200, HumanTaskMutationResponse::from(result), request_id)
+        }
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

@@ -142,6 +142,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             }),
         );
     }
+    if method == "post" && is_human_task_assignment_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current HumanTask aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
     if method == "post" && is_form_version_mutation_path(path) {
         upsert_parameter(
             parameters,
@@ -819,6 +831,7 @@ fn request_has_no_body(path: &str) -> bool {
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || path.ends_with("/source-connections/github")
         || is_form_release_mutation_path(path)
+        || is_human_task_assignment_mutation_path(path)
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
 }
 
@@ -970,6 +983,11 @@ fn is_workflow_run_start_path(path: &str) -> bool {
 
 fn is_workflow_run_cancel_path(path: &str) -> bool {
     path.contains("/workflow-runs/{workflow_run_id}/") && path.ends_with("/cancel")
+}
+
+fn is_human_task_assignment_mutation_path(path: &str) -> bool {
+    path.contains("/human-tasks/{human_task_id}/")
+        && (path.ends_with("/claim") || path.ends_with("/release"))
 }
 
 fn is_workflow_definition_mutation_path(path: &str) -> bool {

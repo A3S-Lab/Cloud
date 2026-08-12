@@ -374,6 +374,11 @@ export interface HumanTask extends HumanTaskSummary {
   interactionRequest: HumanTaskInteractionRequest | null;
 }
 
+export interface HumanTaskMutationResult {
+  humanTask: HumanTask;
+  replayed: boolean;
+}
+
 export interface ListHumanTasksOptions {
   status?: HumanTaskStatus;
   limit?: number;
