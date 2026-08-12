@@ -2,8 +2,8 @@ use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, NodeId, OrganizationId, RepositoryError, ResourceClaimId,
 };
 use crate::modules::workloads::domain::entities::{
-    ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation,
+    AtomicResourceClaimReservation, ResourceClaim, ResourceClaimBindingEvidence,
+    ResourceClaimReleaseEvidence, ResourceClaimReservation,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -45,6 +45,11 @@ pub trait IResourceClaimRepository: Send + Sync {
         &self,
         reservation: ResourceClaimReservation,
     ) -> Result<IdempotentWrite<ResourceClaim>, RepositoryError>;
+
+    async fn reserve_atomically(
+        &self,
+        reservation: AtomicResourceClaimReservation,
+    ) -> Result<IdempotentWrite<Vec<ResourceClaim>>, RepositoryError>;
 
     async fn find(
         &self,

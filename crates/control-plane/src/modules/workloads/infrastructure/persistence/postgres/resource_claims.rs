@@ -13,8 +13,8 @@ use crate::modules::shared_kernel::domain::{
     ResourceClaimId, WorkloadId,
 };
 use crate::modules::workloads::domain::entities::{
-    ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation, ResourceClaimState,
+    AtomicResourceClaimReservation, ResourceClaim, ResourceClaimBindingEvidence,
+    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState,
 };
 use crate::modules::workloads::domain::repositories::{
     placement_unavailable, IResourceClaimRepository,
@@ -89,9 +89,28 @@ impl IResourceClaimRepository for PostgresResourceClaimRepository {
         &self,
         reservation: ResourceClaimReservation,
     ) -> Result<IdempotentWrite<ResourceClaim>, RepositoryError> {
+        let reservation = AtomicResourceClaimReservation::single(reservation)
+            .map_err(RepositoryError::Conflict)?;
+        let result = self.reserve_atomically(reservation).await?;
+        let mut claims = result.value;
+        if claims.len() != 1 {
+            return Err(RepositoryError::Storage(
+                "single resource reservation returned an invalid Claim count".into(),
+            ));
+        }
+        Ok(IdempotentWrite {
+            value: claims.remove(0),
+            replayed: result.replayed,
+        })
+    }
+
+    async fn reserve_atomically(
+        &self,
+        reservation: AtomicResourceClaimReservation,
+    ) -> Result<IdempotentWrite<Vec<ResourceClaim>>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
-                Box::pin(reserve_in_transaction(transaction, reservation))
+                Box::pin(reserve_atomically_in_transaction(transaction, reservation))
             })
             .await
             .map_err(transaction_error)
@@ -234,27 +253,57 @@ impl IResourceClaimRepository for PostgresResourceClaimRepository {
     }
 }
 
-async fn reserve_in_transaction(
+async fn reserve_atomically_in_transaction(
     transaction: &PostgresTransaction,
-    reservation: ResourceClaimReservation,
-) -> Result<IdempotentWrite<ResourceClaim>, PostgresPersistenceError> {
-    reservation.validate().map_err(RepositoryError::Conflict)?;
-    lock_claim_id(transaction, reservation.id).await?;
-    if let Some(existing) = find_claim_in_transaction(
-        transaction,
-        reservation.binding.organization_id,
-        reservation.id,
-    )
-    .await?
-    {
-        if !reservation.matches(&existing) {
+    reservation: AtomicResourceClaimReservation,
+) -> Result<IdempotentWrite<Vec<ResourceClaim>>, PostgresPersistenceError> {
+    let reservations = reservation.into_reservations();
+    let mut claim_ids = reservations
+        .iter()
+        .map(|member| member.id)
+        .collect::<Vec<_>>();
+    claim_ids.sort_unstable();
+    for claim_id in claim_ids {
+        lock_claim_id(transaction, claim_id).await?;
+    }
+
+    let mut existing = Vec::with_capacity(reservations.len());
+    for member in &reservations {
+        if let Some(claim) =
+            find_claim_in_transaction(transaction, member.binding.organization_id, member.id)
+                .await?
+        {
+            existing.push((member, claim));
+        }
+    }
+    if !existing.is_empty() {
+        if existing.len() != reservations.len()
+            || existing
+                .iter()
+                .any(|(member, claim)| !member.matches(claim))
+        {
             return Err(RepositoryError::IdempotencyConflict.into());
         }
         return Ok(IdempotentWrite {
-            value: existing,
+            value: existing.into_iter().map(|(_, claim)| claim).collect(),
             replayed: true,
         });
     }
+
+    let mut claims = Vec::with_capacity(reservations.len());
+    for member in reservations {
+        claims.push(reserve_new_claim_in_transaction(transaction, member).await?);
+    }
+    Ok(IdempotentWrite {
+        value: claims,
+        replayed: false,
+    })
+}
+
+async fn reserve_new_claim_in_transaction(
+    transaction: &PostgresTransaction,
+    reservation: ResourceClaimReservation,
+) -> Result<ResourceClaim, PostgresPersistenceError> {
     require_node_pool_placement_eligible(
         transaction,
         reservation.binding.organization_id,
@@ -309,10 +358,7 @@ async fn reserve_in_transaction(
     let slots = resource_claim_writes::reserve_slots(transaction, &reservation).await?;
     let claim = ResourceClaim::reserve(&reservation, slots).map_err(RepositoryError::Conflict)?;
     resource_claim_writes::insert_claim(transaction, &claim).await?;
-    Ok(IdempotentWrite {
-        value: claim,
-        replayed: false,
-    })
+    Ok(claim)
 }
 
 pub(super) async fn require_node_pool_placement_eligible(

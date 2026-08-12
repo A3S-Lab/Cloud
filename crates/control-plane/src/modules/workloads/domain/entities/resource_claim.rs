@@ -11,6 +11,9 @@ use a3s_cloud_contracts::{NodeResourceClaimBinding, NodeResourceInventory};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
+
+pub const MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS: usize = 256;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -191,6 +194,77 @@ pub struct ResourceClaimReservation {
     pub topology_digest: String,
     pub slots: Vec<ResourceSlotRequest>,
     pub reserved_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AtomicResourceClaimReservation {
+    reservations: Vec<ResourceClaimReservation>,
+}
+
+impl AtomicResourceClaimReservation {
+    pub fn new(mut reservations: Vec<ResourceClaimReservation>) -> Result<Self, String> {
+        if reservations.is_empty() || reservations.len() > MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS {
+            return Err(format!(
+                "an atomic resource claim reservation must contain between 1 and {MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS} members"
+            ));
+        }
+        for reservation in &reservations {
+            reservation.validate()?;
+        }
+        let organization_id = reservations[0].binding.organization_id;
+        if reservations
+            .iter()
+            .any(|reservation| reservation.binding.organization_id != organization_id)
+        {
+            return Err("an atomic resource claim reservation cannot cross organizations".into());
+        }
+
+        let mut claim_ids = BTreeSet::new();
+        let mut member_generations = BTreeSet::new();
+        for reservation in &reservations {
+            if !claim_ids.insert(reservation.id) {
+                return Err("an atomic resource claim reservation repeats a Claim ID".into());
+            }
+            let member_generation = (
+                reservation.binding.replica_id,
+                reservation.binding.replica_generation,
+                reservation.binding.member_id,
+            );
+            if !member_generations.insert(member_generation) {
+                return Err(
+                    "an atomic resource claim reservation repeats one replica member generation"
+                        .into(),
+                );
+            }
+        }
+
+        // Every implementation consumes this canonical order before taking
+        // node, capacity-slot, or inventory locks. A single-Claim reservation
+        // uses the same path, so overlapping multi-member candidates cannot
+        // invert the lock order relative to ordinary scheduling.
+        reservations.sort_by_key(|reservation| {
+            (
+                reservation.node_id,
+                reservation.binding.workload_id,
+                reservation.binding.replica_id,
+                reservation.binding.member_id,
+                reservation.id,
+            )
+        });
+        Ok(Self { reservations })
+    }
+
+    pub fn single(reservation: ResourceClaimReservation) -> Result<Self, String> {
+        Self::new(vec![reservation])
+    }
+
+    pub fn reservations(&self) -> &[ResourceClaimReservation] {
+        &self.reservations
+    }
+
+    pub fn into_reservations(self) -> Vec<ResourceClaimReservation> {
+        self.reservations
+    }
 }
 
 impl ResourceClaimReservation {

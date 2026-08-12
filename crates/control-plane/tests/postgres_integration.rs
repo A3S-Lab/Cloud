@@ -365,6 +365,12 @@ async fn exercise_postgres_replica_set_foundation(
         &replica_set,
     )
     .await?;
+    resource_claims_support::exercise_atomic_resource_claim_reservations(
+        &executor,
+        OrganizationId::from_uuid(organization_id),
+        &replica_set,
+    )
+    .await?;
     Ok(())
 }
 
