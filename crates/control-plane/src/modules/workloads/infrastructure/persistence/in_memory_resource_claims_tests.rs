@@ -8,7 +8,9 @@ use crate::modules::workloads::domain::entities::{
     ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState, ResourceKind,
     ResourceSlotRequest, ResourceUnit,
 };
-use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
+use crate::modules::workloads::domain::repositories::{
+    is_placement_unavailable, IResourceClaimRepository,
+};
 use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
@@ -39,6 +41,66 @@ async fn exact_reservation_replay_does_not_rotate_fencing_identity() {
         repository.reserve(changed).await,
         Err(RepositoryError::IdempotencyConflict)
     );
+}
+
+#[tokio::test]
+async fn concurrent_sibling_replicas_cannot_claim_the_same_node() {
+    let repository = Arc::new(InMemoryResourceClaimRepository::new());
+    let now = Utc::now();
+    let first = shared_reservation(OrganizationId::new(), NodeId::new(), 100, 1_000, now);
+    let mut sibling = first.clone();
+    sibling.id = ResourceClaimId::new();
+    sibling.binding.deployment_id = DeploymentId::new();
+    sibling.binding.replica_id = WorkloadReplicaId::from_uuid(uuid::Uuid::now_v7());
+    sibling.binding.member_id =
+        WorkloadReplicaMemberId::from_uuid(sibling.binding.replica_id.as_uuid());
+    sibling.binding.runtime_unit_id = format!(
+        "workload:{}:replica:{}:revision:{}",
+        sibling.binding.workload_id, sibling.binding.replica_id, sibling.binding.revision_id
+    );
+
+    let barrier = Arc::new(Barrier::new(2));
+    let mut tasks = Vec::new();
+    for reservation in [first, sibling] {
+        let repository = Arc::clone(&repository);
+        let barrier = Arc::clone(&barrier);
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            repository.reserve(reservation).await
+        }));
+    }
+    let mut winners = 0;
+    let mut anti_affinity_conflicts = 0;
+    for task in tasks {
+        match task.await.expect("reservation task") {
+            Ok(_) => winners += 1,
+            Err(error) if is_placement_unavailable(&error) => anti_affinity_conflicts += 1,
+            Err(error) => panic!("unexpected sibling reservation outcome: {error}"),
+        }
+    }
+    assert_eq!(winners, 1);
+    assert_eq!(anti_affinity_conflicts, 1);
+}
+
+#[tokio::test]
+async fn overlapping_generations_of_one_stable_replica_can_share_its_node() {
+    let repository = InMemoryResourceClaimRepository::new();
+    let now = Utc::now();
+    let first = shared_reservation(OrganizationId::new(), NodeId::new(), 100, 1_000, now);
+    repository
+        .reserve(first.clone())
+        .await
+        .expect("initial replica generation");
+
+    let mut update = first;
+    update.id = ResourceClaimId::new();
+    update.binding.deployment_id = DeploymentId::new();
+    update.binding.replica_generation = 2;
+    update.binding.runtime_generation = 2;
+    repository
+        .reserve(update)
+        .await
+        .expect("rolling generation on the stable replica node");
 }
 
 #[tokio::test]

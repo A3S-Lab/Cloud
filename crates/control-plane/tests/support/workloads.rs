@@ -1,6 +1,8 @@
 use a3s_cloud_contracts::NodeCommandPayload;
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
-use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
+use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeRepository,
+};
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
@@ -12,11 +14,12 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 };
 use a3s_cloud_control_plane::modules::workloads::infrastructure::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
-    CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, HttpHealthCheck,
-    IWorkloadReplicaDeploymentRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    OciArtifact, PostgresWorkloadRepository, ReconfigureReplicaSetWrite, ServicePort,
-    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControl,
-    WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
+    CreateDeploymentBundle, Deployment, DeploymentReplicaBinding, DeploymentRequested,
+    DeploymentStatus, HttpHealthCheck, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
+    IWorkloadRuntimeTargetRepository, OciArtifact, PostgresWorkloadRepository,
+    ReconfigureReplicaSetWrite, ReplicaAntiAffinity, ServicePort, ServiceProcess, ServiceResources,
+    ServiceTemplate, Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplicaLifecycle,
+    WorkloadRevision,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::RuntimeApplyRequest;
@@ -34,6 +37,212 @@ pub struct WorkloadFixture {
     pub candidate_generation: u64,
     pub candidate_deployment_id: DeploymentId,
     pub node_id: NodeId,
+}
+
+pub struct ReplicaSetFixture {
+    pub bindings: Vec<DeploymentReplicaBinding>,
+}
+
+pub async fn exercise_replica_policy_v1_upgrade(
+    executor: &PostgresExecutor,
+    organization_uuid: Uuid,
+    project_uuid: Uuid,
+    environment_uuid: Uuid,
+    replica_set: &ReplicaSetFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization_id = OrganizationId::from_uuid(organization_uuid);
+    let project_id = ProjectId::from_uuid(project_uuid);
+    let environment_id = EnvironmentId::from_uuid(environment_uuid);
+    let repository = PostgresWorkloadRepository::new(executor.clone());
+    let workloads = repository
+        .list_workloads(organization_id, project_id, environment_id)
+        .await?;
+    let mut before = BTreeMap::new();
+    for workload in &workloads {
+        let control = repository
+            .find_workload_control(organization_id, workload.id)
+            .await?;
+        before.insert(
+            workload.id,
+            (
+                control.spec.placement_policy.generation(),
+                control.spec.placement_policy.desired_replicas(),
+                control.aggregate_version,
+                control.updated_at,
+            ),
+        );
+    }
+    if before.is_empty() {
+        return Err("replica policy migration fixture has no Workload controls".into());
+    }
+
+    let client = executor.pool().get().await?;
+    client
+        .batch_execute(
+            r#"
+alter table workload_controls
+    drop constraint workload_controls_placement_policy_check;
+
+with policy_values as (
+    select
+        workload_id,
+        (placement_policy ->> 'generation')::bigint as generation,
+        (placement_policy ->> 'desiredReplicas')::integer as desired_replicas,
+        (placement_policy ->> 'membersPerReplica')::integer as members_per_replica,
+        placement_policy ->> 'topology' as topology
+    from workload_controls
+),
+legacy as (
+    select
+        workload_id,
+        generation,
+        desired_replicas,
+        members_per_replica,
+        topology,
+        'sha256:' || encode(
+            sha256(convert_to(
+                '{"schema":"a3s.cloud.effective-placement-policy.v1","generation":'
+                    || generation::text
+                    || ',"desiredReplicas":' || desired_replicas::text
+                    || ',"membersPerReplica":' || members_per_replica::text
+                    || ',"topology":"' || topology || '"}',
+                'UTF8'
+            )),
+            'hex'
+        ) as digest
+    from policy_values
+)
+update workload_controls as control
+set placement_policy = jsonb_build_object(
+        'schema', 'a3s.cloud.effective-placement-policy.v1',
+        'generation', legacy.generation,
+        'desiredReplicas', legacy.desired_replicas,
+        'membersPerReplica', legacy.members_per_replica,
+        'topology', legacy.topology,
+        'digest', legacy.digest
+    ),
+    placement_policy_digest = legacy.digest
+from legacy
+where legacy.workload_id = control.workload_id;
+
+alter table workload_controls
+    add constraint workload_controls_placement_policy_check check (
+        jsonb_typeof(placement_policy) = 'object'
+        and placement_policy ->> 'schema' =
+            'a3s.cloud.effective-placement-policy.v1'
+        and (placement_policy ->> 'generation')::bigint > 0
+        and (placement_policy ->> 'desiredReplicas')::integer between 0 and 100
+        and (placement_policy ->> 'membersPerReplica')::integer = 1
+        and placement_policy ->> 'topology' = 'single_node'
+        and placement_policy ->> 'digest' = placement_policy_digest
+        and placement_policy_digest ~ '^sha256:[0-9a-f]{64}$'
+    );
+
+drop index resource_claims_active_workload_node_replica_idx;
+"#,
+        )
+        .await?;
+    let node_id = PostgresNodeRepository::new(executor.clone())
+        .list(organization_id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("replica policy migration fixture has no node")?
+        .id;
+    let mut conflicting_claim_ids = Vec::new();
+    for binding in replica_set.bindings.iter().take(2) {
+        let claim_id = Uuid::now_v7();
+        let replica_generation = i64::try_from(binding.replica_generation)?;
+        let runtime_generation = i64::try_from(binding.runtime_generation)?;
+        let at = Utc::now().max(binding.updated_at);
+        client
+            .execute(
+                "insert into resource_claims (
+                    id, organization_id, project_id, environment_id, workload_id,
+                    deployment_id, replica_id, replica_generation, member_id,
+                    placement_generation, node_id, inventory_generation, inventory_digest,
+                    runtime_unit_id, runtime_generation, topology_digest, reservation_digest,
+                    claim_generation, claim_digest, state, aggregate_version, created_at, updated_at
+                 ) values (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10, 1, $11,
+                    $12, $13, $14, $15, 1, $16, 'reserved_in_db', 1, $17, $17
+                 )",
+                &[
+                    &claim_id,
+                    &binding.organization_id.as_uuid(),
+                    &binding.project_id.as_uuid(),
+                    &binding.environment_id.as_uuid(),
+                    &binding.workload_id.as_uuid(),
+                    &binding.deployment_id.as_uuid(),
+                    &binding.replica_id.as_uuid(),
+                    &replica_generation,
+                    &binding.member_id.as_uuid(),
+                    &node_id.as_uuid(),
+                    &format!("sha256:{}", "a".repeat(64)),
+                    &binding.runtime_unit_id,
+                    &runtime_generation,
+                    &format!("sha256:{}", "b".repeat(64)),
+                    &format!("sha256:{}", "c".repeat(64)),
+                    &format!("sha256:{}", "d".repeat(64)),
+                    &at,
+                ],
+            )
+            .await?;
+        conflicting_claim_ids.push(claim_id);
+    }
+    if conflicting_claim_ids.len() != 2 {
+        return Err("replica policy migration fixture omitted conflicting replicas".into());
+    }
+    let migration = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/088_required_replica_anti_affinity.sql"
+    ));
+    let conflict = client
+        .batch_execute(migration)
+        .await
+        .expect_err("migration must reject an existing sibling placement conflict");
+    if !conflict.as_db_error().is_some_and(|error| {
+        error
+            .message()
+            .contains("required Workload replica anti-affinity")
+    }) {
+        return Err(format!("migration rejected the conflict unexpectedly: {conflict}").into());
+    }
+    for claim_id in conflicting_claim_ids {
+        client
+            .execute("delete from resource_claims where id = $1", &[&claim_id])
+            .await?;
+    }
+    client.batch_execute(migration).await?;
+
+    for (workload_id, (generation, desired_replicas, aggregate_version, updated_at)) in before {
+        let control = repository
+            .find_workload_control(organization_id, workload_id)
+            .await?;
+        assert_eq!(
+            (
+                control.spec.placement_policy.generation(),
+                control.spec.placement_policy.desired_replicas(),
+            ),
+            (
+                generation
+                    .checked_add(1)
+                    .ok_or("placement policy generation overflowed in migration fixture")?,
+                desired_replicas,
+            )
+        );
+        assert_eq!(control.aggregate_version, aggregate_version + 1);
+        assert!(control.updated_at >= updated_at);
+        assert_eq!(
+            control.spec.placement_policy.replica_anti_affinity(),
+            ReplicaAntiAffinity::Required
+        );
+        assert_eq!(
+            control.spec.placement_policy.schema(),
+            "a3s.cloud.effective-placement-policy.v2"
+        );
+    }
+    Ok(())
 }
 
 pub async fn exercise_workloads(
@@ -411,7 +620,7 @@ pub async fn exercise_replica_set(
     organization_uuid: Uuid,
     project_uuid: Uuid,
     environment_uuid: Uuid,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<ReplicaSetFixture, Box<dyn std::error::Error>> {
     let organization_id = OrganizationId::from_uuid(organization_uuid);
     let workload = Workload::create(
         WorkloadId::new(),
@@ -494,6 +703,22 @@ pub async fn exercise_replica_set(
         .await?
         .is_some_and(|result| result.created));
     assert!(repository.pending_replica_deployments(10).await?.is_empty());
+    let mut replica_bindings = Vec::new();
+    for deployment in repository
+        .list_deployments(organization_id, workload.id)
+        .await?
+    {
+        replica_bindings.push(
+            repository
+                .find_deployment_replica_binding(organization_id, deployment.id)
+                .await?,
+        );
+    }
+    replica_bindings.sort_by_key(|binding| binding.replica_id);
+    assert_eq!(replica_bindings.len(), 3);
+    assert!(replica_bindings
+        .iter()
+        .all(|binding| binding.node_id.is_none()));
     assert_eq!(
         database
             .fetch_one_as(
@@ -659,7 +884,9 @@ pub async fn exercise_replica_set(
             .is_empty(),
         "queued replica generations must not enter active Runtime reconciliation",
     );
-    Ok(())
+    Ok(ReplicaSetFixture {
+        bindings: replica_bindings,
+    })
 }
 
 fn replica_set_write(

@@ -272,7 +272,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (87, "087".into()));
+    assert_eq!(migration_state, (88, "088".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -318,8 +318,29 @@ async fn exercise_postgres_replica_set_foundation(
         )
         .await?;
 
-    workloads_support::exercise_replica_set(&executor, organization_id, project_id, environment_id)
-        .await
+    let replica_set = workloads_support::exercise_replica_set(
+        &executor,
+        organization_id,
+        project_id,
+        environment_id,
+    )
+    .await?;
+    fleet_support::exercise_fleet(&executor, organization_id).await?;
+    workloads_support::exercise_replica_policy_v1_upgrade(
+        &executor,
+        organization_id,
+        project_id,
+        environment_id,
+        &replica_set,
+    )
+    .await?;
+    resource_claims_support::exercise_replica_anti_affinity(
+        &executor,
+        OrganizationId::from_uuid(organization_id),
+        &replica_set,
+    )
+    .await?;
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -942,7 +963,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 87);
+    assert_eq!(applied, 88);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -3452,11 +3473,15 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     assert_eq!(listed[0]["control"]["managedOwner"], Value::Null);
     assert_eq!(
         listed[0]["control"]["placementPolicy"]["schema"],
-        "a3s.cloud.effective-placement-policy.v1"
+        "a3s.cloud.effective-placement-policy.v2"
     );
     assert_eq!(
         listed[0]["control"]["placementPolicy"]["desiredReplicas"],
         1
+    );
+    assert_eq!(
+        listed[0]["control"]["placementPolicy"]["replicaAntiAffinity"],
+        "required"
     );
     assert_eq!(listed[0]["replicas"].as_array().map(Vec::len), Some(1));
     assert_eq!(listed[0]["replicas"][0]["id"], workload_id);
@@ -3628,7 +3653,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     )
     .await
     .map_err(|error| format!("Workload persistence integration failed: {error}"))?;
-    workloads_support::exercise_replica_set(
+    let replica_set_fixture = workloads_support::exercise_replica_set(
         &executor,
         Uuid::parse_str(&organization_id)?,
         Uuid::parse_str(&project_id)?,
@@ -3640,6 +3665,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         &executor,
         OrganizationId::from_uuid(Uuid::parse_str(&organization_id)?),
         &workload_fixture,
+        &replica_set_fixture,
     )
     .await
     .map_err(|error| format!("Resource Claim persistence integration failed: {error}"))?;

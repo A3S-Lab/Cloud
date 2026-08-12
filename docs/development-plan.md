@@ -3269,12 +3269,24 @@ evidence, and publishes the replica-specific Unit and generation. Retiring and
 stale replica generations are excluded even while their historical Deployment
 is still active. The focused multi-node flow proves three independently placed
 replica identities, a two-target healthy projection, exact replica cleanup,
-and immediate route contraction during a three-to-one scale-down. This remains
-a foundation rather than the `H0.3` exit: explicit anti-affinity policy,
-retirement completion and resource release, drain/evacuation, maintenance and
-node-pool policy, placement groups and gang claims, bounded rolling updates,
-independent Gateway placement, and provider-neutral private networking remain
-open.
+and immediate route contraction during a three-to-one scale-down.
+
+Migration 088 advances existing effective placement policies to schema v2 and
+records required sibling-replica anti-affinity in the digest-bound policy. A
+semantic upgrade advances both policy generation and WorkloadControl aggregate
+version, rejects pre-existing conflicting active Claims, and is covered by a
+non-empty v1-to-v2 PostgreSQL 17 replay gate. Resource Claim reservation takes
+one transaction-scoped lock per tenant, Workload, and node before testing for a
+different active replica. Concurrent sibling placements therefore have one
+winner, releasing or orphaned Claims remain exclusionary until trusted release
+evidence is durable, and overlapping rollout generations of the same stable
+replica may still use its prior node. The multi-node flow gives every candidate
+enough capacity, proving that its three-node spread comes from policy rather
+than incidental resource exhaustion. This remains a foundation rather than the
+`H0.3` exit: retirement completion and resource release, drain/evacuation,
+maintenance and node-pool policy, placement groups and gang claims, bounded
+rolling updates, independent Gateway placement, and provider-neutral private
+networking remain open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,

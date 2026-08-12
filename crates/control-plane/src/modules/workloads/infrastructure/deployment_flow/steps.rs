@@ -15,12 +15,14 @@ use super::{flow_error, resource_claim_id};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId, RepositoryError};
 use crate::modules::workloads::domain::entities::{
-    CompiledResourceRequirements, DeploymentReplicaBinding, DeploymentStatus,
+    CompiledResourceRequirements, DeploymentReplicaBinding, DeploymentStatus, ReplicaAntiAffinity,
     ResourceClaimBindingEvidence, ResourceClaimReservation, ResourceClaimState,
     SecretBindingTarget, ServiceResources, WorkloadReplica, WorkloadReplicaMember,
     WorkloadRevision,
 };
-use crate::modules::workloads::domain::repositories::is_capacity_unavailable;
+use crate::modules::workloads::domain::repositories::{
+    is_capacity_unavailable, is_placement_unavailable,
+};
 use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
 use crate::modules::workloads::infrastructure::project_replica_runtime_spec;
 use crate::modules::workloads::infrastructure::runtime_spec::project_bound_runtime_spec;
@@ -536,12 +538,31 @@ async fn schedule(
             "resolving deployment has an inconsistent placed replica binding".into(),
         ));
     }
+    let control = runtime
+        .workloads
+        .find_workload_control(deployment.organization_id, deployment.workload_id)
+        .await
+        .map_err(|error| {
+            flow_error(
+                "could not load effective placement policy for scheduling",
+                error,
+            )
+        })?;
+    if control.organization_id != deployment.organization_id
+        || control.workload_id != deployment.workload_id
+        || control.spec.placement_policy.replica_anti_affinity() != ReplicaAntiAffinity::Required
+    {
+        return Err(FlowError::Runtime(
+            "deployment has no supported required replica anti-affinity policy".into(),
+        ));
+    }
     let mut nodes = runtime
         .nodes
         .list(deployment.organization_id)
         .await
         .map_err(|error| flow_error("could not list deployment nodes", error))?;
     nodes.sort_by_key(|node| node.id);
+    let mut anti_affinity_unavailable = false;
     for node in nodes {
         if input
             .resolved
@@ -606,6 +627,10 @@ async fn schedule(
         let claim = match runtime.resource_claims.reserve(reservation).await {
             Ok(result) => result.value,
             Err(error) if is_capacity_unavailable(&error) => continue,
+            Err(error) if is_placement_unavailable(&error) => {
+                anti_affinity_unavailable = true;
+                continue;
+            }
             Err(RepositoryError::IdempotencyConflict) => {
                 let claim = scheduling_claim(runtime, &deployment, &input.resolved)
                     .await?
@@ -648,12 +673,19 @@ async fn schedule(
 
     if now >= input.resolved.convergence_deadline {
         return Ok(ScheduleStepOutput::Failed {
-            reason: "no eligible node became available before the convergence deadline".into(),
+            reason: if anti_affinity_unavailable {
+                "no node satisfied required replica anti-affinity before the convergence deadline"
+                    .into()
+            } else {
+                "no eligible node became available before the convergence deadline".into()
+            },
         });
     }
     Ok(ScheduleStepOutput::Pending {
         reason: if input.resolved.previous_runtime.is_some() {
             "the previous Runtime node is not ready for a one-node update".into()
+        } else if anti_affinity_unavailable {
+            "no ready node satisfies required replica anti-affinity".into()
         } else {
             "no ready node satisfies the Runtime specification".into()
         },

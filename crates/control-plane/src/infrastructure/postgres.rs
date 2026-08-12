@@ -771,6 +771,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/087_resource_grants.sql"
             )),
         ),
+        Migration::new(
+            "088",
+            "required Workload replica anti-affinity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/088_required_replica_anti_affinity.sql"
+            )),
+        ),
     ]
 }
 

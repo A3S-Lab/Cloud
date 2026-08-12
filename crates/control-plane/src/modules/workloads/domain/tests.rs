@@ -109,6 +109,14 @@ fn managed_owner_and_effective_placement_are_closed_and_digest_bound() {
         spec.placement_policy.topology(),
         PlacementTopology::SingleNode
     );
+    assert_eq!(
+        spec.placement_policy.replica_anti_affinity(),
+        ReplicaAntiAffinity::Required
+    );
+    assert_eq!(
+        spec.placement_policy.schema(),
+        "a3s.cloud.effective-placement-policy.v2"
+    );
     assert!(spec.placement_policy.digest().starts_with("sha256:"));
 
     let mut corrupt = spec.placement_policy.document().expect("policy document");
@@ -146,6 +154,12 @@ fn replica_set_policy_is_bounded_and_digest_bound() {
     let corrupt: EffectivePlacementPolicy =
         serde_json::from_value(corrupt).expect("decode corrupt policy");
     assert!(corrupt.validate().is_err());
+
+    let mut legacy = largest.document().expect("policy document");
+    legacy["schema"] = serde_json::json!("a3s.cloud.effective-placement-policy.v1");
+    let legacy: EffectivePlacementPolicy =
+        serde_json::from_value(legacy).expect("decode legacy policy");
+    assert!(legacy.validate().is_err());
 }
 
 #[test]
