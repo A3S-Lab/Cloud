@@ -1,5 +1,6 @@
 use crate::modules::assets::application::AssetCatalogApplicationService;
 use crate::modules::assets::domain::AssetRelease;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,6 +11,7 @@ pub struct SelectAssetRelease {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
     pub requested_version: Option<String>,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for SelectAssetRelease {
@@ -39,6 +41,7 @@ impl QueryHandler<SelectAssetRelease> for SelectAssetReleaseHandler {
                     query.organization_id,
                     query.asset_id,
                     query.requested_version,
+                    &query.resource_access,
                 )
                 .await)
         })

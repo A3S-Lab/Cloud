@@ -360,9 +360,10 @@ pub async fn build_application_with_source_resolver(
     let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
     let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
-    let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(Arc::clone(
-        &mcp_profiles,
-    )));
+    let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(
+        Arc::clone(&mcp_profiles),
+        Arc::clone(&assets),
+    ));
     let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
         mcp_route_policy_repository,
         Arc::clone(&mcp_profiles),

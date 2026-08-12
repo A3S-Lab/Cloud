@@ -597,6 +597,14 @@ contexts' tables.
   environment-only grant does not. Releases inherit that draft scope, while
   FormSubmission and HumanTask stay under their Workflow-owned authorization
   boundary rather than introducing a second or inferred Form ownership path.
+- Indirect Asset catalog detail, release, selection, and mutation requests,
+  hosted Git Smart HTTP, and MCP Service profile reads and bindings resolve the
+  canonical Asset through one Assets-owned application boundary before replay
+  or side effects. Asset and AssetRelease are organization-scoped today, so
+  organization-wide roles retain access while restricted memberships fail
+  closed regardless of unrelated project, environment, or node grants. No
+  synthetic project association or Identity-owned Asset index is introduced;
+  denied and missing identifiers share the same `404` contract.
 
 ### Project and Environment
 

@@ -1,5 +1,6 @@
 use crate::modules::assets::application::AssetGitApplicationService;
 use crate::modules::assets::domain::AssetGitRpcResponse;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -9,6 +10,7 @@ use std::sync::Arc;
 pub struct UploadAssetGitPack {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
+    pub resource_access: ResourceAccessEvaluator,
     pub body: Vec<u8>,
 }
 
@@ -36,7 +38,12 @@ impl QueryHandler<UploadAssetGitPack> for UploadAssetGitPackHandler {
         let service = Arc::clone(&self.service);
         Box::pin(async move {
             Ok(service
-                .upload_pack(query.organization_id, query.asset_id, query.body)
+                .upload_pack(
+                    query.organization_id,
+                    query.asset_id,
+                    query.body,
+                    &query.resource_access,
+                )
                 .await)
         })
     }

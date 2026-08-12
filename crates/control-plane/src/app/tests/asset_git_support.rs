@@ -19,8 +19,33 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_runtime::contract::ArtifactRef;
 use chrono::{DateTime, Utc};
+use std::collections::BTreeMap;
+use std::sync::Mutex;
 
-pub(super) struct UnavailableAssetStore;
+#[derive(Default)]
+pub(super) struct UnavailableAssetStore {
+    assets: Mutex<BTreeMap<(OrganizationId, AssetId), Asset>>,
+    releases: Mutex<BTreeMap<(OrganizationId, AssetId, AssetReleaseId), AssetRelease>>,
+}
+
+impl UnavailableAssetStore {
+    pub(super) fn seed_asset(&self, asset: Asset) {
+        self.assets
+            .lock()
+            .expect("test Asset store")
+            .insert((asset.organization_id, asset.id), asset);
+    }
+
+    pub(super) fn seed_release(&self, release: AssetRelease) {
+        self.releases
+            .lock()
+            .expect("test Asset release store")
+            .insert(
+                (release.organization_id, release.asset_id, release.id),
+                release,
+            );
+    }
+}
 
 type UnavailableResult<T, E> = Result<T, E>;
 
@@ -42,17 +67,29 @@ impl IAssetRepository for UnavailableAssetStore {
 
     async fn find_asset(
         &self,
-        _organization_id: OrganizationId,
-        _asset_id: AssetId,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
     ) -> UnavailableResult<Option<Asset>, RepositoryError> {
-        Ok(None)
+        Ok(self
+            .assets
+            .lock()
+            .expect("test Asset store")
+            .get(&(organization_id, asset_id))
+            .cloned())
     }
 
     async fn list_assets(
         &self,
-        _organization_id: OrganizationId,
+        organization_id: OrganizationId,
     ) -> UnavailableResult<Vec<Asset>, RepositoryError> {
-        Ok(Vec::new())
+        Ok(self
+            .assets
+            .lock()
+            .expect("test Asset store")
+            .values()
+            .filter(|asset| asset.organization_id == organization_id)
+            .cloned()
+            .collect())
     }
 
     async fn create_release(
@@ -71,19 +108,33 @@ impl IAssetRepository for UnavailableAssetStore {
 
     async fn find_release(
         &self,
-        _organization_id: OrganizationId,
-        _asset_id: AssetId,
-        _asset_release_id: AssetReleaseId,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
     ) -> UnavailableResult<Option<AssetRelease>, RepositoryError> {
-        Ok(None)
+        Ok(self
+            .releases
+            .lock()
+            .expect("test Asset release store")
+            .get(&(organization_id, asset_id, asset_release_id))
+            .cloned())
     }
 
     async fn list_releases(
         &self,
-        _organization_id: OrganizationId,
-        _asset_id: AssetId,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
     ) -> UnavailableResult<Vec<AssetRelease>, RepositoryError> {
-        Ok(Vec::new())
+        Ok(self
+            .releases
+            .lock()
+            .expect("test Asset release store")
+            .values()
+            .filter(|release| {
+                release.organization_id == organization_id && release.asset_id == asset_id
+            })
+            .cloned()
+            .collect())
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::modules::assets::application::AssetGitApplicationService;
 use crate::modules::assets::domain::AssetGitRpcResponse;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{Command, CommandHandler, CqrsContext};
@@ -10,6 +11,7 @@ use uuid::Uuid;
 pub struct ReceiveAssetGitPack {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
+    pub resource_access: ResourceAccessEvaluator,
     pub actor_id: Uuid,
     pub request_id: Uuid,
     pub body: Vec<u8>,
@@ -42,6 +44,7 @@ impl CommandHandler<ReceiveAssetGitPack> for ReceiveAssetGitPackHandler {
                 .receive_pack(
                     command.organization_id,
                     command.asset_id,
+                    &command.resource_access,
                     command.actor_id,
                     command.request_id,
                     command.body,

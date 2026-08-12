@@ -4,12 +4,15 @@ use crate::modules::assets::application::queries::{
 };
 use crate::modules::assets::domain::AssetGitService;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    RouteDefinition, AUTH_SCOPES_METADATA,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -20,29 +23,35 @@ const REPOSITORY_PATH: &str = "/{organization_id}/assets/{asset_id}/git";
 pub fn advertisement_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     ControllerDefinition::new(BASE_PATH)?
         .with_guard(OrganizationTenantGuard)
-        .get(
-            format!("{REPOSITORY_PATH}/info/refs"),
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let service = advertisement_service(&request)?;
-                    require_scope(&request, service_scope(service))?;
-                    let (organization_id, asset_id) = repository_ids(&request)?;
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(AdvertiseAssetGitRepository {
-                            organization_id,
-                            asset_id,
-                            service,
-                        })
-                        .await?
-                    {
-                        Ok(body) => Ok(git_response(body, service.advertisement_media_type())),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                format!("{REPOSITORY_PATH}/info/refs"),
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let service = advertisement_service(&request)?;
+                        require_scope(&request, service_scope(service))?;
+                        let (organization_id, asset_id) = repository_ids(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(AdvertiseAssetGitRepository {
+                                organization_id,
+                                asset_id,
+                                service,
+                                resource_access,
+                            })
+                            .await?
+                        {
+                            Ok(body) => Ok(git_response(body, service.advertisement_media_type())),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Any,
+        )?)
 }
 
 pub fn upload_pack_controller(
@@ -52,35 +61,41 @@ pub fn upload_pack_controller(
     ControllerDefinition::new(BASE_PATH)?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
-        .post(
-            format!("{REPOSITORY_PATH}/git-upload-pack"),
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    validate_rpc_request(
-                        &request,
-                        AssetGitService::UploadPack,
-                        maximum_body_bytes,
-                    )?;
-                    let (organization_id, asset_id) = repository_ids(&request)?;
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(UploadAssetGitPack {
-                            organization_id,
-                            asset_id,
-                            body: request.body().to_vec(),
-                        })
-                        .await?
-                    {
-                        Ok(response) => Ok(git_response(
-                            response.body,
-                            AssetGitService::UploadPack.result_media_type(),
-                        )),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                format!("{REPOSITORY_PATH}/git-upload-pack"),
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        validate_rpc_request(
+                            &request,
+                            AssetGitService::UploadPack,
+                            maximum_body_bytes,
+                        )?;
+                        let (organization_id, asset_id) = repository_ids(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(UploadAssetGitPack {
+                                organization_id,
+                                asset_id,
+                                resource_access,
+                                body: request.body().to_vec(),
+                            })
+                            .await?
+                        {
+                            Ok(response) => Ok(git_response(
+                                response.body,
+                                AssetGitService::UploadPack.result_media_type(),
+                            )),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Any,
+        )?)
 }
 
 pub fn receive_pack_controller(
@@ -90,38 +105,44 @@ pub fn receive_pack_controller(
     ControllerDefinition::new(BASE_PATH)?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::ASSET_WRITE])?
-        .post(
-            format!("{REPOSITORY_PATH}/git-receive-pack"),
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    validate_rpc_request(
-                        &request,
-                        AssetGitService::ReceivePack,
-                        maximum_body_bytes,
-                    )?;
-                    let (organization_id, asset_id) = repository_ids(&request)?;
-                    let request_id = request_id(&request)?;
-                    let actor_id = actor_id(&request)?;
-                    match bus
-                        .execute(ReceiveAssetGitPack {
-                            organization_id,
-                            asset_id,
-                            actor_id,
-                            request_id,
-                            body: request.body().to_vec(),
-                        })
-                        .await?
-                    {
-                        Ok(response) => Ok(git_response(
-                            response.body,
-                            AssetGitService::ReceivePack.result_media_type(),
-                        )),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                format!("{REPOSITORY_PATH}/git-receive-pack"),
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        validate_rpc_request(
+                            &request,
+                            AssetGitService::ReceivePack,
+                            maximum_body_bytes,
+                        )?;
+                        let (organization_id, asset_id) = repository_ids(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let request_id = request_id(&request)?;
+                        let actor_id = actor_id(&request)?;
+                        match bus
+                            .execute(ReceiveAssetGitPack {
+                                organization_id,
+                                asset_id,
+                                resource_access,
+                                actor_id,
+                                request_id,
+                                body: request.body().to_vec(),
+                            })
+                            .await?
+                        {
+                            Ok(response) => Ok(git_response(
+                                response.body,
+                                AssetGitService::ReceivePack.result_media_type(),
+                            )),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Any,
+        )?)
 }
 
 fn advertisement_service(request: &BootRequest) -> Result<AssetGitService> {

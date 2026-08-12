@@ -15,10 +15,11 @@ use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::repositories::{
     CreateOrganizationWrite, IOrganizationRepository,
 };
-use crate::modules::identity::domain::value_objects::OrganizationName;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::identity::domain::value_objects::{OrganizationName, ResourceGrantScope};
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, IdempotentWrite, OrganizationId,
+    AssetId, AssetReleaseId, BuildRunId, GitCommitSha, IdempotentWrite, OrganizationId, ProjectId,
     RepositoryError, Sha256Digest,
 };
 use crate::modules::sources::domain::BuildRecipe;
@@ -472,8 +473,62 @@ fn service() -> (
 }
 
 #[tokio::test]
+async fn organization_scoped_assets_fail_closed_for_restricted_evaluators() {
+    let (organization_id, store, service) = service();
+    let organization_wide = ResourceAccessEvaluator::organization_wide();
+    let asset = service
+        .create_asset(
+            organization_id,
+            "catalog-restricted".into(),
+            "agent".into(),
+            "create-restricted-fixture".into(),
+            Uuid::now_v7(),
+        )
+        .await
+        .expect("create Asset fixture")
+        .asset;
+    let restricted = ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+        project_id: ProjectId::new(),
+    }]);
+
+    assert!(service
+        .list_assets(organization_id, &restricted)
+        .await
+        .expect("restricted list")
+        .is_empty());
+    assert!(matches!(
+        service
+            .get_asset(organization_id, asset.id, &restricted)
+            .await,
+        Err(ApplicationError::NotFound(_))
+    ));
+    assert!(matches!(
+        service
+            .archive_asset(
+                organization_id,
+                asset.id,
+                &restricted,
+                "archive-denied".into(),
+                Uuid::now_v7(),
+            )
+            .await,
+        Err(ApplicationError::NotFound(_))
+    ));
+    assert_eq!(
+        service
+            .get_asset(organization_id, asset.id, &organization_wide)
+            .await
+            .expect("organization-wide read")
+            .state,
+        crate::modules::assets::domain::AssetState::Active
+    );
+    assert_eq!(store.state().assets.len(), 1);
+}
+
+#[tokio::test]
 async fn hosted_release_uses_the_admitted_manifest_digest() {
     let (organization_id, store, service) = service();
+    let resource_access = ResourceAccessEvaluator::organization_wide();
     let asset = service
         .create_asset(
             organization_id,
@@ -491,6 +546,7 @@ async fn hosted_release_uses_the_admitted_manifest_digest() {
         .create_release(
             organization_id,
             asset.id,
+            &resource_access,
             "1.0.0".into(),
             "a".repeat(40),
             "create-release".into(),
@@ -506,6 +562,7 @@ async fn hosted_release_uses_the_admitted_manifest_digest() {
 #[tokio::test]
 async fn skill_release_publishes_the_exact_git_bundle_without_a_build_run() {
     let (organization_id, store, service) = service();
+    let resource_access = ResourceAccessEvaluator::organization_wide();
     let asset = service
         .create_asset(
             organization_id,
@@ -522,6 +579,7 @@ async fn skill_release_publishes_the_exact_git_bundle_without_a_build_run() {
         .create_release(
             organization_id,
             asset.id,
+            &resource_access,
             "1.0.0".into(),
             "c".repeat(40),
             "publish-skill".into(),
@@ -552,6 +610,7 @@ async fn skill_release_publishes_the_exact_git_bundle_without_a_build_run() {
 #[tokio::test]
 async fn yanked_release_remains_exactly_addressable_but_is_not_selectable() {
     let (organization_id, store, service) = service();
+    let resource_access = ResourceAccessEvaluator::organization_wide();
     let asset = service
         .create_asset(
             organization_id,
@@ -588,6 +647,7 @@ async fn yanked_release_remains_exactly_addressable_but_is_not_selectable() {
             organization_id,
             asset.id,
             release_id,
+            &resource_access,
             "yank-release".into(),
             Uuid::now_v7(),
         )
@@ -600,7 +660,7 @@ async fn yanked_release_remains_exactly_addressable_but_is_not_selectable() {
     );
     assert_eq!(
         service
-            .get_release(organization_id, asset.id, release_id)
+            .get_release(organization_id, asset.id, release_id, &resource_access)
             .await
             .expect("exact release")
             .id,
@@ -608,7 +668,7 @@ async fn yanked_release_remains_exactly_addressable_but_is_not_selectable() {
     );
     assert!(matches!(
         service
-            .select_release(organization_id, asset.id, None)
+            .select_release(organization_id, asset.id, None, &resource_access)
             .await,
         Err(ApplicationError::NotFound(_))
     ));

@@ -1694,6 +1694,14 @@ node.
   Management MCP. Environment-only grants do not imply project-level Form
   access. Releases inherit the draft's project identity; FormSubmission and
   HumanTask remain Workflow-owned boundaries and do not borrow this resolver.
+  The Assets vertical slice routes indirect catalog reads and mutations,
+  release selection, hosted Git Smart HTTP, and MCP Service profile reads and
+  bindings through one Assets-owned resolver backed by the existing Asset
+  repository. Asset and AssetRelease are organization-scoped today, so
+  organization-wide roles retain access while restricted memberships fail
+  closed even when they hold a project, environment, or node grant. Assets and
+  Identity do not fabricate project ownership or persist a second ownership
+  index.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1715,7 +1723,7 @@ node.
   final shared-evaluator decision before replay or side effects.
   Form draft/release detail, revision, publication, and release queries now
   implement the same pattern through the Forms repository. The remaining
-  Asset, Workflow, Agent execution, and Operation
+  Workflow, Agent execution, and Operation
   boundaries resolve their existing project/environment/node identity through
   their owning repositories and pass
   that canonical scope to the shared `ResourceAccessEvaluator`.

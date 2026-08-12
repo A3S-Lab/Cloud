@@ -714,6 +714,29 @@ fn build_test_application_with_edge(
         Arc::new(InMemoryBuildRunRepository::new()),
         Arc::new(InMemorySearchRepository::new()),
         edge,
+        None,
+    )
+}
+
+fn build_test_application_with_asset_store(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    assets: Arc<UnavailableAssetStore>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        Some(assets),
     )
 }
 
@@ -961,6 +984,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         builds,
         search,
         Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
     )
 }
 
@@ -978,6 +1002,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     builds: Arc<dyn IBuildRunRepository>,
     search: Arc<dyn ISearchRepository>,
     edge: Arc<crate::modules::edge::InMemoryEdgeRepository>,
+    test_assets: Option<Arc<UnavailableAssetStore>>,
 ) -> Result<BootApplication> {
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -999,8 +1024,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
     let source_webhooks = sources.clone();
     let source_subscriptions = sources.clone();
-    let unavailable_assets = Arc::new(UnavailableAssetStore);
+    let unavailable_assets =
+        test_assets.unwrap_or_else(|| Arc::new(UnavailableAssetStore::default()));
     let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(
+        unavailable_assets.clone(),
         unavailable_assets.clone(),
     ));
     let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(

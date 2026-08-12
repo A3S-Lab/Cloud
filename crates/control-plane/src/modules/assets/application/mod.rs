@@ -3,6 +3,7 @@ mod catalog_service;
 mod catalog_service_tests;
 mod deployable_agent_release;
 mod mcp_service_profile_service;
+mod resource_access;
 mod service;
 
 #[cfg(test)]

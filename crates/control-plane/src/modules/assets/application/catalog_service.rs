@@ -1,6 +1,7 @@
 use crate::modules::artifacts::domain::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
 };
+use crate::modules::assets::application::resource_access::AssetResourceAccess;
 use crate::modules::assets::domain::{
     Asset, AssetArchived, AssetCreated, AssetGitRepositoryError, AssetKind, AssetRelease,
     AssetReleaseArtifact, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseState,
@@ -9,6 +10,7 @@ use crate::modules::assets::domain::{
     TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, GitCommitSha, IdempotencyRequest, OrganizationId, ResourceName,
@@ -23,6 +25,7 @@ use uuid::Uuid;
 pub struct AssetCatalogApplicationService {
     organizations: Arc<dyn IOrganizationRepository>,
     assets: Arc<dyn IAssetRepository>,
+    resource_access: AssetResourceAccess,
     repositories: Arc<dyn IAssetGitRepository>,
     artifacts: Arc<dyn INodeArtifactStore>,
 }
@@ -36,7 +39,8 @@ impl AssetCatalogApplicationService {
     ) -> Self {
         Self {
             organizations,
-            assets,
+            assets: Arc::clone(&assets),
+            resource_access: AssetResourceAccess::new(assets),
             repositories,
             artifacts,
         }
@@ -96,11 +100,12 @@ impl AssetCatalogApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
         idempotency_key: String,
         request_id: Uuid,
     ) -> ApplicationResult<AssetWrite> {
         validate_request_id(request_id)?;
-        let mut asset = self.get_asset(organization_id, asset_id).await?;
+        let mut asset = self.get_asset(organization_id, asset_id, evaluator).await?;
         if asset.state == AssetState::Archived {
             return Ok(AssetWrite {
                 asset,
@@ -136,13 +141,14 @@ impl AssetCatalogApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
         version: String,
         commit_sha: String,
         idempotency_key: String,
         request_id: Uuid,
     ) -> ApplicationResult<AssetReleaseWrite> {
         validate_request_id(request_id)?;
-        let asset = self.get_asset(organization_id, asset_id).await?;
+        let asset = self.get_asset(organization_id, asset_id, evaluator).await?;
         if asset.state != AssetState::Active {
             return Err(ApplicationError::Conflict(
                 "archived Asset cannot create a release".into(),
@@ -292,13 +298,21 @@ impl AssetCatalogApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
+        evaluator: &ResourceAccessEvaluator,
         idempotency_key: String,
         request_id: Uuid,
     ) -> ApplicationResult<AssetReleaseWrite> {
         validate_request_id(request_id)?;
-        let asset = self.get_asset(organization_id, asset_id).await?;
-        let mut release = self
-            .get_release(organization_id, asset_id, asset_release_id)
+        let (asset, mut release) = self
+            .resource_access
+            .release(
+                organization_id,
+                asset_id,
+                asset_release_id,
+                evaluator,
+                "Asset not found",
+                "Asset release not found",
+            )
             .await?;
         if release.state == AssetReleaseState::Yanked {
             return Ok(AssetReleaseWrite {
@@ -340,18 +354,21 @@ impl AssetCatalogApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<Asset> {
-        self.assets
-            .find_asset(organization_id, asset_id)
+        self.resource_access
+            .asset(organization_id, asset_id, evaluator, "Asset not found")
             .await
-            .map_err(ApplicationError::from)?
-            .ok_or_else(|| ApplicationError::NotFound("Asset not found".into()))
     }
 
     pub async fn list_assets(
         &self,
         organization_id: OrganizationId,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<Vec<Asset>> {
+        if !evaluator.is_organization_wide() {
+            return Ok(Vec::new());
+        }
         self.assets
             .list_assets(organization_id)
             .await
@@ -363,20 +380,28 @@ impl AssetCatalogApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<AssetRelease> {
-        self.assets
-            .find_release(organization_id, asset_id, asset_release_id)
+        self.resource_access
+            .release(
+                organization_id,
+                asset_id,
+                asset_release_id,
+                evaluator,
+                "Asset not found",
+                "Asset release not found",
+            )
             .await
-            .map_err(ApplicationError::from)?
-            .ok_or_else(|| ApplicationError::NotFound("Asset release not found".into()))
+            .map(|(_, release)| release)
     }
 
     pub async fn list_releases(
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<Vec<AssetRelease>> {
-        self.get_asset(organization_id, asset_id).await?;
+        self.get_asset(organization_id, asset_id, evaluator).await?;
         self.assets
             .list_releases(organization_id, asset_id)
             .await
@@ -388,8 +413,9 @@ impl AssetCatalogApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         requested_version: Option<String>,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<AssetRelease> {
-        let asset = self.get_asset(organization_id, asset_id).await?;
+        let asset = self.get_asset(organization_id, asset_id, evaluator).await?;
         let requested_version = requested_version
             .map(AssetReleaseVersion::parse)
             .transpose()

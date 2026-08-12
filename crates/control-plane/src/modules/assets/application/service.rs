@@ -1,3 +1,4 @@
+use crate::modules::assets::application::resource_access::AssetResourceAccess;
 use crate::modules::assets::domain::{
     validate_asset_repository_mutation, AcquireAssetGitWriteLease, Asset, AssetGitBackup,
     AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRpcLimits,
@@ -5,6 +6,7 @@ use crate::modules::assets::domain::{
     AssetGitWriteRecovery, AssetManifestAdmission, ClaimAssetGitWriteRecovery,
     CompleteAssetGitWriteLease, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AssetId, GitCommitSha, OrganizationId};
 use chrono::Utc;
@@ -21,6 +23,7 @@ pub struct AssetGitApplicationServiceOptions {
 
 pub struct AssetGitApplicationService {
     assets: Arc<dyn IAssetRepository>,
+    resource_access: AssetResourceAccess,
     repositories: Arc<dyn IAssetGitRepository>,
     controls: Arc<dyn IAssetGitRepositoryControl>,
     options: AssetGitApplicationServiceOptions,
@@ -42,7 +45,8 @@ impl AssetGitApplicationService {
             return Err("Asset Git application service options are invalid".into());
         }
         Ok(Self {
-            assets,
+            assets: Arc::clone(&assets),
+            resource_access: AssetResourceAccess::new(assets),
             repositories,
             controls,
             options,
@@ -54,9 +58,15 @@ impl AssetGitApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         service: AssetGitService,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<Vec<u8>> {
         let asset = self
-            .load_consistent_asset(organization_id, asset_id, AssetGitAccess::Read)
+            .load_consistent_authorized_asset(
+                organization_id,
+                asset_id,
+                evaluator,
+                AssetGitAccess::Read,
+            )
             .await?;
         self.repositories
             .advertise(&asset, service)
@@ -69,9 +79,15 @@ impl AssetGitApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         request: Vec<u8>,
+        evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<AssetGitRpcResponse> {
         let asset = self
-            .load_consistent_asset(organization_id, asset_id, AssetGitAccess::Read)
+            .load_consistent_authorized_asset(
+                organization_id,
+                asset_id,
+                evaluator,
+                AssetGitAccess::Read,
+            )
             .await?;
         self.repositories
             .execute_rpc(
@@ -92,12 +108,15 @@ impl AssetGitApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
         actor_id: Uuid,
         request_id: Uuid,
         request: Vec<u8>,
     ) -> ApplicationResult<AssetGitRpcResponse> {
         validate_actor_request(actor_id, request_id)?;
-        let asset = self.load_asset(organization_id, asset_id).await?;
+        let asset = self
+            .load_authorized_asset(organization_id, asset_id, evaluator)
+            .await?;
         let lease = self
             .acquire_and_prepare(
                 &asset,
@@ -250,6 +269,36 @@ impl AssetGitApplicationService {
         access: AssetGitAccess,
     ) -> ApplicationResult<Asset> {
         let asset = self.load_asset(organization_id, asset_id).await?;
+        self.recover_pending(&asset, access).await?;
+        Ok(asset)
+    }
+
+    async fn load_authorized_asset(
+        &self,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
+    ) -> ApplicationResult<Asset> {
+        self.resource_access
+            .asset(
+                organization_id,
+                asset_id,
+                evaluator,
+                "hosted Git repository not found",
+            )
+            .await
+    }
+
+    async fn load_consistent_authorized_asset(
+        &self,
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        evaluator: &ResourceAccessEvaluator,
+        access: AssetGitAccess,
+    ) -> ApplicationResult<Asset> {
+        let asset = self
+            .load_authorized_asset(organization_id, asset_id, evaluator)
+            .await?;
         self.recover_pending(&asset, access).await?;
         Ok(asset)
     }
