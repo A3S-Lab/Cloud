@@ -84,6 +84,8 @@ mod github_connection_support;
 mod human_tasks_support;
 #[path = "support/mcp_route_policies.rs"]
 mod mcp_route_policies_support;
+#[path = "support/plugins.rs"]
+mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
 #[path = "support/resource_claims.rs"]
@@ -243,6 +245,19 @@ async fn postgres_replica_set_foundation_is_migrated_atomic_and_replay_safe() {
     run_isolated_postgres(&admin_url, exercise_postgres_replica_set_foundation)
         .await
         .expect("PostgreSQL Workload replica-set foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_plugin_registry_is_atomic_tenant_scoped_and_searchable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        plugins_support::exercise_plugin_registry_persistence,
+    )
+    .await
+    .expect("PostgreSQL Plugin Registry persistence gate");
 }
 
 async fn exercise_postgres_replica_set_foundation(

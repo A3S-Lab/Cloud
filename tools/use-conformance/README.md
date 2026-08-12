@@ -1,8 +1,9 @@
 # A3S Use Registry conformance
 
-This gate exercises Cloud's production `A3sUsePluginRegistryCatalog` through
-the `PublicInternet` network policy against the metadata-only signed Registry
-fixture at the exact A3S Use dependency revision.
+The public-provider gate exercises Cloud's production
+`A3sUsePluginRegistryCatalog` through the `PublicInternet` network policy
+against the metadata-only signed Registry fixture at the exact A3S Use
+dependency revision.
 
 The fixture is owned and signed by A3S Use. Cloud retains only the compatibility
 revision and expected bootstrap-root digest; it does not copy TUF signing,
@@ -16,6 +17,22 @@ Run it from the Cloud repository root:
 
 ```bash
 bash tools/use-conformance/run_registry_gate.sh /absolute/evidence/directory
+```
+
+The PostgreSQL gate exercises the existing `PostgresPluginRegistryRepository`
+and migrations 084-085. It proves active-human authorization is rechecked in
+the final transaction, concurrent enrollment replays exactly once, rejected
+writes leave no Registry, Outbox, audit, or idempotency residue, reads and the
+shared Search view stay tenant-scoped, and non-canonical stored rows fail
+closed. It does not add another Registry store, authorization evaluator,
+Outbox, audit log, idempotency implementation, or Search projection.
+
+Run it against an operator-owned PostgreSQL 17 administrative URL:
+
+```bash
+A3S_CLOUD_TEST_POSTGRES_URL=postgresql://... \
+  bash tools/use-conformance/run_postgres_registry_gate.sh \
+  /absolute/evidence/directory
 ```
 
 When advancing A3S Use, update `Cargo.toml`, `Cargo.lock`, `use-revision`, and
