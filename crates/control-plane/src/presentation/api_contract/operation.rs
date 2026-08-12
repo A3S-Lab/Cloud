@@ -1,5 +1,6 @@
 use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use a3s_boot::{BootError, Result};
 use a3s_use_extension::{
@@ -446,6 +447,11 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
             "application/json".into(),
             json!({ "schema": node_pool_request_schema(path) }),
         );
+    } else if is_human_task_submission_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({ "schema": form_interaction_submission_schema() }),
+        );
     } else if is_workflow_run_start_path(path) {
         content.insert(
             "application/json".into(),
@@ -631,6 +637,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
         || (method == "post"
             && (is_ontology_mutation_path(path)
                 || is_workflow_mutation_path(path)
+                || is_human_task_submission_path(path)
                 || is_form_draft_mutation_path(path)
                 || is_mcp_service_profile_path(path)
                 || is_mcp_route_policy_mutation_path(path)))
@@ -777,6 +784,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
     matches!(method, "delete" | "patch" | "post" | "put")
         && (path == "/bootstrap" || path == "/organizations" || path.starts_with("/organizations/"))
         && !path.ends_with("/source-connections/github")
+        && !is_human_task_submission_path(path)
         && !is_plugin_catalog_read_path(path)
         && !is_asset_git_path(path)
 }
@@ -988,6 +996,10 @@ fn is_workflow_run_cancel_path(path: &str) -> bool {
 fn is_human_task_assignment_mutation_path(path: &str) -> bool {
     path.contains("/human-tasks/{human_task_id}/")
         && (path.ends_with("/claim") || path.ends_with("/release"))
+}
+
+fn is_human_task_submission_path(path: &str) -> bool {
+    path.contains("/human-tasks/{human_task_id}/") && path.ends_with("/submission")
 }
 
 fn is_workflow_definition_mutation_path(path: &str) -> bool {

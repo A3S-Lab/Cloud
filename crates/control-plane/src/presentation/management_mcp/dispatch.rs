@@ -25,11 +25,11 @@ use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, Projec
 use super::search::SearchArguments;
 use super::workflow::{
     CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
-    HumanTaskArguments, HumanTaskMutationArguments, ListHumanTasksArguments,
-    ListProjectWorkflowArguments, ListWorkflowRunsArguments, ReviseWorkflowDefinitionArguments,
-    StartWorkflowRunArguments, WaitWorkflowRunArguments, WorkflowDefinitionArguments,
-    WorkflowGoalArguments, WorkflowPlanRevisionArguments, WorkflowRevisionArguments,
-    WorkflowRunArguments, WorkflowRunHistoryArguments,
+    HumanTaskArguments, HumanTaskMutationArguments, HumanTaskSubmissionArguments,
+    ListHumanTasksArguments, ListProjectWorkflowArguments, ListWorkflowRunsArguments,
+    ReviseWorkflowDefinitionArguments, StartWorkflowRunArguments, WaitWorkflowRunArguments,
+    WorkflowDefinitionArguments, WorkflowGoalArguments, WorkflowPlanRevisionArguments,
+    WorkflowRevisionArguments, WorkflowRunArguments, WorkflowRunHistoryArguments,
 };
 use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
@@ -39,7 +39,7 @@ use super::{
     workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
 use crate::modules::workflow::HumanTaskAssignmentAction;
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
@@ -50,6 +50,7 @@ use uuid::Uuid;
 pub(super) struct ManagementExecutionContext {
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
+    credential_id: ApiTokenId,
     actor_is_platform_admin: bool,
     request_id: Uuid,
     resource_access: ResourceAccessEvaluator,
@@ -59,6 +60,7 @@ impl ManagementExecutionContext {
     pub(super) fn new(
         organization_id: OrganizationId,
         actor_principal_id: PrincipalId,
+        credential_id: ApiTokenId,
         actor_is_platform_admin: bool,
         request_id: Uuid,
         resource_access: ResourceAccessEvaluator,
@@ -66,6 +68,7 @@ impl ManagementExecutionContext {
         Self {
             organization_id,
             actor_principal_id,
+            credential_id,
             actor_is_platform_admin,
             request_id,
             resource_access,
@@ -83,6 +86,7 @@ pub async fn execute(
     let ManagementExecutionContext {
         organization_id,
         actor_principal_id,
+        credential_id,
         actor_is_platform_admin,
         request_id,
         resource_access,
@@ -540,6 +544,20 @@ pub async fn execute(
                 actor_principal_id,
                 arguments,
                 HumanTaskAssignmentAction::Release,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::HumanTasksSubmit => {
+            let arguments = arguments::parse::<HumanTaskSubmissionArguments>(arguments).ok()?;
+            workflow::submit_human_task(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                credential_id,
+                actor_is_platform_admin,
+                arguments,
                 resource_access,
                 request_id,
             )

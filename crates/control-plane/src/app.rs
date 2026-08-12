@@ -84,7 +84,8 @@ use crate::modules::forms::{
     ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipRepository, IOrganizationRepository, IResourceGrantRepository,
+    IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
+    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
 };
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
@@ -158,8 +159,9 @@ use crate::modules::workflow::{
     ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
     PostgresHumanTaskRepository, PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
     PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
-    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, WaitWorkflowRunHandler,
-    WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, SubmitHumanTaskHandler,
+    WaitWorkflowRunHandler, WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
+    WorkflowRunReconciler,
 };
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
 use crate::modules::workloads::domain::repositories::ISecretRotationRestartRepository;
@@ -294,7 +296,9 @@ pub async fn build_application_with_source_resolver(
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
     let memberships: Arc<dyn IMembershipRepository> = identity.clone();
-    let resource_grants: Arc<dyn IResourceGrantRepository> = identity;
+    let resource_grants: Arc<dyn IResourceGrantRepository> = identity.clone();
+    let resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository> =
+        identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let ontologies: Arc<dyn IOntologyRepository> =
         Arc::new(PostgresOntologyRepository::new(executor.clone()));
@@ -959,6 +963,7 @@ pub async fn build_application_with_source_resolver(
             api_tokens,
             memberships,
             resource_grants,
+            resource_authorization_decisions,
             projects: projects.clone(),
             environments: projects,
             ontologies,
@@ -1055,6 +1060,7 @@ struct ApplicationDependencies {
     api_tokens: Arc<dyn IApiTokenRepository>,
     memberships: Arc<dyn IMembershipRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
+    resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -1116,6 +1122,7 @@ fn build_application_with_health(
         api_tokens,
         memberships,
         resource_grants,
+        resource_authorization_decisions,
         projects,
         environments,
         ontologies,
@@ -1209,6 +1216,9 @@ fn build_application_with_health(
     let get_workflow_run_outputs = Arc::clone(&workflow_runs);
     let get_workflow_run_history_runs = workflow_runs;
     let change_human_task_assignments = Arc::clone(&human_tasks);
+    let submit_human_tasks = Arc::clone(&human_tasks);
+    let submit_human_task_forms = Arc::clone(&forms);
+    let submit_human_task_semantic_core = Arc::clone(&form_semantic_core);
     let get_human_tasks = Arc::clone(&human_tasks);
     let list_human_tasks = human_tasks;
     let create_form_projects = Arc::clone(&projects);
@@ -1540,6 +1550,14 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::workflow::ChangeHumanTaskAssignment, _>(
                     ChangeHumanTaskAssignmentHandler::new(change_human_task_assignments),
+                )
+                .command_handler::<crate::modules::workflow::SubmitHumanTask, _>(
+                    SubmitHumanTaskHandler::new(
+                        submit_human_tasks,
+                        submit_human_task_forms,
+                        submit_human_task_semantic_core,
+                        resource_authorization_decisions,
+                    ),
                 )
                 .command_handler::<crate::modules::forms::CreateFormDraft, _>(
                     CreateFormDraftHandler::new(create_form_projects, create_form_drafts),

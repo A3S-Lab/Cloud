@@ -148,7 +148,7 @@ pub(super) async fn load_active_membership_for_update(
     .map_err(Into::into)
 }
 
-async fn load_principal(
+pub(super) async fn load_principal(
     transaction: &a3s_orm::PostgresTransaction,
     principal_id: PrincipalId,
 ) -> Result<Option<IdentityPrincipal>, PostgresPersistenceError> {

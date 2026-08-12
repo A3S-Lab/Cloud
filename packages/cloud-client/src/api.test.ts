@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.21.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.22.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -769,7 +769,7 @@ describe('CloudApi', () => {
     expect(called).toBe(false);
   });
 
-  it('uses bounded reads and versioned HumanTask assignment mutations', async () => {
+  it('uses bounded reads and native HumanTask mutations', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const api = new CloudApi('token', '/api/v1', {
       fetch: async (...args) => {
@@ -785,12 +785,53 @@ describe('CloudApi', () => {
     await api.getHumanTask('organization / one', 'task / one');
     await api.claimHumanTask('organization / one', 'task / one', 2, 'human-task:claim');
     await api.releaseHumanTask('organization / one', 'task / one', 3, 'human-task:release');
+    const submission = {
+      apiVersion: 'a3s.dev/form-interaction-submission/v1' as const,
+      submissionId: '019c0000-0000-7000-8000-000000000020',
+      requestId: 'request-1',
+      requestDigest: `sha256:${'a'.repeat(64)}`,
+      identity: {
+        workflowRunId: '019c0000-0000-7000-8000-000000000021',
+        flowRunId: 'flow-1',
+        stepId: 'review',
+        stepAttempt: 1,
+        humanTaskId: '019c0000-0000-7000-8000-000000000022',
+        flowHookId: 'review-1',
+      },
+      form: {
+        apiVersion: 'a3s.dev/form-release-ref/v1' as const,
+        organizationId: '019c0000-0000-7000-8000-000000000001',
+        projectId: '019c0000-0000-7000-8000-000000000002',
+        formId: '019c0000-0000-7000-8000-000000000003',
+        releaseId: '019c0000-0000-7000-8000-000000000004',
+        uri: 'a3s://forms/019c0000-0000-7000-8000-000000000003/releases/1',
+        revision: 1,
+        digest: `sha256:${'b'.repeat(64)}`,
+        compilerRevision: 'a3s-form-core@0.1.0',
+        schemaProfile: 'a3s.dev/form-schema-profile/1',
+        mode: 'interaction' as const,
+      },
+      assignment: {
+        policyId: 'approval-policy',
+        policyRevision: 1,
+        policyDigest: `sha256:${'c'.repeat(64)}`,
+      },
+      taskVersion: 3,
+      principalId: '019c0000-0000-7000-8000-000000000005',
+      outcome: 'approve' as const,
+      idempotencyKey: 'human-task:submit',
+      submittedAt: '2026-08-12T00:00:00.000Z',
+      value: { approved: true },
+      valueDigest: `sha256:${'d'.repeat(64)}`,
+    };
+    await api.submitHumanTask('organization / one', 'task / one', submission);
 
     expect(calls.map(([input]) => input)).toEqual([
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/human-tasks?status=claimed&limit=25',
       '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/claim',
       '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/release',
+      '/api/v1/organizations/organization%20%2F%20one/human-tasks/task%20%2F%20one/submission',
     ]);
     expect(calls.slice(2).map(([, init]) => init)).toEqual([
       expect.objectContaining({
@@ -810,6 +851,16 @@ describe('CloudApi', () => {
         body: undefined,
       }),
     ]);
+    expect(calls[4]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.not.objectContaining({
+          'Idempotency-Key': expect.anything(),
+          'x-a3s-expected-version': expect.anything(),
+        }),
+        body: JSON.stringify(submission),
+      })
+    );
   });
 
   it('rejects invalid HumanTask filters before transport', () => {

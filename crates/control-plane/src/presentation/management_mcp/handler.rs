@@ -10,11 +10,11 @@ use super::protocol::{
 use super::MANAGEMENT_MCP_PROTOCOL_VERSION;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
-use crate::modules::identity::presentation::resource_access_evaluator;
-use crate::modules::shared_kernel::application::ApplicationError;
-use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeId, OrganizationId, PrincipalId, ProjectId,
+use crate::modules::identity::presentation::{
+    authenticated_credential_actor, resource_access_evaluator,
 };
+use crate::modules::shared_kernel::application::ApplicationError;
+use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
 use a3s_boot::{AuthPrincipal, BootError, BootRequest, BootResponse, CommandBus, QueryBus, Result};
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -239,8 +239,8 @@ impl ManagementMcpHandler {
                 );
             }
         };
-        let actor_principal_id = match principal_id(&principal) {
-            Ok(principal_id) => principal_id,
+        let actor = match authenticated_credential_actor(&principal) {
+            Ok(actor) => actor,
             Err(error) => {
                 tracing::error!(%request_id, %error, "management MCP principal is invalid");
                 return protocol::error_response(
@@ -251,7 +251,6 @@ impl ManagementMcpHandler {
                 );
             }
         };
-        let actor_is_platform_admin = principal.has_role("platform_admin");
         let arguments = call.arguments.unwrap_or_else(|| json!({}));
         let evaluator = resource_access_evaluator(&principal)?;
         let authorized = match management_resource_is_authorized(tool, &arguments, &evaluator) {
@@ -275,8 +274,9 @@ impl ManagementMcpHandler {
             Arc::clone(&self.query_bus),
             dispatch::ManagementExecutionContext::new(
                 organization_id,
-                actor_principal_id,
-                actor_is_platform_admin,
+                actor.principal_id,
+                actor.credential_id,
+                actor.is_platform_admin,
                 request_id,
                 evaluator,
             ),
@@ -387,16 +387,6 @@ fn organization_id(principal: &AuthPrincipal) -> Result<OrganizationId> {
                         "authenticated organization claim is invalid: {error}"
                     ))
                 })
-        })
-}
-
-fn principal_id(principal: &AuthPrincipal) -> Result<PrincipalId> {
-    Uuid::parse_str(principal.subject())
-        .map(PrincipalId::from_uuid)
-        .map_err(|error| {
-            BootError::Internal(format!(
-                "authenticated principal identity is invalid: {error}"
-            ))
         })
 }
 

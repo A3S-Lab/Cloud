@@ -1,5 +1,8 @@
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::presentation::resource_access_evaluator;
+use crate::modules::identity::presentation::{
+    authenticated_actor, authenticated_credential_actor, resource_access_evaluator,
+    AuthenticatedCredentialActor,
+};
 use crate::modules::shared_kernel::domain::PrincipalId;
 use crate::modules::workflow::domain::{ONTOLOGY_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_ACL_BYTES};
 use crate::presentation::A3S_ACL_MEDIA_TYPE;
@@ -12,13 +15,12 @@ pub(super) fn resource_access(request: &BootRequest) -> Result<ResourceAccessEva
 
 pub(super) fn actor_principal_id(request: &BootRequest) -> Result<PrincipalId> {
     let principal = request.require_auth_principal()?;
-    Uuid::parse_str(principal.subject())
-        .map(PrincipalId::from_uuid)
-        .map_err(|error| {
-            BootError::Internal(format!(
-                "authenticated principal identity is invalid: {error}"
-            ))
-        })
+    Ok(authenticated_actor(&principal)?.principal_id)
+}
+
+pub(super) fn credential_actor(request: &BootRequest) -> Result<AuthenticatedCredentialActor> {
+    let principal = request.require_auth_principal()?;
+    authenticated_credential_actor(&principal)
 }
 
 pub(super) fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {

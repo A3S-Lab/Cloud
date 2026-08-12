@@ -4,9 +4,9 @@ use super::postgres_memberships::{
     lock_membership_set,
 };
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
-    store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
-    PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
+    is_unique_violation, store_audit, store_idempotency, store_outbox, transaction_error,
+    AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::identity::domain::entities::ResourceGrant;
 use crate::modules::identity::domain::events::ResourceGrantChanged;
@@ -122,6 +122,27 @@ async fn load_resource_grant_for_update(
     .await?
     .map(decode_resource_grant)
     .transpose()
+    .map_err(Into::into)
+}
+
+pub(super) async fn load_active_resource_grants_for_membership(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    membership_id: MembershipId,
+) -> Result<Vec<ResourceGrant>, PostgresPersistenceError> {
+    fetch_all::<ResourceGrantRow, _>(
+        transaction,
+        sql_query::<ResourceGrantRow>(SELECT_RESOURCE_GRANTS)
+            .append(" where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and membership_id = ")
+            .bind(membership_id.as_uuid())
+            .append(" and revoked_at is null order by id asc"),
+    )
+    .await?
+    .into_iter()
+    .map(decode_resource_grant)
+    .collect::<Result<Vec<_>, _>>()
     .map_err(Into::into)
 }
 

@@ -111,16 +111,17 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-`listHumanTasks`, `getHumanTask`, `claimHumanTask`, and `releaseHumanTask` add
-the protected HumanTask read and assignment surface in
-REST contract `1.21.0`. Lists accept only the closed status set and a limit from
-1 through 200 and return summaries without interaction payloads. Detail may
-return the request-bound native A3S Form interaction only when the bearer
-principal is the current claimant. Claim/release require an explicit positive
-aggregate version and caller-owned idempotency key, while the server remains
-authoritative for project access, assignment policy, claimant identity, state,
-audit, and replay. The client does not expose submission, service/finite-task,
-typed capability, compensation, or production-recovery support.
+`listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
+`submitHumanTask` expose the protected HumanTask surface in REST contract
+`1.22.0`. Lists accept only the closed status set and a limit from 1 through 200
+and return summaries without interaction payloads. Detail may return the
+request-bound native A3S Form interaction only when the bearer principal is the
+current claimant. Claim/release use explicit version and idempotency headers;
+submission transports the exact native Form envelope, whose `taskVersion` and
+`idempotencyKey` remain the single source of those values. Cloud remains
+authoritative for project access, assignment policy, claimant identity, Form
+evaluation, Identity authorization evidence, decision persistence, and replay.
+The client does not implement a second Form validator or authorization model.
 
 `listFormDrafts`, `getFormDraft`, `createFormDraft`, `reviseFormDraft`,
 `listFormReleases`, `getFormRelease`, and `publishFormRelease` expose the native

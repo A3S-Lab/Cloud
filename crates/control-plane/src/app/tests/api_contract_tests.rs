@@ -423,6 +423,35 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             "{action}"
         );
     }
+    let submission = &document["paths"]
+        ["/organizations/{organization_id}/human-tasks/{human_task_id}/submission"]["post"];
+    assert_eq!(submission["tags"], json!(["Workflow"]));
+    assert!(submission["responses"]["200"].is_object());
+    assert!(submission["responses"]["413"].is_object());
+    assert!(submission["responses"]["415"].is_object());
+    assert!(submission["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().all(|parameter| {
+            parameter["name"] != "idempotency-key" && parameter["name"] != "x-a3s-expected-version"
+        })));
+    let submission_schema = &submission["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(submission_schema["additionalProperties"], false);
+    assert_eq!(
+        submission_schema["properties"]["apiVersion"]["enum"],
+        json!(["a3s.dev/form-interaction-submission/v1"])
+    );
+    assert_eq!(
+        submission_schema["properties"]["identity"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        submission_schema["properties"]["form"]["properties"]["mode"]["enum"],
+        json!(["interaction"])
+    );
+    assert_eq!(
+        submission_schema["properties"]["idempotencyKey"]["maxLength"],
+        255
+    );
     let form_collection =
         &document["paths"]["/organizations/{organization_id}/projects/{project_id}/forms"];
     assert_eq!(form_collection["get"]["tags"], json!(["Forms"]));

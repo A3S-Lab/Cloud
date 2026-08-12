@@ -20,7 +20,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -45,7 +45,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -70,7 +70,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -94,7 +94,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -118,7 +118,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -142,7 +142,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -166,7 +166,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -190,7 +190,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -214,7 +214,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -238,7 +238,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -262,7 +262,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -286,7 +286,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -310,7 +310,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -334,7 +334,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -359,7 +359,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -384,7 +384,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -408,7 +408,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -432,7 +432,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -456,7 +456,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -480,7 +480,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -504,7 +504,7 @@
         "headers": {
           "x-a3s-api-contract-version": {
             "schema": {
-              "example": "1.21.0",
+              "example": "1.22.0",
               "type": "string"
             }
           },
@@ -597,7 +597,7 @@
   "info": {
     "description": "Stable version 1 REST contract shared by the A3S Cloud web console and CLI.",
     "title": "A3S Cloud REST API",
-    "version": "1.21.0"
+    "version": "1.22.0"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -672,7 +672,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -711,7 +711,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -750,7 +750,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -803,7 +803,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -852,7 +852,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -926,7 +926,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -994,7 +994,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1082,7 +1082,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1181,7 +1181,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1259,7 +1259,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -1351,7 +1351,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1419,7 +1419,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1502,7 +1502,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1570,7 +1570,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1629,7 +1629,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -1712,7 +1712,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1792,7 +1792,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -1858,7 +1858,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -1917,7 +1917,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -2000,7 +2000,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2068,7 +2068,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2148,7 +2148,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2233,7 +2233,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2318,7 +2318,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2398,7 +2398,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2477,7 +2477,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2545,7 +2545,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -2637,7 +2637,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2714,7 +2714,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2791,7 +2791,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -2899,7 +2899,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -2988,7 +2988,7 @@
         "tags": [
           "Assets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3071,7 +3071,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -3137,7 +3137,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3205,7 +3205,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3305,7 +3305,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3416,7 +3416,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3499,7 +3499,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3582,7 +3582,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -3648,7 +3648,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3716,7 +3716,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3810,7 +3810,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3904,7 +3904,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -3989,7 +3989,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4069,7 +4069,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "get": {
@@ -4135,7 +4135,7 @@
         "tags": [
           "Organizations"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4203,7 +4203,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4334,7 +4334,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4402,7 +4402,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -4493,7 +4493,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4570,7 +4570,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4629,7 +4629,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4697,7 +4697,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4787,7 +4787,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4877,7 +4877,305 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
+        "x-a3s-stability": "stable"
+      }
+    },
+    "/organizations/{organization_id}/human-tasks/{human_task_id}/submission": {
+      "post": {
+        "operationId": "post_organizations_by_organization_id_human_tasks_by_human_task_id_submission",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "human_task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "apiVersion": {
+                    "enum": [
+                      "a3s.dev/form-interaction-submission/v1"
+                    ],
+                    "type": "string"
+                  },
+                  "assignment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "policyDigest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "policyId": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "policyRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "policyId",
+                      "policyRevision",
+                      "policyDigest"
+                    ],
+                    "type": "object"
+                  },
+                  "form": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "apiVersion": {
+                        "enum": [
+                          "a3s.dev/form-release-ref/v1"
+                        ],
+                        "type": "string"
+                      },
+                      "compilerRevision": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "digest": {
+                        "pattern": "^sha256:[0-9a-f]{64}$",
+                        "type": "string"
+                      },
+                      "formId": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "mode": {
+                        "enum": [
+                          "interaction"
+                        ],
+                        "type": "string"
+                      },
+                      "organizationId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "releaseId": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "schemaProfile": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "uri": {
+                        "format": "uri",
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "apiVersion",
+                      "organizationId",
+                      "projectId",
+                      "formId",
+                      "releaseId",
+                      "uri",
+                      "revision",
+                      "digest",
+                      "compilerRevision",
+                      "schemaProfile",
+                      "mode"
+                    ],
+                    "type": "object"
+                  },
+                  "idempotencyKey": {
+                    "maxLength": 255,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9._~:/-]+$",
+                    "type": "string"
+                  },
+                  "identity": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "flowHookId": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "flowRunId": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "humanTaskId": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "stepAttempt": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "stepId": {
+                        "maxLength": 512,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "workflowRunId": {
+                        "format": "uuid",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "workflowRunId",
+                      "flowRunId",
+                      "stepId",
+                      "stepAttempt",
+                      "humanTaskId",
+                      "flowHookId"
+                    ],
+                    "type": "object"
+                  },
+                  "outcome": {
+                    "enum": [
+                      "submit",
+                      "approve",
+                      "reject"
+                    ],
+                    "type": "string"
+                  },
+                  "principalId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "requestDigest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  },
+                  "requestId": {
+                    "maxLength": 512,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "submissionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "submittedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "taskVersion": {
+                    "maximum": 9007199254740991,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "value": {
+                    "description": "Canonical JSON evaluated by the exact native A3S Form release.",
+                    "type": "object"
+                  },
+                  "valueDigest": {
+                    "pattern": "^sha256:[0-9a-f]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "apiVersion",
+                  "submissionId",
+                  "requestId",
+                  "requestDigest",
+                  "identity",
+                  "form",
+                  "assignment",
+                  "taskVersion",
+                  "principalId",
+                  "outcome",
+                  "idempotencyKey",
+                  "submittedAt",
+                  "value",
+                  "valueDigest"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success200"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "415": {
+            "$ref": "#/components/responses/Error415"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "POST /organizations/{organization_id}/human-tasks/{human_task_id}/submission",
+        "tags": [
+          "Workflow"
+        ],
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -4945,7 +5243,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5036,7 +5334,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5130,7 +5428,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5198,7 +5496,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5299,7 +5597,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5358,7 +5656,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -5441,7 +5739,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5509,7 +5807,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5577,7 +5875,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -5746,7 +6044,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5837,7 +6135,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5928,7 +6226,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -5987,7 +6285,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -6091,7 +6389,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6159,7 +6457,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6286,7 +6584,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6391,7 +6689,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6502,7 +6800,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6613,7 +6911,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6672,7 +6970,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6740,7 +7038,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6831,7 +7129,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -6922,7 +7220,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7013,7 +7311,7 @@
         "tags": [
           "Fleet"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7081,7 +7379,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7149,7 +7447,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -7270,7 +7568,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7356,7 +7654,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7433,7 +7731,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7502,7 +7800,7 @@
         "tags": [
           "Operations"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7572,7 +7870,7 @@
         "tags": [
           "Operations"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7631,7 +7929,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7699,7 +7997,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -7827,7 +8125,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8021,7 +8319,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8149,7 +8447,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8343,7 +8641,7 @@
         "tags": [
           "Plugins"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8402,7 +8700,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -8485,7 +8783,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8553,7 +8851,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -8645,7 +8943,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8732,7 +9030,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -8822,7 +9120,7 @@
         "tags": [
           "Agents"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -8949,7 +9247,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -9036,7 +9334,7 @@
         "tags": [
           "Artifacts"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -9113,7 +9411,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -9214,7 +9512,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -9301,7 +9599,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -9399,7 +9697,7 @@
         "tags": [
           "Projects"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -9476,7 +9774,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -9577,7 +9875,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -9654,7 +9952,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -9755,7 +10053,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -9832,7 +10130,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -9940,7 +10238,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10017,7 +10315,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -10118,7 +10416,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10195,7 +10493,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -10296,7 +10594,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10373,7 +10671,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -10474,7 +10772,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10592,7 +10890,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10669,7 +10967,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -10770,7 +11068,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10868,7 +11166,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -10945,7 +11243,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -11052,7 +11350,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -11120,7 +11418,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -11239,7 +11537,7 @@
         "tags": [
           "Forms"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -11333,7 +11631,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -11401,7 +11699,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -11500,7 +11798,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -11568,7 +11866,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -11705,7 +12003,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -11773,7 +12071,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -11872,7 +12170,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -11950,7 +12248,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -12068,7 +12366,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12136,7 +12434,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12236,7 +12534,7 @@
         "tags": [
           "Identity"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12304,7 +12602,7 @@
         "tags": [
           "Edge"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12384,7 +12682,7 @@
         "tags": [
           "Search"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12452,7 +12750,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12546,7 +12844,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12635,7 +12933,7 @@
         "tags": [
           "Secrets"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12694,7 +12992,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -12754,7 +13052,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12822,7 +13120,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -12890,7 +13188,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       },
       "post": {
@@ -13037,7 +13335,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13114,7 +13412,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13182,7 +13480,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13259,7 +13557,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13327,7 +13625,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13434,7 +13732,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13523,7 +13821,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13591,7 +13889,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13670,7 +13968,7 @@
         "tags": [
           "Workflow"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13738,7 +14036,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13856,7 +14154,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -13956,7 +14254,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14065,7 +14363,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14185,7 +14483,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14279,7 +14577,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14371,7 +14669,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14472,7 +14770,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14555,7 +14853,7 @@
         "tags": [
           "Workloads"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14594,7 +14892,7 @@
         "tags": [
           "Platform"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14658,7 +14956,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14725,7 +15023,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     },
@@ -14806,7 +15104,7 @@
         "tags": [
           "Sources"
         ],
-        "x-a3s-api-contract-version": "1.21.0",
+        "x-a3s-api-contract-version": "1.22.0",
         "x-a3s-stability": "stable"
       }
     }
@@ -14817,7 +15115,7 @@
       "url": "/api/v1"
     }
   ],
-  "x-a3s-api-contract-version": "1.21.0",
+  "x-a3s-api-contract-version": "1.22.0",
   "x-a3s-api-major-version": 1,
   "x-a3s-minimum-deprecation-days": 180
 }

@@ -171,6 +171,7 @@ export interface McpServiceProfileMutationResult extends McpServiceProfile {
 }
 
 export type {
+  FormCanonicalValue,
   FormDraft,
   FormDraftInput,
   FormDraftMutationResult,
@@ -204,11 +205,11 @@ export type {
   Node,
   NodeAvailability,
   NodePool,
-  NodePoolMemberRemoval,
   NodePoolMaintenance,
   NodePoolMaintenanceStatus,
-  RequestNodePoolMemberRemovalInput,
+  NodePoolMemberRemoval,
   NodeState,
+  RequestNodePoolMemberRemovalInput,
   ScheduleNodePoolMaintenanceInput,
 } from './node';
 export type { SearchResourceKind, SearchResult } from './search';
@@ -931,6 +932,8 @@ export type {
   HumanTaskInteractionOutcome,
   HumanTaskInteractionOutputMapping,
   HumanTaskInteractionRequest,
+  HumanTaskInteractionSubmission,
+  HumanTaskInteractionSubmissionAssignment,
   HumanTaskMutationResult,
   HumanTaskStatus,
   HumanTaskSummary,

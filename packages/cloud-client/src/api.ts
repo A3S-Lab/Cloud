@@ -5,13 +5,13 @@ import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import type {
+  AddNodePoolMembersInput,
   AgentConversation,
   AgentConversationMutationResult,
   AgentExecution,
   AgentExecutionChangeSet,
   AgentExecutionEventsPage,
   AgentExecutionMutationResult,
-  AddNodePoolMembersInput,
   ApiToken,
   ApiTokenMutationResult,
   Asset,
@@ -22,8 +22,8 @@ import type {
   BuildRun,
   BuildRunLogsPage,
   CancelBuildRunResult,
-  CancelNodePoolMaintenanceInput,
   CancelDeploymentResult,
+  CancelNodePoolMaintenanceInput,
   CancelWorkflowRunInput,
   CreateApiTokenInput,
   CreateAssetInput,
@@ -56,6 +56,7 @@ import type {
   GithubRepositorySubscription,
   GithubRepositorySubscriptionMutationResult,
   HumanTask,
+  HumanTaskInteractionSubmission,
   HumanTaskMutationResult,
   HumanTaskStatus,
   HumanTaskSummary,
@@ -104,8 +105,8 @@ import type {
   RotateMcpCredentialInput,
   Route,
   RoutePublicationResult,
-  SearchResult,
   ScheduleNodePoolMaintenanceInput,
+  SearchResult,
   Secret,
   SecretDetails,
   SecretMutationResult,
@@ -137,8 +138,8 @@ import type {
 import {
   validateApiTokenInput,
   validateEnrollmentTokenInput,
-  validateExpectedMcpCredentialVersion,
   validateExpectedHumanTaskVersion,
+  validateExpectedMcpCredentialVersion,
   validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
   validateExpectedResourceGrantVersion,
@@ -171,7 +172,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.21.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.22.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -188,6 +189,7 @@ const HUMAN_TASK_STATUSES: ReadonlySet<HumanTaskStatus> = new Set([
   'expired',
   'cancelled',
 ]);
+
 export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
@@ -915,6 +917,24 @@ export class CloudApi {
       expectedVersion,
       idempotencyKey,
       signal
+    );
+  }
+
+  submitHumanTask(
+    organizationId: string,
+    humanTaskId: string,
+    submission: HumanTaskInteractionSubmission,
+    signal?: AbortSignal
+  ): Promise<HumanTaskMutationResult> {
+    return this.request(
+      'POST',
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/human-tasks/${encodeURIComponent(humanTaskId)}/submission`,
+      {
+        body: JSON.stringify(submission),
+        contentType: 'application/json',
+        signal,
+      }
     );
   }
 

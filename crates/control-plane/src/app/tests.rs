@@ -123,12 +123,16 @@ struct TestPluginRegistryEnrollmentAuthorizer;
 
 struct UnavailablePluginRegistryCatalog;
 
+type HumanTaskChangeReplays =
+    std::collections::BTreeMap<(String, String), (String, OrganizationId, HumanTaskId)>;
+type HumanTaskDecisionReplays =
+    std::collections::BTreeMap<(String, String), (String, HumanTaskDecisionRecord)>;
+
 #[derive(Default)]
 struct TestHumanTaskRepository {
     records: std::sync::RwLock<Vec<HumanTaskRecord>>,
-    change_replays: std::sync::RwLock<
-        std::collections::BTreeMap<(String, String), (String, OrganizationId, HumanTaskId)>,
-    >,
+    change_replays: std::sync::RwLock<HumanTaskChangeReplays>,
+    decision_replays: std::sync::RwLock<HumanTaskDecisionReplays>,
 }
 
 impl TestHumanTaskRepository {
@@ -136,6 +140,7 @@ impl TestHumanTaskRepository {
         Self {
             records: std::sync::RwLock::new(records),
             change_replays: std::sync::RwLock::new(std::collections::BTreeMap::new()),
+            decision_replays: std::sync::RwLock::new(std::collections::BTreeMap::new()),
         }
     }
 
@@ -279,17 +284,84 @@ impl IHumanTaskRepository for TestHumanTaskRepository {
 
     async fn decide_task(
         &self,
-        _write: DecideHumanTaskWrite,
+        write: DecideHumanTaskWrite,
     ) -> std::result::Result<IdempotentWrite<HumanTaskDecisionRecord>, RepositoryError> {
-        Err(test_human_task_operation_unavailable())
+        write.record.validate().map_err(RepositoryError::Storage)?;
+        if let Some(record) = self.replay_decision(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: record,
+                replayed: true,
+            });
+        }
+        let mut records = self
+            .records
+            .write()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?;
+        let current = records
+            .iter_mut()
+            .find(|record| {
+                record.task.organization_id == write.record.task.task.organization_id
+                    && record.task.id == write.record.task.task.id
+            })
+            .ok_or(RepositoryError::NotFound)?;
+        if current.task.aggregate_version != write.expected_version
+            || write.record.task.task.aggregate_version != write.expected_version.saturating_add(1)
+            || current.task.status != HumanTaskStatus::Claimed
+            || current.task.claimed_by != Some(write.actor_principal_id)
+            || write.record.task.task.status != HumanTaskStatus::Completed
+        {
+            return Err(RepositoryError::Conflict(
+                "HumanTask decision conflicts with stored test state".into(),
+            ));
+        }
+        *current = write.record.task.clone();
+        self.decision_replays
+            .write()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?
+            .insert(
+                (write.idempotency.scope, write.idempotency.key),
+                (write.idempotency.request_digest, write.record.clone()),
+            );
+        Ok(IdempotentWrite {
+            value: write.record,
+            replayed: false,
+        })
+    }
+
+    async fn replay_decision(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> std::result::Result<Option<HumanTaskDecisionRecord>, RepositoryError> {
+        let replays = self
+            .decision_replays
+            .read()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?;
+        let Some((request_digest, record)) =
+            replays.get(&(idempotency.scope.clone(), idempotency.key.clone()))
+        else {
+            return Ok(None);
+        };
+        if request_digest != &idempotency.request_digest {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
+        Ok(Some(record.clone()))
     }
 
     async fn find_decision(
         &self,
-        _organization_id: OrganizationId,
-        _workflow_decision_id: WorkflowDecisionId,
+        organization_id: OrganizationId,
+        workflow_decision_id: WorkflowDecisionId,
     ) -> std::result::Result<Option<HumanTaskDecisionRecord>, RepositoryError> {
-        Ok(None)
+        Ok(self
+            .decision_replays
+            .read()
+            .map_err(|_| RepositoryError::Storage("HumanTask test fixture lock poisoned".into()))?
+            .values()
+            .find(|(_, record)| {
+                record.task.task.organization_id == organization_id
+                    && record.decision.id == workflow_decision_id
+            })
+            .map(|(_, record)| record.clone()))
     }
 
     async fn claim_resume_deliveries(
@@ -1472,7 +1544,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             organizations: identity.clone(),
             api_tokens: identity.clone(),
             memberships: identity.clone(),
-            resource_grants: identity,
+            resource_grants: identity.clone(),
+            resource_authorization_decisions: identity,
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),

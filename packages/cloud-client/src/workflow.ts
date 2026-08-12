@@ -1,4 +1,4 @@
-import type { FormReleaseRef } from './form';
+import type { FormCanonicalValue, FormReleaseRef } from './form';
 
 export type WorkflowPayloadKind = 'configuration' | 'data_schema' | 'policy';
 
@@ -341,6 +341,29 @@ export interface HumanTaskInteractionRequest {
   maxValueBytes: number;
   initialValue?: Record<string, unknown>;
   digest: string;
+}
+
+export interface HumanTaskInteractionSubmissionAssignment {
+  policyId: string;
+  policyRevision: number;
+  policyDigest: string;
+}
+
+export interface HumanTaskInteractionSubmission {
+  apiVersion: 'a3s.dev/form-interaction-submission/v1';
+  submissionId: string;
+  requestId: string;
+  requestDigest: string;
+  identity: HumanTaskInteractionIdentity;
+  form: FormReleaseRef;
+  assignment: HumanTaskInteractionSubmissionAssignment;
+  taskVersion: number;
+  principalId: string;
+  outcome: HumanTaskInteractionOutcome;
+  idempotencyKey: string;
+  submittedAt: string;
+  value: Readonly<Record<string, FormCanonicalValue>>;
+  valueDigest: string;
 }
 
 export interface HumanTaskSummary {

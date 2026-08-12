@@ -56,6 +56,7 @@ Commands:
   human-tasks get ID     Get one protected HumanTask detail
   human-tasks claim ID   Claim one ready HumanTask with optimistic concurrency
   human-tasks release ID Release one HumanTask as its current claimant
+  human-tasks submit ID  Submit a native A3S Form interaction from --file
   workflow-runs list     List recent WorkflowRuns in the selected project
   workflow-runs get ID   Get one WorkflowRun and its step projections
   workflow-runs start GOAL PLAN Start one exact PlanRevision idempotently

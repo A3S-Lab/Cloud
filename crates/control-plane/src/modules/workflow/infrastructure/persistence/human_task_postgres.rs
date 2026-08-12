@@ -264,6 +264,31 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
             .map_err(transaction_error)
     }
 
+    async fn replay_decision(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<HumanTaskDecisionRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(replay) = idempotency_replay::<HumanTaskDecisionWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_replayed_decision(transaction, replay.value)
+                        .await
+                        .map(Some)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn decide_task(
         &self,
         write: DecideHumanTaskWrite,
@@ -279,12 +304,7 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
                     .await?
                     {
                         return Ok(IdempotentWrite {
-                            value: load_decision_record(
-                                transaction,
-                                replay.value.organization_id,
-                                replay.value.workflow_decision_id,
-                            )
-                            .await?,
+                            value: load_replayed_decision(transaction, replay.value).await?,
                             replayed: true,
                         });
                     }
@@ -611,6 +631,24 @@ impl IHumanTaskRepository for PostgresHumanTaskRepository {
             .await
             .map_err(transaction_error)
     }
+}
+
+async fn load_replayed_decision(
+    transaction: &a3s_orm::PostgresTransaction,
+    reference: HumanTaskDecisionWriteReference,
+) -> Result<HumanTaskDecisionRecord, PostgresPersistenceError> {
+    let record = load_decision_record(
+        transaction,
+        reference.organization_id,
+        reference.workflow_decision_id,
+    )
+    .await?;
+    if record.task.task.id != reference.human_task_id {
+        return Err(PostgresPersistenceError::Invariant(
+            "HumanTask decision idempotency reference authority drifted".into(),
+        ));
+    }
+    Ok(record)
 }
 
 fn bounded_delivery_error(error: &str) -> String {

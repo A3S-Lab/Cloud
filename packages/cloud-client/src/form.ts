@@ -4,6 +4,14 @@ export interface FormDraftInput {
   document: Record<string, unknown>;
 }
 
+export type FormCanonicalValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly FormCanonicalValue[]
+  | { readonly [key: string]: FormCanonicalValue };
+
 export interface ReviseFormDraftOptions {
   expectedVersion: number;
 }

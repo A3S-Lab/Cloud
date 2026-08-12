@@ -5,6 +5,7 @@ use crate::modules::identity::domain::entities::{
 use crate::modules::identity::domain::repositories::{
     CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
 };
+use crate::modules::identity::domain::services::ResourceAuthorizationDecision;
 use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, IdempotencyRequest, IdempotentWrite, MembershipId, OrganizationId, PrincipalId,
@@ -18,6 +19,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 #[derive(Default)]
 pub struct InMemoryIdentityRepository {
@@ -31,6 +33,7 @@ pub(super) struct State {
     pub(super) principals: BTreeMap<PrincipalId, IdentityPrincipal>,
     pub(super) memberships: BTreeMap<MembershipId, Membership>,
     pub(super) resource_grants: BTreeMap<ResourceGrantId, ResourceGrant>,
+    pub(super) resource_authorization_decisions: BTreeMap<Uuid, ResourceAuthorizationDecision>,
     pub(super) membership_subjects: BTreeMap<(OrganizationId, PrincipalId), MembershipId>,
     pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
     pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,

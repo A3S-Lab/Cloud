@@ -1,8 +1,8 @@
 use super::tool_result;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
-    HumanTaskId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, WorkflowDefinitionId,
-    WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
+    ApiTokenId, HumanTaskId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
+    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
 };
 use crate::modules::workflow::presentation::{
     HumanTaskMutationResponse, HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse,
@@ -16,11 +16,12 @@ use crate::modules::workflow::{
     GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskAssignmentAction,
     HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals,
     ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun,
-    WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind, HUMAN_TASK_LIST_MAX_LIMIT,
-    WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
-    WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
+    SubmitHumanTask, WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind,
+    HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
+    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
+use a3s_form_core::FormInteractionSubmission;
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
@@ -173,6 +174,13 @@ pub struct HumanTaskMutationArguments {
     expected_version: u64,
     #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
     idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HumanTaskSubmissionArguments {
+    human_task_id: Uuid,
+    submission: FormInteractionSubmission,
 }
 
 #[derive(Debug, Deserialize)]
@@ -701,6 +709,38 @@ pub async fn change_human_task_assignment(
             expected_version: arguments.expected_version,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
+            request_id,
+            requested_at: chrono::Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => {
+            tool_result::success(200, HumanTaskMutationResponse::from(result), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn submit_human_task(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    credential_id: ApiTokenId,
+    actor_is_platform_admin: bool,
+    arguments: HumanTaskSubmissionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(SubmitHumanTask {
+            organization_id,
+            human_task_id: HumanTaskId::from_uuid(arguments.human_task_id),
+            resource_access,
+            submission: arguments.submission,
+            actor_principal_id,
+            credential_id,
+            actor_is_platform_admin,
             request_id,
             requested_at: chrono::Utc::now(),
         })

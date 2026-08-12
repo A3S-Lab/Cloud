@@ -333,6 +333,41 @@ describe('a3s-cloud Workflow commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+  it('submits the exact native Form interaction without duplicate mutation headers', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const submission = humanTaskSubmission();
+    const exitCode = await runCli(
+      ['human-tasks', 'submit', HUMAN_TASK_ID, '--file=submission.json', '--output=json'],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        readFile: async () => new TextEncoder().encode(JSON.stringify(submission)),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({ humanTask: humanTask(), replayed: false });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/human-tasks/${HUMAN_TASK_ID}/submission`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(submission),
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+      })
+    );
+    const headers = calls[0]?.[1]?.headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBeUndefined();
+    expect(headers['x-a3s-expected-version']).toBeUndefined();
+    expect(output.stderr()).toBe('');
+  });
+
   it('rejects out-of-range WorkflowRun options before transport', async () => {
     let called = false;
     const execute = (argv: string[]) => {
@@ -685,6 +720,37 @@ function humanTask() {
     maxValueBytes: 4096,
     initialValue: null,
     interactionRequest: null,
+  };
+}
+
+function humanTaskSubmission() {
+  const task = humanTask();
+  return {
+    apiVersion: 'a3s.dev/form-interaction-submission/v1',
+    submissionId: '019c0000-0000-7000-8000-000000000011',
+    requestId: 'request-1',
+    requestDigest: `sha256:${'b'.repeat(64)}`,
+    identity: {
+      workflowRunId: RUN_ID,
+      flowRunId: RUN_ID,
+      stepId: task.stepId,
+      stepAttempt: task.stepAttempt,
+      humanTaskId: HUMAN_TASK_ID,
+      flowHookId: 'human-review-1',
+    },
+    form: task.formRelease,
+    assignment: {
+      policyId: task.assignmentPolicy.id,
+      policyRevision: task.assignmentPolicy.revision,
+      policyDigest: `sha256:${'c'.repeat(64)}`,
+    },
+    taskVersion: task.aggregateVersion,
+    principalId: PRINCIPAL_ID,
+    outcome: 'approve',
+    idempotencyKey: 'cli:human-task:submit',
+    submittedAt: '2026-08-09T00:02:00.000Z',
+    value: { approved: true },
+    valueDigest: `sha256:${'d'.repeat(64)}`,
   };
 }
 

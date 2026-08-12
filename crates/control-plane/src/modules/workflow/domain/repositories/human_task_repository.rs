@@ -211,6 +211,11 @@ pub trait IHumanTaskRepository: Send + Sync {
         write: ChangeHumanTaskWrite,
     ) -> Result<IdempotentWrite<HumanTaskRecord>, RepositoryError>;
 
+    async fn replay_decision(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<HumanTaskDecisionRecord>, RepositoryError>;
+
     async fn decide_task(
         &self,
         write: DecideHumanTaskWrite,

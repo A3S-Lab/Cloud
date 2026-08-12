@@ -480,6 +480,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_human_tasks_get",
             "a3s_cloud_human_tasks_list",
             "a3s_cloud_human_tasks_release",
+            "a3s_cloud_human_tasks_submit",
             "a3s_cloud_search",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
@@ -549,6 +550,23 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         );
         assert_eq!(tool["inputSchema"]["additionalProperties"], false, "{name}");
     }
+    let submit_human_task = listed_tool(&administrator_tools, "a3s_cloud_human_tasks_submit")?;
+    assert_eq!(submit_human_task["annotations"]["readOnlyHint"], false);
+    assert_eq!(submit_human_task["annotations"]["destructiveHint"], false);
+    assert_eq!(submit_human_task["annotations"]["idempotentHint"], true);
+    assert_eq!(
+        submit_human_task["inputSchema"]["required"],
+        json!(["humanTaskId", "submission"])
+    );
+    assert_eq!(
+        submit_human_task["inputSchema"]["properties"]["submission"]["properties"]["apiVersion"]
+            ["enum"],
+        json!(["a3s.dev/form-interaction-submission/v1"])
+    );
+    assert_eq!(
+        submit_human_task["inputSchema"]["properties"]["submission"]["additionalProperties"],
+        false
+    );
 
     let hidden_call = app
         .call(mcp_request(
@@ -1678,6 +1696,11 @@ async fn management_mcp_reuses_operational_queries_with_strict_arguments() -> Re
                 "idempotencyKey": "invalid-human-task-release",
                 "organizationId": organization
             }),
+        ),
+        (
+            51,
+            "a3s_cloud_human_tasks_submit",
+            json!({"humanTaskId": missing_resource_id, "submission": {}}),
         ),
     ] {
         let response = app

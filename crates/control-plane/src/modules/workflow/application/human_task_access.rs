@@ -32,6 +32,18 @@ pub(crate) fn ensure_supported_assignment_policy(
     Ok(())
 }
 
+pub(crate) fn ensure_current_claimant(
+    record: &HumanTaskRecord,
+    actor_principal_id: PrincipalId,
+) -> ApplicationResult<()> {
+    if record.task.claimed_by != Some(actor_principal_id) {
+        return Err(ApplicationError::Forbidden(
+            "HumanTask submission requires the current claimant".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,6 +101,16 @@ mod tests {
         assert!(matches!(
             public_record(record, None),
             Err(ApplicationError::Unavailable(_))
+        ));
+    }
+
+    #[test]
+    fn submission_requires_the_current_claimant() {
+        let (record, claimant) = record(true);
+        ensure_current_claimant(&record, claimant).expect("claimant");
+        assert!(matches!(
+            ensure_current_claimant(&record, PrincipalId::new()),
+            Err(ApplicationError::Forbidden(_))
         ));
     }
 }

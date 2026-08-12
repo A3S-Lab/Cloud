@@ -1,12 +1,13 @@
 import {
   type CloudApi,
+  type HumanTaskInteractionSubmission,
   type HumanTaskStatus,
   MAX_HUMAN_TASK_LIST_LIMIT,
+  MAX_WORKFLOW_GOAL_ACL_BYTES,
   MAX_WORKFLOW_RUN_HISTORY_LIMIT,
   MAX_WORKFLOW_RUN_LIST_LIMIT,
   MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
   MAX_WORKFLOW_RUN_WAIT_SECONDS,
-  MAX_WORKFLOW_GOAL_ACL_BYTES,
   type PublishWorkflowDefinitionInput,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
@@ -28,9 +29,12 @@ import {
 import type { CloudContext } from './context';
 import { requireOrganization, requireProject } from './context';
 import { usageError } from './errors';
-import { readBoundedJsonFile } from './json-file';
+import { isJsonObject, readBoundedJsonFile } from './json-file';
 import type { CommandResult } from './results';
 import {
+  humanTaskMutationResult,
+  humanTaskResult,
+  humanTasksResult,
   workflowDefinitionMutationResult,
   workflowDefinitionResult,
   workflowDefinitionsResult,
@@ -38,9 +42,6 @@ import {
   workflowGoalResult,
   workflowGoalsResult,
   workflowPlanRevisionResult,
-  humanTaskResult,
-  humanTaskMutationResult,
-  humanTasksResult,
   workflowRevisionResult,
   workflowRevisionsResult,
   workflowRunHistoryResult,
@@ -51,6 +52,7 @@ import {
 } from './workflow-results';
 
 const MAX_WORKFLOW_PUBLICATION_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_HUMAN_TASK_SUBMISSION_FILE_BYTES = 5 * 1024 * 1024;
 
 interface WorkflowCommandDependencies {
   readFile?: (path: string) => Promise<Uint8Array>;
@@ -217,6 +219,25 @@ export async function executeWorkflowCommand(
               mutation.expectedVersion,
               mutation.idempotencyKey
             ))
+      );
+    }
+    case 'human-tasks submit': {
+      requireArity(positionals, 3, 'human-tasks submit <human-task-id>');
+      rejectLogOptions(arguments_);
+      rejectIdempotencyOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      const file = arguments_.file;
+      if (file === undefined || file.length > 4_096 || /[\0\r\n]/.test(file)) {
+        throw usageError('--file with a native A3S Form interaction submission is required');
+      }
+      const submission = await readHumanTaskSubmission(file, dependencies.readFile);
+      return humanTaskMutationResult(
+        await cloudApi().submitHumanTask(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'HumanTask ID'),
+          submission
+        )
       );
     }
     case 'workflow-runs list': {
@@ -453,6 +474,25 @@ async function readWorkflowPublication(
     throw usageError('Workflow publication must contain only definitionAcl and typed ACL payloads');
   }
   return value;
+}
+
+async function readHumanTaskSubmission(
+  path: string,
+  readFile?: (path: string) => Promise<Uint8Array>
+): Promise<HumanTaskInteractionSubmission> {
+  const value = await readBoundedJsonFile(
+    path,
+    {
+      label: 'HumanTask Form interaction submission',
+      maximumBytes: MAX_HUMAN_TASK_SUBMISSION_FILE_BYTES,
+      readError: 'unable to read the HumanTask Form interaction submission file',
+    },
+    readFile
+  );
+  if (!isJsonObject(value) || value.apiVersion !== 'a3s.dev/form-interaction-submission/v1') {
+    throw usageError('HumanTask submission must be a native A3S Form interaction submission');
+  }
+  return value as unknown as HumanTaskInteractionSubmission;
 }
 
 function isWorkflowPublication(value: unknown): value is PublishWorkflowDefinitionInput {

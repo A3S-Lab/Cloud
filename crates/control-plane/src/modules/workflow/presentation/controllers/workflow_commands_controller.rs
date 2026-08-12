@@ -1,5 +1,6 @@
 use super::request::{
-    actor_principal_id, expected_version, request_identity, resource_access, workflow_goal_acl,
+    actor_principal_id, credential_actor, expected_version, request_id, request_identity,
+    resource_access, workflow_goal_acl,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
@@ -15,13 +16,14 @@ use crate::modules::workflow::presentation::dto::{
 };
 use crate::modules::workflow::{
     CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
-    HumanTaskAssignmentAction, ReviseWorkflowDefinition, StartWorkflowRun,
+    HumanTaskAssignmentAction, ReviseWorkflowDefinition, StartWorkflowRun, SubmitHumanTask,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
     BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, RouteDefinition,
     AUTH_SCOPES_METADATA,
 };
+use a3s_form_core::FormInteractionSubmission;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -32,7 +34,8 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
     let start_run_bus = Arc::clone(&bus);
     let cancel_run_bus = Arc::clone(&bus);
     let claim_human_task_bus = Arc::clone(&bus);
-    let release_human_task_bus = bus;
+    let release_human_task_bus = Arc::clone(&bus);
+    let submit_human_task_bus = bus;
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::WORKFLOW_WRITE])?
@@ -249,6 +252,45 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             HumanTaskAssignmentAction::Release,
                         )
                         .await
+                    }
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
+        .route(with_deferred_resource_scope(
+            RouteDefinition::post(
+                "/{organization_id}/human-tasks/{human_task_id}/submission",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&submit_human_task_bus);
+                    async move {
+                        let submission: FormInteractionSubmission =
+                            request.json_with_content_type()?;
+                        let organization_id =
+                            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                        let human_task_id =
+                            HumanTaskId::from_uuid(request.param_as::<Uuid>("human_task_id")?);
+                        let resource_access = resource_access(&request)?;
+                        let actor = credential_actor(&request)?;
+                        let request_id = request_id(&request)?;
+                        match bus
+                            .execute(SubmitHumanTask {
+                                organization_id,
+                                human_task_id,
+                                resource_access,
+                                submission,
+                                actor_principal_id: actor.principal_id,
+                                credential_id: actor.credential_id,
+                                actor_is_platform_admin: actor.is_platform_admin,
+                                request_id,
+                                requested_at: chrono::Utc::now(),
+                            })
+                            .await?
+                        {
+                            Ok(result) => {
+                                BootResponse::json(&HumanTaskMutationResponse::from(result))
+                            }
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
                 },
             )?,

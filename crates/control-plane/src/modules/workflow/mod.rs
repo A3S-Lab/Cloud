@@ -21,6 +21,7 @@ pub use application::commands::revise_workflow_definition::{
     ReviseWorkflowDefinition, ReviseWorkflowDefinitionHandler,
 };
 pub use application::commands::start_workflow_run::{StartWorkflowRun, StartWorkflowRunHandler};
+pub use application::commands::submit_human_task::{SubmitHumanTask, SubmitHumanTaskHandler};
 pub use application::queries::diff_ontology_revisions::{
     DiffOntologyRevisions, DiffOntologyRevisionsHandler, OntologyRevisionDiff,
 };

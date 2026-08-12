@@ -1,4 +1,5 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
+use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
@@ -68,6 +69,7 @@ pub const HUMAN_TASKS_CLAIM: &str = "a3s_cloud_human_tasks_claim";
 pub const HUMAN_TASKS_GET: &str = "a3s_cloud_human_tasks_get";
 pub const HUMAN_TASKS_LIST: &str = "a3s_cloud_human_tasks_list";
 pub const HUMAN_TASKS_RELEASE: &str = "a3s_cloud_human_tasks_release";
+pub const HUMAN_TASKS_SUBMIT: &str = "a3s_cloud_human_tasks_submit";
 pub const ROUTES_GET: &str = "a3s_cloud_routes_get";
 pub const ROUTES_LIST: &str = "a3s_cloud_routes_list";
 pub const SEARCH: &str = "a3s_cloud_search";
@@ -133,6 +135,7 @@ pub enum ManagementTool {
     HumanTasksGet,
     HumanTasksList,
     HumanTasksRelease,
+    HumanTasksSubmit,
     Search,
     PluginRegistriesList,
     PluginRegistriesGet,
@@ -174,7 +177,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 73] = [
+    const ALL: [Self; 74] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::MembershipsList,
@@ -223,6 +226,7 @@ impl ManagementTool {
         Self::HumanTasksGet,
         Self::HumanTasksList,
         Self::HumanTasksRelease,
+        Self::HumanTasksSubmit,
         Self::Search,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
@@ -324,6 +328,7 @@ impl ManagementTool {
             Self::HumanTasksGet => HUMAN_TASKS_GET,
             Self::HumanTasksList => HUMAN_TASKS_LIST,
             Self::HumanTasksRelease => HUMAN_TASKS_RELEASE,
+            Self::HumanTasksSubmit => HUMAN_TASKS_SUBMIT,
             Self::Search => SEARCH,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
@@ -375,7 +380,8 @@ impl ManagementTool {
             | Self::WorkflowRunsStart
             | Self::WorkflowRunsCancel
             | Self::HumanTasksClaim
-            | Self::HumanTasksRelease => Some(ApiTokenScope::WORKFLOW_WRITE),
+            | Self::HumanTasksRelease
+            | Self::HumanTasksSubmit => Some(ApiTokenScope::WORKFLOW_WRITE),
             Self::WorkloadsStop | Self::WorkloadsRollback | Self::DeploymentsCancel => {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
@@ -485,6 +491,7 @@ impl ManagementTool {
             | Self::HumanTasksClaim
             | Self::HumanTasksGet
             | Self::HumanTasksRelease
+            | Self::HumanTasksSubmit
             | Self::WorkloadLogsGet
             | Self::WorkloadsStop
             | Self::WorkloadsRollback
@@ -823,6 +830,12 @@ impl ManagementTool {
                 "Release HumanTask",
                 "Release one claimed tenant-authorized HumanTask as its current claimant with optimistic concurrency and explicit idempotency.",
                 human_task_mutation_schema(),
+                false,
+            ),
+            Self::HumanTasksSubmit => (
+                "Submit HumanTask",
+                "Submit the exact request-bound native A3S Form interaction as the current claimant; the submission owns task version and idempotency.",
+                human_task_submission_schema(),
                 false,
             ),
             Self::Search => (
@@ -1534,6 +1547,18 @@ fn human_task_mutation_schema() -> Value {
     })
 }
 
+fn human_task_submission_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "humanTaskId": {"type": "string", "format": "uuid"},
+            "submission": form_interaction_submission_schema()
+        },
+        "required": ["humanTaskId", "submission"],
+        "additionalProperties": false
+    })
+}
+
 fn membership_role_schema() -> Value {
     json!({"type": "string", "enum": ["owner", "admin", "member", "restricted"]})
 }
@@ -1733,6 +1758,7 @@ mod tests {
             ManagementTool::HumanTasksGet,
             ManagementTool::HumanTasksList,
             ManagementTool::HumanTasksRelease,
+            ManagementTool::HumanTasksSubmit,
         ] {
             assert!(tool.visible_to(&principal), "{}", tool.name());
         }
@@ -1790,6 +1816,7 @@ mod tests {
             ManagementTool::HumanTasksGet,
             ManagementTool::HumanTasksList,
             ManagementTool::HumanTasksRelease,
+            ManagementTool::HumanTasksSubmit,
         ] {
             assert!(!tool.visible_to(&principal), "{}", tool.name());
         }

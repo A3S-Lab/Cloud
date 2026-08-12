@@ -14,4 +14,7 @@ pub use guards::{
     OrganizationAdministratorGuard, OrganizationTenantGuard,
 };
 pub use identity_module::IdentityModule;
+pub(crate) use request_context::{
+    authenticated_actor, authenticated_credential_actor, AuthenticatedCredentialActor,
+};
 pub use resource_access::resource_access_evaluator;

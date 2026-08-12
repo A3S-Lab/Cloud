@@ -8,6 +8,11 @@ use crate::modules::workflow::{
     WorkflowPayloadContent, WorkflowSpec, WorkflowStepConfiguration, WorkflowStepKind,
     WorkflowStepSpec,
 };
+use a3s_form_core::{
+    digest_interaction_value, parse_json, FormInteractionOutcome, FormInteractionRequest,
+    FormInteractionSubmission, FormInteractionSubmissionAssignment, FormReleaseRef,
+    FORM_INTERACTION_SUBMISSION_API_VERSION,
+};
 
 const ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -15,6 +20,179 @@ const ONTOLOGY_ACL: &str = include_str!(concat!(
 ));
 const RESTRICTED_WORKFLOW_TOKEN: &str =
     "a3s_8888888888888888888888888888888888888888888888888888888888888888";
+
+#[tokio::test]
+async fn human_task_submission_reuses_native_form_and_persists_identity_evidence() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let human_tasks = Arc::new(TestHumanTaskRepository::new(Vec::new()));
+    let app =
+        build_test_application_with_human_tasks(identity, projects, Arc::clone(&human_tasks))?;
+    let organization =
+        bootstrap_organization(&app, "human-task-submit", "Human task submit").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "human-task-submit-project",
+        "Human task submit",
+    )
+    .await?;
+    let memberships_path = format!("/api/v1/organizations/{organization}/memberships");
+    let reviewer = app
+        .call(post_json(
+            &memberships_path,
+            "human-task-submit-reviewer",
+            json!({"name": "HumanTask reviewer", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(reviewer.status(), 201);
+    let reviewer = response_json(&reviewer)?;
+    let membership_id =
+        required_string(&reviewer["data"]["id"], "HumanTask reviewer membership ID")?;
+    let principal_id = required_string(
+        &reviewer["data"]["principalId"],
+        "HumanTask claimant principal ID",
+    )?;
+    let principal_id = PrincipalId::from_uuid(
+        Uuid::parse_str(&principal_id)
+            .map_err(|error| BootError::Internal(format!("invalid principal ID: {error}")))?,
+    );
+    let reviewer_token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "human-task-submit-reviewer-token",
+            json!({
+                "name": "HumanTask reviewer",
+                "token": RESTRICTED_WORKFLOW_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::WORKFLOW_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(reviewer_token.status(), 201);
+    let project_grant = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants"
+            ),
+            "human-task-submit-project-grant",
+            json!({"scope": {"kind": "project", "projectId": project}}),
+        ))
+        .await?;
+    assert_eq!(project_grant.status(), 201);
+
+    let form_collection = format!("/api/v1/organizations/{organization}/projects/{project}/forms");
+    let created_form = app
+        .call(post_json(
+            &form_collection,
+            "human-task-submit-form",
+            super::forms_tests::form_draft("Approval", "Approve this HumanTask", false),
+        ))
+        .await?;
+    assert_eq!(created_form.status(), 201);
+    let form_id = required_string(
+        &response_json(&created_form)?["data"]["form"]["id"],
+        "HumanTask Form ID",
+    )?;
+    let published_form = app
+        .call(
+            post_json(
+                format!("/api/v1/organizations/{organization}/forms/{form_id}/releases"),
+                "human-task-submit-form-release",
+                json!({}),
+            )
+            .with_header("x-a3s-expected-version", "1"),
+        )
+        .await?;
+    assert_eq!(published_form.status(), 201);
+    let release: FormReleaseRef = serde_json::from_value(
+        response_json(&published_form)?["data"]["release"]["releaseRef"].clone(),
+    )
+    .map_err(|error| BootError::Internal(format!("invalid Form release reference: {error}")))?;
+
+    let record = human_task_read_fixture_with_form_release(
+        &organization,
+        &project,
+        Some(principal_id),
+        "Review native Form submission",
+        Some(release),
+    )?;
+    let task_id = record.task.id;
+    let request = record
+        .interaction_request
+        .clone()
+        .ok_or_else(|| BootError::Internal("claimed HumanTask has no Form request".into()))?;
+    human_tasks
+        .insert(record)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let submission = form_submission(&request, principal_id)?;
+    let submission_path =
+        format!("/api/v1/organizations/{organization}/human-tasks/{task_id}/submission");
+    let submit_request = |submission: &FormInteractionSubmission| {
+        BootRequest::new(HttpMethod::Post, &submission_path)
+            .with_header("content-type", "application/json")
+            .with_header(
+                "authorization",
+                format!("Bearer {RESTRICTED_WORKFLOW_TOKEN}"),
+            )
+            .with_body(
+                serde_json::to_vec(submission).expect("Form interaction submission must serialize"),
+            )
+    };
+    let accepted = app.call(submit_request(&submission)).await?;
+    assert_eq!(accepted.status(), 200);
+    let accepted = response_json(&accepted)?;
+    assert_eq!(accepted["data"]["humanTask"]["status"], "completed");
+    assert_eq!(accepted["data"]["replayed"], false);
+
+    let decision_id = WorkflowDecisionId::from_uuid(
+        Uuid::parse_str(&required_string(
+            &accepted["data"]["humanTask"]["decisionId"],
+            "HumanTask decision ID",
+        )?)
+        .map_err(|error| BootError::Internal(format!("invalid decision ID: {error}")))?,
+    );
+    let decision = human_tasks
+        .find_decision(
+            OrganizationId::from_uuid(Uuid::parse_str(&organization).map_err(|error| {
+                BootError::Internal(format!("invalid organization ID: {error}"))
+            })?),
+            decision_id,
+        )
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .ok_or_else(|| BootError::Internal("persisted HumanTask decision is missing".into()))?;
+    let authorization = &decision
+        .submission
+        .as_ref()
+        .ok_or_else(|| BootError::Internal("persisted Form submission is missing".into()))?
+        .authorization_decision;
+    assert!(authorization
+        .id
+        .starts_with("urn:a3s:cloud:identity:resource-authorization-decision:"));
+    assert!(authorization.digest.as_str().starts_with("sha256:"));
+
+    let replay = app.call(submit_request(&submission)).await?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(response_json(&replay)?["data"]["replayed"], true);
+    let mcp_replay = app
+        .call(mcp_tool_call_as(
+            8,
+            "a3s_cloud_human_tasks_submit",
+            json!({"humanTaskId": task_id, "submission": submission}),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?;
+    let mcp_replay = response_json(&mcp_replay)?;
+    assert_eq!(mcp_replay["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        mcp_replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    Ok(())
+}
 
 #[tokio::test]
 async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claimant() -> Result<()> {
@@ -416,6 +594,16 @@ fn human_task_read_fixture(
     claimant: Option<PrincipalId>,
     message: &str,
 ) -> Result<HumanTaskRecord> {
+    human_task_read_fixture_with_form_release(organization, project, claimant, message, None)
+}
+
+fn human_task_read_fixture_with_form_release(
+    organization: &str,
+    project: &str,
+    claimant: Option<PrincipalId>,
+    message: &str,
+    form_release: Option<FormReleaseRef>,
+) -> Result<HumanTaskRecord> {
     let organization_id = OrganizationId::from_uuid(
         Uuid::parse_str(organization)
             .map_err(|error| BootError::Internal(format!("invalid organization ID: {error}")))?,
@@ -429,6 +617,9 @@ fn human_task_read_fixture(
     task.project_id = project_id;
     task.form_release.organization_id = organization_id.to_string();
     task.form_release.project_id = project_id.to_string();
+    if let Some(form_release) = form_release {
+        task.form_release = form_release;
+    }
     task.assignment_policy = AssignmentPolicyRef::workflow_organization_member_exclusive()
         .map_err(BootError::Internal)?;
     task.due_at = None;
@@ -454,6 +645,36 @@ fn human_task_read_fixture(
             .map_err(BootError::Internal)?;
     }
     Ok(record)
+}
+
+fn form_submission(
+    request: &FormInteractionRequest,
+    principal_id: PrincipalId,
+) -> Result<FormInteractionSubmission> {
+    let value = parse_json(br#"{"approved":true}"#)
+        .map_err(|error| BootError::Internal(format!("invalid Form value: {error}")))?;
+    let value_digest = digest_interaction_value(&value)
+        .map_err(|error| BootError::Internal(format!("Form value digest failed: {error}")))?;
+    Ok(FormInteractionSubmission {
+        api_version: FORM_INTERACTION_SUBMISSION_API_VERSION.into(),
+        submission_id: Uuid::now_v7().to_string(),
+        request_id: request.request_id.clone(),
+        request_digest: request.digest.clone(),
+        identity: request.identity.clone(),
+        form: request.form.clone(),
+        assignment: FormInteractionSubmissionAssignment {
+            policy_id: request.assignment.policy_id.clone(),
+            policy_revision: request.assignment.policy_revision,
+            policy_digest: request.assignment.policy_digest.clone(),
+        },
+        task_version: request.task.version,
+        principal_id: principal_id.to_string(),
+        outcome: FormInteractionOutcome::Approve,
+        idempotency_key: format!("human-task-submit-{}", request.identity.human_task_id),
+        submitted_at: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        value,
+        value_digest,
+    })
 }
 
 fn post_empty_as(path: impl Into<String>, idempotency_key: &str, token: &str) -> BootRequest {

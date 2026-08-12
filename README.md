@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.21.0" src="https://img.shields.io/badge/REST_contract-1.21.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.22.0" src="https://img.shields.io/badge/REST_contract-1.22.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -142,17 +142,19 @@ cancellation, deadlines, waiting, terminal output, and bounded redacted
 history. Migration `081` adds the internal authority-bound HumanTask decision
 loop described below. The maintained client, `workflow-runs` CLI commands, and
 seven Management MCP tools share start, cancel, list, get, wait, output, and
-history behavior. REST contract `1.21.0` now also exposes bounded HumanTask
-list/detail reads and versioned claim/release through the same Workflow
-repository and Identity Resource Grant evaluator; the client, `human-tasks`
-CLI commands, and four MCP tools use the same command/query handlers and DTOs.
-The mutations reuse the domain state machine and transaction-bound
-idempotency, audit, and Outbox mechanisms. Lists never carry an interaction
-request, and only the current claimant receives the request-bound native A3S
-Form interaction. Public submission, expiry/cancellation
-coordination, service/finite-task dispatch, typed capability steps,
-compensation, and production recovery remain open; no second engine,
-scheduler, queue, Runtime provider, authorization store, or frontend was added.
+history behavior. REST contract `1.22.0` exposes bounded HumanTask list/detail
+reads, versioned claim/release, and public submission of the exact request-bound
+native A3S Form interaction. The client, `human-tasks` CLI commands, and five
+MCP tools use the same command/query handlers and DTOs. Form remains the only
+submission evaluator; Identity re-reads the exact credential, membership, and
+Resource Grants and records immutable authorization evidence in the existing
+audit store. Workflow persists the returned decision reference with the Form
+submission and atomically commits its decision, idempotency, audit, Outbox, and
+Flow-resume delivery. Lists never carry an interaction request, and only the
+current claimant receives it. Expiry/cancellation coordination,
+service/finite-task dispatch, typed capability steps, compensation, and
+production recovery remain open; no second engine, scheduler, queue, Runtime
+provider, authorization store, or frontend was added.
 
 The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
 Boot `0.2.0` with its PostgreSQL queue, and A3S ORM `0.3.0`-backed PostgreSQL
@@ -325,7 +327,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.21.0`.
+contract version `1.22.0`.
 
 ### Bootstrap the first organization
 
