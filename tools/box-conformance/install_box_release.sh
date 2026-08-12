@@ -2,7 +2,8 @@
 set -euo pipefail
 
 readonly BOX_RELEASE_VERSION=3.1.0
-readonly BOX_ARCHIVE=a3s-box-v3.1.0-linux-x86_64.tar.gz
+readonly BOX_ARCHIVE="a3s-box-v${BOX_RELEASE_VERSION}-linux-x86_64.tar.gz"
+readonly BOX_ARCHIVE_ASSET_ID=487344206
 readonly BOX_ARCHIVE_SHA256=d1aa83dc0111f8982a8ac984064fd4e8cf553deb87a94f28ad85b9f1da9af530
 readonly SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly BOX_REVISION="$(<"$SCRIPT_DIRECTORY/box-revision")"
@@ -43,7 +44,10 @@ archive="$install_root/$BOX_ARCHIVE"
 curl --fail --location --silent --show-error \
   --retry 5 --retry-all-errors --retry-delay 2 --retry-max-time 120 \
   --connect-timeout 15 \
-  "https://github.com/A3S-Lab/Box/releases/download/v$BOX_RELEASE_VERSION/$BOX_ARCHIVE" \
+  --header 'Accept: application/octet-stream' \
+  --header 'X-GitHub-Api-Version: 2022-11-28' \
+  --header 'User-Agent: a3s-cloud-box-installer' \
+  "https://api.github.com/repos/A3S-Lab/Box/releases/assets/$BOX_ARCHIVE_ASSET_ID" \
   --output "$archive"
 printf '%s  %s\n' "$BOX_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
 tar --extract --gzip --file "$archive" --directory "$install_root" --strip-components=1
