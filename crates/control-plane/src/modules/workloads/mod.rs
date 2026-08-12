@@ -32,16 +32,18 @@ pub use domain::entities::{
     WorkloadRevision, CANONICAL_REPLICA_ORDINAL, MAX_WORKLOAD_REPLICAS,
 };
 pub use domain::events::{
-    DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaSetReconfigured,
-    WorkloadStopRequested,
+    DeploymentCancellationRequested, DeploymentRequested, WorkloadReplicaRetired,
+    WorkloadReplicaSetReconfigured, WorkloadStopRequested,
 };
 pub use domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle, IResourceClaimRepository,
-    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
-    IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
-    ReplicaDeploymentMaterialization, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, SecretRotation, SecretRotationCompletion,
-    SecretRotationReconciliation, WorkloadStopBundle,
+    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    RetiringReplicaTarget, SecretRotation, SecretRotationCompletion, SecretRotationReconciliation,
+    WorkloadStopBundle,
 };
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
@@ -55,7 +57,8 @@ pub use infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, OciRegistryArtifactResolver,
     PostgresResourceClaimRepository, PostgresWorkloadRepository,
     ReplicaDeploymentMaterializationFailure, ReplicaDeploymentMaterializationReport,
-    ReplicaDeploymentMaterializer, SecretRotationRestartFailure, SecretRotationRestartReconciler,
+    ReplicaDeploymentMaterializer, ReplicaRetirementFailure, ReplicaRetirementReconciler,
+    ReplicaRetirementReport, SecretRotationRestartFailure, SecretRotationRestartReconciler,
     SecretRotationRestartReport, WorkloadReconciliationFailure, WorkloadReconciliationReport,
     WorkloadRuntimeReconciler,
 };

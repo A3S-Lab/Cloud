@@ -272,7 +272,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (88, "088".into()));
+    assert_eq!(migration_state, (89, "089".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -963,7 +963,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 88);
+    assert_eq!(applied, 89);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -3597,7 +3597,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     );
     assert_eq!(listed[0]["replicas"].as_array().map(Vec::len), Some(1));
     assert_eq!(listed[0]["replicas"][0]["id"], workload_id);
+    assert_eq!(listed[0]["replicas"][0]["revisionGeneration"], 2);
     assert_eq!(listed[0]["replicas"][0]["generation"], 2);
+    assert_eq!(listed[0]["replicas"][0]["lifecycle"], "desired");
+    assert_eq!(listed[0]["replicas"][0]["retirementCommandId"], Value::Null);
+    assert_eq!(listed[0]["replicas"][0]["runtimeFencedAt"], Value::Null);
     assert_eq!(
         listed[0]["replicas"][0]["members"][0]["nodeId"],
         listed[0]["deployments"][0]["nodeId"]

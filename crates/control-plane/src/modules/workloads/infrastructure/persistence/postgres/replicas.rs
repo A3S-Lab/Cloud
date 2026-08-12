@@ -1,10 +1,11 @@
+use super::queries;
 use super::schema::{
     DeploymentReplicaBindings, WorkloadControls, WorkloadReplicaMembers, WorkloadReplicas,
 };
 use crate::infrastructure::{execute, fetch_optional, require_one_row, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, NodeId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
-    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    DeploymentId, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError,
+    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, EffectivePlacementPolicy, ManagedOwnerKind,
@@ -61,6 +62,8 @@ impl Selection for ReplicaSelection {
             WorkloadReplicas::revision_generation().expression(),
             WorkloadReplicas::generation().expression(),
             WorkloadReplicas::lifecycle().expression(),
+            WorkloadReplicas::retirement_command_id().expression(),
+            WorkloadReplicas::runtime_fenced_at().expression(),
             WorkloadReplicas::aggregate_version().expression(),
             WorkloadReplicas::created_at().expression(),
             WorkloadReplicas::updated_at().expression(),
@@ -140,6 +143,8 @@ struct ReplicaRow {
     revision_generation: u64,
     generation: u64,
     lifecycle: String,
+    retirement_command_id: Option<Uuid>,
+    runtime_fenced_at: Option<DateTime<Utc>>,
     aggregate_version: u64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -197,7 +202,8 @@ from_row!(ControlRow, {
 from_row!(ReplicaRow, {
     id: 0, organization_id: 1, project_id: 2, environment_id: 3, workload_id: 4,
     ordinal: 5, revision_id: 6, revision_generation: 7, generation: 8,
-    lifecycle: 9, aggregate_version: 10, created_at: 11, updated_at: 12,
+    lifecycle: 9, retirement_command_id: 10, runtime_fenced_at: 11,
+    aggregate_version: 12, created_at: 13, updated_at: 14,
 });
 from_row!(MemberRow, {
     id: 0, organization_id: 1, project_id: 2, environment_id: 3, workload_id: 4,
@@ -349,6 +355,67 @@ pub(super) async fn place(
     Ok(binding)
 }
 
+pub(super) async fn require_current_desired_deployment(
+    transaction: &PostgresTransaction,
+    deployment: &Deployment,
+) -> Result<(), PostgresPersistenceError> {
+    let workload = queries::workload_in_transaction(
+        transaction,
+        deployment.organization_id,
+        deployment.workload_id,
+        true,
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?;
+    let control = control_for_update(
+        transaction,
+        deployment.organization_id,
+        deployment.workload_id,
+    )
+    .await?
+    .ok_or_else(|| invariant("deployment Workload is missing its control record"))?;
+    let binding = binding_in_transaction(transaction, deployment.organization_id, deployment.id)
+        .await?
+        .ok_or_else(|| invariant("deployment is missing its replica binding"))?;
+    let replica = replica_for_update(
+        transaction,
+        deployment.organization_id,
+        deployment.workload_id,
+        binding.replica_id,
+    )
+    .await?
+    .ok_or_else(|| invariant("deployment binding references a missing replica"))?;
+    let member = member_for_update(
+        transaction,
+        deployment.organization_id,
+        binding.replica_id,
+        binding.member_id,
+    )
+    .await?
+    .ok_or_else(|| invariant("deployment binding references a missing member"))?;
+    if workload.desired_state
+        != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
+        || binding.organization_id != deployment.organization_id
+        || binding.workload_id != deployment.workload_id
+        || binding.revision_id != deployment.revision_id
+        || binding.replica_id != replica.id
+        || binding.replica_generation != replica.generation
+        || replica.lifecycle != WorkloadReplicaLifecycle::Desired
+        || replica.ordinal >= control.spec.placement_policy.desired_replicas()
+        || replica.revision_id != deployment.revision_id
+        || binding.member_id != member.id
+        || member.replica_id != replica.id
+        || binding.node_id != deployment.node_id
+        || binding.node_id.is_some() && binding.node_id != member.node_id
+    {
+        return Err(RepositoryError::Conflict(
+            "deployment replica generation is no longer desired".into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
 pub(super) async fn require_direct_mutation(
     transaction: &PostgresTransaction,
     organization_id: OrganizationId,
@@ -493,6 +560,26 @@ pub(super) async fn find_binding(
         .map_err(storage)?
         .ok_or(RepositoryError::NotFound)
         .and_then(BindingRow::binding)
+}
+
+pub(super) async fn find_binding_for_replica_generation(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    replica_id: WorkloadReplicaId,
+    replica_generation: u64,
+) -> Result<Option<DeploymentReplicaBinding>, RepositoryError> {
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            select_from::<DeploymentReplicaBindings>()
+                .select(BindingSelection)
+                .filter(DeploymentReplicaBindings::organization_id().eq(organization_id.as_uuid()))
+                .filter(DeploymentReplicaBindings::replica_id().eq(replica_id.as_uuid()))
+                .filter(DeploymentReplicaBindings::replica_generation().eq(replica_generation)),
+        )
+        .await
+        .map_err(storage)?
+        .map(BindingRow::binding)
+        .transpose()
 }
 
 async fn control_in_transaction(
@@ -770,6 +857,14 @@ pub(super) async fn insert_replica(
             .value(WorkloadReplicas::generation(), replica.generation)
             .value(WorkloadReplicas::lifecycle(), replica.lifecycle.as_str())
             .value(
+                WorkloadReplicas::retirement_command_id(),
+                replica.retirement_command_id.map(NodeCommandId::as_uuid),
+            )
+            .value(
+                WorkloadReplicas::runtime_fenced_at(),
+                replica.runtime_fenced_at,
+            )
+            .value(
                 WorkloadReplicas::aggregate_version(),
                 replica.aggregate_version,
             )
@@ -847,6 +942,14 @@ pub(super) async fn persist_replica(
             .set(WorkloadReplicas::generation(), replica.generation)
             .set(WorkloadReplicas::lifecycle(), replica.lifecycle.as_str())
             .set(
+                WorkloadReplicas::retirement_command_id(),
+                replica.retirement_command_id.map(NodeCommandId::as_uuid),
+            )
+            .set(
+                WorkloadReplicas::runtime_fenced_at(),
+                replica.runtime_fenced_at,
+            )
+            .set(
                 WorkloadReplicas::aggregate_version(),
                 replica.aggregate_version,
             )
@@ -856,6 +959,34 @@ pub(super) async fn persist_replica(
     )
     .await?;
     require_one_row("Workload replica generation", rows)
+}
+
+pub(super) async fn persist_member(
+    transaction: &PostgresTransaction,
+    member: &WorkloadReplicaMember,
+    previous_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    let rows = execute(
+        transaction,
+        update_table::<WorkloadReplicaMembers>()
+            .set(
+                WorkloadReplicaMembers::node_id(),
+                member.node_id.map(NodeId::as_uuid),
+            )
+            .set(
+                WorkloadReplicaMembers::placement_generation(),
+                member.placement_generation,
+            )
+            .set(
+                WorkloadReplicaMembers::aggregate_version(),
+                member.aggregate_version,
+            )
+            .set(WorkloadReplicaMembers::updated_at(), member.updated_at)
+            .filter(WorkloadReplicaMembers::id().eq(member.id.as_uuid()))
+            .filter(WorkloadReplicaMembers::aggregate_version().eq(previous_version)),
+    )
+    .await?;
+    require_one_row("Workload replica member", rows)
 }
 
 pub(super) async fn insert_binding(
@@ -990,6 +1121,8 @@ impl ReplicaRow {
             generation: self.generation,
             lifecycle: WorkloadReplicaLifecycle::parse(&self.lifecycle)
                 .map_err(RepositoryError::Storage)?,
+            retirement_command_id: self.retirement_command_id.map(NodeCommandId::from_uuid),
+            runtime_fenced_at: self.runtime_fenced_at,
             aggregate_version: self.aggregate_version,
             created_at: self.created_at,
             updated_at: self.updated_at,

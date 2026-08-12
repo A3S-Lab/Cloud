@@ -3309,11 +3309,22 @@ winner, releasing or orphaned Claims remain exclusionary until trusted release
 evidence is durable, and overlapping rollout generations of the same stable
 replica may still use its prior node. The multi-node flow gives every candidate
 enough capacity, proving that its three-node spread comes from policy rather
-than incidental resource exhaustion. This remains a foundation rather than the
-`H0.3` exit: retirement completion and resource release, drain/evacuation,
-maintenance and node-pool policy, placement groups and gang claims, bounded
-rolling updates, independent Gateway placement, and provider-neutral private
-networking remain open.
+than incidental resource exhaustion.
+
+Migration 089 makes replica retirement evidence durable. Scaling down now
+fences every forward Deployment transition for the retired exact generation,
+issues and retries a replica-scoped Runtime removal command for every placed
+member, and rejects any same-generation Runtime apply that arrives after that
+removal fence. It persists the successful Runtime fence and only then releases
+the exact Resource Claim.
+Agent-backed Claims require validated release acknowledgement; database-only
+reservations can be cancelled locally. Retirement completion atomically clears
+the member placement, advances the replica to retired, and emits one replay-safe
+event, while a later scale-up reuses the stable ordinal identity with a new
+generation and cleared retirement evidence. This remains a foundation rather
+than the `H0.3` exit: drain/evacuation, maintenance and node-pool policy,
+placement groups and gang claims, bounded rolling updates, independent Gateway
+placement, and provider-neutral private networking remain open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,

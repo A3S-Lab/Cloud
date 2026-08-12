@@ -103,6 +103,16 @@ impl INodeControlRepository for InMemoryNodeRepository {
             &draft.payload
         {
             let requested_generation = draft.payload.generation();
+            if state.commands.values().any(|stored| {
+                stored.command.node_id == draft.node_id
+                    && stored.command.aggregate_id == draft.aggregate_id
+                    && stored.command.kind() == "runtime_remove"
+                    && stored.command.generation() == requested_generation
+            }) {
+                return Err(RepositoryError::Conflict(
+                    "Runtime apply generation is fenced by a removal command".into(),
+                ));
+            }
             let requested_digest = request.spec.digest().map_err(RepositoryError::Conflict)?;
             let mut prior_applies = state
                 .commands

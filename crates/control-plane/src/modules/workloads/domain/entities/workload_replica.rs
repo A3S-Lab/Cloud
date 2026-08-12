@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DeploymentId, EnvironmentId, NodeId, OrganizationId, ProjectId,
-    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    canonical_timestamp, DeploymentId, EnvironmentId, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, Workload, WorkloadRevision, MAX_WORKLOAD_REPLICAS,
@@ -51,6 +51,8 @@ pub struct WorkloadReplica {
     pub revision_generation: u64,
     pub generation: u64,
     pub lifecycle: WorkloadReplicaLifecycle,
+    pub retirement_command_id: Option<NodeCommandId>,
+    pub runtime_fenced_at: Option<DateTime<Utc>>,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -80,6 +82,8 @@ impl WorkloadReplica {
             revision_generation: revision.generation,
             generation: revision.generation,
             lifecycle: WorkloadReplicaLifecycle::Desired,
+            retirement_command_id: None,
+            runtime_fenced_at: None,
             aggregate_version: 1,
             created_at: workload.created_at,
             updated_at: revision.created_at.max(workload.created_at),
@@ -160,11 +164,66 @@ impl WorkloadReplica {
             return Ok(());
         }
         self.lifecycle = WorkloadReplicaLifecycle::Retiring;
+        self.retirement_command_id = None;
+        self.runtime_fenced_at = None;
         self.aggregate_version = self
             .aggregate_version
             .checked_add(1)
             .ok_or_else(|| "Workload replica version overflowed".to_string())?;
         self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn dispatch_retirement(
+        &mut self,
+        command_id: NodeCommandId,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let at = canonical_timestamp(at);
+        if command_id.as_uuid().is_nil()
+            || self.lifecycle != WorkloadReplicaLifecycle::Retiring
+            || self.runtime_fenced_at.is_some()
+            || at < self.updated_at
+        {
+            return Err("Workload replica retirement dispatch is invalid".into());
+        }
+        if self.retirement_command_id == Some(command_id) {
+            return Ok(());
+        }
+        self.retirement_command_id = Some(command_id);
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Workload replica version overflowed".to_string())?;
+        self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn record_runtime_fenced(
+        &mut self,
+        command_id: NodeCommandId,
+        fenced_at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        let fenced_at = canonical_timestamp(fenced_at);
+        if self.lifecycle != WorkloadReplicaLifecycle::Retiring
+            || self.retirement_command_id != Some(command_id)
+            || fenced_at < self.updated_at
+        {
+            return Err("Workload replica Runtime fencing evidence is invalid".into());
+        }
+        if self.runtime_fenced_at.is_some() {
+            return if self.runtime_fenced_at == Some(fenced_at) {
+                Ok(())
+            } else {
+                Err("Workload replica Runtime fencing evidence cannot change".into())
+            };
+        }
+        self.runtime_fenced_at = Some(fenced_at);
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "Workload replica version overflowed".to_string())?;
+        self.updated_at = fenced_at;
         Ok(())
     }
 
@@ -178,6 +237,7 @@ impl WorkloadReplica {
             || member.workload_id != self.workload_id
             || member.node_id.is_some()
             || self.lifecycle != WorkloadReplicaLifecycle::Retiring
+            || self.retirement_command_id.is_some() != self.runtime_fenced_at.is_some()
             || at < self.updated_at.max(member.updated_at)
         {
             return Err("Workload replica cannot retire before its member is released".into());
@@ -211,6 +271,8 @@ impl WorkloadReplica {
             .checked_add(1)
             .ok_or_else(|| "Workload replica generation overflowed".to_string())?;
         self.lifecycle = WorkloadReplicaLifecycle::Desired;
+        self.retirement_command_id = None;
+        self.runtime_fenced_at = None;
         self.aggregate_version = self
             .aggregate_version
             .checked_add(1)
@@ -231,8 +293,25 @@ impl WorkloadReplica {
             || self.generation == 0
             || self.aggregate_version == 0
             || self.updated_at < self.created_at
+            || self
+                .runtime_fenced_at
+                .is_some_and(|fenced_at| fenced_at < self.created_at || fenced_at > self.updated_at)
         {
             return Err("Workload replica is invalid".into());
+        }
+        let retirement_state_valid = match self.lifecycle {
+            WorkloadReplicaLifecycle::Desired => {
+                self.retirement_command_id.is_none() && self.runtime_fenced_at.is_none()
+            }
+            WorkloadReplicaLifecycle::Retiring => {
+                self.runtime_fenced_at.is_none() || self.retirement_command_id.is_some()
+            }
+            WorkloadReplicaLifecycle::Retired => {
+                self.retirement_command_id.is_some() == self.runtime_fenced_at.is_some()
+            }
+        };
+        if !retirement_state_valid {
+            return Err("Workload replica retirement evidence is invalid".into());
         }
         Ok(())
     }

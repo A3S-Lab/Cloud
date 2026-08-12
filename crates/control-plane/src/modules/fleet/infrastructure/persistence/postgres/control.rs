@@ -218,6 +218,24 @@ pub(super) async fn enqueue(
                 }
 
                 if let NodeCommandPayload::RuntimeApply { request, .. } = &draft.payload {
+                    if fetch_optional::<Uuid, _>(
+                        transaction,
+                        sql_query::<Uuid>("select id from node_commands where node_id = ")
+                            .bind(draft.node_id.as_uuid())
+                            .append(" and aggregate_id = ")
+                            .bind(draft.aggregate_id)
+                            .append(" and command_kind = 'runtime_remove' and generation = ")
+                            .bind(draft.payload.generation())
+                            .append(" order by sequence desc limit 1 for update"),
+                    )
+                    .await?
+                    .is_some()
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "Runtime apply generation is fenced by a removal command".into(),
+                        )
+                        .into());
+                    }
                     let requested_spec_digest = request
                         .spec
                         .digest()

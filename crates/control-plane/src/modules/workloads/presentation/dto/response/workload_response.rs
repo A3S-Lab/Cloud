@@ -57,6 +57,7 @@ pub struct EffectivePlacementPolicyResponse {
     pub desired_replicas: u32,
     pub members_per_replica: u32,
     pub topology: String,
+    pub replica_anti_affinity: String,
     pub digest: String,
 }
 
@@ -69,6 +70,8 @@ pub struct WorkloadReplicaResponse {
     pub revision_generation: u64,
     pub generation: u64,
     pub lifecycle: String,
+    pub retirement_command_id: Option<Uuid>,
+    pub runtime_fenced_at: Option<DateTime<Utc>>,
     pub members: Vec<WorkloadReplicaMemberResponse>,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
@@ -264,6 +267,11 @@ impl From<WorkloadControl> for WorkloadControlResponse {
                 desired_replicas: policy.desired_replicas(),
                 members_per_replica: policy.members_per_replica(),
                 topology: topology.into(),
+                replica_anti_affinity: match policy.replica_anti_affinity() {
+                    crate::modules::workloads::domain::entities::ReplicaAntiAffinity::Required => {
+                        "required".into()
+                    }
+                },
                 digest: policy.digest().to_owned(),
             },
             aggregate_version: control.aggregate_version,
@@ -283,6 +291,10 @@ impl From<WorkloadReplicaQueryResult> for WorkloadReplicaResponse {
             revision_generation: replica.revision_generation,
             generation: replica.generation,
             lifecycle: replica.lifecycle.as_str().into(),
+            retirement_command_id: replica
+                .retirement_command_id
+                .map(|command_id| command_id.as_uuid()),
+            runtime_fenced_at: replica.runtime_fenced_at,
             members: result
                 .members
                 .into_iter()

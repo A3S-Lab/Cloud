@@ -2,6 +2,7 @@ mod create;
 mod operation_requests;
 mod queries;
 mod replica_deployment_materialization;
+mod replica_retirements;
 mod replica_set_reconfiguration;
 mod replicas;
 mod resource_claim_rows;
@@ -24,10 +25,12 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
-    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
-    IWorkloadRuntimeTargetRepository, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
-    ReplicaDeploymentMaterialization, ReplicaSetWriteResult, RequestDeploymentCancellationBundle,
-    RequestWorkloadStopBundle, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
+    ISecretRotationRestartRepository, IWorkloadReplicaDeploymentRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
+    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
+    RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -449,6 +452,40 @@ impl IWorkloadReplicaDeploymentRepository for PostgresWorkloadRepository {
     ) -> Result<Option<ReplicaDeploymentMaterialization>, RepositoryError> {
         replica_deployment_materialization::materialize(&self.executor, candidate, requested_at)
             .await
+    }
+}
+
+#[async_trait]
+impl IWorkloadReplicaRetirementRepository for PostgresWorkloadRepository {
+    async fn pending_replica_retirements(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<RetiringReplicaTarget>, RepositoryError> {
+        replica_retirements::pending(&self.executor, limit).await
+    }
+
+    async fn dispatch_replica_retirement(
+        &self,
+        dispatch: ReplicaRetirementDispatch,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        replica_retirements::dispatch(&self.executor, dispatch).await
+    }
+
+    async fn record_replica_runtime_fenced(
+        &self,
+        fence: ReplicaRuntimeFence,
+    ) -> Result<WorkloadReplica, RepositoryError> {
+        replica_retirements::record_fence(&self.executor, fence).await
+    }
+
+    async fn complete_replica_retirement(
+        &self,
+        completion: ReplicaRetirementCompletion,
+    ) -> Result<
+        crate::modules::shared_kernel::domain::IdempotentWrite<WorkloadReplica>,
+        RepositoryError,
+    > {
+        replica_retirements::complete(&self.executor, completion).await
     }
 }
 

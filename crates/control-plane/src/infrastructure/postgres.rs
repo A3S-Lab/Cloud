@@ -779,6 +779,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/088_required_replica_anti_affinity.sql"
             )),
         ),
+        Migration::new(
+            "089",
+            "durable Workload replica retirement evidence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/089_workload_replica_retirement_evidence.sql"
+            )),
+        ),
     ]
 }
 
