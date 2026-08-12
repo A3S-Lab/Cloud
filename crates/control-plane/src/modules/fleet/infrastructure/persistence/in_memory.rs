@@ -650,6 +650,7 @@ impl INodeSchedulingRepository for InMemoryNodeRepository {
                         state.node_pool_by_node.get(&(organization_id, node.id))
                             == Some(&node_pool_id)
                     })
+                    && !node_has_pending_pool_removal(&state, node)
                     && !node_is_in_active_maintenance(&state, node, evaluated_at)
             })
             .cloned()
@@ -704,9 +705,14 @@ impl INodePoolRepository for InMemoryNodeRepository {
             ));
         }
         let key = (write.pool.organization_id, write.pool.id);
-        match write.expected_version {
+        let previous = match write.expected_version {
             None => {
-                if write.pool.aggregate_version != 1 || state.node_pools.contains_key(&key) {
+                if write.pool.aggregate_version != 1
+                    || write.pool.member_removal_generation != 0
+                    || !write.pool.member_removals.is_empty()
+                    || write.pool.maintenance.is_some()
+                    || state.node_pools.contains_key(&key)
+                {
                     return Err(RepositoryError::Conflict(
                         "node pool already exists or has an invalid initial version".into(),
                     ));
@@ -719,27 +725,21 @@ impl INodePoolRepository for InMemoryNodeRepository {
                         "node pool name already exists".into(),
                     ));
                 }
+                None
             }
             Some(expected_version) => {
                 let current = state
                     .node_pools
                     .get(&key)
+                    .cloned()
                     .ok_or(RepositoryError::NotFound)?;
-                if current.aggregate_version != expected_version
-                    || write.pool.aggregate_version != expected_version.saturating_add(1)
-                    || write.pool.name != current.name
-                    || write.pool.created_at != current.created_at
-                    || current
-                        .member_node_ids
-                        .iter()
-                        .any(|node_id| write.pool.member_node_ids.binary_search(node_id).is_err())
-                {
-                    return Err(RepositoryError::Conflict(
-                        "node pool aggregate version or immutable membership changed".into(),
-                    ));
-                }
+                write
+                    .pool
+                    .validate_successor(&current, expected_version)
+                    .map_err(RepositoryError::Conflict)?;
+                Some(current)
             }
-        }
+        };
         for node_id in &write.pool.member_node_ids {
             if !state
                 .nodes
@@ -755,6 +755,17 @@ impl INodePoolRepository for InMemoryNodeRepository {
                 return Err(RepositoryError::Conflict(
                     "node already belongs to another node pool".into(),
                 ));
+            }
+        }
+        if let Some(previous) = &previous {
+            for node_id in previous
+                .member_node_ids
+                .iter()
+                .filter(|node_id| write.pool.member_node_ids.binary_search(node_id).is_err())
+            {
+                state
+                    .node_pool_by_node
+                    .remove(&(write.pool.organization_id, *node_id));
             }
         }
         for node_id in &write.pool.member_node_ids {
@@ -817,18 +828,41 @@ fn node_is_in_active_maintenance(state: &State, node: &Node, evaluated_at: DateT
         .is_some_and(|pool| pool.node_is_in_active_maintenance(node.id, evaluated_at))
 }
 
+fn node_has_pending_pool_removal(state: &State, node: &Node) -> bool {
+    state
+        .node_pool_by_node
+        .get(&(node.organization_id, node.id))
+        .and_then(|pool_id| state.node_pools.get(&(node.organization_id, *pool_id)))
+        .is_some_and(|pool| pool.member_removal(node.id).is_some())
+}
+
 fn evacuation_source(
     state: &State,
     node: &Node,
     evaluated_at: DateTime<Utc>,
 ) -> Option<NodeEvacuationSource> {
-    let cause = if node.state == NodeState::Draining {
+    let pool = state
+        .node_pool_by_node
+        .get(&(node.organization_id, node.id))
+        .and_then(|pool_id| {
+            state
+                .node_pools
+                .get(&(node.organization_id, *pool_id))
+                .map(|pool| (*pool_id, pool))
+        });
+    let removal_cause = pool.and_then(|(pool_id, pool)| {
+        pool.member_removal(node.id)
+            .map(|removal| NodeEvacuationCause::PoolMemberRemoval {
+                pool_id,
+                generation: removal.generation,
+            })
+    });
+    let cause = if let Some(cause) = removal_cause {
+        cause
+    } else if node.state == NodeState::Draining {
         NodeEvacuationCause::ManualDrain
     } else {
-        let pool_id = *state
-            .node_pool_by_node
-            .get(&(node.organization_id, node.id))?;
-        let pool = state.node_pools.get(&(node.organization_id, pool_id))?;
+        let (pool_id, pool) = pool?;
         let window = pool.maintenance.as_ref()?;
         if !window.is_active_for(node.id, evaluated_at) {
             return None;

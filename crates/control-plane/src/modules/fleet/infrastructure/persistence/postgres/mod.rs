@@ -8,6 +8,7 @@ mod rows;
 mod schema;
 
 pub(crate) use control::require_current_inventory;
+pub(crate) use node_pools::node_pool_placement_is_eligible;
 
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{

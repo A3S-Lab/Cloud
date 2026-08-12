@@ -1,13 +1,16 @@
 use super::replicas;
 use super::resource_claim_rows::{restore_claim, ClaimWithSlotRow, ClaimWithSlotSelection};
 use super::resource_claim_writes;
-use super::schema::{ResourceClaimSlots, ResourceClaims};
+use super::schema::{ResourceClaimSlots, ResourceClaims, WorkloadControls};
 use crate::infrastructure::{
     fetch_all, fetch_optional, transaction_error, PostgresPersistenceError,
 };
-use crate::modules::fleet::infrastructure::require_current_inventory;
+use crate::modules::fleet::infrastructure::{
+    node_pool_placement_is_eligible, require_current_inventory,
+};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, NodeCommandId, OrganizationId, RepositoryError, ResourceClaimId,
+    IdempotentWrite, NodeCommandId, NodeId, NodePoolId, OrganizationId, RepositoryError,
+    ResourceClaimId, WorkloadId,
 };
 use crate::modules::workloads::domain::entities::{
     ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
@@ -58,6 +61,30 @@ impl PostgresResourceClaimRepository {
 
 #[async_trait]
 impl IResourceClaimRepository for PostgresResourceClaimRepository {
+    async fn has_active_claims(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<bool, RepositoryError> {
+        if node_id.as_uuid().is_nil() {
+            return Err(RepositoryError::Conflict(
+                "resource claim node is invalid".into(),
+            ));
+        }
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                select_from::<ResourceClaims>()
+                    .select(ResourceClaims::id())
+                    .filter(ResourceClaims::organization_id().eq(organization_id.as_uuid()))
+                    .filter(ResourceClaims::node_id().eq(node_id.as_uuid()))
+                    .filter(ResourceClaims::state().ne(ResourceClaimState::Released.as_str()))
+                    .limit(1),
+            )
+            .await
+            .map(|claim_id| claim_id.is_some())
+            .map_err(|error| RepositoryError::Storage(error.to_string()))
+    }
+
     async fn reserve(
         &self,
         reservation: ResourceClaimReservation,
@@ -228,6 +255,13 @@ async fn reserve_in_transaction(
             replayed: true,
         });
     }
+    require_node_pool_placement_eligible(
+        transaction,
+        reservation.binding.organization_id,
+        reservation.binding.workload_id,
+        reservation.node_id,
+    )
+    .await?;
     let persisted_binding = replicas::binding_in_transaction(
         transaction,
         reservation.binding.organization_id,
@@ -279,6 +313,33 @@ async fn reserve_in_transaction(
         value: claim,
         replayed: false,
     })
+}
+
+pub(super) async fn require_node_pool_placement_eligible(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    workload_id: WorkloadId,
+    node_id: NodeId,
+) -> Result<(), PostgresPersistenceError> {
+    let node_pool_id = fetch_optional::<Option<Uuid>, _>(
+        transaction,
+        select_from::<WorkloadControls>()
+            .select(WorkloadControls::node_pool_id())
+            .filter(WorkloadControls::organization_id().eq(organization_id.as_uuid()))
+            .filter(WorkloadControls::workload_id().eq(workload_id.as_uuid()))
+            .limit(1),
+    )
+    .await?
+    .ok_or(RepositoryError::NotFound)?
+    .map(NodePoolId::from_uuid);
+    if !node_pool_placement_is_eligible(transaction, organization_id, node_pool_id, node_id).await?
+    {
+        return Err(placement_unavailable(
+            "node pool membership changed before resource placement was committed",
+        )
+        .into());
+    }
+    Ok(())
 }
 
 async fn require_replica_anti_affinity(

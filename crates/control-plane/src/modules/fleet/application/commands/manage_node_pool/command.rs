@@ -16,6 +16,10 @@ pub enum NodePoolMutation {
         expected_version: u64,
         member_node_ids: Vec<NodeId>,
     },
+    RequestMemberRemoval {
+        expected_version: u64,
+        member_node_ids: Vec<NodeId>,
+    },
     ScheduleMaintenance {
         expected_version: u64,
         target_node_ids: Vec<NodeId>,

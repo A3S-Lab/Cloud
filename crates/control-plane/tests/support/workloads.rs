@@ -68,8 +68,10 @@ pub async fn exercise_workload_node_pool_selection(
     let mut selected = request(workload, 1, 'e', "pool-selected-fixture", now)?;
     selected.control = WorkloadControlSpec::unmanaged_single_replica_in_pool(node_pool_id)?;
     let workload_id = selected.workload.id;
+    let deployment_id = selected.deployment.id;
     repository.create_deployment(selected).await?;
 
+    let database = Database::new(PostgresDialect, executor.clone());
     let control = repository
         .find_workload_control(organization_id, workload_id)
         .await?;
@@ -78,7 +80,7 @@ pub async fn exercise_workload_node_pool_selection(
         Some(node_pool_id)
     );
     assert_eq!(
-        Database::new(PostgresDialect, executor.clone())
+        database
             .fetch_one_as(
                 sql_query::<Option<Uuid>>(
                     "select node_pool_id from workload_controls where workload_id = ",
@@ -88,6 +90,59 @@ pub async fn exercise_workload_node_pool_selection(
             .await?,
         Some(node_pool_id.as_uuid())
     );
+
+    let deployment = repository
+        .find_deployment(organization_id, deployment_id)
+        .await?;
+    let pool_node_id = database
+        .fetch_one_as(
+            sql_query::<Uuid>("select node_id from node_pool_members where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and node_pool_id = ")
+                .bind(node_pool_id.as_uuid())
+                .append(" order by node_id asc limit 1"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("update node_pool_members set removal_generation = 1, removal_requested_at = greatest(joined_at, ")
+                .bind(now + Duration::milliseconds(2))
+                .append(") where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and node_pool_id = ")
+                .bind(node_pool_id.as_uuid())
+                .append(" and node_id = ")
+                .bind(pool_node_id),
+        )
+        .await?;
+    let resolving = repository
+        .mark_resolving(
+            deployment.id,
+            deployment.aggregate_version,
+            now + Duration::milliseconds(3),
+        )
+        .await?;
+    assert!(matches!(
+        repository
+            .assign_node(
+                resolving.id,
+                resolving.aggregate_version,
+                NodeId::from_uuid(pool_node_id),
+                now + Duration::milliseconds(4),
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    database
+        .execute(
+            sql_query::<()>("update node_pool_members set removal_generation = null, removal_requested_at = null where organization_id = ")
+                .bind(organization_uuid)
+                .append(" and node_pool_id = ")
+                .bind(node_pool_id.as_uuid())
+                .append(" and node_id = ")
+                .bind(pool_node_id),
+        )
+        .await?;
 
     let invalid_workload = Workload::create(
         WorkloadId::new(),

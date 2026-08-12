@@ -95,6 +95,28 @@ impl CommandHandler<ManageNodePool> for ManageNodePoolHandler {
                         NodePoolChangeKind::MembersAdded,
                     )
                 }
+                PreparedMutation::RequestMemberRemoval {
+                    expected_version,
+                    member_node_ids,
+                } => {
+                    let mut pool = match node_pools
+                        .find(command.organization_id, command.node_pool_id)
+                        .await
+                    {
+                        Ok(value) => value,
+                        Err(error) => return Ok(Err(error.into())),
+                    };
+                    if let Err(error) =
+                        pool.request_member_removal(member_node_ids, command.requested_at)
+                    {
+                        return Ok(Err(ApplicationError::Conflict(error)));
+                    }
+                    (
+                        pool,
+                        Some(expected_version),
+                        NodePoolChangeKind::MemberRemovalRequested,
+                    )
+                }
                 PreparedMutation::ScheduleMaintenance {
                     expected_version,
                     target_node_ids,
@@ -182,6 +204,10 @@ enum PreparedMutation {
         expected_version: u64,
         member_node_ids: Vec<NodeId>,
     },
+    RequestMemberRemoval {
+        expected_version: u64,
+        member_node_ids: Vec<NodeId>,
+    },
     ScheduleMaintenance {
         expected_version: u64,
         target_node_ids: Vec<NodeId>,
@@ -211,6 +237,16 @@ impl PreparedMutation {
             } => {
                 require_version(expected_version)?;
                 Ok(Self::AddMembers {
+                    expected_version,
+                    member_node_ids: canonical_ids(member_node_ids)?,
+                })
+            }
+            NodePoolMutation::RequestMemberRemoval {
+                expected_version,
+                member_node_ids,
+            } => {
+                require_version(expected_version)?;
+                Ok(Self::RequestMemberRemoval {
                     expected_version,
                     member_node_ids: canonical_ids(member_node_ids)?,
                 })
@@ -255,6 +291,9 @@ impl PreparedMutation {
             Self::AddMembers { .. } => {
                 format!("organizations/{organization_id}/node-pools/{pool_id}/members")
             }
+            Self::RequestMemberRemoval { .. } => {
+                format!("organizations/{organization_id}/node-pools/{pool_id}/members/removal")
+            }
             Self::ScheduleMaintenance { .. } => {
                 format!("organizations/{organization_id}/node-pools/{pool_id}/maintenance")
             }
@@ -284,6 +323,16 @@ impl PreparedMutation {
                 member_node_ids,
             } => json!({
                 "action": "addMembers",
+                "organizationId": organization_id,
+                "nodePoolId": pool_id,
+                "expectedVersion": expected_version,
+                "memberNodeIds": member_node_ids,
+            }),
+            Self::RequestMemberRemoval {
+                expected_version,
+                member_node_ids,
+            } => json!({
+                "action": "requestMemberRemoval",
                 "organizationId": organization_id,
                 "nodePoolId": pool_id,
                 "expectedVersion": expected_version,

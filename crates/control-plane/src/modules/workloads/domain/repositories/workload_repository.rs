@@ -261,6 +261,12 @@ pub trait IWorkloadReplicaRetirementRepository: Send + Sync {
 
 #[async_trait]
 pub trait IWorkloadReplicaEvacuationRepository: Send + Sync {
+    async fn has_replica_placements(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<bool, RepositoryError>;
+
     async fn pending_replica_evacuations(
         &self,
         organization_id: OrganizationId,

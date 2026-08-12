@@ -173,6 +173,10 @@ pub enum NodeEvacuationCause {
         generation: u64,
         ends_at: DateTime<Utc>,
     },
+    PoolMemberRemoval {
+        pool_id: NodePoolId,
+        generation: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,25 +1,33 @@
+use crate::modules::fleet::domain::events::{NodePoolChangeKind, NodePoolChanged};
 use crate::modules::fleet::domain::repositories::{
-    INodeDrainRepository, NodeEvacuationCause, NodeEvacuationSource,
+    INodeDrainRepository, INodePoolRepository, NodeEvacuationCause, NodeEvacuationSource,
+    NodePoolWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    NodeId, RepositoryError, WorkloadId, WorkloadReplicaId,
+    IdempotencyRequest, NodeId, NodePoolId, RepositoryError, WorkloadId, WorkloadReplicaId,
 };
 use crate::modules::workloads::domain::repositories::{
-    IWorkloadReplicaEvacuationRepository, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
+    IResourceClaimRepository, IWorkloadReplicaEvacuationRepository, ReplicaEvacuationCandidate,
+    ReplicaEvacuationRequest,
 };
 use chrono::{DateTime, Utc};
+use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 use uuid::Uuid;
 
 const EVACUATION_CORRELATION_DOMAIN: &str = "a3s.cloud.node-drain-evacuation.v1";
+const MEMBER_REMOVAL_COMPLETION_DOMAIN: &str = "a3s.cloud.node-pool-member-removal-completion.v1";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NodeDrainEvacuationReport {
     pub source_nodes: usize,
     pub manual_drain_nodes: usize,
     pub maintenance_nodes: usize,
+    pub member_removal_nodes: usize,
+    pub member_removals_completed: usize,
+    pub member_removal_completion_replayed: usize,
     pub candidates: usize,
     pub requested: usize,
     pub replayed: usize,
@@ -37,7 +45,9 @@ pub struct NodeDrainEvacuationFailure {
 
 pub struct NodeDrainEvacuationReconciler {
     nodes: Arc<dyn INodeDrainRepository>,
+    node_pools: Arc<dyn INodePoolRepository>,
     evacuations: Arc<dyn IWorkloadReplicaEvacuationRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
     reconcile_interval: Duration,
     node_batch_size: usize,
     replica_batch_size: usize,
@@ -46,7 +56,9 @@ pub struct NodeDrainEvacuationReconciler {
 impl NodeDrainEvacuationReconciler {
     pub fn new(
         nodes: Arc<dyn INodeDrainRepository>,
+        node_pools: Arc<dyn INodePoolRepository>,
         evacuations: Arc<dyn IWorkloadReplicaEvacuationRepository>,
+        resource_claims: Arc<dyn IResourceClaimRepository>,
         reconcile_interval: Duration,
         node_batch_size: usize,
         replica_batch_size: usize,
@@ -61,7 +73,9 @@ impl NodeDrainEvacuationReconciler {
         }
         Ok(Self {
             nodes,
+            node_pools,
             evacuations,
+            resource_claims,
             reconcile_interval,
             node_batch_size,
             replica_batch_size,
@@ -86,6 +100,12 @@ impl NodeDrainEvacuationReconciler {
                 .iter()
                 .filter(|source| {
                     matches!(source.cause, NodeEvacuationCause::PoolMaintenance { .. })
+                })
+                .count(),
+            member_removal_nodes: sources
+                .iter()
+                .filter(|source| {
+                    matches!(source.cause, NodeEvacuationCause::PoolMemberRemoval { .. })
                 })
                 .count(),
             ..NodeDrainEvacuationReport::default()
@@ -153,8 +173,112 @@ impl NodeDrainEvacuationReconciler {
                     }),
                 }
             }
+            if let NodeEvacuationCause::PoolMemberRemoval {
+                pool_id,
+                generation,
+            } = &source.cause
+            {
+                match self
+                    .complete_member_removal(&source, *pool_id, *generation, now)
+                    .await
+                {
+                    Ok(Some(true)) => report.member_removal_completion_replayed += 1,
+                    Ok(Some(false)) => report.member_removals_completed += 1,
+                    Ok(None) => {}
+                    Err(error) => report.failures.push(NodeDrainEvacuationFailure {
+                        node_id: node.id,
+                        workload_id: None,
+                        replica_id: None,
+                        message: format!("complete node pool member removal: {error}"),
+                    }),
+                }
+            }
         }
         Ok(report)
+    }
+
+    async fn complete_member_removal(
+        &self,
+        source: &NodeEvacuationSource,
+        pool_id: NodePoolId,
+        generation: u64,
+        completed_at: DateTime<Utc>,
+    ) -> Result<Option<bool>, RepositoryError> {
+        let node = &source.node;
+        if self
+            .evacuations
+            .has_replica_placements(node.organization_id, node.id)
+            .await?
+            || self
+                .resource_claims
+                .has_active_claims(node.organization_id, node.id)
+                .await?
+        {
+            return Ok(None);
+        }
+        let current = match self
+            .nodes
+            .find_evacuation_source(node.organization_id, node.id, completed_at)
+            .await
+        {
+            Ok(current) => current,
+            Err(RepositoryError::NotFound) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        if !same_source(source, &current) {
+            return Ok(None);
+        }
+        let mut pool = self.node_pools.find(node.organization_id, pool_id).await?;
+        if pool
+            .member_removal(node.id)
+            .is_none_or(|removal| removal.generation != generation)
+        {
+            return Ok(None);
+        }
+        let expected_version = pool.aggregate_version;
+        pool.complete_member_removal(node.id, generation, completed_at)
+            .map_err(RepositoryError::Conflict)?;
+        let canonical = serde_json::to_vec(&json!({
+            "action": "completeMemberRemoval",
+            "organizationId": node.organization_id,
+            "nodePoolId": pool_id,
+            "nodeId": node.id,
+            "generation": generation,
+        }))
+        .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+        let idempotency = IdempotencyRequest::new(
+            format!(
+                "organizations/{}/node-pools/{pool_id}/members/removal/completion",
+                node.organization_id
+            ),
+            format!("{}:{generation}", node.id),
+            &canonical,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        let correlation_id = Uuid::new_v5(
+            &pool_id.as_uuid(),
+            format!(
+                "{MEMBER_REMOVAL_COMPLETION_DOMAIN}:{}:{generation}",
+                node.id
+            )
+            .as_bytes(),
+        );
+        let event = NodePoolChanged::envelope(
+            &pool,
+            NodePoolChangeKind::MembersRemoved,
+            completed_at,
+            correlation_id,
+        )
+        .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+        self.node_pools
+            .save(NodePoolWrite {
+                pool,
+                expected_version: Some(expected_version),
+                event,
+                idempotency,
+            })
+            .await
+            .map(|write| Some(write.replayed))
     }
 
     pub async fn run(self, mut shutdown: watch::Receiver<bool>) {
@@ -183,6 +307,9 @@ impl NodeDrainEvacuationReconciler {
                                 source_nodes = report.source_nodes,
                                 manual_drain_nodes = report.manual_drain_nodes,
                                 maintenance_nodes = report.maintenance_nodes,
+                                member_removal_nodes = report.member_removal_nodes,
+                                member_removals_completed = report.member_removals_completed,
+                                member_removal_completion_replayed = report.member_removal_completion_replayed,
                                 candidates = report.candidates,
                                 requested = report.requested,
                                 replayed = report.replayed,
@@ -223,6 +350,13 @@ fn evacuation_correlation_id(
             ..
         } => format!(
             "{EVACUATION_CORRELATION_DOMAIN}:{}:{}:maintenance:{pool_id}:{generation}",
+            candidate.replica_generation, candidate.source_node_id
+        ),
+        NodeEvacuationCause::PoolMemberRemoval {
+            pool_id,
+            generation,
+        } => format!(
+            "{EVACUATION_CORRELATION_DOMAIN}:{}:{}:member-removal:{pool_id}:{generation}",
             candidate.replica_generation, candidate.source_node_id
         ),
     };

@@ -195,6 +195,145 @@ async fn node_pool_maintenance_is_replay_safe_and_drives_one_scheduling_projecti
 }
 
 #[tokio::test]
+async fn node_pool_member_removal_excludes_scheduling_until_generation_fenced_completion() {
+    let repository = InMemoryNodeRepository::new();
+    let organization_id = OrganizationId::new();
+    let now = canonical_timestamp(Utc::now());
+    let removing = pool_node(&repository, organization_id, "removing-worker", 'd', now).await;
+    let retained = pool_node(&repository, organization_id, "retained-worker", 'e', now).await;
+    let outsider = pool_node(&repository, organization_id, "outside-worker-2", 'f', now).await;
+    let mut pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("removal workers").expect("pool name"),
+        vec![removing, retained],
+        now + Duration::seconds(1),
+    )
+    .expect("pool");
+    repository
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: None,
+            event: event(
+                organization_id,
+                pool.id.as_uuid(),
+                pool.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: IdempotencyRequest::new("fleet/node-pools", "create-removal", b"removal")
+                .expect("create idempotency"),
+        })
+        .await
+        .expect("create pool");
+
+    let expected_version = pool.aggregate_version;
+    let generation = pool
+        .request_member_removal(vec![removing], now + Duration::seconds(2))
+        .expect("request removal");
+    repository
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: Some(expected_version),
+            event: event(
+                organization_id,
+                pool.id.as_uuid(),
+                pool.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: IdempotencyRequest::new(
+                "fleet/node-pools/members/removal",
+                "request-removal",
+                b"request-removal",
+            )
+            .expect("removal idempotency"),
+        })
+        .await
+        .expect("request removal");
+    assert_eq!(generation, 1);
+    assert_eq!(
+        repository
+            .list_scheduling_candidates(organization_id, Some(pool.id), now + Duration::seconds(2),)
+            .await
+            .expect("pool scheduling candidates")
+            .into_iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![retained]
+    );
+    let unconstrained = repository
+        .list_scheduling_candidates(organization_id, None, now + Duration::seconds(2))
+        .await
+        .expect("unconstrained scheduling candidates")
+        .into_iter()
+        .map(|node| node.id)
+        .collect::<Vec<_>>();
+    assert!(!unconstrained.contains(&removing));
+    assert!(unconstrained.contains(&retained));
+    assert!(unconstrained.contains(&outsider));
+    assert!(matches!(
+        repository
+            .find_evacuation_source(organization_id, removing, now + Duration::seconds(2))
+            .await
+            .expect("member removal evacuation source")
+            .cause,
+        NodeEvacuationCause::PoolMemberRemoval {
+            pool_id,
+            generation: 1
+        } if pool_id == pool.id
+    ));
+
+    let expected_version = pool.aggregate_version;
+    pool.complete_member_removal(removing, generation, now + Duration::seconds(3))
+        .expect("complete removal");
+    repository
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: Some(expected_version),
+            event: event(
+                organization_id,
+                pool.id.as_uuid(),
+                pool.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: IdempotencyRequest::new(
+                "fleet/node-pools/members/removal/completion",
+                "complete-removal",
+                b"complete-removal",
+            )
+            .expect("completion idempotency"),
+        })
+        .await
+        .expect("complete removal");
+    let replacement_pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("replacement workers").expect("replacement name"),
+        vec![removing],
+        now + Duration::seconds(4),
+    )
+    .expect("replacement pool");
+    repository
+        .save(NodePoolWrite {
+            pool: replacement_pool.clone(),
+            expected_version: None,
+            event: event(
+                organization_id,
+                replacement_pool.id.as_uuid(),
+                replacement_pool.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: IdempotencyRequest::new(
+                "fleet/node-pools",
+                "create-replacement",
+                b"replacement",
+            )
+            .expect("replacement idempotency"),
+        })
+        .await
+        .expect("reuse released membership");
+}
+
+#[tokio::test]
 async fn resource_inventory_is_monotonic_replay_safe_and_required_by_v2_heartbeats() {
     let repository = InMemoryNodeRepository::new();
     let now = canonical_timestamp(Utc::now());

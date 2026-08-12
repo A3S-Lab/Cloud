@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.19.0" src="https://img.shields.io/badge/REST_contract-1.19.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.20.0" src="https://img.shields.io/badge/REST_contract-1.20.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -142,7 +142,7 @@ cancellation, deadlines, waiting, terminal output, and bounded redacted
 history. Migration `081` adds the internal authority-bound HumanTask decision
 loop described below. The maintained client, `workflow-runs` CLI commands, and
 seven Management MCP tools share start, cancel, list, get, wait, output, and
-history behavior. REST contract `1.19.0` now also exposes bounded HumanTask
+history behavior. REST contract `1.20.0` now also exposes bounded HumanTask
 list/detail reads through the same Workflow repository and Identity Resource
 Grant evaluator; the client, `human-tasks` CLI commands, and two read-only MCP
 tools use the same handlers and DTOs. Lists never carry an interaction request,
@@ -322,7 +322,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.19.0`.
+contract version `1.20.0`.
 
 ### Bootstrap the first organization
 

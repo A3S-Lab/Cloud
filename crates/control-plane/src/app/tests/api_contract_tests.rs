@@ -188,6 +188,14 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         10_000
     );
     assert!(node_pools["post"]["responses"]["201"].is_object());
+    let member_removal = &document["paths"]
+        ["/organizations/{organization_id}/node-pools/{node_pool_id}/members/removal"]["post"];
+    assert_eq!(member_removal["tags"], json!(["Fleet"]));
+    assert_eq!(
+        member_removal["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["memberNodeIds"]["maxItems"],
+        10_000
+    );
     let maintenance = &document["paths"]
         ["/organizations/{organization_id}/node-pools/{node_pool_id}/maintenance"]["post"];
     assert_eq!(maintenance["tags"], json!(["Fleet"]));

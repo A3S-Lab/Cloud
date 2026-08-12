@@ -12,6 +12,15 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct NodePoolMembers => "node_pool_members" {
+        organization_id: Uuid => "organization_id",
+        node_pool_id: Uuid => "node_pool_id",
+        node_id: Uuid => "node_id",
+        removal_generation: Option<u64> => "removal_generation",
+    }
+}
+
+orm_table! {
     pub(super) struct NodeResourceInventories => "node_resource_inventories" {
         organization_id: Uuid => "organization_id",
         node_id: Uuid => "node_id",

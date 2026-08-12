@@ -12,12 +12,59 @@ use crate::modules::workloads::domain::events::WorkloadReplicaEvacuationRequeste
 use crate::modules::workloads::domain::repositories::{
     ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
 };
+use a3s_orm::expression::Selection;
 use a3s_orm::{
-    select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
+    select_from, Database, DecodeError, Expression, FromRow, FromValue, OrderDirection,
+    PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
 };
 use uuid::Uuid;
 
 type CandidateRow = (Uuid, Uuid, Uuid, u64, u64, u64, Option<Uuid>, u64);
+
+struct PlacementSelection;
+
+struct PlacementRow(Uuid);
+
+impl Selection for PlacementSelection {
+    type Output = PlacementRow;
+
+    fn expressions(self) -> Vec<Expression> {
+        vec![WorkloadReplicaMembers::id().expression()]
+    }
+}
+
+impl FromRow for PlacementRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self(Uuid::from_value(
+            row.value(0)
+                .ok_or(DecodeError::MissingColumn { index: 0 })?,
+            0,
+        )?))
+    }
+}
+
+pub(super) async fn has_placements(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+) -> Result<bool, RepositoryError> {
+    if node_id.as_uuid().is_nil() {
+        return Err(RepositoryError::Conflict(
+            "replica placement node is invalid".into(),
+        ));
+    }
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            select_from::<WorkloadReplicaMembers>()
+                .select(PlacementSelection)
+                .filter(WorkloadReplicaMembers::organization_id().eq(organization_id.as_uuid()))
+                .filter(WorkloadReplicaMembers::node_id().eq(node_id.as_uuid()))
+                .limit(1),
+        )
+        .await
+        .map(|row| row.is_some_and(|row| !row.0.is_nil()))
+        .map_err(storage)
+}
 
 pub(super) async fn pending(
     executor: &PostgresExecutor,
