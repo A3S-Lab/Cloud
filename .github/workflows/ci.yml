@@ -18,6 +18,9 @@ jobs:
     name: H0 replica-set PostgreSQL
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+      RUST_MIN_STACK: 33554432
     services:
       postgres:
         image: postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4
@@ -48,13 +51,17 @@ jobs:
           toolchain: 1.88.0
 
       - name: Migrate and verify stable replica sets
-        env:
-          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
-          RUST_MIN_STACK: 33554432
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
           postgres_replica_set_foundation_is_migrated_atomic_and_replay_safe
+          -- --exact --nocapture --test-threads=1
+
+      - name: Certify Resource Grant cross-surface authorization
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_resource_grants_enforce_the_cross_surface_authorization_matrix
           -- --exact --nocapture --test-threads=1
 
   plugin-registry-postgres:
