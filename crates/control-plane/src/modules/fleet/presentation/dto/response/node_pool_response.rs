@@ -1,5 +1,7 @@
 use crate::modules::fleet::application::NodePoolMutationResult;
-use crate::modules::fleet::domain::entities::{NodePool, NodePoolMaintenanceWindow};
+use crate::modules::fleet::domain::entities::{
+    NodePool, NodePoolMaintenanceWindow, NodePoolMemberRemoval,
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -11,6 +13,8 @@ pub struct NodePoolResponse {
     pub organization_id: Uuid,
     pub name: String,
     pub member_node_ids: Vec<Uuid>,
+    pub member_removal_generation: u64,
+    pub member_removals: Vec<NodePoolMemberRemovalResponse>,
     pub maintenance: Option<NodePoolMaintenanceResponse>,
     pub spec_digest: String,
     pub aggregate_version: u64,
@@ -31,6 +35,14 @@ pub struct NodePoolMaintenanceResponse {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodePoolMemberRemovalResponse {
+    pub node_id: Uuid,
+    pub generation: u64,
+    pub requested_at: DateTime<Utc>,
+}
+
 impl NodePoolResponse {
     pub fn new(node_pool: NodePool, evaluated_at: DateTime<Utc>, replayed: bool) -> Self {
         Self {
@@ -42,6 +54,12 @@ impl NodePoolResponse {
                 .into_iter()
                 .map(|node_id| node_id.as_uuid())
                 .collect(),
+            member_removal_generation: node_pool.member_removal_generation,
+            member_removals: node_pool
+                .member_removals
+                .into_iter()
+                .map(NodePoolMemberRemovalResponse::from)
+                .collect(),
             maintenance: node_pool
                 .maintenance
                 .map(|window| NodePoolMaintenanceResponse::new(window, evaluated_at)),
@@ -50,6 +68,16 @@ impl NodePoolResponse {
             created_at: node_pool.created_at,
             updated_at: node_pool.updated_at,
             replayed,
+        }
+    }
+}
+
+impl From<NodePoolMemberRemoval> for NodePoolMemberRemovalResponse {
+    fn from(removal: NodePoolMemberRemoval) -> Self {
+        Self {
+            node_id: removal.node_id.as_uuid(),
+            generation: removal.generation,
+            requested_at: removal.requested_at,
         }
     }
 }

@@ -244,9 +244,11 @@ pub(super) async fn list_scheduling_candidates(
         query = query
             .append(" and exists (select 1 from node_pool_members selected_pool where selected_pool.organization_id = nodes.organization_id and selected_pool.node_id = nodes.id and selected_pool.node_pool_id = ")
             .bind(node_pool_id.as_uuid())
-            .append(")");
+            .append(" and selected_pool.removal_generation is null)");
     }
     query = query
+        .append(" and not ")
+        .append(pending_member_removal_exists())
         .append(" and not ")
         .append(active_maintenance_exists())
         .bind(evaluated_at)
@@ -281,6 +283,8 @@ pub(super) async fn list_evacuation_sources(
                 .append(" where state = ")
                 .bind(NodeState::Draining.as_str())
                 .append(" or ")
+                .append(pending_member_removal_exists())
+                .append(" or ")
                 .append(active_maintenance_exists())
                 .bind(evaluated_at)
                 .append(" and p.maintenance_ends_at > ")
@@ -297,17 +301,22 @@ pub(super) async fn list_evacuation_sources(
         .collect::<Result<Vec<_>, _>>()?;
     let mut sources = Vec::with_capacity(nodes.len());
     for node in nodes {
-        let cause = if node.state == NodeState::Draining {
-            Some(NodeEvacuationCause::ManualDrain)
-        } else {
-            super::node_pools::maintenance_cause(
-                executor,
-                node.organization_id,
-                node.id,
-                evaluated_at,
-            )
-            .await?
-        };
+        let cause =
+            match super::node_pools::member_removal_cause(executor, node.organization_id, node.id)
+                .await?
+            {
+                Some(cause) => Some(cause),
+                None if node.state == NodeState::Draining => Some(NodeEvacuationCause::ManualDrain),
+                None => {
+                    super::node_pools::maintenance_cause(
+                        executor,
+                        node.organization_id,
+                        node.id,
+                        evaluated_at,
+                    )
+                    .await?
+                }
+            };
         if let Some(cause) = cause {
             sources.push(NodeEvacuationSource { node, cause });
         }
@@ -322,16 +331,24 @@ pub(super) async fn find_evacuation_source(
     evaluated_at: DateTime<Utc>,
 ) -> Result<NodeEvacuationSource, RepositoryError> {
     let node = find(executor, organization_id, node_id).await?;
-    let cause = if node.state == NodeState::Draining {
-        NodeEvacuationCause::ManualDrain
-    } else {
-        super::node_pools::maintenance_cause(executor, organization_id, node_id, evaluated_at)
-            .await?
-            .ok_or(RepositoryError::NotFound)?
+    let cause = match super::node_pools::member_removal_cause(executor, organization_id, node_id)
+        .await?
+    {
+        Some(cause) => cause,
+        None if node.state == NodeState::Draining => NodeEvacuationCause::ManualDrain,
+        None => {
+            super::node_pools::maintenance_cause(executor, organization_id, node_id, evaluated_at)
+                .await?
+                .ok_or(RepositoryError::NotFound)?
+        }
     };
     Ok(NodeEvacuationSource { node, cause })
 }
 
 fn active_maintenance_exists() -> &'static str {
     "exists (select 1 from node_pool_members m join node_pools p on p.organization_id = m.organization_id and p.id = m.node_pool_id join node_pool_maintenance_targets t on t.organization_id = m.organization_id and t.node_pool_id = m.node_pool_id and t.node_id = m.node_id where m.organization_id = nodes.organization_id and m.node_id = nodes.id and p.maintenance_generation > 0 and p.maintenance_cancelled_at is null and p.maintenance_starts_at <= "
+}
+
+fn pending_member_removal_exists() -> &'static str {
+    "exists (select 1 from node_pool_members removing_member where removing_member.organization_id = nodes.organization_id and removing_member.node_id = nodes.id and removing_member.removal_generation is not null)"
 }

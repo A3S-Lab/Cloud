@@ -909,7 +909,9 @@ pub async fn build_application_with_source_resolver(
     .map_err(ControlPlaneStartupError::LogStorage)?;
     let node_drain_evacuation_reconciler = NodeDrainEvacuationReconciler::new(
         draining_nodes,
+        Arc::clone(&node_pools),
         replica_evacuations,
+        Arc::clone(&resource_claims),
         Duration::from_millis(config.deployments.reconcile_interval_ms),
         100,
         100,

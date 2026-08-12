@@ -1177,6 +1177,27 @@ fn replica_set_repository_error(error: ReplicaSetReconfigurationError) -> Reposi
 
 #[async_trait]
 impl IWorkloadReplicaEvacuationRepository for InMemoryWorkloadRepository {
+    async fn has_replica_placements(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<bool, RepositoryError> {
+        if node_id.as_uuid().is_nil() {
+            return Err(RepositoryError::Conflict(
+                "replica placement node is invalid".into(),
+            ));
+        }
+        Ok(self
+            .state
+            .read()
+            .await
+            .replica_members
+            .values()
+            .any(|member| {
+                member.organization_id == organization_id && member.node_id == Some(node_id)
+            }))
+    }
+
     async fn pending_replica_evacuations(
         &self,
         organization_id: OrganizationId,

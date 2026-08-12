@@ -298,6 +298,13 @@ pub(super) async fn place(
     let node_id = deployment
         .node_id
         .ok_or_else(|| invariant("scheduled deployment omitted its node"))?;
+    super::resource_claims::require_node_pool_placement_eligible(
+        transaction,
+        deployment.organization_id,
+        deployment.workload_id,
+        node_id,
+    )
+    .await?;
     let mut binding =
         binding_in_transaction(transaction, deployment.organization_id, deployment.id)
             .await?

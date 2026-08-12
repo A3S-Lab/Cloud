@@ -865,6 +865,7 @@ fn is_resource_grant_revocation_path(path: &str) -> bool {
 fn is_node_pool_mutation_path(path: &str) -> bool {
     path.ends_with("/node-pools")
         || path.ends_with("/node-pools/{node_pool_id}/members")
+        || path.ends_with("/node-pools/{node_pool_id}/members/removal")
         || path.ends_with("/node-pools/{node_pool_id}/maintenance")
         || path.ends_with("/node-pools/{node_pool_id}/maintenance/cancel")
 }
@@ -878,7 +879,7 @@ fn node_pool_request_schema(path: &str) -> Value {
         "uniqueItems": true,
         "items": { "type": "string", "format": "uuid" }
     });
-    if path.ends_with("/members") {
+    if path.ends_with("/members") || path.ends_with("/members/removal") {
         return json!({
             "type": "object",
             "additionalProperties": false,

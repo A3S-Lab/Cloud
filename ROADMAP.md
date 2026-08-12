@@ -1021,7 +1021,7 @@ health, and operations. Neither store becomes PostgreSQL desired-state truth.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
-| `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, stateless drain/evacuation, Fleet-owned node pools with bounded maintenance evacuation, and explicit Workload pool selection; safe member removal, placement groups, gang claims, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, maintenance, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
+| `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, stateless drain/evacuation, Fleet-owned node pools with bounded maintenance evacuation, explicit Workload pool selection, and generation-fenced safe member removal; placement groups, gang claims, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, maintenance, member removal, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade plus HA API, workers, relay, Gateway, migrations, and dependencies | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
@@ -1220,8 +1220,15 @@ placement policy to schema v3, persists one optional same-organization Node
 Pool foreign key, validates it at every ACL-backed creation entry, and makes
 the existing scheduler filter candidates through Fleet-owned membership while
 preserving the selection across updates, rollbacks, Skill changes, scaling,
-and maintenance evacuation. Safe member removal remains open together with
-the other `H0.3` table items.
+and maintenance evacuation. Migration 093 adds a monotonic member-removal
+generation and a durable per-node removal intent. Pending nodes leave every
+scheduling projection immediately and enter the ordinary evacuation path;
+Claim reservation, replica placement, and membership transitions share one
+transaction-scoped node fence. The reconciler removes membership only after
+the exact Runtime/Claim retirement path has cleared every durable replica
+placement and non-released Claim under that fence, then permits the node to
+join another pool. Placement groups, gang claims, stateful moves, private
+networking, and independent Gateway placement remain open.
 
 ### 5.8 `I0`: inference profile
 

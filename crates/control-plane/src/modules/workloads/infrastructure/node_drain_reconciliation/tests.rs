@@ -1,21 +1,27 @@
 use super::*;
-use crate::modules::fleet::domain::entities::Node;
+use crate::modules::fleet::domain::entities::{Node, NodePool};
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeName, NodeState};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, EnvironmentId, IdempotencyRequest, OperationId, OrganizationId, ProjectId,
-    ResourceName, WorkloadId, WorkloadRevisionId,
+    DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OperationId, OrganizationId,
+    ProjectId, ResourceClaimId, ResourceName, WorkloadId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, HttpHealthCheck, OciArtifact, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate, Workload, WorkloadControlSpec, WorkloadReplicaLifecycle, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, HttpHealthCheck, OciArtifact, ResourceAllocation,
+    ResourceClaimReservation, ResourceKind, ResourceSlotRequest, ResourceUnit, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec,
+    WorkloadReplicaLifecycle, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
-    CreateDeploymentBundle, IWorkloadRepository,
+    CreateDeploymentBundle, IResourceClaimRepository, IWorkloadRepository,
 };
-use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
+use crate::modules::workloads::infrastructure::{
+    InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
+};
+use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use async_trait::async_trait;
 use chrono::Duration as ChronoDuration;
 use serde_json::json;
@@ -66,7 +72,8 @@ impl INodeDrainRepository for FakeDrainNodes {
         let node = self.node.read().await.clone();
         let eligible = match self.cause {
             NodeEvacuationCause::ManualDrain => node.state == NodeState::Draining,
-            NodeEvacuationCause::PoolMaintenance { .. } => true,
+            NodeEvacuationCause::PoolMaintenance { .. }
+            | NodeEvacuationCause::PoolMemberRemoval { .. } => true,
         };
         Ok(eligible
             .then_some(NodeEvacuationSource {
@@ -87,7 +94,8 @@ impl INodeDrainRepository for FakeDrainNodes {
         let node = self.node.read().await.clone();
         let eligible = match self.cause {
             NodeEvacuationCause::ManualDrain => node.state == NodeState::Draining,
-            NodeEvacuationCause::PoolMaintenance { .. } => true,
+            NodeEvacuationCause::PoolMaintenance { .. }
+            | NodeEvacuationCause::PoolMemberRemoval { .. } => true,
         };
         if node.organization_id == organization_id && node.id == node_id && eligible {
             Ok(NodeEvacuationSource {
@@ -97,6 +105,98 @@ impl INodeDrainRepository for FakeDrainNodes {
         } else {
             Err(RepositoryError::NotFound)
         }
+    }
+}
+
+struct UnusedNodePools;
+
+#[async_trait]
+impl INodePoolRepository for UnusedNodePools {
+    async fn replay(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<crate::modules::fleet::domain::entities::NodePool>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn save(
+        &self,
+        _write: NodePoolWrite,
+    ) -> Result<IdempotentWrite<crate::modules::fleet::domain::entities::NodePool>, RepositoryError>
+    {
+        Err(RepositoryError::Storage("unused node pool save".into()))
+    }
+
+    async fn find(
+        &self,
+        _organization_id: OrganizationId,
+        _pool_id: NodePoolId,
+    ) -> Result<crate::modules::fleet::domain::entities::NodePool, RepositoryError> {
+        Err(RepositoryError::NotFound)
+    }
+
+    async fn list(
+        &self,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<crate::modules::fleet::domain::entities::NodePool>, RepositoryError> {
+        Ok(Vec::new())
+    }
+}
+
+struct FakeNodePools {
+    pool: RwLock<NodePool>,
+}
+
+#[async_trait]
+impl INodePoolRepository for FakeNodePools {
+    async fn replay(
+        &self,
+        _idempotency: &IdempotencyRequest,
+    ) -> Result<Option<NodePool>, RepositoryError> {
+        Ok(None)
+    }
+
+    async fn save(
+        &self,
+        write: NodePoolWrite,
+    ) -> Result<IdempotentWrite<NodePool>, RepositoryError> {
+        let mut current = self.pool.write().await;
+        let expected_version = write
+            .expected_version
+            .ok_or_else(|| RepositoryError::Conflict("test node pool already exists".into()))?;
+        write
+            .pool
+            .validate_successor(&current, expected_version)
+            .map_err(RepositoryError::Conflict)?;
+        *current = write.pool.clone();
+        Ok(IdempotentWrite {
+            value: write.pool,
+            replayed: false,
+        })
+    }
+
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        pool_id: NodePoolId,
+    ) -> Result<NodePool, RepositoryError> {
+        let pool = self.pool.read().await;
+        if pool.organization_id == organization_id && pool.id == pool_id {
+            Ok(pool.clone())
+        } else {
+            Err(RepositoryError::NotFound)
+        }
+    }
+
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<NodePool>, RepositoryError> {
+        let pool = self.pool.read().await;
+        Ok((pool.organization_id == organization_id)
+            .then(|| pool.clone())
+            .into_iter()
+            .collect())
     }
 }
 
@@ -154,7 +254,9 @@ async fn maintenance_target_requests_one_generation_fenced_evacuation(
 
     let reconciler = NodeDrainEvacuationReconciler::new(
         nodes,
+        Arc::new(UnusedNodePools),
         repository.clone(),
+        Arc::new(InMemoryResourceClaimRepository::new()),
         Duration::from_secs(1),
         10,
         10,
@@ -201,6 +303,239 @@ async fn maintenance_target_requests_one_generation_fenced_evacuation(
             .filter(|event| event.event_key == "workload.replica.evacuation.requested")
             .count(),
         1
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn member_removal_waits_for_durable_replica_placement_cleanup(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now() - ChronoDuration::minutes(1);
+    let organization_id = OrganizationId::new();
+    let source_node_id = NodeId::new();
+    let retained_node_id = NodeId::new();
+    let pool_id = NodePoolId::new();
+    let mut node = Node::enroll(
+        source_node_id,
+        organization_id,
+        NodeName::new("removal-source")?,
+        Uuid::now_v7(),
+        "test-agent",
+        NodeCapabilities::new("test", "1", json!({}))?,
+        now,
+    )?;
+    node.mark_ready()?;
+    let nodes = Arc::new(FakeDrainNodes {
+        node: RwLock::new(node),
+        cause: NodeEvacuationCause::PoolMemberRemoval {
+            pool_id,
+            generation: 1,
+        },
+    });
+    let mut pool = NodePool::create(
+        pool_id,
+        organization_id,
+        ResourceName::parse("removal workers")?,
+        vec![source_node_id, retained_node_id],
+        now,
+    )?;
+    pool.request_member_removal(vec![source_node_id], now + ChronoDuration::seconds(1))?;
+    let pools = Arc::new(FakeNodePools {
+        pool: RwLock::new(pool),
+    });
+    let repository = Arc::new(InMemoryWorkloadRepository::new());
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("member removal fixture")?,
+        now,
+    );
+    let bundle = deployment_bundle(workload, now)?;
+    let deployment = bundle.deployment.clone();
+    repository.create_deployment(bundle).await?;
+    let resolving = repository
+        .mark_resolving(
+            deployment.id,
+            deployment.aggregate_version,
+            now + ChronoDuration::seconds(1),
+        )
+        .await?;
+    repository
+        .assign_node(
+            resolving.id,
+            resolving.aggregate_version,
+            source_node_id,
+            now + ChronoDuration::seconds(2),
+        )
+        .await?;
+    let reconciler = NodeDrainEvacuationReconciler::new(
+        nodes,
+        pools.clone(),
+        repository,
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        Duration::from_secs(1),
+        10,
+        10,
+    )?;
+
+    let report = reconciler
+        .run_once(now + ChronoDuration::seconds(3))
+        .await?;
+    assert_eq!(report.member_removal_nodes, 1);
+    assert_eq!(report.requested, 1);
+    assert_eq!(report.member_removals_completed, 0);
+    assert!(report.failures.is_empty());
+    let current = pools.pool.read().await;
+    assert!(current.member_node_ids.contains(&source_node_id));
+    assert!(current.member_removal(source_node_id).is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn member_removal_completes_only_after_the_node_has_no_replica_placement(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now() - ChronoDuration::minutes(1);
+    let organization_id = OrganizationId::new();
+    let source_node_id = NodeId::new();
+    let retained_node_id = NodeId::new();
+    let pool_id = NodePoolId::new();
+    let mut node = Node::enroll(
+        source_node_id,
+        organization_id,
+        NodeName::new("empty-removal-source")?,
+        Uuid::now_v7(),
+        "test-agent",
+        NodeCapabilities::new("test", "1", json!({}))?,
+        now,
+    )?;
+    node.mark_ready()?;
+    let nodes = Arc::new(FakeDrainNodes {
+        node: RwLock::new(node),
+        cause: NodeEvacuationCause::PoolMemberRemoval {
+            pool_id,
+            generation: 1,
+        },
+    });
+    let mut pool = NodePool::create(
+        pool_id,
+        organization_id,
+        ResourceName::parse("empty removal workers")?,
+        vec![source_node_id, retained_node_id],
+        now,
+    )?;
+    pool.request_member_removal(vec![source_node_id], now + ChronoDuration::seconds(1))?;
+    let pools = Arc::new(FakeNodePools {
+        pool: RwLock::new(pool),
+    });
+    let reconciler = NodeDrainEvacuationReconciler::new(
+        nodes,
+        pools.clone(),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        Duration::from_secs(1),
+        10,
+        10,
+    )?;
+
+    let report = reconciler
+        .run_once(now + ChronoDuration::seconds(2))
+        .await?;
+    assert_eq!(report.member_removal_nodes, 1);
+    assert_eq!(report.candidates, 0);
+    assert_eq!(report.member_removals_completed, 1);
+    assert!(report.failures.is_empty());
+    let current = pools.pool.read().await;
+    assert_eq!(current.member_node_ids, vec![retained_node_id]);
+    assert!(current.member_removal(source_node_id).is_none());
+    assert_eq!(current.aggregate_version, 3);
+    Ok(())
+}
+
+#[tokio::test]
+async fn member_removal_waits_for_active_resource_claim_release(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now() - ChronoDuration::minutes(1);
+    let organization_id = OrganizationId::new();
+    let source_node_id = NodeId::new();
+    let retained_node_id = NodeId::new();
+    let pool_id = NodePoolId::new();
+    let mut node = Node::enroll(
+        source_node_id,
+        organization_id,
+        NodeName::new("claimed-removal-source")?,
+        Uuid::now_v7(),
+        "test-agent",
+        NodeCapabilities::new("test", "1", json!({}))?,
+        now,
+    )?;
+    node.mark_ready()?;
+    let nodes = Arc::new(FakeDrainNodes {
+        node: RwLock::new(node),
+        cause: NodeEvacuationCause::PoolMemberRemoval {
+            pool_id,
+            generation: 1,
+        },
+    });
+    let mut pool = NodePool::create(
+        pool_id,
+        organization_id,
+        ResourceName::parse("claimed removal workers")?,
+        vec![source_node_id, retained_node_id],
+        now,
+    )?;
+    pool.request_member_removal(vec![source_node_id], now + ChronoDuration::seconds(1))?;
+    let pools = Arc::new(FakeNodePools {
+        pool: RwLock::new(pool),
+    });
+    let claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let claim = claims
+        .reserve(resource_claim_reservation(
+            organization_id,
+            source_node_id,
+            now + ChronoDuration::seconds(2),
+        ))
+        .await?
+        .value;
+    let reconciler = NodeDrainEvacuationReconciler::new(
+        nodes,
+        pools.clone(),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        claims.clone(),
+        Duration::from_secs(1),
+        10,
+        10,
+    )?;
+
+    let blocked = reconciler
+        .run_once(now + ChronoDuration::seconds(3))
+        .await?;
+    assert_eq!(blocked.member_removals_completed, 0);
+    assert!(blocked.failures.is_empty());
+    assert!(pools
+        .pool
+        .read()
+        .await
+        .member_removal(source_node_id)
+        .is_some());
+
+    claims
+        .cancel_database_reservation(
+            organization_id,
+            claim.id,
+            claim.aggregate_version,
+            now + ChronoDuration::seconds(4),
+        )
+        .await?;
+    let completed = reconciler
+        .run_once(now + ChronoDuration::seconds(5))
+        .await?;
+    assert_eq!(completed.member_removals_completed, 1);
+    assert!(completed.failures.is_empty());
+    assert_eq!(
+        pools.pool.read().await.member_node_ids,
+        vec![retained_node_id]
     );
     Ok(())
 }
@@ -287,5 +622,60 @@ fn service_template() -> ServiceTemplate {
             unhealthy_threshold: 3,
             stabilization_window_ms: 1_000,
         }),
+    }
+}
+
+fn resource_claim_reservation(
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    reserved_at: DateTime<Utc>,
+) -> ResourceClaimReservation {
+    let workload_id = WorkloadId::new();
+    let revision_id = WorkloadRevisionId::new();
+    let allocation = ResourceAllocation::Scalar {
+        amount: 1,
+        unit: ResourceUnit::Count,
+    };
+    ResourceClaimReservation {
+        id: ResourceClaimId::new(),
+        binding: DeploymentReplicaBinding {
+            deployment_id: DeploymentId::new(),
+            organization_id,
+            project_id: ProjectId::new(),
+            environment_id: EnvironmentId::new(),
+            workload_id,
+            revision_id,
+            replica_id: WorkloadReplicaId::from_uuid(workload_id.as_uuid()),
+            replica_generation: 1,
+            member_id: WorkloadReplicaMemberId::from_uuid(workload_id.as_uuid()),
+            node_id: Some(node_id),
+            placement_generation: 1,
+            runtime_unit_id: format!("workload:{workload_id}:revision:{revision_id}"),
+            runtime_generation: 1,
+            created_at: reserved_at,
+            updated_at: reserved_at,
+        },
+        node_id,
+        inventory: NodeResourceInventory::new(
+            node_id.as_uuid(),
+            Uuid::now_v7(),
+            1,
+            reserved_at,
+            vec![NodeResourceSlot::new(
+                ResourceKind::Accelerator,
+                "accelerator/claim-fence",
+                allocation.clone(),
+            )
+            .expect("resource inventory slot")],
+        )
+        .expect("resource inventory"),
+        topology_digest: format!("sha256:{}", "b".repeat(64)),
+        slots: vec![ResourceSlotRequest::new(
+            ResourceKind::Accelerator,
+            "accelerator/claim-fence",
+            allocation,
+        )
+        .expect("resource slot request")],
+        reserved_at,
     }
 }

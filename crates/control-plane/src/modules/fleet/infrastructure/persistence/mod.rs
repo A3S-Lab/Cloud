@@ -7,5 +7,5 @@ mod postgres;
 mod tests;
 
 pub use in_memory::InMemoryNodeRepository;
-pub(crate) use postgres::require_current_inventory;
 pub use postgres::PostgresNodeRepository;
+pub(crate) use postgres::{node_pool_placement_is_eligible, require_current_inventory};

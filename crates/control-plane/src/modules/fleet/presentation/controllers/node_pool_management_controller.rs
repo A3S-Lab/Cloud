@@ -1,7 +1,7 @@
 use crate::modules::fleet::application::{ManageNodePool, NodePoolMutation};
 use crate::modules::fleet::presentation::dto::{
     AddNodePoolMembersRequest, CancelNodePoolMaintenanceRequest, CreateNodePoolRequest,
-    NodePoolResponse, ScheduleNodePoolMaintenanceRequest,
+    NodePoolResponse, RequestNodePoolMemberRemovalRequest, ScheduleNodePoolMaintenanceRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 pub fn node_pool_management_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let add_bus = Arc::clone(&bus);
+    let removal_bus = Arc::clone(&bus);
     let schedule_bus = Arc::clone(&bus);
     let cancel_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
@@ -59,6 +60,33 @@ pub fn node_pool_management_controller(bus: Arc<CommandBus>) -> Result<Controlle
                         &request,
                         node_pool_id,
                         NodePoolMutation::AddMembers {
+                            expected_version: body.expected_version,
+                            member_node_ids: body
+                                .member_node_ids
+                                .into_iter()
+                                .map(NodeId::from_uuid)
+                                .collect(),
+                        },
+                        false,
+                    )
+                    .await
+                }
+            },
+        )?
+        .post(
+            "/{organization_id}/node-pools/{node_pool_id}/members/removal",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&removal_bus);
+                async move {
+                    let body: RequestNodePoolMemberRemovalRequest =
+                        request.json_with_content_type()?;
+                    let node_pool_id =
+                        NodePoolId::from_uuid(request.param_as::<Uuid>("node_pool_id")?);
+                    execute(
+                        bus,
+                        &request,
+                        node_pool_id,
+                        NodePoolMutation::RequestMemberRemoval {
                             expected_version: body.expected_version,
                             member_node_ids: body
                                 .member_node_ids

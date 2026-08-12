@@ -204,8 +204,10 @@ export type {
   Node,
   NodeAvailability,
   NodePool,
+  NodePoolMemberRemoval,
   NodePoolMaintenance,
   NodePoolMaintenanceStatus,
+  RequestNodePoolMemberRemovalInput,
   NodeState,
   ScheduleNodePoolMaintenanceInput,
 } from './node';

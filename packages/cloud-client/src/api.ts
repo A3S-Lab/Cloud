@@ -87,6 +87,7 @@ import type {
   PublishFormReleaseOptions,
   PublishRouteInput,
   PublishWorkflowDefinitionInput,
+  RequestNodePoolMemberRemovalInput,
   ResolveSourceRevisionInput,
   ResourceGrant,
   ResourceGrantMutationResult,
@@ -164,7 +165,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.18.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.19.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1112,6 +1113,22 @@ export class CloudApi {
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/node-pools/${encodeURIComponent(nodePoolId)}/members`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  requestNodePoolMemberRemoval(
+    organizationId: string,
+    nodePoolId: string,
+    input: RequestNodePoolMemberRemovalInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<NodePool> {
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/node-pools/${encodeURIComponent(nodePoolId)}/members/removal`,
       idempotencyKey,
       input,
       signal

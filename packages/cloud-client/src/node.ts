@@ -54,6 +54,8 @@ export interface NodePool {
   organizationId: string;
   name: string;
   memberNodeIds: string[];
+  memberRemovalGeneration: number;
+  memberRemovals: NodePoolMemberRemoval[];
   maintenance: NodePoolMaintenance | null;
   specDigest: string;
   aggregateVersion: number;
@@ -62,12 +64,23 @@ export interface NodePool {
   replayed: boolean;
 }
 
+export interface NodePoolMemberRemoval {
+  nodeId: string;
+  generation: number;
+  requestedAt: string;
+}
+
 export interface CreateNodePoolInput {
   name: string;
   memberNodeIds: string[];
 }
 
 export interface AddNodePoolMembersInput {
+  expectedVersion: number;
+  memberNodeIds: string[];
+}
+
+export interface RequestNodePoolMemberRemovalInput {
   expectedVersion: number;
   memberNodeIds: string[];
 }

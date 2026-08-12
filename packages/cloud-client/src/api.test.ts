@@ -36,7 +36,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.18.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.19.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -161,11 +161,17 @@ describe('CloudApi', () => {
       { expectedVersion: 1, memberNodeIds: ['node-b'] },
       'cli:pool-members'
     );
+    await api.requestNodePoolMemberRemoval(
+      'organization / one',
+      'pool / one',
+      { expectedVersion: 2, memberNodeIds: ['node-b'] },
+      'cli:pool-member-removal'
+    );
     await api.scheduleNodePoolMaintenance(
       'organization / one',
       'pool / one',
       {
-        expectedVersion: 2,
+        expectedVersion: 3,
         targetNodeIds: ['node-a'],
         startsAt,
         endsAt,
@@ -176,7 +182,7 @@ describe('CloudApi', () => {
     await api.cancelNodePoolMaintenance(
       'organization / one',
       'pool / one',
-      { expectedVersion: 3, maintenanceGeneration: 1 },
+      { expectedVersion: 4, maintenanceGeneration: 1 },
       'cli:pool-maintenance-cancel'
     );
 
@@ -202,10 +208,15 @@ describe('CloudApi', () => {
         body: JSON.stringify({ expectedVersion: 1, memberNodeIds: ['node-b'] }),
       },
       {
+        input: '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one/members/removal',
+        method: 'POST',
+        body: JSON.stringify({ expectedVersion: 2, memberNodeIds: ['node-b'] }),
+      },
+      {
         input: '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one/maintenance',
         method: 'POST',
         body: JSON.stringify({
-          expectedVersion: 2,
+          expectedVersion: 3,
           targetNodeIds: ['node-a'],
           startsAt,
           endsAt,
@@ -216,7 +227,7 @@ describe('CloudApi', () => {
         input:
           '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one/maintenance/cancel',
         method: 'POST',
-        body: JSON.stringify({ expectedVersion: 3, maintenanceGeneration: 1 }),
+        body: JSON.stringify({ expectedVersion: 4, maintenanceGeneration: 1 }),
       },
     ]);
   });

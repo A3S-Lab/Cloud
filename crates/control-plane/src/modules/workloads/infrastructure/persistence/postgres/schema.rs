@@ -178,6 +178,7 @@ orm_table! {
         managed_owner_spec_digest: Option<String> => "managed_owner_spec_digest",
         placement_policy: serde_json::Value => "placement_policy",
         placement_policy_digest: String => "placement_policy_digest",
+        node_pool_id: Option<Uuid> => "node_pool_id",
         aggregate_version: u64 => "aggregate_version",
         created_at: DateTime<Utc> => "created_at",
         updated_at: DateTime<Utc> => "updated_at",

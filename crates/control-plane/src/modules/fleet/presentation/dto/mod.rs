@@ -3,7 +3,8 @@ pub mod response;
 
 pub use request::{
     AddNodePoolMembersRequest, CancelNodePoolMaintenanceRequest, ChangeNodeStateRequest,
-    CreateNodePoolRequest, IssueEnrollmentTokenRequest, ScheduleNodePoolMaintenanceRequest,
+    CreateNodePoolRequest, IssueEnrollmentTokenRequest, RequestNodePoolMemberRemovalRequest,
+    ScheduleNodePoolMaintenanceRequest,
 };
 pub use response::{
     EnrollmentTokenResponse, NodeLogRecordResponse, NodePoolResponse, NodeResponse,

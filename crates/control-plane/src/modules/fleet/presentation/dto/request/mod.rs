@@ -6,5 +6,5 @@ pub use change_node_state_request::ChangeNodeStateRequest;
 pub use issue_enrollment_token_request::IssueEnrollmentTokenRequest;
 pub use node_pool_requests::{
     AddNodePoolMembersRequest, CancelNodePoolMaintenanceRequest, CreateNodePoolRequest,
-    ScheduleNodePoolMaintenanceRequest,
+    RequestNodePoolMemberRemovalRequest, ScheduleNodePoolMaintenanceRequest,
 };

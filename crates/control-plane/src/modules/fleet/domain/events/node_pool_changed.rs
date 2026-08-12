@@ -10,6 +10,8 @@ use uuid::Uuid;
 pub enum NodePoolChangeKind {
     Created,
     MembersAdded,
+    MemberRemovalRequested,
+    MembersRemoved,
     MaintenanceScheduled,
     MaintenanceCancelled,
 }
@@ -19,6 +21,8 @@ impl NodePoolChangeKind {
         match self {
             Self::Created => "created",
             Self::MembersAdded => "members_added",
+            Self::MemberRemovalRequested => "member_removal_requested",
+            Self::MembersRemoved => "members_removed",
             Self::MaintenanceScheduled => "maintenance_scheduled",
             Self::MaintenanceCancelled => "maintenance_cancelled",
         }

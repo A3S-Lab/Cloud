@@ -1,15 +1,19 @@
+use super::schema::NodePoolMembers;
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, lock_idempotency_key, require_one_row, store_idempotency, store_outbox,
-    transaction_error, PostgresPersistenceError,
+    is_unique_violation, lock_idempotency_key, lock_node_placement, require_one_row,
+    store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
 };
-use crate::modules::fleet::domain::entities::{NodePool, NodePoolMaintenanceWindow};
+use crate::modules::fleet::domain::entities::{
+    NodePool, NodePoolMaintenanceWindow, NodePoolMemberRemoval,
+};
 use crate::modules::fleet::domain::repositories::{NodeEvacuationCause, NodePoolWrite};
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeId, NodePoolId, OrganizationId, RepositoryError, ResourceName,
 };
 use a3s_orm::{
-    sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, PostgresTransaction, Row,
+    select_from, sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect,
+    PostgresExecutor, PostgresTransaction, Row,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -20,6 +24,7 @@ struct NodePoolRow {
     name: String,
     spec_digest: String,
     aggregate_version: u64,
+    member_removal_generation: u64,
     maintenance_generation: u64,
     maintenance_starts_at: Option<DateTime<Utc>>,
     maintenance_ends_at: Option<DateTime<Utc>>,
@@ -37,13 +42,14 @@ impl FromRow for NodePoolRow {
             name: decode(row, 2)?,
             spec_digest: decode(row, 3)?,
             aggregate_version: decode(row, 4)?,
-            maintenance_generation: decode(row, 5)?,
-            maintenance_starts_at: decode(row, 6)?,
-            maintenance_ends_at: decode(row, 7)?,
-            maintenance_reason: decode(row, 8)?,
-            maintenance_cancelled_at: decode(row, 9)?,
-            created_at: decode(row, 10)?,
-            updated_at: decode(row, 11)?,
+            member_removal_generation: decode(row, 5)?,
+            maintenance_generation: decode(row, 6)?,
+            maintenance_starts_at: decode(row, 7)?,
+            maintenance_ends_at: decode(row, 8)?,
+            maintenance_reason: decode(row, 9)?,
+            maintenance_cancelled_at: decode(row, 10)?,
+            created_at: decode(row, 11)?,
+            updated_at: decode(row, 12)?,
         })
     }
 }
@@ -56,10 +62,31 @@ impl FromRow for NodeIdRow {
     }
 }
 
+struct NodePoolMemberRow {
+    node_id: Uuid,
+    removal_generation: Option<u64>,
+    removal_requested_at: Option<DateTime<Utc>>,
+}
+
+impl FromRow for NodePoolMemberRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            node_id: decode(row, 0)?,
+            removal_generation: decode(row, 1)?,
+            removal_requested_at: decode(row, 2)?,
+        })
+    }
+}
+
 struct MaintenanceCauseRow {
     pool_id: Uuid,
     generation: u64,
     ends_at: DateTime<Utc>,
+}
+
+struct MemberRemovalCauseRow {
+    pool_id: Uuid,
+    generation: u64,
 }
 
 struct MaintenanceColumns {
@@ -76,6 +103,15 @@ impl FromRow for MaintenanceCauseRow {
             pool_id: decode(row, 0)?,
             generation: decode(row, 1)?,
             ends_at: decode(row, 2)?,
+        })
+    }
+}
+
+impl FromRow for MemberRemovalCauseRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            pool_id: decode(row, 0)?,
+            generation: decode(row, 1)?,
         })
     }
 }
@@ -217,13 +253,77 @@ pub(super) async fn maintenance_cause(
     }))
 }
 
+pub(super) async fn member_removal_cause(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+) -> Result<Option<NodeEvacuationCause>, RepositoryError> {
+    let result = Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            sql_query::<MemberRemovalCauseRow>(
+                "select node_pool_id, removal_generation from node_pool_members where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and node_id = ")
+            .bind(node_id.as_uuid())
+            .append(" and removal_generation is not null"),
+        )
+        .await
+        .map_err(|error| RepositoryError::Storage(error.to_string()))?;
+    Ok(result.map(|row| NodeEvacuationCause::PoolMemberRemoval {
+        pool_id: NodePoolId::from_uuid(row.pool_id),
+        generation: row.generation,
+    }))
+}
+
+pub(crate) async fn node_pool_placement_is_eligible(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    node_pool_id: Option<NodePoolId>,
+    node_id: NodeId,
+) -> Result<bool, PostgresPersistenceError> {
+    lock_node_placement(transaction, organization_id, node_id).await?;
+    let pending_removal = fetch_optional::<Uuid, _>(
+        transaction,
+        select_from::<NodePoolMembers>()
+            .select(NodePoolMembers::node_id())
+            .filter(NodePoolMembers::organization_id().eq(organization_id.as_uuid()))
+            .filter(NodePoolMembers::node_id().eq(node_id.as_uuid()))
+            .filter(NodePoolMembers::removal_generation().is_not_null())
+            .limit(1),
+    )
+    .await?;
+    if pending_removal.is_some() {
+        return Ok(false);
+    }
+    let Some(node_pool_id) = node_pool_id else {
+        return Ok(true);
+    };
+    fetch_optional::<Uuid, _>(
+        transaction,
+        select_from::<NodePoolMembers>()
+            .select(NodePoolMembers::node_id())
+            .filter(NodePoolMembers::organization_id().eq(organization_id.as_uuid()))
+            .filter(NodePoolMembers::node_pool_id().eq(node_pool_id.as_uuid()))
+            .filter(NodePoolMembers::node_id().eq(node_id.as_uuid()))
+            .filter(NodePoolMembers::removal_generation().is_null())
+            .limit(1),
+    )
+    .await
+    .map(|membership| membership.is_some())
+}
+
 async fn create(
     transaction: &PostgresTransaction,
     pool: &NodePool,
 ) -> Result<(), PostgresPersistenceError> {
-    if pool.aggregate_version != 1 || pool.maintenance.is_some() {
+    if pool.aggregate_version != 1
+        || pool.member_removal_generation != 0
+        || !pool.member_removals.is_empty()
+        || pool.maintenance.is_some()
+    {
         return Err(RepositoryError::Conflict(
-            "new node pool must start at version one without maintenance".into(),
+            "new node pool must start at version one without removal or maintenance state".into(),
         )
         .into());
     }
@@ -259,19 +359,20 @@ async fn update(
     let current = find_in_transaction(transaction, pool.organization_id, pool.id, true)
         .await?
         .ok_or(RepositoryError::NotFound)?;
-    if current.aggregate_version != expected_version
-        || pool.aggregate_version != expected_version.saturating_add(1)
-        || pool.name != current.name
-        || pool.created_at != current.created_at
-        || current
-            .member_node_ids
-            .iter()
-            .any(|node_id| pool.member_node_ids.binary_search(node_id).is_err())
+    validate_update_transition(&current, pool, expected_version)?;
+    for node_id in current
+        .member_node_ids
+        .iter()
+        .filter(|node_id| current.member_removal(**node_id) != pool.member_removal(**node_id))
     {
-        return Err(RepositoryError::Conflict(
-            "node pool aggregate version or additive membership changed".into(),
-        )
-        .into());
+        lock_node_placement(transaction, pool.organization_id, *node_id).await?;
+    }
+    for node_id in current
+        .member_node_ids
+        .iter()
+        .filter(|node_id| pool.member_node_ids.binary_search(node_id).is_err())
+    {
+        require_member_removal_fence_clear(transaction, pool.organization_id, *node_id).await?;
     }
     for node_id in pool
         .member_node_ids
@@ -289,6 +390,8 @@ async fn update(
                 .bind(pool.spec_digest.as_str())
                 .append(", aggregate_version = ")
                 .bind(pool.aggregate_version)
+                .append(", member_removal_generation = ")
+                .bind(pool.member_removal_generation)
                 .append(", maintenance_generation = ")
                 .bind(columns.generation)
                 .append(", maintenance_starts_at = ")
@@ -318,6 +421,56 @@ async fn update(
             .bind(pool.id.as_uuid()),
     )
     .await?;
+    for removal in pool
+        .member_removals
+        .iter()
+        .filter(|removal| current.member_removal(removal.node_id).is_none())
+    {
+        require_one_row(
+            "node pool member removal",
+            execute(
+                transaction,
+                sql_query::<()>("update node_pool_members set removal_generation = ")
+                    .bind(removal.generation)
+                    .append(", removal_requested_at = ")
+                    .bind(removal.requested_at)
+                    .append(" where organization_id = ")
+                    .bind(pool.organization_id.as_uuid())
+                    .append(" and node_pool_id = ")
+                    .bind(pool.id.as_uuid())
+                    .append(" and node_id = ")
+                    .bind(removal.node_id.as_uuid())
+                    .append(" and removal_generation is null and removal_requested_at is null"),
+            )
+            .await?,
+        )?;
+    }
+    for node_id in current
+        .member_node_ids
+        .iter()
+        .filter(|node_id| pool.member_node_ids.binary_search(node_id).is_err())
+    {
+        let removal = current.member_removal(*node_id).ok_or_else(|| {
+            PostgresPersistenceError::Invariant(
+                "node pool transition removed a member without a removal fence".into(),
+            )
+        })?;
+        require_one_row(
+            "node pool member",
+            execute(
+                transaction,
+                sql_query::<()>("delete from node_pool_members where organization_id = ")
+                    .bind(pool.organization_id.as_uuid())
+                    .append(" and node_pool_id = ")
+                    .bind(pool.id.as_uuid())
+                    .append(" and node_id = ")
+                    .bind(node_id.as_uuid())
+                    .append(" and removal_generation = ")
+                    .bind(removal.generation),
+            )
+            .await?,
+        )?;
+    }
     if let Some(window) = &pool.maintenance {
         for node_id in &window.target_node_ids {
             require_one_row(
@@ -337,6 +490,46 @@ async fn update(
         }
     }
     Ok(())
+}
+
+async fn require_member_removal_fence_clear(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+) -> Result<(), PostgresPersistenceError> {
+    let reference = fetch_optional(
+        transaction,
+        sql_query::<NodeIdRow>(
+            "select member.node_id from workload_replica_members member where member.organization_id = ",
+        )
+        .bind(organization_id.as_uuid())
+        .append(" and member.node_id = ")
+        .bind(node_id.as_uuid())
+        .append(" union all select claim.node_id from resource_claims claim where claim.organization_id = ")
+        .bind(organization_id.as_uuid())
+        .append(" and claim.node_id = ")
+        .bind(node_id.as_uuid())
+        .append(" and claim.state <> 'released' limit 1"),
+    )
+    .await?;
+    if reference.is_some() {
+        return Err(RepositoryError::Conflict(
+            "node pool member removal is waiting for replica placement and resource claim cleanup"
+                .into(),
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_update_transition(
+    current: &NodePool,
+    next: &NodePool,
+    expected_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    next.validate_successor(current, expected_version)
+        .map_err(RepositoryError::Conflict)
+        .map_err(Into::into)
 }
 
 async fn insert_member(
@@ -391,13 +584,7 @@ async fn hydrate(
     transaction: &PostgresTransaction,
     row: NodePoolRow,
 ) -> Result<NodePool, PostgresPersistenceError> {
-    let members = node_ids(
-        transaction,
-        "node_pool_members",
-        row.organization_id,
-        row.id,
-    )
-    .await?;
+    let (members, member_removals) = members(transaction, row.organization_id, row.id).await?;
     let targets = node_ids(
         transaction,
         "node_pool_maintenance_targets",
@@ -453,6 +640,8 @@ async fn hydrate(
         organization_id: OrganizationId::from_uuid(row.organization_id),
         name,
         member_node_ids: members,
+        member_removal_generation: row.member_removal_generation,
+        member_removals,
         maintenance,
         spec_digest: row.spec_digest,
         aggregate_version: row.aggregate_version,
@@ -472,9 +661,6 @@ async fn node_ids(
     pool_id: Uuid,
 ) -> Result<Vec<NodeId>, PostgresPersistenceError> {
     let query = match table {
-        "node_pool_members" => {
-            sql_query::<NodeIdRow>("select node_id from node_pool_members where organization_id = ")
-        }
         "node_pool_maintenance_targets" => sql_query::<NodeIdRow>(
             "select node_id from node_pool_maintenance_targets where organization_id = ",
         ),
@@ -495,6 +681,42 @@ async fn node_ids(
     })
 }
 
+async fn members(
+    transaction: &PostgresTransaction,
+    organization_id: Uuid,
+    pool_id: Uuid,
+) -> Result<(Vec<NodeId>, Vec<NodePoolMemberRemoval>), PostgresPersistenceError> {
+    let rows = fetch_all(
+        transaction,
+        sql_query::<NodePoolMemberRow>("select node_id, removal_generation, removal_requested_at from node_pool_members where organization_id = ")
+            .bind(organization_id)
+            .append(" and node_pool_id = ")
+            .bind(pool_id)
+            .append(" order by node_id asc"),
+    )
+    .await?;
+    let mut member_node_ids = Vec::with_capacity(rows.len());
+    let mut removals = Vec::new();
+    for row in rows {
+        let node_id = NodeId::from_uuid(row.node_id);
+        member_node_ids.push(node_id);
+        match (row.removal_generation, row.removal_requested_at) {
+            (Some(generation), Some(requested_at)) => removals.push(NodePoolMemberRemoval {
+                node_id,
+                generation,
+                requested_at,
+            }),
+            (None, None) => {}
+            _ => {
+                return Err(PostgresPersistenceError::Invariant(
+                    "stored node pool member removal state is incomplete".into(),
+                ))
+            }
+        }
+    }
+    Ok((member_node_ids, removals))
+}
+
 fn validate_write(write: &NodePoolWrite) -> Result<(), PostgresPersistenceError> {
     write.pool.validate().map_err(|error| {
         RepositoryError::Conflict(format!("node pool specification is invalid: {error}"))
@@ -512,7 +734,7 @@ fn validate_write(write: &NodePoolWrite) -> Result<(), PostgresPersistenceError>
 
 fn insert_pool_query(pool: &NodePool) -> a3s_orm::SqlQuery<()> {
     let columns = maintenance_columns(pool);
-    sql_query::<()>("insert into node_pools (organization_id, id, name, name_key, spec_digest, aggregate_version, maintenance_generation, maintenance_starts_at, maintenance_ends_at, maintenance_reason, maintenance_cancelled_at, created_at, updated_at) values (")
+    sql_query::<()>("insert into node_pools (organization_id, id, name, name_key, spec_digest, aggregate_version, member_removal_generation, maintenance_generation, maintenance_starts_at, maintenance_ends_at, maintenance_reason, maintenance_cancelled_at, created_at, updated_at) values (")
         .bind(pool.organization_id.as_uuid())
         .append(", ")
         .bind(pool.id.as_uuid())
@@ -524,6 +746,8 @@ fn insert_pool_query(pool: &NodePool) -> a3s_orm::SqlQuery<()> {
         .bind(pool.spec_digest.as_str())
         .append(", ")
         .bind(pool.aggregate_version)
+        .append(", ")
+        .bind(pool.member_removal_generation)
         .append(", ")
         .bind(columns.generation)
         .append(", ")
@@ -561,7 +785,7 @@ fn maintenance_columns(pool: &NodePool) -> MaintenanceColumns {
 }
 
 fn pool_select() -> a3s_orm::SqlQuery<NodePoolRow> {
-    sql_query::<NodePoolRow>("select organization_id, id, name, spec_digest, aggregate_version, maintenance_generation, maintenance_starts_at, maintenance_ends_at, maintenance_reason, maintenance_cancelled_at, created_at, updated_at from node_pools")
+    sql_query::<NodePoolRow>("select organization_id, id, name, spec_digest, aggregate_version, member_removal_generation, maintenance_generation, maintenance_starts_at, maintenance_ends_at, maintenance_reason, maintenance_cancelled_at, created_at, updated_at from node_pools")
 }
 
 fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {

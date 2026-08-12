@@ -1551,7 +1551,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.18.0`. Focused tests regenerate the
+  and every API response pin the current contract `1.19.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -3178,7 +3178,7 @@ reconciliation, process death, and provider recovery.
 | --- | --- | --- | --- |
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
-| `H0.3` | Foundation in progress | Multi-node replica sets, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
+| `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, placement groups and gang claims, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
 | `H0.4` | Planned | ACL-native, Box-hosted production installation/upgrade profile and highly available API, worker/reconciler, relay, Gateway, migration and dependency wiring | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
@@ -3433,10 +3433,17 @@ placement policy to schema v3 and gives every Workload an optional immutable,
 same-organization Node Pool selection. All ACL-backed creation paths validate
 that selection before persistence; follow-up revisions and replica scaling
 preserve it; and the sole Workloads scheduler asks Fleet for only selected
-members after applying active maintenance exclusions. Safe member removal,
-placement groups and gang claims, bounded rolling updates,
-independent Gateway placement, and provider-neutral private networking remain
-open.
+members after applying active maintenance exclusions. Migration 093 makes
+member removal a two-phase, generation-fenced transition. A removal request is
+durable and immediately excludes its nodes from selected and unconstrained
+scheduling; the existing evacuation and retirement path fences Runtime and
+releases the exact Claim. Claim reservation, replica placement, and membership
+transitions share one transaction-scoped node fence. Membership is deleted
+only after Workloads reports no durable replica placement or non-released Claim
+on the node, with the pool version and removal generation revalidated under
+that fence. The released node may then join another pool. Placement groups and
+gang claims, bounded rolling updates, independent Gateway placement,
+provider-neutral private networking, and stateful moves remain open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,
@@ -3451,8 +3458,8 @@ sole scheduler.
 ### Work
 
 - Extend the verified replica identity, capacity, anti-affinity, stateless
-  evacuation, and Fleet maintenance/node-pool foundation with operator-visible
-  stateful drain blocking and fenced member removal.
+  evacuation, and generation-fenced Fleet member removal with operator-visible
+  stateful drain blocking once `S0` supplies prior-writer fence evidence.
 - Extend the verified inference-neutral Claim and fencing model to multi-member
   execution plans, atomic placement groups, and gang claims. These primitives
   support I0 without containing model, backend, rank-launcher, or

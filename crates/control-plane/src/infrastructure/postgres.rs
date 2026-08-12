@@ -1,5 +1,7 @@
 use super::postgres_schema::{AuditRecords, IdempotencyRecords, MigrationRecords, OutboxEvents};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, RepositoryError,
+};
 use a3s_boot::HealthIndicatorResult;
 use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_orm::migration::MigrationRunError;
@@ -811,6 +813,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/092_workload_node_pool_selection.sql"
             )),
         ),
+        Migration::new(
+            "093",
+            "safe node pool member removal",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/093_safe_node_pool_member_removal.sql"
+            )),
+        ),
     ]
 }
 
@@ -889,6 +899,20 @@ pub(crate) async fn lock_idempotency_key(
 ) -> Result<(), PostgresPersistenceError> {
     transaction
         .advisory_xact_lock(idempotency.scope.as_str(), idempotency.key.as_str())
+        .await?;
+    Ok(())
+}
+
+pub(crate) async fn lock_node_placement(
+    transaction: &PostgresTransaction,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+) -> Result<(), PostgresPersistenceError> {
+    transaction
+        .advisory_xact_lock(
+            "a3s.cloud.node-placement",
+            &format!("{}:{}", organization_id.as_uuid(), node_id.as_uuid()),
+        )
         .await?;
     Ok(())
 }

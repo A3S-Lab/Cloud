@@ -1,5 +1,5 @@
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, NodeCommandId, OrganizationId, RepositoryError, ResourceClaimId,
+    IdempotentWrite, NodeCommandId, NodeId, OrganizationId, RepositoryError, ResourceClaimId,
 };
 use crate::modules::workloads::domain::entities::{
     ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
@@ -35,6 +35,12 @@ pub(crate) fn is_placement_unavailable(error: &RepositoryError) -> bool {
 
 #[async_trait]
 pub trait IResourceClaimRepository: Send + Sync {
+    async fn has_active_claims(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<bool, RepositoryError>;
+
     async fn reserve(
         &self,
         reservation: ResourceClaimReservation,

@@ -80,6 +80,23 @@ impl InMemoryResourceClaimRepository {
 
 #[async_trait]
 impl IResourceClaimRepository for InMemoryResourceClaimRepository {
+    async fn has_active_claims(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<bool, RepositoryError> {
+        if node_id.as_uuid().is_nil() {
+            return Err(RepositoryError::Conflict(
+                "resource claim node is invalid".into(),
+            ));
+        }
+        Ok(self.state.read().await.claims.values().any(|claim| {
+            claim.organization_id == organization_id
+                && claim.node_id == node_id
+                && claim.state != ResourceClaimState::Released
+        }))
+    }
+
     async fn reserve(
         &self,
         reservation: ResourceClaimReservation,

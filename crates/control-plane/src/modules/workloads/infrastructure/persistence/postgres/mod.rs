@@ -460,6 +460,14 @@ impl IWorkloadReplicaDeploymentRepository for PostgresWorkloadRepository {
 
 #[async_trait]
 impl IWorkloadReplicaEvacuationRepository for PostgresWorkloadRepository {
+    async fn has_replica_placements(
+        &self,
+        organization_id: OrganizationId,
+        node_id: NodeId,
+    ) -> Result<bool, RepositoryError> {
+        replica_evacuations::has_placements(&self.executor, organization_id, node_id).await
+    }
+
     async fn pending_replica_evacuations(
         &self,
         organization_id: OrganizationId,

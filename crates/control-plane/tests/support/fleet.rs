@@ -257,6 +257,148 @@ pub async fn exercise_fleet(
             .await,
         Err(RepositoryError::Conflict(_))
     ));
+    let removable_node_id = NodeId::new();
+    let removable_capabilities =
+        NodeCapabilities::new("test-runtime", "test-runtime-1", serde_json::json!({}))?;
+    Database::new(PostgresDialect, executor.clone())
+        .execute(
+            sql_query::<()>(
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(removable_node_id.as_uuid())
+            .append(", 'removable postgres worker', 'removable-postgres-worker', 'ready', ")
+            .bind(Uuid::now_v7())
+            .append(", 'test', 'test-runtime', 'test-runtime-1', ")
+            .bind(removable_capabilities.digest())
+            .append(", ")
+            .bind(removable_capabilities.document().clone())
+            .append(", ")
+            .bind(now + Duration::seconds(2))
+            .append(", ")
+            .bind(now + Duration::seconds(2))
+            .append(", 0, 2)"),
+        )
+        .await?;
+    let previous_version = pool.aggregate_version;
+    pool.add_members(vec![removable_node_id], now + Duration::seconds(2))?;
+    nodes
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: Some(previous_version),
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::MembersAdded,
+                pool.updated_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "postgres/fleet/node-pools/members",
+                "add-removable-worker",
+                b"add-removable-worker",
+            )?,
+        })
+        .await?;
+    let previous_version = pool.aggregate_version;
+    let removal_generation =
+        pool.request_member_removal(vec![removable_node_id], now + Duration::seconds(2))?;
+    nodes
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: Some(previous_version),
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::MemberRemovalRequested,
+                pool.updated_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "postgres/fleet/node-pools/members/removal",
+                "remove-worker",
+                b"remove-worker",
+            )?,
+        })
+        .await?;
+    assert_eq!(removal_generation, 1);
+    assert!(pool.member_node_ids.contains(&removable_node_id));
+    assert_eq!(
+        nodes
+            .list_scheduling_candidates(organization_id, Some(pool.id), now + Duration::seconds(2))
+            .await?
+            .into_iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![node_id]
+    );
+    assert!(matches!(
+        nodes
+            .find_evacuation_source(
+                organization_id,
+                removable_node_id,
+                now + Duration::seconds(2),
+            )
+            .await?
+            .cause,
+        NodeEvacuationCause::PoolMemberRemoval { generation: 1, .. }
+    ));
+    let previous_version = pool.aggregate_version;
+    pool.complete_member_removal(
+        removable_node_id,
+        removal_generation,
+        now + Duration::seconds(2),
+    )?;
+    nodes
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: Some(previous_version),
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::MembersRemoved,
+                pool.updated_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "postgres/fleet/node-pools/members/removal/completion",
+                "remove-worker:1",
+                b"remove-worker:1",
+            )?,
+        })
+        .await?;
+    assert!(matches!(
+        nodes
+            .find_evacuation_source(
+                organization_id,
+                removable_node_id,
+                now + Duration::seconds(2),
+            )
+            .await,
+        Err(RepositoryError::NotFound)
+    ));
+    let rehomed_pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("rehomed postgres workers")?,
+        vec![removable_node_id],
+        now + Duration::seconds(2),
+    )?;
+    nodes
+        .save(NodePoolWrite {
+            pool: rehomed_pool.clone(),
+            expected_version: None,
+            event: NodePoolChanged::envelope(
+                &rehomed_pool,
+                NodePoolChangeKind::Created,
+                rehomed_pool.created_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "postgres/fleet/node-pools",
+                "create-rehomed-workers",
+                b"create-rehomed-workers",
+            )?,
+        })
+        .await?;
     let previous_version = pool.aggregate_version;
     pool.schedule_maintenance(
         vec![node_id],
@@ -287,10 +429,15 @@ pub async fn exercise_fleet(
         INodePoolRepository::find(&reopened, organization_id, pool.id).await?,
         pool
     );
-    assert!(reopened
-        .list_scheduling_candidates(organization_id, None, now + Duration::seconds(4))
-        .await?
-        .is_empty());
+    assert_eq!(
+        reopened
+            .list_scheduling_candidates(organization_id, None, now + Duration::seconds(4))
+            .await?
+            .into_iter()
+            .map(|node| node.id)
+            .collect::<Vec<_>>(),
+        vec![removable_node_id]
+    );
     let sources = reopened
         .list_evacuation_sources(now + Duration::seconds(4), 10)
         .await?;
