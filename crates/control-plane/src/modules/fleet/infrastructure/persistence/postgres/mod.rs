@@ -1,6 +1,7 @@
 mod certificates;
 mod control;
 mod enrollment;
+mod node_pools;
 mod nodes;
 mod queries;
 mod rows;
@@ -10,16 +11,17 @@ pub(crate) use control::require_current_inventory;
 
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};
 use crate::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeRepository,
-    NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
+    ILogRetentionRepository, INodeControlRepository, INodePoolRepository, INodeRepository,
+    INodeSchedulingRepository, NodeCertificateRotationCompletion, NodeCertificateRotationDraft,
     NodeCertificateRotationReservation, NodeEnrollmentDraft, NodeEnrollmentReservation,
     NodeHeartbeatUpdate, NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkMetadata,
     NodeLogChunkQuery, NodeLogCompactionRange, NodeLogCompactionResult, NodeLogGapMetadata,
-    NodeLogRetentionTarget, NodeResourceInventoryRecord, NodeStateChange, RuntimeObservationRecord,
+    NodeLogRetentionTarget, NodePoolWrite, NodeResourceInventoryRecord, NodeStateChange,
+    RuntimeObservationRecord,
 };
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
 use crate::modules::shared_kernel::domain::{
-    EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId, NodeId,
+    EnrollmentTokenId, IdempotencyRequest, IdempotentWrite, NodeCertificateId, NodeId, NodePoolId,
     OrganizationId, RepositoryError,
 };
 use a3s_cloud_contracts::{
@@ -205,16 +207,69 @@ impl INodeRepository for PostgresNodeRepository {
 
 #[async_trait]
 impl crate::modules::fleet::domain::repositories::INodeDrainRepository for PostgresNodeRepository {
-    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError> {
-        nodes::list_draining(&self.executor, limit).await
+    async fn list_evacuation_sources(
+        &self,
+        evaluated_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<
+        Vec<crate::modules::fleet::domain::repositories::NodeEvacuationSource>,
+        RepositoryError,
+    > {
+        nodes::list_evacuation_sources(&self.executor, evaluated_at, limit).await
     }
 
-    async fn find_drain_node(
+    async fn find_evacuation_source(
         &self,
         organization_id: OrganizationId,
         node_id: NodeId,
-    ) -> Result<Node, RepositoryError> {
-        nodes::find(&self.executor, organization_id, node_id).await
+        evaluated_at: DateTime<Utc>,
+    ) -> Result<crate::modules::fleet::domain::repositories::NodeEvacuationSource, RepositoryError>
+    {
+        nodes::find_evacuation_source(&self.executor, organization_id, node_id, evaluated_at).await
+    }
+}
+
+#[async_trait]
+impl INodeSchedulingRepository for PostgresNodeRepository {
+    async fn list_scheduling_candidates(
+        &self,
+        organization_id: OrganizationId,
+        evaluated_at: DateTime<Utc>,
+    ) -> Result<Vec<Node>, RepositoryError> {
+        nodes::list_scheduling_candidates(&self.executor, organization_id, evaluated_at).await
+    }
+}
+
+#[async_trait]
+impl INodePoolRepository for PostgresNodeRepository {
+    async fn replay(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<crate::modules::fleet::domain::entities::NodePool>, RepositoryError> {
+        node_pools::replay(&self.executor, idempotency).await
+    }
+
+    async fn save(
+        &self,
+        write: NodePoolWrite,
+    ) -> Result<IdempotentWrite<crate::modules::fleet::domain::entities::NodePool>, RepositoryError>
+    {
+        node_pools::save(&self.executor, write).await
+    }
+
+    async fn find(
+        &self,
+        organization_id: OrganizationId,
+        pool_id: NodePoolId,
+    ) -> Result<crate::modules::fleet::domain::entities::NodePool, RepositoryError> {
+        node_pools::find(&self.executor, organization_id, pool_id).await
+    }
+
+    async fn list(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<crate::modules::fleet::domain::entities::NodePool>, RepositoryError> {
+        node_pools::list(&self.executor, organization_id).await
     }
 }
 

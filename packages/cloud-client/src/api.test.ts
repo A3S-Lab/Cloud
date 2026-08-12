@@ -36,7 +36,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.15.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.17.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -136,6 +136,89 @@ describe('CloudApi', () => {
     await new CloudApi('token', '/api/v1', { fetch: fetcher }).listNodes('organization');
 
     expect(calls[0]?.[0]).toBe('/api/v1/organizations/organization/nodes');
+  });
+
+  it('manages node pools and maintenance through tenant-scoped endpoints', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false });
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const startsAt = '2026-08-13T00:00:00.000Z';
+    const endsAt = '2026-08-13T01:00:00.000Z';
+
+    await api.listNodePools('organization / one');
+    await api.getNodePool('organization / one', 'pool / one');
+    await api.createNodePool(
+      'organization / one',
+      { name: 'Primary Workers', memberNodeIds: ['node-a'] },
+      'cli:pool-create'
+    );
+    await api.addNodePoolMembers(
+      'organization / one',
+      'pool / one',
+      { expectedVersion: 1, memberNodeIds: ['node-b'] },
+      'cli:pool-members'
+    );
+    await api.scheduleNodePoolMaintenance(
+      'organization / one',
+      'pool / one',
+      {
+        expectedVersion: 2,
+        targetNodeIds: ['node-a'],
+        startsAt,
+        endsAt,
+        reason: 'kernel upgrade',
+      },
+      'cli:pool-maintenance'
+    );
+    await api.cancelNodePoolMaintenance(
+      'organization / one',
+      'pool / one',
+      { expectedVersion: 3, maintenanceGeneration: 1 },
+      'cli:pool-maintenance-cancel'
+    );
+
+    expect(calls.map(([input, init]) => ({ input, method: init?.method, body: init?.body }))).toEqual([
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/node-pools',
+        method: 'GET',
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one',
+        method: 'GET',
+        body: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/node-pools',
+        method: 'POST',
+        body: JSON.stringify({ name: 'Primary Workers', memberNodeIds: ['node-a'] }),
+      },
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one/members',
+        method: 'POST',
+        body: JSON.stringify({ expectedVersion: 1, memberNodeIds: ['node-b'] }),
+      },
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one/maintenance',
+        method: 'POST',
+        body: JSON.stringify({
+          expectedVersion: 2,
+          targetNodeIds: ['node-a'],
+          startsAt,
+          endsAt,
+          reason: 'kernel upgrade',
+        }),
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/node-pools/pool%20%2F%20one/maintenance/cancel',
+        method: 'POST',
+        body: JSON.stringify({ expectedVersion: 3, maintenanceGeneration: 1 }),
+      },
+    ]);
   });
 
   it('searches only through the bounded tenant-scoped projection endpoint', async () => {

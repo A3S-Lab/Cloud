@@ -179,6 +179,23 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     let plugin_registry = &document["paths"]
         ["/organizations/{organization_id}/plugin-registries/{registry_id}"]["get"];
     assert_eq!(plugin_registry["tags"], json!(["Plugins"]));
+    let node_pools = &document["paths"]["/organizations/{organization_id}/node-pools"];
+    assert_eq!(node_pools["get"]["tags"], json!(["Fleet"]));
+    assert_eq!(node_pools["post"]["tags"], json!(["Fleet"]));
+    assert_eq!(
+        node_pools["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["memberNodeIds"]["maxItems"],
+        10_000
+    );
+    assert!(node_pools["post"]["responses"]["201"].is_object());
+    let maintenance = &document["paths"]
+        ["/organizations/{organization_id}/node-pools/{node_pool_id}/maintenance"]["post"];
+    assert_eq!(maintenance["tags"], json!(["Fleet"]));
+    assert_eq!(
+        maintenance["requestBody"]["content"]["application/json"]["schema"]["properties"]["reason"]
+            ["maxLength"],
+        1_024
+    );
     let plugin_search_schema = &document["paths"]
         ["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/search"]["post"]
         ["requestBody"]["content"]["application/json"]["schema"];

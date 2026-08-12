@@ -1165,6 +1165,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             gateway_projector,
             operations: Arc::new(InMemoryOperationRepository::new()),
             nodes: nodes.clone(),
+            node_pools: nodes.clone(),
             node_control,
             log_chunks: Arc::new(TestLogChunkStore),
             certificate_authority: Arc::new(TestCertificateAuthority),

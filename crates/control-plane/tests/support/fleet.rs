@@ -7,12 +7,16 @@ use a3s_cloud_contracts::{
     ResourceKind, ResourceUnit, RuntimeObservationReport,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::{
-    NodeCertificate, NodeCommandDraft,
+    NodeCertificate, NodeCommandDraft, NodePool,
+};
+use a3s_cloud_control_plane::modules::fleet::domain::events::{
+    NodePoolChangeKind, NodePoolChanged,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
-    ILogRetentionRepository, INodeControlRepository, INodeRepository, NodeHeartbeatUpdate,
+    ILogRetentionRepository, INodeControlRepository, INodeDrainRepository, INodePoolRepository,
+    INodeRepository, INodeSchedulingRepository, NodeEvacuationCause, NodeHeartbeatUpdate,
     NodeLogBatchReceiptDraft, NodeLogBatchReplay, NodeLogChunkQuery, NodeLogChunkReceiptDraft,
-    NodeLogGapReceiptDraft,
+    NodeLogGapReceiptDraft, NodePoolWrite,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::services::{
     CertificateAuthorityError, ICertificateAuthority, NodeCertificateRequest,
@@ -28,7 +32,8 @@ use a3s_cloud_control_plane::modules::identity::domain::repositories::IOrganizat
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    NodeCertificateId, NodeCommandId, NodeId, OrganizationId, RepositoryError,
+    IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, NodePoolId, OrganizationId,
+    RepositoryError, ResourceName,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
@@ -145,7 +150,7 @@ pub async fn exercise_fleet(
 
     let node_id = NodeId::from_uuid(left.response.node_id);
     assert!(matches!(
-        nodes.find(OrganizationId::new(), node_id).await,
+        INodeRepository::find(nodes.as_ref(), OrganizationId::new(), node_id).await,
         Err(RepositoryError::NotFound)
     ));
     let runtime_capabilities = capabilities();
@@ -171,6 +176,115 @@ pub async fn exercise_fleet(
     assert!(matches!(
         nodes.record_heartbeat(conflicting).await,
         Err(RepositoryError::Conflict(_))
+    ));
+
+    let mut pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("postgres workers")?,
+        vec![node_id],
+        now + Duration::seconds(2),
+    )?;
+    let create_write = NodePoolWrite {
+        pool: pool.clone(),
+        expected_version: None,
+        event: NodePoolChanged::envelope(
+            &pool,
+            NodePoolChangeKind::Created,
+            pool.created_at,
+            Uuid::now_v7(),
+        )?,
+        idempotency: IdempotencyRequest::new(
+            "postgres/fleet/node-pools",
+            "create-workers",
+            b"create-workers",
+        )?,
+    };
+    let (created, replayed) = tokio::join!(
+        nodes.save(NodePoolWrite {
+            pool: create_write.pool.clone(),
+            expected_version: create_write.expected_version,
+            event: create_write.event.clone(),
+            idempotency: create_write.idempotency.clone(),
+        }),
+        nodes.save(create_write),
+    );
+    let created = created?;
+    let replayed = replayed?;
+    assert_ne!(created.replayed, replayed.replayed);
+    assert_eq!(created.value, replayed.value);
+    let conflicting_pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("conflicting postgres workers")?,
+        vec![node_id],
+        now + Duration::seconds(2),
+    )?;
+    assert!(matches!(
+        nodes
+            .save(NodePoolWrite {
+                pool: conflicting_pool.clone(),
+                expected_version: None,
+                event: NodePoolChanged::envelope(
+                    &conflicting_pool,
+                    NodePoolChangeKind::Created,
+                    conflicting_pool.created_at,
+                    Uuid::now_v7(),
+                )?,
+                idempotency: IdempotencyRequest::new(
+                    "postgres/fleet/node-pools",
+                    "create-conflicting-workers",
+                    b"create-conflicting-workers",
+                )?,
+            })
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    let previous_version = pool.aggregate_version;
+    pool.schedule_maintenance(
+        vec![node_id],
+        now + Duration::seconds(3),
+        now + Duration::hours(1),
+        "kernel upgrade",
+        now + Duration::seconds(2),
+    )?;
+    nodes
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: Some(previous_version),
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::MaintenanceScheduled,
+                pool.updated_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "postgres/fleet/node-pools/maintenance",
+                "schedule-workers",
+                b"schedule-workers",
+            )?,
+        })
+        .await?;
+    let reopened = PostgresNodeRepository::new(executor.clone());
+    assert_eq!(
+        INodePoolRepository::find(&reopened, organization_id, pool.id).await?,
+        pool
+    );
+    assert!(reopened
+        .list_scheduling_candidates(organization_id, now + Duration::seconds(4))
+        .await?
+        .is_empty());
+    let sources = reopened
+        .list_evacuation_sources(now + Duration::seconds(4), 10)
+        .await?;
+    assert!(matches!(
+        sources.as_slice(),
+        [source]
+            if source.node.id == node_id
+                && matches!(
+                    source.cause,
+                    NodeEvacuationCause::PoolMaintenance { generation: 1, .. }
+                )
     ));
 
     let inventory = exercise_resource_inventory(
@@ -225,7 +339,7 @@ pub async fn exercise_fleet(
         .await?;
     assert_eq!(active.id, recovered.certificate.id);
 
-    let current = nodes.find(organization_id, node_id).await?;
+    let current = INodeRepository::find(nodes.as_ref(), organization_id, node_id).await?;
     let state_handler = ChangeNodeStateHandler::new(nodes.clone(), certificate_authority);
     let drain = ChangeNodeState {
         organization_id,
@@ -239,6 +353,13 @@ pub async fn exercise_fleet(
     let drained = state_handler.execute(drain.clone(), context()).await??;
     assert_eq!(drained.node.state, NodeState::Draining);
     assert!(state_handler.execute(drain, context()).await??.replayed);
+    assert_eq!(
+        nodes
+            .find_evacuation_source(organization_id, node_id, now + Duration::seconds(4))
+            .await?
+            .cause,
+        NodeEvacuationCause::ManualDrain
+    );
     let revoke = ChangeNodeState {
         organization_id,
         node_id,

@@ -20,7 +20,7 @@ pub(super) fn runtime_with_resource_claims(
     convergence_timeout: Duration,
 ) -> Result<DeploymentFlowRuntime, String> {
     let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
-    let node_port: Arc<dyn INodeRepository> = nodes.clone();
+    let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
     let milliseconds = u64::try_from(convergence_timeout.num_milliseconds())
         .map_err(|_| "test convergence timeout is invalid")?;

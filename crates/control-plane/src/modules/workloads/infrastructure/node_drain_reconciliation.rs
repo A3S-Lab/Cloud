@@ -1,5 +1,6 @@
-use crate::modules::fleet::domain::repositories::INodeDrainRepository;
-use crate::modules::fleet::domain::value_objects::NodeState;
+use crate::modules::fleet::domain::repositories::{
+    INodeDrainRepository, NodeEvacuationCause, NodeEvacuationSource,
+};
 use crate::modules::shared_kernel::domain::{
     NodeId, RepositoryError, WorkloadId, WorkloadReplicaId,
 };
@@ -16,7 +17,9 @@ const EVACUATION_CORRELATION_DOMAIN: &str = "a3s.cloud.node-drain-evacuation.v1"
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NodeDrainEvacuationReport {
-    pub draining_nodes: usize,
+    pub source_nodes: usize,
+    pub manual_drain_nodes: usize,
+    pub maintenance_nodes: usize,
     pub candidates: usize,
     pub requested: usize,
     pub replayed: usize,
@@ -69,12 +72,26 @@ impl NodeDrainEvacuationReconciler {
         &self,
         now: DateTime<Utc>,
     ) -> Result<NodeDrainEvacuationReport, RepositoryError> {
-        let draining_nodes = self.nodes.list_draining(self.node_batch_size).await?;
+        let sources = self
+            .nodes
+            .list_evacuation_sources(now, self.node_batch_size)
+            .await?;
         let mut report = NodeDrainEvacuationReport {
-            draining_nodes: draining_nodes.len(),
+            source_nodes: sources.len(),
+            manual_drain_nodes: sources
+                .iter()
+                .filter(|source| source.cause == NodeEvacuationCause::ManualDrain)
+                .count(),
+            maintenance_nodes: sources
+                .iter()
+                .filter(|source| {
+                    matches!(source.cause, NodeEvacuationCause::PoolMaintenance { .. })
+                })
+                .count(),
             ..NodeDrainEvacuationReport::default()
         };
-        for node in draining_nodes {
+        for source in sources {
+            let node = &source.node;
             let candidates = match self
                 .evacuations
                 .pending_replica_evacuations(node.organization_id, node.id, self.replica_batch_size)
@@ -86,7 +103,7 @@ impl NodeDrainEvacuationReconciler {
                         node_id: node.id,
                         workload_id: None,
                         replica_id: None,
-                        message: format!("scan node drain evacuation candidates: {error}"),
+                        message: format!("scan node evacuation candidates: {error}"),
                     });
                     continue;
                 }
@@ -94,21 +111,25 @@ impl NodeDrainEvacuationReconciler {
             report.candidates += candidates.len();
             let current = match self
                 .nodes
-                .find_drain_node(node.organization_id, node.id)
+                .find_evacuation_source(node.organization_id, node.id, now)
                 .await
             {
                 Ok(current) => current,
+                Err(RepositoryError::NotFound) => {
+                    report.skipped += candidates.len();
+                    continue;
+                }
                 Err(error) => {
                     report.failures.push(NodeDrainEvacuationFailure {
                         node_id: node.id,
                         workload_id: None,
                         replica_id: None,
-                        message: format!("revalidate draining node: {error}"),
+                        message: format!("revalidate evacuation source: {error}"),
                     });
                     continue;
                 }
             };
-            if current.state != NodeState::Draining {
+            if !same_source(&source, &current) {
                 report.skipped += candidates.len();
                 continue;
             }
@@ -118,7 +139,7 @@ impl NodeDrainEvacuationReconciler {
                     .request_replica_evacuation(ReplicaEvacuationRequest {
                         candidate,
                         requested_at: now,
-                        correlation_id: evacuation_correlation_id(candidate),
+                        correlation_id: evacuation_correlation_id(candidate, &source.cause),
                     })
                     .await
                 {
@@ -159,7 +180,9 @@ impl NodeDrainEvacuationReconciler {
                                 );
                             }
                             tracing::debug!(
-                                draining_nodes = report.draining_nodes,
+                                source_nodes = report.source_nodes,
+                                manual_drain_nodes = report.manual_drain_nodes,
+                                maintenance_nodes = report.maintenance_nodes,
                                 candidates = report.candidates,
                                 requested = report.requested,
                                 replayed = report.replayed,
@@ -179,15 +202,31 @@ impl NodeDrainEvacuationReconciler {
     }
 }
 
-fn evacuation_correlation_id(candidate: ReplicaEvacuationCandidate) -> Uuid {
-    Uuid::new_v5(
-        &candidate.replica_id.as_uuid(),
-        format!(
+fn same_source(expected: &NodeEvacuationSource, current: &NodeEvacuationSource) -> bool {
+    expected.node.organization_id == current.node.organization_id
+        && expected.node.id == current.node.id
+        && expected.cause == current.cause
+}
+
+fn evacuation_correlation_id(
+    candidate: ReplicaEvacuationCandidate,
+    cause: &NodeEvacuationCause,
+) -> Uuid {
+    let identity = match cause {
+        NodeEvacuationCause::ManualDrain => format!(
             "{EVACUATION_CORRELATION_DOMAIN}:{}:{}",
             candidate.replica_generation, candidate.source_node_id
-        )
-        .as_bytes(),
-    )
+        ),
+        NodeEvacuationCause::PoolMaintenance {
+            pool_id,
+            generation,
+            ..
+        } => format!(
+            "{EVACUATION_CORRELATION_DOMAIN}:{}:{}:maintenance:{pool_id}:{generation}",
+            candidate.replica_generation, candidate.source_node_id
+        ),
+    };
+    Uuid::new_v5(&candidate.replica_id.as_uuid(), identity.as_bytes())
 }
 
 #[cfg(test)]

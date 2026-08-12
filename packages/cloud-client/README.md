@@ -41,8 +41,12 @@ methods use the existing Secret controllers and expose metadata and version
 state only. API-token list/get/create/revoke methods use the existing Identity
 controllers and return credential-free metadata. `issueEnrollmentToken` uses
 the existing Fleet controller and returns one credential-free enrollment-token
-projection. It is internal and versioned with Cloud until public package
-compatibility and deprecation policy are completed.
+projection. `listNodePools`, `getNodePool`, `createNodePool`,
+`addNodePoolMembers`, `scheduleNodePoolMaintenance`, and
+`cancelNodePoolMaintenance` expose Fleet-owned additive membership and bounded
+maintenance policy through REST contract `1.17.0`. It is internal and
+versioned with Cloud until public package compatibility and deprecation policy
+are completed.
 
 `listAssets`, `getAsset`, `createAsset`, and `archiveAsset` expose the
 organization Asset lifecycle. Release list/get/create/yank methods preserve

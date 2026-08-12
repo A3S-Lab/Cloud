@@ -7,7 +7,9 @@ mod tests;
 mod types;
 mod workflow;
 
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::{
+    INodeControlRepository, INodeSchedulingRepository,
+};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, OrganizationId, RepositoryError, ResourceClaimId,
 };
@@ -93,7 +95,7 @@ pub struct DeploymentFlowRuntime {
     pub(super) workloads: Arc<dyn IWorkloadRepository>,
     pub(super) resource_claims: Arc<dyn IResourceClaimRepository>,
     pub(super) artifacts: Arc<dyn IOciArtifactResolver>,
-    pub(super) nodes: Arc<dyn INodeRepository>,
+    pub(super) nodes: Arc<dyn INodeSchedulingRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
     pub(super) route_updates: Arc<dyn IDeploymentRouteUpdater>,
     pub(super) heartbeat_timeout: chrono::Duration,
@@ -105,7 +107,7 @@ pub struct DeploymentFlowDependencies {
     workloads: Arc<dyn IWorkloadRepository>,
     resource_claims: Arc<dyn IResourceClaimRepository>,
     artifacts: Arc<dyn IOciArtifactResolver>,
-    nodes: Arc<dyn INodeRepository>,
+    nodes: Arc<dyn INodeSchedulingRepository>,
     node_control: Arc<dyn INodeControlRepository>,
     route_updates: Arc<dyn IDeploymentRouteUpdater>,
 }
@@ -115,7 +117,7 @@ impl DeploymentFlowDependencies {
         workloads: Arc<dyn IWorkloadRepository>,
         resource_claims: Arc<dyn IResourceClaimRepository>,
         artifacts: Arc<dyn IOciArtifactResolver>,
-        nodes: Arc<dyn INodeRepository>,
+        nodes: Arc<dyn INodeSchedulingRepository>,
         node_control: Arc<dyn INodeControlRepository>,
         route_updates: Arc<dyn IDeploymentRouteUpdater>,
     ) -> Self {

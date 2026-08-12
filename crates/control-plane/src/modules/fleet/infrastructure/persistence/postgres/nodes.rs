@@ -5,7 +5,9 @@ use crate::infrastructure::{
     transaction_error, PostgresPersistenceError,
 };
 use crate::modules::fleet::domain::entities::Node;
-use crate::modules::fleet::domain::repositories::NodeHeartbeatUpdate;
+use crate::modules::fleet::domain::repositories::{
+    NodeEvacuationCause, NodeEvacuationSource, NodeHeartbeatUpdate,
+};
 use crate::modules::fleet::domain::value_objects::NodeState;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId,
@@ -229,22 +231,54 @@ pub(super) async fn list(
         .collect()
 }
 
-pub(super) async fn list_draining(
+pub(super) async fn list_scheduling_candidates(
     executor: &PostgresExecutor,
-    limit: usize,
+    organization_id: OrganizationId,
+    evaluated_at: DateTime<Utc>,
 ) -> Result<Vec<Node>, RepositoryError> {
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_all_as(
+            sql_query::<NodeRow>(SELECT_NODES)
+                .append(" where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and not ")
+                .append(active_maintenance_exists())
+                .bind(evaluated_at)
+                .append(" and p.maintenance_ends_at > ")
+                .bind(evaluated_at)
+                .append(") order by name_key asc, id asc"),
+        )
+        .await
+        .map_err(|error| RepositoryError::Storage(error.to_string()))?
+        .rows
+        .into_iter()
+        .map(rows::node)
+        .collect()
+}
+
+pub(super) async fn list_evacuation_sources(
+    executor: &PostgresExecutor,
+    evaluated_at: DateTime<Utc>,
+    limit: usize,
+) -> Result<Vec<NodeEvacuationSource>, RepositoryError> {
     if limit == 0 || limit > 10_000 {
         return Err(RepositoryError::Conflict(
-            "node state query limit must be between 1 and 10000".into(),
+            "node evacuation source query limit must be between 1 and 10000".into(),
         ));
     }
     let limit = u64::try_from(limit)
         .map_err(|_| RepositoryError::Conflict("node state query limit is invalid".into()))?;
-    Database::new(PostgresDialect, executor.clone())
+    let nodes = Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
             sql_query::<NodeRow>(SELECT_NODES)
                 .append(" where state = ")
                 .bind(NodeState::Draining.as_str())
+                .append(" or ")
+                .append(active_maintenance_exists())
+                .bind(evaluated_at)
+                .append(" and p.maintenance_ends_at > ")
+                .bind(evaluated_at)
+                .append(")")
                 .append(" order by organization_id asc, id asc limit ")
                 .bind(limit),
         )
@@ -253,5 +287,44 @@ pub(super) async fn list_draining(
         .rows
         .into_iter()
         .map(rows::node)
-        .collect()
+        .collect::<Result<Vec<_>, _>>()?;
+    let mut sources = Vec::with_capacity(nodes.len());
+    for node in nodes {
+        let cause = if node.state == NodeState::Draining {
+            Some(NodeEvacuationCause::ManualDrain)
+        } else {
+            super::node_pools::maintenance_cause(
+                executor,
+                node.organization_id,
+                node.id,
+                evaluated_at,
+            )
+            .await?
+        };
+        if let Some(cause) = cause {
+            sources.push(NodeEvacuationSource { node, cause });
+        }
+    }
+    Ok(sources)
+}
+
+pub(super) async fn find_evacuation_source(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    evaluated_at: DateTime<Utc>,
+) -> Result<NodeEvacuationSource, RepositoryError> {
+    let node = find(executor, organization_id, node_id).await?;
+    let cause = if node.state == NodeState::Draining {
+        NodeEvacuationCause::ManualDrain
+    } else {
+        super::node_pools::maintenance_cause(executor, organization_id, node_id, evaluated_at)
+            .await?
+            .ok_or(RepositoryError::NotFound)?
+    };
+    Ok(NodeEvacuationSource { node, cause })
+}
+
+fn active_maintenance_exists() -> &'static str {
+    "exists (select 1 from node_pool_members m join node_pools p on p.organization_id = m.organization_id and p.id = m.node_pool_id join node_pool_maintenance_targets t on t.organization_id = m.organization_id and t.node_pool_id = m.node_pool_id and t.node_id = m.node_id where m.organization_id = nodes.organization_id and m.node_id = nodes.id and p.maintenance_generation > 0 and p.maintenance_cancelled_at is null and p.maintenance_starts_at <= "
 }

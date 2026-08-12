@@ -1551,7 +1551,7 @@ packages:
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
   envelope schemas. Control-plane routes, the maintained TypeScript client,
-  and every API response pin the current contract `1.15.0`. Focused tests regenerate the
+  and every API response pin the current contract `1.17.0`. Focused tests regenerate the
   candidate from the resolved route table and reject snapshot drift. CI compares
   the committed contract with the pull request base and rejects operation
   removal, new required input, removed response or schema fields, semantic
@@ -3385,11 +3385,16 @@ advancing placement generation.
 
 The supported Service template currently compiles only CPU, memory, and
 optional ephemeral-storage Claims, so this closes the stateless
-drain/evacuation foundation without admitting a volume move. It remains short
-of the `H0.3` exit: stateful volume evacuation and an operator-visible blocked
-outcome wait for the `S0` prior-writer fence contract; maintenance and node-pool
-policy, placement groups and gang claims, bounded rolling updates, independent
-Gateway placement, and provider-neutral private networking also remain open.
+drain/evacuation foundation without admitting a volume move. Migration 091
+now owns versioned node pools in Fleet, admits members additively with
+one-pool-per-node uniqueness, bounds exact-target maintenance windows, and
+projects the same active-maintenance decision into the existing scheduler and
+evacuation path. It remains short of the `H0.3` exit: stateful volume
+evacuation and an operator-visible blocked outcome wait for the `S0`
+prior-writer fence contract; explicit Workload pool selection, safe member
+removal, placement groups and gang claims, bounded rolling updates,
+independent Gateway placement, and provider-neutral private networking remain
+open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,
@@ -3403,9 +3408,10 @@ sole scheduler.
 
 ### Work
 
-- Extend the verified replica identity, capacity, anti-affinity, and stateless
-  evacuation model with operator-visible stateful drain blocking, maintenance
-  windows, and node pools.
+- Extend the verified replica identity, capacity, anti-affinity, stateless
+  evacuation, and Fleet maintenance/node-pool foundation with operator-visible
+  stateful drain blocking, explicit Workload pool selection, and fenced member
+  removal.
 - Extend the verified inference-neutral Claim and fencing model to multi-member
   execution plans, atomic placement groups, and gang claims. These primitives
   support I0 without containing model, backend, rank-launcher, or

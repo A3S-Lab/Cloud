@@ -3,7 +3,8 @@ use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName, NodeState,
 };
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, NodeCertificateId, NodeId, OrganizationId, RepositoryError,
+    IdempotencyRequest, IdempotentWrite, NodeCertificateId, NodeId, NodePoolId, OrganizationId,
+    RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -155,12 +156,42 @@ pub trait INodeRepository: Send + Sync {
 }
 
 #[async_trait]
-pub trait INodeDrainRepository: Send + Sync {
-    async fn list_draining(&self, limit: usize) -> Result<Vec<Node>, RepositoryError>;
+pub trait INodeSchedulingRepository: Send + Sync {
+    async fn list_scheduling_candidates(
+        &self,
+        organization_id: OrganizationId,
+        evaluated_at: DateTime<Utc>,
+    ) -> Result<Vec<Node>, RepositoryError>;
+}
 
-    async fn find_drain_node(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NodeEvacuationCause {
+    ManualDrain,
+    PoolMaintenance {
+        pool_id: NodePoolId,
+        generation: u64,
+        ends_at: DateTime<Utc>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeEvacuationSource {
+    pub node: Node,
+    pub cause: NodeEvacuationCause,
+}
+
+#[async_trait]
+pub trait INodeDrainRepository: Send + Sync {
+    async fn list_evacuation_sources(
+        &self,
+        evaluated_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<NodeEvacuationSource>, RepositoryError>;
+
+    async fn find_evacuation_source(
         &self,
         organization_id: OrganizationId,
         node_id: NodeId,
-    ) -> Result<Node, RepositoryError>;
+        evaluated_at: DateTime<Utc>,
+    ) -> Result<NodeEvacuationSource, RepositoryError>;
 }

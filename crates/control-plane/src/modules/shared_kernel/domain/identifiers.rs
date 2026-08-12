@@ -48,6 +48,7 @@ identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
 identifier!(OperationId);
 identifier!(NodeId);
+identifier!(NodePoolId);
 identifier!(EnrollmentTokenId);
 identifier!(NodeCertificateId);
 identifier!(NodeCommandId);

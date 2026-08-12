@@ -558,9 +558,9 @@ async fn schedule(
     }
     let mut nodes = runtime
         .nodes
-        .list(deployment.organization_id)
+        .list_scheduling_candidates(deployment.organization_id, now)
         .await
-        .map_err(|error| flow_error("could not list deployment nodes", error))?;
+        .map_err(|error| flow_error("could not list deployment scheduling candidates", error))?;
     nodes.sort_by_key(|node| node.id);
     let mut anti_affinity_unavailable = false;
     for node in nodes {
