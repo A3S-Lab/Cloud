@@ -270,6 +270,7 @@ fn set_writable(path: &Path) -> Result<(), String> {
 }
 
 #[cfg(not(unix))]
+#[allow(clippy::permissions_set_readonly_false)] // This toggles the Windows read-only attribute, not Unix mode bits.
 fn set_writable(path: &Path) -> Result<(), String> {
     let mut permissions = std::fs::symlink_metadata(path)
         .map_err(|error| format!("could not inspect artifact permissions: {error}"))?

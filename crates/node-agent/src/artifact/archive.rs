@@ -654,6 +654,16 @@ fn set_directory_mode(path: &Path) -> Result<(), String> {
         .map_err(|error| format!("could not secure artifact directory permissions: {error}"))
 }
 
+#[cfg(not(unix))]
+fn set_directory_mode(path: &Path) -> Result<(), String> {
+    let mut permissions = std::fs::metadata(path)
+        .map_err(|error| format!("could not inspect artifact directory permissions: {error}"))?
+        .permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(path, permissions)
+        .map_err(|error| format!("could not secure artifact directory permissions: {error}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -940,14 +950,4 @@ mod tests {
 
     #[cfg(not(unix))]
     fn make_test_tree_writable(_path: &Path) {}
-}
-
-#[cfg(not(unix))]
-fn set_directory_mode(path: &Path) -> Result<(), String> {
-    let mut permissions = std::fs::metadata(path)
-        .map_err(|error| format!("could not inspect artifact directory permissions: {error}"))?
-        .permissions();
-    permissions.set_readonly(true);
-    std::fs::set_permissions(path, permissions)
-        .map_err(|error| format!("could not secure artifact directory permissions: {error}"))
 }

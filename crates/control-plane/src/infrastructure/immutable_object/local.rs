@@ -367,11 +367,11 @@ fn create_secure_directory(path: &Path) -> Result<(), ImmutableObjectError> {
     secure_directory(path)
 }
 
-fn secure_directory(path: &Path) -> Result<(), ImmutableObjectError> {
+fn secure_directory(_path: &Path) -> Result<(), ImmutableObjectError> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        fs::set_permissions(_path, fs::Permissions::from_mode(0o700))
             .map_err(|error| io_error("secure immutable object directory", error))?;
     }
     Ok(())
