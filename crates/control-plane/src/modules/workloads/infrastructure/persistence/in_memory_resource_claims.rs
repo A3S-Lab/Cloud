@@ -2,8 +2,9 @@ use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, NodeId, OrganizationId, RepositoryError, ResourceClaimId,
 };
 use crate::modules::workloads::domain::entities::{
-    ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotBinding,
+    AtomicResourceClaimReservation, ResourceClaim, ResourceClaimBindingEvidence,
+    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState, ResourceKind,
+    ResourceSlotBinding,
 };
 use crate::modules::workloads::domain::repositories::{
     capacity_unavailable, placement_unavailable, IResourceClaimRepository,
@@ -19,7 +20,7 @@ pub struct InMemoryResourceClaimRepository {
     state: RwLock<State>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct State {
     claims: BTreeMap<ResourceClaimId, ResourceClaim>,
     slots: BTreeMap<SlotKey, SlotLease>,
@@ -101,87 +102,56 @@ impl IResourceClaimRepository for InMemoryResourceClaimRepository {
         &self,
         reservation: ResourceClaimReservation,
     ) -> Result<IdempotentWrite<ResourceClaim>, RepositoryError> {
-        reservation.validate().map_err(RepositoryError::Conflict)?;
+        let batch = AtomicResourceClaimReservation::single(reservation)
+            .map_err(RepositoryError::Conflict)?;
+        let result = self.reserve_atomically(batch).await?;
+        let mut claims = result.value;
+        if claims.len() != 1 {
+            return Err(RepositoryError::Storage(
+                "single resource reservation returned an invalid Claim count".into(),
+            ));
+        }
+        Ok(IdempotentWrite {
+            value: claims.remove(0),
+            replayed: result.replayed,
+        })
+    }
+
+    async fn reserve_atomically(
+        &self,
+        reservation: AtomicResourceClaimReservation,
+    ) -> Result<IdempotentWrite<Vec<ResourceClaim>>, RepositoryError> {
         let mut state = self.state.write().await;
-        if let Some(existing) = state.claims.get(&reservation.id) {
-            if !reservation.matches(existing) {
+        let existing = reservation
+            .reservations()
+            .iter()
+            .filter_map(|member| state.claims.get(&member.id).map(|claim| (member, claim)))
+            .collect::<Vec<_>>();
+        if !existing.is_empty() {
+            if existing.len() != reservation.reservations().len()
+                || existing
+                    .iter()
+                    .any(|(member, claim)| !member.matches(claim))
+            {
                 return Err(RepositoryError::IdempotencyConflict);
             }
             return Ok(IdempotentWrite {
-                value: existing.clone(),
+                value: existing
+                    .into_iter()
+                    .map(|(_, claim)| claim.clone())
+                    .collect(),
                 replayed: true,
             });
         }
-        if state.claims.values().any(|claim| {
-            claim.organization_id == reservation.binding.organization_id
-                && claim.workload_id == reservation.binding.workload_id
-                && claim.node_id == reservation.node_id
-                && claim.replica_id != reservation.binding.replica_id
-                && claim.state != ResourceClaimState::Released
-        }) {
-            return Err(placement_unavailable(
-                "required anti-affinity excludes a node with another active Workload replica",
-            ));
-        }
 
-        let mut reserved_slots = Vec::with_capacity(reservation.slots.len());
-        for request in &reservation.slots {
-            let key = SlotKey {
-                organization_id: reservation.binding.organization_id,
-                node_id: reservation.node_id,
-                kind: request.kind,
-                stable_resource_id: request.stable_resource_id.clone(),
-            };
-            if request.kind.is_shared_capacity() {
-                validate_shared_capacity(&state, &reservation, request)?;
-            } else if state
-                .slots
-                .get(&key)
-                .is_some_and(|lease| lease.active_claim_id.is_some())
-            {
-                return Err(capacity_unavailable(format!(
-                    "hard resource slot {} is already claimed",
-                    request.stable_resource_id
-                )));
-            }
-            let generation = state.slots.get(&key).map_or(Ok(1), |lease| {
-                lease.generation.checked_add(1).ok_or_else(|| {
-                    RepositoryError::Storage("hard resource slot generation overflowed".into())
-                })
-            })?;
-            reserved_slots.push((
-                key,
-                ResourceSlotBinding {
-                    kind: request.kind,
-                    stable_resource_id: request.stable_resource_id.clone(),
-                    allocation: request.allocation.clone(),
-                    slot_generation: generation,
-                    fence_token: Uuid::new_v4(),
-                },
-            ));
+        let mut next = state.clone();
+        let mut claims = Vec::with_capacity(reservation.reservations().len());
+        for member in reservation.into_reservations() {
+            claims.push(reserve_new_claim(&mut next, member)?);
         }
-
-        let claim = ResourceClaim::reserve(
-            &reservation,
-            reserved_slots
-                .iter()
-                .map(|(_, slot)| slot.clone())
-                .collect(),
-        )
-        .map_err(RepositoryError::Conflict)?;
-        for (key, slot) in reserved_slots {
-            state.slots.insert(
-                key,
-                SlotLease {
-                    generation: slot.slot_generation,
-                    fence_token: slot.fence_token,
-                    active_claim_id: (!slot.kind.is_shared_capacity()).then_some(claim.id),
-                },
-            );
-        }
-        state.claims.insert(claim.id, claim.clone());
+        *state = next;
         Ok(IdempotentWrite {
-            value: claim,
+            value: claims,
             replayed: false,
         })
     }
@@ -298,6 +268,84 @@ impl IResourceClaimRepository for InMemoryResourceClaimRepository {
         })
         .await
     }
+}
+
+fn reserve_new_claim(
+    state: &mut State,
+    reservation: ResourceClaimReservation,
+) -> Result<ResourceClaim, RepositoryError> {
+    if state.claims.contains_key(&reservation.id) {
+        return Err(RepositoryError::IdempotencyConflict);
+    }
+    if state.claims.values().any(|claim| {
+        claim.organization_id == reservation.binding.organization_id
+            && claim.workload_id == reservation.binding.workload_id
+            && claim.node_id == reservation.node_id
+            && claim.replica_id != reservation.binding.replica_id
+            && claim.state != ResourceClaimState::Released
+    }) {
+        return Err(placement_unavailable(
+            "required anti-affinity excludes a node with another active Workload replica",
+        ));
+    }
+
+    let mut reserved_slots = Vec::with_capacity(reservation.slots.len());
+    for request in &reservation.slots {
+        let key = SlotKey {
+            organization_id: reservation.binding.organization_id,
+            node_id: reservation.node_id,
+            kind: request.kind,
+            stable_resource_id: request.stable_resource_id.clone(),
+        };
+        if request.kind.is_shared_capacity() {
+            validate_shared_capacity(state, &reservation, request)?;
+        } else if state
+            .slots
+            .get(&key)
+            .is_some_and(|lease| lease.active_claim_id.is_some())
+        {
+            return Err(capacity_unavailable(format!(
+                "hard resource slot {} is already claimed",
+                request.stable_resource_id
+            )));
+        }
+        let generation = state.slots.get(&key).map_or(Ok(1), |lease| {
+            lease.generation.checked_add(1).ok_or_else(|| {
+                RepositoryError::Storage("hard resource slot generation overflowed".into())
+            })
+        })?;
+        reserved_slots.push((
+            key,
+            ResourceSlotBinding {
+                kind: request.kind,
+                stable_resource_id: request.stable_resource_id.clone(),
+                allocation: request.allocation.clone(),
+                slot_generation: generation,
+                fence_token: Uuid::new_v4(),
+            },
+        ));
+    }
+
+    let claim = ResourceClaim::reserve(
+        &reservation,
+        reserved_slots
+            .iter()
+            .map(|(_, slot)| slot.clone())
+            .collect(),
+    )
+    .map_err(RepositoryError::Conflict)?;
+    for (key, slot) in reserved_slots {
+        state.slots.insert(
+            key,
+            SlotLease {
+                generation: slot.slot_generation,
+                fence_token: slot.fence_token,
+                active_claim_id: (!slot.kind.is_shared_capacity()).then_some(claim.id),
+            },
+        );
+    }
+    state.claims.insert(claim.id, claim.clone());
+    Ok(claim)
 }
 
 fn release_slots(state: &mut State, claim: &ResourceClaim) -> Result<(), RepositoryError> {

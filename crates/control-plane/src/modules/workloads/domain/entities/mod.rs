@@ -14,8 +14,9 @@ pub use resource_allocation::{
     ResourceSlotRequest, ResourceUnit,
 };
 pub use resource_claim::{
-    ResourceClaim, ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation, ResourceClaimState,
+    AtomicResourceClaimReservation, ResourceClaim, ResourceClaimBindingEvidence,
+    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState,
+    MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS,
 };
 pub use resource_requirements::CompiledResourceRequirements;
 pub use secret_binding::{SecretBinding, SecretBindingTarget};

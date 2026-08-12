@@ -8,10 +8,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     OrganizationId, RepositoryError, ResourceClaimId, ResourceName, WorkloadId,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    IResourceClaimRepository, IWorkloadRepository, PostgresResourceClaimRepository,
-    PostgresWorkloadRepository, ResourceAllocation, ResourceClaimReleaseEvidence,
-    ResourceClaimReservation, ResourceClaimState, ResourceKind, ResourceSlotRequest, ResourceUnit,
-    Workload,
+    AtomicResourceClaimReservation, IResourceClaimRepository, IWorkloadRepository,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, ResourceAllocation,
+    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState, ResourceKind,
+    ResourceSlotRequest, ResourceUnit, Workload,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{Duration, Utc};
@@ -52,6 +52,361 @@ pub async fn exercise_replica_anti_affinity(
         base,
     )
     .await
+}
+
+pub async fn exercise_atomic_resource_claim_reservations(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    replica_set: &ReplicaSetFixture,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let nodes = PostgresNodeRepository::new(executor.clone());
+    let mut selected = None;
+    for node in nodes.list(organization_id).await? {
+        if let Some(inventory) = nodes.current_resource_inventory(node.id).await? {
+            selected = Some((node, inventory.inventory));
+            break;
+        }
+    }
+    let (node, inventory) = selected.ok_or("atomic Claim fixture has no inventoried node")?;
+    let first_unplaced = replica_set
+        .bindings
+        .first()
+        .ok_or("atomic Claim fixture has no replica binding")?;
+    exercise_concurrent_atomic_resource_claim_candidates(
+        executor,
+        &nodes,
+        organization_id,
+        replica_set,
+        node.id,
+        &inventory,
+    )
+    .await?;
+    let workload_repository = PostgresWorkloadRepository::new(executor.clone());
+    let created_at = Utc::now()
+        .max(first_unplaced.updated_at + Duration::seconds(1))
+        .max(inventory.observed_at + Duration::seconds(1));
+    let second_workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        first_unplaced.project_id,
+        first_unplaced.environment_id,
+        ResourceName::parse("Atomic Claim companion")?,
+        created_at,
+    );
+    let second_bundle = crate::workloads_support::request(
+        second_workload,
+        1,
+        'a',
+        "postgres-atomic-claim-companion",
+        created_at,
+    )?;
+    let second_deployment_id = second_bundle.deployment.id;
+    workload_repository.create_deployment(second_bundle).await?;
+    let second_unplaced = workload_repository
+        .find_deployment_replica_binding(organization_id, second_deployment_id)
+        .await?;
+    let placement_at = created_at.max(second_unplaced.updated_at);
+    let first_binding = first_unplaced.propose_assignment(node.id, placement_at)?;
+    let second_binding = second_unplaced.propose_assignment(node.id, placement_at)?;
+    let cpu_slot = inventory
+        .slots
+        .iter()
+        .find(|slot| slot.kind == ResourceKind::Cpu && slot.stable_resource_id == "cpu/shared")
+        .ok_or("atomic Claim fixture inventory has no shared CPU slot")?;
+    let cpu_capacity = cpu_slot
+        .allocation
+        .scalar_amount()
+        .ok_or("atomic Claim fixture CPU capacity is not scalar")?;
+    if cpu_capacity < 2 {
+        return Err("atomic Claim fixture CPU capacity is smaller than two units".into());
+    }
+    let database = Database::new(PostgresDialect, executor.clone());
+    let lease_query = || {
+        sql_query::<(u64, Option<uuid::Uuid>, chrono::DateTime<Utc>)>(
+            "select slot_generation, active_claim_id, updated_at from resource_slot_leases where organization_id = ",
+        )
+        .bind(organization_id.as_uuid())
+        .append(" and node_id = ")
+        .bind(node.id.as_uuid())
+        .append(" and resource_kind = 'cpu' and stable_resource_id = ")
+        .bind(cpu_slot.stable_resource_id.as_str())
+    };
+    let baseline_lease = database.fetch_optional_as(lease_query()).await?;
+    let repository = PostgresResourceClaimRepository::new(executor.clone());
+    let failed_at = baseline_lease.map_or(placement_at, |lease| placement_at.max(lease.2))
+        + Duration::seconds(1);
+    let failed_first = shared_reservation(
+        ResourceClaimId::new(),
+        first_binding.clone(),
+        inventory.clone(),
+        cpu_capacity,
+        failed_at,
+    );
+    let failed_second = shared_reservation(
+        ResourceClaimId::new(),
+        second_binding.clone(),
+        inventory.clone(),
+        cpu_capacity,
+        failed_at,
+    );
+    let failed_batch =
+        AtomicResourceClaimReservation::new(vec![failed_second.clone(), failed_first.clone()])?;
+    assert!(matches!(
+        repository.reserve_atomically(failed_batch).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<i64>("select count(*) from resource_claims where id in (")
+                    .bind(failed_first.id.as_uuid())
+                    .append(", ")
+                    .bind(failed_second.id.as_uuid())
+                    .append(")"),
+            )
+            .await?,
+        0
+    );
+    assert_eq!(
+        database.fetch_optional_as(lease_query()).await?,
+        baseline_lease
+    );
+
+    let reserved_at = failed_at + Duration::seconds(1);
+    let first = shared_reservation(
+        ResourceClaimId::new(),
+        first_binding,
+        inventory.clone(),
+        1,
+        reserved_at,
+    );
+    let second = shared_reservation(
+        ResourceClaimId::new(),
+        second_binding.clone(),
+        inventory.clone(),
+        1,
+        reserved_at,
+    );
+    let batch = AtomicResourceClaimReservation::new(vec![second.clone(), first.clone()])?;
+    let created = repository.reserve_atomically(batch.clone()).await?;
+    let replayed = repository.reserve_atomically(batch).await?;
+    assert!(!created.replayed);
+    assert!(replayed.replayed);
+    assert_eq!(created.value, replayed.value);
+    let mut slot_generations = created
+        .value
+        .iter()
+        .map(|claim| claim.slots[0].slot_generation)
+        .collect::<Vec<_>>();
+    slot_generations.sort_unstable();
+    let baseline_generation = baseline_lease.map_or(0, |lease| lease.0);
+    assert_eq!(
+        slot_generations,
+        vec![baseline_generation + 1, baseline_generation + 2]
+    );
+
+    let absent = shared_reservation(
+        ResourceClaimId::new(),
+        second_binding,
+        inventory,
+        1,
+        reserved_at,
+    );
+    let partial = AtomicResourceClaimReservation::new(vec![first, absent.clone()])?;
+    assert_eq!(
+        repository.reserve_atomically(partial).await,
+        Err(RepositoryError::IdempotencyConflict)
+    );
+    assert_eq!(
+        repository.find(organization_id, absent.id).await,
+        Err(RepositoryError::NotFound)
+    );
+
+    for claim in created.value {
+        repository
+            .cancel_database_reservation(
+                claim.organization_id,
+                claim.id,
+                claim.aggregate_version,
+                reserved_at + Duration::seconds(1),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+async fn exercise_concurrent_atomic_resource_claim_candidates(
+    executor: &PostgresExecutor,
+    nodes: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+    replica_set: &ReplicaSetFixture,
+    first_node_id: a3s_cloud_control_plane::modules::shared_kernel::domain::NodeId,
+    first_inventory: &NodeResourceInventory,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let first_binding = replica_set
+        .bindings
+        .first()
+        .ok_or("concurrent atomic Claim fixture has no first binding")?;
+    let second_binding = replica_set
+        .bindings
+        .get(1)
+        .ok_or("concurrent atomic Claim fixture has no second binding")?;
+    let second_node_id = a3s_cloud_control_plane::modules::shared_kernel::domain::NodeId::new();
+    let second_agent_instance_id = uuid::Uuid::now_v7();
+    let inserted_at = Utc::now()
+        .max(first_binding.updated_at)
+        .max(second_binding.updated_at)
+        .max(first_inventory.observed_at);
+    let database = Database::new(PostgresDialect, executor.clone());
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) select organization_id, ",
+            )
+            .bind(second_node_id.as_uuid())
+            .append(", 'atomic claim worker', ")
+            .bind(format!("atomic-claim-worker-{}", second_node_id.as_uuid()))
+            .append(", 'ready', ")
+            .bind(second_agent_instance_id)
+            .append(", agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, ")
+            .bind(inserted_at)
+            .append(", ")
+            .bind(inserted_at)
+            .append(", 0, 1 from nodes where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and id = ")
+            .bind(first_node_id.as_uuid()),
+        )
+        .await?;
+    let second_inventory = NodeResourceInventory::new(
+        second_node_id.as_uuid(),
+        second_agent_instance_id,
+        1,
+        inserted_at + Duration::milliseconds(1),
+        first_inventory.slots.clone(),
+    )?;
+    nodes
+        .record_resource_inventory(
+            second_inventory.clone(),
+            inserted_at + Duration::milliseconds(2),
+        )
+        .await?;
+
+    let first_capacity = cpu_shared_capacity(first_inventory)?;
+    let second_capacity = cpu_shared_capacity(&second_inventory)?;
+    let slot_ledger_updated_at = database
+        .fetch_one_as(
+            sql_query::<Option<chrono::DateTime<Utc>>>(
+                "select max(updated_at) from resource_slot_leases where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and node_id in (")
+            .bind(first_node_id.as_uuid())
+            .append(", ")
+            .bind(second_node_id.as_uuid())
+            .append(")"),
+        )
+        .await?;
+    let reserved_at = slot_ledger_updated_at
+        .map_or(inserted_at, |updated_at| inserted_at.max(updated_at))
+        + Duration::seconds(1);
+    let left = AtomicResourceClaimReservation::new(vec![
+        shared_reservation(
+            ResourceClaimId::new(),
+            first_binding.propose_assignment(first_node_id, reserved_at)?,
+            first_inventory.clone(),
+            first_capacity,
+            reserved_at,
+        ),
+        shared_reservation(
+            ResourceClaimId::new(),
+            second_binding.propose_assignment(second_node_id, reserved_at)?,
+            second_inventory.clone(),
+            second_capacity,
+            reserved_at,
+        ),
+    ])?;
+    let right = AtomicResourceClaimReservation::new(vec![
+        shared_reservation(
+            ResourceClaimId::new(),
+            first_binding.propose_assignment(second_node_id, reserved_at)?,
+            second_inventory,
+            second_capacity,
+            reserved_at,
+        ),
+        shared_reservation(
+            ResourceClaimId::new(),
+            second_binding.propose_assignment(first_node_id, reserved_at)?,
+            first_inventory.clone(),
+            first_capacity,
+            reserved_at,
+        ),
+    ])?;
+    let repository = Arc::new(PostgresResourceClaimRepository::new(executor.clone()));
+    let barrier = Arc::new(Barrier::new(2));
+    let mut tasks = Vec::new();
+    for batch in [left, right] {
+        let attempted_ids = batch
+            .reservations()
+            .iter()
+            .map(|reservation| reservation.id)
+            .collect::<Vec<_>>();
+        let repository = Arc::clone(&repository);
+        let barrier = Arc::clone(&barrier);
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            (attempted_ids, repository.reserve_atomically(batch).await)
+        }));
+    }
+
+    let mut winner = None;
+    let mut loser_ids = None;
+    for task in tasks {
+        let (attempted_ids, result) =
+            tokio::time::timeout(std::time::Duration::from_secs(10), task)
+                .await
+                .map_err(|_| "opposing atomic Claim candidates deadlocked")??;
+        match result {
+            Ok(result) if winner.is_none() => winner = Some(result.value),
+            Ok(_) => return Err("opposing atomic Claim candidates both committed".into()),
+            Err(RepositoryError::Conflict(_)) if loser_ids.is_none() => {
+                loser_ids = Some(attempted_ids)
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let winner = winner.ok_or("opposing atomic Claim candidates produced no winner")?;
+    let loser_ids = loser_ids.ok_or("opposing atomic Claim candidates produced no loser")?;
+    assert_eq!(winner.len(), 2);
+    assert_eq!(loser_ids.len(), 2);
+    for claim_id in loser_ids {
+        assert_eq!(
+            repository.find(organization_id, claim_id).await,
+            Err(RepositoryError::NotFound)
+        );
+    }
+    for claim in winner {
+        repository
+            .cancel_database_reservation(
+                claim.organization_id,
+                claim.id,
+                claim.aggregate_version,
+                reserved_at + Duration::seconds(1),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+fn cpu_shared_capacity(
+    inventory: &NodeResourceInventory,
+) -> Result<u64, Box<dyn std::error::Error>> {
+    inventory
+        .slots
+        .iter()
+        .find(|slot| slot.kind == ResourceKind::Cpu && slot.stable_resource_id == "cpu/shared")
+        .and_then(|slot| slot.allocation.scalar_amount())
+        .ok_or_else(|| "atomic Claim fixture has no scalar shared CPU capacity".into())
 }
 
 pub async fn exercise_resource_claims(

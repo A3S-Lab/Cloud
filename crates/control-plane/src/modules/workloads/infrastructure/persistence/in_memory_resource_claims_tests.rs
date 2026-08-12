@@ -4,9 +4,9 @@ use crate::modules::shared_kernel::domain::{
     ResourceClaimId, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    DeploymentReplicaBinding, ResourceAllocation, ResourceClaimBindingEvidence,
-    ResourceClaimReleaseEvidence, ResourceClaimReservation, ResourceClaimState, ResourceKind,
-    ResourceSlotRequest, ResourceUnit,
+    AtomicResourceClaimReservation, DeploymentReplicaBinding, ResourceAllocation,
+    ResourceClaimBindingEvidence, ResourceClaimReleaseEvidence, ResourceClaimReservation,
+    ResourceClaimState, ResourceKind, ResourceSlotRequest, ResourceUnit,
 };
 use crate::modules::workloads::domain::repositories::{
     is_placement_unavailable, IResourceClaimRepository,
@@ -15,6 +15,169 @@ use a3s_cloud_contracts::{NodeResourceInventory, NodeResourceSlot};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use tokio::sync::Barrier;
+
+#[test]
+fn atomic_reservation_rejects_empty_duplicate_and_cross_tenant_batches() {
+    assert!(AtomicResourceClaimReservation::new(Vec::new()).is_err());
+
+    let now = Utc::now();
+    let first = reservation(ResourceClaimId::new(), "gpu/GPU-validation", now);
+    assert!(AtomicResourceClaimReservation::new(vec![first.clone(), first.clone()]).is_err());
+
+    let cross_tenant = reservation(ResourceClaimId::new(), "gpu/GPU-cross-tenant", now);
+    assert_ne!(
+        first.binding.organization_id,
+        cross_tenant.binding.organization_id
+    );
+    assert!(AtomicResourceClaimReservation::new(vec![first, cross_tenant]).is_err());
+
+    let organization_id = OrganizationId::new();
+    let left_node = NodeId::new();
+    let right_node = NodeId::new();
+    let left = shared_reservation(organization_id, left_node, 1, 1_000, now);
+    let right = shared_reservation(organization_id, right_node, 1, 1_000, now);
+    let ordered = AtomicResourceClaimReservation::new(vec![right, left])
+        .expect("canonical atomic reservation");
+    assert!(ordered
+        .reservations()
+        .windows(2)
+        .all(|members| members[0].node_id < members[1].node_id));
+}
+
+#[tokio::test]
+async fn atomic_reservation_rolls_back_every_claim_and_slot_after_a_member_conflict() {
+    let repository = InMemoryResourceClaimRepository::new();
+    let now = Utc::now();
+    let first = reservation(ResourceClaimId::new(), "gpu/GPU-atomic", now);
+    let mut conflicting = first.clone();
+    conflicting.id = ResourceClaimId::new();
+    conflicting.binding.deployment_id = DeploymentId::new();
+    conflicting.binding.workload_id = WorkloadId::new();
+    conflicting.binding.replica_id =
+        WorkloadReplicaId::from_uuid(conflicting.binding.workload_id.as_uuid());
+    conflicting.binding.member_id =
+        WorkloadReplicaMemberId::from_uuid(conflicting.binding.replica_id.as_uuid());
+    conflicting.binding.revision_id = WorkloadRevisionId::new();
+    conflicting.binding.runtime_unit_id = format!(
+        "workload:{}:revision:{}",
+        conflicting.binding.workload_id, conflicting.binding.revision_id
+    );
+    let batch = AtomicResourceClaimReservation::new(vec![first.clone(), conflicting.clone()])
+        .expect("atomic reservation batch");
+
+    assert!(matches!(
+        repository.reserve_atomically(batch).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert_eq!(
+        repository
+            .find(first.binding.organization_id, first.id)
+            .await,
+        Err(RepositoryError::NotFound)
+    );
+    assert_eq!(
+        repository
+            .find(conflicting.binding.organization_id, conflicting.id)
+            .await,
+        Err(RepositoryError::NotFound)
+    );
+
+    let recovered = repository
+        .reserve(first)
+        .await
+        .expect("reservation after atomic rollback")
+        .value;
+    assert_eq!(recovered.slots[0].slot_generation, 1);
+}
+
+#[tokio::test]
+async fn exact_atomic_reservation_replay_requires_the_complete_batch() {
+    let repository = InMemoryResourceClaimRepository::new();
+    let now = Utc::now();
+    let organization_id = OrganizationId::new();
+    let first = shared_reservation(organization_id, NodeId::new(), 400, 1_000, now);
+    let second = shared_reservation(organization_id, NodeId::new(), 400, 1_000, now);
+    let batch = AtomicResourceClaimReservation::new(vec![second.clone(), first.clone()])
+        .expect("atomic reservation batch");
+
+    let created = repository
+        .reserve_atomically(batch.clone())
+        .await
+        .expect("atomic reservation");
+    let replayed = repository
+        .reserve_atomically(batch)
+        .await
+        .expect("exact atomic replay");
+    assert!(!created.replayed);
+    assert!(replayed.replayed);
+    assert_eq!(created.value, replayed.value);
+
+    let third = shared_reservation(organization_id, NodeId::new(), 1, 1_000, now);
+    let partial = AtomicResourceClaimReservation::new(vec![first, third.clone()])
+        .expect("partial replay batch");
+    assert_eq!(
+        repository.reserve_atomically(partial).await,
+        Err(RepositoryError::IdempotencyConflict)
+    );
+    assert_eq!(
+        repository.find(organization_id, third.id).await,
+        Err(RepositoryError::NotFound)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_atomic_reservations_have_one_complete_winner() {
+    let repository = Arc::new(InMemoryResourceClaimRepository::new());
+    let now = Utc::now();
+    let organization_id = OrganizationId::new();
+    let first_nodes = [NodeId::new(), NodeId::new()];
+    let first_members = first_nodes
+        .into_iter()
+        .map(|node_id| shared_reservation(organization_id, node_id, 1_000, 1_000, now))
+        .collect::<Vec<_>>();
+    let second_members = first_nodes
+        .into_iter()
+        .map(|node_id| shared_reservation(organization_id, node_id, 1_000, 1_000, now))
+        .collect::<Vec<_>>();
+    let batches = [
+        AtomicResourceClaimReservation::new(first_members.clone()).expect("first atomic batch"),
+        AtomicResourceClaimReservation::new(second_members.clone()).expect("second atomic batch"),
+    ];
+    let barrier = Arc::new(Barrier::new(batches.len()));
+    let mut tasks = Vec::new();
+    for batch in batches {
+        let repository = Arc::clone(&repository);
+        let barrier = Arc::clone(&barrier);
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            repository.reserve_atomically(batch).await
+        }));
+    }
+
+    let mut winner = None;
+    let mut conflicts = 0;
+    for task in tasks {
+        match task.await.expect("atomic reservation task") {
+            Ok(result) if winner.is_none() => winner = Some(result.value),
+            Ok(_) => panic!("two atomic batches reserved the same complete capacity"),
+            Err(RepositoryError::Conflict(_)) => conflicts += 1,
+            Err(error) => panic!("unexpected atomic reservation outcome: {error}"),
+        }
+    }
+    let winner = winner.expect("one atomic reservation winner");
+    assert_eq!(winner.len(), 2);
+    assert_eq!(conflicts, 1);
+
+    let winner_ids = winner.iter().map(|claim| claim.id).collect::<Vec<_>>();
+    for candidate in first_members.iter().chain(&second_members) {
+        let stored = repository.find(organization_id, candidate.id).await;
+        if winner_ids.contains(&candidate.id) {
+            assert!(stored.is_ok());
+        } else {
+            assert_eq!(stored, Err(RepositoryError::NotFound));
+        }
+    }
+}
 
 #[tokio::test]
 async fn exact_reservation_replay_does_not_rotate_fencing_identity() {
