@@ -27,10 +27,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 };
 use a3s_cloud_control_plane::modules::workloads::{
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
-    IOciArtifactResolver, IResourceClaimRepository, IWorkloadRepository, IWorkloadRuntimeControl,
-    IWorkloadRuntimeTargetRepository, OciArtifact, OciArtifactReference,
-    OciArtifactResolutionError, OciRegistryArtifactResolver, PostgresResourceClaimRepository,
-    PostgresWorkloadRepository, WorkloadRuntimeReconciler,
+    IDeploymentFlowWorkloadRepository, IOciArtifactResolver, IResourceClaimRepository,
+    IWorkloadRepository, IWorkloadRuntimeControl, IWorkloadRuntimeTargetRepository, OciArtifact,
+    OciArtifactReference, OciArtifactResolutionError, OciRegistryArtifactResolver,
+    PostgresResourceClaimRepository, PostgresWorkloadRepository, WorkloadRuntimeReconciler,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use a3s_runtime::contract::{
@@ -82,7 +82,7 @@ pub async fn exercise_deployment_flow(
         .await?;
     let (node_id, agent_instance_id, capabilities, _inventory) =
         ready_node(&node_repository, organization_id).await?;
-    let workloads: Arc<dyn IWorkloadRepository> = workload_repository.clone();
+    let workloads: Arc<dyn IDeploymentFlowWorkloadRepository> = workload_repository.clone();
     let nodes: Arc<dyn INodeSchedulingRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let resource_claims = Arc::new(PostgresResourceClaimRepository::new(executor.clone()));

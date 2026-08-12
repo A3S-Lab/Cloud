@@ -115,7 +115,8 @@ impl FlowRuntime for FlowRuntimeRouter {
             DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
             LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
             PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
-            STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+            PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME,
+            STOP_WORKFLOW_VERSION,
         };
 
         let runtime = match (
@@ -134,6 +135,10 @@ impl FlowRuntime for FlowRuntimeRouter {
             | (
                 PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
                 PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+            )
+            | (
+                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+                PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
             )
             | (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => &self.deployments,
             _ => {
@@ -601,6 +606,7 @@ mod tests {
             ("cloud.deployment", "1", "deployment"),
             ("cloud.deployment", "2", "deployment"),
             ("cloud.placement-group-deployment", "1", "deployment"),
+            ("cloud.placement-group-deployment", "2", "deployment"),
             ("cloud.workload.stop", "1", "deployment"),
             ("cloud.build", "5", "build"),
             ("cloud.execution", "1", "execution"),

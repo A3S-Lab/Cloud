@@ -33,17 +33,18 @@ use crate::modules::shared_kernel::domain::{
     WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, DeploymentStatus,
-    HttpHealthCheck, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
-    ResourceClaimReservation, SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess,
-    ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec, WorkloadDesiredState,
-    WorkloadPlacementGroup, WorkloadReplicaLifecycle, WorkloadRevision,
+    AtomicResourceClaimReservation, CompiledResourceRequirements, Deployment,
+    DeploymentReplicaBinding, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
+    RequestedServiceTemplate, ResourceClaimReservation, ResourceClaimState, SecretBinding,
+    SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
+    WorkloadControlSpec, WorkloadDesiredState, WorkloadPlacementGroup, WorkloadReplicaLifecycle,
+    WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::{DeploymentRequested, WorkloadStopRequested};
 use crate::modules::workloads::domain::repositories::{
-    CreateDeploymentBundle, IResourceClaimRepository, IWorkloadPlacementGroupRepository,
-    IWorkloadReplicaDeploymentRepository, IWorkloadRepository, ReconfigureReplicaSetWrite,
-    RequestWorkloadStopBundle,
+    CreateDeploymentBundle, IDeploymentFlowWorkloadRepository, IResourceClaimRepository,
+    IWorkloadPlacementGroupRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
+    ReconfigureReplicaSetWrite, RequestWorkloadStopBundle,
 };
 use crate::modules::workloads::domain::services::{
     DeploymentRouteStage, DeploymentRouteUpdateRequest, IDeploymentRouteUpdater,
@@ -151,17 +152,17 @@ async fn placement_group_deployment_flow_waits_without_partial_dispatch_and_canc
         engine.snapshot(&run_id).await?.status,
         WorkflowRunStatus::Suspended
     );
-    let queued = workloads
+    let resolving = workloads
         .find_deployment(organization_id, materialization.deployment.id)
         .await?;
-    assert_eq!(queued.status, DeploymentStatus::Queued);
-    assert!(queued.node_id.is_none() && queued.command_id.is_none());
+    assert_eq!(resolving.status, DeploymentStatus::Resolving);
+    assert!(resolving.node_id.is_none() && resolving.command_id.is_none());
 
     let cancelling = workloads
         .mark_cancellation_requested(
-            queued.id,
-            queued.aggregate_version,
-            base + Duration::seconds(1),
+            resolving.id,
+            resolving.aggregate_version,
+            resolving.updated_at + Duration::milliseconds(1),
         )
         .await?;
     assert_eq!(cancelling.status, DeploymentStatus::Cancelling);
@@ -186,6 +187,387 @@ async fn placement_group_deployment_flow_waits_without_partial_dispatch_and_canc
     assert_eq!(
         replay.placement_group_binding,
         materialization.placement_group_binding
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn placement_group_deployment_flow_marks_expired_scheduling_as_failed(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("expired placement-group scheduling")?,
+        base,
+    );
+    let leader = template('a');
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        leader.clone(),
+        base,
+    )?;
+    let spec = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?;
+    let policy = spec.placement_policy.clone();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let replica = workloads
+        .seed_placement_group_foundation(workload.clone(), spec, revision.clone())
+        .await?;
+    let group = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        vec![leader, template('b'), template('c')],
+        base + Duration::milliseconds(1),
+    )?;
+    workloads.materialize_placement_group(group).await?;
+    let candidate = workloads
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("placement-group Deployment Flow has no candidate")?;
+    let materialization = workloads
+        .materialize_replica_deployment(candidate, base + Duration::milliseconds(2))
+        .await?
+        .ok_or("placement-group Deployment Flow materialization was skipped")?;
+
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let engine = FlowEngine::in_memory(Arc::new(runtime(
+        &workloads,
+        &nodes,
+        Duration::milliseconds(1),
+    )?));
+    let run_id = materialization.operation.id.to_string();
+    engine
+        .start_with_id(
+            run_id.clone(),
+            WorkflowSpec::rust_embedded(
+                materialization.operation.workflow.name(),
+                materialization.operation.workflow.version(),
+                "a3s-cloud",
+                "main",
+            ),
+            materialization.operation.input,
+        )
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Failed
+    );
+    let failed = workloads
+        .find_deployment(organization_id, materialization.deployment.id)
+        .await?;
+    assert_eq!(failed.status, DeploymentStatus::Failed);
+    assert_eq!(
+        failed.failure.as_deref(),
+        Some("no distinct ready node set satisfies the complete placement-group plan")
+    );
+    assert!(failed.node_id.is_none() && failed.command_id.is_none());
+    assert!(workloads
+        .list_deployment_replica_member_bindings(organization_id, failed.id)
+        .await?
+        .iter()
+        .all(|binding| binding.node_id.is_none()));
+    Ok(())
+}
+
+#[tokio::test]
+async fn placement_group_deployment_flow_reserves_and_places_every_member_atomically_then_cancels(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("atomic placement-group scheduling")?,
+        base,
+    );
+    let leader = template('4');
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        leader.clone(),
+        base,
+    )?;
+    let spec = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?;
+    let policy = spec.placement_policy.clone();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let replica = workloads
+        .seed_placement_group_foundation(workload.clone(), spec, revision.clone())
+        .await?;
+    let group = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        vec![leader, template('5'), template('6')],
+        base + Duration::milliseconds(1),
+    )?;
+    workloads.materialize_placement_group(group).await?;
+    let candidate = workloads
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("placement-group Deployment Flow has no candidate")?;
+    let materialization = workloads
+        .materialize_replica_deployment(candidate, base + Duration::milliseconds(2))
+        .await?
+        .ok_or("placement-group Deployment Flow materialization was skipped")?;
+    assert_eq!(materialization.operation.workflow.version(), "2");
+
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    for (name, digest) in [
+        ("group-node-a", 'a'),
+        ("group-node-b", 'b'),
+        ("group-node-c", 'c'),
+    ] {
+        ready_node_with_capacity(
+            &nodes,
+            organization_id,
+            base,
+            name,
+            digest,
+            8_000,
+            8 * 1024 * 1024 * 1024,
+        )
+        .await?;
+    }
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let engine = FlowEngine::in_memory(Arc::new(runtime_with_resource_claims(
+        &workloads,
+        &nodes,
+        resource_claims.clone(),
+        Duration::seconds(10),
+    )?));
+    let run_id = materialization.operation.id.to_string();
+    engine
+        .start_with_id(
+            run_id.clone(),
+            WorkflowSpec::rust_embedded(
+                materialization.operation.workflow.name(),
+                materialization.operation.workflow.version(),
+                "a3s-cloud",
+                "main",
+            ),
+            materialization.operation.input,
+        )
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Suspended
+    );
+
+    let scheduled = workloads
+        .find_deployment(organization_id, materialization.deployment.id)
+        .await?;
+    assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
+    assert!(scheduled.node_id.is_some() && scheduled.command_id.is_none());
+    let bindings = workloads
+        .list_deployment_replica_member_bindings(organization_id, scheduled.id)
+        .await?;
+    assert_eq!(bindings.len(), 3);
+    assert_eq!(
+        bindings
+            .iter()
+            .filter_map(|binding| binding.node_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    assert_eq!(scheduled.node_id, bindings[0].node_id);
+    for binding in &bindings {
+        let claim = resource_claims
+            .find(organization_id, binding.placement_group_resource_claim_id())
+            .await?;
+        assert_eq!(claim.state, ResourceClaimState::ReservedInDb);
+        assert_eq!(claim.member_id, binding.member_id);
+        assert_eq!(Some(claim.node_id), binding.node_id);
+        assert_eq!(claim.placement_generation, binding.placement_generation);
+    }
+
+    workloads
+        .mark_cancellation_requested(
+            scheduled.id,
+            scheduled.aggregate_version,
+            Utc::now() + Duration::seconds(1),
+        )
+        .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::minutes(1))
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    let cancelled = workloads
+        .find_deployment(organization_id, scheduled.id)
+        .await?;
+    assert_eq!(cancelled.status, DeploymentStatus::Cancelled);
+    assert_eq!(cancelled.node_id, bindings[0].node_id);
+    let retained_bindings = workloads
+        .list_deployment_replica_member_bindings(organization_id, scheduled.id)
+        .await?;
+    assert_eq!(retained_bindings, bindings);
+    for binding in &retained_bindings {
+        let claim = resource_claims
+            .find(organization_id, binding.placement_group_resource_claim_id())
+            .await?;
+        assert_eq!(claim.state, ResourceClaimState::Released);
+        let member = workloads
+            .find_workload_replica_member(organization_id, binding.replica_id, binding.member_id)
+            .await?;
+        assert!(member.node_id.is_none());
+        assert_eq!(member.placement_generation, binding.placement_generation);
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn placement_group_deployment_flow_recovers_claims_reserved_before_member_assignment(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("placement-group reservation recovery")?,
+        base,
+    );
+    let leader = template('7');
+    let revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        1,
+        leader.clone(),
+        base,
+    )?;
+    let spec = WorkloadControlSpec::unmanaged_placement_group(1, 1, 3)?;
+    let policy = spec.placement_policy.clone();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let replica = workloads
+        .seed_placement_group_foundation(workload.clone(), spec, revision.clone())
+        .await?;
+    let group_write = WorkloadPlacementGroup::plan(
+        &workload,
+        &policy,
+        &revision,
+        &replica,
+        vec![leader, template('8'), template('9')],
+        base + Duration::milliseconds(1),
+    )?;
+    let group = workloads
+        .materialize_placement_group(group_write)
+        .await?
+        .group;
+    let candidate = workloads
+        .pending_replica_deployments(10)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or("placement-group Deployment Flow has no recovery candidate")?;
+    let materialization = workloads
+        .materialize_replica_deployment(candidate, base + Duration::milliseconds(2))
+        .await?
+        .ok_or("placement-group recovery Deployment was skipped")?;
+    let reserved_at = Utc::now();
+    let mut reservations = Vec::new();
+    for (binding, plan) in materialization.member_bindings.iter().zip(&group.members) {
+        let node_id = NodeId::new();
+        let inventory = NodeResourceInventory::new(
+            node_id.as_uuid(),
+            Uuid::now_v7(),
+            1,
+            reserved_at,
+            vec![
+                NodeResourceSlot::new(
+                    ResourceKind::Cpu,
+                    "cpu/shared",
+                    ResourceAllocation::Scalar {
+                        amount: 8_000,
+                        unit: ResourceUnit::MilliCpu,
+                    },
+                )?,
+                NodeResourceSlot::new(
+                    ResourceKind::Memory,
+                    "memory/system",
+                    ResourceAllocation::Scalar {
+                        amount: 8 * 1024 * 1024 * 1024,
+                        unit: ResourceUnit::Byte,
+                    },
+                )?,
+            ],
+        )?;
+        let requirements =
+            CompiledResourceRequirements::compile(&plan.template.resources, &inventory)?;
+        reservations.push(ResourceClaimReservation {
+            id: binding.placement_group_resource_claim_id(),
+            binding: binding.propose_assignment(node_id, reserved_at)?,
+            node_id,
+            inventory,
+            topology_digest: requirements.topology_digest,
+            slots: requirements.slots,
+            reserved_at,
+        });
+    }
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    resource_claims
+        .reserve_atomically(AtomicResourceClaimReservation::new(reservations)?)
+        .await?;
+
+    // No node is registered in Fleet. Recovery must trust the complete durable
+    // reservation instead of trying to select a different candidate set.
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let engine = FlowEngine::in_memory(Arc::new(runtime_with_resource_claims(
+        &workloads,
+        &nodes,
+        resource_claims,
+        Duration::seconds(10),
+    )?));
+    let run_id = materialization.operation.id.to_string();
+    engine
+        .start_with_id(
+            run_id.clone(),
+            WorkflowSpec::rust_embedded(
+                materialization.operation.workflow.name(),
+                materialization.operation.workflow.version(),
+                "a3s-cloud",
+                "main",
+            ),
+            materialization.operation.input,
+        )
+        .await?;
+    assert_eq!(
+        engine.snapshot(&run_id).await?.status,
+        WorkflowRunStatus::Suspended
+    );
+    let scheduled = workloads
+        .find_deployment(organization_id, materialization.deployment.id)
+        .await?;
+    assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
+    let bindings = workloads
+        .list_deployment_replica_member_bindings(organization_id, scheduled.id)
+        .await?;
+    assert_eq!(bindings.len(), 3);
+    assert_eq!(
+        bindings
+            .iter()
+            .filter_map(|binding| binding.node_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
     );
     Ok(())
 }
@@ -893,7 +1275,7 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
     let first_digest = format!("sha256:{}", "1".repeat(64));
     let second_digest = format!("sha256:{}", "2".repeat(64));
     let resolver = Arc::new(MovingArtifactResolver::new(first_digest.clone()));
-    let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
+    let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
     let runtime = DeploymentFlowRuntime::new(
@@ -2049,7 +2431,7 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
     let organization_id = OrganizationId::new();
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let nodes = Arc::new(InMemoryNodeRepository::new());
-    let workload_port: Arc<dyn IWorkloadRepository> = workloads.clone();
+    let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes;
     let runtime = DeploymentFlowRuntime::new(

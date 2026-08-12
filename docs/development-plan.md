@@ -289,7 +289,7 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-08-12:
+Status as of 2026-08-13:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -3475,12 +3475,24 @@ dedicated placement-group workflow operation, every immutable member binding,
 the exact group/plan binding, and one outbox fact. Exact concurrent writers
 converge to one create plus one replay; candidate discovery and the locked
 write both fence policy digest, revision generation, replica generation, and
-group plan. The dedicated workflow validates that complete durable shape and
-waits for the next scheduling slice without entering the single-node dispatch
-path. Group member scheduling, Claim-to-member assignment, concurrent Agent
-preparation with whole-group compensation, group health, bounded rolling
-updates, independent Gateway placement, provider-neutral private networking,
-and stateful moves remain open.
+group plan. The immutable version-one workflow continues to validate that
+complete durable shape without entering the single-node dispatch path. New
+operations use the version-two placement-group workflow. It compiles each
+member's exact Runtime and resource requirements, computes a complete
+distinct-node maximum matching, derives one deterministic Claim per Deployment
+member, and reserves the whole Claim set through the existing bounded atomic
+reservation port. A complete reservation committed before a process failure is
+recovered without candidate reselection; a partial durable set fails closed.
+One Workloads transaction then places every member, updates every member
+binding, and projects only the leader node onto the compatibility Deployment
+row. Exact concurrent PostgreSQL writers converge to one commit plus one
+replay. Before any Agent preparation, cancellation releases every database-only
+Claim and clears every member placement atomically while retaining immutable
+placement history. The Flow now fails truthfully at the original convergence
+deadline and otherwise suspends at the explicit Agent preparation boundary.
+Concurrent Agent preparation with whole-group compensation, group health,
+bounded rolling updates, independent Gateway placement, provider-neutral
+private networking, and stateful moves remain open.
 
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. PostgreSQL, NATS JetStream,

@@ -325,6 +325,17 @@ pub(super) async fn place(
     binding
         .assign(deployment, &member)
         .map_err(RepositoryError::Conflict)?;
+    persist_member_placement(transaction, &member, previous_member_version).await?;
+    persist_canonical_binding_assignment(transaction, &binding).await?;
+    deployment_group_bindings::persist_member_assignment(transaction, &binding).await?;
+    Ok(binding)
+}
+
+pub(super) async fn persist_member_placement(
+    transaction: &PostgresTransaction,
+    member: &WorkloadReplicaMember,
+    previous_member_version: u64,
+) -> Result<(), PostgresPersistenceError> {
     let member_rows = execute(
         transaction,
         update_table::<WorkloadReplicaMembers>()
@@ -345,7 +356,13 @@ pub(super) async fn place(
             .filter(WorkloadReplicaMembers::aggregate_version().eq(previous_member_version)),
     )
     .await?;
-    require_one_row("Workload replica member placement", member_rows)?;
+    require_one_row("Workload replica member placement", member_rows)
+}
+
+pub(super) async fn persist_canonical_binding_assignment(
+    transaction: &PostgresTransaction,
+    binding: &DeploymentReplicaBinding,
+) -> Result<(), PostgresPersistenceError> {
     let binding_rows = execute(
         transaction,
         update_table::<DeploymentReplicaBindings>()
@@ -361,9 +378,7 @@ pub(super) async fn place(
             .filter(DeploymentReplicaBindings::deployment_id().eq(binding.deployment_id.as_uuid())),
     )
     .await?;
-    require_one_row("deployment replica placement binding", binding_rows)?;
-    deployment_group_bindings::persist_member_assignment(transaction, &binding).await?;
-    Ok(binding)
+    require_one_row("deployment replica placement binding", binding_rows)
 }
 
 pub(super) async fn require_current_desired_deployment(

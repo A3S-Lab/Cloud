@@ -1,9 +1,14 @@
 mod placement_group_repository;
+mod placement_group_scheduling_repository;
 mod resource_claim_repository;
 mod workload_repository;
 
 pub use placement_group_repository::{
     IWorkloadPlacementGroupRepository, PlacementGroupMaterialization,
+};
+pub use placement_group_scheduling_repository::{
+    IWorkloadPlacementGroupSchedulingRepository, PlacementGroupCancellationWrite,
+    PlacementGroupMemberPlacement, PlacementGroupPlacement, PlacementGroupSchedulingWrite,
 };
 pub use resource_claim_repository::IResourceClaimRepository;
 pub(crate) use resource_claim_repository::{
@@ -20,3 +25,17 @@ pub use workload_repository::{
     RequestWorkloadStopBundle, RetiringReplicaTarget, SecretRotation, SecretRotationCompletion,
     SecretRotationReconciliation, WorkloadStopBundle,
 };
+
+pub trait IDeploymentFlowWorkloadRepository:
+    IWorkloadRepository
+    + IWorkloadPlacementGroupRepository
+    + IWorkloadPlacementGroupSchedulingRepository
+{
+}
+
+impl<T> IDeploymentFlowWorkloadRepository for T where
+    T: IWorkloadRepository
+        + IWorkloadPlacementGroupRepository
+        + IWorkloadPlacementGroupSchedulingRepository
+{
+}

@@ -1,6 +1,7 @@
 mod create;
 mod deployment_group_bindings;
 mod operation_requests;
+mod placement_group_scheduling;
 mod placement_groups;
 mod queries;
 mod replica_deployment_materialization;
@@ -29,13 +30,15 @@ use crate::modules::workloads::domain::entities::{
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
     ISecretRotationRestartRepository, IWorkloadPlacementGroupRepository,
-    IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    PlacementGroupMaterialization, ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate,
-    ReplicaDeploymentMaterialization, ReplicaEvacuationCandidate, ReplicaEvacuationRequest,
-    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
-    ReplicaSetWriteResult, RequestDeploymentCancellationBundle, RequestWorkloadStopBundle,
-    RetiringReplicaTarget, SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
+    IWorkloadPlacementGroupSchedulingRepository, IWorkloadReplicaDeploymentRepository,
+    IWorkloadReplicaEvacuationRepository, IWorkloadReplicaRetirementRepository,
+    IWorkloadRepository, IWorkloadRuntimeTargetRepository, PlacementGroupCancellationWrite,
+    PlacementGroupMaterialization, PlacementGroupPlacement, PlacementGroupSchedulingWrite,
+    ReconfigureReplicaSetWrite, ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
+    ReplicaEvacuationCandidate, ReplicaEvacuationRequest, ReplicaRetirementCompletion,
+    ReplicaRetirementDispatch, ReplicaRuntimeFence, ReplicaSetWriteResult,
+    RequestDeploymentCancellationBundle, RequestWorkloadStopBundle, RetiringReplicaTarget,
+    SecretRotation, SecretRotationReconciliation, WorkloadStopBundle,
 };
 use a3s_orm::PostgresExecutor;
 use async_trait::async_trait;
@@ -86,6 +89,29 @@ impl IWorkloadPlacementGroupRepository for PostgresWorkloadRepository {
             replica_generation,
         )
         .await
+    }
+}
+
+#[async_trait]
+impl IWorkloadPlacementGroupSchedulingRepository for PostgresWorkloadRepository {
+    async fn schedule_placement_group(
+        &self,
+        write: PlacementGroupSchedulingWrite,
+    ) -> Result<
+        crate::modules::shared_kernel::domain::IdempotentWrite<PlacementGroupPlacement>,
+        RepositoryError,
+    > {
+        placement_group_scheduling::schedule(&self.executor, write).await
+    }
+
+    async fn cancel_placement_group(
+        &self,
+        write: PlacementGroupCancellationWrite,
+    ) -> Result<
+        crate::modules::shared_kernel::domain::IdempotentWrite<PlacementGroupPlacement>,
+        RepositoryError,
+    > {
+        placement_group_scheduling::cancel(&self.executor, write).await
     }
 }
 
