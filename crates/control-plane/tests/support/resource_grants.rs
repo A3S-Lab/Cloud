@@ -92,6 +92,8 @@ pub async fn exercise_resource_grant_matrix(
         "rg3:execution-denied",
     )
     .await?;
+    seed_execution_operation(&database, &organization, &granted_execution).await?;
+    seed_execution_operation(&database, &organization, &denied_execution).await?;
     let granted_node = enroll_node(&app, &organization, "granted", 'd').await?;
     let denied_node = enroll_node(&app, &organization, "denied", 'e').await?;
 
@@ -734,6 +736,31 @@ async fn create_execution(
         &response_json(&response)?["data"]["execution"]["id"],
         "execution ID",
     )
+}
+
+async fn seed_execution_operation(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization: &str,
+    execution: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let organization = Uuid::parse_str(organization)?;
+    let execution = Uuid::parse_str(execution)?;
+    database
+        .execute(
+            sql_query::<()>(concat!(
+                "insert into operation_requests (operation_id, organization_id, subject_kind, ",
+                "subject_id, workflow_name, workflow_version, input, requested_at) ",
+                "select operation_id, organization_id, 'execution', id, 'cloud.execution', '1', ",
+                "jsonb_build_object('organizationId', organization_id, 'executionId', id), ",
+                "requested_at from executions where organization_id = "
+            ))
+            .bind(organization)
+            .append(" and id = ")
+            .bind(execution)
+            .append(" on conflict (operation_id) do nothing"),
+        )
+        .await?;
+    Ok(())
 }
 
 async fn enroll_node(
