@@ -53,6 +53,7 @@ distributes committed facts after the corresponding database transaction.
 | Term | Meaning |
 | --- | --- |
 | Organization | Tenant and security boundary. Commercial billing remains externally owned. |
+| Membership invitation | Immutable offer for one existing exact Principal to receive one ordinary organization Membership role before a bounded expiry; it is not an email address, provider identity, session, or alternate role authority. |
 | External identity link | Exact trusted OIDC issuer and subject bound to one Cloud principal under `C0.3`; provider email, session, or group claims never become Cloud authority by themselves. |
 | Enterprise identity provider | Immutable planned `C0.5` SAML/OIDC provider revision with trusted metadata/keys, audience, claim policy, and session policy; it reuses Cloud Principals and Memberships. |
 | Provisioning binding | Planned `C0.5` SCIM external identity/version bound idempotently to one Principal and explicit Membership lifecycle; provider groups never become implicit Resource Grants. |
@@ -133,7 +134,8 @@ are different facts.
 ### 3.1 Identity and access
 
 Owns stable human and service Principals, organizations, Membership roles,
-Principal-bound API credentials, revocation, Resource Grants, planned external
+exact-Principal MembershipInvitations, Principal-bound API credentials,
+revocation, Resource Grants, planned external
 OIDC subject links under `C0.3`, planned SAML/OIDC provider, SCIM, and session
 policy under `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
@@ -145,6 +147,7 @@ Primary aggregates:
 - `IdentityPrincipal`
 - `Organization`
 - `Membership`
+- `MembershipInvitation`
 - `ApiToken`
 - `ResourceGrant`
 - `ExternalIdentityLink` (planned `C0.3`)
@@ -657,6 +660,14 @@ contexts' tables.
 - One active Membership assigns exactly one `owner`, `admin`, `member`, or
   `restricted` role to a Principal in an organization; a credential never owns
   the role.
+- One MembershipInvitation binds an existing exact Principal, organization,
+  requested ordinary Membership role, inviter Principal, and expiry no more
+  than 30 days ahead. Only that authenticated Principal can accept it.
+- Acceptance locks and expected-version-checks the invitation and creates the
+  ordinary Membership in the same transaction. Expired, revoked, stale,
+  foreign-Principal, or duplicate-membership acceptance cannot leave a partial
+  Membership; immutable invitation identity and history are never rewritten or
+  deleted.
 - The last organization owner cannot be removed.
 - API token scopes cannot exceed the issuer's effective scopes. An ordinary
   member may issue only for its own Principal; cross-Principal issuance reuses
@@ -1926,6 +1937,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Fact | Authoritative owner |
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
+| Principal, Membership, MembershipInvitation, API-token verifier metadata, and Resource Grant state | PostgreSQL Identity tables through A3S ORM; invitation acceptance creates an ordinary Membership atomically and adds no directory, provider identity, queue, or scheduler authority |
 | External OIDC issuer/subject link, link status, and last verified identity metadata | PostgreSQL Identity tables through A3S ORM; provider sessions/tokens remain transient or Secret-owned and are never a user database |
 | Enterprise SAML/OIDC provider revision, SCIM binding/version, deprovision state, and session policy | PostgreSQL Identity tables through A3S ORM; external directory groups and sessions remain inputs rather than roles, grants, or Cloud user truth |
 | Tenant plugin registry enrollment, trust-root object reference/digest, desired assignment, requested surface set, target host/workspace, and desired assignment generation | PostgreSQL Plugins tables through A3S ORM |

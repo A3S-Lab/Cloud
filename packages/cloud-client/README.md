@@ -217,6 +217,19 @@ and A3S ORM persistence. CLI callers supply a new credential only through the
 bounded `--token-stdin` path; it is never a command argument, configuration
 value, result field, or echoed error.
 
+`listMembershipInvitations`, `getMembershipInvitation`,
+`createMembershipInvitation`, and `revokeMembershipInvitation` expose the
+organization-administrator invitation history and mutations added by REST
+contract `1.26.0`. `listMyMembershipInvitations` and
+`acceptMembershipInvitation` are exact authenticated-Principal self-service
+methods across organizations. Create validates one Principal UUID, ordinary
+Membership role, RFC 3339 expiry, and caller-owned idempotency key; accept and
+revoke require a positive expected version and idempotency key. Cloud alone
+enforces the maximum 30-day lifetime, active exact Principal, administrator
+authority, duplicate Membership exclusion, and atomic invitation-to-Membership
+transition. The client adds no email/OIDC discovery, role inference, invitation
+store, notification queue, or authorization model.
+
 `createDomainClaim`, `verifyDomainClaim`, and `revokeDomainClaim` return the
 complete DomainClaim projection with its durable `replayed` flag.
 `createGatewayScope` accepts an ordered member list plus `minReady` and

@@ -120,6 +120,12 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_service_memberships_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_change_role` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_membership_invitations_list` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_membership_invitations_get` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_membership_invitations_create` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_membership_invitations_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_my_membership_invitations_list` | Principal self-query | `cloud:read`; returns only invitations bound to the authenticated Principal |
+| `a3s_cloud_membership_invitations_accept` | Principal self-command | `identity:write`; accepts only an invitation bound to the authenticated Principal |
 | `a3s_cloud_resource_grants_list` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
@@ -198,6 +204,26 @@ release-selector JSON Schemas directly from `a3s-use-extension`; online and
 cached tools are distinct and never fall back into each other. They do not
 download packages, proxy the local Use management MCP, or introduce a Cloud
 catalog/cache model.
+
+## Exact-Principal MembershipInvitation lifecycle
+
+The four administrator tools list immutable invitation history, get one exact
+invitation, create an invitation idempotently, and revoke a pending invitation
+with optimistic concurrency. Creation names one existing active Principal, one
+ordinary Membership role, and an RFC 3339 expiry no more than 30 days ahead.
+The two self-service tools ignore the credential's organization claim for
+lookup and instead use the exact authenticated Principal across organizations:
+`a3s_cloud_my_membership_invitations_list` returns only that Principal's
+history, and `a3s_cloud_membership_invitations_accept` returns `404` for a
+different Principal just as it does for a missing invitation.
+
+Acceptance reuses the Identity command handler, exact credential Principal,
+expected aggregate version, idempotency receipt, A3S ORM transaction, Outbox,
+and audit path used by REST, the maintained client, and CLI. It locks the
+invitation, creates the ordinary Membership, and records acceptance atomically;
+expired, revoked, stale, or duplicate-membership cases cannot leave a partial
+Membership. The MCP adapter owns no email lookup, external-identity link,
+session, invitation store, RBAC evaluator, notification queue, or scheduler.
 
 ## Client flow
 
@@ -436,7 +462,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current expanded runner requires exact 77-tool administrator and 47-tool
+current focused source runner requires exact 83-tool administrator and 48-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency

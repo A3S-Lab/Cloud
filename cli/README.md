@@ -189,6 +189,21 @@ api-tokens list
 api-tokens get <api-token-id>
 api-tokens create <name> --token-stdin --scopes=<csv> [--expires-at=<timestamp>]
 api-tokens revoke <api-token-id>
+memberships list
+memberships get <membership-id>
+memberships create-service <name> <owner|admin|member|restricted>
+memberships change-role <membership-id> <owner|admin|member|restricted> --expected-version=<version>
+memberships revoke <membership-id> --expected-version=<version>
+membership-invitations list
+membership-invitations get <invitation-id>
+membership-invitations list-mine
+membership-invitations create <principal-id> <owner|admin|member|restricted> --expires-at=<timestamp>
+membership-invitations accept <invitation-id> --expected-version=<version>
+membership-invitations revoke <invitation-id> --expected-version=<version>
+resource-grants list <membership-id>
+resource-grants get <resource-grant-id>
+resource-grants create <membership-id> <project PROJECT_ID | environment PROJECT_ID ENVIRONMENT_ID | node NODE_ID>
+resource-grants revoke <resource-grant-id> --expected-version=<version>
 projects list
 projects create <name>
 environments list
@@ -310,6 +325,17 @@ build-runs logs <build-run-id>
 build-runs cancel <build-run-id>
 build-runs retry <build-run-id>
 ```
+
+`memberships`, `membership-invitations`, and `resource-grants` expose one
+Identity authority; the CLI retains no user directory, invitation store, role
+matrix, or grant evaluator. Invitation creation binds an existing exact
+Principal, one ordinary organization role, a required RFC 3339 expiry, and a
+caller-owned idempotency key. `list-mine` and `accept` operate only as the
+authenticated Principal; acceptance version-checks the invitation and Cloud
+atomically creates the ordinary Membership. Administrator revocation and
+self-acceptance require the current positive aggregate version. Cloud enforces
+the maximum 30-day lifetime, tenant/role boundary, wrong-Principal `404`,
+last-owner rule, duplicate Membership exclusion, replay, audit, and Outbox.
 
 Asset and release commands require organization context. Asset create/archive
 and release create/yank require a caller-owned idempotency key. Release create

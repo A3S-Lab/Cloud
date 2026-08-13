@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.24.0" src="https://img.shields.io/badge/REST_contract-1.24.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.26.0" src="https://img.shields.io/badge/REST_contract-1.26.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -302,7 +302,17 @@ owner credential. Role changes and revocation
 take effect on the next request, the last active owner is protected, and the
 same CQRS handlers are exposed through REST contract `1.16.0`, the maintained
 TypeScript client, CLI, and Management MCP. A3S ORM transactions commit
-membership state, idempotency, Outbox facts, and audit together. Closed
+membership state, idempotency, Outbox facts, and audit together. Migration
+`102` adds immutable organization MembershipInvitation history bound to one
+existing exact Principal, requested Membership role, inviter Principal, and an
+expiry no more than 30 days ahead. Administrator list/get/create/revoke and
+Principal self-list/accept surfaces reuse the same Identity handlers through
+REST/OpenAPI `1.26.0`, the maintained client, CLI, and Management MCP.
+Acceptance rechecks the exact authenticated Principal and expected version,
+then creates the ordinary Membership and marks the invitation accepted in one
+transaction; a different Principal receives the same `404` as a missing
+invitation, and exact command replay is stable. This adds no email directory,
+OIDC link, session, notification queue, or parallel role authority. Closed
 project/environment/node Resource Grants now use one shared evaluator for
 direct scopes, filtered collections, and owner-resolved indirect resources.
 Workloads, external-source BuildRuns, ordinary Routes, Secrets, Forms, Assets,
@@ -311,8 +321,8 @@ repositories; denied and missing indirect IDs share one `404`, and
 authorization precedes mutation replay. The polymorphic Operation feed resolves
 each subject through that same owner set, keyset-pages until it has the requested
 visible records, and shares one filtered boundary across REST, SSE, and
-Management MCP. Protected HumanTask submission surfaces, OIDC,
-invitations, and frontend identity projections remain open. The dedicated
+Management MCP. External OIDC links and frontend identity projections remain
+open. The dedicated
 `RG3` PostgreSQL gate verifies
 the owner/admin/member/restricted, project ancestry, exact environment/node,
 REST/MCP/SSE, revocation, guessed-ID, tenant, idempotency, Outbox, and audit
@@ -339,7 +349,7 @@ identity or RBAC mechanism.
 | Routing intent, snapshot publication, and applied traffic | Edge owns one node planner/compiler and durable publication owner; Fleet delivers one command; A3S Gateway owns applied state | Ordinary- or MCP-specific publishers, Cloud proxying, Gateway-owned tenant policy, or inferred apply success |
 | Plugin assignments and package lifecycle | Cloud Plugins for tenant intent; shared A3S Use Plugin Manager for package generations | A Cloud installer, catalog copy, grant store, binding store, or generic plugin RPC |
 | Immutable bytes | One shared content-addressed object client with typed domain adapters | Parallel filesystem/S3 clients or untyped cross-domain blob APIs |
-| Principal identity and organization access | Identity Principals, Memberships, Resource Grants, credentials, and revocation | A console-local user store, credential-owned roles, a second RBAC evaluator, or presentation-only authorization |
+| Principal identity and organization access | Identity Principals, Memberships, MembershipInvitations, Resource Grants, credentials, and revocation | A console-local user store, credential-owned roles, a second RBAC evaluator, or presentation-only authorization |
 | Management behavior | One application command/query layer | REST-, CLI-, MCP-, or Web-specific business state and rules |
 
 ## Backend quick start
@@ -380,7 +390,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.24.0`.
+contract version `1.26.0`.
 
 ### Bootstrap the first organization
 
@@ -451,7 +461,7 @@ mechanisms of the reference products.
 | Reference outcome | A3S-owned design | Availability boundary | Not copied |
 | --- | --- | --- | --- |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential and Resource Grant lifecycle plus indirect owner-resolution through the current Operation surface are implemented, and the dedicated real-PostgreSQL cross-surface gate verifies the Resource Grant closure; external OIDC, invitations, role-focused projections, and `I0.2e` model/key self-service remain planned | A second identity/key store, browser-only authorization, or plaintext credential recovery |
+| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, invitations, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential, exact-Principal invitation, and Resource Grant lifecycles plus indirect owner-resolution through the current Operation surface are implemented; the dedicated real-PostgreSQL cross-surface gate verifies Resource Grant closure, while invitation PostgreSQL promotion evidence remains pending; external OIDC, role-focused projections, and `I0.2e` model/key self-service remain planned | A second identity/key store, browser-only authorization, or plaintext credential recovery |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
 | TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |
