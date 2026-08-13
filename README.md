@@ -179,11 +179,15 @@ contract `1.24.0`, the maintained client, `execution-templates` CLI commands, an
 Management MCP tools reuse the same commands, queries, tenant guards,
 idempotency, A3S ORM, Outbox, and audit paths. Focused domain, application,
 Workflow coordinator, REST, OpenAPI, MCP, client, CLI, and local real
-PostgreSQL seven-boundary tests pass. The retained clean Linux/provider and
-expanded cross-surface recovery gates still block verification. Business-service,
-Agent, MCP, model, Tool, compensation, and production recovery remain open;
-no second engine, scheduler, queue, Runtime provider, authorization store, or
-frontend was added.
+PostgreSQL seven-boundary tests pass. The clean Linux PostgreSQL H0 finite
+persistence/process-death gate and C0.2 Management MCP/A3S Box cross-surface
+gate now pass for the exact `77/47` catalog. The latter certifies the shared
+ExecutionTemplate fixture, accepted/rejected idempotency, Outbox, audit,
+migration `098`, immutability, and tenant non-disclosure as `8/8`. This verifies
+the finite Execution sub-slice; W0.3 remains in progress because business-service,
+Agent, MCP, model, Tool, compensation, expanded provider evidence, and production
+recovery remain open. No second engine, scheduler, queue, Runtime provider,
+authorization store, or frontend was added.
 
 The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
 Boot `0.2.0` with its PostgreSQL queue, and A3S ORM `0.3.0`-backed PostgreSQL
@@ -464,7 +468,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, Form, WorkflowRun, HumanTask loop, shared grants, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, Form, WorkflowRun, HumanTask loop, shared grants, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `S0` | Stateful databases, objects, volumes, fencing, backup, restore, and retention | Planned |
 | `H0` | Replicas, multi-node placement, networking, Gateway replication, HA, and autoscaling | In progress |
 | `I0` | Accelerator-backed model serving, providers, routing, keys, usage, and self-service | Planned |
