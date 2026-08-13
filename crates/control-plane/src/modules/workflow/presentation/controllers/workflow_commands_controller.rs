@@ -46,7 +46,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                 async move {
                     let body: PublishWorkflowDefinitionRequest =
                         request.json_with_content_type()?;
-                    let (definition_acl, payloads) = body.into_parts();
+                    let (definition_acl, payloads, semantic_contracts) = body.into_parts();
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
@@ -58,6 +58,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             project_id,
                             definition_acl,
                             payloads,
+                            semantic_contracts,
                             actor_principal_id,
                             idempotency_key,
                             request_id,
@@ -81,7 +82,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                     async move {
                         let body: PublishWorkflowDefinitionRequest =
                             request.json_with_content_type()?;
-                        let (definition_acl, payloads) = body.into_parts();
+                        let (definition_acl, payloads, semantic_contracts) = body.into_parts();
                         let organization_id =
                             OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                         let workflow_definition_id = WorkflowDefinitionId::from_uuid(
@@ -99,6 +100,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                                 expected_version,
                                 definition_acl,
                                 payloads,
+                                semantic_contracts,
                                 actor_principal_id,
                                 idempotency_key,
                                 request_id,

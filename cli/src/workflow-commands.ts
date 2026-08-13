@@ -51,7 +51,7 @@ import {
   workflowRunsResult,
 } from './workflow-results';
 
-const MAX_WORKFLOW_PUBLICATION_FILE_BYTES = 12 * 1024 * 1024;
+const MAX_WORKFLOW_PUBLICATION_FILE_BYTES = 17 * 1024 * 1024;
 const MAX_HUMAN_TASK_SUBMISSION_FILE_BYTES = 5 * 1024 * 1024;
 
 interface WorkflowCommandDependencies {
@@ -471,7 +471,9 @@ async function readWorkflowPublication(
     readFile
   );
   if (!isWorkflowPublication(value)) {
-    throw usageError('Workflow publication must contain only definitionAcl and typed ACL payloads');
+    throw usageError(
+      'Workflow publication must contain definitionAcl, typed ACL payloads, and optional semanticContracts'
+    );
   }
   return value;
 }
@@ -501,11 +503,25 @@ function isWorkflowPublication(value: unknown): value is PublishWorkflowDefiniti
   }
   const record = value as Record<string, unknown>;
   if (
-    Object.keys(record).some((key) => !['definitionAcl', 'payloads'].includes(key)) ||
+    Object.keys(record).some((key) => !['definitionAcl', 'payloads', 'semanticContracts'].includes(key)) ||
     typeof record.definitionAcl !== 'string' ||
     !Array.isArray(record.payloads)
   ) {
     return false;
+  }
+  if (record.semanticContracts !== undefined) {
+    const contracts = record.semanticContracts;
+    if (typeof contracts !== 'object' || contracts === null || Array.isArray(contracts)) {
+      return false;
+    }
+    const semanticContracts = contracts as Record<string, unknown>;
+    const keys = ['descriptorBindingsAcl', 'descriptorRegistryAcl', 'variableContractAcl'];
+    if (
+      Object.keys(semanticContracts).some((key) => !keys.includes(key)) ||
+      keys.some((key) => typeof semanticContracts[key] !== 'string')
+    ) {
+      return false;
+    }
   }
   return record.payloads.every((payload) => {
     if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {

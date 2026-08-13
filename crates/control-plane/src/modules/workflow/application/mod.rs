@@ -33,6 +33,13 @@ pub struct WorkflowPayloadAcl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowSemanticContractAcls {
+    pub descriptor_bindings_acl: String,
+    pub descriptor_registry_acl: String,
+    pub variable_contract_acl: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkflowDefinitionMutationResult {
     pub record: WorkflowDefinitionRecord,
     pub replayed: bool,

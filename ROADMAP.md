@@ -979,7 +979,7 @@ Migration
 `087` adds Membership-bound closed project/environment/node Resource Grants;
 one shared evaluator enforces direct access and filters collections on every
 request, while the application handler validates targets through their owning
-Project, Environment, or Node repository. REST/OpenAPI contract `1.28.0`, the
+Project, Environment, or Node repository. REST/OpenAPI contract `1.29.0`, the
 maintained client, CLI, and fifteen Management MCP tools reuse the same
 application handlers. The tenant-administrator audit slice adds
 `GET /organizations/{organization_id}/audit-records` and
@@ -1005,7 +1005,7 @@ their own RBAC or resource-ownership registry:
 | `C0.3-MI1` | Verified on PostgreSQL 17 in CI (`2026-08-13`) | One exact active Principal can be invited into one organization for one ordinary Membership role with a maximum 30-day expiry. Administrator and self-service REST, client, CLI, and Management MCP surfaces reuse Identity CQRS, permission, idempotency, A3S ORM, Outbox, and audit authorities. Exact-Principal acceptance atomically creates the Membership; stale, foreign, expired, revoked, duplicate-membership, and replay cases pass the dedicated PostgreSQL test without adding a user directory, provider identity store, queue, or scheduler. The [successful MI1 job](https://github.com/A3S-Lab/Cloud/actions/runs/31679314189/job/94380946460) is the verification evidence. |
 | `C0.3-OIDC1` | Implemented; local PostgreSQL 17 gate passes (`2026-08-13`) | One Identity Repository port owns exact issuer/subject link history and bounded one-time login/link flows. PostgreSQL atomically consumes callbacks with link verification or issuance of an ordinary short-lived API token plus existing Outbox/audit writes; configuration-digest drift, replay, inactive membership, ambiguous binding, and concurrent completion fail closed. This remains the sole durable link/flow authority consumed by later protocol surfaces. |
 | `C0.3-OIDC2` | Implemented; focused local TLS fixtures pass (`2026-08-14`) | One Identity provider port and adapter perform redirect-free HTTPS discovery with a 1 MiB response bound, refresh discovery/JWKS at callback time, require code flow plus confidential-client authentication, send exact state/nonce/S256 PKCE, and validate exact issuer, one exact audience, asymmetric signature, optional `azp`/`at_hash`, issue time, expiry, and subject. Tests cover rotated and stale keys, wrong issuer/audience/nonce/signature/time, token substitution, unsafe endpoints, redirects, oversized responses, missing credentials, and secret redaction. Shared OAuth flow primitives are reused by Sources; no second state, digest, or PKCE mechanism is added. |
-| `C0.3-OIDC3` | Implemented; local PostgreSQL 17 cross-surface gate passes and CI is wired (`2026-08-14`) | Identity begin/complete commands compose `OIDC1` persistence and `OIDC2` verification without adding a repository, session, token, or OAuth-security mechanism. Begin generates shared state/nonce/PKCE material and persists digests only; complete resolves the state-bound flow before provider access, rechecks provider key/issuer/configuration digest, then atomically links or issues one existing-scope short-lived credential. REST/OpenAPI `1.28.0` exposes a public login redirect, authenticated human-principal link start returning `authorizationUrl`, and public callback. State-digest-scoped callback cookies are `Secure`, `HttpOnly`, and `SameSite=Lax`; success and bounded failures delete them, and the short-lived credential appears only once in JSON. The maintained client exposes login URL construction and browser-safe link start. The real PostgreSQL gate crosses HTTP, authentication, CQRS, the production repository, and the provider port across four application constructions; it proves exact link/login commits, usable returned authentication after restart, replay rejection before provider access, digest-only flow persistence, plaintext-credential exclusion, cookie cleanup, and exact Outbox/audit rows. CI reuses the existing PostgreSQL 17 foundation job rather than adding a database stack. |
+| `C0.3-OIDC3` | Implemented; local PostgreSQL 17 cross-surface gate passes and CI is wired (`2026-08-14`) | Identity begin/complete commands compose `OIDC1` persistence and `OIDC2` verification without adding a repository, session, token, or OAuth-security mechanism. Begin generates shared state/nonce/PKCE material and persists digests only; complete resolves the state-bound flow before provider access, rechecks provider key/issuer/configuration digest, then atomically links or issues one existing-scope short-lived credential. REST/OpenAPI `1.29.0` exposes a public login redirect, authenticated human-principal link start returning `authorizationUrl`, and public callback. State-digest-scoped callback cookies are `Secure`, `HttpOnly`, and `SameSite=Lax`; success and bounded failures delete them, and the short-lived credential appears only once in JSON. The maintained client exposes login URL construction and browser-safe link start. The real PostgreSQL gate crosses HTTP, authentication, CQRS, the production repository, and the provider port across four application constructions; it proves exact link/login commits, usable returned authentication after restart, replay rejection before provider access, digest-only flow persistence, plaintext-credential exclusion, cookie cleanup, and exact Outbox/audit rows. CI reuses the existing PostgreSQL 17 foundation job rather than adding a database stack. |
 
 The verified `C0.3-RG2` boundary is the authorization prerequisite now reused
 by protected HumanTask submission and remains mandatory for any new
@@ -1686,20 +1686,21 @@ Operations remains the only durable orchestration mechanism.
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
 | `W0.2` | Verified | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.15.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests plus the clean A3S Box/PostgreSQL C0.2 gate certify the strict `12/12` persistence, rejected-write, idempotency, Outbox, audit, Search, immutability, replay, and tenant non-disclosure evidence |
-| `W0.3` | In progress; planning, immutable descriptor and typed-variable domain contracts, native Form, WorkflowRun, HumanTask loop, reachable-Output aggregation, and finite Execution step implemented; focused Output semantics and finite Execution sub-gates verified | Migrations `076`, `079`, `080`, `081`, `096`, and `097` retain the immutable Workflow definition/Goal/Plan, native Form, exact Goal/Plan-bound WorkflowRun, HumanTask decision/resume, automatic-expiry, and parent-cancellation authorities described above. Migrations `098` through `100` add Executions-owned immutable ACL-native ExecutionTemplate revisions, exact WorkflowRun/Plan/step/attempt/template/digest columns, composite foreign keys, one child uniqueness index on the existing Execution aggregate, and `execution` admission in the existing WorkflowStepProjection kind constraint. One A3S Flow run executes Workflow-local `input`, `transform`, `branch`, `human_decision`, `execution`, and `output` steps. The graph admits one or more terminal Output sinks; the runtime waits for every declared sink to resolve active or inactive, preserves the single-sink value, and emits a step-ID-keyed object for multiple declared sinks under the existing output byte bound. An `execution` step requires one exact environment and `executions/execution_template/execution.run` capability. The worker coordinator calls one typed Executions application port, creates or adopts the replay-safe ordinary Execution, links its existing Operation as the Flow child, resumes only from an authority-bound terminal result, and waits for cleanup-first child cancellation before parent cancellation or timeout. The retained PostgreSQL `SIGKILL` fixture covers seven boundaries: the four existing WorkflowRun/HumanTask boundaries plus child-Execution commit before Operation enqueue, exact child link before parent projection, and terminal child resume before parent projection. The clean Linux H0 gate passes finite persistence plus that seven-boundary process-death fixture. The clean Management MCP/A3S Box/PostgreSQL gate reuses one shared `contracts/w0.3/execution-template.acl` fixture across REST and MCP and passes its `8/8` accepted/rejected idempotency, Outbox, audit, migration `098`, immutability, and tenant non-disclosure result for the exact `77/47` catalog. REST/OpenAPI `1.24.0`, the maintained client, CLI, and 32 planning/Form/run/task/template Management MCP tools reuse the same CQRS, Resource Grant, idempotency, A3S ORM, Outbox, and audit authorities. Focused Workflow tests pass `98/98`, including immutable descriptor and typed-variable contract suites plus Output, HumanTask, finite-child, and authority guards. This verifies domain contracts and focused semantic and finite Execution sub-gates, not all of W0.3. Persistent contract catalog management and exact next-plan pinning, runtime variable execution/inspection, composite regions, Answer/error semantics, business-service and remaining Agent/MCP/model/Tool dispatch, compensation, expanded clean provider evidence, and public availability remain required |
+| `W0.3` | In progress; revision semantic authority and Plan v2 implemented; runtime adapter and remaining node semantics open | Migrations `076`, `079` through `081`, `096` through `100`, and `103` retain the immutable Workflow definition/Goal/Plan, native Form, exact Goal/Plan-bound WorkflowRun, HumanTask, and finite Execution authorities. Migration `103` atomically stores exactly three immutable WorkflowRevision children: step descriptor bindings, the exact recoverable registry snapshot, and the typed-variable contract. Compiler schema 2 cannot downgrade to legacy authority; `cloud.workflow.plan.v2` pins every exact descriptor plus semantic-contract-set and variable-contract digests, while Plan v1 remains byte-stable. REST/OpenAPI `1.29.0`, the maintained client, CLI, and Management MCP reuse the existing CQRS, Resource Grant, idempotency, A3S ORM, Outbox, and audit paths. Domain, REST, OpenAPI, client, CLI, MCP, and real PostgreSQL tests cover publication, recovery, replay, incomplete-set rollback, lineage, and immutability. Plan v2 execution deliberately fails closed until the typed-variable Flow adapter projects values through the existing WorkflowRun and Flow history. Built-in catalog discovery, runtime inspection, bounded composite regions, Answer/error semantics, business-service and remaining Agent/MCP/model/Tool dispatch, compensation, expanded clean provider evidence, and public availability remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
-The `W0.3` immutable descriptor domain contract is now implemented as
+The `W0.3` immutable descriptor contract is implemented as
 `cloud.workflow.step-descriptor-registry.v1`. It freezes canonical ACL, exact
 SemVer identity, typed ports, the existing coarse step and capability types,
 semantic owner and execution class, immutable semantic/configuration/default-
 policy digests, required bindings, typed failure behavior, compiler
 compatibility, fail-closed admission, and a presentation digest isolated from
-execution semantics. The checked-in two-descriptor fixture is conformance
-evidence only; it is not the persistent production catalog, does not advertise
-the complete application-platform node inventory, and changes no public
-availability. Existing `cloud.workflow.plan.v1` histories remain unchanged.
+execution semantics. `cloud.workflow.step-descriptor-bindings.v1` separately
+freezes exact per-step semantic selection. Migration `103` stores both with the
+Workflow revision; `cloud.workflow.plan.v2` pins them without changing existing
+Plan v1 histories. The checked-in fixtures are conformance evidence, not a
+discoverable production catalog or public availability claim.
 
 The `W0.3` typed-variable domain contract is also implemented as
 `cloud.workflow.variable-contract.v1`. Canonical ACL and an exact compiler
@@ -1707,11 +1708,11 @@ schema freeze invocation, node-output, composite-local, run, and application
 scopes; typed reads; deterministic assignments; explicit composite exports;
 root/leaf schema ancestry; graph reachability and dominance; opaque Secret and
 immutable-object references; and optimistic Applications-port evidence. The
-fixture and `17/17` focused tests are compiler-conformance evidence only.
-Application reads and writes remain fail-closed against `plan.v1`, which cannot
-prove their descriptor owner. Persistent revision binding, exact contract
-digests in the next plan schema, runtime materialization, and authorized
-inspection remain open; no variable store or Flow mechanism was added.
+fixture and focused tests are compiler-conformance evidence. Migration `103`
+persists the contract in the same immutable revision set, and Plan v2 can prove
+the exact descriptor owner. Runtime materialization and authorized inspection
+remain fail-closed until the Flow adapter lands; no variable store, scheduler,
+queue, or second Flow mechanism was added.
 
 Migration `100` completes the finite-step relational admission by evolving the
 existing `WorkflowStepProjection` kind constraint to accept `execution`. It
@@ -1725,9 +1726,8 @@ Output to be terminal, and proves every step reaches at least one sink. The
 runtime waits for all declared sinks, omits inactive branch sinks, preserves a
 single sink's historical value shape, orders a multiple-sink object by stable
 step ID, and enforces the existing aggregate byte bound. `W0.3` remains open
-for persistent descriptor and variable-contract binding, exact digest pinning
-through an explicit next compiler/plan revision, runtime variable execution
-and inspection, bounded Iteration and Loop composite regions, typed node error
+for built-in descriptor discovery, runtime variable execution and inspection,
+bounded Iteration and Loop composite regions, typed node error
 branches/fallback, and ordered Answer frames.
 
 The shared execution substrate now pins A3S Flow `0.12.0`, A3S Boot `0.2.0`
@@ -1935,8 +1935,9 @@ The default portfolio priority is:
     slices, Form draft/release lifecycle, HumanTask loop, and finite Execution
     step; retain the published exact Form/Flow `0.12.0`/Boot `0.2.0`/ORM `0.3.0`
     compatibility lock and native submitted-value parity, then finish
-    protected submission, persistent descriptor/variable-contract management,
-    exact next-plan pinning and runtime variable execution/inspection,
+    protected submission and the implemented revision-owned semantic contract
+    set plus Plan v2 exact pinning, then finish built-in catalog discovery,
+    runtime variable execution/inspection,
     Iteration/Loop regions, error branches/fallback, and Answer frames while
     retaining the implemented reachable-sink Output aggregation and WorkflowRun
     execution on Operations and A3S Flow; expand real-PostgreSQL/provider cross-surface and process-death

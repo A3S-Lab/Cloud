@@ -27,9 +27,8 @@ replay authority.
 
 ## Consequences
 
-The current contract can validate and canonically digest variable semantics
-without changing `cloud.workflow.plan.v1`. Production use requires persistent
-revision binding and an explicit next plan/compiler schema that pins the exact
-descriptor and variable-contract digests. Runtime materialization and
-inspection must project through the existing Workflow run and Flow history;
+Migration `103` now persists the contract with its Workflow revision, and
+`cloud.workflow.plan.v2` pins its exact digest together with exact per-step
+descriptor semantics. Plan v1 remains unchanged. Runtime materialization and
+inspection still must project through the existing Workflow run and Flow history;
 Cloud does not add another variable store, event log, scheduler, or queue.

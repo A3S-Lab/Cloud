@@ -4,8 +4,8 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    CapabilityReference, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind,
-    WorkflowStepSpec,
+    CapabilityReference, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec,
+    WorkflowStepDescriptorBinding, WorkflowStepKind, WorkflowStepSpec,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -13,6 +13,8 @@ use std::collections::BTreeSet;
 
 pub const WORKFLOW_PLAN_SCHEMA: &str = "cloud.workflow.plan.v1";
 pub const WORKFLOW_PLAN_COMPILER_REVISION: &str = "cloud.workflow.plan-compiler.v1";
+pub const WORKFLOW_PLAN_SCHEMA_V2: &str = "cloud.workflow.plan.v2";
+pub const WORKFLOW_PLAN_COMPILER_REVISION_V2: &str = "cloud.workflow.plan-compiler.v2";
 pub const WORKFLOW_PLAN_MAX_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +27,8 @@ pub struct WorkflowPlanStep {
     pub output_schema_digest: Sha256Digest,
     pub policy_digest: Option<Sha256Digest>,
     pub capability: Option<CapabilityReference>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descriptor: Option<WorkflowStepDescriptorBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +40,10 @@ pub struct WorkflowPlan {
     pub workflow_revision_id: WorkflowRevisionId,
     pub workflow_digest: Sha256Digest,
     pub workflow_payload_set_digest: Sha256Digest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_contract_set_digest: Option<Sha256Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variable_contract_digest: Option<Sha256Digest>,
     pub ontology_id: OntologyId,
     pub ontology_revision_id: OntologyRevisionId,
     pub ontology_digest: Sha256Digest,
@@ -47,9 +55,12 @@ pub struct WorkflowPlan {
 
 impl WorkflowPlan {
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != WORKFLOW_PLAN_SCHEMA
-            || self.compiler_revision != WORKFLOW_PLAN_COMPILER_REVISION
-            || self.workflow_definition_id.as_uuid().is_nil()
+        let semantic_version = match (self.schema.as_str(), self.compiler_revision.as_str()) {
+            (WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_COMPILER_REVISION) => false,
+            (WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_PLAN_COMPILER_REVISION_V2) => true,
+            _ => return Err("Workflow plan schema and compiler revision are incompatible".into()),
+        };
+        if self.workflow_definition_id.as_uuid().is_nil()
             || self.workflow_revision_id.as_uuid().is_nil()
             || self.ontology_id.as_uuid().is_nil()
             || self.ontology_revision_id.as_uuid().is_nil()
@@ -58,6 +69,14 @@ impl WorkflowPlan {
                 .is_some_and(|environment_id| environment_id.as_uuid().is_nil())
         {
             return Err("Workflow plan authority bindings are invalid".into());
+        }
+        match (
+            semantic_version,
+            self.semantic_contract_set_digest.as_ref(),
+            self.variable_contract_digest.as_ref(),
+        ) {
+            (false, None, None) | (true, Some(_), Some(_)) => {}
+            _ => return Err("Workflow plan semantic contract bindings are invalid".into()),
         }
         let mut ids = BTreeSet::new();
         let workflow = WorkflowSpec {
@@ -88,6 +107,22 @@ impl WorkflowPlan {
             edges: self.edges.clone(),
         };
         let order = workflow.topological_order(WorkflowContractQuotas::default())?;
+        if self
+            .steps
+            .iter()
+            .any(|step| step.descriptor.is_some() != semantic_version)
+        {
+            return Err("Workflow plan step descriptor bindings are incomplete".into());
+        }
+        if semantic_version
+            && self.steps.iter().any(|step| {
+                step.descriptor
+                    .as_ref()
+                    .is_none_or(|descriptor| descriptor.step_id != step.id)
+            })
+        {
+            return Err("Workflow plan descriptor binding targets the wrong step".into());
+        }
         if self.environment_id.is_none()
             && self
                 .steps

@@ -13,6 +13,7 @@ pub struct WorkflowRevisionPublished {
     pub parent_revision_id: Option<Uuid>,
     pub content_digest: String,
     pub payload_set_digest: String,
+    pub semantic_contract_set_digest: Option<String>,
     pub compiler_schema_version: u32,
 }
 
@@ -57,6 +58,9 @@ impl WorkflowRevisionPublished {
             parent_revision_id: revision.parent_revision_id.map(|id| id.as_uuid()),
             content_digest: revision.contract.digest().as_str().to_owned(),
             payload_set_digest: revision.payload_set_digest.as_str().to_owned(),
+            semantic_contract_set_digest: revision
+                .semantic_contract_set_digest()
+                .map(|digest| digest.as_str().to_owned()),
             compiler_schema_version: revision.compiler_schema_version,
         };
         Ok(DomainEventEnvelope {

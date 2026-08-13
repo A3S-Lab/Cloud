@@ -1559,6 +1559,19 @@ fn workflow_payloads_schema() -> Value {
     })
 }
 
+fn workflow_semantic_contracts_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "descriptorBindingsAcl": {"type": "string", "minLength": 1, "maxLength": 524288},
+            "descriptorRegistryAcl": {"type": "string", "minLength": 1, "maxLength": 4194304},
+            "variableContractAcl": {"type": "string", "minLength": 1, "maxLength": 2097152}
+        },
+        "required": ["descriptorBindingsAcl", "descriptorRegistryAcl", "variableContractAcl"],
+        "additionalProperties": false
+    })
+}
+
 fn create_workflow_definition_schema() -> Value {
     json!({
         "type": "object",
@@ -1566,6 +1579,7 @@ fn create_workflow_definition_schema() -> Value {
             "projectId": {"type": "string", "format": "uuid"},
             "definitionAcl": {"type": "string", "minLength": 1, "maxLength": 1048576},
             "payloads": workflow_payloads_schema(),
+            "semanticContracts": workflow_semantic_contracts_schema(),
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["projectId", "definitionAcl", "payloads", "idempotencyKey"],
@@ -1580,6 +1594,7 @@ fn revise_workflow_definition_schema() -> Value {
             "workflowDefinitionId": {"type": "string", "format": "uuid"},
             "definitionAcl": {"type": "string", "minLength": 1, "maxLength": 1048576},
             "payloads": workflow_payloads_schema(),
+            "semanticContracts": workflow_semantic_contracts_schema(),
             "expectedVersion": expected_version_schema(),
             "idempotencyKey": idempotency_key_schema()
         },

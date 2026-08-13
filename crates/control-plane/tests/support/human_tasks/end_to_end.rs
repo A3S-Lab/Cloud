@@ -1087,6 +1087,8 @@ fn human_decision_input(
         workflow_revision_id: WorkflowRevisionId::new(),
         workflow_digest: Sha256Digest::parse(sha('1'))?,
         workflow_payload_set_digest: payload_set_digest,
+        semantic_contract_set_digest: None,
+        variable_contract_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(sha('2'))?,
@@ -1156,6 +1158,7 @@ fn plan_step(
         output_schema_digest: schema_digest.clone(),
         policy_digest: None,
         capability: None,
+        descriptor: None,
     }
 }
 

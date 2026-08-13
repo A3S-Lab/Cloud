@@ -4,7 +4,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::domain::{
     WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind,
-    WorkflowStepKind, WORKFLOW_DEFINITION_SCHEMA,
+    WorkflowRevisionSemanticContracts, WorkflowStepKind, WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -12,6 +12,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const WORKFLOW_COMPILER_SCHEMA_VERSION: u32 = 1;
+pub const WORKFLOW_COMPILER_SCHEMA_VERSION_V2: u32 = 2;
 pub const WORKFLOW_REVISION_MAX_PAYLOADS: usize = 2_048;
 pub const WORKFLOW_REVISION_MAX_PAYLOAD_BYTES: usize = 8 * 1024 * 1024;
 
@@ -27,6 +28,7 @@ pub struct WorkflowRevision {
     pub contract: WorkflowContract,
     pub payloads: Vec<WorkflowPayload>,
     pub payload_set_digest: Sha256Digest,
+    pub semantic_contracts: Option<WorkflowRevisionSemanticContracts>,
     pub compiler_schema_version: u32,
     pub created_by: PrincipalId,
     pub created_at: DateTime<Utc>,
@@ -54,7 +56,37 @@ impl WorkflowRevision {
             None,
             contract,
             payloads,
+            None,
             WORKFLOW_COMPILER_SCHEMA_VERSION,
+            created_by,
+            created_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn initial_with_semantic_contracts(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        workflow_definition_id: WorkflowDefinitionId,
+        id: WorkflowRevisionId,
+        contract: WorkflowContract,
+        payloads: Vec<WorkflowPayload>,
+        semantic_contracts: WorkflowRevisionSemanticContracts,
+        created_by: PrincipalId,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        Self::build(
+            organization_id,
+            project_id,
+            workflow_definition_id,
+            id,
+            1,
+            None,
+            None,
+            contract,
+            payloads,
+            Some(semantic_contracts),
+            WORKFLOW_COMPILER_SCHEMA_VERSION_V2,
             created_by,
             created_at,
         )
@@ -66,6 +98,43 @@ impl WorkflowRevision {
         id: WorkflowRevisionId,
         contract: WorkflowContract,
         payloads: Vec<WorkflowPayload>,
+        created_by: PrincipalId,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        if parent.compiler_schema_version != WORKFLOW_COMPILER_SCHEMA_VERSION {
+            return Err(
+                "Workflow revisions cannot remove an established semantic contract authority"
+                    .into(),
+            );
+        }
+        let revision_number = parent
+            .revision_number
+            .checked_add(1)
+            .ok_or_else(|| "Workflow revision number is exhausted".to_owned())?;
+        Self::build(
+            parent.organization_id,
+            parent.project_id,
+            parent.workflow_definition_id,
+            id,
+            revision_number,
+            Some(parent.id),
+            Some(parent.contract.digest().clone()),
+            contract,
+            payloads,
+            None,
+            WORKFLOW_COMPILER_SCHEMA_VERSION,
+            created_by,
+            created_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn successor_with_semantic_contracts(
+        parent: &Self,
+        id: WorkflowRevisionId,
+        contract: WorkflowContract,
+        payloads: Vec<WorkflowPayload>,
+        semantic_contracts: WorkflowRevisionSemanticContracts,
         created_by: PrincipalId,
         created_at: DateTime<Utc>,
     ) -> Result<Self, String> {
@@ -83,7 +152,8 @@ impl WorkflowRevision {
             Some(parent.contract.digest().clone()),
             contract,
             payloads,
-            WORKFLOW_COMPILER_SCHEMA_VERSION,
+            Some(semantic_contracts),
+            WORKFLOW_COMPILER_SCHEMA_VERSION_V2,
             created_by,
             created_at,
         )
@@ -102,6 +172,7 @@ impl WorkflowRevision {
         stored_digest: &str,
         payloads: Vec<WorkflowPayload>,
         stored_payload_set_digest: &str,
+        semantic_contracts: Option<WorkflowRevisionSemanticContracts>,
         compiler_schema_version: u32,
         created_by: PrincipalId,
         created_at: DateTime<Utc>,
@@ -116,6 +187,7 @@ impl WorkflowRevision {
             parent_digest,
             WorkflowContract::restore(acl, stored_digest)?,
             payloads,
+            semantic_contracts,
             compiler_schema_version,
             created_by,
             created_at,
@@ -137,6 +209,7 @@ impl WorkflowRevision {
         parent_digest: Option<Sha256Digest>,
         contract: WorkflowContract,
         mut payloads: Vec<WorkflowPayload>,
+        semantic_contracts: Option<WorkflowRevisionSemanticContracts>,
         compiler_schema_version: u32,
         created_by: PrincipalId,
         created_at: DateTime<Utc>,
@@ -154,6 +227,7 @@ impl WorkflowRevision {
             contract,
             payloads,
             payload_set_digest,
+            semantic_contracts,
             compiler_schema_version,
             created_by,
             created_at: canonical_timestamp(created_at),
@@ -169,9 +243,13 @@ impl WorkflowRevision {
             || self.id.as_uuid().is_nil()
             || self.created_by.as_uuid().is_nil()
             || self.revision_number == 0
-            || self.compiler_schema_version != WORKFLOW_COMPILER_SCHEMA_VERSION
         {
             return Err("stored Workflow revision is invalid".into());
+        }
+        match (&self.semantic_contracts, self.compiler_schema_version) {
+            (None, WORKFLOW_COMPILER_SCHEMA_VERSION)
+            | (Some(_), WORKFLOW_COMPILER_SCHEMA_VERSION_V2) => {}
+            _ => return Err("Workflow revision semantic contract version is invalid".into()),
         }
         match (&self.parent_revision_id, &self.parent_digest) {
             (None, None) if self.revision_number == 1 => {}
@@ -180,6 +258,9 @@ impl WorkflowRevision {
             _ => return Err("Workflow revision lineage is invalid".into()),
         }
         validate_payload_bindings(&self.contract, &self.payloads)?;
+        if let Some(contracts) = &self.semantic_contracts {
+            contracts.validate(self.contract.spec())?;
+        }
         if digest_payload_set(&self.payloads)? != self.payload_set_digest {
             return Err("Workflow revision payload-set digest is invalid".into());
         }
@@ -195,6 +276,12 @@ impl WorkflowRevision {
             .binary_search_by(|payload| payload.digest().cmp(digest))
             .ok()
             .map(|index| &self.payloads[index])
+    }
+
+    pub fn semantic_contract_set_digest(&self) -> Option<&Sha256Digest> {
+        self.semantic_contracts
+            .as_ref()
+            .map(WorkflowRevisionSemanticContracts::digest)
     }
 }
 

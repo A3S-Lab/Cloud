@@ -19,6 +19,14 @@ const GOAL_ACL = 'goal { schema = "cloud.workflow.goal.v1" }\n';
 const PUBLICATION = {
   definitionAcl: DEFINITION_ACL,
   payloads: [{ kind: 'configuration', acl: PAYLOAD_ACL }],
+  semanticContracts: {
+    descriptorBindingsAcl:
+      'descriptor_bindings "support.workflow" { schema = "cloud.workflow.step-descriptor-bindings.v1" }\n',
+    descriptorRegistryAcl:
+      'descriptor_registry "support.workflow" { schema = "cloud.workflow.step-descriptor-registry.v1" }\n',
+    variableContractAcl:
+      'variable_contract "support.workflow" { schema = "cloud.workflow.variable-contract.v1" }\n',
+  },
 };
 
 describe('a3s-cloud Workflow commands', () => {
@@ -453,7 +461,7 @@ describe('a3s-cloud Workflow commands', () => {
     expect(called).toBe(false);
   });
 
-  it('rejects malformed publication and oversized goal ACL before transport', async () => {
+  it('rejects malformed or partial semantic publication and oversized goal ACL before transport', async () => {
     let called = false;
     const malformed = capture();
     const malformedExit = await runCli(
@@ -486,10 +494,36 @@ describe('a3s-cloud Workflow commands', () => {
         },
       }
     );
+    const partialSemantics = capture();
+    const partialSemanticsExit = await runCli(
+      [
+        'workflow-definitions',
+        'create',
+        '--file=workflow-publication.json',
+        '--idempotency-key=cli:workflow:partial-semantics',
+      ],
+      {
+        ...partialSemantics.runtime,
+        environment: completeEnvironment(),
+        readFile: async () =>
+          new TextEncoder().encode(
+            JSON.stringify({
+              definitionAcl: DEFINITION_ACL,
+              payloads: [{ kind: 'configuration', acl: PAYLOAD_ACL }],
+              semanticContracts: { descriptorBindingsAcl: 'descriptor_bindings {}' },
+            })
+          ),
+        fetch: async () => {
+          called = true;
+          return envelope({});
+        },
+      }
+    );
 
     expect(malformedExit).toBe(ExitCode.Usage);
     expect(oversizedExit).toBe(ExitCode.Usage);
-    expect(malformed.stderr()).toContain('only definitionAcl and typed ACL payloads');
+    expect(partialSemanticsExit).toBe(ExitCode.Usage);
+    expect(malformed.stderr()).toContain('Workflow publication must contain definitionAcl');
     expect(oversized.stderr()).toContain('Workflow goal ACL must contain between');
     expect(called).toBe(false);
   });
@@ -526,6 +560,8 @@ function revision() {
     contentDigest: DIGEST,
     payloadSetDigest: DIGEST,
     payloadCount: 1,
+    semanticContractSetDigest: null,
+    semanticContractCount: 0,
     createdBy: PRINCIPAL_ID,
     createdAt: '2026-08-07T00:00:00.000Z',
     canonicalDefinitionAcl: DEFINITION_ACL,
@@ -537,6 +573,7 @@ function revision() {
         canonicalAcl: PAYLOAD_ACL,
       },
     ],
+    semanticContracts: [],
   };
 }
 

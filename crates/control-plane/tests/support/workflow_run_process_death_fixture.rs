@@ -223,6 +223,8 @@ fn workflow_run_input(
         workflow_revision_id: WorkflowRevisionId::new(),
         workflow_digest: Sha256Digest::parse(digest('1'))?,
         workflow_payload_set_digest: digest_payload_set(&payloads)?,
+        semantic_contract_set_digest: None,
+        variable_contract_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('2'))?,
@@ -316,6 +318,8 @@ fn execution_workflow_run_input(
         workflow_revision_id: WorkflowRevisionId::new(),
         workflow_digest: Sha256Digest::parse(digest('4'))?,
         workflow_payload_set_digest: digest_payload_set(&payloads)?,
+        semantic_contract_set_digest: None,
+        variable_contract_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('5'))?,
@@ -389,6 +393,7 @@ fn plan_step(
         output_schema_digest: schema_digest.clone(),
         policy_digest: None,
         capability: None,
+        descriptor: None,
     }
 }
 

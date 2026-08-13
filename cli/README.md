@@ -373,6 +373,10 @@ second migration mechanism.
 
 `workflow-definitions` creates, revises, lists, and reads the project-scoped
 aggregate and immutable revision lineage, including exact canonical payloads.
+Its JSON transport may include the complete `semanticContracts` object with
+descriptor bindings, an exact recoverable descriptor registry snapshot, and a
+typed-variable contract. Cloud persists all three atomically and compiles Plan
+v2 with exact descriptor and variable digests; partial sets fail closed.
 `workflow-goals` creates one immutable Goal from closed ACL and lists/reads the
 Goal and deterministic Plan revision. Cloud owns digest validation,
 compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM

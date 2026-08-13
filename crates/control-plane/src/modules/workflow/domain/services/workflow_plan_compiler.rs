@@ -1,8 +1,9 @@
 use crate::modules::shared_kernel::domain::{PlanRevisionId, PrincipalId, WorkflowGoalId};
 use crate::modules::workflow::domain::{
     OntologyRevision, PlanRevision, WorkflowDefinition, WorkflowGoal, WorkflowGoalContract,
-    WorkflowPlan, WorkflowPlanStep, WorkflowRevision, WORKFLOW_PLAN_COMPILER_REVISION,
-    WORKFLOW_PLAN_SCHEMA,
+    WorkflowPlan, WorkflowPlanStep, WorkflowRevision, WorkflowStepBindingKind,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2,
 };
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -17,6 +18,14 @@ pub struct CompiledWorkflowGoal {
 pub struct WorkflowPlanCompiler;
 
 impl WorkflowPlanCompiler {
+    pub fn compiler_revision(workflow_revision: &WorkflowRevision) -> &'static str {
+        if workflow_revision.semantic_contracts.is_some() {
+            WORKFLOW_PLAN_COMPILER_REVISION_V2
+        } else {
+            WORKFLOW_PLAN_COMPILER_REVISION
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn compile_goal(
         goal_id: WorkflowGoalId,
@@ -45,6 +54,7 @@ impl WorkflowPlanCompiler {
             .iter()
             .map(|step| (step.id.as_str(), step))
             .collect::<BTreeMap<_, _>>();
+        let semantic_contracts = workflow_revision.semantic_contracts.as_ref();
         let steps = order
             .iter()
             .map(|id| {
@@ -59,6 +69,9 @@ impl WorkflowPlanCompiler {
                     output_schema_digest: step.output_schema_digest.clone(),
                     policy_digest: step.policy_digest.clone(),
                     capability: step.capability.clone(),
+                    descriptor: semantic_contracts
+                        .and_then(|contracts| contracts.descriptor_bindings().resolve(&step.id))
+                        .cloned(),
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
@@ -71,12 +84,21 @@ impl WorkflowPlanCompiler {
             goal_id,
             plan_revision_id,
             WorkflowPlan {
-                schema: WORKFLOW_PLAN_SCHEMA.into(),
-                compiler_revision: WORKFLOW_PLAN_COMPILER_REVISION.into(),
+                schema: if semantic_contracts.is_some() {
+                    WORKFLOW_PLAN_SCHEMA_V2
+                } else {
+                    WORKFLOW_PLAN_SCHEMA
+                }
+                .into(),
+                compiler_revision: Self::compiler_revision(workflow_revision).into(),
                 workflow_definition_id: workflow_definition.id,
                 workflow_revision_id: workflow_revision.id,
                 workflow_digest: workflow_revision.contract.digest().clone(),
                 workflow_payload_set_digest: workflow_revision.payload_set_digest.clone(),
+                semantic_contract_set_digest: semantic_contracts
+                    .map(|contracts| contracts.digest().clone()),
+                variable_contract_digest: semantic_contracts
+                    .map(|contracts| contracts.variable_contract().digest().clone()),
                 ontology_id: ontology_revision.ontology_id,
                 ontology_revision_id: ontology_revision.id,
                 ontology_digest: ontology_revision.contract.digest().clone(),
@@ -114,6 +136,19 @@ fn validate_authorities(
     workflow_revision.validate()?;
     ontology_revision.validate()?;
     let spec = goal.spec();
+    if spec.environment_id.is_none()
+        && workflow_revision
+            .semantic_contracts
+            .as_ref()
+            .is_some_and(|contracts| {
+                contracts.requires_binding(WorkflowStepBindingKind::PlacementPolicy)
+            })
+    {
+        return Err(
+            "Workflow descriptors with placement-policy bindings require one exact Goal environment"
+                .into(),
+        );
+    }
     if workflow_revision.organization_id != workflow_definition.organization_id
         || workflow_revision.project_id != workflow_definition.project_id
         || workflow_revision.workflow_definition_id != workflow_definition.id

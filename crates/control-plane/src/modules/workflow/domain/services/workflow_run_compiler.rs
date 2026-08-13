@@ -2,8 +2,8 @@ use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, Wo
 use crate::modules::workflow::domain::{
     workflow_run_timeout_seconds, PlanRevision, ResolvedWorkflowPayload, WorkflowGoal,
     WorkflowRevision, WorkflowRun, WorkflowRunInput, WorkflowStepProjection,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -30,6 +30,11 @@ impl WorkflowRunCompiler {
         goal.validate(plan_revision)?;
         workflow_revision.validate()?;
         let plan = &plan_revision.plan;
+        if plan.schema == WORKFLOW_PLAN_SCHEMA_V2 {
+            return Err(
+                "Workflow plan v2 execution requires the typed-variable Flow adapter".into(),
+            );
+        }
         if workflow_run_id.as_uuid().is_nil()
             || requested_by.as_uuid().is_nil()
             || goal.organization_id != plan_revision.organization_id

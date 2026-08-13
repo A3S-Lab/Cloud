@@ -18,6 +18,9 @@ export const MAX_WORKFLOW_DEFINITION_ACL_BYTES = 1024 * 1024;
 export const MAX_WORKFLOW_PAYLOAD_ACL_BYTES = 256 * 1024;
 export const MAX_WORKFLOW_REVISION_PAYLOAD_BYTES = 8 * 1024 * 1024;
 export const MAX_WORKFLOW_REVISION_PAYLOADS = 2048;
+export const MAX_WORKFLOW_STEP_DESCRIPTOR_BINDINGS_ACL_BYTES = 512 * 1024;
+export const MAX_WORKFLOW_STEP_DESCRIPTOR_REGISTRY_ACL_BYTES = 4 * 1024 * 1024;
+export const MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES = 2 * 1024 * 1024;
 export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
 export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const MAX_EXECUTION_TEMPLATE_ACL_BYTES = 128 * 1024;
@@ -205,6 +208,11 @@ export function validateOntologyRevisionControl(expectedVersion: number, migrati
 export function validateWorkflowDefinitionPublication(input: {
   definitionAcl: string;
   payloads: ReadonlyArray<{ kind: string; acl: string }>;
+  semanticContracts?: {
+    descriptorBindingsAcl: string;
+    descriptorRegistryAcl: string;
+    variableContractAcl: string;
+  };
 }): void {
   validateAclBytes(input.definitionAcl, MAX_WORKFLOW_DEFINITION_ACL_BYTES, 'Workflow definition ACL');
   if (
@@ -227,6 +235,23 @@ export function validateWorkflowDefinitionPublication(input: {
   if (totalBytes > MAX_WORKFLOW_REVISION_PAYLOAD_BYTES) {
     throw new RangeError(
       `Workflow revision payloads must contain at most ${MAX_WORKFLOW_REVISION_PAYLOAD_BYTES} UTF-8 bytes`
+    );
+  }
+  if (input.semanticContracts) {
+    validateAclBytes(
+      input.semanticContracts.descriptorBindingsAcl,
+      MAX_WORKFLOW_STEP_DESCRIPTOR_BINDINGS_ACL_BYTES,
+      'Workflow descriptor bindings ACL'
+    );
+    validateAclBytes(
+      input.semanticContracts.descriptorRegistryAcl,
+      MAX_WORKFLOW_STEP_DESCRIPTOR_REGISTRY_ACL_BYTES,
+      'Workflow descriptor registry ACL'
+    );
+    validateAclBytes(
+      input.semanticContracts.variableContractAcl,
+      MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
+      'Workflow variable contract ACL'
     );
   }
 }

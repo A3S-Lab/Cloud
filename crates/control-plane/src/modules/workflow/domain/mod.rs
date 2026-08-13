@@ -11,8 +11,10 @@ mod workflow_contract;
 mod workflow_goal_contract;
 mod workflow_graph;
 mod workflow_payload;
+mod workflow_revision_semantic_contracts;
 mod workflow_run_contract;
 mod workflow_step_descriptor;
+mod workflow_step_descriptor_bindings;
 mod workflow_variable_contract;
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
@@ -22,10 +24,11 @@ pub use entities::{
     WorkflowDecisionOutcome, WorkflowDefinition, WorkflowGoal, WorkflowPlan, WorkflowPlanStep,
     WorkflowRevision, WorkflowRun, WorkflowRunFlowState, WorkflowRunStatus, WorkflowStepFlowState,
     WorkflowStepProjection, WorkflowStepProjectionStatus, ONTOLOGY_COMPILER_SCHEMA_VERSION,
-    WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES,
-    WORKFLOW_PLAN_SCHEMA, WORKFLOW_REVISION_MAX_PAYLOADS, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
-    WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES, WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES,
-    WORKFLOW_STEP_RESULT_MAX_BYTES,
+    WORKFLOW_COMPILER_SCHEMA_VERSION, WORKFLOW_COMPILER_SCHEMA_VERSION_V2,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_MAX_BYTES,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOADS,
+    WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES,
+    WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES, WORKFLOW_STEP_RESULT_MAX_BYTES,
 };
 pub use events::{
     HumanTaskStateChanged, OntologyRevisionPublished, WorkflowGoalCompiled,
@@ -77,6 +80,9 @@ pub use workflow_payload::{
     WorkflowPolicyMode, WorkflowStepConfiguration, WORKFLOW_CONFIGURATION_SCHEMA,
     WORKFLOW_DATA_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES, WORKFLOW_POLICY_SCHEMA,
 };
+pub use workflow_revision_semantic_contracts::{
+    WorkflowRevisionSemanticContractKind, WorkflowRevisionSemanticContracts,
+};
 pub use workflow_run_contract::{
     workflow_run_timeout_seconds, ResolvedWorkflowPayload, ResolvedWorkflowRunStep,
     WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
@@ -99,6 +105,11 @@ pub use workflow_step_descriptor::{
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_MAX_ACL_BYTES, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
     WORKFLOW_STEP_DESCRIPTOR_SEMANTIC_SCHEMA, WORKFLOW_STEP_PRESENTATION_SCHEMA,
 };
+pub use workflow_step_descriptor_bindings::{
+    WorkflowStepDescriptorBinding, WorkflowStepDescriptorBindings,
+    WorkflowStepDescriptorBindingsSpec, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_MAX_ACL_BYTES,
+    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
+};
 pub use workflow_variable_contract::{
     WorkflowVariableAssignment, WorkflowVariableContract, WorkflowVariableContractSpec,
     WorkflowVariableDeclaration, WorkflowVariableExport, WorkflowVariableMutationMode,
@@ -111,6 +122,10 @@ pub use workflow_variable_contract::{
 mod authority_tests;
 #[cfg(test)]
 mod human_task_contract_tests;
+#[cfg(test)]
+mod workflow_revision_semantic_contracts_tests;
+#[cfg(test)]
+mod workflow_step_descriptor_bindings_tests;
 #[cfg(test)]
 mod workflow_step_descriptor_contract_tests;
 #[cfg(test)]

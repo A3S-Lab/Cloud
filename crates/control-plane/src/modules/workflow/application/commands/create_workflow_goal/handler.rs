@@ -6,7 +6,7 @@ use crate::modules::workflow::application::WorkflowGoalMutationResult;
 use crate::modules::workflow::domain::{
     CreateWorkflowGoalWrite, IOntologyRepository, IWorkflowDefinitionRepository,
     IWorkflowGoalRepository, WorkflowGoalCompiled, WorkflowGoalContract, WorkflowGoalRecord,
-    WorkflowPlanCompiler, WORKFLOW_PLAN_COMPILER_REVISION,
+    WorkflowPlanCompiler,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
@@ -127,7 +127,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                 "projectId": command.project_id,
                 "goalDigest": contract.digest(),
                 "inputDigest": contract.input_digest(),
-                "compilerRevision": WORKFLOW_PLAN_COMPILER_REVISION,
+                "compilerRevision": WorkflowPlanCompiler::compiler_revision(&workflow_revision),
             }))
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(

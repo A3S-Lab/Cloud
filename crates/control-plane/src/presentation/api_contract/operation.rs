@@ -680,6 +680,32 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                                     }
                                 }
                             }
+                        },
+                        "semanticContracts": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                                "descriptorBindingsAcl",
+                                "descriptorRegistryAcl",
+                                "variableContractAcl"
+                            ],
+                            "properties": {
+                                "descriptorBindingsAcl": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 524288
+                                },
+                                "descriptorRegistryAcl": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 4194304
+                                },
+                                "variableContractAcl": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2097152
+                                }
+                            }
                         }
                     }
                 }

@@ -1,0 +1,15 @@
+descriptor_bindings "support.triage" {
+  compiler_schema_version = 2
+  revision = "1.0.0"
+  schema = "cloud.workflow.step-descriptor-bindings.v1"
+  binding "input" {
+    descriptor_id = "workflow.input"
+    descriptor_revision = "1.0.0"
+    semantic_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+  binding "triage" {
+    descriptor_id = "workflow.transform"
+    descriptor_revision = "1.0.0"
+    semantic_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

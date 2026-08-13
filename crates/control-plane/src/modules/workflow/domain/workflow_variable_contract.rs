@@ -96,7 +96,15 @@ impl WorkflowVariableContract {
     /// Validates step identities, schema bindings, reachability, and required
     /// dominance against the immutable Workflow graph being compiled.
     pub fn validate_graph_bindings(&self, workflow: &super::WorkflowSpec) -> Result<(), String> {
-        graph::validate_graph_bindings(&self.spec, workflow)
+        graph::validate_graph_bindings(&self.spec, workflow, &Default::default())
+    }
+
+    pub(crate) fn validate_graph_bindings_with_application_ports(
+        &self,
+        workflow: &super::WorkflowSpec,
+        application_ports: &std::collections::BTreeSet<&str>,
+    ) -> Result<(), String> {
+        graph::validate_graph_bindings(&self.spec, workflow, application_ports)
     }
 }
 

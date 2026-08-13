@@ -444,6 +444,8 @@ async fn store_goal_audit(
                 "ontologyRevisionId": record.plan_revision.plan.ontology_revision_id,
                 "inputDigest": record.plan_revision.plan.input_digest,
                 "compilerRevision": record.plan_revision.plan.compiler_revision,
+                "semanticContractSetDigest": record.plan_revision.plan.semantic_contract_set_digest,
+                "variableContractDigest": record.plan_revision.plan.variable_contract_digest,
             }),
         },
     )
