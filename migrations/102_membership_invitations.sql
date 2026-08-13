@@ -24,6 +24,7 @@ create table membership_invitations (
     check (accepted_at is null or accepted_at = updated_at),
     check (accepted_at is null or accepted_at < expires_at),
     check (revoked_at is null or revoked_at = updated_at),
+    check (revoked_at is null or revoked_at < expires_at),
     check (accepted_at is null or revoked_at is null)
 );
 
@@ -37,7 +38,7 @@ create index membership_invitations_pending_idx
     on membership_invitations (organization_id, principal_id, expires_at, id)
     where accepted_at is null and revoked_at is null;
 
-create or replace function reject_membership_invitation_identity_mutation()
+create or replace function enforce_membership_invitation_transition()
 returns trigger
 language plpgsql
 as $$
@@ -51,13 +52,37 @@ begin
         or new.expires_at <> old.expires_at then
         raise exception 'membership invitation identity is immutable';
     end if;
+
+    if old.accepted_at is not null or old.revoked_at is not null then
+        if new is distinct from old then
+            raise exception 'terminal membership invitation history is immutable';
+        end if;
+        return new;
+    end if;
+
+    if new.aggregate_version <> old.aggregate_version + 1
+        or new.updated_at < old.updated_at
+        or not (
+            (
+                new.accepted_membership_id is not null
+                and new.accepted_at is not null
+                and new.revoked_at is null
+            )
+            or (
+                new.accepted_membership_id is null
+                and new.accepted_at is null
+                and new.revoked_at is not null
+            )
+        ) then
+        raise exception 'membership invitation transition is invalid';
+    end if;
     return new;
 end
 $$;
 
-create trigger membership_invitations_immutable_identity
+create trigger membership_invitations_enforce_transition
 before update on membership_invitations
-for each row execute function reject_membership_invitation_identity_mutation();
+for each row execute function enforce_membership_invitation_transition();
 
 create or replace function reject_membership_invitation_delete()
 returns trigger

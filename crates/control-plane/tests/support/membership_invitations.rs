@@ -332,6 +332,18 @@ pub async fn exercise_membership_invitation_persistence(
         identity_mutation.is_err(),
         "stored invitation identity must be immutable"
     );
+    let terminal_mutation = database
+        .execute(
+            sql_query::<()>(
+                "update membership_invitations set aggregate_version = aggregate_version + 1, updated_at = updated_at + interval '1 second', accepted_at = accepted_at + interval '1 second' where id = ",
+            )
+            .bind(invitation_id),
+        )
+        .await;
+    assert!(
+        terminal_mutation.is_err(),
+        "accepted invitation history must remain terminal and immutable"
+    );
     let deletion = database
         .execute(
             sql_query::<()>("delete from membership_invitations where id = ").bind(invitation_id),

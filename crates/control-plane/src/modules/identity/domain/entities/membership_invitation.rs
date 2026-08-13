@@ -111,10 +111,11 @@ impl MembershipInvitation {
     }
 
     pub fn revoke(&mut self, revoked_at: DateTime<Utc>) -> bool {
-        if self.accepted_at.is_some() || self.revoked_at.is_some() {
+        let revoked_at = canonical_timestamp(revoked_at);
+        if self.status_at(revoked_at) != MembershipInvitationStatus::Pending {
             return false;
         }
-        let revoked_at = canonical_timestamp(revoked_at).max(self.updated_at);
+        let revoked_at = revoked_at.max(self.updated_at);
         self.revoked_at = Some(revoked_at);
         self.updated_at = revoked_at;
         self.aggregate_version += 1;
@@ -195,5 +196,8 @@ mod tests {
             invitation.status_at(now + Duration::days(8)),
             MembershipInvitationStatus::Expired
         );
+        assert!(!invitation.revoke(now + Duration::days(8)));
+        assert_eq!(invitation.revoked_at, None);
+        assert_eq!(invitation.aggregate_version, 1);
     }
 }
