@@ -126,7 +126,7 @@ Search index authoritative.
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
 `W0.1`, the backend implementation of `W0.2`, and the planning/persistence plus
-internal Workflow-local, HumanTask, and finite Execution portions of `W0.3`
+internal Workflow-local, reachable-Output, HumanTask, and finite Execution portions of `W0.3`
 are now present. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
@@ -202,13 +202,16 @@ W0.3. Business-service and remaining Agent/MCP/model/Tool capability dispatch,
 compensation, expanded cross-surface evidence, and public Workflow availability
 remain open.
 
-The descriptor registry, typed variable scopes, bounded Iteration/Loop regions,
-typed error branches/fallback, ordered Answer frames, and reachable-sink Output
-aggregation remain unimplemented parts of `W0.3`. The current runtime completes
-at its first `output`; that is a valid minimal slice but is not multi-output
-application parity. The correction
-belongs to the Workflow compiler/runtime adapter and must preserve the same
-Flow history and completion mechanism.
+Reachable-sink Output aggregation is now implemented in the Workflow
+compiler/runtime adapter without changing Flow. A graph admits one or more
+terminal Output sinks and every step must reach at least one. Runtime completion
+waits until every declared sink is active or inactive, excludes inactive branch
+sinks, preserves the historical value shape for one declared sink, and emits a
+stable step-ID-keyed object for multiple declared sinks under the existing
+output bound. Focused Workflow tests verify this behavior together with legacy
+replay and HumanTask compatibility. The descriptor registry, typed variable
+scopes, bounded Iteration/Loop regions, typed error branches/fallback, and
+ordered Answer frames remain unimplemented parts of `W0.3`.
 
 ### 4.3 Compiler rules
 

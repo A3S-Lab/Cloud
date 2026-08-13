@@ -311,6 +311,58 @@ pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
     Ok(input)
 }
 
+pub(crate) fn multi_output_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = workflow_run_input()?;
+    let output = input
+        .plan
+        .steps
+        .pop()
+        .ok_or_else(|| "WorkflowRun test plan lost its output step".to_owned())?;
+    if output.id != "output" || output.kind != WorkflowStepKind::Output {
+        return Err("WorkflowRun test plan output step drifted".into());
+    }
+    let mut output_a = output.clone();
+    output_a.id = "output-a".into();
+    let mut output_b = output;
+    output_b.id = "output-b".into();
+    input.plan.steps.extend([output_a, output_b]);
+    input.plan.edges.retain(|edge| edge.target != "output");
+    input.plan.edges.extend([
+        edge("high-output-a", "high", "output-a", None),
+        edge("high-output-b", "high", "output-b", None),
+        edge("normal-output-a", "normal", "output-a", None),
+        edge("normal-output-b", "normal", "output-b", None),
+    ]);
+    input
+        .plan
+        .edges
+        .sort_by(|left, right| left.id.cmp(&right.id));
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun multi-output test plan",
+    )?))?;
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn exclusive_output_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = multi_output_workflow_run_input()?;
+    input
+        .plan
+        .edges
+        .retain(|edge| !matches!(edge.id.as_str(), "high-output-b" | "normal-output-a"));
+    input.plan.validate()?;
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun exclusive-output test plan",
+    )?))?;
+    input.validate()?;
+    Ok(input)
+}
+
 pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, String> {
     let goal_input = serde_json::json!({"requestId": "REQ-42", "amount": 1250});
     let input_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(

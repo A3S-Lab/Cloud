@@ -84,13 +84,15 @@ Cloud semantic descriptor or composite plan region; it is not a new Flow
 command or a second workflow engine.
 
 The current Cloud Workflow implementation covers the first local execution
-slice: `input`, `transform`, `branch`, `human_decision`, and `output`. It also
+slice: `input`, `transform`, `branch`, `human_decision`, finite `execution`, and
+`output`. It also
 declares coarse semantic kinds for Agent, MCP, model, Tool, service, memory, and
 subworkflow steps. That is a foundation, not full application-platform or node
-parity. In particular, the current first-`output` completion behavior must be
-replaced by deterministic reachable-sink aggregation in Cloud Workflow before
-multi-output parity can pass. The correction belongs to Cloud semantic
-execution and does not change Flow's completion contract.
+parity. Deterministic reachable-sink aggregation is now implemented in Cloud
+Workflow: one declared Output preserves its historical value, multiple declared
+Outputs aggregate active results by stable step ID, inactive branch sinks are
+omitted, and completion waits for all sinks under the existing output bound.
+This used Flow's existing completion contract and did not change Flow.
 
 The current implementation already follows the intended non-duplication shape:
 
@@ -609,11 +611,12 @@ The recommended sequence is:
    availability state. Record the Flow-preservation,
    application-delivery, descriptor-registry, trigger, file, and Knowledge
    authority decisions.
-2. **Finish the W0 semantic foundation.** Complete protected WorkflowRun and
-   HumanTask surfaces, descriptor revisions, composite Iteration/Loop regions,
-   multi-output aggregation, Answer event contract, variable scopes, node error
-   branches/fallback, and retained Flow replay tests. Prove any proposed Flow
-   primitive is genuinely missing before changing Flow.
+2. **Finish the W0 semantic foundation.** Retain protected WorkflowRun and
+   HumanTask surfaces plus the implemented multi-output aggregation; complete
+   descriptor revisions, composite Iteration/Loop regions, Answer event
+   contract, variable scopes, node error branches/fallback, and retained Flow
+   replay tests. Prove any proposed Flow primitive is genuinely missing before
+   changing Flow.
 3. **Land the three owning contracts.** Implement `APP0.1`, `K0.1`, and
    `AUT0.1` as independent vertical slices. Do not add provider behavior to
    these contract slices.

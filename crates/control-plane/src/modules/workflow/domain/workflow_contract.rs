@@ -632,6 +632,32 @@ mod tests {
     }
 
     #[test]
+    fn graph_validation_accepts_multiple_reachable_output_sinks() {
+        let mut workflow = fixture();
+        workflow.steps[2] = step("output-a", WorkflowStepKind::Output);
+        workflow
+            .steps
+            .push(step("output-b", WorkflowStepKind::Output));
+        workflow.edges = vec![
+            edge("input-transform", "input", "transform"),
+            edge("transform-output-a", "transform", "output-a"),
+            edge("transform-output-b", "transform", "output-b"),
+        ];
+
+        assert_eq!(
+            workflow
+                .topological_order(Default::default())
+                .expect("multiple output sinks"),
+            ["input", "transform", "output-a", "output-b"]
+        );
+
+        workflow
+            .edges
+            .push(edge("output-a-output-b", "output-a", "output-b"));
+        assert!(workflow.validate(Default::default()).is_err());
+    }
+
+    #[test]
     fn every_external_step_requires_its_exact_owning_capability_type() {
         let cases = [
             (WorkflowStepKind::HumanDecision, CapabilityType::FormRelease),

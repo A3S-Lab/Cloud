@@ -144,7 +144,8 @@ Migration `080` adds the minimal `WorkflowRun` execution slice. Starting one
 exact Goal/Plan atomically commits its Operation, WorkflowRun, semantic step
 projections, idempotency record, audit, and Outbox fact through A3S ORM. The
 existing worker and reconciler execute Workflow-local `input`, `transform`,
-`branch`, `human_decision`, and `output` steps through one A3S Flow run, verify
+`branch`, `human_decision`, finite `execution`, and `output` steps through one
+A3S Flow run, verify
 immutable Goal/Plan/input/payload/hook authority during replay, and project
 cancellation, deadlines, waiting, terminal output, and bounded redacted
 history. Migration `081` adds the internal authority-bound HumanTask decision
@@ -192,10 +193,17 @@ persistence/process-death gate and C0.2 Management MCP/A3S Box cross-surface
 gate now pass for the exact `77/47` catalog. The latter certifies the shared
 ExecutionTemplate fixture, accepted/rejected idempotency, Outbox, audit,
 migration `098`, immutability, and tenant non-disclosure as `8/8`. This verifies
-the finite Execution sub-slice; W0.3 remains in progress because business-service,
-Agent, MCP, model, Tool, compensation, expanded provider evidence, and production
-recovery remain open. No second engine, scheduler, queue, Runtime provider,
-authorization store, or frontend was added.
+the finite Execution sub-slice. Workflow graph admission and the same Flow
+runtime now also accept one or more terminal `output` sinks, wait until every
+sink is active or inactive, preserve the legacy scalar result for a single
+sink, and emit an output-ID-keyed object for multiple declared sinks. Focused
+Workflow tests verify deterministic ordering, inactive-branch omission,
+aggregate size bounds, replay, and HumanTask compatibility. W0.3 remains in
+progress because descriptors, typed variable scopes, Iteration/Loop, Answer,
+error branches, business-service and remaining provider steps, compensation,
+expanded provider evidence, and production recovery remain open. No second
+engine, scheduler, queue, Runtime provider, authorization store, or frontend
+was added.
 
 The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
 Boot `0.2.0` with its PostgreSQL queue, and A3S ORM `0.3.0`-backed PostgreSQL
@@ -431,7 +439,7 @@ its authority.
 | Data and trust | Secret versions, immutable objects, persistent volumes, databases, backup, restore, retention, and writer fencing | Secrets, Artifacts, Data, `S0` |
 | Operations and evidence | Idempotency, Operations, Flow, Outbox/Event, audit, notifications, logs, metrics, traces, Search, and runbooks | Shared mechanisms, `F0`, `C0`, `H0` |
 | Agentic execution | Conversations, semantic events, approvals, suspension, checkpoints, forks, trajectories, Tools, Skills, MCP, models, and provider-neutral Harnesses | Agents over the common path, `A0`, `A1`, `MCP0`, `I0` |
-| Workflow and evolution | ACL-native versioned Ontologies, immutable Workflow definitions/payloads/goals, deterministic plans, Workflow-local runs, the authority-bound HumanTask loop, and one exact finite `Execution` capability step today; remaining Agent/MCP/model/Tool/service steps, compensation, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback remain gate-driven | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
+| Workflow and evolution | ACL-native versioned Ontologies, immutable Workflow definitions/payloads/goals, deterministic plans, Workflow-local runs with deterministic reachable-Output aggregation, the authority-bound HumanTask loop, and one exact finite `Execution` capability step today; remaining Agent/MCP/model/Tool/service steps, compensation, governed evidence datasets, evaluation, promotion, canary halt, and exact rollback remain gate-driven | Workflow and Evolution semantics over Flow/Operations, `W0`, `EV0` |
 | AI application platform | Six current application projections, including classic Agent and New Agent Beta, sessions, messages, conversation variables, user files, RAG Knowledge, Flow-backed Knowledge Pipelines, triggers/connectors, multi-channel publication, monitoring, feedback, and enterprise policy | Applications, Knowledge, Files, Automations, and Connectors over existing A0/A1/AR0 and platform owners, `APP0`, `K0`, `AUT0`, `W0` |
 | Inference | Power-hosted model Services, accelerator Claims, model/provider policy, scoped keys, routing/fallback, durable usage, and governed self-service | Inference, Power, Workloads, Fleet, Edge, Gateway, `PW0`, `I0` |
 
@@ -478,7 +486,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, Form, WorkflowRun, HumanTask loop, shared grants, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, Form, WorkflowRun, HumanTask loop, shared grants, deterministic reachable-Output aggregation, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Focused Output semantics and the finite Execution recovery/cross-surface sub-gate are verified; descriptors, variables, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` | Six current application experiences, shared release/session/delivery, publication, monitoring, and enterprise completion | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` | Files, RAG Knowledge, multi-source General/Parent-child/Q&A and multimodal processing, retrieval, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` | New-invocation triggers and reusable outbound connection profiles | Planned and unavailable |

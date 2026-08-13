@@ -140,9 +140,6 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
                         step.plan.id
                     ),
                 })?;
-            if step.plan.kind == WorkflowStepKind::Output {
-                return Ok(context.complete(result.output));
-            }
             resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
             continue;
         }
@@ -168,10 +165,15 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
         ));
     }
 
-    if ready.is_empty() {
-        Ok(context.fail("WorkflowRun graph stalled before its output completed"))
-    } else {
-        Ok(context.schedule_steps(ready))
+    if !ready.is_empty() {
+        return Ok(context.schedule_steps(ready));
+    }
+    match resolved_workflow_output(&input, &resolved) {
+        Ok(Some(output)) => Ok(context.complete(output)),
+        Ok(None) => Ok(
+            context.fail("WorkflowRun graph stalled before all reachable output sinks resolved")
+        ),
+        Err(error) => Ok(context.fail(error)),
     }
 }
 
@@ -342,6 +344,41 @@ fn effective_input(dependencies: &BTreeMap<String, Value>, workflow_input: &Valu
     }
 }
 
+fn resolved_workflow_output(
+    input: &WorkflowRunInput,
+    resolved: &BTreeMap<String, ResolvedState>,
+) -> Result<Option<Value>, String> {
+    let outputs = input
+        .plan
+        .steps
+        .iter()
+        .filter(|step| step.kind == WorkflowStepKind::Output)
+        .collect::<Vec<_>>();
+    let mut active = BTreeMap::new();
+    for output in &outputs {
+        match resolved.get(&output.id) {
+            Some(ResolvedState::Active(result)) => {
+                active.insert(output.id.clone(), result.output.clone());
+            }
+            Some(ResolvedState::Inactive) => {}
+            None => return Ok(None),
+        }
+    }
+    if active.is_empty() {
+        return Err("WorkflowRun resolved no reachable output sink".into());
+    }
+    let output = if outputs.len() == 1 {
+        active
+            .into_values()
+            .next()
+            .ok_or_else(|| "WorkflowRun lost its reachable output".to_owned())?
+    } else {
+        Value::Object(active.into_iter().collect())
+    };
+    super::execution::value_digest(&output, "WorkflowRun aggregate output")?;
+    Ok(Some(output))
+}
+
 pub(super) fn inactive_step_ids(
     input: &WorkflowRunInput,
     completed: &BTreeMap<String, WorkflowLocalStepResult>,
@@ -381,8 +418,11 @@ pub(super) fn inactive_step_ids(
 mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::{Sha256Digest, WorkflowRunId};
+    use crate::modules::workflow::domain::WORKFLOW_RUN_OUTPUT_MAX_BYTES;
     use crate::modules::workflow::domain::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
-    use crate::modules::workflow::test_support::{digest, timestamp, workflow_run_input};
+    use crate::modules::workflow::test_support::{
+        digest, multi_output_workflow_run_input, timestamp, workflow_run_input,
+    };
     use a3s_flow::{CancellationRequest, FlowEvent, FlowEventEnvelope, WorkflowSpec};
     use uuid::Uuid;
 
@@ -482,6 +522,38 @@ mod tests {
             run_workflow(replay_drift),
             Err(FlowError::NonDeterministic { .. })
         ));
+    }
+
+    #[test]
+    fn multi_output_aggregate_enforces_the_workflow_run_output_bound() {
+        let input = multi_output_workflow_run_input().expect("multi-output WorkflowRun input");
+        let value = Value::String("x".repeat(WORKFLOW_RUN_OUTPUT_MAX_BYTES / 2));
+        let resolved = BTreeMap::from([
+            (
+                "output-a".into(),
+                ResolvedState::Active(WorkflowLocalStepResult {
+                    step_id: "output-a".into(),
+                    kind: WorkflowStepKind::Output,
+                    output: value.clone(),
+                    output_digest: Sha256Digest::parse(digest('a')).expect("digest"),
+                    selected_handle: None,
+                }),
+            ),
+            (
+                "output-b".into(),
+                ResolvedState::Active(WorkflowLocalStepResult {
+                    step_id: "output-b".into(),
+                    kind: WorkflowStepKind::Output,
+                    output: value,
+                    output_digest: Sha256Digest::parse(digest('b')).expect("digest"),
+                    selected_handle: None,
+                }),
+            ),
+        ]);
+
+        assert!(resolved_workflow_output(&input, &resolved)
+            .expect_err("oversized aggregate")
+            .contains("exceeds its 262144-byte bound"));
     }
 
     fn invocation(input: &WorkflowRunInput, history: Vec<FlowEventEnvelope>) -> WorkflowInvocation {

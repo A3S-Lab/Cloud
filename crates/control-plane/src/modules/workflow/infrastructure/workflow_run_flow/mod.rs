@@ -124,8 +124,9 @@ mod tests {
         WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
     };
     use crate::modules::workflow::test_support::{
-        accepted_submission, digest, human_decision_form_release,
-        human_decision_workflow_run_input, timestamp, workflow_run_input, TEST_HUMAN_STEP_ID,
+        accepted_submission, digest, exclusive_output_workflow_run_input,
+        human_decision_form_release, human_decision_workflow_run_input,
+        multi_output_workflow_run_input, timestamp, workflow_run_input, TEST_HUMAN_STEP_ID,
     };
     use a3s_flow::{
         FlowEngine, FlowEvent, HookStatus, RuntimeBuildCompatibility, RuntimeBuildId,
@@ -175,6 +176,82 @@ mod tests {
             .start_with_id(run_id, spec, serde_json::to_value(drifted)?)
             .await
             .is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn flow_engine_waits_for_and_deterministically_aggregates_reachable_output_sinks(
+    ) -> Result<(), FlowError> {
+        let mut input = multi_output_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let run_id = input.workflow_run_id.to_string();
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        engine
+            .start_with_id(
+                &run_id,
+                WorkflowSpec::rust_embedded(
+                    WORKFLOW_RUN_FLOW_NAME,
+                    WORKFLOW_RUN_FLOW_VERSION,
+                    "cloud",
+                    "workflow_run",
+                ),
+                serde_json::to_value(&input)?,
+            )
+            .await?;
+
+        let snapshot = engine.snapshot(&run_id).await?;
+        assert_eq!(
+            snapshot.status,
+            WorkflowRunStatus::Completed,
+            "{snapshot:#?}"
+        );
+        assert_eq!(
+            snapshot.output,
+            Some(json!({
+                "output-a": "HIGH T-42",
+                "output-b": "HIGH T-42",
+            }))
+        );
+        assert!(snapshot.steps.contains_key(&flow_step_id("output-a")));
+        assert!(snapshot.steps.contains_key(&flow_step_id("output-b")));
+        assert!(!snapshot.steps.contains_key(&flow_step_id("normal")));
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn flow_engine_omits_inactive_output_sinks_from_the_terminal_aggregate(
+    ) -> Result<(), FlowError> {
+        let mut input = exclusive_output_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let run_id = input.workflow_run_id.to_string();
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        engine
+            .start_with_id(
+                &run_id,
+                WorkflowSpec::rust_embedded(
+                    WORKFLOW_RUN_FLOW_NAME,
+                    WORKFLOW_RUN_FLOW_VERSION,
+                    "cloud",
+                    "workflow_run",
+                ),
+                serde_json::to_value(&input)?,
+            )
+            .await?;
+
+        let snapshot = engine.snapshot(&run_id).await?;
+        assert_eq!(
+            snapshot.status,
+            WorkflowRunStatus::Completed,
+            "{snapshot:#?}"
+        );
+        assert_eq!(snapshot.output, Some(json!({"output-a": "HIGH T-42"})));
+        assert!(snapshot.steps.contains_key(&flow_step_id("output-a")));
+        assert!(!snapshot.steps.contains_key(&flow_step_id("output-b")));
+        assert!(!snapshot.steps.contains_key(&flow_step_id("normal")));
         Ok(())
     }
 

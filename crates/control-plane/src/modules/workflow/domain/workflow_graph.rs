@@ -39,16 +39,15 @@ pub(super) fn validate_workflow(
             _ => {}
         }
     }
-    if inputs.len() != 1 || outputs.len() != 1 {
+    if inputs.len() != 1 || outputs.is_empty() {
         return Err(format!(
-            "Workflow must contain exactly one input and one output step; found {} input and {} output steps",
+            "Workflow must contain exactly one input and at least one output step; found {} input and {} output steps",
             inputs.len(),
             outputs.len()
         ));
     }
 
     let input = inputs[0];
-    let output = outputs[0];
     let mut edge_ids = BTreeSet::new();
     let mut outgoing: BTreeMap<&str, Vec<&str>> =
         steps.keys().copied().map(|id| (id, Vec::new())).collect();
@@ -71,14 +70,18 @@ pub(super) fn validate_workflow(
     if !incoming[input].is_empty() {
         return Err("Workflow input step cannot have incoming edges".into());
     }
-    if !outgoing[output].is_empty() {
-        return Err("Workflow output step cannot have outgoing edges".into());
+    for output in &outputs {
+        if !outgoing[output].is_empty() {
+            return Err(format!(
+                "Workflow output step {output:?} cannot have outgoing edges"
+            ));
+        }
     }
     for id in steps.keys().copied() {
         if id != input && incoming[id].is_empty() {
             return Err(format!("Workflow step {id:?} has no upstream step"));
         }
-        if id != output && outgoing[id].is_empty() {
+        if !outputs.contains(&id) && outgoing[id].is_empty() {
             return Err(format!("Workflow step {id:?} does not lead toward output"));
         }
     }
@@ -86,7 +89,11 @@ pub(super) fn validate_workflow(
     if walk(input, &outgoing).len() != steps.len() {
         return Err("Every Workflow step must be reachable from input".into());
     }
-    if walk(output, &incoming).len() != steps.len() {
+    let mut reaches_output = BTreeSet::new();
+    for output in outputs {
+        reaches_output.extend(walk(output, &incoming));
+    }
+    if reaches_output.len() != steps.len() {
         return Err("Every Workflow step must lead to output".into());
     }
 

@@ -1355,6 +1355,12 @@ contexts' tables.
   digest-bound and projected from the correlated A3S Flow history; unselected
   branch steps become `skipped`. A human decision suspends the same Flow run on
   an authority-bound hook and resumes it only from the immutable decision.
+- A Workflow has exactly one Input and at least one terminal Output sink. Every
+  step must reach a sink. Completion waits until every declared sink is active
+  or inactive; inactive branch sinks contribute nothing. One declared Output
+  preserves its value shape, while multiple declared Outputs produce a
+  step-ID-keyed object in deterministic order under the shared run-output byte
+  bound. Flow still owns the sole terminal history event.
 - Internal HumanTask dispatch/resume, protected reads, claim/release, native
   submission, automatic expiry, and parent cancellation are implemented.
 - Executions owns immutable project-scoped `ExecutionTemplate` revisions in
