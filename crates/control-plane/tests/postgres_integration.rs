@@ -84,6 +84,8 @@ mod github_connection_support;
 mod human_tasks_support;
 #[path = "support/mcp_route_policies.rs"]
 mod mcp_route_policies_support;
+#[path = "support/membership_invitations.rs"]
+mod membership_invitations_support;
 #[path = "support/plugins.rs"]
 mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
@@ -273,6 +275,19 @@ async fn postgres_resource_grants_enforce_the_cross_surface_authorization_matrix
     )
     .await
     .expect("PostgreSQL Resource Grant cross-surface authorization gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_membership_invitations_are_atomic_exact_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        membership_invitations_support::exercise_membership_invitation_persistence,
+    )
+    .await
+    .expect("PostgreSQL membership invitation authority gate");
 }
 
 async fn exercise_postgres_replica_set_foundation(

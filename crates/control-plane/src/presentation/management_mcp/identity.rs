@@ -1,18 +1,22 @@
 use super::arguments::EmptyArguments;
 use super::tool_result;
 use crate::modules::identity::presentation::{
-    MembershipMutationResponse, MembershipResponse, ResourceGrantMutationResponse,
-    ResourceGrantResponse, ResourceGrantScopeDto,
+    MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
+    MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
+    ResourceGrantMutationResponse, ResourceGrantResponse, ResourceGrantScopeDto,
 };
 use crate::modules::identity::{
-    ChangeMembershipRole, CreateResourceGrant, CreateServiceMembership, GetMembership,
-    GetResourceGrant, ListMemberships, ListResourceGrants, RevokeMembership, RevokeResourceGrant,
+    AcceptMembershipInvitation, ChangeMembershipRole, CreateMembershipInvitation,
+    CreateResourceGrant, CreateServiceMembership, GetMembership, GetMembershipInvitation,
+    GetResourceGrant, ListMembershipInvitations, ListMemberships, ListMyMembershipInvitations,
+    ListResourceGrants, RevokeMembership, RevokeMembershipInvitation, RevokeResourceGrant,
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    MembershipId, OrganizationId, PrincipalId, ResourceGrantId,
+    MembershipId, MembershipInvitationId, OrganizationId, PrincipalId, ResourceGrantId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -37,6 +41,7 @@ pub struct CreateServiceMembershipArguments {
 pub struct ChangeMembershipRoleArguments {
     membership_id: Uuid,
     role: String,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
     expected_version: u64,
     idempotency_key: String,
 }
@@ -45,6 +50,31 @@ pub struct ChangeMembershipRoleArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevokeMembershipArguments {
     membership_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MembershipInvitationArguments {
+    invitation_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateMembershipInvitationArguments {
+    principal_id: Uuid,
+    role: String,
+    expires_at: DateTime<Utc>,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MembershipInvitationMutationArguments {
+    invitation_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
     expected_version: u64,
     idempotency_key: String,
 }
@@ -73,6 +103,7 @@ pub struct CreateResourceGrantArguments {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RevokeResourceGrantArguments {
     resource_grant_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
     expected_version: u64,
     idempotency_key: String,
 }
@@ -194,6 +225,164 @@ pub async fn revoke_membership(
     {
         Ok(result) => {
             tool_result::success(200, MembershipMutationResponse::from(result), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_membership_invitations(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    _arguments: EmptyArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListMembershipInvitations { organization_id })
+        .await?
+    {
+        Ok(invitations) => tool_result::success(
+            200,
+            invitations
+                .into_iter()
+                .map(MembershipInvitationResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_membership_invitation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: MembershipInvitationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetMembershipInvitation {
+            organization_id,
+            invitation_id: MembershipInvitationId::from_uuid(arguments.invitation_id),
+        })
+        .await?
+    {
+        Ok(invitation) => tool_result::success(
+            200,
+            MembershipInvitationResponse::from(invitation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_membership_invitation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    actor_is_platform_admin: bool,
+    arguments: CreateMembershipInvitationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateMembershipInvitation {
+            organization_id,
+            principal_id: PrincipalId::from_uuid(arguments.principal_id),
+            role: arguments.role,
+            expires_at: arguments.expires_at,
+            actor_principal_id,
+            actor_is_platform_admin,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                MembershipInvitationMutationResponse::from(result),
+                request_id,
+            )
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_membership_invitation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    actor_is_platform_admin: bool,
+    arguments: MembershipInvitationMutationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokeMembershipInvitation {
+            organization_id,
+            invitation_id: MembershipInvitationId::from_uuid(arguments.invitation_id),
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            actor_is_platform_admin,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            MembershipInvitationMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_my_membership_invitations(
+    bus: Arc<QueryBus>,
+    actor_principal_id: PrincipalId,
+    _arguments: EmptyArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListMyMembershipInvitations {
+            principal_id: actor_principal_id,
+        })
+        .await?
+    {
+        Ok(invitations) => tool_result::success(
+            200,
+            invitations
+                .into_iter()
+                .map(MembershipInvitationResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn accept_membership_invitation(
+    bus: Arc<CommandBus>,
+    actor_principal_id: PrincipalId,
+    arguments: MembershipInvitationMutationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(AcceptMembershipInvitation {
+            invitation_id: MembershipInvitationId::from_uuid(arguments.invitation_id),
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                MembershipInvitationAcceptanceResponse::from(result),
+                request_id,
+            )
         }
         Err(error) => tool_result::application_error(error, request_id),
     }

@@ -14,9 +14,10 @@ use super::forms::{
     PublishFormReleaseArguments, ReviseFormDraftArguments,
 };
 use super::identity::{
-    ChangeMembershipRoleArguments, CreateResourceGrantArguments, CreateServiceMembershipArguments,
-    ListResourceGrantsArguments, MembershipArguments, ResourceGrantArguments,
-    RevokeMembershipArguments, RevokeResourceGrantArguments,
+    ChangeMembershipRoleArguments, CreateMembershipInvitationArguments,
+    CreateResourceGrantArguments, CreateServiceMembershipArguments, ListResourceGrantsArguments,
+    MembershipArguments, MembershipInvitationArguments, MembershipInvitationMutationArguments,
+    ResourceGrantArguments, RevokeMembershipArguments, RevokeResourceGrantArguments,
 };
 use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
@@ -169,6 +170,63 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipInvitationsList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            identity::list_membership_invitations(query_bus, organization_id, arguments, request_id)
+                .await
+        }
+        ManagementTool::MembershipInvitationsGet => {
+            let arguments = arguments::parse::<MembershipInvitationArguments>(arguments).ok()?;
+            identity::get_membership_invitation(query_bus, organization_id, arguments, request_id)
+                .await
+        }
+        ManagementTool::MembershipInvitationsCreate => {
+            let arguments =
+                arguments::parse::<CreateMembershipInvitationArguments>(arguments).ok()?;
+            identity::create_membership_invitation(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipInvitationsRevoke => {
+            let arguments =
+                arguments::parse::<MembershipInvitationMutationArguments>(arguments).ok()?;
+            identity::revoke_membership_invitation(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                actor_is_platform_admin,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MyMembershipInvitationsList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            identity::list_my_membership_invitations(
+                query_bus,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::MembershipInvitationsAccept => {
+            let arguments =
+                arguments::parse::<MembershipInvitationMutationArguments>(arguments).ok()?;
+            identity::accept_membership_invitation(
+                command_bus,
+                actor_principal_id,
                 arguments,
                 request_id,
             )

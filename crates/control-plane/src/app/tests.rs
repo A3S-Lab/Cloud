@@ -1585,6 +1585,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             organizations: identity.clone(),
             api_tokens: identity.clone(),
             memberships: identity.clone(),
+            membership_invitations: identity.clone(),
             resource_grants: identity.clone(),
             resource_authorization_decisions: identity,
             projects: projects.clone(),
@@ -2861,6 +2862,159 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         ))
         .await?;
     assert_eq!(last_owner.status(), 409);
+    Ok(())
+}
+
+#[tokio::test]
+async fn membership_invitations_bind_exact_principals_and_accept_atomically() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let app = build_test_application(
+        Arc::clone(&identity),
+        Arc::new(InMemoryProjectsRepository::new()),
+    )?;
+    let source_organization =
+        bootstrap_organization(&app, "invitation-bootstrap", "Source").await?;
+    let target_organization = create_organization(&app, "invitation-target", "Target").await?;
+
+    let service = app
+        .call(post_json(
+            format!("/api/v1/organizations/{source_organization}/memberships"),
+            "invitation:create-principal",
+            json!({"name": "invited automation", "role": "member"}),
+        ))
+        .await?;
+    assert_eq!(service.status(), 201);
+    let service = response_json(&service)?;
+    let principal_id = service["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("invited service has no Principal ID".into()))?;
+
+    let credential = app
+        .call(post_json(
+            format!("/api/v1/organizations/{source_organization}/api-tokens"),
+            "invitation:create-credential",
+            json!({
+                "name": "invitation acceptance",
+                "token": SERVICE_MEMBER_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::IDENTITY_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null,
+            }),
+        ))
+        .await?;
+    assert_eq!(credential.status(), 201);
+
+    let invitation_path =
+        format!("/api/v1/organizations/{target_organization}/membership-invitations");
+    let invitation_body = json!({
+        "principalId": principal_id,
+        "role": "restricted",
+        "expiresAt": Utc::now() + chrono::Duration::days(7),
+    });
+    let created = app
+        .call(post_json(
+            &invitation_path,
+            "invitation:create",
+            invitation_body.clone(),
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created = response_json(&created)?;
+    let invitation_id = created["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("membership invitation has no ID".into()))?;
+    assert_eq!(created["data"]["status"], "pending");
+    assert_eq!(created["data"]["aggregateVersion"], 1);
+
+    let replayed = app
+        .call(post_json(
+            &invitation_path,
+            "invitation:create",
+            invitation_body,
+        ))
+        .await?;
+    assert_eq!(replayed.status(), 200);
+    assert_eq!(response_json(&replayed)?["data"]["replayed"], true);
+
+    let mine = app
+        .call(get_as(
+            "/api/v1/membership-invitations",
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(mine.status(), 200);
+    let mine = response_json(&mine)?;
+    assert_eq!(mine["data"].as_array().map(Vec::len), Some(1));
+    assert_eq!(mine["data"][0]["id"], invitation_id);
+
+    let acceptance_path = format!("/api/v1/membership-invitations/{invitation_id}/acceptance");
+    let guessed = app
+        .call(post_json(
+            &acceptance_path,
+            "invitation:wrong-principal",
+            json!({"expectedVersion": 1}),
+        ))
+        .await?;
+    assert_eq!(guessed.status(), 404);
+
+    let accepted = app
+        .call(post_json_as(
+            &acceptance_path,
+            "invitation:accept",
+            json!({"expectedVersion": 1}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(accepted.status(), 201);
+    let accepted = response_json(&accepted)?;
+    assert_eq!(accepted["data"]["invitation"]["status"], "accepted");
+    assert_eq!(accepted["data"]["invitation"]["aggregateVersion"], 2);
+    assert_eq!(accepted["data"]["membership"]["principalId"], principal_id);
+    assert_eq!(accepted["data"]["membership"]["role"], "restricted");
+
+    let accepted_replay = app
+        .call(post_json_as(
+            &acceptance_path,
+            "invitation:accept",
+            json!({"expectedVersion": 1}),
+            SERVICE_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(accepted_replay.status(), 200);
+    assert_eq!(response_json(&accepted_replay)?["data"]["replayed"], true);
+
+    let duplicate = app
+        .call(post_json(
+            &invitation_path,
+            "invitation:duplicate-membership",
+            json!({
+                "principalId": principal_id,
+                "role": "member",
+                "expiresAt": Utc::now() + chrono::Duration::days(7),
+            }),
+        ))
+        .await?;
+    assert_eq!(duplicate.status(), 409);
+
+    let invitation_events = identity
+        .outbox_events()
+        .await
+        .into_iter()
+        .filter(|event| {
+            event
+                .event_key
+                .starts_with("identity.membership-invitation.")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(invitation_events.len(), 2);
+    assert_eq!(
+        invitation_events[0].event_key,
+        "identity.membership-invitation.created"
+    );
+    assert_eq!(
+        invitation_events[1].event_key,
+        "identity.membership-invitation.accepted"
+    );
     Ok(())
 }
 

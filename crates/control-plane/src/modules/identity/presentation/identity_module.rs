@@ -1,5 +1,7 @@
 use super::controllers::{
-    api_token_controller, bootstrap_controller, membership_controller, organization_controller,
+    api_token_controller, bootstrap_controller, membership_controller,
+    membership_invitation_acceptance_controller, membership_invitation_administration_controller,
+    membership_invitation_self_query_controller, organization_controller,
     organizations_query_controller, resource_grant_controller,
 };
 use super::BootstrapGuard;
@@ -34,6 +36,12 @@ impl Module for IdentityModule {
             organization_controller(command_bus.clone())?,
             api_token_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
             membership_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
+            membership_invitation_administration_controller(
+                command_bus.clone(),
+                module_ref.get::<QueryBus>()?,
+            )?,
+            membership_invitation_self_query_controller(module_ref.get::<QueryBus>()?)?,
+            membership_invitation_acceptance_controller(command_bus.clone())?,
             resource_grant_controller(command_bus, module_ref.get::<QueryBus>()?)?,
             organizations_query_controller(module_ref.get::<QueryBus>()?)?,
         ])

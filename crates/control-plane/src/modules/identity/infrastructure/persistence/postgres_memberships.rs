@@ -214,7 +214,7 @@ async fn require_another_owner(
     Ok(())
 }
 
-async fn store_membership_audit(
+pub(super) async fn store_membership_audit(
     transaction: &a3s_orm::PostgresTransaction,
     record: &MembershipRecord,
     actor_principal_id: PrincipalId,

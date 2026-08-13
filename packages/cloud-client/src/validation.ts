@@ -1,5 +1,6 @@
 import type {
   CreateApiTokenInput,
+  CreateMembershipInvitationInput,
   CreateResourceGrantInput,
   CreateServiceMembershipInput,
   MembershipRole,
@@ -58,6 +59,18 @@ export function validateExpectedMembershipVersion(value: number): void {
   validateExpectedVersion(value, 'membership');
 }
 
+export function validateMembershipInvitationInput(input: CreateMembershipInvitationInput): void {
+  validateNonNilUuid(input.principalId, 'membership invitation principal ID');
+  validateMembershipRole(input.role);
+  if (!isRfc3339Timestamp(input.expiresAt)) {
+    throw new TypeError('membership invitation expiry must be an RFC 3339 timestamp');
+  }
+}
+
+export function validateExpectedMembershipInvitationVersion(value: number): void {
+  validateExpectedVersion(value, 'membership invitation');
+}
+
 export function validateResourceGrantInput(input: CreateResourceGrantInput): void {
   const scope = input?.scope as ResourceGrantScope | undefined;
   if (!scope || typeof scope !== 'object') {
@@ -65,14 +78,14 @@ export function validateResourceGrantInput(input: CreateResourceGrantInput): voi
   }
   switch (scope.kind) {
     case 'project':
-      validateResourceGrantUuid(scope.projectId, 'project');
+      validateNonNilUuid(scope.projectId, 'Resource Grant project ID');
       return;
     case 'environment':
-      validateResourceGrantUuid(scope.projectId, 'project');
-      validateResourceGrantUuid(scope.environmentId, 'environment');
+      validateNonNilUuid(scope.projectId, 'Resource Grant project ID');
+      validateNonNilUuid(scope.environmentId, 'Resource Grant environment ID');
       return;
     case 'node':
-      validateResourceGrantUuid(scope.nodeId, 'node');
+      validateNonNilUuid(scope.nodeId, 'Resource Grant node ID');
       return;
     default:
       throw new TypeError('Resource Grant scope kind must be project, environment, or node');
@@ -83,13 +96,13 @@ export function validateExpectedResourceGrantVersion(value: number): void {
   validateExpectedVersion(value, 'Resource Grant');
 }
 
-function validateResourceGrantUuid(value: string, label: string): void {
+function validateNonNilUuid(value: string, label: string): void {
   if (
     typeof value !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ||
     value === '00000000-0000-0000-0000-000000000000'
   ) {
-    throw new TypeError(`Resource Grant ${label} ID must be a non-nil UUID`);
+    throw new TypeError(`${label} must be a non-nil UUID`);
   }
 }
 

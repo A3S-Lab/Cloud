@@ -2,6 +2,9 @@ import type {
   ApiToken,
   ApiTokenMutationResult,
   Membership,
+  MembershipInvitation,
+  MembershipInvitationAcceptanceResult,
+  MembershipInvitationMutationResult,
   MembershipMutationResult,
   ResourceGrant,
   ResourceGrantMutationResult,
@@ -78,6 +81,46 @@ export function membershipMutationResult(row: MembershipMutationResult): Command
     table: renderTable(
       [row],
       [...MEMBERSHIP_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+const MEMBERSHIP_INVITATION_COLUMNS: readonly TableColumn<MembershipInvitation>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'ORGANIZATION', value: (row) => row.organizationId },
+  { header: 'PRINCIPAL', value: (row) => row.principalId },
+  { header: 'ROLE', value: (row) => row.role },
+  { header: 'STATUS', value: (row) => row.status },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'EXPIRES AT', value: (row) => row.expiresAt },
+];
+
+export function membershipInvitationsResult(rows: MembershipInvitation[]): CommandResult {
+  return { json: rows, table: renderTable(rows, MEMBERSHIP_INVITATION_COLUMNS) };
+}
+
+export function membershipInvitationResult(row: MembershipInvitation): CommandResult {
+  return { json: row, table: renderTable([row], MEMBERSHIP_INVITATION_COLUMNS) };
+}
+
+export function membershipInvitationMutationResult(row: MembershipInvitationMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...MEMBERSHIP_INVITATION_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+export function membershipInvitationAcceptanceResult(
+  row: MembershipInvitationAcceptanceResult
+): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [{ ...row.invitation, replayed: row.replayed }],
+      [...MEMBERSHIP_INVITATION_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
 }

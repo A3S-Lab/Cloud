@@ -87,18 +87,20 @@ use crate::modules::forms::{
     ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IMembershipRepository, IOrganizationRepository,
-    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
+    IOrganizationRepository, IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
 };
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
-    BootstrapIdentityHandler, ChangeMembershipRoleHandler, CreateApiTokenHandler,
-    CreateOrganizationHandler, CreateResourceGrantHandler, CreateServiceMembershipHandler,
-    GetApiTokenHandler, GetMembershipHandler, GetResourceGrantHandler, IdentityModule,
-    ListApiTokensHandler, ListMembershipsHandler, ListOrganizationsHandler,
-    ListResourceGrantsHandler, PostgresIdentityRepository, RevokeApiTokenHandler,
-    RevokeMembershipHandler, RevokeResourceGrantHandler,
+    AcceptMembershipInvitationHandler, BootstrapIdentityHandler, ChangeMembershipRoleHandler,
+    CreateApiTokenHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
+    CreateResourceGrantHandler, CreateServiceMembershipHandler, GetApiTokenHandler,
+    GetMembershipHandler, GetMembershipInvitationHandler, GetResourceGrantHandler, IdentityModule,
+    ListApiTokensHandler, ListMembershipInvitationsHandler, ListMembershipsHandler,
+    ListMyMembershipInvitationsHandler, ListOrganizationsHandler, ListResourceGrantsHandler,
+    PostgresIdentityRepository, RevokeApiTokenHandler, RevokeMembershipHandler,
+    RevokeMembershipInvitationHandler, RevokeResourceGrantHandler,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
@@ -300,6 +302,7 @@ pub async fn build_application_with_source_resolver(
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
     let memberships: Arc<dyn IMembershipRepository> = identity.clone();
+    let membership_invitations: Arc<dyn IMembershipInvitationRepository> = identity.clone();
     let resource_grants: Arc<dyn IResourceGrantRepository> = identity.clone();
     let resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository> =
         identity;
@@ -978,6 +981,7 @@ pub async fn build_application_with_source_resolver(
             organizations,
             api_tokens,
             memberships,
+            membership_invitations,
             resource_grants,
             resource_authorization_decisions,
             projects: projects.clone(),
@@ -1076,6 +1080,7 @@ struct ApplicationDependencies {
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
     memberships: Arc<dyn IMembershipRepository>,
+    membership_invitations: Arc<dyn IMembershipInvitationRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     projects: Arc<dyn IProjectRepository>,
@@ -1139,6 +1144,7 @@ fn build_application_with_health(
         organizations,
         api_tokens,
         memberships,
+        membership_invitations,
         resource_grants,
         resource_authorization_decisions,
         projects,
@@ -1297,6 +1303,12 @@ fn build_application_with_health(
     let revoke_memberships = Arc::clone(&memberships);
     let list_memberships = Arc::clone(&memberships);
     let get_memberships = Arc::clone(&memberships);
+    let create_membership_invitations = Arc::clone(&membership_invitations);
+    let accept_membership_invitations = Arc::clone(&membership_invitations);
+    let revoke_membership_invitations = Arc::clone(&membership_invitations);
+    let list_membership_invitations = Arc::clone(&membership_invitations);
+    let get_membership_invitations = Arc::clone(&membership_invitations);
+    let list_my_membership_invitations = Arc::clone(&membership_invitations);
     let create_resource_grants = Arc::clone(&resource_grants);
     let resource_grant_projects = Arc::clone(&projects);
     let resource_grant_environments = Arc::clone(&environments);
@@ -1520,6 +1532,15 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::RevokeMembership, _>(
                     RevokeMembershipHandler::new(revoke_memberships),
+                )
+                .command_handler::<crate::modules::identity::CreateMembershipInvitation, _>(
+                    CreateMembershipInvitationHandler::new(create_membership_invitations),
+                )
+                .command_handler::<crate::modules::identity::AcceptMembershipInvitation, _>(
+                    AcceptMembershipInvitationHandler::new(accept_membership_invitations),
+                )
+                .command_handler::<crate::modules::identity::RevokeMembershipInvitation, _>(
+                    RevokeMembershipInvitationHandler::new(revoke_membership_invitations),
                 )
                 .command_handler::<crate::modules::identity::CreateResourceGrant, _>(
                     CreateResourceGrantHandler::new(
@@ -1886,6 +1907,15 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::identity::GetMembership, _>(
                     GetMembershipHandler::new(get_memberships),
+                )
+                .query_handler::<crate::modules::identity::ListMembershipInvitations, _>(
+                    ListMembershipInvitationsHandler::new(list_membership_invitations),
+                )
+                .query_handler::<crate::modules::identity::GetMembershipInvitation, _>(
+                    GetMembershipInvitationHandler::new(get_membership_invitations),
+                )
+                .query_handler::<crate::modules::identity::ListMyMembershipInvitations, _>(
+                    ListMyMembershipInvitationsHandler::new(list_my_membership_invitations),
                 )
                 .query_handler::<crate::modules::identity::ListResourceGrants, _>(
                     ListResourceGrantsHandler::new(list_resource_grants),

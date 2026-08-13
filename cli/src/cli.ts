@@ -27,6 +27,12 @@ Commands:
   memberships create-service NAME ROLE Create a service principal membership idempotently
   memberships change-role ID ROLE Change one membership role with optimistic concurrency
   memberships revoke ID Revoke one membership with optimistic concurrency
+  membership-invitations list List organization membership invitation history
+  membership-invitations get ID Get one organization membership invitation
+  membership-invitations list-mine List invitations bound to the authenticated Principal
+  membership-invitations create PRINCIPAL ROLE Invite one exact Principal idempotently
+  membership-invitations accept ID Accept an invitation bound to the authenticated Principal
+  membership-invitations revoke ID Revoke one invitation with optimistic concurrency
   resource-grants list MEMBERSHIP List Resource Grant history for one restricted membership
   resource-grants get ID Get one Resource Grant
   resource-grants create MEMBERSHIP KIND ID... Create one project, environment, or node grant

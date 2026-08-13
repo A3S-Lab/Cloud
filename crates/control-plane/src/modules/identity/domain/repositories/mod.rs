@@ -1,10 +1,16 @@
 mod api_token_repository;
+mod membership_invitation_repository;
 mod membership_repository;
 mod organization_repository;
 mod resource_authorization_decision_repository;
 mod resource_grant_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
+pub use membership_invitation_repository::{
+    AcceptMembershipInvitationWrite, CreateMembershipInvitationWrite,
+    IMembershipInvitationRepository, MembershipInvitationAcceptance,
+    RevokeMembershipInvitationWrite,
+};
 pub use membership_repository::{
     ChangeMembershipRoleWrite, CreateServiceMembershipWrite, IMembershipRepository,
     MembershipRecord, RevokeMembershipWrite,

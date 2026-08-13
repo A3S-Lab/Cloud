@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.24.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.26.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2000,6 +2000,98 @@ describe('CloudApi', () => {
     expect(() =>
       api.changeMembershipRole('organization', 'membership', 'member', 0, 'client:membership-version')
     ).toThrow('expected membership version must be a positive safe integer');
+    expect(called).toBe(false);
+  });
+
+  it('exposes principal-bound membership invitations across administrator and self paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const principalId = '019c0000-0000-7000-8000-000000000032';
+    const input = {
+      principalId,
+      role: 'restricted' as const,
+      expiresAt: '2026-08-20T03:04:05.000Z',
+    };
+
+    await api.listMembershipInvitations('organization / one');
+    await api.getMembershipInvitation('organization / one', 'invitation / one');
+    await api.listMyMembershipInvitations();
+    await api.createMembershipInvitation('organization / one', input, 'client:membership-invitation-create');
+    await api.acceptMembershipInvitation('invitation / one', 1, 'client:membership-invitation-accept');
+    await api.revokeMembershipInvitation(
+      'organization / one',
+      'invitation / two',
+      2,
+      'client:membership-invitation-revoke'
+    );
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/membership-invitations',
+      '/api/v1/organizations/organization%20%2F%20one/membership-invitations/invitation%20%2F%20one',
+      '/api/v1/membership-invitations',
+      '/api/v1/organizations/organization%20%2F%20one/membership-invitations',
+      '/api/v1/membership-invitations/invitation%20%2F%20one/acceptance',
+      '/api/v1/organizations/organization%20%2F%20one/membership-invitations/invitation%20%2F%20two/revocation',
+    ]);
+    expect(calls.slice(3).map(([, init]) => init)).toEqual([
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'client:membership-invitation-create',
+        }),
+        body: JSON.stringify(input),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'client:membership-invitation-accept',
+        }),
+        body: JSON.stringify({ expectedVersion: 1 }),
+      }),
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'client:membership-invitation-revoke',
+        }),
+        body: JSON.stringify({ expectedVersion: 2 }),
+      }),
+    ]);
+  });
+
+  it('rejects invalid membership invitation input before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createMembershipInvitation(
+        'organization',
+        { principalId: 'not-a-uuid', role: 'member', expiresAt: '2026-08-20T03:04:05Z' },
+        'client:membership-invitation-principal'
+      )
+    ).toThrow('membership invitation principal ID must be a non-nil UUID');
+    expect(() =>
+      api.createMembershipInvitation(
+        'organization',
+        {
+          principalId: '019c0000-0000-7000-8000-000000000032',
+          role: 'member',
+          expiresAt: 'tomorrow',
+        },
+        'client:membership-invitation-expiry'
+      )
+    ).toThrow('membership invitation expiry must be an RFC 3339 timestamp');
+    expect(() =>
+      api.acceptMembershipInvitation('invitation', 0, 'client:membership-invitation-version')
+    ).toThrow('expected membership invitation version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

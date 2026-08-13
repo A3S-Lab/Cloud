@@ -382,6 +382,39 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
     let mut content = Map::new();
     if let Some(schema) = plugin_catalog_read_request_schema(path) {
         content.insert("application/json".into(), json!({ "schema": schema }));
+    } else if is_membership_invitation_create_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["principalId", "role", "expiresAt"],
+                    "properties": {
+                        "principalId": {"type": "string", "format": "uuid"},
+                        "role": {
+                            "type": "string",
+                            "enum": ["owner", "admin", "member", "restricted"]
+                        },
+                        "expiresAt": {"type": "string", "format": "date-time"}
+                    }
+                }
+            }),
+        );
+    } else if is_membership_invitation_version_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["expectedVersion"],
+                    "properties": {
+                        "expectedVersion": {"type": "integer", "minimum": 1}
+                    }
+                }
+            }),
+        );
     } else if is_resource_grant_create_path(path) {
         content.insert(
             "application/json".into(),
@@ -728,6 +761,7 @@ fn operation_tag(path: &str) -> &'static str {
     } else if path.starts_with("/bootstrap")
         || path.contains("api-tokens")
         || path.contains("memberships")
+        || path.contains("membership-invitations")
         || path.contains("resource-grants")
     {
         "Identity"
@@ -782,7 +816,10 @@ fn operation_tag(path: &str) -> &'static str {
 
 fn requires_idempotency_key(method: &str, path: &str) -> bool {
     matches!(method, "delete" | "patch" | "post" | "put")
-        && (path == "/bootstrap" || path == "/organizations" || path.starts_with("/organizations/"))
+        && (path == "/bootstrap"
+            || path == "/organizations"
+            || path.starts_with("/organizations/")
+            || path.ends_with("/membership-invitations/{invitation_id}/acceptance"))
         && !path.ends_with("/source-connections/github")
         && !is_human_task_submission_path(path)
         && !is_plugin_catalog_read_path(path)
@@ -873,6 +910,8 @@ fn creates_resource(path: &str) -> bool {
         || is_form_mutation_path(path)
         || path.ends_with("/api-tokens")
         || path.ends_with("/memberships")
+        || path.ends_with("/membership-invitations")
+        || path.ends_with("/membership-invitations/{invitation_id}/acceptance")
         || is_resource_grant_create_path(path)
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/node-pools")
@@ -895,6 +934,15 @@ fn creates_resource(path: &str) -> bool {
 
 fn is_resource_grant_create_path(path: &str) -> bool {
     path.ends_with("/memberships/{membership_id}/resource-grants")
+}
+
+fn is_membership_invitation_create_path(path: &str) -> bool {
+    path.starts_with("/organizations/") && path.ends_with("/membership-invitations")
+}
+
+fn is_membership_invitation_version_path(path: &str) -> bool {
+    path.ends_with("/membership-invitations/{invitation_id}/acceptance")
+        || path.ends_with("/membership-invitations/{invitation_id}/revocation")
 }
 
 fn is_resource_grant_revocation_path(path: &str) -> bool {

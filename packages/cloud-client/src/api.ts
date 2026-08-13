@@ -33,6 +33,7 @@ import type {
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
   CreateMcpCredentialInput,
+  CreateMembershipInvitationInput,
   CreateNodePoolInput,
   CreateResourceGrantInput,
   CreateServiceMembershipInput,
@@ -74,6 +75,9 @@ import type {
   McpServiceProfile,
   McpServiceProfileMutationResult,
   Membership,
+  MembershipInvitation,
+  MembershipInvitationAcceptanceResult,
+  MembershipInvitationMutationResult,
   MembershipMutationResult,
   MembershipRole,
   Node,
@@ -145,6 +149,7 @@ import {
   validateExpectedHumanTaskVersion,
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipVersion,
+  validateExpectedMembershipInvitationVersion,
   validateExpectedNodeVersion,
   validateExpectedResourceGrantVersion,
   validateFormDraftInput,
@@ -153,6 +158,7 @@ import {
   validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
   validateMembershipRole,
+  validateMembershipInvitationInput,
   validateOntologyAcl,
   validateOntologyRevisionControl,
   validateResourceGrantInput,
@@ -176,7 +182,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.24.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.26.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -375,6 +381,71 @@ export class CloudApi {
     validateExpectedMembershipVersion(expectedVersion);
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}/memberships/${encodeURIComponent(membershipId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  listMembershipInvitations(organizationId: string, signal?: AbortSignal): Promise<MembershipInvitation[]> {
+    return this.get(`/organizations/${encodeURIComponent(organizationId)}/membership-invitations`, signal);
+  }
+
+  getMembershipInvitation(
+    organizationId: string,
+    invitationId: string,
+    signal?: AbortSignal
+  ): Promise<MembershipInvitation> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/membership-invitations/${encodeURIComponent(invitationId)}`,
+      signal
+    );
+  }
+
+  listMyMembershipInvitations(signal?: AbortSignal): Promise<MembershipInvitation[]> {
+    return this.get('/membership-invitations', signal);
+  }
+
+  createMembershipInvitation(
+    organizationId: string,
+    input: CreateMembershipInvitationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipInvitationMutationResult> {
+    validateMembershipInvitationInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/membership-invitations`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  acceptMembershipInvitation(
+    invitationId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipInvitationAcceptanceResult> {
+    validateExpectedMembershipInvitationVersion(expectedVersion);
+    return this.postJson(
+      `/membership-invitations/${encodeURIComponent(invitationId)}/acceptance`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  revokeMembershipInvitation(
+    organizationId: string,
+    invitationId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<MembershipInvitationMutationResult> {
+    validateExpectedMembershipInvitationVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/membership-invitations/${encodeURIComponent(invitationId)}/revocation`,
       idempotencyKey,
       { expectedVersion },
       signal

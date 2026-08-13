@@ -19,6 +19,8 @@ const MCP_BUILD_TOKEN: &str =
 const MCP_FORM_TOKEN: &str = "a3s_3333333333333333333333333333333333333333333333333333333333333333";
 const MCP_FORM_MEMBER_TOKEN: &str =
     "a3s_4444444444444444444444444444444444444444444444444444444444444444";
+const MCP_INVITEE_TOKEN: &str =
+    "a3s_5555555555555555555555555555555555555555555555555555555555555555";
 const MCP_ONTOLOGY_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/w0.1/ontology.acl"
@@ -348,6 +350,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_environments_list",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
+            "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_projects_list",
             "a3s_cloud_forms_get",
             "a3s_cloud_forms_list",
@@ -444,6 +447,12 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_service_memberships_create",
             "a3s_cloud_memberships_change_role",
             "a3s_cloud_memberships_revoke",
+            "a3s_cloud_membership_invitations_list",
+            "a3s_cloud_membership_invitations_get",
+            "a3s_cloud_membership_invitations_create",
+            "a3s_cloud_membership_invitations_revoke",
+            "a3s_cloud_my_membership_invitations_list",
+            "a3s_cloud_membership_invitations_accept",
             "a3s_cloud_resource_grants_list",
             "a3s_cloud_resource_grants_get",
             "a3s_cloud_resource_grants_create",
@@ -879,6 +888,260 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
 }
 
 #[tokio::test]
+async fn management_mcp_reuses_principal_bound_membership_invitations() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let invited_organization =
+        bootstrap_organization(&app, "mcp-invitation-target", "Invitation target").await?;
+    let principal_organization =
+        create_organization(&app, "mcp-invitation-principal", "Principal home").await?;
+
+    let service = app
+        .call(post_json(
+            format!("/api/v1/organizations/{principal_organization}/memberships"),
+            "mcp-invitation-service",
+            json!({"name": "Invited automation", "role": "member"}),
+        ))
+        .await?;
+    assert_eq!(service.status(), 201);
+    let service = response_json(&service)?;
+    let principal_id = service["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("invited service has no Principal ID".into()))?
+        .to_owned();
+    let credential = app
+        .call(post_json(
+            format!("/api/v1/organizations/{principal_organization}/api-tokens"),
+            "mcp-invitation-token",
+            json!({
+                "name": "Invitation self service",
+                "token": MCP_INVITEE_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::IDENTITY_WRITE],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(credential.status(), 201);
+
+    let create_arguments = json!({
+        "principalId": principal_id,
+        "role": "restricted",
+        "expiresAt": Utc::now() + chrono::Duration::days(7),
+        "idempotencyKey": "mcp-invitation-create"
+    });
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_membership_invitations_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        created["result"]["structuredContent"]["data"]["status"],
+        "pending"
+    );
+    let invitation_id = created["result"]["structuredContent"]["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP invitation response has no ID".into()))?
+        .to_owned();
+
+    let replayed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                2,
+                "a3s_cloud_membership_invitations_create",
+                create_arguments,
+            ),
+        ))
+        .await?;
+    let replayed = response_json(&replayed)?;
+    assert_eq!(replayed["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replayed["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(3, "a3s_cloud_membership_invitations_list", json!({})),
+        ))
+        .await?;
+    assert!(
+        response_json(&listed)?["result"]["structuredContent"]["data"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|invitation| invitation["id"] == invitation_id)
+    );
+
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_membership_invitations_get",
+                json!({"invitationId": invitation_id}),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&fetched)?["result"]["structuredContent"]["data"]["principalId"],
+        principal_id
+    );
+
+    let mine = app
+        .call(mcp_request(
+            Some(MCP_INVITEE_TOKEN),
+            tool_call(5, "a3s_cloud_my_membership_invitations_list", json!({})),
+        ))
+        .await?;
+    assert!(response_json(&mine)?["result"]["structuredContent"]["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|invitation| invitation["id"] == invitation_id));
+
+    let invalid_version = app
+        .call(mcp_request(
+            Some(MCP_INVITEE_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_membership_invitations_accept",
+                json!({
+                    "invitationId": invitation_id,
+                    "expectedVersion": 0,
+                    "idempotencyKey": "mcp-invitation-invalid-version"
+                }),
+            ),
+        ))
+        .await?;
+    let invalid_version = response_json(&invalid_version)?;
+    assert_eq!(
+        invalid_version["error"]["code"], -32602,
+        "{invalid_version:#}"
+    );
+
+    let revoked = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                7,
+                "a3s_cloud_membership_invitations_revoke",
+                json!({
+                    "invitationId": invitation_id,
+                    "expectedVersion": 1,
+                    "idempotencyKey": "mcp-invitation-revoke"
+                }),
+            ),
+        ))
+        .await?;
+    let revoked = response_json(&revoked)?;
+    assert_eq!(
+        revoked["result"]["structuredContent"]["data"]["status"],
+        "revoked"
+    );
+    assert_eq!(
+        revoked["result"]["structuredContent"]["data"]["aggregateVersion"],
+        2
+    );
+
+    let second = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                8,
+                "a3s_cloud_membership_invitations_create",
+                json!({
+                    "principalId": principal_id,
+                    "role": "member",
+                    "expiresAt": Utc::now() + chrono::Duration::days(7),
+                    "idempotencyKey": "mcp-invitation-create-second"
+                }),
+            ),
+        ))
+        .await?;
+    let second = response_json(&second)?;
+    let second_id = second["result"]["structuredContent"]["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("second MCP invitation has no ID".into()))?
+        .to_owned();
+
+    let guessed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                9,
+                "a3s_cloud_membership_invitations_accept",
+                json!({
+                    "invitationId": second_id,
+                    "expectedVersion": 1,
+                    "idempotencyKey": "mcp-invitation-wrong-principal"
+                }),
+            ),
+        ))
+        .await?;
+    let guessed = response_json(&guessed)?;
+    assert_eq!(guessed["result"]["isError"], true);
+    assert_eq!(guessed["result"]["structuredContent"]["code"], 404);
+
+    let accept_arguments = json!({
+        "invitationId": second_id,
+        "expectedVersion": 1,
+        "idempotencyKey": "mcp-invitation-accept"
+    });
+    let accepted = app
+        .call(mcp_request(
+            Some(MCP_INVITEE_TOKEN),
+            tool_call(
+                10,
+                "a3s_cloud_membership_invitations_accept",
+                accept_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let accepted = response_json(&accepted)?;
+    assert_eq!(accepted["result"]["structuredContent"]["code"], 201);
+    assert_eq!(
+        accepted["result"]["structuredContent"]["data"]["invitation"]["status"],
+        "accepted"
+    );
+    assert_eq!(
+        accepted["result"]["structuredContent"]["data"]["membership"]["organizationId"],
+        invited_organization
+    );
+    assert_eq!(
+        accepted["result"]["structuredContent"]["data"]["membership"]["principalId"],
+        principal_id
+    );
+
+    let accepted_replay = app
+        .call(mcp_request(
+            Some(MCP_INVITEE_TOKEN),
+            tool_call(
+                11,
+                "a3s_cloud_membership_invitations_accept",
+                accept_arguments,
+            ),
+        ))
+        .await?;
+    let accepted_replay = response_json(&accepted_replay)?;
+    assert_eq!(
+        accepted_replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn management_mcp_reuses_resource_grant_commands_queries_and_idempotency() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
@@ -1123,7 +1386,10 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
     );
 
     let restricted_tools = list_tools(&app, MCP_FORM_MEMBER_TOKEN, 4).await?;
-    assert!(tool_names(&restricted_tools).is_empty());
+    assert_eq!(
+        tool_names(&restricted_tools),
+        vec!["a3s_cloud_my_membership_invitations_list"]
+    );
     let denied = app
         .call(mcp_request(
             Some(MCP_FORM_MEMBER_TOKEN),

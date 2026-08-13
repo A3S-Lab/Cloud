@@ -36,6 +36,12 @@ pub const MEMBERSHIPS_GET: &str = "a3s_cloud_memberships_get";
 pub const SERVICE_MEMBERSHIPS_CREATE: &str = "a3s_cloud_service_memberships_create";
 pub const MEMBERSHIPS_CHANGE_ROLE: &str = "a3s_cloud_memberships_change_role";
 pub const MEMBERSHIPS_REVOKE: &str = "a3s_cloud_memberships_revoke";
+pub const MEMBERSHIP_INVITATIONS_LIST: &str = "a3s_cloud_membership_invitations_list";
+pub const MEMBERSHIP_INVITATIONS_GET: &str = "a3s_cloud_membership_invitations_get";
+pub const MEMBERSHIP_INVITATIONS_CREATE: &str = "a3s_cloud_membership_invitations_create";
+pub const MEMBERSHIP_INVITATIONS_REVOKE: &str = "a3s_cloud_membership_invitations_revoke";
+pub const MY_MEMBERSHIP_INVITATIONS_LIST: &str = "a3s_cloud_my_membership_invitations_list";
+pub const MEMBERSHIP_INVITATIONS_ACCEPT: &str = "a3s_cloud_membership_invitations_accept";
 pub const RESOURCE_GRANTS_LIST: &str = "a3s_cloud_resource_grants_list";
 pub const RESOURCE_GRANTS_GET: &str = "a3s_cloud_resource_grants_get";
 pub const RESOURCE_GRANTS_CREATE: &str = "a3s_cloud_resource_grants_create";
@@ -101,6 +107,12 @@ pub enum ManagementTool {
     ServiceMembershipsCreate,
     MembershipsChangeRole,
     MembershipsRevoke,
+    MembershipInvitationsList,
+    MembershipInvitationsGet,
+    MembershipInvitationsCreate,
+    MembershipInvitationsRevoke,
+    MyMembershipInvitationsList,
+    MembershipInvitationsAccept,
     ResourceGrantsList,
     ResourceGrantsGet,
     ResourceGrantsCreate,
@@ -181,10 +193,11 @@ pub(super) enum ManagementResourceBinding {
     NodeCollection,
     SearchCollection,
     PolymorphicCollection,
+    SelfPrincipal,
 }
 
 impl ManagementTool {
-    const ALL: [Self; 77] = [
+    const ALL: [Self; 83] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ExecutionTemplatesCreate,
@@ -195,6 +208,12 @@ impl ManagementTool {
         Self::ServiceMembershipsCreate,
         Self::MembershipsChangeRole,
         Self::MembershipsRevoke,
+        Self::MembershipInvitationsList,
+        Self::MembershipInvitationsGet,
+        Self::MembershipInvitationsCreate,
+        Self::MembershipInvitationsRevoke,
+        Self::MyMembershipInvitationsList,
+        Self::MembershipInvitationsAccept,
         Self::ResourceGrantsList,
         Self::ResourceGrantsGet,
         Self::ResourceGrantsCreate,
@@ -300,6 +319,12 @@ impl ManagementTool {
             Self::ServiceMembershipsCreate => SERVICE_MEMBERSHIPS_CREATE,
             Self::MembershipsChangeRole => MEMBERSHIPS_CHANGE_ROLE,
             Self::MembershipsRevoke => MEMBERSHIPS_REVOKE,
+            Self::MembershipInvitationsList => MEMBERSHIP_INVITATIONS_LIST,
+            Self::MembershipInvitationsGet => MEMBERSHIP_INVITATIONS_GET,
+            Self::MembershipInvitationsCreate => MEMBERSHIP_INVITATIONS_CREATE,
+            Self::MembershipInvitationsRevoke => MEMBERSHIP_INVITATIONS_REVOKE,
+            Self::MyMembershipInvitationsList => MY_MEMBERSHIP_INVITATIONS_LIST,
+            Self::MembershipInvitationsAccept => MEMBERSHIP_INVITATIONS_ACCEPT,
             Self::ResourceGrantsList => RESOURCE_GRANTS_LIST,
             Self::ResourceGrantsGet => RESOURCE_GRANTS_GET,
             Self::ResourceGrantsCreate => RESOURCE_GRANTS_CREATE,
@@ -379,6 +404,10 @@ impl ManagementTool {
             | Self::ServiceMembershipsCreate
             | Self::MembershipsChangeRole
             | Self::MembershipsRevoke
+            | Self::MembershipInvitationsList
+            | Self::MembershipInvitationsGet
+            | Self::MembershipInvitationsCreate
+            | Self::MembershipInvitationsRevoke
             | Self::ResourceGrantsList
             | Self::ResourceGrantsGet
             | Self::ResourceGrantsCreate
@@ -400,6 +429,8 @@ impl ManagementTool {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
+            Self::MyMembershipInvitationsList => Some(ApiTokenScope::CLOUD_READ),
+            Self::MembershipInvitationsAccept => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::EnvironmentsList
             | Self::ExecutionTemplatesGet
             | Self::ExecutionTemplatesList
@@ -458,6 +489,10 @@ impl ManagementTool {
                 | Self::ServiceMembershipsCreate
                 | Self::MembershipsChangeRole
                 | Self::MembershipsRevoke
+                | Self::MembershipInvitationsList
+                | Self::MembershipInvitationsGet
+                | Self::MembershipInvitationsCreate
+                | Self::MembershipInvitationsRevoke
                 | Self::ResourceGrantsList
                 | Self::ResourceGrantsGet
                 | Self::ResourceGrantsCreate
@@ -528,6 +563,9 @@ impl ManagementTool {
             Self::NodesList => Some(ManagementResourceBinding::NodeCollection),
             Self::Search => Some(ManagementResourceBinding::SearchCollection),
             Self::OperationsList => Some(ManagementResourceBinding::PolymorphicCollection),
+            Self::MyMembershipInvitationsList | Self::MembershipInvitationsAccept => {
+                Some(ManagementResourceBinding::SelfPrincipal)
+            }
             _ => None,
         }
     }
@@ -557,6 +595,7 @@ impl ManagementTool {
                 ManagementResourceBinding::SearchCollection
                 | ManagementResourceBinding::PolymorphicCollection,
             ) => evaluator.has_any_visible_resource(),
+            Some(ManagementResourceBinding::SelfPrincipal) => true,
             None => false,
         }
     }
@@ -621,6 +660,42 @@ impl ManagementTool {
                 "Revoke membership",
                 "Revoke one membership with last-owner protection, optimistic concurrency, and explicit idempotency.",
                 revoke_membership_schema(),
+                false,
+            ),
+            Self::MembershipInvitationsList => (
+                "List membership invitations",
+                "List organization membership invitation history from the shared Identity authority.",
+                empty_schema(),
+                true,
+            ),
+            Self::MembershipInvitationsGet => (
+                "Get membership invitation",
+                "Get one organization membership invitation.",
+                uuid_id_schema("invitationId"),
+                true,
+            ),
+            Self::MembershipInvitationsCreate => (
+                "Create membership invitation",
+                "Invite one exact existing Principal to an organization with a bounded expiry and explicit idempotency.",
+                create_membership_invitation_schema(),
+                false,
+            ),
+            Self::MembershipInvitationsRevoke => (
+                "Revoke membership invitation",
+                "Revoke one pending membership invitation with optimistic concurrency and explicit idempotency.",
+                membership_invitation_mutation_schema(),
+                false,
+            ),
+            Self::MyMembershipInvitationsList => (
+                "List my membership invitations",
+                "List membership invitations bound exactly to the authenticated Principal.",
+                empty_schema(),
+                true,
+            ),
+            Self::MembershipInvitationsAccept => (
+                "Accept membership invitation",
+                "Accept one invitation bound exactly to the authenticated Principal and create the ordinary Membership atomically.",
+                membership_invitation_mutation_schema(),
                 false,
             ),
             Self::ResourceGrantsList => (
@@ -1029,6 +1104,7 @@ impl ManagementTool {
         let destructive = matches!(
             self,
             Self::MembershipsRevoke
+                | Self::MembershipInvitationsRevoke
                 | Self::ResourceGrantsRevoke
                 | Self::WorkloadsStop
                 | Self::DeploymentsCancel
@@ -1682,6 +1758,33 @@ fn revoke_membership_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["membershipId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn create_membership_invitation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "principalId": {"type": "string", "format": "uuid"},
+            "role": membership_role_schema(),
+            "expiresAt": {"type": "string", "format": "date-time"},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["principalId", "role", "expiresAt", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn membership_invitation_mutation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "invitationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["invitationId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

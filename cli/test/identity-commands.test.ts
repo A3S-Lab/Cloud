@@ -7,6 +7,7 @@ const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const API_TOKEN_ID = '019c0000-0000-7000-8000-000000000018';
 const PRINCIPAL_ID = '019c0000-0000-7000-8000-000000000020';
 const MEMBERSHIP_ID = '019c0000-0000-7000-8000-000000000021';
+const MEMBERSHIP_INVITATION_ID = '019c0000-0000-7000-8000-000000000026';
 const RESOURCE_GRANT_ID = '019c0000-0000-7000-8000-000000000022';
 const PROJECT_ID = '019c0000-0000-7000-8000-000000000023';
 const ENVIRONMENT_ID = '019c0000-0000-7000-8000-000000000024';
@@ -210,6 +211,117 @@ describe('a3s-cloud identity commands', () => {
       'cli:membership-create',
       'cli:membership-role',
       'cli:membership-revoke',
+    ]);
+    expect(output.stderr()).toBe('');
+  });
+
+  it.each([
+    [
+      ['membership-invitations', 'list'],
+      `/organizations/${ORGANIZATION_ID}/membership-invitations`,
+      [membershipInvitationResource()],
+    ],
+    [
+      ['membership-invitations', 'get', MEMBERSHIP_INVITATION_ID],
+      `/organizations/${ORGANIZATION_ID}/membership-invitations/${MEMBERSHIP_INVITATION_ID}`,
+      membershipInvitationResource(),
+    ],
+    [['membership-invitations', 'list-mine'], '/membership-invitations', [membershipInvitationResource()]],
+  ] as const)('queries membership invitation history %#', async (command, path, response) => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope(response);
+    };
+    const output = capture();
+
+    const exitCode = await runCli([...command, '--output=json'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: fetcher,
+    });
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
+    expect(output.stderr()).toBe('');
+  });
+
+  it('creates, accepts, and revokes principal-bound membership invitations', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      const path = String(args[0]);
+      if (path.endsWith('/acceptance')) {
+        return envelope(
+          {
+            invitation: { ...membershipInvitationResource(), status: 'accepted', aggregateVersion: 2 },
+            membership: membershipResource(),
+            replayed: false,
+          },
+          201
+        );
+      }
+      return envelope({ ...membershipInvitationResource(), replayed: false }, calls.length === 1 ? 201 : 200);
+    };
+    const output = capture();
+    const runtime = { ...output.runtime, environment: completeEnvironment(), fetch: fetcher };
+
+    expect(
+      await runCli(
+        [
+          'membership-invitations',
+          'create',
+          PRINCIPAL_ID,
+          'restricted',
+          '--expires-at=2026-08-20T03:04:05Z',
+          '--idempotency-key=cli:membership-invitation-create',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'membership-invitations',
+          'accept',
+          MEMBERSHIP_INVITATION_ID,
+          '--expected-version=1',
+          '--idempotency-key=cli:membership-invitation-accept',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'membership-invitations',
+          'revoke',
+          MEMBERSHIP_INVITATION_ID,
+          '--expected-version=1',
+          '--idempotency-key=cli:membership-invitation-revoke',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+
+    expect(calls.map(([input]) => input)).toEqual([
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/membership-invitations`,
+      `http://127.0.0.1:8080/api/v1/membership-invitations/${MEMBERSHIP_INVITATION_ID}/acceptance`,
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/membership-invitations/${MEMBERSHIP_INVITATION_ID}/revocation`,
+    ]);
+    expect(calls.map(([, init]) => init?.body)).toEqual([
+      JSON.stringify({
+        principalId: PRINCIPAL_ID,
+        role: 'restricted',
+        expiresAt: '2026-08-20T03:04:05.000Z',
+      }),
+      JSON.stringify({ expectedVersion: 1 }),
+      JSON.stringify({ expectedVersion: 1 }),
+    ]);
+    expect(calls.map(([, init]) => (init?.headers as Record<string, string>)['Idempotency-Key'])).toEqual([
+      'cli:membership-invitation-create',
+      'cli:membership-invitation-accept',
+      'cli:membership-invitation-revoke',
     ]);
     expect(output.stderr()).toBe('');
   });
@@ -470,6 +582,14 @@ describe('a3s-cloud identity commands', () => {
         message: 'membership role must be owner, admin, member, or restricted',
       },
       {
+        argv: ['membership-invitations', 'create', PRINCIPAL_ID, 'member', '--idempotency-key=k'],
+        message: '--expires-at is required for membership invitation creation',
+      },
+      {
+        argv: ['membership-invitations', 'accept', MEMBERSHIP_INVITATION_ID, '--idempotency-key=k'],
+        message: '--expected-version must be a positive safe integer for membership invitation mutation',
+      },
+      {
         argv: ['resource-grants', 'create', MEMBERSHIP_ID, 'cluster', PROJECT_ID, '--idempotency-key=k'],
         message: 'Resource Grant scope kind must be project, environment, or node',
       },
@@ -566,6 +686,24 @@ function membershipResource(): Record<string, unknown> {
     aggregateVersion: 1,
     createdAt: '2026-08-07T00:00:00.000Z',
     updatedAt: '2026-08-07T00:00:00.000Z',
+    revokedAt: null,
+  };
+}
+
+function membershipInvitationResource(): Record<string, unknown> {
+  return {
+    id: MEMBERSHIP_INVITATION_ID,
+    organizationId: ORGANIZATION_ID,
+    principalId: PRINCIPAL_ID,
+    role: 'restricted',
+    invitedByPrincipalId: '019c0000-0000-7000-8000-000000000002',
+    status: 'pending',
+    aggregateVersion: 1,
+    createdAt: '2026-08-13T00:00:00.000Z',
+    updatedAt: '2026-08-13T00:00:00.000Z',
+    expiresAt: '2026-08-20T03:04:05.000Z',
+    acceptedMembershipId: null,
+    acceptedAt: null,
     revokedAt: null,
   };
 }

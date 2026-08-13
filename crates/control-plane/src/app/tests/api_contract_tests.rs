@@ -150,6 +150,69 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                     && parameter["required"] == true
             })));
     }
+    let membership_invitations =
+        &document["paths"]["/organizations/{organization_id}/membership-invitations"];
+    assert_eq!(membership_invitations["get"]["tags"], json!(["Identity"]));
+    assert!(membership_invitations["get"]["responses"]["200"].is_object());
+    let invitation_create = &membership_invitations["post"];
+    assert_eq!(invitation_create["tags"], json!(["Identity"]));
+    let invitation_create_schema =
+        &invitation_create["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(invitation_create_schema["additionalProperties"], false);
+    assert_eq!(
+        invitation_create_schema["properties"]["principalId"]["format"],
+        "uuid"
+    );
+    assert_eq!(
+        invitation_create_schema["properties"]["expiresAt"]["format"],
+        "date-time"
+    );
+    assert!(invitation_create["responses"]["200"].is_object());
+    assert!(invitation_create["responses"]["201"].is_object());
+    assert!(invitation_create["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    let invitation = &document["paths"]
+        ["/organizations/{organization_id}/membership-invitations/{invitation_id}"]["get"];
+    assert_eq!(invitation["tags"], json!(["Identity"]));
+    assert!(invitation["responses"]["200"].is_object());
+    let my_invitations = &document["paths"]["/membership-invitations"]["get"];
+    assert_eq!(my_invitations["tags"], json!(["Identity"]));
+    assert!(my_invitations["responses"]["200"].is_object());
+    for path in [
+        "/membership-invitations/{invitation_id}/acceptance",
+        "/organizations/{organization_id}/membership-invitations/{invitation_id}/revocation",
+    ] {
+        let operation = &document["paths"][path]["post"];
+        assert_eq!(operation["tags"], json!(["Identity"]));
+        assert_eq!(
+            operation["requestBody"]["content"]["application/json"]["schema"]
+                ["additionalProperties"],
+            false
+        );
+        assert_eq!(
+            operation["requestBody"]["content"]["application/json"]["schema"]["properties"]
+                ["expectedVersion"]["minimum"],
+            1
+        );
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            })));
+    }
+    assert!(
+        document["paths"]["/membership-invitations/{invitation_id}/acceptance"]["post"]
+            ["responses"]["201"]
+            .is_object()
+    );
     let resource_grants = &document["paths"]
         ["/organizations/{organization_id}/memberships/{membership_id}/resource-grants"];
     assert_eq!(resource_grants["get"]["tags"], json!(["Identity"]));

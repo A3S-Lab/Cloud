@@ -4,12 +4,15 @@ pub mod response;
 
 pub use request::{
     BootstrapIdentityRequest, ChangeMembershipRoleRequest, CreateApiTokenRequest,
-    CreateOrganizationRequest, CreateResourceGrantRequest, CreateServiceMembershipRequest,
-    RevokeMembershipRequest, RevokeResourceGrantRequest,
+    CreateMembershipInvitationRequest, CreateOrganizationRequest, CreateResourceGrantRequest,
+    CreateServiceMembershipRequest, MembershipInvitationVersionRequest, RevokeMembershipRequest,
+    RevokeResourceGrantRequest,
 };
 pub use resource_grant_scope::ResourceGrantScopeDto;
 pub use response::{
-    ApiTokenReadResponse, ApiTokenResponse, BootstrapIdentityResponse, MembershipMutationResponse,
-    MembershipResponse, OrganizationListItemResponse, OrganizationResponse,
-    ResourceGrantMutationResponse, ResourceGrantResponse,
+    ApiTokenReadResponse, ApiTokenResponse, BootstrapIdentityResponse,
+    MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
+    MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
+    OrganizationListItemResponse, OrganizationResponse, ResourceGrantMutationResponse,
+    ResourceGrantResponse,
 };

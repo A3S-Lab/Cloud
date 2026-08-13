@@ -877,6 +877,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/100_workflow_execution_step_projections.sql"
             )),
         ),
+        Migration::new(
+            "102",
+            "membership invitations",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/102_membership_invitations.sql"
+            )),
+        ),
     ]
 }
 

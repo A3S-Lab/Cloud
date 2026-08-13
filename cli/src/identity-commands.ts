@@ -26,6 +26,10 @@ import {
   apiTokenResult,
   apiTokensResult,
   membershipMutationResult,
+  membershipInvitationAcceptanceResult,
+  membershipInvitationMutationResult,
+  membershipInvitationResult,
+  membershipInvitationsResult,
   membershipResult,
   membershipsResult,
   resourceGrantMutationResult,
@@ -37,6 +41,7 @@ import { type ReadStdin, readBoundedUtf8Stdin } from './standard-input';
 import { parseRfc3339Timestamp } from './timestamp';
 
 const API_TOKEN_CREATE_COMMAND = 'api-tokens create';
+const MEMBERSHIP_INVITATION_CREATE_COMMAND = 'membership-invitations create';
 const MCP_EXPIRY_COMMANDS = new Set(['mcp-credentials create', 'mcp-credentials rotate']);
 
 export interface IdentityCommandDependencies {
@@ -56,11 +61,12 @@ export function rejectMisplacedIdentityOptions(command: string, arguments_: Pars
   if (
     arguments_.expiresAt !== undefined &&
     command !== API_TOKEN_CREATE_COMMAND &&
+    command !== MEMBERSHIP_INVITATION_CREATE_COMMAND &&
     command !== 'nodes bootstrap' &&
     !MCP_EXPIRY_COMMANDS.has(command)
   ) {
     throw usageError(
-      '--expires-at is valid only for API token creation, node bootstrap, or MCP credential creation and rotation'
+      '--expires-at is valid only for API token creation, membership invitation creation, node bootstrap, or MCP credential creation and rotation'
     );
   }
 }
@@ -160,6 +166,81 @@ export async function executeIdentityCommand(
           cloudApi().revokeMembership(
             requireOrganization(context),
             positionalUuid(positionals, 2, 'membership ID'),
+            mutation.expectedVersion,
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'membership-invitations list':
+      requireListCommand(arguments_);
+      return membershipInvitationsResult(
+        await cloudApi().listMembershipInvitations(requireOrganization(context))
+      );
+    case 'membership-invitations get':
+      requireReadCommand(arguments_, 'membership-invitations get <invitation-id>');
+      return membershipInvitationResult(
+        await cloudApi().getMembershipInvitation(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'membership invitation ID')
+        )
+      );
+    case 'membership-invitations list-mine':
+      requireListCommand(arguments_);
+      return membershipInvitationsResult(await cloudApi().listMyMembershipInvitations());
+    case MEMBERSHIP_INVITATION_CREATE_COMMAND: {
+      requireArity(positionals, 4, 'membership-invitations create <principal-id> <role>');
+      rejectLogOptions(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      if (arguments_.expiresAt === undefined) {
+        throw usageError('--expires-at is required for membership invitation creation');
+      }
+      const expiresAt = parseRfc3339Timestamp(arguments_.expiresAt, 'membership invitation');
+      return membershipInvitationMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().createMembershipInvitation(
+            requireOrganization(context),
+            {
+              principalId: positionalUuid(positionals, 2, 'principal ID'),
+              role: membershipRole(positionals[3]),
+              expiresAt,
+            },
+            requireIdempotencyKey(arguments_)
+          )
+        )
+      );
+    }
+    case 'membership-invitations accept': {
+      const mutation = requireVersionMutation(
+        arguments_,
+        3,
+        'membership-invitations accept <invitation-id>',
+        'membership invitation'
+      );
+      return membershipInvitationAcceptanceResult(
+        await safeMembershipMutation(() =>
+          cloudApi().acceptMembershipInvitation(
+            positionalUuid(positionals, 2, 'membership invitation ID'),
+            mutation.expectedVersion,
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'membership-invitations revoke': {
+      const mutation = requireVersionMutation(
+        arguments_,
+        3,
+        'membership-invitations revoke <invitation-id>',
+        'membership invitation'
+      );
+      return membershipInvitationMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().revokeMembershipInvitation(
+            requireOrganization(context),
+            positionalUuid(positionals, 2, 'membership invitation ID'),
             mutation.expectedVersion,
             mutation.idempotencyKey
           )

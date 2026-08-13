@@ -49,6 +49,40 @@ export interface CreateServiceMembershipInput {
   role: MembershipRole;
 }
 
+export type MembershipInvitationStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+
+export interface MembershipInvitation {
+  id: string;
+  organizationId: string;
+  principalId: string;
+  role: MembershipRole;
+  invitedByPrincipalId: string;
+  status: MembershipInvitationStatus;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  acceptedMembershipId: string | null;
+  acceptedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface MembershipInvitationMutationResult extends MembershipInvitation {
+  replayed: boolean;
+}
+
+export interface MembershipInvitationAcceptanceResult {
+  invitation: MembershipInvitation;
+  membership: Membership;
+  replayed: boolean;
+}
+
+export interface CreateMembershipInvitationInput {
+  principalId: string;
+  role: MembershipRole;
+  expiresAt: string;
+}
+
 export type ResourceGrantScope =
   | { kind: 'project'; projectId: string }
   | { kind: 'environment'; projectId: string; environmentId: string }

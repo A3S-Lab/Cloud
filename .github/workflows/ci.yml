@@ -64,6 +64,13 @@ jobs:
           postgres_resource_grants_enforce_the_cross_surface_authorization_matrix
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify membership invitation persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_membership_invitations_are_atomic_exact_and_immutable
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Workflow finite Execution persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

@@ -343,6 +343,7 @@ fn management_resource_is_authorized(
             ManagementResourceBinding::SearchCollection
             | ManagementResourceBinding::PolymorphicCollection,
         ) => Ok(evaluator.has_any_visible_resource()),
+        Some(ManagementResourceBinding::SelfPrincipal) => Ok(true),
         None => Ok(evaluator.is_organization_wide()),
     }
 }

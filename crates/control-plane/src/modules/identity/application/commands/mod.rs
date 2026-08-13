@@ -1,9 +1,12 @@
+pub mod accept_membership_invitation;
 pub mod bootstrap_identity;
 pub mod change_membership_role;
 pub mod create_api_token;
+pub mod create_membership_invitation;
 pub mod create_organization;
 pub mod create_resource_grant;
 pub mod create_service_membership;
 pub mod revoke_api_token;
 pub mod revoke_membership;
+pub mod revoke_membership_invitation;
 pub mod revoke_resource_grant;

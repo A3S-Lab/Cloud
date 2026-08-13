@@ -4,6 +4,7 @@ mod create_api_token_request;
 mod create_organization_request;
 mod create_resource_grant_request;
 mod create_service_membership_request;
+mod membership_invitation_request;
 mod revoke_membership_request;
 mod revoke_resource_grant_request;
 
@@ -13,5 +14,8 @@ pub use create_api_token_request::CreateApiTokenRequest;
 pub use create_organization_request::CreateOrganizationRequest;
 pub use create_resource_grant_request::CreateResourceGrantRequest;
 pub use create_service_membership_request::CreateServiceMembershipRequest;
+pub use membership_invitation_request::{
+    CreateMembershipInvitationRequest, MembershipInvitationVersionRequest,
+};
 pub use revoke_membership_request::RevokeMembershipRequest;
 pub use revoke_resource_grant_request::RevokeResourceGrantRequest;
