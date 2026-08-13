@@ -17,8 +17,8 @@ use crate::modules::workflow::{
     HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals,
     ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun,
     SubmitHumanTask, WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind,
-    HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
-    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
+    WorkflowSemanticContractAcls, HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT,
+    WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use a3s_form_core::FormInteractionSubmission;
@@ -67,6 +67,24 @@ struct WorkflowPayloadArguments {
     acl: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct WorkflowSemanticContractArguments {
+    descriptor_bindings_acl: String,
+    descriptor_registry_acl: String,
+    variable_contract_acl: String,
+}
+
+impl From<WorkflowSemanticContractArguments> for WorkflowSemanticContractAcls {
+    fn from(value: WorkflowSemanticContractArguments) -> Self {
+        Self {
+            descriptor_bindings_acl: value.descriptor_bindings_acl,
+            descriptor_registry_acl: value.descriptor_registry_acl,
+            variable_contract_acl: value.variable_contract_acl,
+        }
+    }
+}
+
 impl From<WorkflowPayloadArguments> for WorkflowPayloadAcl {
     fn from(value: WorkflowPayloadArguments) -> Self {
         Self {
@@ -82,6 +100,8 @@ pub struct CreateWorkflowDefinitionArguments {
     project_id: Uuid,
     definition_acl: String,
     payloads: Vec<WorkflowPayloadArguments>,
+    #[serde(default)]
+    semantic_contracts: Option<WorkflowSemanticContractArguments>,
     idempotency_key: String,
 }
 
@@ -91,6 +111,8 @@ pub struct ReviseWorkflowDefinitionArguments {
     workflow_definition_id: Uuid,
     definition_acl: String,
     payloads: Vec<WorkflowPayloadArguments>,
+    #[serde(default)]
+    semantic_contracts: Option<WorkflowSemanticContractArguments>,
     expected_version: u64,
     idempotency_key: String,
 }
@@ -310,6 +332,9 @@ pub async fn create_definition(
                 .into_iter()
                 .map(WorkflowPayloadAcl::from)
                 .collect(),
+            semantic_contracts: arguments
+                .semantic_contracts
+                .map(WorkflowSemanticContractAcls::from),
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
             request_id,
@@ -347,6 +372,9 @@ pub async fn revise_definition(
                 .into_iter()
                 .map(WorkflowPayloadAcl::from)
                 .collect(),
+            semantic_contracts: arguments
+                .semantic_contracts
+                .map(WorkflowSemanticContractAcls::from),
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
             request_id,

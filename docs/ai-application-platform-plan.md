@@ -336,11 +336,11 @@ Changing an owner field in the v1 acceptance report requires an explicit
 manifest/decision revision; catalog generation must never infer semantic
 ownership from that report.
 
-The current `cloud.workflow.plan.v1` does not consume descriptors and remains
-unchanged for replay. The next explicit compiler/plan schema revision must pin
-each exact descriptor revision, semantic digest, and canonical configuration
-digest. A descriptor upgrade then creates a new Workflow revision; it cannot
-reinterpret a running or historical plan.
+`cloud.workflow.plan.v1` remains unchanged for replay. Compiler schema 2 now
+publishes `cloud.workflow.plan.v2`, which pins each exact descriptor revision
+and semantic digest plus the revision semantic-contract-set and variable-
+contract digests. A descriptor upgrade creates a new Workflow revision; it
+cannot reinterpret a running or historical plan.
 
 An invocation-only trigger descriptor is validated with the authoring graph but
 is not scheduled as a Flow step. Publication asks Automations to create an
@@ -366,11 +366,11 @@ The Workflow domain now freezes these boundaries in
 deterministic assignments, and explicit composite exports validate exact root/
 leaf schemas, graph reachability and dominance, region confinement, opaque
 Secret/object references, and optimistic Applications-port evidence. This is a
-domain conformance contract: persistent WorkflowRevision binding, exact
-descriptor and variable digests in the next plan schema, runtime
-materialization/inspection, and Applications dispatch remain open. Current
-`cloud.workflow.plan.v1` histories are unchanged and reject application-state
-access that cannot prove an owning descriptor.
+revision authority persisted by migration `103`: WorkflowRevision compiler
+schema 2 atomically owns bindings, an exact recoverable registry snapshot, and
+the variable contract. Plan v2 can prove the owning descriptor, but runtime
+materialization/inspection and Applications dispatch remain open and therefore
+fail closed. Existing `cloud.workflow.plan.v1` histories are unchanged.
 
 `Iteration` compiles to a bounded fan-out region with deterministic item IDs,
 result ordering, concurrency, failure, cancellation, and maximum-item policy.

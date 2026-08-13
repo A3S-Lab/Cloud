@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.28.0" src="https://img.shields.io/badge/REST_contract-1.28.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.29.0" src="https://img.shields.io/badge/REST_contract-1.29.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -213,11 +213,14 @@ compiler-schema identity, invocation/node/composite/run/application scopes,
 typed reads, deterministic assignments, explicit composite exports, exact
 root/leaf schema binding, graph reachability and dominance, opaque Secret and
 immutable-object references, and optimistic Applications-port evidence.
-Application reads/writes fail closed against `plan.v1` until a descriptor-bound
-plan can prove the owning port. These are domain conformance contracts, not
-persistent catalogs or runtime availability. W0.3 remains in progress because
-revision persistence, exact descriptor/variable pinning in an explicit next
-compiler/plan revision, runtime variable materialization and inspection,
+Migration `103` now stores exact step bindings, the recoverable descriptor
+snapshot, and the variable contract as one immutable WorkflowRevision child
+set. Compiler schema 2 emits `cloud.workflow.plan.v2`, pinning every descriptor
+semantic digest plus the semantic-contract-set and variable-contract digests;
+legacy `plan.v1` remains byte-stable. Plan v2 execution fails closed until the
+typed-variable Flow adapter is implemented. This is revision authority, not a
+mutable built-in discovery catalog or runtime availability. W0.3 remains in
+progress because catalog discovery, runtime variable materialization and inspection,
 Iteration/Loop, Answer, error branches, business-service and remaining provider
 steps, compensation, expanded provider evidence, and production recovery remain
 open. No second engine, variable store, scheduler, queue, Runtime provider,
@@ -325,7 +328,7 @@ membership state, idempotency, Outbox facts, and audit together. Migration
 existing exact Principal, requested Membership role, inviter Principal, and an
 expiry no more than 30 days ahead. Administrator list/get/create/revoke and
 Principal self-list/accept surfaces reuse the same Identity handlers through
-REST/OpenAPI `1.28.0`, the maintained client, CLI, and Management MCP. The one
+REST/OpenAPI `1.29.0`, the maintained client, CLI, and Management MCP. The one
 administrator Principal-plus-Membership creation command accepts an explicit
 `human` or `service` kind across those maintained surfaces; only legacy REST
 requests that omit the field retain the previous `service` default.
@@ -351,7 +354,7 @@ Internal Identity begin/complete commands now compose that protocol adapter
 with the existing one-time flow/link/token Repository: they persist only
 secret digests, resolve state before provider access, reject provider identity
 or configuration drift, and return a generated short-lived Cloud credential
-only after the atomic login write succeeds. REST/OpenAPI `1.28.0` now exposes
+only after the atomic login write succeeds. REST/OpenAPI `1.29.0` now exposes
 the bounded public login redirect, authenticated human-principal link start,
 and public callback through production wiring. Callback-only, state-scoped
 `Secure`, `HttpOnly`, `SameSite=Lax` cookies carry nonce and PKCE verifier;
@@ -444,7 +447,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.28.0`.
+contract version `1.29.0`.
 
 ### Bootstrap the first organization
 
@@ -515,7 +518,7 @@ mechanisms of the reference products.
 | Reference outcome | A3S-owned design | Availability boundary | Not copied |
 | --- | --- | --- | --- |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, invitations, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The `C0.3` Principal/Membership/credential, exact-Principal invitation, Resource Grant, exact OIDC link/flow persistence, short-lived ordinary login-credential lifecycle, bounded OIDC discovery/JWKS/ID-token adapter, REST/OpenAPI `1.28.0` login/link/callback surface, maintained client entry points, and indirect owner-resolution through the current Operation surface are implemented; dedicated real-PostgreSQL gates verify persistence atomicity and replay safety, local TLS fixtures verify the provider protocol boundary, and retained OIDC cross-surface PostgreSQL evidence plus role-focused projections remain open | A second identity/key store, browser-only authorization, or plaintext credential recovery |
+| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, invitations, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The `C0.3` Principal/Membership/credential, exact-Principal invitation, Resource Grant, exact OIDC link/flow persistence, short-lived ordinary login-credential lifecycle, bounded OIDC discovery/JWKS/ID-token adapter, REST/OpenAPI `1.29.0` login/link/callback surface, maintained client entry points, and indirect owner-resolution through the current Operation surface are implemented; dedicated real-PostgreSQL gates verify persistence atomicity and replay safety, local TLS fixtures verify the provider protocol boundary, and retained OIDC cross-surface PostgreSQL evidence plus role-focused projections remain open | A second identity/key store, browser-only authorization, or plaintext credential recovery |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
 | TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |
@@ -550,7 +553,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, immutable descriptor and typed-variable domain contracts, Form, WorkflowRun, HumanTask loop, shared grants, deterministic reachable-Output aggregation, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Focused Output semantics and the finite Execution recovery/cross-surface sub-gate are verified; persistent contract binding and exact next-plan pinning, runtime variable execution/inspection, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; `W0.3` includes definition/goal persistence, revision-owned descriptor bindings/registry snapshot/typed-variable contract, Plan v2 exact pinning, Form, WorkflowRun, HumanTask, reachable-Output aggregation, ExecutionTemplate, and finite Execution. Plan v1 replay remains stable, while Plan v2 runs fail closed until the typed-variable Flow adapter lands; built-in catalog discovery, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` | Six current application experiences, shared release/session/delivery, publication, monitoring, and enterprise completion | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` | Files, RAG Knowledge, multi-source General/Parent-child/Q&A and multimodal processing, retrieval, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` | New-invocation triggers and reusable outbound connection profiles | Planned and unavailable |

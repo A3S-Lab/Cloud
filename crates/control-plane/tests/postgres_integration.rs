@@ -105,6 +105,8 @@ mod secret_rotation_restart_support;
 mod source_subscription_support;
 #[path = "support/workflow_run_process_death.rs"]
 mod workflow_run_process_death_support;
+#[path = "support/workflow_semantic_contracts.rs"]
+mod workflow_semantic_contracts_support;
 #[path = "support/workload_rollback.rs"]
 mod workload_rollback_support;
 #[path = "support/workloads.rs"]
@@ -198,6 +200,19 @@ async fn postgres_workflow_run_survives_api_and_worker_process_death() {
     )
     .await
     .expect("WorkflowRun API and worker process-death gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_workflow_semantic_contracts_are_atomic_recoverable_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        workflow_semantic_contracts_support::exercise_workflow_semantic_contract_persistence,
+    )
+    .await
+    .expect("PostgreSQL Workflow semantic contract authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -456,7 +471,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (102, "102".into()));
+    assert_eq!(migration_state, (103, "103".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

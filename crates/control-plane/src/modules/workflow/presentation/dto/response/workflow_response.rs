@@ -4,6 +4,7 @@ use crate::modules::workflow::application::{
 use crate::modules::workflow::domain::{
     CapabilityReference, PlanRevision, WorkflowDefinition, WorkflowEdgeSpec, WorkflowGoalRecord,
     WorkflowPayload, WorkflowPlan, WorkflowPlanStep, WorkflowRevision,
+    WorkflowRevisionSemanticContractKind, WorkflowStepDescriptorBinding,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -100,6 +101,27 @@ pub struct WorkflowPlanStepResponse {
     pub output_schema_digest: String,
     pub policy_digest: Option<String>,
     pub capability: Option<WorkflowCapabilityReferenceResponse>,
+    pub descriptor: Option<WorkflowStepDescriptorBindingResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowStepDescriptorBindingResponse {
+    pub step_id: String,
+    pub descriptor_id: String,
+    pub descriptor_revision: String,
+    pub semantic_digest: String,
+}
+
+impl From<WorkflowStepDescriptorBinding> for WorkflowStepDescriptorBindingResponse {
+    fn from(value: WorkflowStepDescriptorBinding) -> Self {
+        Self {
+            step_id: value.step_id,
+            descriptor_id: value.descriptor_id,
+            descriptor_revision: value.descriptor_revision,
+            semantic_digest: value.semantic_digest.to_string(),
+        }
+    }
 }
 
 impl From<WorkflowPlanStep> for WorkflowPlanStepResponse {
@@ -114,6 +136,9 @@ impl From<WorkflowPlanStep> for WorkflowPlanStepResponse {
             capability: value
                 .capability
                 .map(WorkflowCapabilityReferenceResponse::from),
+            descriptor: value
+                .descriptor
+                .map(WorkflowStepDescriptorBindingResponse::from),
         }
     }
 }
@@ -147,6 +172,8 @@ pub struct WorkflowPlanResponse {
     pub workflow_revision_id: Uuid,
     pub workflow_digest: String,
     pub workflow_payload_set_digest: String,
+    pub semantic_contract_set_digest: Option<String>,
+    pub variable_contract_digest: Option<String>,
     pub ontology_id: Uuid,
     pub ontology_revision_id: Uuid,
     pub ontology_digest: String,
@@ -165,6 +192,12 @@ impl From<WorkflowPlan> for WorkflowPlanResponse {
             workflow_revision_id: value.workflow_revision_id.as_uuid(),
             workflow_digest: value.workflow_digest.to_string(),
             workflow_payload_set_digest: value.workflow_payload_set_digest.to_string(),
+            semantic_contract_set_digest: value
+                .semantic_contract_set_digest
+                .map(|digest| digest.to_string()),
+            variable_contract_digest: value
+                .variable_contract_digest
+                .map(|digest| digest.to_string()),
             ontology_id: value.ontology_id.as_uuid(),
             ontology_revision_id: value.ontology_revision_id.as_uuid(),
             ontology_digest: value.ontology_digest.to_string(),
@@ -199,6 +232,8 @@ pub struct WorkflowRevisionSummaryResponse {
     pub content_digest: String,
     pub payload_set_digest: String,
     pub payload_count: usize,
+    pub semantic_contract_set_digest: Option<String>,
+    pub semantic_contract_count: usize,
     pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
 }
@@ -218,6 +253,10 @@ impl From<&WorkflowRevision> for WorkflowRevisionSummaryResponse {
             content_digest: value.contract.digest().to_string(),
             payload_set_digest: value.payload_set_digest.to_string(),
             payload_count: value.payloads.len(),
+            semantic_contract_set_digest: value
+                .semantic_contract_set_digest()
+                .map(ToString::to_string),
+            semantic_contract_count: value.semantic_contracts.as_ref().map_or(0, |_| 3),
             created_by: value.created_by.as_uuid(),
             created_at: value.created_at,
         }
@@ -237,11 +276,40 @@ pub struct WorkflowRevisionResponse {
     pub summary: WorkflowRevisionSummaryResponse,
     pub canonical_definition_acl: String,
     pub payloads: Vec<WorkflowPayloadResponse>,
+    pub semantic_contracts: Vec<WorkflowSemanticContractResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowSemanticContractResponse {
+    pub kind: String,
+    pub schema: String,
+    pub digest: String,
+    pub canonical_acl: String,
 }
 
 impl From<WorkflowRevision> for WorkflowRevisionResponse {
     fn from(value: WorkflowRevision) -> Self {
         let summary = WorkflowRevisionSummaryResponse::from(&value);
+        let semantic_contracts = value
+            .semantic_contracts
+            .as_ref()
+            .map(|contracts| {
+                [
+                    WorkflowRevisionSemanticContractKind::DescriptorBindings,
+                    WorkflowRevisionSemanticContractKind::DescriptorRegistry,
+                    WorkflowRevisionSemanticContractKind::VariableContract,
+                ]
+                .into_iter()
+                .map(|kind| WorkflowSemanticContractResponse {
+                    kind: kind.as_str().into(),
+                    schema: contracts.schema(kind).into(),
+                    digest: contracts.contract_digest(kind).to_string(),
+                    canonical_acl: contracts.canonical_acl(kind).into(),
+                })
+                .collect()
+            })
+            .unwrap_or_default();
         Self {
             summary,
             canonical_definition_acl: value.contract.canonical_acl().to_owned(),
@@ -250,6 +318,7 @@ impl From<WorkflowRevision> for WorkflowRevisionResponse {
                 .into_iter()
                 .map(WorkflowPayloadResponse::from)
                 .collect(),
+            semantic_contracts,
         }
     }
 }

@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) fn validate_graph_bindings(
     contract: &WorkflowVariableContractSpec,
     workflow: &WorkflowSpec,
+    application_ports: &BTreeSet<&str>,
 ) -> Result<(), String> {
     let order = workflow.topological_order(Default::default())?;
     let steps = workflow
@@ -55,6 +56,7 @@ pub(super) fn validate_graph_bindings(
             assignments.get(read.variable.as_str()).map(Vec::as_slice),
             &dominators,
             &reachable,
+            application_ports,
         )?;
     }
 
@@ -87,7 +89,9 @@ pub(super) fn validate_graph_bindings(
                     assignment.target_variable
                 )
             })?;
-        if target.scope == WorkflowVariableScope::Application {
+        if target.scope == WorkflowVariableScope::Application
+            && !application_ports.contains(assignment.writer_step_id.as_str())
+        {
             return Err(
                 "Application variable writes require a descriptor-bound Applications port".into(),
             );
@@ -100,6 +104,7 @@ pub(super) fn validate_graph_bindings(
                 .map(Vec::as_slice),
             &dominators,
             &reachable,
+            application_ports,
         )?;
         for evidence in [
             assignment.expected_revision_variable.as_deref(),
@@ -118,6 +123,7 @@ pub(super) fn validate_graph_bindings(
                 assignments.get(evidence).map(Vec::as_slice),
                 &dominators,
                 &reachable,
+                application_ports,
             )?;
         }
         if let Some(previous) = previous_writer_by_target.insert(
@@ -216,9 +222,11 @@ fn validate_variable_available(
     assignments: Option<&[&WorkflowVariableAssignment]>,
     dominators: &BTreeMap<String, BTreeSet<String>>,
     reachable: &BTreeMap<String, BTreeSet<String>>,
+    application_ports: &BTreeSet<&str>,
 ) -> Result<(), String> {
     match declaration.scope {
         WorkflowVariableScope::InvocationInput => Ok(()),
+        WorkflowVariableScope::Application if application_ports.contains(consumer) => Ok(()),
         WorkflowVariableScope::Application => {
             Err("Application variable reads require a descriptor-bound Applications port".into())
         }
@@ -271,9 +279,15 @@ fn validate_assignment_source(
     source_assignments: Option<&[&WorkflowVariableAssignment]>,
     dominators: &BTreeMap<String, BTreeSet<String>>,
     reachable: &BTreeMap<String, BTreeSet<String>>,
+    application_ports: &BTreeSet<&str>,
 ) -> Result<(), String> {
     match source.scope {
         WorkflowVariableScope::InvocationInput => Ok(()),
+        WorkflowVariableScope::Application
+            if application_ports.contains(assignment.writer_step_id.as_str()) =>
+        {
+            Ok(())
+        }
         WorkflowVariableScope::Application => {
             Err("Application variable reads require a descriptor-bound Applications port".into())
         }

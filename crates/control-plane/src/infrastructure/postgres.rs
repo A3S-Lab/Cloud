@@ -893,6 +893,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/102_external_oidc_identity.sql"
             )),
         ),
+        Migration::new(
+            "103",
+            "Workflow revision semantic contracts and plan v2",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/103_workflow_semantic_contracts.sql"
+            )),
+        ),
     ]
 }
 
@@ -1150,5 +1158,37 @@ pub(crate) fn transaction_error(
         } => RepositoryError::Storage(format!(
             "PostgreSQL operation failed ({operation}) and rollback failed ({rollback})"
         )),
+    }
+}
+
+#[cfg(test)]
+mod workflow_semantic_contract_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/103_workflow_semantic_contracts.sql"
+    ));
+
+    #[test]
+    fn migration_103_keeps_v1_and_pairs_plan_v2_with_three_immutable_contracts() {
+        for expected in [
+            "compiler_schema_version in (1, 2)",
+            "cloud.workflow.plan.v1",
+            "cloud.workflow.plan-compiler.v1",
+            "cloud.workflow.plan.v2",
+            "cloud.workflow.plan-compiler.v2",
+            "descriptor_bindings",
+            "descriptor_registry",
+            "variable_contract",
+            "contract_count <> 3",
+            "cannot downgrade compiler schema authority",
+            "deferrable initially deferred",
+            "workflow_revision_semantic_contracts_immutable",
+            "reject_workflow_immutable_mutation()",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "missing migration guard {expected}"
+            );
+        }
     }
 }

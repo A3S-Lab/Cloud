@@ -7,9 +7,16 @@ export interface WorkflowPayloadAclInput {
   acl: string;
 }
 
+export interface WorkflowSemanticContractAclsInput {
+  descriptorBindingsAcl: string;
+  descriptorRegistryAcl: string;
+  variableContractAcl: string;
+}
+
 export interface PublishWorkflowDefinitionInput {
   definitionAcl: string;
   payloads: WorkflowPayloadAclInput[];
+  semanticContracts?: WorkflowSemanticContractAclsInput;
 }
 
 export interface WorkflowDefinition {
@@ -47,6 +54,8 @@ export interface WorkflowRevisionSummary {
   contentDigest: string;
   payloadSetDigest: string;
   payloadCount: number;
+  semanticContractSetDigest: string | null;
+  semanticContractCount: number;
   createdBy: string;
   createdAt: string;
 }
@@ -54,6 +63,22 @@ export interface WorkflowRevisionSummary {
 export interface WorkflowRevision extends WorkflowRevisionSummary {
   canonicalDefinitionAcl: string;
   payloads: WorkflowPayload[];
+  semanticContracts: WorkflowSemanticContract[];
+}
+
+export type WorkflowSemanticContractKind =
+  | 'descriptor_bindings'
+  | 'descriptor_registry'
+  | 'variable_contract';
+
+export interface WorkflowSemanticContract {
+  kind: WorkflowSemanticContractKind;
+  schema:
+    | 'cloud.workflow.step-descriptor-bindings.v1'
+    | 'cloud.workflow.step-descriptor-registry.v1'
+    | 'cloud.workflow.variable-contract.v1';
+  digest: string;
+  canonicalAcl: string;
 }
 
 export interface WorkflowDefinitionMutationResult {
@@ -108,6 +133,14 @@ export interface WorkflowPlanStep {
   outputSchemaDigest: string;
   policyDigest: string | null;
   capability: WorkflowCapabilityReference | null;
+  descriptor: WorkflowStepDescriptorBinding | null;
+}
+
+export interface WorkflowStepDescriptorBinding {
+  stepId: string;
+  descriptorId: string;
+  descriptorRevision: string;
+  semanticDigest: string;
 }
 
 export interface WorkflowPlanEdge {
@@ -118,12 +151,14 @@ export interface WorkflowPlanEdge {
 }
 
 export interface WorkflowPlan {
-  schema: 'cloud.workflow.plan.v1';
-  compilerRevision: 'cloud.workflow.plan-compiler.v1';
+  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2';
+  compilerRevision: 'cloud.workflow.plan-compiler.v1' | 'cloud.workflow.plan-compiler.v2';
   workflowDefinitionId: string;
   workflowRevisionId: string;
   workflowDigest: string;
   workflowPayloadSetDigest: string;
+  semanticContractSetDigest: string | null;
+  variableContractDigest: string | null;
   ontologyId: string;
   ontologyRevisionId: string;
   ontologyDigest: string;
@@ -138,8 +173,8 @@ export interface WorkflowPlanRevision {
   projectId: string;
   workflowGoalId: string;
   id: string;
-  schema: 'cloud.workflow.plan.v1';
-  compilerRevision: 'cloud.workflow.plan-compiler.v1';
+  schema: 'cloud.workflow.plan.v1' | 'cloud.workflow.plan.v2';
+  compilerRevision: 'cloud.workflow.plan-compiler.v1' | 'cloud.workflow.plan-compiler.v2';
   digest: string;
   canonicalPlan: string;
   plan: WorkflowPlan;

@@ -10,8 +10,9 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::repositories::WorkflowDefinitionWriteReference;
 use crate::modules::workflow::domain::{
     CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, ReviseWorkflowDefinitionWrite,
-    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowPayload, WorkflowPayloadKind,
-    WorkflowRevision,
+    WorkflowContract, WorkflowDefinition, WorkflowDefinitionRecord, WorkflowPayload,
+    WorkflowPayloadKind, WorkflowRevision, WorkflowRevisionSemanticContractKind,
+    WorkflowRevisionSemanticContracts,
 };
 use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, Row};
 use async_trait::async_trait;
@@ -103,6 +104,22 @@ struct WorkflowPayloadRow {
     kind: String,
     canonical_acl: String,
     digest: String,
+}
+
+struct WorkflowSemanticContractRow {
+    kind: String,
+    canonical_acl: String,
+    digest: String,
+}
+
+impl FromRow for WorkflowSemanticContractRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            kind: decode(row, 0)?,
+            canonical_acl: decode(row, 1)?,
+            digest: decode(row, 2)?,
+        })
+    }
 }
 
 impl FromRow for WorkflowPayloadRow {
@@ -579,6 +596,38 @@ async fn insert_revision(
             .await?,
         )?;
     }
+    if let Some(contracts) = &revision.semantic_contracts {
+        for kind in [
+            WorkflowRevisionSemanticContractKind::DescriptorBindings,
+            WorkflowRevisionSemanticContractKind::DescriptorRegistry,
+            WorkflowRevisionSemanticContractKind::VariableContract,
+        ] {
+            require_one_row(
+                "Workflow revision semantic contract",
+                execute(
+                    transaction,
+                    sql_query::<()>("insert into workflow_revision_semantic_contracts (organization_id, project_id, workflow_definition_id, workflow_revision_id, kind, schema, canonical_acl, digest) values (")
+                        .bind(revision.organization_id.as_uuid())
+                        .append(", ")
+                        .bind(revision.project_id.as_uuid())
+                        .append(", ")
+                        .bind(revision.workflow_definition_id.as_uuid())
+                        .append(", ")
+                        .bind(revision.id.as_uuid())
+                        .append(", ")
+                        .bind(kind.as_str())
+                        .append(", ")
+                        .bind(contracts.schema(kind))
+                        .append(", ")
+                        .bind(contracts.canonical_acl(kind))
+                        .append(", ")
+                        .bind(contracts.contract_digest(kind).as_str())
+                        .append(")"),
+                )
+                .await?,
+            )?;
+        }
+    }
     Ok(())
 }
 
@@ -605,6 +654,7 @@ async fn store_workflow_audit(
                 "revisionNumber": record.revision.revision_number,
                 "contentDigest": record.revision.contract.digest(),
                 "payloadSetDigest": record.revision.payload_set_digest,
+                "semanticContractSetDigest": record.revision.semantic_contract_set_digest(),
                 "aggregateVersion": record.definition.aggregate_version,
             }),
         },
@@ -713,6 +763,7 @@ async fn decode_revision(
         .collect::<Result<Vec<_>, _>>()?;
     let parent_digest = row
         .parent_digest
+        .as_deref()
         .map(Sha256Digest::parse)
         .transpose()
         .map_err(|error| {
@@ -720,6 +771,7 @@ async fn decode_revision(
                 "stored Workflow parent digest is invalid: {error}"
             ))
         })?;
+    let semantic_contracts = decode_semantic_contracts(transaction, &row).await?;
     WorkflowRevision::restore(
         OrganizationId::from_uuid(row.organization_id),
         ProjectId::from_uuid(row.project_id),
@@ -732,12 +784,83 @@ async fn decode_revision(
         &row.content_digest,
         payloads,
         &row.payload_set_digest,
+        semantic_contracts,
         row.compiler_schema_version,
         PrincipalId::from_uuid(row.created_by),
         row.created_at,
     )
     .map_err(|error| {
         PostgresPersistenceError::Invariant(format!("stored Workflow revision is invalid: {error}"))
+    })
+}
+
+async fn decode_semantic_contracts(
+    transaction: &a3s_orm::PostgresTransaction,
+    row: &WorkflowRevisionRow,
+) -> Result<Option<WorkflowRevisionSemanticContracts>, PostgresPersistenceError> {
+    let rows = fetch_all::<WorkflowSemanticContractRow, _>(
+        transaction,
+        sql_query::<WorkflowSemanticContractRow>("select kind, canonical_acl, digest from workflow_revision_semantic_contracts where organization_id = ")
+            .bind(row.organization_id)
+            .append(" and workflow_definition_id = ")
+            .bind(row.workflow_definition_id)
+            .append(" and workflow_revision_id = ")
+            .bind(row.id)
+            .append(" order by kind asc"),
+    )
+    .await?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    if rows.len() != 3 {
+        return Err(PostgresPersistenceError::Invariant(
+            "stored Workflow revision semantic contract set is incomplete".into(),
+        ));
+    }
+    let mut by_kind = std::collections::BTreeMap::new();
+    for contract in &rows {
+        let kind =
+            WorkflowRevisionSemanticContractKind::parse(&contract.kind).map_err(|error| {
+                PostgresPersistenceError::Invariant(format!(
+                    "stored Workflow semantic contract kind is invalid: {error}"
+                ))
+            })?;
+        if by_kind.insert(kind, contract).is_some() {
+            return Err(PostgresPersistenceError::Invariant(
+                "stored Workflow semantic contract kind is duplicated".into(),
+            ));
+        }
+    }
+    let require = |kind| {
+        by_kind.get(&kind).copied().ok_or_else(|| {
+            PostgresPersistenceError::Invariant(
+                "stored Workflow revision semantic contract set is incomplete".into(),
+            )
+        })
+    };
+    let bindings = require(WorkflowRevisionSemanticContractKind::DescriptorBindings)?;
+    let registry = require(WorkflowRevisionSemanticContractKind::DescriptorRegistry)?;
+    let variables = require(WorkflowRevisionSemanticContractKind::VariableContract)?;
+    let workflow =
+        WorkflowContract::restore(&row.canonical_acl, &row.content_digest).map_err(|error| {
+            PostgresPersistenceError::Invariant(format!(
+                "stored Workflow contract is invalid: {error}"
+            ))
+        })?;
+    WorkflowRevisionSemanticContracts::restore(
+        workflow.spec(),
+        &bindings.canonical_acl,
+        &bindings.digest,
+        &registry.canonical_acl,
+        &registry.digest,
+        &variables.canonical_acl,
+        &variables.digest,
+    )
+    .map(Some)
+    .map_err(|error| {
+        PostgresPersistenceError::Invariant(format!(
+            "stored Workflow semantic contracts are invalid: {error}"
+        ))
     })
 }
 

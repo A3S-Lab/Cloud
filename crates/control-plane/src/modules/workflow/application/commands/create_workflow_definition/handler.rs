@@ -8,7 +8,8 @@ use crate::modules::workflow::application::WorkflowDefinitionMutationResult;
 use crate::modules::workflow::domain::{
     CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, WorkflowContract,
     WorkflowDefinition, WorkflowDefinitionRecord, WorkflowPayload, WorkflowRevision,
-    WorkflowRevisionPublished,
+    WorkflowRevisionPublished, WorkflowRevisionSemanticContracts, WorkflowStepDescriptorBindings,
+    WorkflowStepDescriptorRegistry, WorkflowVariableContract,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
@@ -66,16 +67,38 @@ impl CommandHandler<CreateWorkflowDefinition> for CreateWorkflowDefinitionHandle
             };
             let now = Utc::now();
             let definition_id = WorkflowDefinitionId::new();
-            let revision = match WorkflowRevision::initial(
-                command.organization_id,
-                command.project_id,
-                definition_id,
-                WorkflowRevisionId::new(),
-                contract.clone(),
-                payloads,
-                command.actor_principal_id,
-                now,
-            ) {
+            let semantic_contracts = match command.semantic_contracts {
+                Some(value) => match parse_semantic_contracts(&contract, value) {
+                    Ok(value) => Some(value),
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                },
+                None => None,
+            };
+            let revision_id = WorkflowRevisionId::new();
+            let revision_result = match semantic_contracts {
+                Some(semantic_contracts) => WorkflowRevision::initial_with_semantic_contracts(
+                    command.organization_id,
+                    command.project_id,
+                    definition_id,
+                    revision_id,
+                    contract.clone(),
+                    payloads,
+                    semantic_contracts,
+                    command.actor_principal_id,
+                    now,
+                ),
+                None => WorkflowRevision::initial(
+                    command.organization_id,
+                    command.project_id,
+                    definition_id,
+                    revision_id,
+                    contract.clone(),
+                    payloads,
+                    command.actor_principal_id,
+                    now,
+                ),
+            };
+            let revision = match revision_result {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
@@ -84,6 +107,7 @@ impl CommandHandler<CreateWorkflowDefinition> for CreateWorkflowDefinitionHandle
                 "projectId": command.project_id,
                 "contentDigest": contract.digest(),
                 "payloadSetDigest": revision.payload_set_digest,
+                "semanticContractSetDigest": revision.semantic_contract_set_digest(),
             }))
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
@@ -136,4 +160,16 @@ impl CommandHandler<CreateWorkflowDefinition> for CreateWorkflowDefinitionHandle
             }))
         })
     }
+}
+
+fn parse_semantic_contracts(
+    contract: &WorkflowContract,
+    value: crate::modules::workflow::application::WorkflowSemanticContractAcls,
+) -> Result<WorkflowRevisionSemanticContracts, String> {
+    WorkflowRevisionSemanticContracts::create(
+        contract.spec(),
+        WorkflowStepDescriptorBindings::parse_acl(&value.descriptor_bindings_acl)?,
+        WorkflowStepDescriptorRegistry::parse_acl(&value.descriptor_registry_acl)?,
+        WorkflowVariableContract::parse_acl(&value.variable_contract_acl)?,
+    )
 }

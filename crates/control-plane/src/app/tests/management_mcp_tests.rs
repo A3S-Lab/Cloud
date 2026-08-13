@@ -569,6 +569,25 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         create_execution_template["annotations"]["readOnlyHint"],
         false
     );
+    let create_workflow_definition = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_workflow_definitions_create",
+    )?;
+    let workflow_semantic_contracts =
+        &create_workflow_definition["inputSchema"]["properties"]["semanticContracts"];
+    assert_eq!(workflow_semantic_contracts["additionalProperties"], false);
+    assert_eq!(
+        workflow_semantic_contracts["required"],
+        json!([
+            "descriptorBindingsAcl",
+            "descriptorRegistryAcl",
+            "variableContractAcl"
+        ])
+    );
+    assert_eq!(
+        workflow_semantic_contracts["properties"]["descriptorBindingsAcl"]["maxLength"],
+        crate::modules::workflow::domain::WORKFLOW_STEP_DESCRIPTOR_BINDINGS_MAX_ACL_BYTES
+    );
     for name in [
         "a3s_cloud_human_tasks_claim",
         "a3s_cloud_human_tasks_release",

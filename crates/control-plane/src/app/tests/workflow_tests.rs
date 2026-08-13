@@ -2,6 +2,17 @@ use super::*;
 use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
+use crate::modules::workflow::domain::{
+    WorkflowRevisionSemanticContracts, WorkflowStepDescriptorAdmission,
+    WorkflowStepDescriptorBinding, WorkflowStepDescriptorBindings,
+    WorkflowStepDescriptorBindingsSpec, WorkflowStepDescriptorRegistry,
+    WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorSpec, WorkflowStepExecutionClass,
+    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepOwner, WorkflowStepPort,
+    WorkflowStepPortCardinality, WorkflowStepPresentationSpec, WorkflowStepRetryClassification,
+    WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
+    WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableReadMode,
+    WorkflowVariableScope, WorkflowVariableStorageClass,
+};
 use crate::modules::workflow::{
     AssignmentPolicyRef, HumanTaskInteractionSpec, WorkflowContract, WorkflowDataSchema,
     WorkflowDataType, WorkflowEdgeSpec, WorkflowGoalContract, WorkflowGoalSpec, WorkflowPayload,
@@ -1049,6 +1060,170 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
 }
 
 #[tokio::test]
+async fn workflow_semantic_contracts_publish_restore_compile_v2_and_gate_runtime() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "workflow-semantics", "Semantic workflow").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "workflow-semantics-project",
+        "Semantic workflow",
+    )
+    .await?;
+    let ontology = app
+        .call(post_acl(
+            format!("/api/v1/organizations/{organization}/projects/{project}/ontologies"),
+            "workflow-semantics-ontology",
+            ONTOLOGY_ACL.as_bytes().to_vec(),
+        ))
+        .await?;
+    assert_eq!(ontology.status(), 201);
+    let ontology = response_json(&ontology)?;
+
+    let fixture = semantic_workflow_fixture("Semantic Plan v2").map_err(BootError::Internal)?;
+    let collection =
+        format!("/api/v1/organizations/{organization}/projects/{project}/workflow-definitions");
+    let created = app
+        .call(post_json(
+            &collection,
+            "workflow-semantics-create",
+            fixture.transport.clone(),
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created = response_json(&created)?;
+    let revision = &created["data"]["revision"];
+    assert_eq!(revision["compilerSchemaVersion"], 2);
+    assert_eq!(revision["semanticContractCount"], 3);
+    let semantic_contract_set_digest = fixture
+        .semantic_contract_set_digest
+        .as_deref()
+        .ok_or_else(|| BootError::Internal("semantic fixture has no digest".into()))?;
+    assert_eq!(
+        revision["semanticContractSetDigest"],
+        semantic_contract_set_digest
+    );
+    assert_eq!(
+        revision["semanticContracts"]
+            .as_array()
+            .map(|contracts| contracts
+                .iter()
+                .filter_map(|contract| contract["kind"].as_str())
+                .collect::<Vec<_>>()),
+        Some(vec![
+            "descriptor_bindings",
+            "descriptor_registry",
+            "variable_contract"
+        ])
+    );
+    let definition_id = required_string(
+        &created["data"]["workflowDefinition"]["id"],
+        "WorkflowDefinition ID",
+    )?;
+    let revision_id = required_string(&revision["id"], "Workflow revision ID")?;
+    let workflow_digest = required_string(&revision["contentDigest"], "Workflow digest")?;
+    let fetched = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/workflow-definitions/{definition_id}/revisions/{revision_id}"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    assert_eq!(response_json(&fetched)?["data"]["semanticContractCount"], 3);
+
+    let ontology_id = OntologyId::from_uuid(required_uuid(
+        &ontology["data"]["ontology"]["id"],
+        "Ontology ID",
+    )?);
+    let ontology_revision_id = OntologyRevisionId::from_uuid(required_uuid(
+        &ontology["data"]["revision"]["id"],
+        "Ontology revision ID",
+    )?);
+    let goal_contract = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
+        name: "Compile semantic plan".into(),
+        workflow_definition_id: WorkflowDefinitionId::from_uuid(required_uuid(
+            &created["data"]["workflowDefinition"]["id"],
+            "WorkflowDefinition ID",
+        )?),
+        workflow_revision_id: WorkflowRevisionId::from_uuid(required_uuid(
+            &revision["id"],
+            "Workflow revision ID",
+        )?),
+        workflow_digest: Sha256Digest::parse(workflow_digest).map_err(BootError::Internal)?,
+        ontology_id,
+        ontology_revision_id,
+        ontology_digest: Sha256Digest::parse(required_string(
+            &ontology["data"]["revision"]["contentDigest"],
+            "Ontology digest",
+        )?)
+        .map_err(BootError::Internal)?,
+        environment_id: None,
+        input: json!({"ticketId": "T-42"}),
+    })
+    .map_err(BootError::Internal)?;
+    let goal_collection =
+        format!("/api/v1/organizations/{organization}/projects/{project}/workflow-goals");
+    let goal = app
+        .call(post_acl(
+            &goal_collection,
+            "workflow-semantics-goal",
+            goal_contract.canonical_acl().as_bytes().to_vec(),
+        ))
+        .await?;
+    assert_eq!(goal.status(), 201);
+    let goal = response_json(&goal)?;
+    let plan = &goal["data"]["planRevision"];
+    assert_eq!(plan["schema"], "cloud.workflow.plan.v2");
+    assert_eq!(plan["compilerRevision"], "cloud.workflow.plan-compiler.v2");
+    assert_eq!(
+        plan["plan"]["semanticContractSetDigest"],
+        semantic_contract_set_digest
+    );
+    assert!(plan["plan"]["variableContractDigest"].is_string());
+    assert!(plan["plan"]["steps"]
+        .as_array()
+        .is_some_and(|steps| steps.iter().all(|step| step["descriptor"].is_object())));
+
+    let run = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/workflow-runs"),
+            "workflow-semantics-run",
+            json!({
+                "workflowGoalId": goal["data"]["goal"]["id"],
+                "planRevisionId": plan["id"],
+                "timeoutSeconds": 60
+            }),
+        ))
+        .await?;
+    assert_eq!(run.status(), 422);
+    assert!(response_json(&run)?["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("typed-variable Flow adapter")));
+
+    let downgrade = app
+        .call(
+            post_json(
+                format!(
+                    "/api/v1/organizations/{organization}/workflow-definitions/{definition_id}/revisions"
+                ),
+                "workflow-semantics-downgrade",
+                workflow_fixture("Attempted downgrade")
+                    .map_err(BootError::Internal)?
+                    .transport,
+            )
+            .with_header("x-a3s-expected-version", "1"),
+        )
+        .await?;
+    assert_eq!(downgrade.status(), 422);
+    Ok(())
+}
+
+#[tokio::test]
 async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_replay(
 ) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
@@ -1746,9 +1921,21 @@ async fn create_workflow_access_fixture(
 pub(super) struct WorkflowFixture {
     pub(super) transport: Value,
     pub(super) payload_set_digest: String,
+    pub(super) semantic_contract_set_digest: Option<String>,
 }
 
 pub(super) fn workflow_fixture(description: &str) -> std::result::Result<WorkflowFixture, String> {
+    workflow_fixture_with_semantics(description, false)
+}
+
+fn semantic_workflow_fixture(description: &str) -> std::result::Result<WorkflowFixture, String> {
+    workflow_fixture_with_semantics(description, true)
+}
+
+fn workflow_fixture_with_semantics(
+    description: &str,
+    include_semantics: bool,
+) -> std::result::Result<WorkflowFixture, String> {
     let data_schema =
         WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
             value_type: WorkflowDataType::Any,
@@ -1821,16 +2008,162 @@ pub(super) fn workflow_fixture(description: &str) -> std::result::Result<Workflo
         crate::modules::shared_kernel::domain::PrincipalId::new(),
         Utc::now(),
     )?;
+    let mut transport = json!({
+        "definitionAcl": contract.canonical_acl(),
+        "payloads": payloads.iter().map(|payload| json!({
+            "kind": payload.kind().as_str(),
+            "acl": payload.canonical_acl(),
+        })).collect::<Vec<_>>(),
+    });
+    let semantic_contract_set_digest = if include_semantics {
+        let semantic_contracts = semantic_contracts(contract.spec(), &schema_digest)?;
+        transport
+            .as_object_mut()
+            .ok_or_else(|| "Workflow transport is not an object".to_owned())?
+            .insert(
+                "semanticContracts".into(),
+                json!({
+                    "descriptorBindingsAcl": semantic_contracts
+                        .descriptor_bindings()
+                        .canonical_acl(),
+                    "descriptorRegistryAcl": semantic_contracts
+                        .descriptor_registry()
+                        .canonical_acl(),
+                    "variableContractAcl": semantic_contracts.variable_contract().canonical_acl(),
+                }),
+            );
+        Some(semantic_contracts.digest().to_string())
+    } else {
+        None
+    };
     Ok(WorkflowFixture {
-        transport: json!({
-            "definitionAcl": contract.canonical_acl(),
-            "payloads": payloads.into_iter().map(|payload| json!({
-                "kind": payload.kind().as_str(),
-                "acl": payload.canonical_acl(),
-            })).collect::<Vec<_>>(),
-        }),
+        transport,
         payload_set_digest: revision.payload_set_digest.to_string(),
+        semantic_contract_set_digest,
     })
+}
+
+fn semantic_contracts(
+    workflow: &WorkflowSpec,
+    schema_digest: &Sha256Digest,
+) -> std::result::Result<WorkflowRevisionSemanticContracts, String> {
+    let descriptor_specs = workflow
+        .steps
+        .iter()
+        .map(|step| workflow_local_descriptor(step.kind, &step.configuration_digest))
+        .collect::<Vec<_>>();
+    let registry = WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: "support.workflow".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        descriptors: descriptor_specs,
+    })?;
+    let bindings = WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+        id: "support.workflow".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        bindings: workflow
+            .steps
+            .iter()
+            .map(|step| {
+                let descriptor_id = format!("workflow.{}", step.kind.as_str());
+                let descriptor = registry
+                    .resolve(&descriptor_id, "1.0.0")
+                    .ok_or_else(|| format!("missing test descriptor {descriptor_id:?}"))?;
+                Ok(WorkflowStepDescriptorBinding {
+                    step_id: step.id.clone(),
+                    descriptor_id,
+                    descriptor_revision: "1.0.0".into(),
+                    semantic_digest: descriptor.semantic_digest().clone(),
+                })
+            })
+            .collect::<std::result::Result<Vec<_>, String>>()?,
+    })?;
+    let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+        id: "support.workflow".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        declarations: vec![WorkflowVariableDeclaration {
+            name: "request".into(),
+            scope: WorkflowVariableScope::InvocationInput,
+            value_type: WorkflowDataType::Any,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: Some(schema_digest.clone()),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required: true,
+            source_step_id: None,
+            source_path: Vec::new(),
+            region_id: None,
+            default_value_digest: None,
+        }],
+        reads: vec![WorkflowVariableRead {
+            id: "output-request".into(),
+            variable: "request".into(),
+            consumer_step_id: "output".into(),
+            consumer_region_id: None,
+            target_port: "result".into(),
+            path: Vec::new(),
+            expected_type: WorkflowDataType::Any,
+            expected_schema_digest: schema_digest.clone(),
+            required: true,
+            mode: WorkflowVariableReadMode::DirectValue,
+        }],
+        assignments: Vec::new(),
+        exports: Vec::new(),
+    })?;
+    WorkflowRevisionSemanticContracts::create(workflow, bindings, registry, variables)
+}
+
+fn workflow_local_descriptor(
+    kind: WorkflowStepKind,
+    configuration_schema_digest: &Sha256Digest,
+) -> WorkflowStepDescriptorSpec {
+    let (input, output) = match kind {
+        WorkflowStepKind::Input => ("invocation", "value"),
+        WorkflowStepKind::Output => ("result", "value"),
+        _ => ("input", "value"),
+    };
+    let id = format!("workflow.{}", kind.as_str());
+    WorkflowStepDescriptorSpec {
+        id: id.clone(),
+        revision: "1.0.0".into(),
+        owner: WorkflowStepOwner::Workflow,
+        kind: Some(kind),
+        semantic_profile: id.clone(),
+        execution_class: WorkflowStepExecutionClass::WorkflowLocal,
+        input_ports: vec![workflow_port(input)],
+        output_ports: vec![workflow_port(output)],
+        configuration_schema_digest: configuration_schema_digest.clone(),
+        default_policy_digest: None,
+        required_bindings: Vec::new(),
+        allowed_capability_types: Vec::new(),
+        failure: WorkflowStepFailureContract {
+            error_output: None,
+            retry_classification: WorkflowStepRetryClassification::NotRetryable,
+            fallback: WorkflowStepFallbackMode::Unsupported,
+            failure_branch: false,
+        },
+        minimum_compiler_schema_version: 2,
+        maximum_compiler_schema_version: 2,
+        admission: WorkflowStepDescriptorAdmission::Admitted,
+        unavailable_reason: None,
+        presentation: WorkflowStepPresentationSpec {
+            label: kind.as_str().into(),
+            summary: format!("{} test descriptor", kind.as_str()),
+            icon_key: id,
+        },
+    }
+}
+
+fn workflow_port(name: &str) -> WorkflowStepPort {
+    WorkflowStepPort {
+        name: name.into(),
+        value_type: WorkflowDataType::Any,
+        cardinality: WorkflowStepPortCardinality::Single,
+        required: true,
+        dynamic: false,
+    }
 }
 
 fn workflow_step(

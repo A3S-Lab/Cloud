@@ -13,9 +13,11 @@ The fixture contains two representative admitted descriptors so both a
 Workflow-local step and the existing finite Executions application port are
 covered. It is not the production built-in catalog, does not advertise all 23
 application-platform nodes, and does not change public parity availability.
-The current `cloud.workflow.plan.v1` replay shape is unchanged. A later explicit
-compiler/plan revision must pin exact descriptor semantic digests before the
-registry can become plan authority.
+`step-descriptor-bindings.acl` freezes the separate, presentation-independent
+step-to-descriptor authority. Migration `103` persists bindings, the exact
+recoverable registry snapshot, and variables as immutable WorkflowRevision
+children. `cloud.workflow.plan.v2` pins each semantic descriptor digest; the
+`plan.v1` replay shape remains unchanged.
 
 ## Typed variable scopes
 
@@ -31,15 +33,14 @@ ancestry, deterministic writer order, branch-local optionality, and unique
 consumer-port bindings. Secret and large values remain opaque typed references;
 they cannot be dereferenced or copied into mutable Workflow state. Application
 values require an Applications port plus optimistic revision and idempotency
-evidence. Because `cloud.workflow.plan.v1` has no descriptor identity, current
-graph admission rejects those application reads and writes until the explicit
-descriptor-bound plan revision exists.
+evidence. Plan v1 still rejects those reads and writes. Plan v2 can prove the
+descriptor owner during compilation, but execution remains gated on the
+typed-variable Flow adapter.
 
-This is a domain and compiler-conformance contract, not a variable store or a
-runtime availability claim. Persistent revision binding, exact descriptor and
-variable-contract pinning in the next plan schema, Flow adapter execution,
-authorized inspection, and Applications port dispatch remain open. No Flow
-history shape or existing Workflow replay behavior changed.
+This is a persisted compiler contract, not a variable store or a runtime
+availability claim. Flow adapter execution, authorized inspection, and
+Applications port dispatch remain open. No Flow history shape or existing
+Workflow replay behavior changed.
 
 ## Finite Execution
 

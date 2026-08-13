@@ -212,8 +212,10 @@ and the same seven process-death boundaries, while the clean C0.2 Management
 MCP/A3S Box/PostgreSQL gate passes the exact `77/47` catalog and an `8/8`
 ExecutionTemplate persistence, replay, rollback, immutability, and tenant
 non-disclosure result. This verifies the finite Execution sub-gate, not all of
-W0.3. Persistent descriptor/variable-contract management and exact next-plan
-pinning, runtime variable execution/inspection, composite regions, Answer/error
+W0.3. Revision-owned descriptor bindings, the recoverable registry snapshot,
+the variable contract, and exact Plan v2 pinning now persist through migration
+`103`. Built-in catalog discovery, runtime variable execution/inspection,
+composite regions, Answer/error
 semantics, business-service and remaining
 Agent/MCP/model/Tool capability dispatch, compensation, expanded cross-surface
 evidence, and public Workflow availability remain open.
@@ -226,8 +228,11 @@ sinks, preserves the historical value shape for one declared sink, and emits a
 stable step-ID-keyed object for multiple declared sinks under the existing
 output bound. Focused Workflow tests verify this behavior together with legacy
 replay and HumanTask compatibility. The descriptor registry and typed-variable
-domain contracts are implemented. Persistent revision binding, exact digests in
-an explicit next plan schema, runtime variable execution/inspection, bounded
+domain contracts are implemented. Migration `103` atomically binds all three
+contracts to WorkflowRevision compiler schema 2, and `cloud.workflow.plan.v2`
+pins every exact descriptor plus the semantic and variable digests. Legacy
+Plan v1 remains byte-stable and executable; Plan v2 fails closed until runtime
+variable execution/inspection is implemented. Built-in catalog discovery, bounded
 Iteration/Loop regions, typed error branches/fallback, and ordered Answer frames
 remain unimplemented parts of `W0.3`.
 

@@ -111,6 +111,13 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
+Workflow definition publication may also carry the complete revision semantic
+contract set: descriptor bindings, the exact recoverable descriptor registry
+snapshot, and the typed-variable contract. REST contract `1.29.0` persists
+that set atomically, returns its canonical ACL and digests, and compiles Plan
+v2 with exact per-step descriptor pins. The client validates only transport
+shape and UTF-8 byte bounds; Cloud remains the ACL and compiler authority.
+
 `listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
 `submitHumanTask` expose the protected HumanTask surface in REST contract
 `1.24.0`. Lists accept only the closed status set and a limit from 1 through 200
@@ -238,7 +245,7 @@ audit metadata and a next cursor; it cannot expose the shared record's
 unstructured `details` or create a client-side audit store.
 
 `createMembership` is the single Principal-plus-Membership mutation retained in
-REST contract `1.28.0`. Callers choose the closed `human` or `service` Principal
+REST contract `1.29.0`. Callers choose the closed `human` or `service` Principal
 kind explicitly; the client does not expose a second service-only creation
 method or infer human identity from a credential.
 
