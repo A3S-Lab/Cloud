@@ -32,12 +32,18 @@ Cloud control plane and Gateway data plane. This document owns detailed
 implementation order, exit criteria, and evidence. It reuses the roadmap
 boundary without creating a second Gateway control loop.
 
+The [AI application platform plan](ai-application-platform-plan.md) is the
+owning detailed plan for `APP0`, `K0`, and `AUT0`, including the public
+application/node/plugin parity manifest. This development plan retains their
+portfolio order and shared evidence policy rather than restating a competing
+implementation design.
+
 The [technical architecture](architecture.md) is authoritative for component
 ownership, control paths, deployment profiles, and failure behavior. This plan
 may record historical provider evidence, but historical Docker evidence never
 defines the active Box-only architecture or certifies a current gate.
 
-The roadmap has four delivery horizons:
+The roadmap has cumulative delivery horizons:
 
 | Horizon | Required gates | Product outcome |
 | --- | --- | --- |
@@ -47,6 +53,7 @@ The roadmap has four delivery horizons:
 | Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service and is reached through a conforming, authorized Gateway data plane |
 | Heterogeneous Agent platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases use one provider-neutral Harness contract, durable approvals, recovery, and replayable trajectories without another controller |
 | Ontology-driven Workflow platform | `W0` plus the selected `A1`, `MCP0`, `I0`, `U0`, and `C0` dependencies | Versioned business semantics compile into deterministic, recoverable plans on the existing A3S Flow path |
+| AI application platform | `APP0`, `K0`, `AUT0`, `W0`, and their named A0/A1/AR0, provider, identity, storage, Gateway, and production gates | Six current application experiences, including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin outcomes, publication, monitoring, and enterprise policy share one release and Flow path |
 | Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable |
 | Governed evolution platform | `EV0`, `W0`, `A1.6`, `I0`, and named `H0`/`C0` safety foundations | Authorized evidence produces reproducible evaluations and immutable candidates promoted only through existing rollout and rollback authorities |
 
@@ -69,6 +76,13 @@ names are product projections over these gates; they do not authorize another
 Flow engine, scheduler, queue, event bus, registry, object client, or rollout
 controller.
 
+The detailed five-mode application, 23-node, Knowledge, plugin projection,
+publication, monitoring, and enterprise contracts are maintained in
+[`ai-application-platform-plan.md`](ai-application-platform-plan.md). They add
+Applications, Knowledge, Files, Automations, and Connectors semantic ownership;
+they preserve the existing Flow, Workflow, Inference, Agents, Use, Sources,
+Secrets, storage, Gateway, identity, and Operations mechanisms.
+
 This expansion is additive. Existing tenant/project management, source and
 build delivery, ordinary Task/Service execution, Asset and A3S Use lifecycle,
 Secrets, Workloads/Fleet, Edge/Gateway, Operations, Search, stateful data,
@@ -83,6 +97,7 @@ not lost when the implementation is made A3S-native:
 | --- | --- | --- |
 | TokenHub-style private model gateway | Typed model protocols, Provider catalog and routing, project/environment keys, external OIDC identity federation, role-focused workspaces, diagnostics, API exploration, prompt-free usage and cost attribution, plus optional protocol/subscription channels | `C0.3`, `I0.2b` through `I0.2e`, `I0.5`, optional `I0.6`; commercial billing stays external and no TokenHub API/UI/storage compatibility is required |
 | Google AX-style distributed Harness runtime | Isolated heterogeneous providers, one semantic event writer and reconnect stream, immutable invocation profiles, approvals, resume, checkpoints, forks, trajectories, and telemetry correlation | `A1.1` through `A1.6`, `BX0`, and `H0`; no AX controller, event log, scheduler, config authority, or wire compatibility enters Cloud |
+| Dify-style public commercial core | Six current application projections including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Bases/Pipelines, six plugin outcomes, Web/API/embed/MCP delivery, monitoring/feedback, and enterprise governance | Composite `APP0.6` over `W0`, `K0`, `AUT0`, A0/A1/AR0, and named provider/platform gates; no copied API, storage topology, package lifecycle, configuration authority, mode runtime, Agent/sandbox lifecycle, pipeline engine, or scheduler enters Cloud |
 | Cross-layer security operations | Authorized correlation of Gateway policy, Agent semantics, Runtime/Box and host evidence, tenant-scoped detections, investigation timelines, signed export, and explicit enforcement through the owning context | `C0.3` plus `E0`/`H0.5` evidence foundations; no fourth control plane, security node channel, telemetry-driven mutation, or second audit store |
 
 The [architecture reference capability register](architecture.md#21-reference-capability-preservation-register)
@@ -199,6 +214,8 @@ flowchart LR
     MCP04 --> MCP05
     A0 --> A1[Heterogeneous Agent execution]
     C0 -->|C0.3 grants and audit| A1
+    A0 --> AR05[AR0.1-AR0.5 governed Agent runtime]
+    A1 --> AR05
     E0 --> S0[Databases, volumes, backups]
     E0 --> I00[I0.0 versioned accelerator contracts]
     E0 --> H01[H0.1 managed replica and claim foundation]
@@ -223,6 +240,9 @@ flowchart LR
     S0 --> H04
     H03 --> H04
     H04 --> H05[H0.5 measured autoscaling and hardening]
+    AR05 --> AR08[AR0.6-AR0.8 production Agent runtime]
+    A1 -->|A1.6| AR08
+    H05 --> AR08
     I034 --> I05[I0.5 inference hardening]
     H05 --> I05
     I05 --> I06[I0.6 optional protocol/channel profiles]
@@ -235,6 +255,30 @@ flowchart LR
     I02BC --> W04
     U04 --> W04
     W04 --> W05[W0.5 production recovery]
+    F0 --> APP01[APP0.1 application contracts]
+    W023 --> APP01
+    F0 --> K01[K0.1 Files and Knowledge]
+    F0 --> AUT01[AUT0.1 automation contracts]
+    K01 --> K06[K0.2-K0.6 Knowledge delivery]
+    W04 --> K06
+    I02BC --> K06
+    I06 -->|required rerank/media profiles| K06
+    S0 --> K06
+    U04 --> K06
+    AUT01 --> AUT06[AUT0.2-AUT0.6 triggers and connectors]
+    P0 --> AUT06
+    U04 --> AUT06
+    H05 --> AUT06
+    APP01 --> APP06[APP0.2-APP0.6 application parity]
+    W05 --> APP06
+    K06 --> APP06
+    AUT06 --> APP06
+    MCP05 --> APP06
+    I06 -->|required media profiles| APP06
+    AR05 --> APP06
+    AR08 --> APP06
+    H05 --> APP06
+    C0 -->|C0.5 enterprise| APP06
     W05 --> EV0[EV0 governed self-evolution]
     A1 -->|A1.6 trajectories| EV0
     I05 --> EV0
@@ -262,6 +306,14 @@ Flow-backed plan execution before every external step provider is available.
 `U0.4` ports. `EV0` follows `W0`, `A1.6`, inference, and production safety
 foundations; it reuses existing compute, storage, release, rollout, and audit
 paths instead of creating an evolution platform beside them.
+
+`APP0.1`, `K0.1`, and `AUT0.1` may freeze independent semantic contracts after
+the protected `W0.3` run-start and descriptor foundations pass. Knowledge
+delivery consumes the selected `W0.4`, Inference, Use, Connectors, and storage
+ports. Automations owns only new-invocation triggers and reuses Boot's durable
+task rail; Flow timers remain scoped to existing runs. Full `APP0.6` follows
+`W0.5`, `K0.6`, `AUT0.6`, and the named production gates and remains open until
+the retained visual product is delivered after the frontend freeze.
 
 `U0` is a control-plane integration lane, not another plugin platform. `U0.1`
 pins and adapts the frozen typed remote-host boundary from the exact A3S Use
@@ -305,6 +357,9 @@ Status as of 2026-08-13:
 | A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI/Web management projections. `A0.4` has immutable exact Agent release-to-Workload binding, server-side OCI injection, lifecycle reuse, migration 066 persistence, and REST/client/CLI/Web projections. `A0.5` now publishes exact hosted Git archives as immutable Skill bundles and binds them to Agent Workload revisions through migration 067, read-only Runtime Artifact mounts, rollback-safe revision history, and REST/client/CLI/Web surfaces. Retained external-provider and real PostgreSQL/Box evidence still blocks `A0.3` through `A0.5` verification. |
 | A1 | In progress | `A1.0` is verified and `A1.1` implements the durable conversation/execution foundation. The local `A1.2` native Code provider pins the Code-owned protocol, persists exact Workload/Runtime/run delivery identity through migration 069, reconciles the reserved Operation through the existing Flow runtime, forwards commands through Fleet and the node journal, settles Code pages through the shared outbound-batch primitive, derives only bounded semantic output/terminal facts, and implements the root `a3s code harness` HTTP entrypoint. Dependency publication, cancel/recover orchestration, and clean Linux PostgreSQL/Runtime recovery evidence remain open; provider-neutral `A1.3` and `A1.4` through `A1.6` remain planned. |
 | W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology contract foundation, exact capability references, deterministic graph validation, the ten-node outcome mapping, and architectural guards against duplicate execution mechanisms. Verified `W0.2` adds immutable Ontology revisions, deterministic migration/diff policy, and authorized Search. The `W0.3` backend now includes immutable definitions, Goals and Plans, native Forms, one Goal/Plan-bound WorkflowRun, the authority-bound HumanTask loop, and one finite `execution` capability step. Migrations `098`-`100` add Executions-owned immutable ACL-native ExecutionTemplate revisions, an exact Run/Plan/step/attempt/template/digest binding on the ordinary Execution, and `execution` admission in the existing WorkflowStepProjection constraint. Workflow uses one typed Executions application port to create or adopt the child, links its existing Operation into the same A3S Flow run, resumes only from an authority-bound terminal result, and waits for the existing cleanup-first cancellation path. REST/OpenAPI `1.24.0`, the maintained client, CLI, and three Management MCP tools expose the template lifecycle through the same CQRS, grant, idempotency, A3S ORM, Outbox, and audit paths. The clean Linux H0 gate passes finite persistence plus the seven-boundary WorkflowRun `SIGKILL` fixture, including child-commit, exact-link, and terminal-resume boundaries. The clean C0.2 Management MCP/A3S Box/PostgreSQL gate shares the same ACL fixture and passes the exact `77/47` catalog plus its `8/8` template persistence, replay, rollback, immutability, and tenant non-disclosure result. This verifies the finite Execution sub-gate, not all of W0.3. Business-service and remaining provider steps, compensation, expanded clean `W0.3` provider conformance, `W0.4`-`W0.5`, and public availability remain planned. |
+| APP0 | Planned; unavailable | Applications, immutable releases, six authoring/delivery projections including classic/New Agent, sessions, publishing, monitoring, and enterprise completion are specified in `ai-application-platform-plan.md`. Full public parity is a composite `APP0.6` claim and no application-platform availability exists yet. |
+| K0 | Planned; unavailable | Files, Knowledge Bases/documents/chunks, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval, external Knowledge, and Flow-backed Knowledge Pipelines are specified in `ai-application-platform-plan.md`; no Knowledge product availability exists yet. |
+| AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`; no Automations or Connectors product availability exists yet. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
 | U0 | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads and Search verified | Verified `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The root compatibility lock pins the same immutable Use revision and all ten consumed host schemas. Verified `U0.2` adds the `PluginRegistry` domain, migration 084 persistence, migration 085 integration with the sole authorized global Search view, one typed trust-root adapter over the shared immutable-object client, one published `a3s-use-extension` adapter for public-network refresh and online/cached catalog search/inspection, application enrollment plus tenant queries, REST `1.15.0`, the maintained client, CLI, and six read-only Management MCP tools. Cloud adds no TUF, catalog, query, cursor, cache, Search store/worker, object-storage, authorization, or cleanup mechanism. Stable CI verifies both the production public-HTTPS provider against the metadata-only fixture at the exact pinned Use revision and a strict `12/12` PostgreSQL 17 transaction, replay, tenancy, Search, fail-closed, and migration gate. Assignments and complete Manager mutation composition remain open; no assignment capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
@@ -330,13 +385,16 @@ authoritative model:
 | Logs, metrics, traces, and alerts | `E0`/`C0`/`H0` | Establish truthful single-node signals first, then notifications, SLOs, and measured scaling |
 | External Git and reproducible builds | `G0` | Explicit recipes first; automatic detection builds on the proven contract |
 | Stack detection, previews, monorepos, and Compose import | `P0` | Normalize into Workload, Route, and later Volume resources; no second orchestrator |
-| Web, worker, and scheduled Task profiles | `P0` | Compile explicit product profiles into the common Runtime Service or Task contracts |
+| Web, worker, and scheduled Task profiles | `P0` + `AUT0` | P0 detects and compiles explicit product profiles into common Runtime Service/Task targets; Automations is the sole due-time and new-invocation schedule authority |
 | CLI, management MCP, collaboration, notifications, and audited exec | `C0` | Reuse public commands, queries, scopes, idempotency, and audit |
 | Agent, MCP, and Skill releases | `A0` | A3S-specific immutable catalog over the common source, build, and publication path |
 | A3S Use plugin management | `U0` | Cloud owns only registry enrollment and desired host/workspace assignments; the shared A3S Use Plugin Manager owns signed catalog, plan/apply, package generations, grants, bindings, capability publication, drain, and cleanup |
 | Hosted modern MCP Service deployment and traffic | `MCP0` | Compile one immutable MCP release through Workloads/Runtime and one complete Gateway policy; no second scheduler, endpoint registry, or request-path Cloud call |
 | Heterogeneous Agent conversations, executions, approvals, checkpoints, forks, and trajectories | `A1` | One Cloud semantic execution history and one provider-neutral Harness contract over A0 releases, Operations/Flow, Fleet, Workloads, Runtime, and shared streaming; native Code and external providers cannot add controllers or run stores |
 | Ontologies, Workflow plans, and recoverable Workflow runs | `W0` | Workflow owns semantics and deterministic compilation; A3S Flow plus Operations remains the only durable orchestration mechanism |
+| Application releases, six current experiences, sessions, messages, publishing, feedback, and monitoring | `APP0` | Every ApplicationRelease binds one exact WorkflowRevision; classic/New Agent reuse A0/A1/AR0 and all delivery modes/channels share one Applications/Workflow execution path |
+| RAG corpus, Files metadata, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, retrieval/citations, and Knowledge Pipelines | `K0` | Knowledge owns semantic state; pipeline releases bind Workflow revisions, bytes use the shared object client, and indexes are rebuildable projections |
+| New-invocation schedules, webhooks, plugin/source events, and outbound connection profiles | `AUT0` | Automations owns exact-target trigger policy and Connectors owns egress profiles; neither advances Flow steps or copies Sources/Secrets state |
 | Evidence datasets, evaluation, candidates, and promotion policy | `EV0` | Evolution owns experiment semantics only and reuses shared compute, storage, release, rollout, audit, halt, and rollback authorities |
 | Databases, distributed storage providers, volumes, and backups | `S0` | Model mutable data explicitly with fencing and verified restore while reusing the shared immutable-object infrastructure |
 | Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
@@ -1407,7 +1465,8 @@ deployment engine.
 - Add explicit `web`, `worker`, and `scheduled_task` workload profiles that
   compile into the existing Runtime Service or Task contracts. Workers have no
   implicit route; scheduled Tasks have timezone, concurrency, catch-up, retry,
-  and history-retention policy owned by a durable scheduler.
+  and history-retention policy compiled to the sole `AUT0.3` Automations
+  schedule authority and transported through the existing Boot task rail.
 - Model a preview as an ordinary Environment with an explicit source revision,
   owner, pull-request identity, expiration time, quota, and cleanup Operation.
   Preview routing, logs, updates, and deletion reuse E0 behavior.
@@ -1458,7 +1517,8 @@ deployment engine.
   through the existing Workload path. Stateful Compose fields remain rejected
   until their S0 provider gates pass.
 - Real worker and scheduled-Task fixtures restart, cancel, retry, and recover
-  without an unintended public route or duplicate logical schedule occurrence.
+  without an unintended public route or duplicate logical schedule occurrence;
+  P0 contains no due-time evaluator, timer queue, or schedule history store.
 
 ## 11. Milestone C0: control surfaces and team operations
 
@@ -1819,6 +1879,15 @@ node.
   another owning context.
 - Add tenant-scoped audit queries, retention, signed export, and correlation
   across REST, CLI, MCP, Flow, node commands, and provider resources.
+- In `C0.5`, add versioned SAML/OIDC identity-provider admission, SCIM
+  provisioning and deprovisioning, session policy, and application/Workflow/
+  Knowledge-granular Resource Grants over the same Principal, Membership,
+  grant, revocation, and audit authority. Provider groups and SCIM records are
+  inputs, never implicit roles or grants.
+- In `C0.5`, add tamper-evident audit/SIEM export, PII-redaction policy,
+  BYOK/data-residency bindings, and air-gapped governance evidence by composing
+  the existing audit, Secrets, `S0`, and `H0` mechanisms. Do not add an
+  enterprise identity store, audit log, key store, or deployment controller.
 - Add capability-gated one-shot exec before interactive terminal support.
   Interactive sessions use short-lived grants, bounded input/output, idle and
   total timeouts, explicit cancellation, command/session audit, and the outbound
@@ -1839,6 +1908,13 @@ node.
   subjects, ambiguous account linking, and provider logout used as proof of
   Cloud revocation. Link, unlink, membership, and grant changes retain one
   Identity authority and take effect on the next request.
+- `C0.5` SAML/OIDC and SCIM fixtures cover assertion/token replay, signed
+  metadata/key rotation, stale provisioning version, rename/deprovision,
+  provider-group ambiguity, session expiry, next-request revocation, and
+  cross-workspace denial without creating duplicate Principals or implicit
+  grants. SIEM loss/replay, PII redaction, BYOK rotation, data-residency denial,
+  and air-gapped restore preserve one audit, Secret, storage, and Identity
+  authority.
 - A read-only MCP client cannot discover or invoke mutation tools. A
   project-scoped client cannot act on another project even when it guesses an
   identifier or supplies a forged organization context.
@@ -3112,7 +3188,71 @@ remains deferred by the backend-first freeze.
 - Real PostgreSQL, A3S Flow, selected Agent/MCP/model/Use providers, multi-day
   interruption, compensation, denial, cleanup, and runbook gates pass.
 
-## 13.2 Milestone EV0: governed self-evolution
+## 13.2 Milestones APP0, K0, and AUT0: AI application platform
+
+### Goal
+
+Deliver the public core outcomes of a commercial AI application platform while
+preserving the existing A3S authorities. Applications owns releases and
+sessions, Knowledge owns RAG corpus semantics, Files owns user-file metadata,
+Automations owns definitions that create new invocations, and Connectors owns
+reusable outbound connection policy. Workflow and Flow remain the only graph
+semantic and durable execution path.
+
+### Delivery
+
+Follow the detailed gates in
+[`ai-application-platform-plan.md`](ai-application-platform-plan.md):
+
+1. freeze the versioned ACL parity manifest, immutable step-descriptor contract,
+   application-delivery ADR, and the no-duplicate authority tests;
+2. complete protected `W0.3` runs, composite Iteration/Loop regions, ordered
+   Answer frames, typed error branches/fallback, reachable-sink Output
+   aggregation, and Flow replay preservation before exposing product claims;
+3. land `APP0.1`, `K0.1`, and `AUT0.1` as independent contract/persistence/API
+   slices with no temporary provider clients;
+4. complete the `I0.2`, required `I0.6` rerank/media, `A0.5`, `A1.4`, selected
+   `AR0.1`-`AR0.5`, `U0.4`, `MCP0.5`, `S0`, and Connector ports, then deliver
+   `K0.2` through `K0.5` and `AUT0.2` through `AUT0.5`;
+5. deliver `APP0.2` through `APP0.5` so all six application experiences,
+   including independently verified classic and New Agent projections, and
+   every publication channel resolve one ApplicationRelease, WorkflowRevision,
+   session contract, authorization policy, and shared sequence;
+6. close `A1.6`, `AR0.8`, enterprise `C0.5`, then `K0.6` and `AUT0.6` on the
+   `H0.5` production foundation; and
+7. after the operator lifts the frontend freeze, deliver the retained Studio,
+   Knowledge, publication, monitor, plugin, and enterprise projections and
+   close composite `APP0.6` only when the machine-checked parity manifest and
+   all golden scenarios pass.
+
+P0 may still detect a `scheduled_task` profile, but it submits the resulting
+exact Task target to Automations. Flow timers advance existing runs and cannot
+be reused as an invocation scheduler. Sources authenticates and normalizes
+provider events; Automations filters and targets them. Knowledge Pipelines bind
+Workflow revisions and cannot create an ingestion queue or DAG runtime.
+
+### Exit gate
+
+- The manifest accounts for all six application experiences including the
+  distinct classic/New Agent profiles, application toolkit and authoring/debug
+  outcomes, 23 built-in Workflow node labels with classic/New Agent profiles
+  under Agent,
+  Knowledge Pipeline source/processor/General/Parent-child/Q&A/index/input/debug
+  outcomes, six plugin outcomes, publication, monitoring, and enterprise
+  outcomes with one owner and verified dependency each.
+- Existing Flow histories and pinned runtime builds replay unchanged, and
+  Build, Deployment, Executions, and Workflow recovery suites reject a Cloud
+  retry/timer/history substitute.
+- Blocking, streaming, Web, embed, MCP, and internal invocation channels share
+  one application command and exact release; mode-specific runtimes do not
+  exist.
+- File, Knowledge, trigger, connection, model, Agent, Tool, Secret, route,
+  identity, usage, and run state remain with their named owners under tenant,
+  failure, cleanup, upgrade, backup/restore, and disaster-recovery evidence.
+- Full `APP0` remains unavailable until its retained visual product and
+  composite `APP0.6` gate pass.
+
+## 13.3 Milestone EV0: governed self-evolution
 
 ### Goal
 
@@ -3857,12 +3997,15 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Box-only provider migration | Release blocking | `BX0.1` dependency/config alignment -> `BX0.2` lifecycle -> `BX0.3` networking/mounts/health/Secrets/outputs/evidence -> `BX0.4` typed Box builds -> `BX0.5` complete re-certification, retired-code removal, and zero-Docker guard |
 | Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> sole `cloud.build@5` Box command path -> Cloud OCI admission -> registry publication -> locally verified signed evidence -> evidence API/web -> deployment handoff -> parent-bound Box cache reuse -> external-provider and fault-injection operator gates |
 | Developer workflows | `G0` | `P0` A3S ACL build-plan/source-layout detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
-| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped management MCP -> `C0.2m` modern-protocol migration -> `C0.3` external OIDC identity federation/membership/grants/attribution/security-investigation/notification/audit APIs -> `C0.4` exec/terminal; the role-focused console projection is retained but deferred by section 1.1 |
+| Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped management MCP -> `C0.2m` modern-protocol migration -> `C0.3` external OIDC identity federation/membership/grants/attribution/security-investigation/notification/audit APIs -> `C0.4` exec/terminal + `C0.5` enterprise SAML/OIDC/SCIM/session/audit/SIEM/data-governance contracts; role-focused projections are retained but deferred by section 1.1 |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent deployment -> Skill binding |
 | A3S Use plugin assignments | `U0.1`: A3S Use M0/M2 contract; `U0.3`: completed shared Manager saga plus `C0.3`; executable/multi-host gates consume named Use M5-M7, BX0, H0, Gateway, and Knowledge foundations | `U0.1` compatibility/host contract -> `U0.2` trusted catalog reads -> `U0.3` single-host safe assignment -> `U0.4` permission-bearing executable surfaces -> `U0.5` multi-host production hardening |
 | Hosted MCP services | `A0.3`, `BX0.3`, and `H0.2`; production scale also consumes `H0.3` and `C0.3` | `MCP0.1` contract -> `MCP0.2` Runtime/Box substrate + `MCP0.3` Cloud orchestration + `MCP0.4` Gateway data plane -> `MCP0.5` single-node release -> `MCP0.6` production scale |
 | Heterogeneous Agent execution | `A1.0`: verified `E0`; `A1.1+`: immutable `A0` release identities; `A1.5`: `C0.3` grants and audit | `A1.0` shared primitives -> `A1.1` conversations/executions/events -> `A1.2` native Code provider -> `A1.3` provider-neutral contract/non-Code conformance -> `A1.4` immutable invocation profile/bindings/Tool events -> `A1.5` approval/pause/resume -> `A1.6` checkpoints/forks/trajectories/telemetry |
 | Ontology-driven Workflow | `F0`, `C0`; typed steps consume verified `A1.3`, `MCP0.5`, `I0.2`, and applicable `U0.4` | `W0.1` authority/ACL -> `W0.2` ontology revisions -> `W0.3` deterministic plans/Flow runs -> `W0.4` typed capability steps -> `W0.5` production recovery |
+| Application lifecycle and delivery | `W0.3` foundation; complete modes/channels consume selected `A0.5`, `A1.4`/`A1.6`, `AR0.1`-`AR0.8`, `I0.2`, `MCP0.5`, `K0`, `AUT0`, `C0`, `S0`, and `H0` | `APP0.1` contracts/releases -> `APP0.2` sessions/invocation -> `APP0.3` delivery -> `APP0.4` six modes/channels including classic/New Agent + `APP0.5` monitoring -> `APP0.6` composite parity and retained Web |
+| Knowledge and Knowledge Pipeline | `F0`, shared immutable objects; ingestion/retrieval consumes selected `AUT0.5`, `U0.4`, `I0.2`, required `I0.6` rerank/media profiles, `S0`, and `W0.4` | `K0.1` Files/Knowledge authority -> `K0.2` multi-source/text-multimodal processing -> `K0.3` three chunk structures/index/retrieval -> `K0.4` Workflow ports -> `K0.5` scoped inputs/debug/published Flow-backed pipelines -> `K0.6` production and retained Web |
+| Automations and Connectors | `F0`, `W0.3`; webhook, schedule, plugin, and production slices consume `E0`, P0 contract, `U0.4`, `C0.3`, and `H0.5` | `AUT0.1` authority -> `AUT0.2` webhook + `AUT0.3` schedule + `AUT0.4` plugin events + `AUT0.5` connectors -> `AUT0.6` production and retained Web |
 | Stateful and distributed storage platform | `E0`; production distribution also consumes `H0` | shared immutable-object provider conformance -> `S0` local volume -> PostgreSQL -> backup/restore -> distributed object/remote volume providers -> additional engines |
 | Production scale | `P0`, `C0`, `A0`, `A1`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
 | Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` API/client/CLI/MCP self-service and governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth -> optional independently certified `I0.6` protocol/channel profiles; console and playground projections are retained for the later frontend phase |
@@ -3893,8 +4036,13 @@ scheduling, persistence slices, crash points, and exit evidence.
 A milestone is complete only when all of the following are true:
 
 - The capability-preservation check passes; removing a native Cloud,
-  TokenHub-inspired, Google AX-inspired, or cross-layer security outcome
-  requires an explicit architecture migration and replacement evidence.
+  TokenHub-inspired, Google AX-inspired, Dify-inspired public core, or
+  cross-layer security outcome requires an explicit architecture migration and
+  replacement evidence.
+- `APP0`, `K0`, and `AUT0` evidence updates the versioned ACL parity manifest;
+  every required Workflow node and Knowledge Pipeline source/processor/chunk/
+  index/input/debug item names one owner, verified dependency, recovery fixture,
+  and availability state.
 - A backend/interface milestone lands its domain invariants, application
   commands/queries, PostgreSQL schema, provider adapters, transport contracts,
   REST/OpenAPI, maintained client, and applicable CLI/MCP surfaces together.

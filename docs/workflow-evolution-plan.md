@@ -15,6 +15,11 @@ platform evidence. This document owns the additional domain contracts,
 ordered slices, crash points, and exit evidence for these intelligence
 capabilities.
 
+The [AI application platform plan](ai-application-platform-plan.md) owns the
+`APP0`, `K0`, and `AUT0` consumption of these contracts, including the 23-node
+coverage matrix. It may require an existing `W0` sub-gate but cannot redefine
+Workflow or Flow authority.
+
 Website names describe product capabilities, not deployable process names:
 
 | Website capability | Canonical implementation |
@@ -116,7 +121,7 @@ Search index authoritative.
 | --- | --- | --- |
 | `W0.1` | Freeze the Workflow/Ontology domain contract, closed ACL schemas, authority tests, quotas, and one federated capability-reference shape | `F0`, `C0.1` |
 | `W0.2` | Persist versioned ontologies, validate object/relation/rule migrations, publish authorized query and diff surfaces, and rebuild Search projections | `W0.1`, PostgreSQL, A3S ORM, Search |
-| `W0.3` | Persist Workflow definitions and goals, compile one deterministic immutable plan, and run human/service/finite-task steps through one Operation and A3S Flow | `W0.2`, `C0.3`, existing Executions |
+| `W0.3` | Persist Workflow definitions and goals; freeze immutable step descriptors and typed variable scopes; compile one deterministic plan including bounded Iteration/Loop regions, typed error branches/fallback, Answer frames, and reachable-sink Output aggregation; run human/service/finite-task steps through one Operation and A3S Flow | `W0.2`, `C0.3`, existing Executions |
 | `W0.4` | Add immutable Agent, MCP, model, Tool, and business-service step bindings with typed inputs/outputs, compensation, approval, and bounded evidence references | `W0.3`, provider-neutral `A1.3`, `MCP0.5`, `I0.2`, `U0.4` where a Use surface is selected |
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
@@ -197,6 +202,14 @@ W0.3. Business-service and remaining Agent/MCP/model/Tool capability dispatch,
 compensation, expanded cross-surface evidence, and public Workflow availability
 remain open.
 
+The descriptor registry, typed variable scopes, bounded Iteration/Loop regions,
+typed error branches/fallback, ordered Answer frames, and reachable-sink Output
+aggregation remain unimplemented parts of `W0.3`. The current runtime completes
+at its first `output`; that is a valid minimal slice but is not multi-output
+application parity. The correction
+belongs to the Workflow compiler/runtime adapter and must preserve the same
+Flow history and completion mechanism.
+
 ### 4.3 Compiler rules
 
 The planner produces a closed `PlanRevision` containing exact ontology,
@@ -268,11 +281,15 @@ and the deferred Designer without becoming execution authority:
 
 ```text
 WorkflowStepDescriptor
-├── presentation       stable kind, label key, icon key, safe summary fields
+├── identity           stable descriptor ID and immutable descriptor revision
+├── dispatch           owning context, coarse semantic kind, semantic profile, execution class
 ├── ports              typed static or declarative dynamic inputs and outputs
-├── configuration      closed schema reference, defaults, and semantic digest rules
+├── configuration      closed ACL schema digest, defaults, and semantic digest rules
+├── failure             typed error output, retry classification, fallback, and branch policy
 ├── binding            allowed CapabilityReference kinds and compatibility rules
-└── requirements       capability/policy constraints, never a provider or pool registry
+├── requirements       capability/policy constraints, never a provider or pool registry
+├── compatibility      admitted compiler/protocol range and unavailable reason
+└── presentation       label/icon/summary digest, separate from execution semantics
 ```
 
 Authoring position, grouping, comments, and viewport metadata belong to a
@@ -294,6 +311,28 @@ verifies every stored digest before publication, compilation, and minimal run
 replay. A digest without retrievable canonical content is not a publishable or
 executable Workflow input, and mutable external content cannot fill the gap
 during replay.
+
+The complete 23-node application-platform mapping is additive to the ten-node
+standalone migration register and is authoritative in the
+[AI application platform plan](ai-application-platform-plan.md). Built-ins and
+A3S Use capabilities register immutable descriptors over the same coarse kinds;
+neither adds product-specific commands, graph semantics, or a node catalog to
+A3S Flow.
+
+### 4.6 Flow preservation contract
+
+A3S Flow retains durable history, replay, scheduled steps, retries, waits,
+hooks, cancellation, timeout, progress, batch scheduling, and child-operation
+linkage. Workflow owns the graph, descriptors, values, composite regions,
+termination policy, and owning-context port calls. Cloud does not reimplement
+any Flow ability while adding application-platform nodes.
+
+An upstream Flow change is permitted only after a conformance test proves a
+missing domain-neutral primitive. It must be additive, preserve existing public
+commands and serialized histories, keep legacy Cloud runs replayable, update the
+exact compatibility lock, and pass Build, Deployment, Executions, and Workflow
+recovery suites. Tenant, application, model, Knowledge, Tool, graph, ACL, and UI
+semantics remain prohibited in Flow.
 
 ## 5. `A1`: heterogeneous Agent hosting through one contract
 

@@ -25,6 +25,13 @@ contract foundation; later gates compile semantic intent to the existing
 Operations and A3S Flow path. W0 does not add another workflow engine,
 scheduler, graph database authority, or task queue.
 
+Planned APP0, K0, and AUT0 add application release/session semantics, RAG
+Knowledge and user-file metadata, and definitions that create exact-release
+invocations. Every ApplicationRelease and KnowledgePipelineRelease binds an
+exact Workflow revision; every durable run still uses Operations and Flow.
+These contexts do not add mode-specific runtimes, an ingestion DAG, a trigger
+queue, a package manager, a model registry, or another object client.
+
 Planned EV0 adds authorized evidence-dataset manifests, evaluation suites,
 experiments, candidate revisions, promotion decisions, and rollback evidence.
 It uses the existing execution, storage, release, rollout, and audit paths; it
@@ -47,6 +54,8 @@ distributes committed facts after the corresponding database transaction.
 | --- | --- |
 | Organization | Tenant and security boundary. Commercial billing remains externally owned. |
 | External identity link | Exact trusted OIDC issuer and subject bound to one Cloud principal under `C0.3`; provider email, session, or group claims never become Cloud authority by themselves. |
+| Enterprise identity provider | Immutable planned `C0.5` SAML/OIDC provider revision with trusted metadata/keys, audience, claim policy, and session policy; it reuses Cloud Principals and Memberships. |
+| Provisioning binding | Planned `C0.5` SCIM external identity/version bound idempotently to one Principal and explicit Membership lifecycle; provider groups never become implicit Resource Grants. |
 | Project | Product grouping owned by one organization. |
 | Project attribution profile | Immutable project showback metadata containing a business-owner reference, optional external cost-attribution code, and validated labels; it is not a price or billing account. |
 | Environment | Isolated desired-state namespace such as production or staging. |
@@ -63,6 +72,21 @@ distributes committed facts after the corresponding database transaction.
 | Workflow goal | Tenant-scoped intent and constraints compiled against one exact Workflow and ontology revision. |
 | Plan revision | Deterministic immutable compilation of a goal, policies, inputs, and exact capability references. |
 | Workflow run | One semantic execution of an exact plan revision with one correlated Operation and Flow run. |
+| Application | Tenant-scoped product identity whose immutable releases select one of six current authoring/delivery projections. It is not a Workflow or Asset. |
+| Application release | Immutable publication binding one exact Workflow revision, schemas, delivery policy, authorization policy, and presentation digest. |
+| Application template revision | Immutable A3S-native authoring/dependency manifest used to create new drafts through owning commands; it contains no run, session, Secret, or mutable source authority. |
+| Application end user | Application-scoped delivery audience identity that may link to an Identity Principal but never gains workspace membership or grants by implication. |
+| Application session | Chat or invocation conversation state owning ordered messages and conversation variables for one exact application release policy. It is not Agent or Flow history. |
+| Application message variant | Idempotent alternative output linked to one exact source message, release, and input; it never replaces the ordered message or mutates history. |
+| Classic Agent application | Applications preset that compiles prompt/model/strategy/Tool/Knowledge policy to an exact A0/A1 Agent profile and wrapper Workflow revision. |
+| New Agent application | Applications projection over one reusable exact AgentRelease, HarnessInvocationProfile, A1 conversation/execution, and governed AR0 runtime; it owns no sandbox lifecycle. |
+| User file | Tenant-scoped upload/scan/quota/retention identity referencing immutable bytes; it is not a Build Artifact. |
+| Knowledge Base | Tenant-scoped RAG corpus authority with immutable index and retrieval policy revisions. It is separate from a Workflow Ontology. |
+| Knowledge document and chunk | Provenance-bound source record and deterministic General, Parent-child, or Q&A segment with typed metadata, text/media attachments, and immutable content references. |
+| Knowledge Pipeline release | Immutable Knowledge-owned binding to one exact Workflow revision, datasource entrances, global/source-local input schemas, chunk structure, and output contract; it is not an execution engine. |
+| Automation definition | Immutable schedule, webhook, plugin-event, or source-event policy that creates an idempotent invocation of one exact ApplicationRelease, WorkflowRevision, or Task target. |
+| Automation invocation receipt | Durable deduplication and outcome evidence for one admitted external event or due-time identity; the target owner still owns the resulting run. |
+| Connector profile | Immutable outbound HTTP/business connection policy with typed schemas, egress rules, and Secret references; it contains no plaintext credential. |
 | Agent conversation | Tenant-scoped logical interaction that owns one monotonic semantic event sequence across executions and forks. |
 | Agent execution | One durable run of an immutable Agent release and one exact Harness invocation profile. |
 | Harness provider profile | Immutable provider kind, revision, protocol version, capability digest, and Runtime delivery profile selected for one Agent execution. |
@@ -110,7 +134,8 @@ are different facts.
 
 Owns stable human and service Principals, organizations, Membership roles,
 Principal-bound API credentials, revocation, Resource Grants, planned external
-OIDC subject links under `C0.3`, and tenant context. It answers who may
+OIDC subject links under `C0.3`, planned SAML/OIDC provider, SCIM, and session
+policy under `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, or store asset
 collaborator data in an unvalidated metadata document.
@@ -123,6 +148,8 @@ Primary aggregates:
 - `ApiToken`
 - `ResourceGrant`
 - `ExternalIdentityLink` (planned `C0.3`)
+- `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
+- `IdentitySessionPolicy` (planned `C0.5`)
 
 ### 3.2 Projects
 
@@ -503,7 +530,64 @@ target ACL. Idempotency stores only the organization/Ontology/revision
 identity, and replay reconstructs the aggregate snapshot at that revision.
 Search reads one disposable current-head view and cannot revise an Ontology.
 
-### 3.15 Governed evolution (planned EV0)
+### 3.15 AI applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
+
+`Applications` owns product identity, immutable release, six authoring and
+delivery projections, session/message state, conversation variables, feedback,
+annotations, and publication policy. Every release binds one exact
+`WorkflowRevision`; the six experiences do not own separate runtimes.
+
+Classic Agent and New Agent are separate projections. Classic Agent compiles to
+an exact A0/A1 profile. New Agent binds one reusable A0 AgentRelease and
+HarnessInvocationProfile, uses A1 for conversations/executions, and consumes
+AR0 for the governed sandbox/runtime experience. Build-by-chat submits proposed
+changes through A1 to the A0-owned draft/release commands; Applications never
+writes Agent, Asset, Workload, Runtime, Box, or Secret state.
+
+Primary aggregates and immutable records:
+
+- `Application` and `ApplicationRelease`
+- `ApplicationTemplateRevision`
+- `ApplicationEndUser`
+- `ApplicationSession` and `ApplicationMessage`
+- `ApplicationMessageVariant`
+- `ConversationVariableRevision`
+- `ApplicationFeedback` and `ApplicationAnnotation`
+
+`Knowledge` owns Knowledge Bases, document/chunk lifecycle, ingestion intent,
+index and retrieval policy, citations, external Knowledge bindings, and the
+KnowledgePipeline-to-Workflow binding. `Files` owns user upload, scan, quota,
+retention, and reference lifecycle. Both use typed adapters over the same
+immutable-object infrastructure; neither treats Search/vector data or object
+provider state as business truth.
+
+Primary aggregates and immutable records:
+
+- `KnowledgeBase` and `KnowledgeBaseRevision`
+- `KnowledgeDocument`, `KnowledgeChunk`, and media-attachment references
+- `KnowledgeTag` and immutable metadata-schema revisions
+- `IndexRevision` and `RetrievalPolicyRevision`
+- `ExternalKnowledgeBinding`, `KnowledgePipeline`, and `KnowledgePipelineRelease`
+- `UserFile` and `FileUploadSession`
+
+`Automations` owns schedule, webhook, plugin-event, and source-event definitions
+that create new exact-target invocations. It owns deduplication, filtering,
+misfire, concurrency, subscription reference, and invocation-receipt state.
+`Connectors` owns reusable outbound HTTP/business connection profiles and
+bounded execution evidence. Sources keeps provider connection/revision facts;
+Secrets keeps credential material; Flow timers advance existing runs only.
+
+Primary aggregates and immutable records:
+
+- `AutomationDefinition` and `AutomationRevision`
+- `AutomationInvocationReceipt`
+- `ConnectorProfile` and `ConnectorRevision`
+- `ConnectorExecutionEvidence`
+
+Detailed invariants, sub-gates, and node ownership are defined in the
+[AI application platform plan](ai-application-platform-plan.md).
+
+### 3.16 Governed evolution (planned EV0)
 
 Owns authorized evidence-dataset manifests, evaluation suites, experiments,
 evaluation results, candidate revisions, promotion decisions, and rollback
@@ -527,7 +611,7 @@ cannot accept an AnySentry signal as a command, write production desired state,
 or add a training scheduler, model/Agent registry, dataset store, or deployment
 controller.
 
-### 3.16 Plugin assignments (U0 in progress)
+### 3.17 Plugin assignments (U0 in progress)
 
 Owns organization-scoped plugin registry enrollment and environment-scoped
 desired package assignments. It answers which exact signed package and named
@@ -1286,6 +1370,88 @@ contexts' tables.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
   decision, and evidence. It cannot hide non-deterministic mutation inside
   Flow replay.
+- A step descriptor declares typed error output and admitted retry, fallback,
+  default-value, or failure-branch policy. A runtime/provider failure cannot
+  choose an undeclared graph edge or silently reinterpret a historical plan.
+
+### Applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
+
+- An ApplicationRelease is immutable and binds one exact WorkflowRevision,
+  input/output schema digests, delivery policy, authorization policy, and
+  presentation digest. A changed binding creates a new release.
+- An ApplicationTemplateRevision is an immutable A3S-native authoring and exact
+  dependency manifest. Import creates new draft identities through owning
+  commands; it cannot copy session/run state, Secret material, or mutable source
+  authority. Search is only its rebuildable grant-filtered discovery projection.
+- Collaborative edits use C0 identities/grants and optimistic owner revision
+  commands. Browser presence, canvas layout, or a live editing buffer cannot
+  become application/Workflow release authority.
+- An ApplicationEndUser is scoped to one application delivery audience. A link
+  to an Identity Principal is explicit; caller-controlled identifiers cannot
+  create a Principal, membership, role, or Resource Grant.
+- Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow
+  are authoring and delivery projections. They cannot own separate run, retry,
+  session, Agent, sandbox, or provider mechanisms.
+- An ApplicationSession owns one monotonic message sequence and optimistic
+  conversation-variable revision. Duplicate Answer or assignment commands
+  replay by exact run/step/attempt identity; delivery retries cannot append a
+  second semantic message or variable mutation.
+- Openers/follow-ups, file/citation policy, moderation stages, Annotation Reply,
+  More Like This, and TTS/STT are immutable ApplicationRelease toolkit policy.
+  Their Files, Knowledge, Inference, Connector, and Workflow effects use typed
+  owning ports rather than an Applications-local provider client.
+- An ApplicationMessageVariant binds one source message, exact release/input,
+  and stable variant identity. It appends separate variant state and usage; it
+  cannot replace the source response or reorder the session sequence.
+- An Agent application links its ApplicationSession to one exact
+  AgentConversation. The session owns channel-visible messages and delivery
+  state; Agents owns reasoning events, Tool calls, approvals, checkpoints, and
+  trajectories. Neither copies the other's sequence.
+- A classic Agent profile and a New Agent release have different immutable
+  identities. Classic Agent configuration is an A0/A1-owned generated profile;
+  New Agent capability configuration is a reusable A0 AgentRelease. Both run
+  through A1, and an ApplicationRelease cannot silently follow a mutable latest
+  Agent release.
+- New Agent build-by-chat is an A1 AgentConversation that proposes reviewable
+  changes to an A0-owned draft. Apply/Discard are A0 commands; a build note is
+  immutable release evidence, not Applications or sandbox truth.
+- Permanent New Agent prompt/Skill/reference files belong to the Agent release,
+  published-session uploads belong to Files, and task working files belong to
+  the provider/AR0 runtime until explicitly exported by typed reference. No one
+  file lifecycle can substitute for another.
+- A UserFile cannot be referenced until its immutable byte digest, size, media
+  type, scan policy, tenant, and retention state pass admission. Build Artifact
+  lifecycle cannot substitute for user-file lifecycle.
+- A KnowledgeDocument binds exact source provenance and deterministic content
+  identity. Chunking, embedding, index, rerank, and retrieval policy changes
+  create immutable revisions and never reinterpret a completed retrieval.
+- A published Knowledge Base revision pins General, Parent-child, or Q&A chunk
+  structure. Changing that structure creates a new migration revision; it
+  cannot mutate or reinterpret the published chunks in place.
+- A multimodal Knowledge revision pins compatible processor output, media
+  attachments, embedding and rerank modalities, retrieval policy, and citation
+  shape. A text-only stage cannot silently discard images or other admitted
+  media.
+- Search/vector indexes may lag, rebuild, or be replaced. PostgreSQL Knowledge
+  state and immutable content references remain authoritative.
+- A KnowledgePipelineRelease binds one exact WorkflowRevision, datasource
+  entrances, global inputs, datasource-local inputs, chunk structure, and
+  output schema. The Workflow compiler enforces local input scope and declared
+  exports. Each pipeline run starts one WorkflowRun/Operation/Flow identity;
+  the pipeline cannot own an ingestion queue, DAG executor, retry history,
+  model client, form engine, or datasource installer.
+- An AutomationRevision binds one exact target and one immutable trigger policy.
+  A due-time or event identity produces at most one invocation receipt under
+  the declared concurrency and misfire policy.
+- Automations schedules create new invocations; Flow timers advance existing
+  runs. P0 scheduled Task profiles adapt to Automations rather than owning due
+  evaluation.
+- Sources owns provider authenticity and normalized source facts. Automations
+  owns target filtering and deduplication; neither writes the other's tables.
+- A ConnectorRevision contains typed request/response limits, destination and
+  egress policy, error classification, and Secret references only. Node handlers
+  cannot create direct HTTP clients, schedule retry/backoff, or persist
+  plaintext credentials; Flow remains the attempt/retry authority.
 
 ### Evidence, evaluation, candidate, and promotion (planned EV0)
 
@@ -1755,6 +1921,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | --- | --- |
 | Tenant, project, environment, desired workload | PostgreSQL domain tables |
 | External OIDC issuer/subject link, link status, and last verified identity metadata | PostgreSQL Identity tables through A3S ORM; provider sessions/tokens remain transient or Secret-owned and are never a user database |
+| Enterprise SAML/OIDC provider revision, SCIM binding/version, deprovision state, and session policy | PostgreSQL Identity tables through A3S ORM; external directory groups and sessions remain inputs rather than roles, grants, or Cloud user truth |
 | Tenant plugin registry enrollment, trust-root object reference/digest, desired assignment, requested surface set, target host/workspace, and desired assignment generation | PostgreSQL Plugins tables through A3S ORM |
 | Signed plugin catalog record, permission ceiling, immutable operation plan, confirmation, and contract validation semantics | Canonical A3S Use contracts; Cloud retains only exact validated review evidence and digests |
 | Installed plugin generation, package files, receipts, Workspace Grants, Runtime Bindings, Route Leases, capability generation, dependency closure, and receipt-owned cleanup | Shared A3S Use Plugin Manager and its host-local stores/journals |
@@ -1775,8 +1942,18 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Large Agent event content and logical checkpoint bytes | Shared immutable-object infrastructure through typed Agent adapters |
 | Harness invocation profiles, provider/capability digests, exact instructions/environment/security policy and release/Secret references, conformance identity, and selected execution binding | PostgreSQL Agents tables through A3S ORM |
 | Live Harness process and provider-private run/checkpoint state | The selected immutable Harness provider, hosted through A3S Runtime and A3S Box; native A3S Code uses `a3s code harness`, while Cloud retains only exact delivery identities, semantic projections, and verified receipts required for orchestration and recovery |
+| Agent permanent capability files and build-note evidence | A0 AssetRelease/Artifact immutable references; build-by-chat proposals become release state only through reviewed A0 Apply |
+| Agent task working directory, installed-program state, and provider-private sandbox files | The exact AR0-selected Harness provider through Workloads, Runtime, and Box; only typed exported references cross into Cloud-owned Files or Artifacts |
 | Ontology, Workflow, goal, plan, WorkflowRun, human decision, and semantic step state | PostgreSQL Workflow tables through A3S ORM |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
+| Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
+| User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
+| User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
+| Knowledge Base/document/chunk/media metadata, ingestion intent, immutable chunk structure, index/retrieval policy, citations, external bindings, and pipeline-release-to-Workflow/input-schema reference | PostgreSQL Knowledge tables through A3S ORM |
+| Knowledge vector/search data | Rebuildable provider indexes derived from exact Knowledge revisions; never corpus or policy authority |
+| Schedule/webhook/plugin/source-event policy, exact target, deduplication, concurrency/misfire state, and invocation receipt | PostgreSQL Automations tables through A3S ORM; Boot transports due work and Flow owns any resulting run history |
+| Source-provider connection, webhook authenticity, delivery identity, and normalized source fact | PostgreSQL Sources tables through A3S ORM; Automations retains only its target/filter/receipt state |
+| Outbound connection profile, egress policy, Secret references, and bounded execution evidence | PostgreSQL Connectors tables through A3S ORM; Secret plaintext remains Secrets-owned and transient at the authorized adapter |
 | Evidence-dataset manifests, evaluation suites/results, experiments, candidates, promotion decisions, and rollback evidence | PostgreSQL Evolution tables through A3S ORM |
 | Dataset, evaluation, candidate, and trajectory bytes | Shared immutable-object infrastructure through typed Workflow/Evolution/Agent adapters |
 | Model/backend catalog, environment inference deployment/route/provider intent, and immutable Edge binding reference | PostgreSQL Inference tables |
@@ -1818,6 +1995,9 @@ carry a versioned envelope:
 
 ```text
 identity.organization.created
+identity.enterprise-provider.published
+identity.provisioning-binding.changed
+identity.session-policy.changed
 project.environment.created
 source.github-connection.created
 source.github-connection.reconciled
@@ -1834,6 +2014,16 @@ workflow.definition-revision.published
 workflow.plan.compiled
 workflow.run.started
 workflow.run.completed
+application.release.published
+application.session.created
+application.feedback.recorded
+file.user-file.admitted
+knowledge.document.admitted
+knowledge.index-revision.published
+knowledge.pipeline.completed
+automation.revision.published
+automation.invocation.accepted
+connector.execution.completed
 agent.conversation.created
 agent.execution.started
 agent.execution.checkpointed
@@ -1892,6 +2082,9 @@ The first architecture does not implement:
   reference counter, or plugin-specific scheduler;
 - direct REST, CLI, Web, or Cloud Management MCP calls to the node-local A3S
   Use management MCP, or a private `execute(plugin, action, payload)` protocol;
+- an enterprise-only Principal/Membership store, SCIM-owned role or grant
+  authority, application-local SSO/session evaluator, second audit chain, or
+  SIEM delivery treated as audit truth;
 - mutable-tag deployments;
 - database writes from node agents;
 - direct node access to NATS;
@@ -1904,6 +2097,19 @@ The first architecture does not implement:
   store, or direct command channel;
 - a Workflow-specific Flow engine, task scheduler, graph-database authority,
   connector queue, object client, or direct provider launcher;
+- six application-mode runtimes, an Applications-specific Flow history,
+  session retry log, channel-specific business logic, or delivery-owned graph
+  interpreter;
+- an Applications-owned classic/New Agent definition, build-draft writer,
+  sandbox controller, process store, egress proxy, Secret injector, idle
+  evaluator, checkpoint engine, working-file store, or autoscaler;
+- a Knowledge ingestion engine or queue, authoritative vector index,
+  Knowledge/Files object client, datasource package manager, or direct model
+  provider client;
+- a P0-, Workflow-, application-, Knowledge-, or plugin-local due-time or event
+  scheduler; Automations owns new-invocation policy and reuses Boot transport;
+- direct outbound HTTP in Workflow node handlers, connection-owned Secret
+  plaintext, or Connector provider state as desired state;
 - an Evolution training scheduler, model/Agent registry, dataset store,
   deployment controller, or direct telemetry-to-production path;
 - Flow history or Runtime logs as an Agent semantic event stream; and
