@@ -17,6 +17,30 @@ The current `cloud.workflow.plan.v1` replay shape is unchanged. A later explicit
 compiler/plan revision must pin exact descriptor semantic digests before the
 registry can become plan authority.
 
+## Typed variable scopes
+
+`variable-contract.acl` is the canonical conformance fixture for
+`cloud.workflow.variable-contract.v1`. The Workflow-owned immutable contract
+declares invocation inputs, node outputs, composite-local values, deterministic
+run values, and Applications-owned values. It freezes typed declarations,
+reads, ordered assignments, explicit composite exports, exact root and leaf
+schema digests, and one exact compiler-schema version.
+
+Graph admission validates step identity, reachability, dominance, source-schema
+ancestry, deterministic writer order, branch-local optionality, and unique
+consumer-port bindings. Secret and large values remain opaque typed references;
+they cannot be dereferenced or copied into mutable Workflow state. Application
+values require an Applications port plus optimistic revision and idempotency
+evidence. Because `cloud.workflow.plan.v1` has no descriptor identity, current
+graph admission rejects those application reads and writes until the explicit
+descriptor-bound plan revision exists.
+
+This is a domain and compiler-conformance contract, not a variable store or a
+runtime availability claim. Persistent revision binding, exact descriptor and
+variable-contract pinning in the next plan schema, Flow adapter execution,
+authorized inspection, and Applications port dispatch remain open. No Flow
+history shape or existing Workflow replay behavior changed.
+
 ## Finite Execution
 
 `execution-template.acl` is the single ACL-native finite-task definition used

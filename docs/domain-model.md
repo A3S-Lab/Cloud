@@ -1396,6 +1396,12 @@ contexts' tables.
 - A step descriptor declares typed error output and admitted retry, fallback,
   default-value, or failure-branch policy. A runtime/provider failure cannot
   choose an undeclared graph edge or silently reinterpret a historical plan.
+- An immutable Workflow variable contract declares invocation, node-output,
+  composite-local, run, and Applications-owned scopes. Required reads obey graph
+  dominance, run writes have one deterministic order, and composite locals exit
+  only through typed exports. Secret and large values are opaque references;
+  Applications state remains behind its optimistic, idempotent owner port. This
+  contract is not a second variable store or Flow history.
 
 ### Applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
 
@@ -1895,6 +1901,13 @@ Ontology revision identities and digests, optional Environment identity, and
 canonical input. It points to one immutable `PlanRevision` compiled by
 `cloud.workflow.plan-compiler.v1`; identical semantic inputs produce identical
 canonical plan bytes and digest even though Goal and Plan identities differ.
+
+The implemented `cloud.workflow.step-descriptor-registry.v1` and
+`cloud.workflow.variable-contract.v1` freeze descriptor and value semantics as
+canonical digest-addressed domain contracts. They are not yet persisted and
+bound to WorkflowRevision or pinned by `cloud.workflow.plan.v1`; that requires
+an explicit next compiler/plan schema. Until then, application-state variable
+access remains fail-closed rather than inferring an owning port.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

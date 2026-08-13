@@ -207,11 +207,20 @@ fail-closed admission, and a presentation digest that cannot alter execution
 semantics. Its checked-in conformance fixture contains only one local step and
 one finite Execution application port; it is not a production node catalog or
 a public availability claim. Existing `cloud.workflow.plan.v1` replay is
-unchanged. W0.3 remains in progress because descriptor persistence and exact
-pinning in an explicit next compiler/plan revision, typed variable scopes,
+unchanged. The Workflow domain also freezes
+`cloud.workflow.variable-contract.v1`: canonical ACL, exact SemVer and
+compiler-schema identity, invocation/node/composite/run/application scopes,
+typed reads, deterministic assignments, explicit composite exports, exact
+root/leaf schema binding, graph reachability and dominance, opaque Secret and
+immutable-object references, and optimistic Applications-port evidence.
+Application reads/writes fail closed against `plan.v1` until a descriptor-bound
+plan can prove the owning port. These are domain conformance contracts, not
+persistent catalogs or runtime availability. W0.3 remains in progress because
+revision persistence, exact descriptor/variable pinning in an explicit next
+compiler/plan revision, runtime variable materialization and inspection,
 Iteration/Loop, Answer, error branches, business-service and remaining provider
-steps, compensation, expanded provider evidence, and production recovery
-remain open. No second engine, scheduler, queue, Runtime provider,
+steps, compensation, expanded provider evidence, and production recovery remain
+open. No second engine, variable store, scheduler, queue, Runtime provider,
 authorization store, or frontend was added.
 
 The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
@@ -515,7 +524,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, immutable descriptor domain contract, Form, WorkflowRun, HumanTask loop, shared grants, deterministic reachable-Output aggregation, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Focused Output semantics and the finite Execution recovery/cross-surface sub-gate are verified; descriptor persistence/plan pinning, typed variables, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, immutable descriptor and typed-variable domain contracts, Form, WorkflowRun, HumanTask loop, shared grants, deterministic reachable-Output aggregation, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Focused Output semantics and the finite Execution recovery/cross-surface sub-gate are verified; persistent contract binding and exact next-plan pinning, runtime variable execution/inspection, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` | Six current application experiences, shared release/session/delivery, publication, monitoring, and enterprise completion | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` | Files, RAG Knowledge, multi-source General/Parent-child/Q&A and multimodal processing, retrieval, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` | New-invocation triggers and reusable outbound connection profiles | Planned and unavailable |

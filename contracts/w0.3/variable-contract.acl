@@ -1,0 +1,104 @@
+variable_contract "support.triage" {
+  compiler_schema_version = 2
+  revision = "1.0.0"
+  schema = "cloud.workflow.variable-contract.v1"
+  declaration "api_secret" {
+    mutation_mode = "immutable"
+    required = false
+    scope = "invocation_input"
+    source_path = ["api_secret"]
+    source_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    storage_class = "secret_reference"
+    value_schema_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    value_type = "object"
+  }
+  declaration "attachment" {
+    mutation_mode = "immutable"
+    required = false
+    scope = "invocation_input"
+    source_path = ["attachment"]
+    source_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    storage_class = "immutable_object_reference"
+    value_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    value_type = "object"
+  }
+  declaration "request" {
+    mutation_mode = "immutable"
+    required = true
+    scope = "invocation_input"
+    source_path = []
+    source_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    storage_class = "inline"
+    value_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    value_type = "object"
+  }
+  declaration "summary" {
+    mutation_mode = "deterministic"
+    required = true
+    scope = "run"
+    source_path = []
+    storage_class = "inline"
+    value_schema_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    value_type = "string"
+  }
+  declaration "triage_result" {
+    mutation_mode = "immutable"
+    required = true
+    scope = "node_output"
+    source_path = []
+    source_schema_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    source_step_id = "triage"
+    storage_class = "inline"
+    value_schema_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    value_type = "object"
+  }
+  read "output-summary" {
+    consumer_step_id = "output"
+    expected_schema_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    expected_type = "string"
+    mode = "direct_value"
+    path = []
+    required = true
+    target_port = "result"
+    variable = "summary"
+  }
+  read "triage-attachment" {
+    consumer_step_id = "triage"
+    expected_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    expected_type = "object"
+    mode = "opaque_reference"
+    path = []
+    required = false
+    target_port = "attachment"
+    variable = "attachment"
+  }
+  read "triage-request" {
+    consumer_step_id = "triage"
+    expected_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    expected_type = "object"
+    mode = "direct_value"
+    path = []
+    required = true
+    target_port = "request"
+    variable = "request"
+  }
+  read "triage-secret" {
+    consumer_step_id = "triage"
+    expected_schema_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    expected_type = "object"
+    mode = "opaque_reference"
+    path = []
+    required = false
+    target_port = "secret"
+    variable = "api_secret"
+  }
+  assignment "assign-summary" {
+    mutation_order = 1
+    source_path = ["summary"]
+    source_variable = "triage_result"
+    target_variable = "summary"
+    value_schema_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    value_type = "string"
+    writer_step_id = "triage"
+  }
+}

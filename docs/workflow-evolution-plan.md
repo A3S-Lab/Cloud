@@ -126,7 +126,7 @@ Search index authoritative.
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
 `W0.1`, the backend implementation of `W0.2`, and the planning/persistence,
-immutable descriptor domain contract, internal Workflow-local,
+immutable descriptor and typed-variable domain contracts, internal Workflow-local,
 reachable-Output, HumanTask, and finite Execution portions of `W0.3` are now
 present. The descriptor registry uses canonical ACL, exact SemVer identity,
 typed ports, existing coarse step/capability types, owner/execution class,
@@ -135,7 +135,13 @@ behavior, compiler ranges, fail-closed admission, and presentation isolation.
 Its representative fixture is not a production catalog or availability claim,
 and existing `cloud.workflow.plan.v1` histories are unchanged. Persistent
 catalog management and exact descriptor semantic-digest pinning require an
-explicit next compiler/plan revision. Migration
+explicit next compiler/plan revision. The typed-variable contract uses
+canonical ACL, exact SemVer and compiler-schema identity, typed declaration/read/
+assignment/export records, root and leaf schema digests, reachability and
+dominance, deterministic mutation order, opaque Secret/object references, and
+optimistic Applications-port evidence. Its fixture is also conformance-only;
+`plan.v1` rejects Applications state access because it cannot prove the owning
+descriptor. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
 and deterministic diff are exposed through REST `1.15.0`, the maintained
@@ -206,8 +212,9 @@ and the same seven process-death boundaries, while the clean C0.2 Management
 MCP/A3S Box/PostgreSQL gate passes the exact `77/47` catalog and an `8/8`
 ExecutionTemplate persistence, replay, rollback, immutability, and tenant
 non-disclosure result. This verifies the finite Execution sub-gate, not all of
-W0.3. Persistent descriptor management and plan pinning, typed variable scopes,
-composite regions, Answer/error semantics, business-service and remaining
+W0.3. Persistent descriptor/variable-contract management and exact next-plan
+pinning, runtime variable execution/inspection, composite regions, Answer/error
+semantics, business-service and remaining
 Agent/MCP/model/Tool capability dispatch, compensation, expanded cross-surface
 evidence, and public Workflow availability remain open.
 
@@ -218,9 +225,11 @@ waits until every declared sink is active or inactive, excludes inactive branch
 sinks, preserves the historical value shape for one declared sink, and emits a
 stable step-ID-keyed object for multiple declared sinks under the existing
 output bound. Focused Workflow tests verify this behavior together with legacy
-replay and HumanTask compatibility. The descriptor registry, typed variable
-scopes, bounded Iteration/Loop regions, typed error branches/fallback, and
-ordered Answer frames remain unimplemented parts of `W0.3`.
+replay and HumanTask compatibility. The descriptor registry and typed-variable
+domain contracts are implemented. Persistent revision binding, exact digests in
+an explicit next plan schema, runtime variable execution/inspection, bounded
+Iteration/Loop regions, typed error branches/fallback, and ordered Answer frames
+remain unimplemented parts of `W0.3`.
 
 ### 4.3 Compiler rules
 
@@ -316,6 +325,16 @@ compilation. Workflow-local `input`, `transform`, `branch`, `output`, and
 decision coordination remain deterministic semantic work. Other steps call
 the named owning application port; only that owner may decide whether an
 ordinary Runtime Task or Service is required.
+
+The implemented variable contract validates immutable invocation inputs and
+node outputs, region-confined composite values, deterministically ordered run
+assignments, and Applications-owned values. Required reads must be backed by a
+default or a dominating source/write; optional node outputs may cross a branch
+only in forward graph order. Composite locals leave only through an explicit
+typed export. Secrets and immutable objects remain opaque references, and an
+Applications mutation must carry exact optimistic-revision and idempotency
+variables. These rules are compilation semantics, not a second runtime state
+store.
 
 The implemented `W0.3` publication path persists each admitted closed
 configuration and schema payload atomically with its WorkflowRevision, then

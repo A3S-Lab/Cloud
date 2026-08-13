@@ -13,6 +13,7 @@ mod workflow_graph;
 mod workflow_payload;
 mod workflow_run_contract;
 mod workflow_step_descriptor;
+mod workflow_variable_contract;
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
@@ -98,6 +99,13 @@ pub use workflow_step_descriptor::{
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_MAX_ACL_BYTES, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
     WORKFLOW_STEP_DESCRIPTOR_SEMANTIC_SCHEMA, WORKFLOW_STEP_PRESENTATION_SCHEMA,
 };
+pub use workflow_variable_contract::{
+    WorkflowVariableAssignment, WorkflowVariableContract, WorkflowVariableContractSpec,
+    WorkflowVariableDeclaration, WorkflowVariableExport, WorkflowVariableMutationMode,
+    WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
+    WorkflowVariableStorageClass, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
+    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
+};
 
 #[cfg(test)]
 mod authority_tests;
@@ -105,3 +113,5 @@ mod authority_tests;
 mod human_task_contract_tests;
 #[cfg(test)]
 mod workflow_step_descriptor_contract_tests;
+#[cfg(test)]
+mod workflow_variable_contract_tests;

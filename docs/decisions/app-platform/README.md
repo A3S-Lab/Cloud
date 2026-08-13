@@ -11,7 +11,8 @@ AI application platform parity manifest.
 | [0004](0004-trigger-authority.md) | Create new invocations only through Automations |
 | [0005](0005-file-authority.md) | Separate user-file metadata from shared immutable bytes and runtime working files |
 | [0006](0006-knowledge-authority.md) | Keep Knowledge corpus truth separate from Workflow ontology and Search indexes |
+| [0007](0007-typed-variable-scopes.md) | Freeze Workflow-owned typed scopes without adding a second mutable state engine |
 
-All six decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All seven decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

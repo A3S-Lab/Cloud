@@ -361,6 +361,17 @@ The compiler owns these variable scopes:
 | Secret | Secret reference only; plaintext never enters plan ACL, history, events, or logs |
 | Large value | Typed immutable-object reference with digest, size, media type, tenant, and retention policy |
 
+The Workflow domain now freezes these boundaries in
+`cloud.workflow.variable-contract.v1`. Canonical ACL declarations, reads,
+deterministic assignments, and explicit composite exports validate exact root/
+leaf schemas, graph reachability and dominance, region confinement, opaque
+Secret/object references, and optimistic Applications-port evidence. This is a
+domain conformance contract: persistent WorkflowRevision binding, exact
+descriptor and variable digests in the next plan schema, runtime
+materialization/inspection, and Applications dispatch remain open. Current
+`cloud.workflow.plan.v1` histories are unchanged and reject application-state
+access that cannot prove an owning descriptor.
+
 `Iteration` compiles to a bounded fan-out region with deterministic item IDs,
 result ordering, concurrency, failure, cancellation, and maximum-item policy.
 `Loop` compiles to a sequential region with a condition, maximum iteration

@@ -1,4 +1,6 @@
-use super::super::validation::validate_identifier;
+use super::super::validation::{
+    validate_dotted_identifier, validate_exact_semver, validate_identifier,
+};
 use super::super::{CapabilityType, WorkflowStepKind};
 use super::model::{
     WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistrySpec,
@@ -6,14 +8,13 @@ use super::model::{
     WorkflowStepOwner, WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepPresentationSpec,
     WorkflowStepRetryClassification,
 };
-use semver::Version;
 use std::collections::BTreeSet;
 
 pub(super) fn normalize_registry_spec(
     mut spec: WorkflowStepDescriptorRegistrySpec,
 ) -> Result<WorkflowStepDescriptorRegistrySpec, String> {
-    validate_dotted_id("Workflow descriptor registry ID", &spec.id)?;
-    validate_exact_revision("Workflow descriptor registry revision", &spec.revision)?;
+    validate_dotted_identifier("Workflow descriptor registry ID", &spec.id)?;
+    validate_exact_semver("Workflow descriptor registry revision", &spec.revision)?;
     if spec.compiler_schema_version == 0
         || spec.descriptors.is_empty()
         || spec.descriptors.len() > 512
@@ -51,9 +52,9 @@ pub(super) fn normalize_registry_spec(
 fn normalize_descriptor_spec(
     mut spec: WorkflowStepDescriptorSpec,
 ) -> Result<WorkflowStepDescriptorSpec, String> {
-    validate_dotted_id("Workflow descriptor ID", &spec.id)?;
-    validate_exact_revision("Workflow descriptor revision", &spec.revision)?;
-    validate_dotted_id(
+    validate_dotted_identifier("Workflow descriptor ID", &spec.id)?;
+    validate_exact_semver("Workflow descriptor revision", &spec.revision)?;
+    validate_dotted_identifier(
         "Workflow descriptor semantic profile",
         &spec.semantic_profile,
     )?;
@@ -256,7 +257,7 @@ fn validate_admission(spec: &WorkflowStepDescriptorSpec) -> Result<(), String> {
 fn validate_presentation(spec: &WorkflowStepPresentationSpec) -> Result<(), String> {
     validate_text("Workflow descriptor label", &spec.label, 1, 120)?;
     validate_text("Workflow descriptor summary", &spec.summary, 1, 512)?;
-    validate_dotted_id("Workflow descriptor icon key", &spec.icon_key)
+    validate_dotted_identifier("Workflow descriptor icon key", &spec.icon_key)
 }
 
 fn reject_duplicate_bindings(values: &[WorkflowStepBindingKind]) -> Result<(), String> {
@@ -274,33 +275,6 @@ fn reject_duplicate_capability_types(values: &[CapabilityType]) -> Result<(), St
         .collect::<BTreeSet<_>>();
     if unique.len() != values.len() {
         return Err("Workflow descriptor contains duplicate capability types".into());
-    }
-    Ok(())
-}
-
-fn validate_exact_revision(label: &str, value: &str) -> Result<(), String> {
-    let parsed = Version::parse(value).map_err(|_| format!("{label} must be exact SemVer"))?;
-    if parsed.to_string() != value || !parsed.build.is_empty() {
-        return Err(format!(
-            "{label} must use canonical SemVer without build metadata"
-        ));
-    }
-    Ok(())
-}
-
-fn validate_dotted_id(label: &str, value: &str) -> Result<(), String> {
-    if value.is_empty()
-        || value.len() > 128
-        || value.split('.').any(|segment| {
-            segment.is_empty()
-                || segment.starts_with('-')
-                || segment.ends_with('-')
-                || !segment
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
-        })
-    {
-        return Err(format!("{label} must use portable dotted lowercase syntax"));
     }
     Ok(())
 }
