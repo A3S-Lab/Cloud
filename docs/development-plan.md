@@ -1824,10 +1824,12 @@ node.
   replay outcomes fail or replay deterministically without a partial
   Membership. REST/OpenAPI `1.25.0`, the maintained client, CLI, and six new
   Management MCP tools reuse the Identity CQRS and permission boundaries. The
-  focused lifecycle suites pass; the dedicated PostgreSQL promotion test is
-  wired into the existing PostgreSQL 17 foundation CI job and awaits its first
-  retained run. The slice adds no email lookup, OIDC/session authority,
-  notification queue, role evaluator, store, or scheduler. `C0.3` remains in
+  focused lifecycle suites and dedicated PostgreSQL promotion test pass in the
+  existing PostgreSQL 17 foundation CI job; the
+  [successful MI1 job](https://github.com/A3S-Lab/Cloud/actions/runs/31679314189/job/94380946460)
+  is the retained verification evidence. The slice adds no email lookup,
+  OIDC/session authority, notification queue, role evaluator, store, or
+  scheduler. `C0.3` remains in
   progress because OIDC, attribution, notifications, security investigation,
   audit-query interfaces, and role-focused frontend projections remain open.
 - Add optional enterprise OIDC identity sources inside the existing Identity

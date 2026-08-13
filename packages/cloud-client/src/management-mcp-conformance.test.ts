@@ -208,11 +208,14 @@ conformanceIt(
       ...READ_ONLY_TOOLS,
       'a3s_cloud_memberships_list',
       'a3s_cloud_memberships_get',
+      'a3s_cloud_membership_invitations_list',
+      'a3s_cloud_membership_invitations_get',
       'a3s_cloud_resource_grants_list',
       'a3s_cloud_resource_grants_get',
     ]);
     const destructiveToolSet = new Set<string>([
       'a3s_cloud_memberships_revoke',
+      'a3s_cloud_membership_invitations_revoke',
       'a3s_cloud_resource_grants_revoke',
       'a3s_cloud_workloads_stop',
       'a3s_cloud_deployments_cancel',
