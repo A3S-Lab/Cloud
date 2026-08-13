@@ -191,7 +191,7 @@ api-tokens create <name> --token-stdin --scopes=<csv> [--expires-at=<timestamp>]
 api-tokens revoke <api-token-id>
 memberships list
 memberships get <membership-id>
-memberships create-service <name> <owner|admin|member|restricted>
+memberships create <human|service> <name> <owner|admin|member|restricted>
 memberships change-role <membership-id> <owner|admin|member|restricted> --expected-version=<version>
 memberships revoke <membership-id> --expected-version=<version>
 membership-invitations list

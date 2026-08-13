@@ -44,7 +44,8 @@ export interface MembershipMutationResult extends Membership {
   replayed: boolean;
 }
 
-export interface CreateServiceMembershipInput {
+export interface CreateMembershipInput {
+  principalKind: IdentityPrincipalKind;
   name: string;
   role: MembershipRole;
 }

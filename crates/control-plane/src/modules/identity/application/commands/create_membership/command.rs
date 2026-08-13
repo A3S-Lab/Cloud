@@ -5,8 +5,9 @@ use a3s_boot::Command;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
-pub struct CreateServiceMembership {
+pub struct CreateMembership {
     pub organization_id: OrganizationId,
+    pub principal_kind: String,
     pub name: String,
     pub role: String,
     pub actor_principal_id: PrincipalId,
@@ -15,6 +16,6 @@ pub struct CreateServiceMembership {
     pub request_id: Uuid,
 }
 
-impl Command for CreateServiceMembership {
+impl Command for CreateMembership {
     type Output = ApplicationResult<MembershipMutationResult>;
 }

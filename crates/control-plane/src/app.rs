@@ -97,8 +97,8 @@ use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
     AcceptMembershipInvitationHandler, BootstrapIdentityHandler, ChangeMembershipRoleHandler,
-    CreateApiTokenHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
-    CreateResourceGrantHandler, CreateServiceMembershipHandler, GetApiTokenHandler,
+    CreateApiTokenHandler, CreateMembershipHandler, CreateMembershipInvitationHandler,
+    CreateOrganizationHandler, CreateResourceGrantHandler, GetApiTokenHandler,
     GetMembershipHandler, GetMembershipInvitationHandler, GetResourceGrantHandler, IdentityModule,
     ListApiTokensHandler, ListMembershipInvitationsHandler, ListMembershipsHandler,
     ListMyMembershipInvitationsHandler, ListOrganizationsHandler, ListResourceGrantsHandler,
@@ -1532,8 +1532,8 @@ fn build_application_with_health(
                 .command_handler::<crate::modules::identity::CreateOrganization, _>(
                     CreateOrganizationHandler::new(organizations),
                 )
-                .command_handler::<crate::modules::identity::CreateServiceMembership, _>(
-                    CreateServiceMembershipHandler::new(create_memberships),
+                .command_handler::<crate::modules::identity::CreateMembership, _>(
+                    CreateMembershipHandler::new(create_memberships),
                 )
                 .command_handler::<crate::modules::identity::ChangeMembershipRole, _>(
                     ChangeMembershipRoleHandler::new(change_memberships),

@@ -963,7 +963,7 @@ session, notification, or parallel role authority is introduced. Migration
 `087` adds Membership-bound closed project/environment/node Resource Grants;
 one shared evaluator enforces direct access and filters collections on every
 request, while the application handler validates targets through their owning
-Project, Environment, or Node repository. REST/OpenAPI contract `1.26.0`, the
+Project, Environment, or Node repository. REST/OpenAPI contract `1.27.0`, the
 maintained client, CLI, and fifteen Management MCP tools reuse the same
 application handlers. The tenant-administrator audit slice adds
 `GET /organizations/{organization_id}/audit-records` and

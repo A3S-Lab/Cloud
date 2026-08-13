@@ -2254,11 +2254,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let service_membership_data = response_json(&service_membership)?["data"].clone();
     let service_membership_id = service_membership_data["id"]
         .as_str()
-        .ok_or("service membership has no ID")?
+        .ok_or("membership has no ID")?
         .to_owned();
     let service_principal_id = service_membership_data["principalId"]
         .as_str()
-        .ok_or("service membership has no principal ID")?
+        .ok_or("membership has no principal ID")?
         .to_owned();
     assert_eq!(
         response_json(&service_membership_replay)?["data"]["id"],

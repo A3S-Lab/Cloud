@@ -24,7 +24,7 @@ Commands:
   api-tokens revoke ID  Revoke one API token idempotently
   memberships list      List organization memberships
   memberships get ID    Get one organization membership
-  memberships create-service NAME ROLE Create a service principal membership idempotently
+  memberships create KIND NAME ROLE Create a human or service Principal membership idempotently
   memberships change-role ID ROLE Change one membership role with optimistic concurrency
   memberships revoke ID Revoke one membership with optimistic concurrency
   membership-invitations list List organization membership invitation history

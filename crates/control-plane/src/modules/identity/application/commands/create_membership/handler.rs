@@ -1,9 +1,11 @@
-use super::CreateServiceMembership;
+use super::CreateMembership;
 use crate::modules::identity::application::MembershipMutationResult;
-use crate::modules::identity::domain::entities::{IdentityPrincipal, Membership};
+use crate::modules::identity::domain::entities::{
+    IdentityPrincipal, IdentityPrincipalKind, Membership,
+};
 use crate::modules::identity::domain::events::{MembershipChanged, PrincipalCreated};
 use crate::modules::identity::domain::repositories::{
-    CreateServiceMembershipWrite, IMembershipRepository,
+    CreateMembershipWrite, IMembershipRepository,
 };
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -14,25 +16,29 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
 use std::sync::Arc;
 
-pub struct CreateServiceMembershipHandler {
+pub struct CreateMembershipHandler {
     repository: Arc<dyn IMembershipRepository>,
 }
 
-impl CreateServiceMembershipHandler {
+impl CreateMembershipHandler {
     pub fn new(repository: Arc<dyn IMembershipRepository>) -> Self {
         Self { repository }
     }
 }
 
-impl CommandHandler<CreateServiceMembership> for CreateServiceMembershipHandler {
+impl CommandHandler<CreateMembership> for CreateMembershipHandler {
     fn execute(
         &self,
-        command: CreateServiceMembership,
+        command: CreateMembership,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<MembershipMutationResult>>>
     {
         let repository = Arc::clone(&self.repository);
         Box::pin(async move {
+            let principal_kind = match IdentityPrincipalKind::parse(&command.principal_kind) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let name = match ResourceName::parse(command.name) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
@@ -43,6 +49,7 @@ impl CommandHandler<CreateServiceMembership> for CreateServiceMembershipHandler 
             };
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
+                "principalKind": principal_kind.as_str(),
                 "name": name.as_str(),
                 "role": role.as_str(),
             }))
@@ -56,7 +63,8 @@ impl CommandHandler<CreateServiceMembership> for CreateServiceMembershipHandler 
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
             let now = Utc::now();
-            let principal = IdentityPrincipal::create_service(PrincipalId::new(), name, now);
+            let principal =
+                IdentityPrincipal::create(PrincipalId::new(), principal_kind, name, now);
             let membership = Membership::create(
                 MembershipId::new(),
                 command.organization_id,
@@ -70,7 +78,7 @@ impl CommandHandler<CreateServiceMembership> for CreateServiceMembershipHandler 
             let membership_event = MembershipChanged::created(&membership, command.request_id)
                 .map_err(|error| BootError::Internal(error.to_string()))?;
             let result = match repository
-                .create_service_membership(CreateServiceMembershipWrite {
+                .create_membership(CreateMembershipWrite {
                     principal,
                     membership,
                     events: [principal_event, membership_event],

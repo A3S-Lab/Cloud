@@ -1,15 +1,16 @@
 use super::arguments::EmptyArguments;
 use super::tool_result;
+use crate::modules::identity::domain::entities::IdentityPrincipalKind;
 use crate::modules::identity::presentation::{
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
     ResourceGrantMutationResponse, ResourceGrantResponse, ResourceGrantScopeDto,
 };
 use crate::modules::identity::{
-    AcceptMembershipInvitation, ChangeMembershipRole, CreateMembershipInvitation,
-    CreateResourceGrant, CreateServiceMembership, GetMembership, GetMembershipInvitation,
-    GetResourceGrant, ListMembershipInvitations, ListMemberships, ListMyMembershipInvitations,
-    ListResourceGrants, RevokeMembership, RevokeMembershipInvitation, RevokeResourceGrant,
+    AcceptMembershipInvitation, ChangeMembershipRole, CreateMembership, CreateMembershipInvitation,
+    CreateResourceGrant, GetMembership, GetMembershipInvitation, GetResourceGrant,
+    ListMembershipInvitations, ListMemberships, ListMyMembershipInvitations, ListResourceGrants,
+    RevokeMembership, RevokeMembershipInvitation, RevokeResourceGrant,
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
@@ -30,7 +31,8 @@ pub struct MembershipArguments {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CreateServiceMembershipArguments {
+pub struct CreateMembershipArguments {
+    principal_kind: IdentityPrincipalKind,
     name: String,
     role: String,
     idempotency_key: String,
@@ -147,17 +149,18 @@ pub async fn get_membership(
     }
 }
 
-pub async fn create_service_membership(
+pub async fn create_membership(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     actor_is_platform_admin: bool,
-    arguments: CreateServiceMembershipArguments,
+    arguments: CreateMembershipArguments,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
-        .execute(CreateServiceMembership {
+        .execute(CreateMembership {
             organization_id,
+            principal_kind: arguments.principal_kind.as_str().into(),
             name: arguments.name,
             role: arguments.role,
             actor_principal_id,

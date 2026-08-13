@@ -12,8 +12,8 @@ pub use membership_invitation_repository::{
     RevokeMembershipInvitationWrite,
 };
 pub use membership_repository::{
-    ChangeMembershipRoleWrite, CreateServiceMembershipWrite, IMembershipRepository,
-    MembershipRecord, RevokeMembershipWrite,
+    ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
+    RevokeMembershipWrite,
 };
 pub use organization_repository::{CreateOrganizationWrite, IOrganizationRepository};
 pub use resource_authorization_decision_repository::IResourceAuthorizationDecisionRepository;

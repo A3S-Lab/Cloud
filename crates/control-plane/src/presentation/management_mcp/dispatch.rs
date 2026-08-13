@@ -15,10 +15,10 @@ use super::forms::{
     PublishFormReleaseArguments, ReviseFormDraftArguments,
 };
 use super::identity::{
-    ChangeMembershipRoleArguments, CreateMembershipInvitationArguments,
-    CreateResourceGrantArguments, CreateServiceMembershipArguments, ListResourceGrantsArguments,
-    MembershipArguments, MembershipInvitationArguments, MembershipInvitationMutationArguments,
-    ResourceGrantArguments, RevokeMembershipArguments, RevokeResourceGrantArguments,
+    ChangeMembershipRoleArguments, CreateMembershipArguments, CreateMembershipInvitationArguments,
+    CreateResourceGrantArguments, ListResourceGrantsArguments, MembershipArguments,
+    MembershipInvitationArguments, MembershipInvitationMutationArguments, ResourceGrantArguments,
+    RevokeMembershipArguments, RevokeResourceGrantArguments,
 };
 use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
@@ -140,9 +140,9 @@ pub async fn execute(
             let arguments = arguments::parse::<MembershipArguments>(arguments).ok()?;
             identity::get_membership(query_bus, organization_id, arguments, request_id).await
         }
-        ManagementTool::ServiceMembershipsCreate => {
-            let arguments = arguments::parse::<CreateServiceMembershipArguments>(arguments).ok()?;
-            identity::create_service_membership(
+        ManagementTool::MembershipsCreate => {
+            let arguments = arguments::parse::<CreateMembershipArguments>(arguments).ok()?;
+            identity::create_membership(
                 command_bus,
                 organization_id,
                 actor_principal_id,

@@ -33,7 +33,7 @@ pub const FORM_RELEASES_LIST: &str = "a3s_cloud_form_releases_list";
 pub const FORM_RELEASES_PUBLISH: &str = "a3s_cloud_form_releases_publish";
 pub const MEMBERSHIPS_LIST: &str = "a3s_cloud_memberships_list";
 pub const MEMBERSHIPS_GET: &str = "a3s_cloud_memberships_get";
-pub const SERVICE_MEMBERSHIPS_CREATE: &str = "a3s_cloud_service_memberships_create";
+pub const MEMBERSHIPS_CREATE: &str = "a3s_cloud_memberships_create";
 pub const MEMBERSHIPS_CHANGE_ROLE: &str = "a3s_cloud_memberships_change_role";
 pub const MEMBERSHIPS_REVOKE: &str = "a3s_cloud_memberships_revoke";
 pub const MEMBERSHIP_INVITATIONS_LIST: &str = "a3s_cloud_membership_invitations_list";
@@ -105,7 +105,7 @@ pub enum ManagementTool {
     ExecutionTemplatesList,
     MembershipsList,
     MembershipsGet,
-    ServiceMembershipsCreate,
+    MembershipsCreate,
     MembershipsChangeRole,
     MembershipsRevoke,
     MembershipInvitationsList,
@@ -207,7 +207,7 @@ impl ManagementTool {
         Self::ExecutionTemplatesList,
         Self::MembershipsList,
         Self::MembershipsGet,
-        Self::ServiceMembershipsCreate,
+        Self::MembershipsCreate,
         Self::MembershipsChangeRole,
         Self::MembershipsRevoke,
         Self::MembershipInvitationsList,
@@ -319,7 +319,7 @@ impl ManagementTool {
             Self::ExecutionTemplatesList => EXECUTION_TEMPLATES_LIST,
             Self::MembershipsList => MEMBERSHIPS_LIST,
             Self::MembershipsGet => MEMBERSHIPS_GET,
-            Self::ServiceMembershipsCreate => SERVICE_MEMBERSHIPS_CREATE,
+            Self::MembershipsCreate => MEMBERSHIPS_CREATE,
             Self::MembershipsChangeRole => MEMBERSHIPS_CHANGE_ROLE,
             Self::MembershipsRevoke => MEMBERSHIPS_REVOKE,
             Self::MembershipInvitationsList => MEMBERSHIP_INVITATIONS_LIST,
@@ -405,7 +405,7 @@ impl ManagementTool {
             Self::ExecutionTemplatesCreate => Some(ApiTokenScope::EXECUTION_WRITE),
             Self::MembershipsList
             | Self::MembershipsGet
-            | Self::ServiceMembershipsCreate
+            | Self::MembershipsCreate
             | Self::MembershipsChangeRole
             | Self::MembershipsRevoke
             | Self::MembershipInvitationsList
@@ -492,7 +492,7 @@ impl ManagementTool {
             self,
             Self::MembershipsList
                 | Self::MembershipsGet
-                | Self::ServiceMembershipsCreate
+                | Self::MembershipsCreate
                 | Self::MembershipsChangeRole
                 | Self::MembershipsRevoke
                 | Self::MembershipInvitationsList
@@ -651,10 +651,10 @@ impl ManagementTool {
                 uuid_id_schema("membershipId"),
                 true,
             ),
-            Self::ServiceMembershipsCreate => (
-                "Create service membership",
-                "Create one service principal and organization membership atomically with explicit idempotency.",
-                create_service_membership_schema(),
+            Self::MembershipsCreate => (
+                "Create membership",
+                "Create one human or service Principal and organization Membership atomically with explicit idempotency.",
+                create_membership_schema(),
                 false,
             ),
             Self::MembershipsChangeRole => (
@@ -1757,15 +1757,16 @@ fn expected_version_schema() -> Value {
     json!({"type": "integer", "minimum": 1})
 }
 
-fn create_service_membership_schema() -> Value {
+fn create_membership_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
+            "principalKind": {"type": "string", "enum": ["human", "service"]},
             "name": {"type": "string", "minLength": 1, "maxLength": 63},
             "role": membership_role_schema(),
             "idempotencyKey": idempotency_key_schema()
         },
-        "required": ["name", "role", "idempotencyKey"],
+        "required": ["principalKind", "name", "role", "idempotencyKey"],
         "additionalProperties": false
     })
 }

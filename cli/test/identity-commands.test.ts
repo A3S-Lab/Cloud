@@ -163,7 +163,8 @@ describe('a3s-cloud identity commands', () => {
       await runCli(
         [
           'memberships',
-          'create-service',
+          'create',
+          'service',
           'release automation',
           'member',
           '--idempotency-key=cli:membership-create',
@@ -203,7 +204,7 @@ describe('a3s-cloud identity commands', () => {
       `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/memberships/${MEMBERSHIP_ID}/revocation`,
     ]);
     expect(calls.map(([, init]) => init?.body)).toEqual([
-      JSON.stringify({ name: 'release automation', role: 'member' }),
+      JSON.stringify({ principalKind: 'service', name: 'release automation', role: 'member' }),
       JSON.stringify({ role: 'restricted', expectedVersion: 1 }),
       JSON.stringify({ expectedVersion: 2 }),
     ]);
@@ -578,8 +579,8 @@ describe('a3s-cloud identity commands', () => {
         message: '--expected-version must be a positive safe integer for membership mutation',
       },
       {
-        argv: ['memberships', 'create-service', 'automation', 'superuser', '--idempotency-key=k'],
-        message: 'membership role must be owner, admin, member, or restricted',
+        argv: ['memberships', 'create', 'robot', 'automation', 'member', '--idempotency-key=k'],
+        message: 'identity principal kind must be human or service',
       },
       {
         argv: ['membership-invitations', 'create', PRINCIPAL_ID, 'member', '--idempotency-key=k'],

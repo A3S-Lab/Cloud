@@ -445,7 +445,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_execution_templates_list",
             "a3s_cloud_memberships_list",
             "a3s_cloud_memberships_get",
-            "a3s_cloud_service_memberships_create",
+            "a3s_cloud_memberships_create",
             "a3s_cloud_memberships_change_role",
             "a3s_cloud_memberships_revoke",
             "a3s_cloud_membership_invitations_list",
@@ -765,25 +765,22 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
     bootstrap_organization(&app, "mcp-memberships", "Acme").await?;
 
     let create_arguments = json!({
-        "name": "Release automation",
+        "principalKind": "human",
+        "name": "Release operator",
         "role": "member",
         "idempotencyKey": "mcp-membership-create"
     });
     let created = app
         .call(mcp_request(
             Some(ADMIN_TOKEN),
-            tool_call(
-                1,
-                "a3s_cloud_service_memberships_create",
-                create_arguments.clone(),
-            ),
+            tool_call(1, "a3s_cloud_memberships_create", create_arguments.clone()),
         ))
         .await?;
     let created_body = response_json(&created)?;
     assert_eq!(created_body["result"]["structuredContent"]["code"], 201);
     assert_eq!(
         created_body["result"]["structuredContent"]["data"]["principalKind"],
-        "service"
+        "human"
     );
     assert_eq!(
         created_body["result"]["structuredContent"]["data"]["replayed"],
@@ -797,7 +794,7 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
     let replayed = app
         .call(mcp_request(
             Some(ADMIN_TOKEN),
-            tool_call(2, "a3s_cloud_service_memberships_create", create_arguments),
+            tool_call(2, "a3s_cloud_memberships_create", create_arguments),
         ))
         .await?;
     let replayed_body = response_json(&replayed)?;
@@ -810,6 +807,34 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
         replayed_body["result"]["structuredContent"]["data"]["replayed"],
         true
     );
+
+    for (id, arguments) in [
+        (
+            7,
+            json!({
+                "name": "Missing kind",
+                "role": "member",
+                "idempotencyKey": "mcp-membership-missing-kind"
+            }),
+        ),
+        (
+            8,
+            json!({
+                "principalKind": "robot",
+                "name": "Invalid kind",
+                "role": "member",
+                "idempotencyKey": "mcp-membership-invalid-kind"
+            }),
+        ),
+    ] {
+        let invalid = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, "a3s_cloud_memberships_create", arguments),
+            ))
+            .await?;
+        assert_eq!(response_json(&invalid)?["error"]["code"], -32602);
+    }
 
     let listed = app
         .call(mcp_request(
@@ -1155,8 +1180,9 @@ async fn management_mcp_reuses_resource_grant_commands_queries_and_idempotency()
             Some(ADMIN_TOKEN),
             tool_call(
                 1,
-                "a3s_cloud_service_memberships_create",
+                "a3s_cloud_memberships_create",
                 json!({
+                    "principalKind": "service",
                     "name": "Restricted deployment observer",
                     "role": "restricted",
                     "idempotencyKey": "mcp-resource-grant-membership"
@@ -1330,8 +1356,9 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
             Some(ADMIN_TOKEN),
             tool_call(
                 1,
-                "a3s_cloud_service_memberships_create",
+                "a3s_cloud_memberships_create",
                 json!({
+                    "principalKind": "human",
                     "name": "Form author",
                     "role": "member",
                     "idempotencyKey": "mcp-form-member-create"

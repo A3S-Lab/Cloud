@@ -37,21 +37,15 @@ pub struct IdentityPrincipal {
 }
 
 impl IdentityPrincipal {
-    pub fn create_human(id: PrincipalId, name: ResourceName, created_at: DateTime<Utc>) -> Self {
+    pub fn create(
+        id: PrincipalId,
+        kind: IdentityPrincipalKind,
+        name: ResourceName,
+        created_at: DateTime<Utc>,
+    ) -> Self {
         Self {
             id,
-            kind: IdentityPrincipalKind::Human,
-            name,
-            aggregate_version: 1,
-            created_at: canonical_timestamp(created_at),
-            disabled_at: None,
-        }
-    }
-
-    pub fn create_service(id: PrincipalId, name: ResourceName, created_at: DateTime<Utc>) -> Self {
-        Self {
-            id,
-            kind: IdentityPrincipalKind::Service,
+            kind,
             name,
             aggregate_version: 1,
             created_at: canonical_timestamp(created_at),
@@ -71,8 +65,9 @@ mod tests {
     #[test]
     fn service_principal_is_stable_and_active() {
         let created_at = Utc::now();
-        let principal = IdentityPrincipal::create_service(
+        let principal = IdentityPrincipal::create(
             PrincipalId::new(),
+            IdentityPrincipalKind::Service,
             ResourceName::parse("release automation").expect("name"),
             created_at,
         );
@@ -83,8 +78,9 @@ mod tests {
 
     #[test]
     fn human_principal_uses_the_same_stable_identity_authority() {
-        let principal = IdentityPrincipal::create_human(
+        let principal = IdentityPrincipal::create(
             PrincipalId::new(),
+            IdentityPrincipalKind::Human,
             ResourceName::parse("Human operator").expect("name"),
             Utc::now(),
         );

@@ -1,8 +1,9 @@
 import type {
   CreateApiTokenInput,
+  CreateMembershipInput,
   CreateMembershipInvitationInput,
   CreateResourceGrantInput,
-  CreateServiceMembershipInput,
+  IdentityPrincipalKind,
   MembershipRole,
   ResourceGrantScope,
 } from './identity';
@@ -44,9 +45,16 @@ export function validateApiTokenInput(input: CreateApiTokenInput): void {
   }
 }
 
-export function validateServiceMembershipInput(input: CreateServiceMembershipInput): void {
-  validateResourceName(input.name, 'service principal name');
+export function validateMembershipInput(input: CreateMembershipInput): void {
+  validateIdentityPrincipalKind(input.principalKind);
+  validateResourceName(input.name, 'identity principal name');
   validateMembershipRole(input.role);
+}
+
+export function validateIdentityPrincipalKind(kind: IdentityPrincipalKind): void {
+  if (!['human', 'service'].includes(kind)) {
+    throw new TypeError('identity principal kind must be human or service');
+  }
 }
 
 export function validateMembershipRole(role: MembershipRole): void {

@@ -11,7 +11,7 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_execution_templates_list',
   'a3s_cloud_memberships_list',
   'a3s_cloud_memberships_get',
-  'a3s_cloud_service_memberships_create',
+  'a3s_cloud_memberships_create',
   'a3s_cloud_memberships_change_role',
   'a3s_cloud_memberships_revoke',
   'a3s_cloud_membership_invitations_list',

@@ -16,7 +16,7 @@ pub struct MembershipRecord {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateServiceMembershipWrite {
+pub struct CreateMembershipWrite {
     pub principal: IdentityPrincipal,
     pub membership: Membership,
     pub events: [DomainEventEnvelope; 2],
@@ -53,9 +53,9 @@ pub struct RevokeMembershipWrite {
 
 #[async_trait]
 pub trait IMembershipRepository: Send + Sync {
-    async fn create_service_membership(
+    async fn create_membership(
         &self,
-        write: CreateServiceMembershipWrite,
+        write: CreateMembershipWrite,
     ) -> Result<IdempotentWrite<MembershipRecord>, RepositoryError>;
 
     async fn find_membership(

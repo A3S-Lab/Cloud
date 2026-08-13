@@ -1,6 +1,6 @@
 use super::{BootstrapIdentity, BootstrapIdentityResult};
 use crate::modules::identity::domain::entities::{
-    ApiToken, IdentityBootstrap, IdentityPrincipal, Membership, Organization,
+    ApiToken, IdentityBootstrap, IdentityPrincipal, IdentityPrincipalKind, Membership, Organization,
 };
 use crate::modules::identity::domain::events::{
     ApiTokenCreated, MembershipChanged, OrganizationCreated, PrincipalCreated,
@@ -66,8 +66,9 @@ impl CommandHandler<BootstrapIdentity> for BootstrapIdentityHandler {
             };
             let now = Utc::now();
             let organization = Organization::create(OrganizationId::new(), organization_name, now);
-            let principal = IdentityPrincipal::create_service(
+            let principal = IdentityPrincipal::create(
                 PrincipalId::new(),
+                IdentityPrincipalKind::Service,
                 ResourceName::parse(token_name.as_str()).map_err(BootError::Internal)?,
                 now,
             );

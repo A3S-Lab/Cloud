@@ -117,7 +117,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_form_releases_publish` | Command | `form:write` |
 | `a3s_cloud_memberships_list` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_get` | Administrator query | `identity:write` plus organization administrator role |
-| `a3s_cloud_service_memberships_create` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_memberships_create` | Administrator command | `identity:write` plus organization administrator role; requires explicit `human` or `service` Principal kind |
 | `a3s_cloud_memberships_change_role` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_memberships_revoke` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_membership_invitations_list` | Administrator query | `identity:write` plus organization administrator role |

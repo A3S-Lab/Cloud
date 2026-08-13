@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.26.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.27.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1945,9 +1945,9 @@ describe('CloudApi', () => {
 
     await api.listMemberships('organization / one');
     await api.getMembership('organization / one', 'membership / one');
-    await api.createServiceMembership(
+    await api.createMembership(
       'organization / one',
-      { name: 'release automation', role: 'member' },
+      { principalKind: 'human', name: 'release operator', role: 'member' },
       'client:membership-create'
     );
     await api.changeMembershipRole(
@@ -1970,7 +1970,7 @@ describe('CloudApi', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ 'Idempotency-Key': 'client:membership-create' }),
-        body: JSON.stringify({ name: 'release automation', role: 'member' }),
+        body: JSON.stringify({ principalKind: 'human', name: 'release operator', role: 'member' }),
       }),
       expect.objectContaining({
         method: 'POST',
@@ -1995,8 +1995,19 @@ describe('CloudApi', () => {
     });
 
     expect(() =>
-      api.createServiceMembership('organization', { name: '', role: 'member' }, 'client:membership-name')
-    ).toThrow('service principal name must contain 1 to 63 visible characters');
+      api.createMembership(
+        'organization',
+        { principalKind: 'human', name: '', role: 'member' },
+        'client:membership-name'
+      )
+    ).toThrow('identity principal name must contain 1 to 63 visible characters');
+    expect(() =>
+      api.createMembership(
+        'organization',
+        { principalKind: 'robot' as never, name: 'automation', role: 'member' },
+        'client:membership-kind'
+      )
+    ).toThrow('identity principal kind must be human or service');
     expect(() =>
       api.changeMembershipRole('organization', 'membership', 'member', 0, 'client:membership-version')
     ).toThrow('expected membership version must be a positive safe integer');

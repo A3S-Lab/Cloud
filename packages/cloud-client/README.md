@@ -237,6 +237,11 @@ canonical action names, RFC 3339 time bounds, the opaque cursor, and the
 audit metadata and a next cursor; it cannot expose the shared record's
 unstructured `details` or create a client-side audit store.
 
+`createMembership` is the single Principal-plus-Membership mutation in REST
+contract `1.27.0`. Callers choose the closed `human` or `service` Principal
+kind explicitly; the client does not expose a second service-only creation
+method or infer human identity from a credential.
+
 `createDomainClaim`, `verifyDomainClaim`, and `revokeDomainClaim` return the
 complete DomainClaim projection with its durable `replayed` flag.
 `createGatewayScope` accepts an ordered member list plus `minReady` and

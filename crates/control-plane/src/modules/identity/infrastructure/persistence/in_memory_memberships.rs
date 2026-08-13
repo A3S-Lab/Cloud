@@ -2,8 +2,8 @@ use super::in_memory::{remember, replay, InMemoryIdentityRepository, State};
 use crate::modules::identity::domain::entities::Membership;
 use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::{
-    ChangeMembershipRoleWrite, CreateServiceMembershipWrite, IMembershipRepository,
-    MembershipRecord, RevokeMembershipWrite,
+    ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
+    RevokeMembershipWrite,
 };
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
@@ -82,9 +82,9 @@ fn require_another_owner(state: &State, membership: &Membership) -> Result<(), R
 
 #[async_trait]
 impl IMembershipRepository for InMemoryIdentityRepository {
-    async fn create_service_membership(
+    async fn create_membership(
         &self,
-        write: CreateServiceMembershipWrite,
+        write: CreateMembershipWrite,
     ) -> Result<IdempotentWrite<MembershipRecord>, RepositoryError> {
         let mut state = self.state.write().await;
         let actor = actor_membership(

@@ -4,8 +4,8 @@ pub mod response;
 
 pub use request::{
     BootstrapIdentityRequest, ChangeMembershipRoleRequest, CreateApiTokenRequest,
-    CreateMembershipInvitationRequest, CreateOrganizationRequest, CreateResourceGrantRequest,
-    CreateServiceMembershipRequest, MembershipInvitationVersionRequest, RevokeMembershipRequest,
+    CreateMembershipInvitationRequest, CreateMembershipRequest, CreateOrganizationRequest,
+    CreateResourceGrantRequest, MembershipInvitationVersionRequest, RevokeMembershipRequest,
     RevokeResourceGrantRequest,
 };
 pub use resource_grant_scope::ResourceGrantScopeDto;

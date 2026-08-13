@@ -86,8 +86,9 @@ mod tests {
     use chrono::Duration;
 
     fn human(now: DateTime<Utc>) -> IdentityPrincipal {
-        IdentityPrincipal::create_human(
+        IdentityPrincipal::create(
             PrincipalId::new(),
+            IdentityPrincipalKind::Human,
             ResourceName::parse("Human operator").expect("name"),
             now,
         )
@@ -99,8 +100,9 @@ mod tests {
         let provider = OidcProviderKey::parse("workforce").expect("provider");
         let issuer = OidcIssuer::parse("https://identity.example.com").expect("issuer");
         let subject = ExternalIdentitySubject::parse("subject-42").expect("subject");
-        let service = IdentityPrincipal::create_service(
+        let service = IdentityPrincipal::create(
             PrincipalId::new(),
+            IdentityPrincipalKind::Service,
             ResourceName::parse("automation").expect("name"),
             now,
         );

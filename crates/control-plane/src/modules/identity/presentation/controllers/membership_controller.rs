@@ -1,11 +1,11 @@
 use crate::modules::identity::application::commands::change_membership_role::ChangeMembershipRole;
-use crate::modules::identity::application::commands::create_service_membership::CreateServiceMembership;
+use crate::modules::identity::application::commands::create_membership::CreateMembership;
 use crate::modules::identity::application::commands::revoke_membership::RevokeMembership;
 use crate::modules::identity::application::queries::get_membership::GetMembership;
 use crate::modules::identity::application::queries::list_memberships::ListMemberships;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::dto::{
-    ChangeMembershipRoleRequest, CreateServiceMembershipRequest, MembershipMutationResponse,
+    ChangeMembershipRoleRequest, CreateMembershipRequest, MembershipMutationResponse,
     MembershipResponse, RevokeMembershipRequest,
 };
 use crate::modules::identity::presentation::request_context::{
@@ -83,14 +83,15 @@ pub fn membership_controller(
             move |request: BootRequest| {
                 let bus = Arc::clone(&create_bus);
                 async move {
-                    let body: CreateServiceMembershipRequest = request.json_with_content_type()?;
+                    let body: CreateMembershipRequest = request.json_with_content_type()?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let actor = actor(&request)?;
                     let (idempotency_key, request_id) = mutation_identity(&request)?;
                     match bus
-                        .execute(CreateServiceMembership {
+                        .execute(CreateMembership {
                             organization_id,
+                            principal_kind: body.principal_kind,
                             name: body.name,
                             role: body.role,
                             actor_principal_id: actor.principal_id,

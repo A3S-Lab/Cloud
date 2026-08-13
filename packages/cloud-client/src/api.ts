@@ -1,5 +1,5 @@
-import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
+import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import { readHealthResponse, readResponse } from './response';
@@ -34,10 +34,10 @@ import type {
   CreateGatewayScopeInput,
   CreateGithubRepositorySubscriptionInput,
   CreateMcpCredentialInput,
+  CreateMembershipInput,
   CreateMembershipInvitationInput,
   CreateNodePoolInput,
   CreateResourceGrantInput,
-  CreateServiceMembershipInput,
   Deployment,
   DomainClaim,
   DomainClaimMutationResult,
@@ -149,8 +149,8 @@ import {
   validateExecutionTemplateAcl,
   validateExpectedHumanTaskVersion,
   validateExpectedMcpCredentialVersion,
-  validateExpectedMembershipVersion,
   validateExpectedMembershipInvitationVersion,
+  validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
   validateExpectedResourceGrantVersion,
   validateFormDraftInput,
@@ -158,13 +158,13 @@ import {
   validateMcpCredentialExpiry,
   validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
-  validateMembershipRole,
+  validateMembershipInput,
   validateMembershipInvitationInput,
+  validateMembershipRole,
   validateOntologyAcl,
   validateOntologyRevisionControl,
   validateResourceGrantInput,
   validateSecretValue,
-  validateServiceMembershipInput,
   validateWorkflowDefinitionPublication,
   validateWorkflowGoalAcl,
   validateWorkflowRevisionControl,
@@ -183,7 +183,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.26.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.27.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -206,8 +206,8 @@ export type { CloudLogQuery } from './log-query';
 export type { CloudSequenceQuery } from './sequence-query';
 export {
   MAX_ACL_DOCUMENT_BYTES,
-  MAX_FORM_DOCUMENT_BYTES,
   MAX_EXECUTION_TEMPLATE_ACL_BYTES,
+  MAX_FORM_DOCUMENT_BYTES,
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
@@ -218,9 +218,9 @@ export {
   MAX_WORKFLOW_REVISION_PAYLOAD_BYTES,
   MAX_WORKFLOW_REVISION_PAYLOADS,
   MAX_WORKLOAD_ACL_BYTES,
+  validateExecutionTemplateAcl,
   validateFormDraftInput,
   validateFormVersionControl,
-  validateExecutionTemplateAcl,
 } from './validation';
 
 export function isValidIdempotencyKey(value: string): boolean {
@@ -339,13 +339,13 @@ export class CloudApi {
     );
   }
 
-  createServiceMembership(
+  createMembership(
     organizationId: string,
-    input: CreateServiceMembershipInput,
+    input: CreateMembershipInput,
     idempotencyKey: string,
     signal?: AbortSignal
   ): Promise<MembershipMutationResult> {
-    validateServiceMembershipInput(input);
+    validateMembershipInput(input);
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}/memberships`,
       idempotencyKey,

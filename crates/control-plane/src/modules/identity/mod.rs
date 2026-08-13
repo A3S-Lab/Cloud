@@ -15,6 +15,7 @@ pub use application::commands::change_membership_role::{
 pub use application::commands::create_api_token::{
     CreateApiToken, CreateApiTokenHandler, CreateApiTokenResult,
 };
+pub use application::commands::create_membership::{CreateMembership, CreateMembershipHandler};
 pub use application::commands::create_membership_invitation::{
     CreateMembershipInvitation, CreateMembershipInvitationHandler,
 };
@@ -23,9 +24,6 @@ pub use application::commands::create_organization::{
 };
 pub use application::commands::create_resource_grant::{
     CreateResourceGrant, CreateResourceGrantHandler,
-};
-pub use application::commands::create_service_membership::{
-    CreateServiceMembership, CreateServiceMembershipHandler,
 };
 pub use application::commands::revoke_api_token::{
     RevokeApiToken, RevokeApiTokenHandler, RevokeApiTokenResult,

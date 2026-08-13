@@ -9,8 +9,8 @@ use crate::infrastructure::{
 use crate::modules::identity::domain::entities::{IdentityPrincipal, Membership};
 use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::{
-    ChangeMembershipRoleWrite, CreateServiceMembershipWrite, IMembershipRepository,
-    MembershipRecord, RevokeMembershipWrite,
+    ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
+    RevokeMembershipWrite,
 };
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::shared_kernel::domain::{
@@ -244,9 +244,9 @@ pub(super) async fn store_membership_audit(
 
 #[async_trait]
 impl IMembershipRepository for PostgresIdentityRepository {
-    async fn create_service_membership(
+    async fn create_membership(
         &self,
-        write: CreateServiceMembershipWrite,
+        write: CreateMembershipWrite,
     ) -> Result<IdempotentWrite<MembershipRecord>, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
@@ -276,7 +276,7 @@ impl IMembershipRepository for PostgresIdentityRepository {
                         || !write.membership.is_active()
                     {
                         return Err(PostgresPersistenceError::Invariant(
-                            "service membership does not bind one active principal".into(),
+                            "membership does not bind one active principal".into(),
                         ));
                     }
                     let organization_exists = fetch_optional::<i32, _>(

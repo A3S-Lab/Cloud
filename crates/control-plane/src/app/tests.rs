@@ -2191,13 +2191,35 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
         .call(post_json(
             &memberships_path,
             "membership:create:release-automation",
-            create_body,
+            json!({
+                "principalKind": "service",
+                "name": "release automation",
+                "role": "member"
+            }),
         ))
         .await?;
     assert_eq!(replayed.status(), 200);
     let replayed_data = response_json(&replayed)?["data"].clone();
     assert_eq!(replayed_data["id"], membership_id);
     assert_eq!(replayed_data["replayed"], true);
+
+    let human_created = app
+        .call(post_json(
+            &memberships_path,
+            "membership:create:human",
+            json!({
+                "principalKind": "human",
+                "name": "Ada operator",
+                "role": "member"
+            }),
+        ))
+        .await?;
+    assert_eq!(human_created.status(), 201);
+    let human_created = response_json(&human_created)?;
+    assert_eq!(human_created["data"]["principalKind"], "human");
+    assert_eq!(human_created["data"]["principalName"], "Ada operator");
+    assert_eq!(human_created["data"]["role"], "member");
+    assert_eq!(human_created["data"]["replayed"], false);
 
     let token_created = app
         .call(post_json(

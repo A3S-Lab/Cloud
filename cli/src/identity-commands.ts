@@ -1,6 +1,7 @@
 import {
   type CloudApi,
   CloudApiError,
+  type IdentityPrincipalKind,
   type MembershipRole,
   type ResourceGrantScope,
 } from '@a3s/cloud-client';
@@ -25,11 +26,11 @@ import {
   apiTokenMutationResult,
   apiTokenResult,
   apiTokensResult,
-  membershipMutationResult,
   membershipInvitationAcceptanceResult,
   membershipInvitationMutationResult,
   membershipInvitationResult,
   membershipInvitationsResult,
+  membershipMutationResult,
   membershipResult,
   membershipsResult,
   resourceGrantMutationResult,
@@ -121,8 +122,8 @@ export async function executeIdentityCommand(
           positionalUuid(positionals, 2, 'membership ID')
         )
       );
-    case 'memberships create-service': {
-      requireArity(positionals, 4, 'memberships create-service <name> <role>');
+    case 'memberships create': {
+      requireArity(positionals, 5, 'memberships create <human|service> <name> <role>');
       rejectLogOptions(arguments_);
       rejectFileOption(arguments_);
       rejectExpectedVersionOption(arguments_);
@@ -130,11 +131,12 @@ export async function executeIdentityCommand(
       const idempotencyKey = requireIdempotencyKey(arguments_);
       return membershipMutationResult(
         await safeMembershipMutation(() =>
-          cloudApi().createServiceMembership(
+          cloudApi().createMembership(
             requireOrganization(context),
             {
-              name: positionalResourceName(positionals, 2),
-              role: membershipRole(positionals[3]),
+              principalKind: identityPrincipalKind(positionals[2]),
+              name: positionalResourceName(positionals, 3),
+              role: membershipRole(positionals[4]),
             },
             idempotencyKey
           )
@@ -416,6 +418,13 @@ function membershipRole(value: string | undefined): MembershipRole {
     throw usageError('membership role must be owner, admin, member, or restricted');
   }
   return value as MembershipRole;
+}
+
+function identityPrincipalKind(value: string | undefined): IdentityPrincipalKind {
+  if (!value || !['human', 'service'].includes(value)) {
+    throw usageError('identity principal kind must be human or service');
+  }
+  return value as IdentityPrincipalKind;
 }
 
 function parseScopes(value: string | undefined): string[] {
