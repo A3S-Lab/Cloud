@@ -949,7 +949,7 @@ revocation are enforced on the next request, restricted memberships fail
 closed until explicit Resource Grants exist, and the last active owner cannot
 be removed. A3S ORM migration `074` backfills existing credentials and owners;
 new writes atomically retain idempotency, Outbox facts, and audit. Migration
-`102` adds immutable organization invitation history bound to one existing
+`101` adds immutable organization invitation history bound to one existing
 exact Principal, requested role, inviter Principal, and an expiry no more than
 30 days ahead. Administrators create/list/get/revoke invitations; the bound
 Principal lists its own invitations and accepts only its exact invitation.
@@ -961,7 +961,7 @@ session, notification, or parallel role authority is introduced. Migration
 `087` adds Membership-bound closed project/environment/node Resource Grants;
 one shared evaluator enforces direct access and filters collections on every
 request, while the application handler validates targets through their owning
-Project, Environment, or Node repository. REST/OpenAPI contract `1.26.0`, the
+Project, Environment, or Node repository. REST/OpenAPI contract `1.25.0`, the
 maintained client, CLI, and fifteen Management MCP tools reuse the same
 application handlers. Future external OIDC issuer/subject links must attach to
 the same Principal and Membership authority. Attribution, notifications,

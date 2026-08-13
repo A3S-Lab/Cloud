@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.26.0" src="https://img.shields.io/badge/REST_contract-1.26.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.25.0" src="https://img.shields.io/badge/REST_contract-1.25.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -303,11 +303,11 @@ take effect on the next request, the last active owner is protected, and the
 same CQRS handlers are exposed through REST contract `1.16.0`, the maintained
 TypeScript client, CLI, and Management MCP. A3S ORM transactions commit
 membership state, idempotency, Outbox facts, and audit together. Migration
-`102` adds immutable organization MembershipInvitation history bound to one
+`101` adds immutable organization MembershipInvitation history bound to one
 existing exact Principal, requested Membership role, inviter Principal, and an
 expiry no more than 30 days ahead. Administrator list/get/create/revoke and
 Principal self-list/accept surfaces reuse the same Identity handlers through
-REST/OpenAPI `1.26.0`, the maintained client, CLI, and Management MCP.
+REST/OpenAPI `1.25.0`, the maintained client, CLI, and Management MCP.
 Acceptance rechecks the exact authenticated Principal and expected version,
 then creates the ordinary Membership and marks the invitation accepted in one
 transaction; a different Principal receives the same `404` as a missing
@@ -390,7 +390,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.26.0`.
+contract version `1.25.0`.
 
 ### Bootstrap the first organization
 

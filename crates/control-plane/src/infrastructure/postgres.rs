@@ -878,11 +878,11 @@ fn cloud_migrations() -> Vec<Migration> {
             )),
         ),
         Migration::new(
-            "102",
+            "101",
             "membership invitations",
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
-                "/../../migrations/102_membership_invitations.sql"
+                "/../../migrations/101_membership_invitations.sql"
             )),
         ),
     ]

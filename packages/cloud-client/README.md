@@ -220,7 +220,7 @@ value, result field, or echoed error.
 `listMembershipInvitations`, `getMembershipInvitation`,
 `createMembershipInvitation`, and `revokeMembershipInvitation` expose the
 organization-administrator invitation history and mutations added by REST
-contract `1.26.0`. `listMyMembershipInvitations` and
+contract `1.25.0`. `listMyMembershipInvitations` and
 `acceptMembershipInvitation` are exact authenticated-Principal self-service
 methods across organizations. Create validates one Principal UUID, ordinary
 Membership role, RFC 3339 expiry, and caller-owned idempotency key; accept and
