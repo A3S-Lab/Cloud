@@ -383,6 +383,53 @@ if [[ $scenario == management-mcp ]]; then
   mcp_form_idempotency_count="$(postgres_query \
     "select count(*) from idempotency_records where idempotency_key in ('c0:mcp:rest-form', 'c0:mcp:form-revise', 'c0:mcp:form-publish')")"
   [[ $mcp_form_idempotency_count == 3 ]] || die "Form replay did not preserve one record per accepted idempotency identity"
+  mcp_execution_template_identity="$(python3 - "$scenario_evidence" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as evidence_file:
+    resources = json.load(evidence_file)["resources"]
+print(
+    resources["executionTemplateId"],
+    resources["executionTemplateRevisionId"],
+    resources["executionTemplateDefinitionDigest"],
+    sep="\t",
+)
+PY
+)"
+  IFS=$'\t' read -r mcp_execution_template_id mcp_execution_template_revision_id mcp_execution_template_digest <<<"$mcp_execution_template_identity"
+  [[ $mcp_execution_template_id =~ ^[0-9a-f-]{36}$ ]] || die "ExecutionTemplate evidence ID is invalid"
+  [[ $mcp_execution_template_revision_id =~ ^[0-9a-f-]{36}$ ]] || die "ExecutionTemplate revision evidence ID is invalid"
+  [[ $mcp_execution_template_digest =~ ^sha256:[0-9a-f]{64}$ ]] || die "ExecutionTemplate evidence digest is invalid"
+  mcp_execution_template_count="$(postgres_query \
+    "select count(*) from execution_template_revisions r join projects p on p.organization_id = r.organization_id and p.id = r.project_id where p.name = 'MCP Conformance Project' and r.template_id = '$mcp_execution_template_id'::uuid and r.revision_id = '$mcp_execution_template_revision_id'::uuid and r.definition_digest = '$mcp_execution_template_digest'")"
+  [[ $mcp_execution_template_count == 1 ]] || die "PostgreSQL did not retain the expected immutable ExecutionTemplate revision"
+  mcp_execution_template_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key = 'c0:mcp:rest-execution-template'")"
+  [[ $mcp_execution_template_idempotency_count == 1 ]] || die "ExecutionTemplate replay did not preserve one accepted idempotency identity"
+  mcp_execution_template_rejected_idempotency_count="$(postgres_query \
+    "select count(*) from idempotency_records where idempotency_key = 'c0:mcp:execution-template-rejected'")"
+  [[ $mcp_execution_template_rejected_idempotency_count == 0 ]] || die "rejected ExecutionTemplate ACL consumed its idempotency identity"
+  mcp_execution_template_outbox_count="$(postgres_query \
+    "select count(*) from outbox_events e join execution_template_revisions r on r.organization_id = e.organization_id and r.template_id = e.aggregate_id join projects p on p.organization_id = r.organization_id and p.id = r.project_id where p.name = 'MCP Conformance Project' and r.template_id = '$mcp_execution_template_id'::uuid and r.revision_id = '$mcp_execution_template_revision_id'::uuid and e.event_key = 'execution.template.published'")"
+  [[ $mcp_execution_template_outbox_count == 1 ]] || die "ExecutionTemplate publication did not retain exactly one Outbox fact"
+  mcp_execution_template_audit_count="$(postgres_query \
+    "select count(*) from audit_records a join execution_template_revisions r on r.organization_id = a.organization_id and r.template_id = a.aggregate_id join projects p on p.organization_id = r.organization_id and p.id = r.project_id where p.name = 'MCP Conformance Project' and r.template_id = '$mcp_execution_template_id'::uuid and r.revision_id = '$mcp_execution_template_revision_id'::uuid and a.action = 'execution.template.published'")"
+  [[ $mcp_execution_template_audit_count == 1 ]] || die "ExecutionTemplate publication did not retain exactly one audit record"
+  mcp_execution_template_migration_count="$(postgres_query \
+    "select count(*) from a3s_orm_migrations where version = '098'")"
+  [[ $mcp_execution_template_migration_count == 1 ]] || die "ExecutionTemplate migration 098 is not recorded exactly once"
+  mcp_execution_template_immutable_trigger_count="$(postgres_query \
+    "select count(*) from pg_trigger where tgrelid = 'execution_template_revisions'::regclass and tgname = 'execution_template_revisions_immutable' and not tgisinternal")"
+  [[ $mcp_execution_template_immutable_trigger_count == 1 ]] || die "ExecutionTemplate revision immutability trigger is missing"
+  execution_template_immutability_log="$evidence_directory/w0.3-execution-template-immutability.log"
+  if postgres_query \
+    "update execution_template_revisions set canonical_acl = canonical_acl where template_id = '$mcp_execution_template_id'::uuid and revision_id = '$mcp_execution_template_revision_id'::uuid" \
+    >"$execution_template_immutability_log" 2>&1; then
+    die "stored ExecutionTemplate revisions accepted mutation"
+  fi
+  grep --fixed-strings --quiet 'ExecutionTemplate revisions are immutable' "$execution_template_immutability_log" ||
+    die "ExecutionTemplate revision mutation did not fail through the immutable authority"
   hidden_project_count="$(postgres_query \
     "select count(*) from projects where name = 'Hidden Mutation Must Not Exist'")"
   [[ $hidden_project_count == 0 ]] || die "hidden MCP mutation changed PostgreSQL state"
@@ -423,7 +470,7 @@ done
 {
   printf 'stored_api_token_digests=2\nrevoked_api_token_digests=1\nplaintext_credentials=0\n'
   if [[ $scenario == management-mcp ]]; then
-    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_ontology_rows=%s\nmcp_ontology_revision_rows=%s\nmcp_ontology_outbox_rows=%s\nmcp_ontology_audit_rows=%s\nmcp_ontology_search_rows=%s\nmcp_ontology_idempotency_rows=%s\nmcp_ontology_rejected_idempotency_rows=%s\nmcp_ontology_migration_rows=%s\nmcp_ontology_immutable_triggers=%s\nmcp_form_draft_rows=1\nmcp_form_release_rows=1\nmcp_form_idempotency_rows=3\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n' \
+    printf 'mcp_project_rows=2\nmcp_environment_rows=1\nmcp_ontology_rows=%s\nmcp_ontology_revision_rows=%s\nmcp_ontology_outbox_rows=%s\nmcp_ontology_audit_rows=%s\nmcp_ontology_search_rows=%s\nmcp_ontology_idempotency_rows=%s\nmcp_ontology_rejected_idempotency_rows=%s\nmcp_ontology_migration_rows=%s\nmcp_ontology_immutable_triggers=%s\nmcp_form_draft_rows=1\nmcp_form_release_rows=1\nmcp_form_idempotency_rows=3\nmcp_execution_template_rows=%s\nmcp_execution_template_outbox_rows=%s\nmcp_execution_template_audit_rows=%s\nmcp_execution_template_idempotency_rows=%s\nmcp_execution_template_rejected_idempotency_rows=%s\nmcp_execution_template_migration_rows=%s\nmcp_execution_template_immutable_triggers=%s\nmcp_stopped_workload_rows=1\nhidden_mutation_project_rows=0\nmcp_idempotency_rows=1\nmcp_workload_stop_idempotency_rows=1\nread_only_scope_rows=1\n' \
       "$mcp_ontology_count" \
       "$mcp_ontology_revision_count" \
       "$mcp_ontology_outbox_count" \
@@ -432,19 +479,29 @@ done
       "$mcp_ontology_idempotency_count" \
       "$mcp_ontology_rejected_idempotency_count" \
       "$mcp_ontology_migration_count" \
-      "$mcp_ontology_immutable_trigger_count"
+      "$mcp_ontology_immutable_trigger_count" \
+      "$mcp_execution_template_count" \
+      "$mcp_execution_template_outbox_count" \
+      "$mcp_execution_template_audit_count" \
+      "$mcp_execution_template_idempotency_count" \
+      "$mcp_execution_template_rejected_idempotency_count" \
+      "$mcp_execution_template_migration_count" \
+      "$mcp_execution_template_immutable_trigger_count"
   fi
 } >"$evidence_directory/persistence-check.txt"
 
 if [[ $scenario == cross-surface ]]; then
-  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s contract=1.15.0\n' \
+  printf 'A3S_CLOUD_C0_1_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s contract=1.24.0\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 else
-  printf 'A3S_CLOUD_W0_2_CERTIFIED cloud=%s runtime=%s box=%s source=%s schema=075 rest=1.15.0 mcp=2026-07-28 ontologies=1 revisions=3 outbox=3 audit=3 search=1 idempotency=3 rejected=0 immutable=1 tenant=1 checks=12/12\n' \
+  printf 'A3S_CLOUD_W0_2_CERTIFIED cloud=%s runtime=%s box=%s source=%s schema=075 rest=1.24.0 mcp=2026-07-28 ontologies=1 revisions=3 outbox=3 audit=3 search=1 idempotency=3 rejected=0 immutable=1 tenant=1 checks=12/12\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/w0.2-result.txt"
-  printf 'A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2026-07-28 contract=1.15.0\n' \
+  printf 'A3S_CLOUD_W0_3_EXECUTION_TEMPLATE_CROSS_SURFACE_PASS cloud=%s runtime=%s box=%s source=%s schema=098 rest=1.24.0 mcp=2026-07-28 templates=1 outbox=1 audit=1 idempotency=1 rejected=0 immutable=1 tenant=1 checks=8/8\n' \
+    "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
+    | tee "$evidence_directory/w0.3-execution-template-result.txt"
+  printf 'A3S_CLOUD_C0_2M_MANAGEMENT_MCP_PASS cloud=%s runtime=%s box=%s source=%s protocol=2026-07-28 contract=1.24.0\n' \
     "$cloud_revision" "$runtime_revision" "$box_revision" "$source_state" \
     | tee "$evidence_directory/result.txt"
 fi

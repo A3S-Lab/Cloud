@@ -45,23 +45,31 @@ The `management-mcp` scenario drives raw REST and stateless Streamable HTTP MCP
 6. creates a native Form draft through REST, replays it through MCP, revises
    and publishes it through MCP, exercises all four read tools with the
    read-only token, and proves publication and historical revision replay;
-7. creates one Environment, exercises Node, Operation, Workload, Route, and
+7. publishes the shared `contracts/w0.3/execution-template.acl` through REST,
+   replays it through MCP, lists and exactly reads the canonical immutable
+   revision with the read-only token, rejects an unknown ACL field without
+   consuming idempotency, and makes foreign and missing Projects
+   indistinguishable;
+8. creates one Environment, exercises Node, Operation, Workload, Route, and
    BuildRun lists, checks missing Node, Workload, Deployment, Route, and
    BuildRun details plus Workload logs, BuildRun logs, and BuildRun evidence,
    and rejects invalid list/log bounds, cursors, and stream filters;
-8. checks all five replay-safe operational commands against missing resources,
+9. checks all five replay-safe operational commands against missing resources,
    rejects missing, empty, and forged command arguments, then creates a
    Workload from A3S ACL and proves MCP stop plus exact replay;
-9. rejects a forged organization argument and returns the same `404`
+10. rejects a forged organization argument and returns the same `404`
    business-error contract for a foreign and a missing Project;
-10. revokes the read-only Token through REST and requires the next MCP request
+11. revokes the read-only Token through REST and requires the next MCP request
    to return `401`; and
-11. requires the expected Project, Ontology head, three immutable Ontology
+12. requires the expected Project, Ontology head, three immutable Ontology
     revisions, exact Ontology Outbox/audit/Search/idempotency rows, migration
-    `075`, rejected-migration zero-write behavior, Form draft/release,
-    Environment, stopped Workload, and Token-digest rows; foreign Ontology
-    lookup is indistinguishable from missing, and responses, logs, evidence,
-    and the PostgreSQL dump retain zero plaintext credentials.
+    `075`, rejected-migration zero-write behavior, Form draft/release, one
+    immutable ExecutionTemplate revision, exact template Outbox/audit/
+    idempotency rows, migration `098`, its immutability trigger and rejected
+    ACL zero-write behavior, Environment, stopped Workload, and Token-digest
+    rows; foreign Ontology lookup is indistinguishable from missing, and
+    responses, logs, evidence, and the PostgreSQL dump retain zero plaintext
+    credentials.
 
 Both scenarios execute production PostgreSQL repositories through A3S ORM.
 The runner creates isolated temporary state and a digest-pinned PostgreSQL
@@ -108,3 +116,8 @@ The clean MCP scenario also writes the strict
 `A3S_CLOUD_W0_2_CERTIFIED ... checks=12/12` result. It reuses the same
 production process and PostgreSQL authority to certify W0.2; it does not add a
 second Ontology repository, migration runner, Search projection, or test stack.
+It also writes
+`A3S_CLOUD_W0_3_EXECUTION_TEMPLATE_CROSS_SURFACE_PASS ... checks=8/8` for the
+finite-template portion. That result is intentionally not a full W0.3
+certification: the retained PostgreSQL process-death test separately proves the
+exact child Execution/Operation/Flow recovery boundaries.

@@ -21,6 +21,10 @@ import {
   uuidValue,
 } from './management-mcp-conformance-support';
 import { proveFormConformance } from './management-mcp-form-conformance';
+import {
+  proveExecutionTemplateConformance,
+  proveExecutionTemplateNondisclosure,
+} from './management-mcp-execution-template-conformance';
 import { proveOntologyConformance } from './management-mcp-ontology-conformance';
 
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
@@ -304,6 +308,17 @@ conformanceIt(
     } = ontologyEvidence;
     const formEvidence = await proveFormConformance(environment, organizationId, projectId, credentials);
     const { formId, releaseId: formReleaseId } = formEvidence;
+    const executionTemplateEvidence = await proveExecutionTemplateConformance(
+      environment,
+      organizationId,
+      projectId,
+      credentials
+    );
+    const {
+      templateId: executionTemplateId,
+      revisionId: executionTemplateRevisionId,
+      definitionDigest: executionTemplateDefinitionDigest,
+    } = executionTemplateEvidence;
 
     const restEnvironment = await restEnvelope(
       `${environment.baseUrl}/organizations/${organizationId}/projects/${projectId}/environments`,
@@ -739,6 +754,11 @@ workload "mcp-stop" {
     );
     const foreignProjectData = objectValue(foreignProject.body.data, 'REST foreign project data');
     const foreignProjectId = uuidValue(foreignProjectData.id, 'REST foreign project ID');
+    const executionTemplateNondisclosure = await proveExecutionTemplateNondisclosure(
+      environment,
+      foreignProjectId,
+      credentials
+    );
 
     const foreignOntologyAcl = await Bun.file('../../contracts/w0.1/ontology.acl').text();
     const foreignOntology = await restEnvelope(
@@ -847,7 +867,7 @@ workload "mcp-stop" {
     expect(revokedRequest.body.statusCode).toBe('UNAUTHORIZED');
 
     const evidence = {
-      schema: 'a3s.cloud.c0-management-mcp.evidence.v7',
+      schema: 'a3s.cloud.c0-management-mcp.evidence.v8',
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       mcpProtocolVersion: MCP_PROTOCOL_VERSION,
@@ -861,6 +881,9 @@ workload "mcp-stop" {
         secondOntologyRevisionId,
         formId,
         formReleaseId,
+        executionTemplateId,
+        executionTemplateRevisionId,
+        executionTemplateDefinitionDigest,
         environmentId,
         workloadId,
         foreignOrganizationId,
@@ -883,6 +906,11 @@ workload "mcp-stop" {
         mcpFormRevise: formEvidence.requestIds.mcpRevise,
         mcpFormPublish: formEvidence.requestIds.mcpPublish,
         mcpFormPublishReplay: formEvidence.requestIds.mcpPublishReplay,
+        restExecutionTemplateCreate: executionTemplateEvidence.requestIds.restCreate,
+        mcpExecutionTemplateCreateReplay: executionTemplateEvidence.requestIds.mcpCreateReplay,
+        mcpExecutionTemplateList: executionTemplateEvidence.requestIds.mcpList,
+        mcpExecutionTemplateGet: executionTemplateEvidence.requestIds.mcpGet,
+        mcpExecutionTemplateRejectedAcl: executionTemplateEvidence.requestIds.mcpRejectedAcl,
         restEnvironmentCreate: requestId(restEnvironment.body, 'REST environment request ID'),
         restWorkloadCreate: requestId(workloadCreate.body, 'REST Workload request ID'),
         mcpWorkloadStop: requestId(workloadStop.structured, 'MCP Workload stop request ID'),
@@ -903,6 +931,8 @@ workload "mcp-stop" {
           missingOntologyResult.structured,
           'missing-Ontology denial request ID'
         ),
+        foreignExecutionTemplateProjectDenial: executionTemplateNondisclosure.foreignProjectDenial,
+        missingExecutionTemplateProjectDenial: executionTemplateNondisclosure.missingProjectDenial,
         tokenRevocation: requestId(revoked.body, 'token-revocation request ID'),
         revokedToken: requestId(revokedRequest.body, 'revoked-token request ID'),
       },
@@ -918,6 +948,9 @@ workload "mcp-stop" {
         'ontology-migration-and-historical-replay',
         'native-form-draft-release-lifecycle',
         'form-rest-to-mcp-replay-and-historical-replay',
+        'immutable-execution-template-rest-to-mcp-replay',
+        'execution-template-exact-read-and-acl-rejection',
+        'execution-template-cross-tenant-nondisclosure',
         'operational-read-query-catalog',
         'bounded-operational-query-arguments',
         'paged-log-and-evidence-query-boundaries',

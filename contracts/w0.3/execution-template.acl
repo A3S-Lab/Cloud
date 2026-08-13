@@ -1,0 +1,28 @@
+execution_template "workflow-release-check" {
+  schema = "cloud.execution-template.v1"
+  description = "Runs one bounded Workflow release check"
+
+  artifact {
+    uri = "oci://registry.example.test/a3s/workflow-release-check@sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    digest = "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    media_type = "application/vnd.oci.image.manifest.v1+json"
+  }
+
+  process {
+    command = ["/app/workflow-release-check"]
+    args = ["verify"]
+    working_directory = "/workspace"
+
+    environment "MODE" {
+      value = "conformance"
+    }
+  }
+
+  resources {
+    cpu_millis = 250
+    memory_bytes = 134217728
+    pids = 64
+    timeout_ms = 30000
+    ephemeral_storage_bytes = 16777216
+  }
+}

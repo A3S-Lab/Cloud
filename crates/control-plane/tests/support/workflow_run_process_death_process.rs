@@ -18,6 +18,9 @@ pub(super) enum ProbeMode {
     FlowStarted,
     TerminalObserved,
     CancellationCommit,
+    ExecutionChildCommitted,
+    ExecutionChildLinked,
+    ExecutionTerminalResumed,
 }
 
 impl ProbeMode {
@@ -27,6 +30,9 @@ impl ProbeMode {
             Self::FlowStarted => "flow-started",
             Self::TerminalObserved => "terminal-observed",
             Self::CancellationCommit => "cancellation-commit",
+            Self::ExecutionChildCommitted => "execution-child-committed",
+            Self::ExecutionChildLinked => "execution-child-linked",
+            Self::ExecutionTerminalResumed => "execution-terminal-resumed",
         }
     }
 
@@ -36,6 +42,9 @@ impl ProbeMode {
             "flow-started" => Ok(Self::FlowStarted),
             "terminal-observed" => Ok(Self::TerminalObserved),
             "cancellation-commit" => Ok(Self::CancellationCommit),
+            "execution-child-committed" => Ok(Self::ExecutionChildCommitted),
+            "execution-child-linked" => Ok(Self::ExecutionChildLinked),
+            "execution-terminal-resumed" => Ok(Self::ExecutionTerminalResumed),
             _ => Err(format!("unknown WorkflowRun crash probe mode {value:?}")),
         }
     }
@@ -50,14 +59,30 @@ pub(super) struct ProbeEnvironment {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(super) struct CrashMarker<'a> {
-    pub(super) mode: &'a str,
+pub(super) struct CrashMarker {
+    pub(super) mode: String,
     pub(super) workflow_run_id: String,
     pub(super) operation_id: String,
     pub(super) flow_run_id: String,
-    pub(super) status: &'a str,
+    pub(super) status: String,
     pub(super) aggregate_version: u64,
     pub(super) last_flow_sequence: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_operation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_aggregate_version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_template_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_template_revision_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) execution_template_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) invocation_template_digest: Option<String>,
 }
 
 pub(super) fn probe_environment() -> TestResult<ProbeEnvironment> {
@@ -91,7 +116,7 @@ pub(super) async fn crash_at(
     Ok(document)
 }
 
-pub(super) fn publish_marker(path: &Path, marker: CrashMarker<'_>) -> TestResult {
+pub(super) fn publish_marker(path: &Path, marker: CrashMarker) -> TestResult {
     let file = std::fs::OpenOptions::new()
         .create_new(true)
         .write(true)

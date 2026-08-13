@@ -495,6 +495,25 @@ mod tests {
     }
 
     #[test]
+    fn shared_w0_3_execution_template_contract_uses_the_owner_parser() {
+        let definition = ExecutionTemplateDefinition::parse_acl(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/w0.3/execution-template.acl"
+        )))
+        .expect("shared W0.3 ExecutionTemplate ACL");
+        assert_eq!(definition.spec().name, "workflow-release-check");
+        assert_eq!(definition.spec().resources.timeout_ms, 30_000);
+        assert!(definition
+            .canonical_acl()
+            .contains("execution_template \"workflow-release-check\""));
+        assert_eq!(
+            ExecutionTemplateDefinition::parse_acl(definition.canonical_acl())
+                .expect("canonical shared ExecutionTemplate ACL"),
+            definition
+        );
+    }
+
+    #[test]
     fn definition_rejects_unknown_non_acl_or_digest_drift() {
         let definition = ExecutionTemplateDefinition::from_spec(spec()).expect("definition");
         let unknown = definition

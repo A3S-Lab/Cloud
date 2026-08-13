@@ -465,11 +465,14 @@ protected HumanTask read/claim/release/privacy, tenant/role boundary, determinis
 strict-boundary, and replay tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.
-Focused conformance also publishes an ExecutionTemplate through MCP, proves
-exact replay, lists and reads the immutable revision through both role
-catalogs, rejects missing identities without disclosure, and validates the
-closed ACL and argument bounds. Its retained real PostgreSQL extension remains
-required before the finite Workflow step is called verified.
+The expanded provider scenario publishes the shared
+`contracts/w0.3/execution-template.acl` through REST, proves exact replay and
+read-only list/get through MCP, rejects an unknown ACL field without consuming
+idempotency, makes foreign and missing Projects indistinguishable, and asserts
+the exact revision, Outbox, audit, migration `098`, and immutability-trigger
+rows in PostgreSQL. Its clean Linux run plus the separate seven-boundary
+WorkflowRun/finite-child `SIGKILL` run remain required before the finite
+Workflow step is called verified.
 
 ## Current limits
 

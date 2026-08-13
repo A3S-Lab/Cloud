@@ -64,6 +64,20 @@ jobs:
           postgres_resource_grants_enforce_the_cross_surface_authorization_matrix
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Workflow finite Execution persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_workflow_execution_binding_is_atomic_tenant_scoped_and_immutable
+          -- --exact --nocapture --test-threads=1
+
+      - name: Certify Workflow finite Execution process-death recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_workflow_run_survives_api_and_worker_process_death
+          -- --exact --nocapture --test-threads=1
+
   plugin-registry-postgres:
     name: U0 registry PostgreSQL
     runs-on: ubuntu-24.04
@@ -356,7 +370,7 @@ jobs:
 
       - name: Enforce ACL-only product configuration
         run: |
-          forbidden_files=$(git ls-files README.md cli config crates deploy docs packages tools web |
+          forbidden_files=$(git ls-files README.md cli config contracts crates deploy docs packages tools web |
             grep -E '\.(hcl|tf|tfvars)$' || true)
           if [[ -n $forbidden_files ]]; then
             printf '%s\n' "$forbidden_files"
@@ -364,7 +378,7 @@ jobs:
           fi
           if git grep -I -n -i -E \
             '(^|[^[:alnum:]_])HCL([^[:alnum:]_]|$)|\.hcl([^[:alnum:]_]|$)' -- \
-            README.md cli config crates deploy docs packages tools web; then
+            README.md cli config contracts crates deploy docs packages tools web; then
             exit 1
           fi
 
