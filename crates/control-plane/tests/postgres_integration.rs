@@ -1,5 +1,8 @@
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod, QueueOptions};
-use a3s_cloud_control_plane::app::build_application_with_source_resolver;
+use a3s_cloud_control_plane::app::{
+    build_application_with_source_resolver,
+    build_application_with_source_resolver_and_oidc_provider,
+};
 use a3s_cloud_control_plane::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
     EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
@@ -91,6 +94,8 @@ mod human_tasks_support;
 mod mcp_route_policies_support;
 #[path = "support/membership_invitations.rs"]
 mod membership_invitations_support;
+#[path = "support/oidc_cross_surface.rs"]
+mod oidc_cross_surface_support;
 #[path = "support/plugins.rs"]
 mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
@@ -306,6 +311,19 @@ async fn postgres_external_oidc_identity_is_exact_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL external OIDC identity foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_oidc_http_flow_survives_restart_and_commits_exactly_once() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        oidc_cross_surface_support::exercise_oidc_cross_surface,
+    )
+    .await
+    .expect("PostgreSQL OIDC HTTP cross-surface gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

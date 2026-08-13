@@ -78,6 +78,13 @@ jobs:
           postgres_external_oidc_identity_is_exact_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify OIDC HTTP cross-surface recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_oidc_http_flow_survives_restart_and_commits_exactly_once
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify tenant audit query persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

@@ -285,6 +285,20 @@ pub async fn build_application_with_source_resolver(
     config: CloudConfig,
     source_resolver: Arc<dyn ISourceResolver>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    let oidc_provider: Arc<dyn IOidcProviderService> = Arc::new(
+        OpenIdConnectProviderService::new(&config.auth.oidc_providers)
+            .map_err(ControlPlaneStartupError::Auth)?,
+    );
+    build_application_with_source_resolver_and_oidc_provider(config, source_resolver, oidc_provider)
+        .await
+}
+
+#[doc(hidden)]
+pub async fn build_application_with_source_resolver_and_oidc_provider(
+    config: CloudConfig,
+    source_resolver: Arc<dyn ISourceResolver>,
+    oidc_provider: Arc<dyn IOidcProviderService>,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
         GithubWebhookVerifier::new(
             config.sources.github_webhook_secret_env.clone(),
@@ -311,10 +325,6 @@ pub async fn build_application_with_source_resolver(
     let membership_invitations: Arc<dyn IMembershipInvitationRepository> = identity.clone();
     let resource_grants: Arc<dyn IResourceGrantRepository> = identity.clone();
     let oidc_identity: Arc<dyn IOidcIdentityRepository> = identity.clone();
-    let oidc_provider: Arc<dyn IOidcProviderService> = Arc::new(
-        OpenIdConnectProviderService::new(&config.auth.oidc_providers)
-            .map_err(ControlPlaneStartupError::Auth)?,
-    );
     let resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository> =
         identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
