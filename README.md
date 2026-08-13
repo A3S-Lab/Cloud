@@ -626,7 +626,7 @@ An optional workforce OIDC provider stays inside the existing `auth` block;
 the client secret is read from the named environment variable on each provider
 request and never belongs in ACL:
 
-```hcl
+```acl
 auth {
   bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN"
 
