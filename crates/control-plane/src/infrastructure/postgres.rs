@@ -909,6 +909,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/104_project_attribution_profiles.sql"
             )),
         ),
+        Migration::new(
+            "105",
+            "WorkflowRun input v2 capacity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/105_workflow_run_input_v2.sql"
+            )),
+        ),
     ]
 }
 
@@ -1240,5 +1248,32 @@ mod project_attribution_migration_tests {
                 "migration 104 must not introduce monetary authority: {forbidden}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod workflow_run_input_v2_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/105_workflow_run_input_v2.sql"
+    ));
+
+    #[test]
+    fn migration_105_widens_the_existing_immutable_run_input_without_new_storage() {
+        assert_eq!(
+            crate::modules::workflow::WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
+            33_554_432
+        );
+        for expected in [
+            "drop constraint workflow_runs_execution_input_check",
+            "add constraint workflow_runs_execution_input_check",
+            "octet_length(execution_input) between 1 and 33554432",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "missing migration guard {expected}"
+            );
+        }
+        assert!(!MIGRATION.contains("create table"));
     }
 }

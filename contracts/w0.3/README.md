@@ -34,13 +34,17 @@ consumer-port bindings. Secret and large values remain opaque typed references;
 they cannot be dereferenced or copied into mutable Workflow state. Application
 values require an Applications port plus optimistic revision and idempotency
 evidence. Plan v1 still rejects those reads and writes. Plan v2 can prove the
-descriptor owner during compilation, but execution remains gated on the
-typed-variable Flow adapter.
+descriptor owner during compilation. WorkflowRun input/runtime/Flow v2 also
+freezes the exact variable ACL and reconstructs invocation, node-output,
+deterministic run-assignment, direct-read, and opaque-reference values from the
+immutable input plus existing Flow history. Explicit reads are authoritative
+for their step and are consumed only through `current`; steps without reads
+retain their legacy dependency input.
 
-This is a persisted compiler contract, not a variable store or a runtime
-availability claim. Flow adapter execution, authorized inspection, and
-Applications port dispatch remain open. No Flow history shape or existing
-Workflow replay behavior changed.
+This is a persisted compiler/runtime contract, not a variable store or a public
+availability claim. Authorized inspection, digest-only defaults, composite
+frames/exports, and Applications port dispatch remain open. No Flow history
+shape or existing Workflow replay behavior changed.
 
 ## Finite Execution
 

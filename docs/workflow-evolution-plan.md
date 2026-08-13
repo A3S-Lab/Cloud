@@ -214,8 +214,13 @@ ExecutionTemplate persistence, replay, rollback, immutability, and tenant
 non-disclosure result. This verifies the finite Execution sub-gate, not all of
 W0.3. Revision-owned descriptor bindings, the recoverable registry snapshot,
 the variable contract, and exact Plan v2 pinning now persist through migration
-`103`. Built-in catalog discovery, runtime variable execution/inspection,
-composite regions, Answer/error
+`103`. WorkflowRun input/runtime/Flow v2 freezes the exact variable ACL and
+projects invocation, node-output, deterministic run-assignment, typed-read, and
+opaque-reference values from existing Flow history; migration `105` only widens
+that immutable input. Explicit reads are authoritative for their step and are
+consumed only through `current`; steps without reads retain legacy dependency
+input. Built-in catalog discovery, runtime variable inspection
+and defaults, composite and Applications-owned variables, Answer/error
 semantics, business-service and remaining
 Agent/MCP/model/Tool capability dispatch, compensation, expanded cross-surface
 evidence, and public Workflow availability remain open.
@@ -230,11 +235,12 @@ output bound. Focused Workflow tests verify this behavior together with legacy
 replay and HumanTask compatibility. The descriptor registry and typed-variable
 domain contracts are implemented. Migration `103` atomically binds all three
 contracts to WorkflowRevision compiler schema 2, and `cloud.workflow.plan.v2`
-pins every exact descriptor plus the semantic and variable digests. Legacy
-Plan v1 remains byte-stable and executable; Plan v2 fails closed until runtime
-variable execution/inspection is implemented. Built-in catalog discovery, bounded
-Iteration/Loop regions, typed error branches/fallback, and ordered Answer frames
-remain unimplemented parts of `W0.3`.
+pins every exact descriptor plus the semantic and variable digests. Legacy Plan
+v1 remains byte-stable and executable. Plan v2 executes the first typed-variable
+subset and fails closed for digest-only defaults, composite-local/export
+semantics, Applications-owned reads/writes, and runtime inspection. Built-in
+catalog discovery, bounded Iteration/Loop regions, typed error branches/fallback,
+and ordered Answer frames remain unimplemented parts of `W0.3`.
 
 ### 4.3 Compiler rules
 

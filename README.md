@@ -217,13 +217,18 @@ Migration `103` now stores exact step bindings, the recoverable descriptor
 snapshot, and the variable contract as one immutable WorkflowRevision child
 set. Compiler schema 2 emits `cloud.workflow.plan.v2`, pinning every descriptor
 semantic digest plus the semantic-contract-set and variable-contract digests;
-legacy `plan.v1` remains byte-stable. Plan v2 execution fails closed until the
-typed-variable Flow adapter is implemented. This is revision authority, not a
-mutable built-in discovery catalog or runtime availability. W0.3 remains in
-progress because catalog discovery, runtime variable materialization and inspection,
-Iteration/Loop, Answer, error branches, business-service and remaining provider
-steps, compensation, expanded provider evidence, and production recovery remain
-open. No second engine, variable store, scheduler, queue, Runtime provider,
+legacy `plan.v1` remains byte-stable. WorkflowRun input/runtime/Flow v2 now
+freezes the exact variable ACL and deterministically projects invocation inputs,
+node outputs, run assignments, typed reads, and opaque references from existing
+Flow history. Explicit reads are the step's sole data authority and are exposed
+through `current`; steps without reads retain the legacy dependency input.
+Migration `105` only widens the existing immutable run-input
+column; no variable table or parallel event history was added. W0.3 remains in
+progress because runtime inspection, digest-only defaults, composite regions,
+Applications-owned variables, built-in catalog discovery, Iteration/Loop,
+Answer, error branches, business-service and remaining provider steps,
+compensation, expanded provider evidence, and production recovery remain open.
+No second engine, variable store, scheduler, queue, Runtime provider,
 authorization store, or frontend was added.
 
 The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
@@ -567,7 +572,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; `W0.3` includes definition/goal persistence, revision-owned descriptor bindings/registry snapshot/typed-variable contract, Plan v2 exact pinning, Form, WorkflowRun, HumanTask, reachable-Output aggregation, ExecutionTemplate, and finite Execution. Plan v1 replay remains stable, while Plan v2 runs fail closed until the typed-variable Flow adapter lands; built-in catalog discovery, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; `W0.3` includes definition/goal persistence, revision-owned descriptor bindings/registry snapshot/typed-variable contract, Plan v2 exact pinning and initial typed-variable Flow projection, Form, WorkflowRun, HumanTask, reachable-Output aggregation, ExecutionTemplate, and finite Execution. Plan v1 replay remains stable; runtime inspection/defaults, built-in catalog discovery, composite and Applications-owned variables, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` | Six current application experiences, shared release/session/delivery, publication, monitoring, and enterprise completion | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` | Files, RAG Knowledge, multi-source General/Parent-child/Q&A and multimodal processing, retrieval, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` | New-invocation triggers and reusable outbound connection profiles | Planned and unavailable |

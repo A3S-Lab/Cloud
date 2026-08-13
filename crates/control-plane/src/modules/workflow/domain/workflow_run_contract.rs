@@ -2,8 +2,11 @@ use super::entities::digest_payload_set;
 use super::{
     WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
     WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
-    WorkflowStepConfiguration, WorkflowStepKind, WORKFLOW_GOAL_MAX_INPUT_BYTES,
-    WORKFLOW_PLAN_MAX_BYTES,
+    WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
+    WorkflowVariableMutationMode, WorkflowVariableReadMode, WorkflowVariableScope,
+    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, EnvironmentId, ExecutionId,
@@ -19,6 +22,15 @@ pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION: &str = "cloud.workflow-run-run
 pub const WORKFLOW_RUN_FLOW_NAME: &str = "cloud.workflow-run";
 pub const WORKFLOW_RUN_FLOW_VERSION: &str = "1";
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub const WORKFLOW_RUN_INPUT_SCHEMA_V2: &str = "cloud.workflow-run.input.v2";
+pub const WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2: &str = "cloud.workflow-run-runtime.v2";
+pub const WORKFLOW_RUN_FLOW_VERSION_V2: &str = "2";
+/// Plan v2 plus worst-case JSON escaping of payload and variable ACL strings,
+/// with four MiB reserved for the goal value, identities, and JSON framing.
+pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
+    + (2 * WORKFLOW_REVISION_MAX_PAYLOAD_BYTES)
+    + (2 * WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES)
+    + (4 * 1024 * 1024);
 pub const WORKFLOW_RUN_OUTPUT_MAX_BYTES: usize = 256 * 1024;
 pub const WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
 pub const WORKFLOW_RUN_MAX_TIMEOUT_SECONDS: u64 = 30 * 24 * 60 * 60;
@@ -55,6 +67,26 @@ impl ResolvedWorkflowPayload {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ResolvedWorkflowVariableContract {
+    pub canonical_acl: String,
+    pub digest: Sha256Digest,
+}
+
+impl ResolvedWorkflowVariableContract {
+    pub(crate) fn from_contract(contract: &WorkflowVariableContract) -> Self {
+        Self {
+            canonical_acl: contract.canonical_acl().to_owned(),
+            digest: contract.digest().clone(),
+        }
+    }
+
+    pub(crate) fn restore(&self) -> Result<WorkflowVariableContract, String> {
+        WorkflowVariableContract::restore(&self.canonical_acl, self.digest.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkflowRunInput {
     pub schema: String,
     pub runtime_contract_revision: String,
@@ -69,6 +101,8 @@ pub struct WorkflowRunInput {
     pub plan: WorkflowPlan,
     pub goal_input: serde_json::Value,
     pub payloads: Vec<ResolvedWorkflowPayload>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variable_contract: Option<ResolvedWorkflowVariableContract>,
     pub requested_at: DateTime<Utc>,
     pub deadline_at: DateTime<Utc>,
 }
@@ -540,14 +574,52 @@ impl WorkflowExecutionResumePayload {
 
 impl WorkflowRunInput {
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, String> {
-        canonical_json_bounded(self, WORKFLOW_RUN_INPUT_MAX_BYTES, "WorkflowRun input")
+        let maximum_bytes = if self.schema == WORKFLOW_RUN_INPUT_SCHEMA_V2 {
+            WORKFLOW_RUN_INPUT_MAX_BYTES_V2
+        } else {
+            WORKFLOW_RUN_INPUT_MAX_BYTES
+        };
+        canonical_json_bounded(self, maximum_bytes, "WorkflowRun input")
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.schema != WORKFLOW_RUN_INPUT_SCHEMA
-            || self.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION
-            || self.flow_workflow_name != WORKFLOW_RUN_FLOW_NAME
-            || self.flow_workflow_version != WORKFLOW_RUN_FLOW_VERSION
+        let variable_contract = match (
+            self.schema.as_str(),
+            self.runtime_contract_revision.as_str(),
+            self.flow_workflow_version.as_str(),
+            self.plan.schema.as_str(),
+            self.variable_contract.as_ref(),
+        ) {
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+                WORKFLOW_RUN_FLOW_VERSION,
+                WORKFLOW_PLAN_SCHEMA,
+                None,
+            ) => None,
+            (
+                WORKFLOW_RUN_INPUT_SCHEMA_V2,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+                WORKFLOW_RUN_FLOW_VERSION_V2,
+                WORKFLOW_PLAN_SCHEMA_V2,
+                Some(resolved),
+            ) => {
+                let contract = resolved.restore()?;
+                if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
+                    return Err(
+                        "WorkflowRun variable contract drifted from the PlanRevision".into(),
+                    );
+                }
+                validate_runtime_variable_contract(&contract, &self.plan)?;
+                Some(contract)
+            }
+            _ => {
+                return Err(
+                    "WorkflowRun input, runtime, plan, and Flow versions are incompatible".into(),
+                )
+            }
+        };
+        if self.flow_workflow_name != WORKFLOW_RUN_FLOW_NAME
             || self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.workflow_run_id.as_uuid().is_nil()
@@ -558,6 +630,9 @@ impl WorkflowRunInput {
             return Err("WorkflowRun input authority or timeout contract is invalid".into());
         }
         self.plan.validate()?;
+        if let Some(contract) = variable_contract.as_ref() {
+            contract.validate_graph_bindings(&self.plan.workflow_spec()?)?;
+        }
         let canonical_plan =
             canonical_json_bounded(&self.plan, WORKFLOW_PLAN_MAX_BYTES, "Workflow plan")?;
         if sha256_digest(&canonical_plan) != self.plan_digest.as_str() {
@@ -576,6 +651,9 @@ impl WorkflowRunInput {
             return Err("WorkflowRun payload set drifted from the PlanRevision".into());
         }
         let resolved = resolve_steps(&self.plan, &restored)?;
+        if let Some(contract) = variable_contract.as_ref() {
+            validate_typed_projection_configurations(contract, &resolved)?;
+        }
         for step in &resolved {
             if !matches!(
                 step.plan.kind,
@@ -627,6 +705,131 @@ impl WorkflowRunInput {
         }
         Ok(restored)
     }
+}
+
+pub(crate) fn validate_runtime_variable_contract(
+    contract: &WorkflowVariableContract,
+    plan: &WorkflowPlan,
+) -> Result<(), String> {
+    for declaration in &contract.spec().declarations {
+        if matches!(
+            declaration.scope,
+            WorkflowVariableScope::CompositeLocal | WorkflowVariableScope::Application
+        ) {
+            return Err(format!(
+                "WorkflowRun runtime v2 does not execute {} variable {:?}",
+                declaration.scope.as_str(),
+                declaration.name
+            ));
+        }
+        if declaration.default_value_digest.is_some() {
+            return Err(format!(
+                "WorkflowRun runtime v2 cannot materialize digest-only default for variable {:?}",
+                declaration.name
+            ));
+        }
+        if declaration.mutation_mode == WorkflowVariableMutationMode::OptimisticApplicationPort {
+            return Err(format!(
+                "WorkflowRun runtime v2 does not own application mutation for variable {:?}",
+                declaration.name
+            ));
+        }
+    }
+    if contract
+        .spec()
+        .reads
+        .iter()
+        .any(|read| read.mode == WorkflowVariableReadMode::ApplicationPort)
+    {
+        return Err("WorkflowRun runtime v2 does not own application variable reads".into());
+    }
+    let step_kinds = plan
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step.kind))
+        .collect::<BTreeMap<_, _>>();
+    for read in &contract.spec().reads {
+        let kind = step_kinds
+            .get(read.consumer_step_id.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "WorkflowRun variable read {:?} references a missing consumer",
+                    read.id
+                )
+            })?;
+        if matches!(
+            kind,
+            WorkflowStepKind::Input | WorkflowStepKind::HumanDecision
+        ) {
+            return Err(format!(
+                "WorkflowRun runtime v2 does not project variables into {} step {:?}",
+                kind.as_str(),
+                read.consumer_step_id
+            ));
+        }
+    }
+    if !contract.spec().exports.is_empty() {
+        return Err("WorkflowRun runtime v2 does not execute composite variable exports".into());
+    }
+    Ok(())
+}
+
+fn validate_typed_projection_configurations(
+    contract: &WorkflowVariableContract,
+    steps: &[ResolvedWorkflowRunStep],
+) -> Result<(), String> {
+    let consumers = contract
+        .spec()
+        .reads
+        .iter()
+        .map(|read| read.consumer_step_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for step in steps {
+        if !consumers.contains(step.plan.id.as_str()) {
+            continue;
+        }
+        let bypasses_projection = match step.plan.kind {
+            WorkflowStepKind::Transform | WorkflowStepKind::Output => step
+                .configuration
+                .template
+                .as_deref()
+                .map(template_uses_legacy_variable_token)
+                .transpose()?
+                .unwrap_or(false),
+            WorkflowStepKind::Branch => step
+                .configuration
+                .selector
+                .as_deref()
+                .is_some_and(is_legacy_variable_token),
+            _ => false,
+        };
+        if bypasses_projection {
+            return Err(format!(
+                "WorkflowRun runtime v2 step {:?} has explicit variable reads but bypasses their typed projection",
+                step.plan.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn template_uses_legacy_variable_token(source: &str) -> Result<bool, String> {
+    let mut remainder = source;
+    while let Some(start) = remainder.find("{{") {
+        let token_source = &remainder[start + 2..];
+        let end = token_source
+            .find("}}")
+            .ok_or_else(|| "Workflow template contains an unclosed token".to_owned())?;
+        if is_legacy_variable_token(token_source[..end].trim()) {
+            return Ok(true);
+        }
+        remainder = &token_source[end + 2..];
+    }
+    Ok(false)
+}
+
+fn is_legacy_variable_token(value: &str) -> bool {
+    value == "input" || value.starts_with("input.") || value.starts_with("steps.")
 }
 
 fn resolve_steps(
@@ -770,103 +973,5 @@ pub fn workflow_run_timeout_seconds(value: Option<u64>) -> Result<u64, String> {
         ))
     } else {
         Ok(value)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest};
-    use crate::modules::workflow::test_support::{
-        human_decision_workflow_run_input, workflow_run_input, TEST_HUMAN_STEP_ID,
-    };
-
-    #[test]
-    fn immutable_run_input_rejects_plan_input_payload_and_branch_drift() {
-        let input = workflow_run_input().expect("valid WorkflowRun input");
-        input.validate().expect("valid input");
-
-        let mut goal_drift = input.clone();
-        goal_drift.goal_input["priority"] = serde_json::json!("normal");
-        assert!(goal_drift.validate().is_err());
-
-        let mut payload_order_drift = input.clone();
-        payload_order_drift.payloads.swap(0, 1);
-        assert!(payload_order_drift.validate().is_err());
-
-        let mut branch_drift = input;
-        branch_drift
-            .plan
-            .edges
-            .iter_mut()
-            .find(|edge| edge.id == "route-high")
-            .expect("high branch edge")
-            .source_handle = Some("unexpected".into());
-        branch_drift.plan_digest = Sha256Digest::parse(sha256_digest(
-            &canonical_json_bounded(
-                &branch_drift.plan,
-                WORKFLOW_PLAN_MAX_BYTES,
-                "WorkflowRun test plan",
-            )
-            .expect("canonical plan"),
-        ))
-        .expect("plan digest");
-        assert!(branch_drift.validate().is_err());
-    }
-
-    #[test]
-    fn human_decision_run_requires_an_exact_form_release_binding() {
-        let input = human_decision_workflow_run_input().expect("valid human-decision input");
-        input.validate().expect("human-decision input");
-
-        let mut missing = input.clone();
-        missing
-            .plan
-            .steps
-            .iter_mut()
-            .find(|step| step.id == TEST_HUMAN_STEP_ID)
-            .expect("human-decision step")
-            .capability = None;
-        refresh_plan_digest(&mut missing);
-        assert!(missing.validate().is_err());
-
-        let mut floating_release = input;
-        floating_release
-            .plan
-            .steps
-            .iter_mut()
-            .find(|step| step.id == TEST_HUMAN_STEP_ID)
-            .and_then(|step| step.capability.as_mut())
-            .expect("FormRelease capability")
-            .revision = "latest".into();
-        refresh_plan_digest(&mut floating_release);
-        assert!(floating_release.validate().is_err());
-    }
-
-    #[test]
-    fn workflow_run_timeout_is_strictly_bounded() {
-        assert_eq!(
-            workflow_run_timeout_seconds(None).expect("default timeout"),
-            WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
-        );
-        assert_eq!(workflow_run_timeout_seconds(Some(1)).expect("minimum"), 1);
-        assert_eq!(
-            workflow_run_timeout_seconds(Some(WORKFLOW_RUN_MAX_TIMEOUT_SECONDS)).expect("maximum"),
-            WORKFLOW_RUN_MAX_TIMEOUT_SECONDS
-        );
-        assert!(workflow_run_timeout_seconds(Some(0)).is_err());
-        assert!(workflow_run_timeout_seconds(Some(WORKFLOW_RUN_MAX_TIMEOUT_SECONDS + 1)).is_err());
-    }
-
-    fn refresh_plan_digest(input: &mut WorkflowRunInput) {
-        input.plan_digest = Sha256Digest::parse(sha256_digest(
-            &canonical_json_bounded(
-                &input.plan,
-                WORKFLOW_PLAN_MAX_BYTES,
-                "WorkflowRun test plan",
-            )
-            .expect("canonical plan"),
-        ))
-        .expect("plan digest");
     }
 }

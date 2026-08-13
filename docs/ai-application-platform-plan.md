@@ -368,9 +368,13 @@ leaf schemas, graph reachability and dominance, region confinement, opaque
 Secret/object references, and optimistic Applications-port evidence. This is a
 revision authority persisted by migration `103`: WorkflowRevision compiler
 schema 2 atomically owns bindings, an exact recoverable registry snapshot, and
-the variable contract. Plan v2 can prove the owning descriptor, but runtime
-materialization/inspection and Applications dispatch remain open and therefore
-fail closed. Existing `cloud.workflow.plan.v1` histories are unchanged.
+the variable contract. Plan v2 can prove the owning descriptor, and WorkflowRun
+input/runtime/Flow v2 now reconstructs invocation, node-output, deterministic
+run-assignment, direct-read, and opaque-reference values from immutable input
+plus existing Flow history. Runtime inspection, digest-only defaults,
+composite-region frames/exports, and Applications dispatch remain open and
+therefore fail closed. Existing `cloud.workflow.plan.v1` histories are
+unchanged.
 
 `Iteration` compiles to a bounded fan-out region with deterministic item IDs,
 result ordering, concurrency, failure, cancellation, and maximum-item policy.

@@ -1,5 +1,5 @@
 use super::{
-    WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDescriptorBindings,
+    WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDescriptorBindings,
     WorkflowStepDescriptorRegistry, WorkflowStepOwner, WorkflowVariableContract,
     WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
     WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
@@ -170,6 +170,28 @@ impl WorkflowRevisionSemanticContracts {
 
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
+    }
+
+    pub(crate) fn validate_plan_bindings(&self, plan: &WorkflowPlan) -> Result<(), String> {
+        if plan.semantic_contract_set_digest.as_ref() != Some(&self.digest)
+            || plan.variable_contract_digest.as_ref() != Some(self.variable_contract.digest())
+            || plan.steps.len() != self.descriptor_bindings.bindings().len()
+        {
+            return Err("Workflow plan semantic contract authority drifted".into());
+        }
+        for step in &plan.steps {
+            let expected = self
+                .descriptor_bindings
+                .resolve(&step.id)
+                .ok_or_else(|| format!("Workflow plan step {:?} lost its descriptor", step.id))?;
+            if step.descriptor.as_ref() != Some(expected) {
+                return Err(format!(
+                    "Workflow plan step {:?} descriptor authority drifted",
+                    step.id
+                ));
+            }
+        }
+        Ok(())
     }
 
     pub fn schema(&self, kind: WorkflowRevisionSemanticContractKind) -> &'static str {

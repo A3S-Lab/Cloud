@@ -442,7 +442,7 @@ fn semantic_revision_lineage_cannot_downgrade_to_legacy_authority() {
 }
 
 #[test]
-fn compiler_emits_plan_v2_with_exact_semantic_bindings_and_v2_runs_fail_closed() {
+fn compiler_emits_plan_v2_and_pins_its_variable_contract_into_a_v2_run() {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let definition_id = WorkflowDefinitionId::new();
@@ -622,7 +622,7 @@ fn compiler_emits_plan_v2_with_exact_semantic_bindings_and_v2_runs_fail_closed()
         .steps
         .iter()
         .all(|step| step.descriptor.is_some()));
-    let error = WorkflowRunCompiler::compile(
+    let compiled_run = WorkflowRunCompiler::compile(
         WorkflowRunId::new(),
         &compiled.goal,
         &compiled.plan_revision,
@@ -631,6 +631,35 @@ fn compiler_emits_plan_v2_with_exact_semantic_bindings_and_v2_runs_fail_closed()
         principal_id,
         now,
     )
-    .expect_err("v2 runtime gate");
-    assert!(error.contains("typed-variable Flow adapter"));
+    .expect("compiled v2 run");
+    assert_eq!(
+        compiled_run.run.execution_input.schema,
+        WORKFLOW_RUN_INPUT_SCHEMA_V2
+    );
+    assert_eq!(
+        compiled_run.run.execution_input.runtime_contract_revision,
+        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2
+    );
+    assert_eq!(
+        compiled_run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V2
+    );
+    let resolved_variables = compiled_run
+        .run
+        .execution_input
+        .variable_contract
+        .as_ref()
+        .expect("resolved variable contract");
+    let variables = revision
+        .semantic_contracts
+        .as_ref()
+        .expect("semantic contracts")
+        .variable_contract();
+    assert_eq!(resolved_variables.canonical_acl, variables.canonical_acl());
+    assert_eq!(&resolved_variables.digest, variables.digest());
+    compiled_run
+        .run
+        .execution_input
+        .validate()
+        .expect("valid v2 run input");
 }

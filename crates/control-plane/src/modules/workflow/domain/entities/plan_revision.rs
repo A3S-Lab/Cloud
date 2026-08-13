@@ -78,34 +78,7 @@ impl WorkflowPlan {
             (false, None, None) | (true, Some(_), Some(_)) => {}
             _ => return Err("Workflow plan semantic contract bindings are invalid".into()),
         }
-        let mut ids = BTreeSet::new();
-        let workflow = WorkflowSpec {
-            name: "Compiled Workflow plan".into(),
-            description: String::new(),
-            steps: self
-                .steps
-                .iter()
-                .map(|step| {
-                    if !ids.insert(step.id.as_str()) {
-                        return Err(format!(
-                            "Workflow plan contains duplicate step ID {:?}",
-                            step.id
-                        ));
-                    }
-                    Ok(WorkflowStepSpec {
-                        id: step.id.clone(),
-                        label: step.id.clone(),
-                        kind: step.kind,
-                        configuration_digest: step.configuration_digest.clone(),
-                        input_schema_digest: step.input_schema_digest.clone(),
-                        output_schema_digest: step.output_schema_digest.clone(),
-                        policy_digest: step.policy_digest.clone(),
-                        capability: step.capability.clone(),
-                    })
-                })
-                .collect::<Result<Vec<_>, String>>()?,
-            edges: self.edges.clone(),
-        };
+        let workflow = self.workflow_spec()?;
         let order = workflow.topological_order(WorkflowContractQuotas::default())?;
         if self
             .steps
@@ -140,6 +113,37 @@ impl WorkflowPlan {
             return Err("Workflow plan steps are not in deterministic topological order".into());
         }
         Ok(())
+    }
+
+    pub(crate) fn workflow_spec(&self) -> Result<WorkflowSpec, String> {
+        let mut ids = BTreeSet::new();
+        Ok(WorkflowSpec {
+            name: "Compiled Workflow plan".into(),
+            description: String::new(),
+            steps: self
+                .steps
+                .iter()
+                .map(|step| {
+                    if !ids.insert(step.id.as_str()) {
+                        return Err(format!(
+                            "Workflow plan contains duplicate step ID {:?}",
+                            step.id
+                        ));
+                    }
+                    Ok(WorkflowStepSpec {
+                        id: step.id.clone(),
+                        label: step.id.clone(),
+                        kind: step.kind,
+                        configuration_digest: step.configuration_digest.clone(),
+                        input_schema_digest: step.input_schema_digest.clone(),
+                        output_schema_digest: step.output_schema_digest.clone(),
+                        policy_digest: step.policy_digest.clone(),
+                        capability: step.capability.clone(),
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?,
+            edges: self.edges.clone(),
+        })
     }
 }
 

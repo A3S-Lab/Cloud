@@ -103,7 +103,7 @@
       "code": "W0",
       "name": "Ontology-driven Workflow",
       "outcome": "Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs",
-      "status": "In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain)",
+      "status": "In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/Plan v2, initial typed-variable Flow projection, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Runtime variable inspection/defaults, composite and Applications-owned variables, built-in discovery, business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain)",
       "statusKind": "in-progress"
     },
     {

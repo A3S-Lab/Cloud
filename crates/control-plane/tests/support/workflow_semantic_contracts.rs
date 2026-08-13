@@ -1,31 +1,39 @@
-use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
+use a3s_cloud_control_plane::infrastructure::{connect_and_migrate, FlowInfrastructure};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, Sha256Digest, WorkflowDefinitionId,
     WorkflowRevisionId,
 };
 use a3s_cloud_control_plane::modules::workflow::domain::{
+    CreateOntologyWrite, OntologyRecord, OntologyRevisionPublished,
     WorkflowRevisionSemanticContracts, WorkflowStepDescriptorBinding,
     WorkflowStepDescriptorBindings, WorkflowStepDescriptorBindingsSpec,
 };
 use a3s_cloud_control_plane::modules::workflow::{
-    CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository,
-    PostgresWorkflowDefinitionRepository, WorkflowContract, WorkflowDataSchema, WorkflowDataType,
-    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowEdgeSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowRevision, WorkflowRevisionPublished, WorkflowSpec,
-    WorkflowStepConfiguration, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
+    CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite, CreateWorkflowRunWrite,
+    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunRepository, Ontology, OntologyName, PostgresOntologyRepository,
+    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
+    PostgresWorkflowRunRepository, WorkflowContract, WorkflowDataSchema, WorkflowDataType,
+    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowEdgeSpec, WorkflowGoalCompiled,
+    WorkflowGoalRecord, WorkflowPayload, WorkflowPayloadContent, WorkflowPlanCompiler,
+    WorkflowRevision, WorkflowRevisionPublished, WorkflowRunCompiler, WorkflowRunFlowRuntime,
+    WorkflowRunRecord, WorkflowRunRequested, WorkflowSpec, WorkflowStepConfiguration,
+    WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
     WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorSpec, WorkflowStepExecutionClass,
     WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
     WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepPresentationSpec,
     WorkflowStepRetryClassification, WorkflowStepSpec, WorkflowVariableContract,
     WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableMutationMode,
     WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
-    WorkflowVariableStorageClass,
+    WorkflowVariableStorageClass, WORKFLOW_RUN_FLOW_VERSION_V2,
 };
+use a3s_flow::{WorkflowRunStatus as FlowWorkflowRunStatus, WorkflowSpec as FlowWorkflowSpec};
 use a3s_orm::{
     sql_query, Database, DatabaseError, ExecuteResult, PostgresDialect, PostgresError,
     PostgresExecutor,
 };
 use chrono::Utc;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub(super) async fn exercise_workflow_semantic_contract_persistence(
@@ -33,7 +41,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let executor = connect_and_migrate(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
-    let migration_state = database
+    let semantic_migration_state = database
         .fetch_one_as(
             sql_query::<(i64, String)>(
                 "select count(*), max(name) from a3s_orm_migrations where version = ",
@@ -42,8 +50,20 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         )
         .await?;
     assert_eq!(
-        migration_state,
+        semantic_migration_state,
         (1, "Workflow revision semantic contracts and plan v2".into())
+    );
+    let run_input_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("105"),
+        )
+        .await?;
+    assert_eq!(
+        run_input_migration_state,
+        (1, "WorkflowRun input v2 capacity".into())
     );
 
     let organization_id = OrganizationId::new();
@@ -123,7 +143,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         )
         .expect("idempotency request"),
     };
-    let repository = PostgresWorkflowDefinitionRepository::new(executor);
+    let repository = PostgresWorkflowDefinitionRepository::new(executor.clone());
     let created = repository.create(write.clone()).await?;
     assert!(!created.replayed);
     assert_eq!(created.value, record);
@@ -226,6 +246,226 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .bind(definition_id.as_uuid()))
         .await?;
     assert_eq!(semantic_count, 3);
+
+    let ontology = a3s_cloud_control_plane::modules::workflow::OntologyRevision::initial(
+        organization_id,
+        project_id,
+        a3s_cloud_control_plane::modules::shared_kernel::domain::OntologyId::new(),
+        a3s_cloud_control_plane::modules::shared_kernel::domain::OntologyRevisionId::new(),
+        a3s_cloud_control_plane::modules::workflow::OntologyContract::from_spec(
+            a3s_cloud_control_plane::modules::workflow::OntologySpec {
+                name: "Semantic runtime".into(),
+                description: String::new(),
+                object_types: vec![
+                    a3s_cloud_control_plane::modules::workflow::OntologyObjectType {
+                        id: "ticket".into(),
+                        label: "Ticket".into(),
+                        schema_digest: Sha256Digest::parse(format!("sha256:{}", "a".repeat(64)))
+                            .expect("ontology schema digest"),
+                        key_fields: vec!["ticketId".into()],
+                    },
+                ],
+                relation_types: Vec::new(),
+                rules: Vec::new(),
+            },
+        )
+        .expect("ontology contract"),
+        actor,
+        created_at,
+    );
+    let ontology_aggregate = Ontology::create(
+        organization_id,
+        project_id,
+        ontology.ontology_id,
+        OntologyName::parse(ontology.contract.spec().name.clone()).expect("ontology name"),
+        ontology.contract.spec().description.clone(),
+        ontology.id,
+        ontology.contract.digest().clone(),
+        actor,
+        created_at,
+    )
+    .expect("ontology aggregate");
+    let ontology_request_id = Uuid::now_v7();
+    PostgresOntologyRepository::new(executor.clone())
+        .create(CreateOntologyWrite {
+            event: OntologyRevisionPublished::created(
+                &ontology_aggregate,
+                &ontology,
+                ontology_request_id,
+            )?,
+            record: OntologyRecord {
+                ontology: ontology_aggregate,
+                revision: ontology.clone(),
+            },
+            actor_principal_id: actor,
+            request_id: ontology_request_id,
+            idempotency: IdempotencyRequest::new(
+                "postgres-workflow-semantics",
+                "ontology",
+                b"semantic-ontology-v2",
+            )
+            .expect("ontology idempotency"),
+        })
+        .await?;
+    let goal_contract =
+        a3s_cloud_control_plane::modules::workflow::WorkflowGoalContract::from_spec(
+            a3s_cloud_control_plane::modules::workflow::WorkflowGoalSpec {
+                name: "Semantic runtime".into(),
+                workflow_definition_id: definition_id,
+                workflow_revision_id: revision_id,
+                workflow_digest: revision.contract.digest().clone(),
+                ontology_id: ontology.ontology_id,
+                ontology_revision_id: ontology.id,
+                ontology_digest: ontology.contract.digest().clone(),
+                environment_id: None,
+                input: serde_json::json!({"ticketId": "T-42"}),
+            },
+        )
+        .expect("goal contract");
+    let compiled_goal = WorkflowPlanCompiler::compile_goal(
+        a3s_cloud_control_plane::modules::shared_kernel::domain::WorkflowGoalId::new(),
+        a3s_cloud_control_plane::modules::shared_kernel::domain::PlanRevisionId::new(),
+        goal_contract,
+        &definition,
+        &revision,
+        &ontology,
+        actor,
+        created_at,
+    )
+    .expect("compiled semantic goal");
+    let compiled_run = WorkflowRunCompiler::compile(
+        a3s_cloud_control_plane::modules::shared_kernel::domain::WorkflowRunId::new(),
+        &compiled_goal.goal,
+        &compiled_goal.plan_revision,
+        &revision,
+        Some(60),
+        actor,
+        created_at,
+    )
+    .expect("compiled semantic run");
+    let input_json = String::from_utf8(
+        compiled_run
+            .run
+            .execution_input
+            .canonical_bytes()
+            .expect("canonical semantic run input"),
+    )?;
+    assert_eq!(
+        compiled_run.run.execution_input.flow_workflow_version,
+        WORKFLOW_RUN_FLOW_VERSION_V2
+    );
+    let goal_request_id = Uuid::now_v7();
+    PostgresWorkflowGoalRepository::new(executor.clone())
+        .create(CreateWorkflowGoalWrite {
+            event: WorkflowGoalCompiled::envelope(
+                &compiled_goal.goal,
+                &compiled_goal.plan_revision,
+                goal_request_id,
+            )?,
+            record: WorkflowGoalRecord {
+                goal: compiled_goal.goal,
+                plan_revision: compiled_goal.plan_revision,
+            },
+            actor_principal_id: actor,
+            request_id: goal_request_id,
+            idempotency: IdempotencyRequest::new(
+                "postgres-workflow-semantics",
+                "goal",
+                b"semantic-goal-v2",
+            )
+            .expect("goal idempotency"),
+        })
+        .await?;
+    let run_record = WorkflowRunRecord {
+        run: compiled_run.run,
+        steps: compiled_run.steps,
+    };
+    let run_request_id = Uuid::now_v7();
+    let run_repository = PostgresWorkflowRunRepository::new(executor.clone());
+    let created_run = run_repository
+        .create(CreateWorkflowRunWrite {
+            event: WorkflowRunRequested::envelope(&run_record.run, run_request_id)?,
+            record: run_record.clone(),
+            actor_principal_id: actor,
+            request_id: run_request_id,
+            idempotency: IdempotencyRequest::new(
+                "postgres-workflow-semantics",
+                "run",
+                b"semantic-run-v2",
+            )
+            .expect("run idempotency"),
+        })
+        .await?;
+    assert_eq!(created_run.value, run_record);
+    assert_eq!(
+        run_repository
+            .find(organization_id, run_record.run.id)
+            .await?,
+        Some(run_record.clone())
+    );
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<String>(
+                    "select execution_input from workflow_runs where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(run_record.run.id.as_uuid()),
+            )
+            .await?,
+        input_json
+    );
+    let operation_identity = database
+        .fetch_one_as(
+            sql_query::<(String, String)>(
+                "select workflow_name, workflow_version from operation_requests where operation_id = ",
+            )
+            .bind(run_record.run.operation_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(
+        operation_identity,
+        ("cloud.workflow-run".into(), "2".into())
+    );
+
+    let flow_run_id = run_record.run.flow_run_id.clone();
+    let flow_spec = FlowWorkflowSpec::rust_embedded(
+        run_record.run.execution_input.flow_workflow_name.clone(),
+        run_record.run.execution_input.flow_workflow_version.clone(),
+        "a3s-cloud",
+        "main",
+    );
+    let flow_input = serde_json::to_value(&run_record.run.execution_input)?;
+    let flow = FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime)).await?;
+    flow.engine()
+        .start_with_id(&flow_run_id, flow_spec.clone(), flow_input.clone())
+        .await?;
+    let completed = flow.engine().snapshot(&flow_run_id).await?;
+    assert_eq!(completed.status, FlowWorkflowRunStatus::Completed);
+    assert_eq!(
+        completed.output,
+        Some(serde_json::json!({
+            "result": run_record.run.execution_input.goal_input,
+        }))
+    );
+    let durable_history = flow.engine().history(&flow_run_id).await?;
+    drop(flow);
+
+    let restarted = FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime)).await?;
+    assert_eq!(
+        restarted.engine().history(&flow_run_id).await?,
+        durable_history
+    );
+    assert_eq!(restarted.engine().snapshot(&flow_run_id).await?, completed);
+    restarted
+        .engine()
+        .start_with_id(&flow_run_id, flow_spec, flow_input)
+        .await?;
+    assert_eq!(
+        restarted.engine().history(&flow_run_id).await?,
+        durable_history
+    );
     Ok(())
 }
 

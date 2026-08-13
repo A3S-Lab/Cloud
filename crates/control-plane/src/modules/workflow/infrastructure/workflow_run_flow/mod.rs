@@ -1,6 +1,7 @@
 mod coordinator;
 mod execution;
 mod projection;
+mod variables;
 mod workflow;
 
 pub use coordinator::FlowWorkflowRunCoordinator;
@@ -9,7 +10,7 @@ pub use projection::{project_workflow_run_record, WorkflowRunHistoryReader};
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::workflow::domain::{
     ResolvedWorkflowRunStep, WorkflowRunInput, WorkflowStepKind,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
 };
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use serde::{Deserialize, Serialize};
@@ -21,11 +22,17 @@ pub const WORKFLOW_RUN_STEP_NAME: &str = "workflow_run_local";
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WorkflowLocalStepInput {
     runtime_contract_revision: String,
+    #[serde(default, skip_serializing_if = "is_false")]
+    typed_projection_authoritative: bool,
     step: ResolvedWorkflowRunStep,
     workflow_input: serde_json::Value,
     effective_input: serde_json::Value,
     dependencies: BTreeMap<String, serde_json::Value>,
     steps: BTreeMap<String, serde_json::Value>,
+}
+
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +102,10 @@ impl FlowRuntime for WorkflowRunFlowRuntime {
             )));
         }
         let input: WorkflowLocalStepInput = invocation.input_as()?;
-        if input.runtime_contract_revision != WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION {
+        if !matches!(
+            input.runtime_contract_revision.as_str(),
+            WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION | WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2
+        ) {
             return Err(FlowError::Runtime(
                 "WorkflowRun step runtime contract revision is unsupported".into(),
             ));
@@ -121,12 +131,13 @@ mod tests {
     use crate::modules::workflow::domain::{
         flow_step_id, AssignmentPolicyRef, FlowResumePayload, HumanTask, NewHumanTask,
         WorkflowDecision, WorkflowRun, WorkflowRunRecord, WorkflowStepProjectionStatus,
-        WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+        WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
     };
     use crate::modules::workflow::test_support::{
         accepted_submission, digest, exclusive_output_workflow_run_input,
         human_decision_form_release, human_decision_workflow_run_input,
-        multi_output_workflow_run_input, timestamp, workflow_run_input, TEST_HUMAN_STEP_ID,
+        multi_output_workflow_run_input, timestamp, typed_variable_workflow_run_input,
+        workflow_run_input, TEST_HUMAN_STEP_ID,
     };
     use a3s_flow::{
         FlowEngine, FlowEvent, HookStatus, RuntimeBuildCompatibility, RuntimeBuildId,
@@ -176,6 +187,39 @@ mod tests {
             .start_with_id(run_id, spec, serde_json::to_value(drifted)?)
             .await
             .is_err());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn flow_engine_executes_and_idempotently_replays_plan_v2_variable_reads(
+    ) -> Result<(), FlowError> {
+        let mut input = typed_variable_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let run_id = input.workflow_run_id.to_string();
+        let spec = WorkflowSpec::rust_embedded(
+            WORKFLOW_RUN_FLOW_NAME,
+            WORKFLOW_RUN_FLOW_VERSION_V2,
+            "cloud",
+            "workflow_run",
+        );
+        let encoded = serde_json::to_value(&input)?;
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        engine
+            .start_with_id(run_id.clone(), spec.clone(), encoded.clone())
+            .await?;
+
+        let snapshot = engine.snapshot(&run_id).await?;
+        assert_eq!(
+            snapshot.status,
+            WorkflowRunStatus::Completed,
+            "{snapshot:#?}"
+        );
+        assert_eq!(snapshot.output, Some(json!({"result": input.goal_input})));
+        let history_length = engine.history(&run_id).await?.len();
+        engine.start_with_id(&run_id, spec, encoded).await?;
+        assert_eq!(engine.history(&run_id).await?.len(), history_length);
         Ok(())
     }
 

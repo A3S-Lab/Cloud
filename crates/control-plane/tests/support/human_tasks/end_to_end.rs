@@ -1137,6 +1137,7 @@ fn human_decision_input(
             .iter()
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
+        variable_contract: None,
         requested_at,
         deadline_at: requested_at + ChronoDuration::hours(1),
     };

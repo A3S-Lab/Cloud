@@ -1,9 +1,11 @@
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, WorkflowRunId};
 use crate::modules::workflow::domain::{
-    workflow_run_timeout_seconds, PlanRevision, ResolvedWorkflowPayload, WorkflowGoal,
-    WorkflowRevision, WorkflowRun, WorkflowRunInput, WorkflowStepProjection,
+    validate_runtime_variable_contract, workflow_run_timeout_seconds, PlanRevision,
+    ResolvedWorkflowPayload, ResolvedWorkflowVariableContract, WorkflowGoal, WorkflowRevision,
+    WorkflowRun, WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA,
     WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -30,11 +32,6 @@ impl WorkflowRunCompiler {
         goal.validate(plan_revision)?;
         workflow_revision.validate()?;
         let plan = &plan_revision.plan;
-        if plan.schema == WORKFLOW_PLAN_SCHEMA_V2 {
-            return Err(
-                "Workflow plan v2 execution requires the typed-variable Flow adapter".into(),
-            );
-        }
         if workflow_run_id.as_uuid().is_nil()
             || requested_by.as_uuid().is_nil()
             || goal.organization_id != plan_revision.organization_id
@@ -55,6 +52,35 @@ impl WorkflowRunCompiler {
                     .into(),
             );
         }
+        let (input_schema, runtime_revision, flow_version, variable_contract) = match (
+            plan.schema.as_str(),
+            workflow_revision.semantic_contracts.as_ref(),
+        ) {
+            (WORKFLOW_PLAN_SCHEMA, None) => (
+                WORKFLOW_RUN_INPUT_SCHEMA,
+                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+                WORKFLOW_RUN_FLOW_VERSION,
+                None,
+            ),
+            (WORKFLOW_PLAN_SCHEMA_V2, Some(contracts)) => {
+                contracts.validate_plan_bindings(plan)?;
+                validate_runtime_variable_contract(contracts.variable_contract(), plan)?;
+                (
+                    WORKFLOW_RUN_INPUT_SCHEMA_V2,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+                    WORKFLOW_RUN_FLOW_VERSION_V2,
+                    Some(ResolvedWorkflowVariableContract::from_contract(
+                        contracts.variable_contract(),
+                    )),
+                )
+            }
+            _ => {
+                return Err(
+                    "WorkflowRun plan version does not match its Workflow semantic authority"
+                        .into(),
+                )
+            }
+        };
         let timeout_seconds = workflow_run_timeout_seconds(timeout_seconds)?;
         let requested_at = canonical_timestamp(requested_at);
         let timeout_seconds = i64::try_from(timeout_seconds)
@@ -69,10 +95,10 @@ impl WorkflowRunCompiler {
             .collect::<Vec<_>>();
         payloads.sort_by(|left, right| left.digest.cmp(&right.digest));
         let input = WorkflowRunInput {
-            schema: WORKFLOW_RUN_INPUT_SCHEMA.into(),
-            runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION.into(),
+            schema: input_schema.into(),
+            runtime_contract_revision: runtime_revision.into(),
             flow_workflow_name: WORKFLOW_RUN_FLOW_NAME.into(),
-            flow_workflow_version: WORKFLOW_RUN_FLOW_VERSION.into(),
+            flow_workflow_version: flow_version.into(),
             organization_id: goal.organization_id,
             project_id: goal.project_id,
             workflow_run_id,
@@ -82,6 +108,7 @@ impl WorkflowRunCompiler {
             plan: plan.clone(),
             goal_input: goal.contract.spec().input.clone(),
             payloads,
+            variable_contract,
             requested_at,
             deadline_at,
         };

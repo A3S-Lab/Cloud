@@ -110,7 +110,9 @@ impl FlowRuntime for FlowRuntimeRouter {
         use crate::modules::executions::application::{
             EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
         };
-        use crate::modules::workflow::{WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION};
+        use crate::modules::workflow::{
+            WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
+        };
         use crate::modules::workloads::infrastructure::{
             DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
             LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
@@ -128,7 +130,8 @@ impl FlowRuntime for FlowRuntimeRouter {
             (AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION) => {
                 &self.agent_executions
             }
-            (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION) => &self.workflow_runs,
+            (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION)
+            | (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V2) => &self.workflow_runs,
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
@@ -612,6 +615,7 @@ mod tests {
             ("cloud.execution", "1", "execution"),
             ("cloud.agent-execution", "1", "agent_execution"),
             ("cloud.workflow-run", "1", "workflow_run"),
+            ("cloud.workflow-run", "2", "workflow_run"),
         ] {
             assert_eq!(
                 router().run_workflow(workflow(name, version)).await?,

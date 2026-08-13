@@ -17,6 +17,8 @@ mod workflow_step_descriptor;
 mod workflow_step_descriptor_bindings;
 mod workflow_variable_contract;
 
+pub(crate) use workflow_run_contract::validate_runtime_variable_contract;
+
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
     flow_step_id, HumanTask, HumanTaskInteractionSpec, HumanTaskRecord, HumanTaskStatus,
@@ -85,16 +87,18 @@ pub use workflow_revision_semantic_contracts::{
 };
 pub use workflow_run_contract::{
     workflow_run_timeout_seconds, ResolvedWorkflowPayload, ResolvedWorkflowRunStep,
-    WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
-    WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
-    WorkflowExecutionStepOutput, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
-    WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA, WORKFLOW_EXECUTION_HOOK_SCHEMA,
-    WORKFLOW_EXECUTION_RESULT_SCHEMA, WORKFLOW_EXECUTION_RESUME_SCHEMA,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA,
-    WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT, WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_MAX_BYTES,
-    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    ResolvedWorkflowVariableContract, WorkflowExecutionChildReferenceMetadata,
+    WorkflowExecutionHookMetadata, WorkflowExecutionOutcome, WorkflowExecutionResumePayload,
+    WorkflowExecutionResumeResolution, WorkflowExecutionStepOutput,
+    WorkflowHumanDecisionHookMetadata, WorkflowRunInput, WORKFLOW_EXECUTION_CHILD_REFERENCE_SCHEMA,
+    WORKFLOW_EXECUTION_HOOK_SCHEMA, WORKFLOW_EXECUTION_RESULT_SCHEMA,
+    WORKFLOW_EXECUTION_RESUME_SCHEMA, WORKFLOW_EXECUTION_STEP_ATTEMPT,
+    WORKFLOW_HUMAN_DECISION_HOOK_SCHEMA, WORKFLOW_HUMAN_DECISION_STEP_ATTEMPT,
+    WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_INPUT_MAX_BYTES, WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
+    WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+    WORKFLOW_RUN_OUTPUT_MAX_BYTES, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
 };
 pub use workflow_step_descriptor::{
     WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
@@ -124,6 +128,8 @@ mod authority_tests;
 mod human_task_contract_tests;
 #[cfg(test)]
 mod workflow_revision_semantic_contracts_tests;
+#[cfg(test)]
+mod workflow_run_contract_tests;
 #[cfg(test)]
 mod workflow_step_descriptor_bindings_tests;
 #[cfg(test)]

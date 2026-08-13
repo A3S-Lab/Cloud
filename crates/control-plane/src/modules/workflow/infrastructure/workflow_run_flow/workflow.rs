@@ -5,7 +5,7 @@ use crate::modules::workflow::domain::{
     flow_step_id, FlowResumePayload, ResolvedWorkflowRunStep, WorkflowEdgeSpec,
     WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
     WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
-    WorkflowStepKind, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WorkflowStepKind,
 };
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowInvocation};
 use serde_json::Value;
@@ -66,7 +66,18 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             resolved.insert(step.plan.id.clone(), ResolvedState::Inactive);
             continue;
         };
-        let effective_input = effective_input(&dependencies, &input.goal_input);
+        let legacy_input = effective_input(&dependencies, &input.goal_input);
+        let all_steps = resolved
+            .iter()
+            .filter_map(|(id, state)| match state {
+                ResolvedState::Active(result) => Some((id.clone(), result.output.clone())),
+                ResolvedState::Inactive => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+        let variable_projection =
+            super::variables::effective_input(&input, &step.plan.id, legacy_input, &all_steps)
+                .map_err(FlowError::InvalidWorkflow)?;
+        let effective_input = variable_projection.input;
         if step.plan.kind == WorkflowStepKind::HumanDecision {
             let metadata = WorkflowHumanDecisionHookMetadata::from_run_step(&input, step)
                 .map_err(FlowError::InvalidWorkflow)?;
@@ -143,15 +154,9 @@ pub(super) fn run_workflow(invocation: WorkflowInvocation) -> Result<RuntimeComm
             resolved.insert(step.plan.id.clone(), ResolvedState::Active(result));
             continue;
         }
-        let all_steps = resolved
-            .iter()
-            .filter_map(|(id, state)| match state {
-                ResolvedState::Active(result) => Some((id.clone(), result.output.clone())),
-                ResolvedState::Inactive => None,
-            })
-            .collect::<BTreeMap<_, _>>();
         let step_input = WorkflowLocalStepInput {
-            runtime_contract_revision: WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION.into(),
+            runtime_contract_revision: input.runtime_contract_revision.clone(),
+            typed_projection_authoritative: variable_projection.authoritative,
             step: (*step).clone(),
             workflow_input: input.goal_input.clone(),
             effective_input,

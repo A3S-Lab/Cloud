@@ -21,14 +21,27 @@ digests, but excludes registry presentation and admission metadata.
 
 `cloud.workflow.plan.v2` copies every step's exact descriptor ID, SemVer, and
 semantic digest and pins both the revision semantic-contract-set digest and the
-variable-contract digest. Plan v1 remains readable and byte-stable. Plan v2
-execution fails closed until the typed-variable adapter projects values through
-the existing WorkflowRun input and A3S Flow history.
+variable-contract digest. Plan v1 remains readable, byte-stable, and bound to
+Flow workflow version 1. Plan v2 uses WorkflowRun input/runtime/Flow version 2;
+the immutable run input carries the exact canonical variable contract, and the
+adapter reconstructs invocation, node-output, and deterministic run values
+from that input plus existing A3S Flow step and hook history. Explicit reads are
+the step's sole data authority and are exposed through `current`; legacy
+`input` and `steps.*` tokens remain available only when the step has no reads.
 
 ## Consequences
 
 Migration `103` adds only immutable children of `WorkflowRevision` and widens
-the existing plan table to its paired v2 schema/compiler revision. It does not
-add a mutable node catalog, variable store, event log, scheduler, queue, or
-runtime provider. A future discovery catalog may publish candidate descriptors,
-but publication always snapshots exact admitted semantics into the revision.
+the existing plan table to its paired v2 schema/compiler revision. Migration
+`105` only raises the existing immutable WorkflowRun input bound so the already
+bounded Plan, payloads, and variable ACL fit in one replay authority. Neither
+migration adds a mutable node catalog, variable store, event log, scheduler,
+queue, or runtime provider. A future discovery catalog may publish candidate
+descriptors, but publication always snapshots exact admitted semantics into the
+revision.
+
+The first runtime subset materializes invocation inputs, node outputs,
+deterministically ordered run assignments, direct reads, and opaque Secret or
+immutable-object references. Digest-only defaults, composite-local scopes and
+exports, Applications-owned reads/writes, and runtime variable inspection fail
+closed until their owning adapters exist.

@@ -19,7 +19,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::domain::repositories::WorkflowRunWriteReference;
 use crate::modules::workflow::domain::{
     CancelWorkflowRunWrite, CreateWorkflowRunWrite, IWorkflowRunRepository, WorkflowRun,
-    WorkflowRunRecord, WorkflowStepProjection, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
+    WorkflowRunRecord, WorkflowStepProjection,
 };
 use a3s_orm::{insert_into, select_from, update_table, OrderDirection, PostgresExecutor};
 use async_trait::async_trait;
@@ -326,8 +326,11 @@ async fn insert_operation(
         run.organization_id,
         OperationSubject::new("workflow_run", run.id.as_uuid())
             .map_err(PostgresPersistenceError::Invariant)?,
-        WorkflowIdentity::new(WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION)
-            .map_err(PostgresPersistenceError::Invariant)?,
+        WorkflowIdentity::new(
+            run.execution_input.flow_workflow_name.clone(),
+            run.execution_input.flow_workflow_version.clone(),
+        )
+        .map_err(PostgresPersistenceError::Invariant)?,
         serde_json::to_value(&run.execution_input)?,
         run.requested_at,
     );

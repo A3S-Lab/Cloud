@@ -1060,7 +1060,7 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
 }
 
 #[tokio::test]
-async fn workflow_semantic_contracts_publish_restore_compile_v2_and_gate_runtime() -> Result<()> {
+async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
@@ -1200,10 +1200,10 @@ async fn workflow_semantic_contracts_publish_restore_compile_v2_and_gate_runtime
             }),
         ))
         .await?;
-    assert_eq!(run.status(), 422);
-    assert!(response_json(&run)?["message"]
-        .as_str()
-        .is_some_and(|message| message.contains("typed-variable Flow adapter")));
+    assert_eq!(run.status(), 202);
+    let run = response_json(&run)?;
+    assert_eq!(run["data"]["workflowRun"]["status"], "pending");
+    assert_eq!(run["data"]["workflowRun"]["planRevisionId"], plan["id"]);
 
     let downgrade = app
         .call(

@@ -11,10 +11,15 @@ use crate::modules::workflow::domain::{
     AssignmentPolicyRef, CapabilityOwner, CapabilityReference, CapabilityType, HumanTask,
     NewHumanTask, ResolvedWorkflowPayload, WorkflowBranchRoute, WorkflowDataSchema,
     WorkflowDataType, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent, WorkflowPlan,
-    WorkflowPlanStep, WorkflowRunInput, WorkflowStepConfiguration, WorkflowStepKind,
-    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_INPUT_SCHEMA,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WorkflowPlanStep, WorkflowRunInput, WorkflowStepConfiguration, WorkflowStepDescriptorBinding,
+    WorkflowStepKind, WorkflowVariableContract, WorkflowVariableContractSpec,
+    WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableRead,
+    WorkflowVariableReadMode, WorkflowVariableScope, WorkflowVariableStorageClass,
+    WORKFLOW_PLAN_COMPILER_REVISION, WORKFLOW_PLAN_COMPILER_REVISION_V2, WORKFLOW_PLAN_MAX_BYTES,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
 };
 use a3s_form_core::{
     digest_interaction_request, digest_interaction_value, parse_json, FormInteractionAssignment,
@@ -306,9 +311,79 @@ pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
             .iter()
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
+        variable_contract: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
+    input.validate()?;
+    Ok(input)
+}
+
+pub(crate) fn typed_variable_workflow_run_input() -> Result<WorkflowRunInput, String> {
+    let mut input = workflow_run_input()?;
+    let semantic_digest = Sha256Digest::parse(digest('8'))?;
+    for step in &mut input.plan.steps {
+        step.descriptor = Some(WorkflowStepDescriptorBinding {
+            step_id: step.id.clone(),
+            descriptor_id: format!("workflow.{}", step.kind.as_str()),
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: semantic_digest.clone(),
+        });
+    }
+    let schema_digest = input
+        .plan
+        .steps
+        .first()
+        .ok_or_else(|| "WorkflowRun test plan has no steps".to_owned())?
+        .output_schema_digest
+        .clone();
+    let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+        id: "support.runtime".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        declarations: vec![WorkflowVariableDeclaration {
+            name: "request".into(),
+            scope: WorkflowVariableScope::InvocationInput,
+            value_type: WorkflowDataType::Any,
+            value_schema_digest: schema_digest.clone(),
+            source_schema_digest: Some(schema_digest.clone()),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required: true,
+            source_step_id: None,
+            source_path: Vec::new(),
+            region_id: None,
+            default_value_digest: None,
+        }],
+        reads: vec![WorkflowVariableRead {
+            id: "output-request".into(),
+            variable: "request".into(),
+            consumer_step_id: "output".into(),
+            consumer_region_id: None,
+            target_port: "result".into(),
+            path: Vec::new(),
+            expected_type: WorkflowDataType::Any,
+            expected_schema_digest: schema_digest,
+            required: true,
+            mode: WorkflowVariableReadMode::DirectValue,
+        }],
+        assignments: Vec::new(),
+        exports: Vec::new(),
+    })?;
+    input.plan.schema = WORKFLOW_PLAN_SCHEMA_V2.into();
+    input.plan.compiler_revision = WORKFLOW_PLAN_COMPILER_REVISION_V2.into();
+    input.plan.semantic_contract_set_digest = Some(Sha256Digest::parse(digest('9'))?);
+    input.plan.variable_contract_digest = Some(variables.digest().clone());
+    input.plan_digest = Sha256Digest::parse(sha256_digest(&canonical_json_bounded(
+        &input.plan,
+        WORKFLOW_PLAN_MAX_BYTES,
+        "WorkflowRun test plan",
+    )?))?;
+    input.schema = WORKFLOW_RUN_INPUT_SCHEMA_V2.into();
+    input.runtime_contract_revision = WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2.into();
+    input.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION_V2.into();
+    input.variable_contract =
+        Some(super::domain::ResolvedWorkflowVariableContract::from_contract(&variables));
     input.validate()?;
     Ok(input)
 }
@@ -469,6 +544,7 @@ pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, St
             .iter()
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
+        variable_contract: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -577,6 +653,7 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
             .iter()
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
+        variable_contract: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };

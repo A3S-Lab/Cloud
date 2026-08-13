@@ -9,8 +9,7 @@ use crate::modules::workflow::domain::{
     WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunFlowState,
     WorkflowRunHistoryEvent, WorkflowRunHistoryPage, WorkflowRunInput, WorkflowRunRecord,
     WorkflowRunStatus, WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, RuntimeKind,
@@ -349,8 +348,8 @@ pub(super) fn verify_flow_authority(
     history: &[FlowEventEnvelope],
 ) -> Result<(), String> {
     if snapshot.run_id != record.run.flow_run_id
-        || snapshot.spec.name != WORKFLOW_RUN_FLOW_NAME
-        || snapshot.spec.version != WORKFLOW_RUN_FLOW_VERSION
+        || snapshot.spec.name != record.run.execution_input.flow_workflow_name
+        || snapshot.spec.version != record.run.execution_input.flow_workflow_version
         || snapshot.spec.runtime.kind != RuntimeKind::RustEmbedded
         || snapshot.spec.runtime.entrypoint != "a3s-cloud"
         || snapshot.spec.runtime.export_name != "main"

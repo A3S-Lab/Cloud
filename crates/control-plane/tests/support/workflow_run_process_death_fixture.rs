@@ -256,6 +256,7 @@ fn workflow_run_input(
             .iter()
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
+        variable_contract: None,
         requested_at,
         deadline_at: requested_at + Duration::hours(1),
     };
@@ -368,6 +369,7 @@ fn execution_workflow_run_input(
             .iter()
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
+        variable_contract: None,
         requested_at,
         deadline_at: requested_at + Duration::hours(1),
     };
