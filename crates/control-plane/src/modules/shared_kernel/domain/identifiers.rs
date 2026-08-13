@@ -47,6 +47,7 @@ identifier!(MembershipInvitationId);
 identifier!(ResourceGrantId);
 identifier!(ApiTokenId);
 identifier!(ProjectId);
+identifier!(ProjectAttributionProfileId);
 identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
 identifier!(OperationId);

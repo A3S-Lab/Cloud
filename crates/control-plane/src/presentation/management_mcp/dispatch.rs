@@ -27,7 +27,10 @@ use super::ontology::{
 use super::plugins::{
     PluginCatalogInspectArguments, PluginCatalogSearchArguments, PluginRegistryArguments,
 };
-use super::projects::{CreateEnvironmentArguments, CreateProjectArguments, ProjectArguments};
+use super::projects::{
+    CreateEnvironmentArguments, CreateProjectArguments, GetProjectAttributionArguments,
+    ProjectArguments, UpdateProjectAttributionArguments,
+};
 use super::search::SearchArguments;
 use super::workflow::{
     CancelWorkflowRunArguments, CreateWorkflowDefinitionArguments, CreateWorkflowGoalArguments,
@@ -274,6 +277,30 @@ pub async fn execute(
             projects::list_projects(
                 query_bus,
                 organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ProjectAttributionGet => {
+            let arguments = arguments::parse::<GetProjectAttributionArguments>(arguments).ok()?;
+            projects::get_project_attribution(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ProjectAttributionUpdate => {
+            let arguments =
+                arguments::parse::<UpdateProjectAttributionArguments>(arguments).ok()?;
+            projects::update_project_attribution(
+                command_bus,
+                organization_id,
+                actor_principal_id,
                 arguments,
                 resource_access,
                 request_id,

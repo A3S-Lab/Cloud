@@ -901,6 +901,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/103_workflow_semantic_contracts.sql"
             )),
         ),
+        Migration::new(
+            "104",
+            "immutable project attribution profiles",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/104_project_attribution_profiles.sql"
+            )),
+        ),
     ]
 }
 
@@ -1188,6 +1196,48 @@ mod workflow_semantic_contract_migration_tests {
             assert!(
                 MIGRATION.contains(expected),
                 "missing migration guard {expected}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod project_attribution_migration_tests {
+    #[test]
+    fn migration_104_adds_bounded_immutable_project_attribution_history() {
+        const SQL: &str = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../migrations/104_project_attribution_profiles.sql"
+        ));
+
+        for required in [
+            "create table project_attribution_profiles",
+            "previous_profile_id uuid",
+            "add column current_attribution_profile_id uuid",
+            "projects_current_attribution_profile_fk",
+            "project_attribution_profiles_immutable",
+            "project_attribution_profiles_validate_lineage",
+            "projects_validate_attribution_pointer",
+            "before update or delete on project_attribution_profiles",
+            "references identity_principals(id)",
+            "project_attribution_labels_are_valid(labels)",
+            "label_key !~ '^[a-z][a-z0-9._-]{0,62}$'",
+            "Immutable non-monetary showback metadata revisions",
+        ] {
+            assert!(
+                SQL.contains(required),
+                "migration 104 is missing {required}"
+            );
+        }
+        for forbidden in [
+            "create table invoices",
+            "create table billing_accounts",
+            "create table credit_ledger",
+            "create table prices",
+        ] {
+            assert!(
+                !SQL.to_ascii_lowercase().contains(forbidden),
+                "migration 104 must not introduce monetary authority: {forbidden}"
             );
         }
     }

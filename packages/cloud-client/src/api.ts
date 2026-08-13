@@ -98,6 +98,8 @@ import type {
   PluginCatalogSearchRequest,
   PluginRegistry,
   Project,
+  ProjectAttributionMutationResult,
+  ProjectAttributionProfile,
   ProjectMutationResult,
   PublishFormReleaseOptions,
   PublishRouteInput,
@@ -126,6 +128,7 @@ import type {
   StartAgentExecutionInput,
   StartWorkflowRunInput,
   StopWorkloadResult,
+  UpdateProjectAttributionInput,
   WaitWorkflowRunOptions,
   WorkflowDefinition,
   WorkflowDefinitionMutationResult,
@@ -153,6 +156,7 @@ import {
   validateExpectedMembershipInvitationVersion,
   validateExpectedMembershipVersion,
   validateExpectedNodeVersion,
+  validateExpectedProjectVersion,
   validateExpectedResourceGrantVersion,
   validateFormDraftInput,
   validateFormVersionControl,
@@ -164,6 +168,7 @@ import {
   validateMembershipRole,
   validateOntologyAcl,
   validateOntologyRevisionControl,
+  validateProjectAttributionInput,
   validateResourceGrantInput,
   validateSecretValue,
   validateWorkflowDefinitionPublication,
@@ -184,7 +189,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.29.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.30.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -545,6 +550,52 @@ export class CloudApi {
       idempotencyKey,
       { name },
       signal
+    );
+  }
+
+  getProjectAttribution(
+    organizationId: string,
+    projectId: string,
+    signal?: AbortSignal
+  ): Promise<ProjectAttributionProfile> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/attribution-profile`,
+      signal
+    );
+  }
+
+  getProjectAttributionRevision(
+    organizationId: string,
+    projectId: string,
+    attributionProfileId: string,
+    signal?: AbortSignal
+  ): Promise<ProjectAttributionProfile> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/attribution-profiles/${encodeURIComponent(attributionProfileId)}`,
+      signal
+    );
+  }
+
+  updateProjectAttribution(
+    organizationId: string,
+    projectId: string,
+    input: UpdateProjectAttributionInput,
+    expectedProjectVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ProjectAttributionMutationResult> {
+    validateProjectAttributionInput(input);
+    validateExpectedProjectVersion(expectedProjectVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}/attribution-profiles`,
+      idempotencyKey,
+      input,
+      signal,
+      { 'x-a3s-expected-version': String(expectedProjectVersion) }
     );
   }
 

@@ -169,6 +169,7 @@ pricing, balances, invoices, settlement, tax, or commercial entitlements.
 Primary aggregates:
 
 - `Project`
+- `ProjectAttributionProfile` (immutable revision selected by the Project)
 - `Environment`
 
 ### 3.3 External sources
@@ -773,6 +774,13 @@ contexts' tables.
   It contains a tenant-local business-owner reference, an optional external
   cost-attribution code, and validated bounded labels; changing the current
   reference never rewrites an audit or usage fact that selected an older one.
+- A profile stores its previous profile ID, creating project-qualified lineage.
+  The current Project pointer and aggregate version advance atomically; exact
+  older profiles remain addressable and PostgreSQL rejects UPDATE or DELETE.
+- Business-owner references contain 1 through 255 visible characters; optional
+  cost-attribution codes contain 1 through 128. A profile has at most 32 labels;
+  keys use lowercase `[a-z][a-z0-9._-]{0,62}` and values contain 1 through 255
+  visible characters.
 - Environment deletion requires all workloads to reach a terminal stopped or
   explicitly orphaned state.
 

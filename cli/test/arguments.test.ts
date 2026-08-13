@@ -90,6 +90,27 @@ describe('parseArguments', () => {
     );
   });
 
+  it('parses repeatable project attribution labels without collapsing values', () => {
+    expect(
+      parseArguments([
+        'project-attribution',
+        'update',
+        'engineering/platform',
+        '--label=service.tier=critical',
+        '--label',
+        'region=global',
+        '--cost-attribution-code=CC-1042',
+        '--expected-version=2',
+        '--idempotency-key=project-attribution:2',
+      ])
+    ).toEqual(
+      expect.objectContaining({
+        projectAttributionLabels: ['service.tier=critical', 'region=global'],
+        costAttributionCode: 'CC-1042',
+      })
+    );
+  });
+
   it('parses an explicit Ontology migration rule', () => {
     expect(
       parseArguments([

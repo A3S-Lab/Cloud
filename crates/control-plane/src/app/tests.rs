@@ -84,6 +84,7 @@ mod ontology_tests;
 mod operation_tests;
 mod platform_tests;
 mod plugin_tests;
+mod project_attribution_tests;
 mod route_tests;
 mod search_tests;
 mod secret_tests;

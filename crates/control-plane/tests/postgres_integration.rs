@@ -100,6 +100,8 @@ mod oidc_cross_surface_support;
 mod plugins_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
+#[path = "support/project_attribution.rs"]
+mod project_attribution_support;
 #[path = "support/resource_claims.rs"]
 mod resource_claims_support;
 #[path = "support/resource_grants.rs"]
@@ -218,6 +220,19 @@ async fn postgres_workflow_semantic_contracts_are_atomic_recoverable_and_immutab
     )
     .await
     .expect("PostgreSQL Workflow semantic contract authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_project_attribution_is_atomic_replay_safe_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        project_attribution_support::exercise_project_attribution_persistence,
+    )
+    .await
+    .expect("PostgreSQL project attribution authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -489,7 +504,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (103, "103".into()));
+    assert_eq!(migration_state, (104, "104".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

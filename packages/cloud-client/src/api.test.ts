@@ -38,7 +38,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.29.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.30.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -64,6 +64,103 @@ describe('CloudApi', () => {
       })
     );
     expect(String(calls[0]?.[0])).not.toContain('a3s_secret');
+  });
+
+  it('reads exact project attribution revisions and writes with project concurrency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.getProjectAttribution('organization / one', 'project / one');
+    await api.getProjectAttributionRevision(
+      'organization / one',
+      'project / one',
+      'profile / one'
+    );
+    await api.updateProjectAttribution(
+      'organization / one',
+      'project / one',
+      {
+        businessOwnerReference: 'engineering/platform',
+        costAttributionCode: 'CC-1042',
+        labels: { region: 'global', 'service.tier': 'critical' },
+      },
+      2,
+      'client:project-attribution:2'
+    );
+
+    expect(calls.map(([input, init]) => ({ input, method: init?.method }))).toEqual([
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/attribution-profile',
+        method: 'GET',
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/attribution-profiles/profile%20%2F%20one',
+        method: 'GET',
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/attribution-profiles',
+        method: 'POST',
+      },
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Idempotency-Key': 'client:project-attribution:2',
+          'x-a3s-expected-version': '2',
+        }),
+        body: JSON.stringify({
+          businessOwnerReference: 'engineering/platform',
+          costAttributionCode: 'CC-1042',
+          labels: { region: 'global', 'service.tier': 'critical' },
+        }),
+      })
+    );
+  });
+
+  it('rejects invalid project attribution before transport', async () => {
+    let called = false;
+    const api = new CloudApi('token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.updateProjectAttribution(
+        'organization',
+        'project',
+        { businessOwnerReference: 'owner', labels: { 'Invalid.Key': 'value' } },
+        1,
+        'invalid-label'
+      )
+    ).toThrow('project attribution label keys');
+    expect(() =>
+      api.updateProjectAttribution(
+        'organization',
+        'project',
+        { businessOwnerReference: ' owner ' },
+        1,
+        'invalid-owner'
+      )
+    ).toThrow('business owner reference');
+    expect(() =>
+      api.updateProjectAttribution(
+        'organization',
+        'project',
+        { businessOwnerReference: 'owner' },
+        0,
+        'invalid-version'
+      )
+    ).toThrow('project version');
+    expect(called).toBe(false);
   });
 
   it('starts browser-safe OIDC login and link flows without exposing credentials in URLs', async () => {

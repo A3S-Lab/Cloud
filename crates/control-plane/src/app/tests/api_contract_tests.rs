@@ -130,6 +130,48 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 && parameter["in"] == "header"
                 && parameter["required"] == true
         })));
+    let attribution_collection = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/attribution-profiles"];
+    let attribution_update = &attribution_collection["post"];
+    assert_eq!(attribution_update["tags"], json!(["Projects"]));
+    assert!(attribution_update["responses"]["200"].is_object());
+    assert!(attribution_update["responses"]["201"].is_object());
+    let attribution_parameters = attribution_update["parameters"]
+        .as_array()
+        .expect("project attribution mutation parameters");
+    for header in ["idempotency-key", "x-a3s-expected-version"] {
+        assert!(attribution_parameters.iter().any(|parameter| {
+            parameter["name"] == header
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        }));
+    }
+    let attribution_schema =
+        &attribution_update["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(attribution_schema["additionalProperties"], false);
+    assert_eq!(
+        attribution_schema["required"],
+        json!(["businessOwnerReference"])
+    );
+    assert_eq!(
+        attribution_schema["properties"]["labels"]["maxProperties"],
+        32
+    );
+    assert_eq!(
+        attribution_schema["properties"]["labels"]["propertyNames"]["pattern"],
+        "^[a-z][a-z0-9._-]*$"
+    );
+    let current_attribution = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/attribution-profile"]["get"];
+    assert_eq!(current_attribution["tags"], json!(["Projects"]));
+    assert!(current_attribution["responses"]["200"].is_object());
+    let exact_attribution = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/attribution-profiles/{attribution_profile_id}"]["get"];
+    assert_eq!(exact_attribution["tags"], json!(["Projects"]));
+    assert!(exact_attribution["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "attribution_profile_id" && parameter["schema"]["format"] == "uuid"
+        })));
     let oidc_login = &document["paths"]["/identity/oidc/{provider_key}/login"]["get"];
     assert_eq!(oidc_login["tags"], json!(["Identity"]));
     assert_eq!(oidc_login["security"], json!([]));

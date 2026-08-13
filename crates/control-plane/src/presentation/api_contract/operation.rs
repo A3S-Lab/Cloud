@@ -2,6 +2,11 @@ use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::projects::domain::value_objects::{
+    BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
+    PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
+    PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
+};
 use a3s_boot::{BootError, Result};
 use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
@@ -177,6 +182,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
                 "in": "header",
                 "required": true,
                 "description": "Current Form draft aggregate version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
+    if method == "post" && is_project_attribution_mutation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current Project aggregate version used for optimistic concurrency.",
                 "schema": { "type": "integer", "minimum": 1 }
             }),
         );
@@ -559,6 +576,44 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                     "required": ["expectedVersion"],
                     "properties": {
                         "expectedVersion": {"type": "integer", "minimum": 1}
+                    }
+                }
+            }),
+        );
+    } else if is_project_attribution_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["businessOwnerReference"],
+                    "properties": {
+                        "businessOwnerReference": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": BUSINESS_OWNER_REFERENCE_MAX_CHARS
+                        },
+                        "costAttributionCode": {
+                            "type": "string",
+                            "nullable": true,
+                            "minLength": 1,
+                            "maxLength": COST_ATTRIBUTION_CODE_MAX_CHARS
+                        },
+                        "labels": {
+                            "type": "object",
+                            "maxProperties": PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
+                            "propertyNames": {
+                                "maxLength": PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS,
+                                "pattern": "^[a-z][a-z0-9._-]*$"
+                            },
+                            "additionalProperties": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS
+                            },
+                            "default": {}
+                        }
                     }
                 }
             }),
@@ -1038,6 +1093,7 @@ fn creates_resource(path: &str) -> bool {
         || path == "/node-control/enroll"
         || path == "/organizations"
         || path.ends_with("/projects")
+        || is_project_attribution_mutation_path(path)
         || path.ends_with("/environments")
         || path.ends_with("/ontologies")
         || is_ontology_revision_mutation_path(path)
@@ -1067,6 +1123,10 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/releases")
         || is_mcp_service_profile_path(path)
         || path.ends_with("/agent-conversations")
+}
+
+fn is_project_attribution_mutation_path(path: &str) -> bool {
+    path.ends_with("/projects/{project_id}/attribution-profiles")
 }
 
 fn is_resource_grant_create_path(path: &str) -> bool {

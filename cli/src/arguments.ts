@@ -14,6 +14,8 @@ export interface ParsedArguments {
   idempotencyKey?: string;
   file?: string;
   expectedVersion?: string;
+  costAttributionCode?: string;
+  projectAttributionLabels: string[];
   migrationRuleId?: string;
   minReady?: string;
   maxUnavailable?: string;
@@ -45,7 +47,13 @@ export interface ParsedArguments {
 
 type ValueOption = Exclude<
   keyof ParsedArguments,
-  'enrollmentTokenStdin' | 'help' | 'positionals' | 'tokenStdin' | 'valueStdin' | 'version'
+  | 'enrollmentTokenStdin'
+  | 'help'
+  | 'positionals'
+  | 'projectAttributionLabels'
+  | 'tokenStdin'
+  | 'valueStdin'
+  | 'version'
 >;
 
 const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
@@ -61,6 +69,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--idempotency-key': 'idempotencyKey',
   '--file': 'file',
   '--expected-version': 'expectedVersion',
+  '--cost-attribution-code': 'costAttributionCode',
   '--migration-rule': 'migrationRuleId',
   '--min-ready': 'minReady',
   '--max-unavailable': 'maxUnavailable',
@@ -88,6 +97,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
 export function parseArguments(argv: readonly string[]): ParsedArguments {
   const parsed: ParsedArguments = {
     positionals: [],
+    projectAttributionLabels: [],
     valueStdin: false,
     tokenStdin: false,
     enrollmentTokenStdin: false,
@@ -137,6 +147,19 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     }
     if (argument === '--token' || argument.startsWith('--token=')) {
       throw usageError('API tokens are accepted only through A3S_CLOUD_TOKEN');
+    }
+    if (argument === '--label' || argument.startsWith('--label=')) {
+      const separator = argument.indexOf('=');
+      const inlineValue = separator === -1 ? undefined : argument.slice(separator + 1);
+      const value = inlineValue ?? argv[index + 1];
+      if (!value || (inlineValue === undefined && value.startsWith('-'))) {
+        throw usageError('option --label requires a key=value pair');
+      }
+      parsed.projectAttributionLabels.push(value);
+      if (inlineValue === undefined) {
+        index += 1;
+      }
+      continue;
     }
     if (argument.startsWith('-')) {
       const separator = argument.indexOf('=');

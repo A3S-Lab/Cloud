@@ -1,5 +1,7 @@
 mod create_environment_request;
 mod create_project_request;
+mod update_project_attribution_request;
 
 pub use create_environment_request::CreateEnvironmentRequest;
 pub use create_project_request::CreateProjectRequest;
+pub use update_project_attribution_request::UpdateProjectAttributionRequest;

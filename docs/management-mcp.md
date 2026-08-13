@@ -37,6 +37,11 @@ CQRS handlers, `execution:write` scope, Resource Grant checks, idempotency,
 A3S ORM repository, audit, Outbox, and REST response DTOs used by contract
 `1.24.0`. MCP does not gain a template parser, mutable template store,
 scheduler, Runtime provider, or Workflow dispatch path.
+The project-attribution slice adds one current-or-exact immutable read tool and
+one optimistic, replay-safe update tool. Both reuse the Projects CQRS,
+project-qualified Resource Grant evaluator, A3S ORM repository, shared audit,
+and Outbox. MCP owns no attribution store, label validator, billing model, or
+migration path.
 
 ## Transport contract
 
@@ -107,6 +112,7 @@ scopes control mutation tool visibility and invocation independently:
 | Tool | Kind | Required scope |
 | --- | --- | --- |
 | `a3s_cloud_projects_list` | Query | None |
+| `a3s_cloud_project_attribution_get` | Query | None; exact Project Resource Grant enforcement occurs in Projects |
 | `a3s_cloud_environments_list` | Query | None |
 | `a3s_cloud_forms_list` | Query | None |
 | `a3s_cloud_forms_get` | Query | None |
@@ -171,6 +177,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_build_run_logs_get` | Query | None |
 | `a3s_cloud_build_evidence_get` | Query | None |
 | `a3s_cloud_projects_create` | Command | `project:write` |
+| `a3s_cloud_project_attribution_update` | Command | `project:write`; Project optimistic concurrency and Resource Grant required |
 | `a3s_cloud_environments_create` | Command | `environment:write` |
 | `a3s_cloud_workloads_stop` | Command | `workload:write` |
 | `a3s_cloud_workloads_rollback` | Command | `workload:write` |

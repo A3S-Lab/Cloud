@@ -51,6 +51,15 @@ selection through that same contract. The package is internal and
 versioned with Cloud until public package compatibility and deprecation policy
 are completed.
 
+`getProjectAttribution`, `getProjectAttributionRevision`, and
+`updateProjectAttribution` expose REST contract `1.30.0`. The update carries one
+positive Project version in `x-a3s-expected-version` and a caller-owned
+idempotency key. The client validates only transport bounds for the
+business-owner reference, optional cost-attribution code, and at most 32
+labels; Cloud Projects remains authoritative for canonicalization, immutable
+lineage, Resource Grants, persistence, Outbox, and audit. These fields are
+non-monetary showback metadata, not a client billing or usage ledger.
+
 `listAssets`, `getAsset`, `createAsset`, and `archiveAsset` expose the
 organization Asset lifecycle. Release list/get/create/yank methods preserve
 draft and yanked management visibility, while `selectAssetRelease` calls the

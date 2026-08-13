@@ -352,6 +352,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_execution_templates_list",
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_projects_list",
+            "a3s_cloud_project_attribution_get",
             "a3s_cloud_forms_get",
             "a3s_cloud_forms_list",
             "a3s_cloud_form_releases_get",
@@ -406,6 +407,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
 
     let project_writer_tools = list_tools(&app, PROJECT_TOKEN, 2).await?;
     assert!(tool_names(&project_writer_tools).contains(&"a3s_cloud_projects_create"));
+    assert!(tool_names(&project_writer_tools).contains(&"a3s_cloud_project_attribution_update"));
     assert!(!tool_names(&project_writer_tools).contains(&"a3s_cloud_environments_create"));
 
     let workload_writer_tools = list_tools(&app, MCP_WORKLOAD_TOKEN, 3).await?;
@@ -460,6 +462,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_resource_grants_revoke",
             "a3s_cloud_projects_create",
             "a3s_cloud_projects_list",
+            "a3s_cloud_project_attribution_get",
+            "a3s_cloud_project_attribution_update",
             "a3s_cloud_forms_create",
             "a3s_cloud_forms_get",
             "a3s_cloud_forms_list",

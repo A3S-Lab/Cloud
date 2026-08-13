@@ -34,11 +34,17 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
     let executor = connect_and_migrate(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let migration_state = database
-        .fetch_one_as(sql_query::<(i64, String)>(
-            "select count(*), max(version) from a3s_orm_migrations",
-        ))
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("103"),
+        )
         .await?;
-    assert_eq!(migration_state, (103, "103".into()));
+    assert_eq!(
+        migration_state,
+        (1, "Workflow revision semantic contracts and plan v2".into())
+    );
 
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();

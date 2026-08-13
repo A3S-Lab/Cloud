@@ -128,8 +128,9 @@ use crate::modules::plugins::{
 };
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
-    CreateEnvironmentHandler, CreateProjectHandler, ListEnvironmentsHandler, ListProjectsHandler,
-    PostgresProjectsRepository, ProjectsModule,
+    CreateEnvironmentHandler, CreateProjectHandler, GetProjectAttributionHandler,
+    ListEnvironmentsHandler, ListProjectsHandler, PostgresProjectsRepository, ProjectsModule,
+    UpdateProjectAttributionHandler,
 };
 use crate::modules::search::{
     ISearchRepository, PostgresSearchRepository, SearchModule, SearchResourcesHandler,
@@ -1239,6 +1240,8 @@ fn build_application_with_health(
         Arc::clone(&workflow_runs),
     ));
     let project_organizations = Arc::clone(&organizations);
+    let create_projects = Arc::clone(&projects);
+    let update_project_attributions = Arc::clone(&projects);
     let environment_projects = Arc::clone(&projects);
     let create_ontology_projects = Arc::clone(&projects);
     let create_ontologies = Arc::clone(&ontologies);
@@ -1354,6 +1357,7 @@ fn build_application_with_health(
     let get_resource_grants = Arc::clone(&resource_grants);
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
+    let get_project_attributions = Arc::clone(&projects);
     let list_environment_projects = Arc::clone(&projects);
     let query_environments = Arc::clone(&environments);
     let create_assets = Arc::clone(&asset_catalog);
@@ -1601,7 +1605,10 @@ fn build_application_with_health(
                     CompleteOidcFlowHandler::new(oidc_identity, oidc_provider),
                 )
                 .command_handler::<crate::modules::projects::CreateProject, _>(
-                    CreateProjectHandler::new(project_organizations, projects),
+                    CreateProjectHandler::new(project_organizations, create_projects),
+                )
+                .command_handler::<crate::modules::projects::UpdateProjectAttribution, _>(
+                    UpdateProjectAttributionHandler::new(update_project_attributions),
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
@@ -1972,6 +1979,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::projects::ListProjects, _>(
                     ListProjectsHandler::new(query_projects),
+                )
+                .query_handler::<crate::modules::projects::GetProjectAttribution, _>(
+                    GetProjectAttributionHandler::new(get_project_attributions),
                 )
                 .query_handler::<crate::modules::projects::ListEnvironments, _>(
                     ListEnvironmentsHandler::new(list_environment_projects, query_environments),

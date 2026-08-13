@@ -10,6 +10,7 @@ pub struct ProjectListItemResponse {
     pub id: Uuid,
     pub name: String,
     pub aggregate_version: u64,
+    pub current_attribution_profile_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -20,6 +21,9 @@ impl From<Project> for ProjectListItemResponse {
             id: project.id.as_uuid(),
             name: project.name.as_str().to_owned(),
             aggregate_version: project.aggregate_version,
+            current_attribution_profile_id: project
+                .current_attribution_profile_id
+                .map(|id| id.as_uuid()),
             created_at: project.created_at,
         }
     }

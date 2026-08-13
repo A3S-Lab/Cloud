@@ -1,7 +1,10 @@
 pub mod request;
 pub mod response;
 
-pub use request::{CreateEnvironmentRequest, CreateProjectRequest};
+pub use request::{
+    CreateEnvironmentRequest, CreateProjectRequest, UpdateProjectAttributionRequest,
+};
 pub use response::{
-    EnvironmentListItemResponse, EnvironmentResponse, ProjectListItemResponse, ProjectResponse,
+    EnvironmentListItemResponse, EnvironmentResponse, ProjectAttributionMutationResponse,
+    ProjectAttributionProfileResponse, ProjectListItemResponse, ProjectResponse,
 };

@@ -8,6 +8,7 @@ import type {
   ResourceGrantScope,
 } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
+import type { UpdateProjectAttributionInput } from './types';
 
 export const MAX_SECRET_VALUE_BYTES = 1024 * 1024;
 export const MAX_ACL_DOCUMENT_BYTES = 64 * 1024;
@@ -25,6 +26,44 @@ export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
 export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const MAX_EXECUTION_TEMPLATE_ACL_BYTES = 128 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
+export const MAX_PROJECT_ATTRIBUTION_LABELS = 32;
+
+export function validateProjectAttributionInput(input: UpdateProjectAttributionInput): void {
+  validateVisibleText(input?.businessOwnerReference, 255, 'business owner reference');
+  if (input.costAttributionCode !== undefined && input.costAttributionCode !== null) {
+    validateVisibleText(input.costAttributionCode, 128, 'cost attribution code');
+  }
+  const labels = input.labels ?? {};
+  if (!labels || typeof labels !== 'object' || Array.isArray(labels)) {
+    throw new TypeError('project attribution labels must be an object');
+  }
+  const entries = Object.entries(labels);
+  if (entries.length > MAX_PROJECT_ATTRIBUTION_LABELS) {
+    throw new RangeError(
+      `project attribution labels cannot contain more than ${MAX_PROJECT_ATTRIBUTION_LABELS} entries`
+    );
+  }
+  for (const [key, value] of entries) {
+    if (!/^[a-z][a-z0-9._-]{0,62}$/.test(key)) {
+      throw new TypeError(
+        'project attribution label keys must start with a lowercase letter and contain at most 63 lowercase ASCII letters, digits, dots, underscores, or hyphens'
+      );
+    }
+    validateVisibleText(value, 255, 'project attribution label value');
+  }
+}
+
+function validateVisibleText(value: unknown, maxChars: number, label: string): void {
+  if (
+    typeof value !== 'string' ||
+    value.trim() !== value ||
+    [...value].length < 1 ||
+    [...value].length > maxChars ||
+    /\p{Cc}/u.test(value)
+  ) {
+    throw new TypeError(`${label} must contain 1 to ${maxChars} visible characters`);
+  }
+}
 
 export function validateApiTokenInput(input: CreateApiTokenInput): void {
   if (!/^a3s_[0-9a-f]{64}$/.test(input.token)) {
@@ -105,6 +144,10 @@ export function validateResourceGrantInput(input: CreateResourceGrantInput): voi
 
 export function validateExpectedResourceGrantVersion(value: number): void {
   validateExpectedVersion(value, 'Resource Grant');
+}
+
+export function validateExpectedProjectVersion(value: number): void {
+  validateExpectedVersion(value, 'project');
 }
 
 export function validateNonNilUuid(value: string, label: string): void {

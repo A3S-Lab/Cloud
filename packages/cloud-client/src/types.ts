@@ -31,10 +31,35 @@ export interface Project {
   id: string;
   name: string;
   aggregateVersion: number;
+  currentAttributionProfileId: string | null;
   createdAt: string;
 }
 
 export interface ProjectMutationResult extends Project {
+  replayed: boolean;
+}
+
+export interface ProjectAttributionProfile {
+  organizationId: string;
+  projectId: string;
+  id: string;
+  previousProfileId: string | null;
+  businessOwnerReference: string;
+  costAttributionCode: string | null;
+  labels: Record<string, string>;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface UpdateProjectAttributionInput {
+  businessOwnerReference: string;
+  costAttributionCode?: string | null;
+  labels?: Record<string, string>;
+}
+
+export interface ProjectAttributionMutationResult {
+  project: Project;
+  attributionProfile: ProjectAttributionProfile;
   replayed: boolean;
 }
 

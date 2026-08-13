@@ -39,6 +39,8 @@ Commands:
   resource-grants revoke ID Revoke one Resource Grant with optimistic concurrency
   projects list        List projects in the selected organization
   projects create NAME Create a project idempotently
+  project-attribution get [ID] Get the current or one exact immutable attribution profile
+  project-attribution update OWNER Create a new attribution profile with optimistic concurrency
   environments list    List environments in the selected project
   environments create NAME Create an environment idempotently
   ontologies list       List Ontologies in the selected project
@@ -179,6 +181,8 @@ Global options:
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL, native Form, Workflow, or catalog JSON input file
   --expected-version <n>    Current aggregate version for a versioned mutation
+  --cost-attribution-code <code> Optional showback code for project-attribution update
+  --label <key=value>        Repeatable bounded label for project-attribution update
   --migration-rule <id>     Target ACL migration rule for a breaking Ontology revision
   --min-ready <n>           Required ready members for gateway-scopes create
   --max-unavailable <n>     Allowed unavailable members for gateway-scopes create

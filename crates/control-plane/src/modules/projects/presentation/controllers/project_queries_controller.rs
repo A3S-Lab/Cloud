@@ -1,22 +1,27 @@
 use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::projects::application::queries::get_project_attribution::GetProjectAttribution;
 use crate::modules::projects::application::queries::list_environments::ListEnvironments;
 use crate::modules::projects::application::queries::list_projects::ListProjects;
 use crate::modules::projects::presentation::dto::{
-    EnvironmentListItemResponse, ProjectListItemResponse,
+    EnvironmentListItemResponse, ProjectAttributionProfileResponse, ProjectListItemResponse,
 };
-use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
+use crate::modules::shared_kernel::domain::{
+    OrganizationId, ProjectAttributionProfileId, ProjectId,
+};
 use crate::presentation::application_error_response;
 use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn project_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
+    let list_bus = Arc::clone(&bus);
+    let current_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .get(
             "/{organization_id}/projects",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&list_bus);
                 async move {
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
@@ -40,7 +45,49 @@ pub fn project_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefini
                     }
                 }
             },
+        )?
+        .get(
+            "/{organization_id}/projects/{project_id}/attribution-profile",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&current_bus);
+                async move { get_attribution_profile(bus, request, None).await }
+            },
+        )?
+        .get(
+            "/{organization_id}/projects/{project_id}/attribution-profiles/{attribution_profile_id}",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&bus);
+                async move {
+                    let profile_id = ProjectAttributionProfileId::from_uuid(
+                        request.param_as::<Uuid>("attribution_profile_id")?,
+                    );
+                    get_attribution_profile(bus, request, Some(profile_id)).await
+                }
+            },
         )
+}
+
+async fn get_attribution_profile(
+    bus: Arc<QueryBus>,
+    request: BootRequest,
+    attribution_profile_id: Option<ProjectAttributionProfileId>,
+) -> Result<BootResponse> {
+    let organization_id = OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+    let request_id = request_id(&request)?;
+    let resource_access = resource_access_evaluator(&request.require_auth_principal()?)?;
+    match bus
+        .execute(GetProjectAttribution {
+            organization_id,
+            project_id,
+            attribution_profile_id,
+            resource_access,
+        })
+        .await?
+    {
+        Ok(profile) => BootResponse::json(&ProjectAttributionProfileResponse::from(profile)),
+        Err(error) => application_error_response(error, request_id),
+    }
 }
 
 pub fn environment_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {

@@ -4,6 +4,11 @@ use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
+use crate::modules::projects::domain::value_objects::{
+    BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
+    PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
+    PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
+};
 use a3s_boot::AuthPrincipal;
 use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
@@ -52,6 +57,8 @@ pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
 pub const PROJECTS_CREATE: &str = "a3s_cloud_projects_create";
 pub const PROJECTS_LIST: &str = "a3s_cloud_projects_list";
+pub const PROJECT_ATTRIBUTION_GET: &str = "a3s_cloud_project_attribution_get";
+pub const PROJECT_ATTRIBUTION_UPDATE: &str = "a3s_cloud_project_attribution_update";
 pub const ONTOLOGIES_CREATE: &str = "a3s_cloud_ontologies_create";
 pub const ONTOLOGIES_GET: &str = "a3s_cloud_ontologies_get";
 pub const ONTOLOGIES_LIST: &str = "a3s_cloud_ontologies_list";
@@ -120,6 +127,8 @@ pub enum ManagementTool {
     ResourceGrantsRevoke,
     ProjectsCreate,
     ProjectsList,
+    ProjectAttributionGet,
+    ProjectAttributionUpdate,
     FormsCreate,
     FormsGet,
     FormsList,
@@ -199,7 +208,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 84] = [
+    const ALL: [Self; 86] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ExecutionTemplatesCreate,
@@ -222,6 +231,8 @@ impl ManagementTool {
         Self::ResourceGrantsRevoke,
         Self::ProjectsCreate,
         Self::ProjectsList,
+        Self::ProjectAttributionGet,
+        Self::ProjectAttributionUpdate,
         Self::FormsCreate,
         Self::FormsGet,
         Self::FormsList,
@@ -334,6 +345,8 @@ impl ManagementTool {
             Self::ResourceGrantsRevoke => RESOURCE_GRANTS_REVOKE,
             Self::ProjectsCreate => PROJECTS_CREATE,
             Self::ProjectsList => PROJECTS_LIST,
+            Self::ProjectAttributionGet => PROJECT_ATTRIBUTION_GET,
+            Self::ProjectAttributionUpdate => PROJECT_ATTRIBUTION_UPDATE,
             Self::FormsCreate => FORMS_CREATE,
             Self::FormsGet => FORMS_GET,
             Self::FormsList => FORMS_LIST,
@@ -416,7 +429,9 @@ impl ManagementTool {
             | Self::ResourceGrantsGet
             | Self::ResourceGrantsCreate
             | Self::ResourceGrantsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
-            Self::ProjectsCreate => Some(ApiTokenScope::PROJECT_WRITE),
+            Self::ProjectsCreate | Self::ProjectAttributionUpdate => {
+                Some(ApiTokenScope::PROJECT_WRITE)
+            }
             Self::FormsCreate | Self::FormsRevise | Self::FormReleasesPublish => {
                 Some(ApiTokenScope::FORM_WRITE)
             }
@@ -441,6 +456,7 @@ impl ManagementTool {
             | Self::ExecutionTemplatesGet
             | Self::ExecutionTemplatesList
             | Self::ProjectsList
+            | Self::ProjectAttributionGet
             | Self::FormsGet
             | Self::FormsList
             | Self::FormReleasesGet
@@ -510,6 +526,8 @@ impl ManagementTool {
     pub(super) const fn resource_binding(self) -> Option<ManagementResourceBinding> {
         match self {
             Self::EnvironmentsCreate
+            | Self::ProjectAttributionGet
+            | Self::ProjectAttributionUpdate
             | Self::ExecutionTemplatesCreate
             | Self::ExecutionTemplatesGet
             | Self::ExecutionTemplatesList
@@ -740,6 +758,18 @@ impl ManagementTool {
                 "List projects in the authenticated organization.",
                 empty_schema(),
                 true,
+            ),
+            Self::ProjectAttributionGet => (
+                "Get project attribution",
+                "Get the current or one exact immutable attribution profile for a tenant-authorized project.",
+                get_project_attribution_schema(),
+                true,
+            ),
+            Self::ProjectAttributionUpdate => (
+                "Update project attribution",
+                "Create one immutable non-monetary attribution profile and move the project pointer with optimistic concurrency.",
+                update_project_attribution_schema(),
+                false,
             ),
             Self::FormsCreate => (
                 "Create Form draft",
@@ -1188,6 +1218,59 @@ fn project_id_schema() -> Value {
             "projectId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn get_project_attribution_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "attributionProfileId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn update_project_attribution_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "businessOwnerReference": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": BUSINESS_OWNER_REFERENCE_MAX_CHARS
+            },
+            "costAttributionCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": COST_ATTRIBUTION_CODE_MAX_CHARS
+            },
+            "labels": {
+                "type": "object",
+                "maxProperties": PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
+                "propertyNames": {
+                    "maxLength": PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS,
+                    "pattern": "^[a-z][a-z0-9._-]*$"
+                },
+                "additionalProperties": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS
+                }
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "expectedVersion",
+            "businessOwnerReference",
+            "idempotencyKey"
+        ],
         "additionalProperties": false
     })
 }

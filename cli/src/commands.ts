@@ -16,6 +16,7 @@ import {
   requireListCommand,
   requireMutationCommand,
   requireReadCommand,
+  requireVersionedMutationCommand,
 } from './command-options';
 import type { CloudContext } from './context';
 import {
@@ -52,6 +53,8 @@ import {
   organizationMutationResult,
   organizationsResult,
   projectMutationResult,
+  projectAttributionMutationResult,
+  projectAttributionResult,
   projectsResult,
   retryBuildRunResult,
   routeResult,
@@ -91,6 +94,7 @@ export async function executeCommand(
   rejectMisplacedIdentityOptions(command, arguments_);
   rejectMisplacedNodeOptions(command, arguments_);
   rejectMisplacedAuditOptions(command, arguments_);
+  rejectMisplacedProjectAttributionOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -219,6 +223,50 @@ export async function executeCommand(
       const mutation = requireNamedMutationCommand(arguments_, 'projects create <name>');
       return projectMutationResult(
         await cloudApi().createProject(requireOrganization(context), mutation.name, mutation.idempotencyKey)
+      );
+    }
+    case 'project-attribution get': {
+      if (positionals.length !== 2 && positionals.length !== 3) {
+        throw usageError('usage: a3s-cloud project-attribution get [profile-id]');
+      }
+      requireReadCommand(
+        arguments_,
+        'project-attribution get [profile-id]',
+        positionals.length
+      );
+      const organizationId = requireOrganization(context);
+      const projectId = requireProject(context);
+      const profileId =
+        positionals.length === 3
+          ? positionalUuid(positionals, 2, 'project attribution profile ID')
+          : undefined;
+      return projectAttributionResult(
+        profileId
+          ? await cloudApi().getProjectAttributionRevision(organizationId, projectId, profileId)
+          : await cloudApi().getProjectAttribution(organizationId, projectId)
+      );
+    }
+    case 'project-attribution update': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        3,
+        'project-attribution update <business-owner-reference>',
+        'project attribution'
+      );
+      return projectAttributionMutationResult(
+        await cloudApi().updateProjectAttribution(
+          requireOrganization(context),
+          requireProject(context),
+          {
+            businessOwnerReference: positionals[2] as string,
+            ...(arguments_.costAttributionCode === undefined
+              ? {}
+              : { costAttributionCode: arguments_.costAttributionCode }),
+            labels: parseProjectAttributionLabels(arguments_.projectAttributionLabels),
+          },
+          mutation.expectedVersion,
+          mutation.idempotencyKey
+        )
       );
     }
     case 'environments list':
@@ -515,6 +563,37 @@ export async function executeCommand(
     default:
       throw usageError('unsupported command; run a3s-cloud --help');
   }
+}
+
+function rejectMisplacedProjectAttributionOptions(
+  command: string,
+  arguments_: ParsedArguments
+): void {
+  if (
+    command !== 'project-attribution update' &&
+    (arguments_.costAttributionCode !== undefined ||
+      arguments_.projectAttributionLabels.length > 0)
+  ) {
+    throw usageError(
+      '--cost-attribution-code and --label are valid only for project-attribution update'
+    );
+  }
+}
+
+function parseProjectAttributionLabels(values: readonly string[]): Record<string, string> {
+  const labels: Record<string, string> = {};
+  for (const pair of values) {
+    const separator = pair.indexOf('=');
+    if (separator < 1 || separator === pair.length - 1) {
+      throw usageError('--label must use a non-empty key=value pair');
+    }
+    const key = pair.slice(0, separator);
+    if (Object.hasOwn(labels, key)) {
+      throw usageError(`project attribution label ${JSON.stringify(key)} is duplicated`);
+    }
+    labels[key] = pair.slice(separator + 1);
+  }
+  return labels;
 }
 
 function requireNamedMutationCommand(

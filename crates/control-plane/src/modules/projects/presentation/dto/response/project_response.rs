@@ -10,6 +10,7 @@ pub struct ProjectResponse {
     pub id: Uuid,
     pub name: String,
     pub aggregate_version: u64,
+    pub current_attribution_profile_id: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub replayed: bool,
 }
@@ -21,6 +22,10 @@ impl From<CreateProjectResult> for ProjectResponse {
             id: result.project.id.as_uuid(),
             name: result.project.name.as_str().to_owned(),
             aggregate_version: result.project.aggregate_version,
+            current_attribution_profile_id: result
+                .project
+                .current_attribution_profile_id
+                .map(|id| id.as_uuid()),
             created_at: result.project.created_at,
             replayed: result.replayed,
         }

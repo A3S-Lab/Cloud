@@ -22,6 +22,8 @@ import type {
   Organization,
   OrganizationMutationResult,
   Project,
+  ProjectAttributionMutationResult,
+  ProjectAttributionProfile,
   ProjectMutationResult,
   RetryBuildRunResult,
   Route,
@@ -118,6 +120,7 @@ const PROJECT_COLUMNS: readonly TableColumn<Project>[] = [
   { header: 'ID', value: (row) => row.id },
   { header: 'NAME', value: (row) => row.name },
   { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'ATTRIBUTION', value: (row) => row.currentAttributionProfileId },
   { header: 'CREATED AT', value: (row) => row.createdAt },
 ];
 
@@ -127,6 +130,41 @@ export function projectsResult(rows: Project[]): CommandResult {
 
 export function projectMutationResult(row: ProjectMutationResult): CommandResult {
   return singleResult(row, [...PROJECT_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]);
+}
+
+const PROJECT_ATTRIBUTION_COLUMNS: readonly TableColumn<ProjectAttributionProfile>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'PREVIOUS', value: (row) => row.previousProfileId },
+  { header: 'BUSINESS OWNER', value: (row) => row.businessOwnerReference },
+  { header: 'COST CODE', value: (row) => row.costAttributionCode },
+  {
+    header: 'LABELS',
+    value: (row) =>
+      Object.entries(row.labels)
+        .map(([key, value]) => `${key}=${value}`)
+        .join(','),
+  },
+  { header: 'CREATED BY', value: (row) => row.createdBy },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+export function projectAttributionResult(row: ProjectAttributionProfile): CommandResult {
+  return singleResult(row, PROJECT_ATTRIBUTION_COLUMNS);
+}
+
+export function projectAttributionMutationResult(
+  row: ProjectAttributionMutationResult
+): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [{ ...row.attributionProfile, replayed: row.replayed }],
+      [
+        ...PROJECT_ATTRIBUTION_COLUMNS,
+        { header: 'REPLAYED', value: (value) => value.replayed },
+      ]
+    ),
+  };
 }
 
 const ENVIRONMENT_COLUMNS: readonly TableColumn<Environment>[] = [

@@ -71,6 +71,13 @@ Node `ready`, `drain`, and `revoke` additionally require
 sent as the existing optimistic-concurrency precondition; Cloud rejects stale
 versions instead of applying a blind lifecycle transition.
 
+`project-attribution get [profile-id]` reads the current or one exact immutable
+profile in the selected Project. `project-attribution update <owner>` requires
+`--expected-version` and `--idempotency-key`; it accepts an optional
+`--cost-attribution-code` and repeatable `--label=key=value`. The CLI performs
+bounded transport validation through the maintained client and never derives
+ownership, billing, or usage truth locally.
+
 `ontologies revise` also requires a positive `--expected-version`. A breaking
 object, relation, or rule change additionally requires
 `--migration-rule=<target-rule-id>` naming an exact rule of kind `migration`
@@ -206,6 +213,8 @@ resource-grants create <membership-id> <project PROJECT_ID | environment PROJECT
 resource-grants revoke <resource-grant-id> --expected-version=<version>
 projects list
 projects create <name>
+project-attribution get [profile-id]
+project-attribution update <owner> --expected-version=<version> [--cost-attribution-code=<code>] [--label=<key=value> ...]
 environments list
 environments create <name>
 ontologies list
