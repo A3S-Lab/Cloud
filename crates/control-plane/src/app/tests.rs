@@ -79,6 +79,7 @@ mod execution_tests;
 mod forms_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
+mod oidc_tests;
 mod ontology_tests;
 mod operation_tests;
 mod platform_tests;
@@ -464,6 +465,7 @@ struct TestRuntimeRepositories {
     operations: Option<Arc<InMemoryOperationRepository>>,
     human_tasks: Option<Arc<TestHumanTaskRepository>>,
     audit_records: Option<Arc<InMemoryAuditRecordRepository>>,
+    oidc_provider: Option<Arc<dyn IOidcProviderService>>,
 }
 
 #[async_trait::async_trait]
@@ -1101,6 +1103,33 @@ fn build_test_application(
     )
 }
 
+fn build_test_application_with_oidc_provider(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    oidc_provider: Arc<dyn IOidcProviderService>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            oidc_provider: Some(oidc_provider),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
 fn build_test_application_with_edge(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -1198,6 +1227,7 @@ fn build_test_application_with_execution_and_operation_repositories(
             operations: Some(operations),
             human_tasks: None,
             audit_records: None,
+            oidc_provider: None,
         },
     )
 }
@@ -1564,6 +1594,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         operations,
         human_tasks,
         audit_records,
+        oidc_provider,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -1622,6 +1653,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             memberships: identity.clone(),
             membership_invitations: identity.clone(),
             resource_grants: identity.clone(),
+            oidc_identity: identity.clone(),
+            oidc_provider: oidc_provider.unwrap_or(Arc::new(
+                OpenIdConnectProviderService::new(&[]).map_err(BootError::Internal)?,
+            )),
             resource_authorization_decisions: identity,
             projects: projects.clone(),
             environments: projects,

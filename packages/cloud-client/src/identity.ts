@@ -14,6 +14,28 @@ export interface ApiTokenMutationResult extends ApiToken {
   replayed: boolean;
 }
 
+export interface OidcAuthorizationStart {
+  authorizationUrl: string;
+}
+
+export interface OidcLinkResult {
+  kind: 'linked';
+  linkId: string;
+  providerKey: string;
+  principalId: string;
+  aggregateVersion: number;
+  createdAt: string;
+  lastVerifiedAt: string;
+}
+
+export interface OidcLoginResult {
+  kind: 'login';
+  token: ApiToken;
+  credential: string;
+}
+
+export type OidcCallbackResult = OidcLinkResult | OidcLoginResult;
+
 export interface CreateApiTokenInput {
   name: string;
   token: string;

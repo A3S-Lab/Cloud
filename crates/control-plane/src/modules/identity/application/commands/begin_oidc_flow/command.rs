@@ -19,6 +19,7 @@ impl Command for BeginOidcFlow {
 
 pub struct BeginOidcFlowResult {
     pub authorization_url: String,
+    pub state: Zeroizing<String>,
     pub nonce: Zeroizing<String>,
     pub pkce_verifier: Zeroizing<String>,
     pub expires_at: DateTime<Utc>,

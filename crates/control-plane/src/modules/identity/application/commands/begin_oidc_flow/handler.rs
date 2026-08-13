@@ -127,6 +127,7 @@ impl CommandHandler<BeginOidcFlow> for BeginOidcFlowHandler {
             };
             Ok(Ok(BeginOidcFlowResult {
                 authorization_url: authorization.authorization_url,
+                state,
                 nonce,
                 pkce_verifier,
                 expires_at: flow.expires_at,

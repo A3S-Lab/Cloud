@@ -237,10 +237,17 @@ canonical action names, RFC 3339 time bounds, the opaque cursor, and the
 audit metadata and a next cursor; it cannot expose the shared record's
 unstructured `details` or create a client-side audit store.
 
-`createMembership` is the single Principal-plus-Membership mutation in REST
-contract `1.27.0`. Callers choose the closed `human` or `service` Principal
+`createMembership` is the single Principal-plus-Membership mutation retained in
+REST contract `1.28.0`. Callers choose the closed `human` or `service` Principal
 kind explicitly; the client does not expose a second service-only creation
 method or infer human identity from a credential.
+
+`oidcLoginUrl` builds the public organization-scoped login entry point, while
+`beginOidcLink` uses the authenticated `cloud:read` transport and
+`credentials: include` to receive callback-only HttpOnly cookies plus the
+provider `authorizationUrl`. The browser navigates to that URL. The client
+does not read nonce/PKCE cookies, persist an OIDC session, place a Cloud
+credential in a URL, or infer Membership authority from provider claims.
 
 `createDomainClaim`, `verifyDomainClaim`, and `revokeDomainClaim` return the
 complete DomainClaim projection with its durable `replayed` flag.

@@ -83,6 +83,7 @@ import type {
   MembershipRole,
   Node,
   NodePool,
+  OidcAuthorizationStart,
   Ontology,
   OntologyDiff,
   OntologyMutationResult,
@@ -183,7 +184,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.27.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.28.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -279,6 +280,25 @@ export class CloudApi {
 
   listOrganizations(signal?: AbortSignal): Promise<Organization[]> {
     return this.get('/organizations', signal);
+  }
+
+  oidcLoginUrl(organizationId: string, providerKey: string): string {
+    validateOidcProviderKey(providerKey);
+    const query = new URLSearchParams({ organization_id: organizationId });
+    return `${this.baseUrl}/identity/oidc/${encodeURIComponent(providerKey)}/login?${query.toString()}`;
+  }
+
+  beginOidcLink(
+    organizationId: string,
+    providerKey: string,
+    signal?: AbortSignal
+  ): Promise<OidcAuthorizationStart> {
+    validateOidcProviderKey(providerKey);
+    return this.request(
+      'POST',
+      `/organizations/${encodeURIComponent(organizationId)}/identity/oidc/${encodeURIComponent(providerKey)}/link`,
+      { credentials: 'include', signal }
+    );
   }
 
   createOrganization(
@@ -2713,6 +2733,7 @@ export class CloudApi {
       idempotencyKey?: string;
       signal?: AbortSignal;
       additionalHeaders?: Readonly<Record<string, string>>;
+      credentials?: RequestCredentials;
     }
   ): Promise<T> {
     if (options.idempotencyKey !== undefined && !isValidIdempotencyKey(options.idempotencyKey)) {
@@ -2752,6 +2773,7 @@ export class CloudApi {
         method,
         headers,
         body: options.body,
+        ...(options.credentials ? { credentials: options.credentials } : {}),
         signal: controller.signal,
       });
       return options.healthResponse ? await readHealthResponse<T>(response) : await readResponse<T>(response);
@@ -2770,6 +2792,14 @@ export class CloudApi {
       clearTimeout(timeout);
       options.signal?.removeEventListener('abort', abortFromCaller);
     }
+  }
+}
+
+function validateOidcProviderKey(value: string): void {
+  if (!/^[a-z](?:[a-z0-9_-]{0,61}[a-z0-9])?$/.test(value)) {
+    throw new TypeError(
+      'OIDC provider key must use 1 to 63 lowercase letters, digits, hyphens, or underscores'
+    );
   }
 }
 

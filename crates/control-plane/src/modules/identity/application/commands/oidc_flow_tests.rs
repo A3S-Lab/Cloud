@@ -249,13 +249,8 @@ impl Fixture {
             .await
             .expect("begin command")
             .expect("begin flow");
-        let authorization = url::Url::parse(&result.authorization_url).expect("authorization URL");
-        let state = authorization
-            .query_pairs()
-            .find_map(|(name, value)| (name == "state").then(|| value.into_owned()))
-            .expect("authorization state");
         FlowMaterial {
-            state: Zeroizing::new(state),
+            state: result.state,
             nonce: result.nonce,
             pkce_verifier: result.pkce_verifier,
         }

@@ -40,6 +40,10 @@ pub(super) fn describe_operation(
             json!([{ "bearerAuth": [] }])
         },
     );
+    if let Some(description) = oidc_operation_description(method, path) {
+        operation.insert("description".into(), json!(description));
+        operation.insert("x-a3s-oauth-cookie-bound".into(), json!(true));
+    }
 
     describe_parameters(operation, method, path)?;
     describe_request_body(operation, method, path);
@@ -70,6 +74,16 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
             parameter.insert(
                 "schema".into(),
                 json!({ "type": "string", "format": "uuid" }),
+            );
+        } else if parameter.get("name").and_then(Value::as_str) == Some("provider_key") {
+            parameter.insert(
+                "schema".into(),
+                json!({
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 63,
+                    "pattern": "^[a-z](?:[a-z0-9_-]{0,61}[a-z0-9])?$"
+                }),
             );
         } else if parameter.get("name").and_then(Value::as_str) == Some("version") {
             parameter.insert("schema".into(), json!({ "type": "integer", "minimum": 1 }));
@@ -387,6 +401,47 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
                 json!({
                     "name": name, "in": "query", "required": false,
                     "schema": { "type": "string" }
+                }),
+            );
+        }
+    }
+    if path == "/identity/oidc/{provider_key}/login" {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "organization_id",
+                "in": "query",
+                "required": true,
+                "description": "Organization context for the short-lived interactive credential.",
+                "schema": { "type": "string", "format": "uuid" }
+            }),
+        );
+    }
+    if path == "/identity/oidc/{provider_key}/callback" {
+        for (name, required, schema) in [
+            (
+                "code",
+                false,
+                json!({ "type": "string", "minLength": 1, "maxLength": 2048 }),
+            ),
+            (
+                "state",
+                true,
+                json!({ "type": "string", "minLength": 43, "maxLength": 43 }),
+            ),
+            (
+                "error",
+                false,
+                json!({ "type": "string", "maxLength": 2048 }),
+            ),
+        ] {
+            upsert_parameter(
+                parameters,
+                json!({
+                    "name": name,
+                    "in": "query",
+                    "required": required,
+                    "schema": schema
                 }),
             );
         }
@@ -723,6 +778,9 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
 }
 
 fn success_statuses(method: &str, path: &str) -> Vec<u16> {
+    if path == "/identity/oidc/{provider_key}/login" {
+        return vec![303];
+    }
     if path == "/source-connections/github/setup" {
         return vec![303];
     }
@@ -796,6 +854,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("memberships")
         || path.contains("membership-invitations")
         || path.contains("resource-grants")
+        || path.contains("/identity/oidc")
     {
         "Identity"
     } else if path.starts_with("/node-control")
@@ -856,6 +915,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             || path.starts_with("/organizations/")
             || path.ends_with("/membership-invitations/{invitation_id}/acceptance"))
         && !path.ends_with("/source-connections/github")
+        && !path.ends_with("/identity/oidc/{provider_key}/link")
         && !is_human_task_submission_path(path)
         && !is_plugin_catalog_read_path(path)
         && !is_asset_git_path(path)
@@ -910,9 +970,25 @@ fn request_has_no_body(path: &str) -> bool {
         || path.ends_with("/agent-conversations")
         || (path.contains("/agent-executions/") && path.ends_with("/cancel"))
         || path.ends_with("/source-connections/github")
+        || path.ends_with("/identity/oidc/{provider_key}/link")
         || is_form_release_mutation_path(path)
         || is_human_task_assignment_mutation_path(path)
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
+}
+
+fn oidc_operation_description(method: &str, path: &str) -> Option<&'static str> {
+    match (method, path) {
+        ("get", "/identity/oidc/{provider_key}/login") => Some(
+            "Starts a public OIDC login and redirects to the configured provider. State, nonce, and S256 PKCE bind the one-time flow; nonce and verifier are held only in Secure HttpOnly callback cookies.",
+        ),
+        ("post", "/organizations/{organization_id}/identity/oidc/{provider_key}/link") => Some(
+            "Starts an authenticated human-principal OIDC link flow. Returns the provider authorization URL and sets Secure HttpOnly callback cookies; the caller should navigate the browser to authorizationUrl.",
+        ),
+        ("get", "/identity/oidc/{provider_key}/callback") => Some(
+            "Completes one OIDC login or link flow using the query state and callback-only HttpOnly cookies. Login credentials are returned once in JSON and never placed in a redirect URL.",
+        ),
+        _ => None,
+    }
 }
 
 fn asynchronous_mutation(path: &str) -> bool {

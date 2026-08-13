@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.27.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.28.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -63,6 +63,35 @@ describe('CloudApi', () => {
       })
     );
     expect(String(calls[0]?.[0])).not.toContain('a3s_secret');
+  });
+
+  it('starts browser-safe OIDC login and link flows without exposing credentials in URLs', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ authorizationUrl: 'https://identity.example.test/authorize?state=opaque' });
+    };
+    const api = new CloudApi('caller-secret', '/api/v1', { fetch: fetcher });
+
+    expect(api.oidcLoginUrl('organization / one', 'workforce_oidc')).toBe(
+      '/api/v1/identity/oidc/workforce_oidc/login?organization_id=organization+%2F+one'
+    );
+    const started = await api.beginOidcLink('organization / one', 'workforce_oidc');
+
+    expect(started.authorizationUrl).toContain('identity.example.test');
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/identity/oidc/workforce_oidc/link'
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+        headers: expect.objectContaining({ Authorization: 'Bearer caller-secret' }),
+      })
+    );
+    expect(String(calls[0]?.[0])).not.toContain('caller-secret');
+    expect(() => api.oidcLoginUrl('organization', 'Workforce')).toThrow('OIDC provider key');
   });
 
   it('reads public platform and health diagnostics without requiring an authorization header', async () => {

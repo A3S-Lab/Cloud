@@ -2,7 +2,6 @@ mod github_connection_callbacks_controller;
 mod github_connections_controller;
 mod github_repository_subscription_queries_controller;
 mod github_repository_subscriptions_controller;
-mod github_response_security;
 mod github_webhooks_controller;
 mod source_revision_queries_controller;
 mod source_revisions_controller;

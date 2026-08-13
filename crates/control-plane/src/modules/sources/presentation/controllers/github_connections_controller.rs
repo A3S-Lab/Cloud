@@ -1,14 +1,11 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::OrganizationId;
-use crate::modules::sources::presentation::controllers::github_response_security::{
-    no_store, GithubNoStoreErrorFilter,
-};
 use crate::modules::sources::presentation::dto::{
     GithubConnectionInstallResponse, GithubConnectionResponse,
 };
 use crate::modules::sources::{BeginGithubConnection, GetGithubConnection};
-use crate::presentation::application_error_response;
+use crate::presentation::{application_error_response, oauth_no_store, OAuthNoStoreErrorFilter};
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
     AUTH_SCOPES_METADATA,
@@ -24,7 +21,7 @@ pub fn github_connections_controller(
     let begin_commands = commands;
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
-        .with_filter(GithubNoStoreErrorFilter)
+        .with_filter(OAuthNoStoreErrorFilter)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::SOURCE_WRITE])?
         .post(
             "/{organization_id}/source-connections/github",
@@ -41,11 +38,13 @@ pub fn github_connections_controller(
                         })
                         .await?
                     {
-                        Ok(result) => Ok(no_store(BootResponse::json_with_status(
+                        Ok(result) => Ok(oauth_no_store(BootResponse::json_with_status(
                             201,
                             &GithubConnectionInstallResponse::from(result),
                         )?)),
-                        Err(error) => Ok(no_store(application_error_response(error, request_id)?)),
+                        Err(error) => Ok(oauth_no_store(application_error_response(
+                            error, request_id,
+                        )?)),
                     }
                 }
             },
@@ -62,10 +61,12 @@ pub fn github_connections_controller(
                         .execute(GetGithubConnection { organization_id })
                         .await?
                     {
-                        Ok(connection) => Ok(no_store(BootResponse::json(
+                        Ok(connection) => Ok(oauth_no_store(BootResponse::json(
                             &GithubConnectionResponse::from(connection),
                         )?)),
-                        Err(error) => Ok(no_store(application_error_response(error, request_id)?)),
+                        Err(error) => Ok(oauth_no_store(application_error_response(
+                            error, request_id,
+                        )?)),
                     }
                 }
             },

@@ -130,6 +130,33 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 && parameter["in"] == "header"
                 && parameter["required"] == true
         })));
+    let oidc_login = &document["paths"]["/identity/oidc/{provider_key}/login"]["get"];
+    assert_eq!(oidc_login["tags"], json!(["Identity"]));
+    assert_eq!(oidc_login["security"], json!([]));
+    assert!(oidc_login["responses"]["303"].is_object());
+    assert_eq!(oidc_login["x-a3s-oauth-cookie-bound"], true);
+    assert!(oidc_login["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "organization_id"
+                && parameter["in"] == "query"
+                && parameter["required"] == true
+                && parameter["schema"]["format"] == "uuid"
+        })));
+    let oidc_link = &document["paths"]
+        ["/organizations/{organization_id}/identity/oidc/{provider_key}/link"]["post"];
+    assert_eq!(oidc_link["tags"], json!(["Identity"]));
+    assert!(oidc_link["responses"]["200"].is_object());
+    assert!(oidc_link.get("requestBody").is_none());
+    assert!(oidc_link["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters
+            .iter()
+            .all(|parameter| parameter["name"] != "idempotency-key")));
+    let oidc_callback = &document["paths"]["/identity/oidc/{provider_key}/callback"]["get"];
+    assert_eq!(oidc_callback["security"], json!([]));
+    assert!(oidc_callback["responses"]["200"].is_object());
+    assert_eq!(oidc_callback["x-a3s-oauth-cookie-bound"], true);
     let membership =
         &document["paths"]["/organizations/{organization_id}/memberships/{membership_id}"];
     assert_eq!(membership["get"]["tags"], json!(["Identity"]));

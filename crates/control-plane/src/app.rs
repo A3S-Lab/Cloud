@@ -91,17 +91,20 @@ use crate::modules::forms::{
 };
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IMembershipInvitationRepository, IMembershipRepository,
-    IOrganizationRepository, IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    IOidcIdentityRepository, IOrganizationRepository, IResourceAuthorizationDecisionRepository,
+    IResourceGrantRepository,
 };
+use crate::modules::identity::domain::services::IOidcProviderService;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::infrastructure::ApiTokenVerifier;
 use crate::modules::identity::{
-    AcceptMembershipInvitationHandler, BootstrapIdentityHandler, ChangeMembershipRoleHandler,
-    CreateApiTokenHandler, CreateMembershipHandler, CreateMembershipInvitationHandler,
-    CreateOrganizationHandler, CreateResourceGrantHandler, GetApiTokenHandler,
-    GetMembershipHandler, GetMembershipInvitationHandler, GetResourceGrantHandler, IdentityModule,
-    ListApiTokensHandler, ListMembershipInvitationsHandler, ListMembershipsHandler,
-    ListMyMembershipInvitationsHandler, ListOrganizationsHandler, ListResourceGrantsHandler,
+    AcceptMembershipInvitationHandler, BeginOidcFlowHandler, BootstrapIdentityHandler,
+    ChangeMembershipRoleHandler, CompleteOidcFlowHandler, CreateApiTokenHandler,
+    CreateMembershipHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
+    CreateResourceGrantHandler, GetApiTokenHandler, GetMembershipHandler,
+    GetMembershipInvitationHandler, GetResourceGrantHandler, IdentityModule, ListApiTokensHandler,
+    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
+    ListOrganizationsHandler, ListResourceGrantsHandler, OpenIdConnectProviderService,
     PostgresIdentityRepository, RevokeApiTokenHandler, RevokeMembershipHandler,
     RevokeMembershipInvitationHandler, RevokeResourceGrantHandler,
 };
@@ -307,6 +310,11 @@ pub async fn build_application_with_source_resolver(
     let memberships: Arc<dyn IMembershipRepository> = identity.clone();
     let membership_invitations: Arc<dyn IMembershipInvitationRepository> = identity.clone();
     let resource_grants: Arc<dyn IResourceGrantRepository> = identity.clone();
+    let oidc_identity: Arc<dyn IOidcIdentityRepository> = identity.clone();
+    let oidc_provider: Arc<dyn IOidcProviderService> = Arc::new(
+        OpenIdConnectProviderService::new(&config.auth.oidc_providers)
+            .map_err(ControlPlaneStartupError::Auth)?,
+    );
     let resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository> =
         identity;
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
@@ -988,6 +996,8 @@ pub async fn build_application_with_source_resolver(
             memberships,
             membership_invitations,
             resource_grants,
+            oidc_identity,
+            oidc_provider,
             resource_authorization_decisions,
             projects: projects.clone(),
             environments: projects,
@@ -1088,6 +1098,8 @@ struct ApplicationDependencies {
     memberships: Arc<dyn IMembershipRepository>,
     membership_invitations: Arc<dyn IMembershipInvitationRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
+    oidc_identity: Arc<dyn IOidcIdentityRepository>,
+    oidc_provider: Arc<dyn IOidcProviderService>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
@@ -1153,6 +1165,8 @@ fn build_application_with_health(
         memberships,
         membership_invitations,
         resource_grants,
+        oidc_identity,
+        oidc_provider,
         resource_authorization_decisions,
         projects,
         environments,
@@ -1306,6 +1320,10 @@ fn build_application_with_health(
     let deployment_get_operations = Arc::clone(&operations);
     let list_api_tokens = Arc::clone(&api_tokens);
     let get_api_tokens = Arc::clone(&api_tokens);
+    let begin_oidc_organizations = Arc::clone(&organizations);
+    let begin_oidc_memberships = Arc::clone(&memberships);
+    let begin_oidc_identity = Arc::clone(&oidc_identity);
+    let begin_oidc_provider = Arc::clone(&oidc_provider);
     let create_memberships = Arc::clone(&memberships);
     let change_memberships = Arc::clone(&memberships);
     let revoke_memberships = Arc::clone(&memberships);
@@ -1560,6 +1578,17 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::RevokeResourceGrant, _>(
                     RevokeResourceGrantHandler::new(revoke_resource_grants),
+                )
+                .command_handler::<crate::modules::identity::BeginOidcFlow, _>(
+                    BeginOidcFlowHandler::new(
+                        begin_oidc_organizations,
+                        begin_oidc_memberships,
+                        begin_oidc_identity,
+                        begin_oidc_provider,
+                    ),
+                )
+                .command_handler::<crate::modules::identity::CompleteOidcFlow, _>(
+                    CompleteOidcFlowHandler::new(oidc_identity, oidc_provider),
                 )
                 .command_handler::<crate::modules::projects::CreateProject, _>(
                     CreateProjectHandler::new(project_organizations, projects),
