@@ -250,6 +250,16 @@ async fn execution_template_api_is_acl_native_immutable_and_replay_safe() -> Res
     let listed = response_json(&listed)?;
     assert_eq!(listed["data"].as_array().map(Vec::len), Some(1));
     assert_eq!(listed["data"][0]["templateId"], template_id);
+    let missing_project_path = format!(
+        "/api/v1/organizations/{organization}/projects/{}/execution-templates",
+        Uuid::now_v7()
+    );
+    assert_eq!(
+        app.call(get_as(&missing_project_path, READ_ONLY_TOKEN))
+            .await?
+            .status(),
+        404
+    );
     assert_eq!(
         app.call(get_as(
             format!("{templates_path}?limit=201"),

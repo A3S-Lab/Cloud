@@ -1381,6 +1381,7 @@ fn build_application_with_health(
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let create_execution_template_projects = Arc::clone(&projects);
+    let list_execution_template_projects = Arc::clone(&projects);
     let create_execution_templates = Arc::clone(&execution_templates);
     let list_execution_templates = Arc::clone(&execution_templates);
     let get_execution_templates = execution_templates;
@@ -2040,7 +2041,10 @@ fn build_application_with_health(
                     GetExecutionHandler::new(get_executions),
                 )
                 .query_handler::<crate::modules::executions::ListExecutionTemplates, _>(
-                    ListExecutionTemplatesHandler::new(list_execution_templates),
+                    ListExecutionTemplatesHandler::new(
+                        list_execution_template_projects,
+                        list_execution_templates,
+                    ),
                 )
                 .query_handler::<crate::modules::executions::GetExecutionTemplate, _>(
                     GetExecutionTemplateHandler::new(get_execution_templates),

@@ -1,4 +1,5 @@
 use crate::modules::executions::domain::{ExecutionTemplateRevision, IExecutionTemplateRepository};
+use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ExecutionTemplateId, ExecutionTemplateRevisionId, OrganizationId, ProjectId,
@@ -68,12 +69,19 @@ impl Query for ListExecutionTemplates {
 }
 
 pub struct ListExecutionTemplatesHandler {
+    projects: Arc<dyn IProjectRepository>,
     templates: Arc<dyn IExecutionTemplateRepository>,
 }
 
 impl ListExecutionTemplatesHandler {
-    pub fn new(templates: Arc<dyn IExecutionTemplateRepository>) -> Self {
-        Self { templates }
+    pub fn new(
+        projects: Arc<dyn IProjectRepository>,
+        templates: Arc<dyn IExecutionTemplateRepository>,
+    ) -> Self {
+        Self {
+            projects,
+            templates,
+        }
     }
 }
 
@@ -86,8 +94,14 @@ impl QueryHandler<ListExecutionTemplates> for ListExecutionTemplatesHandler {
         'static,
         a3s_boot::Result<ApplicationResult<Vec<ExecutionTemplateRevision>>>,
     > {
+        let projects = Arc::clone(&self.projects);
         let templates = Arc::clone(&self.templates);
         Box::pin(async move {
+            match projects.find(query.organization_id, query.project_id).await {
+                Ok(Some(_)) => {}
+                Ok(None) => return Ok(Err(ApplicationError::NotFound("project not found".into()))),
+                Err(error) => return Ok(Err(error.into())),
+            }
             match templates
                 .list(query.organization_id, query.project_id, query.limit)
                 .await

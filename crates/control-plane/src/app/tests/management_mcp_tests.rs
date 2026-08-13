@@ -1864,6 +1864,35 @@ async fn management_mcp_reuses_the_execution_template_lifecycle() -> Result<()> 
     let missing = response_json(&missing)?;
     assert_eq!(missing["result"]["isError"], true);
     assert_eq!(missing["result"]["structuredContent"]["code"], 404);
+
+    let foreign_organization =
+        create_organization(&app, "mcp-execution-template-foreign", "Foreign").await?;
+    let foreign_project = create_project(
+        &app,
+        &foreign_organization,
+        "mcp-execution-template-foreign-project",
+        "Foreign automation",
+    )
+    .await?;
+    for (id, project_id) in [(6, foreign_project), (7, Uuid::now_v7().to_string())] {
+        let denied = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(
+                    id,
+                    "a3s_cloud_execution_templates_list",
+                    json!({"projectId": project_id}),
+                ),
+            ))
+            .await?;
+        let denied = response_json(&denied)?;
+        assert_eq!(denied["result"]["isError"], true);
+        assert_eq!(denied["result"]["structuredContent"]["code"], 404);
+        assert_eq!(
+            denied["result"]["structuredContent"]["statusCode"],
+            "NOT_FOUND"
+        );
+    }
     Ok(())
 }
 
