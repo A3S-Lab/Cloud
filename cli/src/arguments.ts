@@ -30,6 +30,12 @@ export interface ParsedArguments {
   workflowRunTimeoutSeconds?: string;
   workflowRunWaitSeconds?: string;
   reason?: string;
+  auditActorPrincipalId?: string;
+  auditAction?: string;
+  auditAggregateId?: string;
+  auditRequestId?: string;
+  auditFrom?: string;
+  auditTo?: string;
   valueStdin: boolean;
   tokenStdin: boolean;
   enrollmentTokenStdin: boolean;
@@ -71,6 +77,12 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--run-timeout-seconds': 'workflowRunTimeoutSeconds',
   '--wait-seconds': 'workflowRunWaitSeconds',
   '--reason': 'reason',
+  '--actor-principal': 'auditActorPrincipalId',
+  '--action': 'auditAction',
+  '--aggregate': 'auditAggregateId',
+  '--request-id': 'auditRequestId',
+  '--from': 'auditFrom',
+  '--to': 'auditTo',
 };
 
 export function parseArguments(argv: readonly string[]): ParsedArguments {

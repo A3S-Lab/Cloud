@@ -31,6 +31,9 @@ use crate::modules::assets::{
     ReceiveAssetGitPackHandler, RestoreAssetGitRepositoryHandler, SelectAssetReleaseHandler,
     UploadAssetGitPackHandler, YankAssetReleaseHandler,
 };
+use crate::modules::audit::{
+    AuditModule, IAuditRecordRepository, ListAuditRecordsHandler, PostgresAuditRecordRepository,
+};
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
 };
@@ -321,6 +324,8 @@ pub async fn build_application_with_source_resolver(
     let form_semantic_core: Arc<dyn IFormSemanticCore> = Arc::new(NativeFormSemanticCore::new());
     let search: Arc<dyn ISearchRepository> =
         Arc::new(PostgresSearchRepository::new(executor.clone()));
+    let audit_records: Arc<dyn IAuditRecordRepository> =
+        Arc::new(PostgresAuditRecordRepository::new(executor.clone()));
     let plugin_repository = Arc::new(PostgresPluginRegistryRepository::new(executor.clone()));
     let plugin_registries: Arc<dyn IPluginRegistryRepository> = plugin_repository.clone();
     let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> =
@@ -995,6 +1000,7 @@ pub async fn build_application_with_source_resolver(
             forms,
             form_semantic_core,
             search,
+            audit_records,
             plugin_registries,
             plugin_enrollment_authorizer,
             plugin_trust_roots,
@@ -1094,6 +1100,7 @@ struct ApplicationDependencies {
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
+    audit_records: Arc<dyn IAuditRecordRepository>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
@@ -1158,6 +1165,7 @@ fn build_application_with_health(
         forms,
         form_semantic_core,
         search,
+        audit_records,
         plugin_registries,
         plugin_enrollment_authorizer,
         plugin_trust_roots,
@@ -2004,6 +2012,9 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::search::SearchResources, _>(
                     SearchResourcesHandler::new(search),
                 )
+                .query_handler::<crate::modules::audit::ListAuditRecords, _>(
+                    ListAuditRecordsHandler::new(audit_records),
+                )
                 .query_handler::<crate::modules::assets::ListAssets, _>(
                     ListAssetsHandler::new(list_assets),
                 )
@@ -2202,6 +2213,7 @@ fn build_application_with_health(
         .import(WorkflowModule)
         .import(FormsModule)
         .import(SearchModule)
+        .import(AuditModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
         .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)

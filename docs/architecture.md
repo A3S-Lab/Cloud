@@ -230,7 +230,7 @@ second entry in an authority row must be redesigned before implementation.
 | Immutable bytes | One shared immutable-object infrastructure client with typed domain adapters | Parallel filesystem or S3 clients and untyped cross-domain blob APIs |
 | Mutable workload data and distributed volume intent | Data context plus typed `S0` provider contracts and fencing | Workflow filesystems, Agent volume managers, provider JSON as desired state, or unfenced shared writers |
 | Unified capability discovery | Search projection over exact owning-context release references | Copied release rows, a second package registry, or a catalog that can mutate source identities |
-| Audit | Shared append-only audit records | Agent, Gateway, inference, or MCP-specific audit stores |
+| Audit | Shared append-only `audit_records` plus one owner/admin-only bounded read projection | Agent, Gateway, inference, or MCP-specific audit stores, duplicate writers, or public unstructured details |
 | Security detection and investigation | `C0.3` read projections over shared audit and authorized AnySentry/OpenTelemetry evidence | A security control plane, direct telemetry enforcement, a second incident/audit store, or hidden node commands |
 | Client sequence transport | Shared cursor, gap, polling, and SSE primitives | Controller-local cursor codecs or best-effort in-memory streams |
 | Production autoscaling | The `H0.5` Workloads autoscaler | Gateway, inference backend, or metrics-provider scaling loops |

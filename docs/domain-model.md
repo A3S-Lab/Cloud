@@ -388,6 +388,12 @@ planned boundary is defined in [`inference-plan.md`](inference-plan.md).
 Coordinates long-running work with A3S Flow and maintains query projections for
 the UI. It consumes domain ports from other contexts; it does not mutate their
 tables directly. Audit records are append-only and separate from event delivery.
+The implemented `C0.3` read projection is organization-scoped, restricted to
+owners and administrators with `cloud:read`, and keyset-pages the same shared
+records by occurrence time and audit ID. It exposes only typed actor, action,
+aggregate, occurrence, and request metadata; unstructured internal details
+remain private. REST, CLI, and Management MCP all call the same query handler
+and no second audit store, writer, or authorization mechanism exists.
 An Operation subject is a polymorphic reference, not a copied ownership record.
 The current query adapter recognizes the production subject kinds `workload`,
 `deployment`, `build_run`, `execution`, `agent_execution`, and `workflow_run`

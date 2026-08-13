@@ -35,5 +35,6 @@ export {
   validateExecutionTemplateAcl,
 } from './api';
 export * from './diagnostics';
+export * from './audit';
 export * from './search';
 export * from './types';

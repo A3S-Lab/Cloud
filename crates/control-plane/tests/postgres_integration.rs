@@ -13,6 +13,9 @@ use a3s_cloud_control_plane::modules::assets::{
     CreateAssetWrite, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
     LocalAssetGitRepository, PostgresAssetRepository,
 };
+use a3s_cloud_control_plane::modules::audit::{
+    AuditRecordCursor, AuditRecordFilter, IAuditRecordRepository, PostgresAuditRecordRepository,
+};
 use a3s_cloud_control_plane::modules::integration_events::{
     A3sEventPublisher, OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
@@ -288,6 +291,142 @@ async fn postgres_membership_invitations_are_atomic_exact_and_immutable() {
     )
     .await
     .expect("PostgreSQL membership invitation authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_audit_query_is_tenant_scoped_filtered_and_keyset_paginated() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_postgres_audit_query)
+        .await
+        .expect("PostgreSQL tenant audit query gate");
+}
+
+async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let repository = PostgresAuditRecordRepository::new(executor);
+    let organization_id = OrganizationId::new();
+    let hidden_organization_id = OrganizationId::new();
+    let actor_id = Uuid::now_v7();
+    let request_id = Uuid::now_v7();
+    let now = Utc::now();
+    for (organization_id, name) in [
+        (organization_id, "Audit tenant"),
+        (hidden_organization_id, "Hidden audit tenant"),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+                )
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(name)
+                .append(", ")
+                .bind(name.to_ascii_lowercase().replace(' ', "-"))
+                .append(", 1, ")
+                .bind(now)
+                .append(")"),
+            )
+            .await?;
+    }
+    let mut expected = Vec::new();
+    for index in 0..3 {
+        let audit_id = Uuid::now_v7();
+        let action = if index == 1 {
+            "identity.membership.revoked"
+        } else {
+            "identity.membership.created"
+        };
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+                )
+                .bind(audit_id)
+                .append(", ")
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(actor_id)
+                .append(", ")
+                .bind(action)
+                .append(", ")
+                .bind(Uuid::now_v7())
+                .append(", ")
+                .bind(now + chrono::Duration::seconds(index))
+                .append(", ")
+                .bind(request_id)
+                .append(", '{\"private\":\"must-not-be-projected\"}'::jsonb)"),
+            )
+            .await?;
+        expected.push(audit_id);
+    }
+    let hidden_id = Uuid::now_v7();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into audit_records (audit_id, organization_id, actor_id, action, aggregate_id, occurred_at, request_id, details) values (",
+            )
+            .bind(hidden_id)
+            .append(", ")
+            .bind(hidden_organization_id.as_uuid())
+            .append(", null, 'identity.membership.created', ")
+            .bind(Uuid::now_v7())
+            .append(", ")
+            .bind(now + chrono::Duration::seconds(10))
+            .append(", ")
+            .bind(request_id)
+            .append(", '{}'::jsonb)"),
+        )
+        .await?;
+
+    let filter = AuditRecordFilter {
+        actor_principal_id: Some(
+            a3s_cloud_control_plane::modules::shared_kernel::domain::PrincipalId::from_uuid(
+                actor_id,
+            ),
+        ),
+        request_id: Some(request_id),
+        ..AuditRecordFilter::default()
+    };
+    let first = repository
+        .list_page(organization_id, &filter, None, 2)
+        .await?;
+    assert_eq!(
+        first.iter().map(|record| record.id).collect::<Vec<_>>(),
+        vec![expected[2], expected[1]]
+    );
+    assert!(first.iter().all(|record| record.id != hidden_id));
+    let second = repository
+        .list_page(
+            organization_id,
+            &filter,
+            Some(AuditRecordCursor::after(&first[1])),
+            2,
+        )
+        .await?;
+    assert_eq!(
+        second.iter().map(|record| record.id).collect::<Vec<_>>(),
+        vec![expected[0]]
+    );
+    let exact = repository
+        .list_page(
+            organization_id,
+            &AuditRecordFilter {
+                action: Some("identity.membership.revoked".into()),
+                from: Some(now),
+                to: Some(now + chrono::Duration::seconds(2)),
+                ..AuditRecordFilter::default()
+            },
+            None,
+            200,
+        )
+        .await?;
+    assert_eq!(exact.len(), 1);
+    assert_eq!(exact[0].id, expected[1]);
+    Ok(())
 }
 
 async fn exercise_postgres_replica_set_foundation(

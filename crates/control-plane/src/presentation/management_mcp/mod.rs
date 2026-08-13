@@ -1,5 +1,6 @@
 mod arguments;
 mod artifacts;
+mod audit;
 mod catalog;
 mod dispatch;
 mod edge;

@@ -37,7 +37,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.25.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.26.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2060,6 +2060,66 @@ describe('CloudApi', () => {
         body: JSON.stringify({ expectedVersion: 2 }),
       }),
     ]);
+  });
+
+  it('queries bounded tenant audit records with canonical filters and cursor pagination', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ records: [], nextCursor: null });
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    await api.listAuditRecords('organization / one', {
+      actorPrincipalId: '019c0000-0000-7000-8000-000000000032',
+      action: 'identity.membership.created',
+      aggregateId: '019c0000-0000-7000-8000-000000000033',
+      requestId: '019c0000-0000-7000-8000-000000000034',
+      from: '2026-08-12T00:00:00Z',
+      to: '2026-08-13T00:00:00Z',
+      cursor: 'v1:1786579200000000:019c0000-0000-7000-8000-000000000035',
+      limit: 25,
+    });
+    expect(calls[0]?.[0]).toBe(
+      '/api/v1/organizations/organization%20%2F%20one/audit-records?' +
+        'actorPrincipalId=019c0000-0000-7000-8000-000000000032&' +
+        'aggregateId=019c0000-0000-7000-8000-000000000033&' +
+        'requestId=019c0000-0000-7000-8000-000000000034&' +
+        'action=identity.membership.created&from=2026-08-12T00%3A00%3A00Z&' +
+        'to=2026-08-13T00%3A00%3A00Z&' +
+        'cursor=v1%3A1786579200000000%3A019c0000-0000-7000-8000-000000000035&limit=25'
+    );
+  });
+
+  it('rejects invalid audit query values before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({ records: [], nextCursor: null });
+      },
+    });
+    expect(() => api.listAuditRecords('organization', { actorPrincipalId: 'not-a-uuid' })).toThrow(
+      'audit actorPrincipalId must be a non-nil UUID'
+    );
+    expect(() => api.listAuditRecords('organization', { action: 'Invalid action' })).toThrow(
+      'audit action must use bounded lowercase dot-separated segments'
+    );
+    expect(() => api.listAuditRecords('organization', { action: 'identity.membership.created\n' })).toThrow(
+      'audit action must use bounded lowercase dot-separated segments'
+    );
+    expect(() => api.listAuditRecords('organization', { cursor: '' })).toThrow(
+      'audit record cursor is invalid'
+    );
+    expect(() => api.listAuditRecords('organization', { limit: 201 })).toThrow(
+      'audit record limit must be between 1 and 200'
+    );
+    expect(() =>
+      api.listAuditRecords('organization', {
+        from: '2026-08-14T00:00:00Z',
+        to: '2026-08-13T00:00:00Z',
+      })
+    ).toThrow('audit from timestamp must not exceed to timestamp');
+    expect(called).toBe(false);
   });
 
   it('rejects invalid membership invitation input before transport', () => {

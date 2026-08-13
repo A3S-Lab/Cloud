@@ -104,7 +104,7 @@ baseline reads; `cloud:read` lets a `token:write` issuer create a token with no
 mutation capability without granting a new resource read. Existing mutation
 scopes control mutation tool visibility and invocation independently:
 
-| Tool | Kind | Required mutation scope |
+| Tool | Kind | Required scope |
 | --- | --- | --- |
 | `a3s_cloud_projects_list` | Query | None |
 | `a3s_cloud_environments_list` | Query | None |
@@ -130,6 +130,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_audit_records_list` | Administrator query | `cloud:read` plus organization administrator role |
 | `a3s_cloud_ontologies_list` | Query | None |
 | `a3s_cloud_ontologies_get` | Query | None |
 | `a3s_cloud_ontology_revisions_list` | Query | None |
@@ -462,12 +463,14 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 83-tool administrator and 48-tool
+current focused source runner requires exact 84-tool administrator and 49-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
-record; and returns the same `404` business-error contract for foreign and
-missing Projects. It also creates an Ontology through REST, replays it through
+record; returns the same `404` business-error contract for foreign and missing
+Projects; and queries the shared tenant audit history with the read-only
+administrator token while proving the response omits internal `details`. It
+also creates an Ontology through REST, replays it through
 MCP, exercises all seven Ontology tools with a read-only token where
 applicable, rejects a breaking revision without its target migration rule,
 publishes the explicit migration, and proves historical replay after later

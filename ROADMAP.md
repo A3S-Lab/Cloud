@@ -844,7 +844,7 @@ not introduce a second scheduler.
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
-| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, Outbox/audit, and REST/OpenAPI/client/CLI/Management MCP parity are implemented as the backend foundation. External OIDC links, attribution, tenant-scoped security investigation, notification, and audit-query interfaces remain planned; the role-focused console projection remains deferred |
+| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, Outbox/audit, and one bounded tenant-administrator audit query with REST/OpenAPI/client/CLI/Management MCP parity are implemented as the backend foundation. External OIDC links, attribution, tenant-scoped security investigation, notification, retention/export policy, and the role-focused console projection remain planned |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 | `C0.5` | Planned | Enterprise SAML/OIDC federation, SCIM provisioning/deprovisioning, session policy, application/Workflow/Knowledge-granular Resource Grants, tamper-evident audit and SIEM export, PII-redaction policy, BYOK/data-residency bindings, and air-gapped governance evidence over the existing Identity, Secrets, audit, `S0`, and `H0` authorities |
 
@@ -915,7 +915,7 @@ authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
 
-The current catalog contains 83 administrator tools and 48 read-only tools:
+The current catalog contains 84 administrator tools and 49 read-only tools:
 the verified catalog is retained, fifteen Identity tools come from the
 implemented Membership, MembershipInvitation, and Resource Grant `C0.3`
 slices, seven Ontology tools come from backend `W0.2`, and ten Workflow
@@ -927,12 +927,14 @@ repository, domain state machine, response contracts, transaction-bound
 idempotency/Outbox/audit writes, and the shared Identity Resource Grant evaluator. Three
 ExecutionTemplate create/list/exact-get tools reuse the Executions CQRS and
 immutable ACL-native repository. Six `U0.2`
-Plugin Registry/catalog tools add only tenant-scoped read queries. Focused catalog,
+Plugin Registry/catalog tools add only tenant-scoped read queries. One
+owner/admin-only audit query reuses `cloud:read` and the shared append-only
+audit repository. Focused catalog,
 permission, strict-argument, lifecycle, migration, deterministic-plan,
 WorkflowRun, ExecutionTemplate, plugin tenant, and historical-replay tests
 pass. The retained clean A3S Box/PostgreSQL gate passes the predecessor
 `77/47` catalog; focused catalog and invitation lifecycle tests pass the current
-`83/48` source catalog, and the dedicated invitation PostgreSQL 17 promotion
+`84/49` source catalog, and the dedicated invitation PostgreSQL 17 promotion
 gate below passes. The clean gate retains the strict `W0.2` Ontology
 evidence and adds an `8/8` W0.3
 ExecutionTemplate cross-surface result for accepted/rejected idempotency,
@@ -961,12 +963,20 @@ session, notification, or parallel role authority is introduced. Migration
 `087` adds Membership-bound closed project/environment/node Resource Grants;
 one shared evaluator enforces direct access and filters collections on every
 request, while the application handler validates targets through their owning
-Project, Environment, or Node repository. REST/OpenAPI contract `1.25.0`, the
+Project, Environment, or Node repository. REST/OpenAPI contract `1.26.0`, the
 maintained client, CLI, and fifteen Management MCP tools reuse the same
-application handlers. Future external OIDC issuer/subject links must attach to
-the same Principal and Membership authority. Attribution, notifications,
-security investigation, audit queries, and role-focused frontend projections
-remain planned, so `C0.3` is in progress rather than verified.
+application handlers. The tenant-administrator audit slice adds
+`GET /organizations/{organization_id}/audit-records` and
+`a3s_cloud_audit_records_list`, with the same maintained client and CLI. It
+uses the foundation `audit_records` table and its existing
+`(organization_id, occurred_at desc, audit_id desc)` index through typed A3S
+ORM, returns stable keyset pages with exact actor/action/aggregate/request and
+inclusive time filters, and never exposes unstructured `details`. It adds no
+audit writer, table, event, queue, scheduler, or authorization mechanism.
+Future external OIDC issuer/subject links must attach to the same Principal
+and Membership authority. Attribution, notifications, tenant-scoped security
+investigation, audit retention/export policy, and role-focused frontend
+projections remain planned, so `C0.3` is in progress rather than verified.
 
 Resource Grant closure is deliberately staged so later contexts do not create
 their own RBAC or resource-ownership registry:

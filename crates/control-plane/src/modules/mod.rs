@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod artifacts;
 pub mod assets;
+pub mod audit;
 pub mod edge;
 pub mod executions;
 pub mod fleet;

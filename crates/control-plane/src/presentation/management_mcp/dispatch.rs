@@ -4,6 +4,7 @@ use super::arguments::{
     RouteArguments, WorkloadArguments, WorkloadLogArguments,
 };
 use super::artifacts::BuildRunMutationArguments;
+use super::audit::AuditRecordListArguments;
 use super::catalog::ManagementTool;
 use super::execution_templates::{
     CreateExecutionTemplateArguments, GetExecutionTemplateArguments,
@@ -40,8 +41,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, edge, execution_templates, forms, identity, nodes, ontology, operations, plugins,
-    projects, search, workflow, workloads,
+    artifacts, audit, edge, execution_templates, forms, identity, nodes, ontology, operations,
+    plugins, projects, search, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -715,6 +716,10 @@ pub async fn execute(
                 request_id,
             )
             .await
+        }
+        ManagementTool::AuditRecordsList => {
+            let arguments = arguments::parse::<AuditRecordListArguments>(arguments).ok()?;
+            audit::list_audit_records(query_bus, organization_id, arguments, request_id).await
         }
         ManagementTool::WorkloadsList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;

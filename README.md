@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.25.0" src="https://img.shields.io/badge/REST_contract-1.25.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.26.0" src="https://img.shields.io/badge/REST_contract-1.26.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -307,7 +307,7 @@ membership state, idempotency, Outbox facts, and audit together. Migration
 existing exact Principal, requested Membership role, inviter Principal, and an
 expiry no more than 30 days ahead. Administrator list/get/create/revoke and
 Principal self-list/accept surfaces reuse the same Identity handlers through
-REST/OpenAPI `1.25.0`, the maintained client, CLI, and Management MCP.
+REST/OpenAPI `1.26.0`, the maintained client, CLI, and Management MCP.
 Acceptance rechecks the exact authenticated Principal and expected version,
 then creates the ordinary Membership and marks the invitation accepted in one
 transaction; a different Principal receives the same `404` as a missing
@@ -322,7 +322,13 @@ authorization precedes mutation replay. The polymorphic Operation feed resolves
 each subject through that same owner set, keyset-pages until it has the requested
 visible records, and shares one filtered boundary across REST, SSE, and
 Management MCP. External OIDC links and frontend identity projections remain
-open. The dedicated
+open. Contract `1.26.0` also exposes one owner/admin-only, `cloud:read`
+tenant audit query through REST, the maintained client, CLI, and Management
+MCP. It keyset-pages the existing append-only `audit_records` by
+`(occurred_at, audit_id)`, supports exact actor/action/aggregate/request and
+inclusive time filters, and returns only bounded typed metadata. Internal
+unstructured `details` never cross the public boundary; no audit table,
+writer, queue, event rail, or scheduler is added. The dedicated
 `RG3` PostgreSQL gate verifies
 the owner/admin/member/restricted, project ancestry, exact environment/node,
 REST/MCP/SSE, revocation, guessed-ID, tenant, idempotency, Outbox, and audit
@@ -350,6 +356,7 @@ identity or RBAC mechanism.
 | Plugin assignments and package lifecycle | Cloud Plugins for tenant intent; shared A3S Use Plugin Manager for package generations | A Cloud installer, catalog copy, grant store, binding store, or generic plugin RPC |
 | Immutable bytes | One shared content-addressed object client with typed domain adapters | Parallel filesystem/S3 clients or untyped cross-domain blob APIs |
 | Principal identity and organization access | Identity Principals, Memberships, MembershipInvitations, Resource Grants, credentials, and revocation | A console-local user store, credential-owned roles, a second RBAC evaluator, or presentation-only authorization |
+| Audit history | Shared append-only `audit_records` plus one tenant-administrator read projection | Per-domain or MCP audit stores, a second writer, or public exposure of unstructured audit details |
 | Management behavior | One application command/query layer | REST-, CLI-, MCP-, or Web-specific business state and rules |
 
 ## Backend quick start
@@ -390,7 +397,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.25.0`.
+contract version `1.26.0`.
 
 ### Bootstrap the first organization
 

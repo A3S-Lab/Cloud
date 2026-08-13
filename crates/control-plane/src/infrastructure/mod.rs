@@ -29,5 +29,5 @@ pub(crate) use postgres::{
     is_unique_violation, lock_idempotency_key, lock_node_placement, require_one_row, store_audit,
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
-pub(crate) use postgres_schema::OutboxEvents;
+pub(crate) use postgres_schema::{AuditRecords, OutboxEvents};
 pub(crate) use vault_client::{VaultClient, VaultClientError};

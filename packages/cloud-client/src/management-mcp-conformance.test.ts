@@ -298,6 +298,34 @@ conformanceIt(
     expect(replayData.id).toBe(projectId);
     expect(replayData.replayed).toBe(true);
 
+    const auditPage = await callTool(
+      environment,
+      environment.readOnlyToken,
+      108,
+      'a3s_cloud_audit_records_list',
+      { limit: 25 },
+      credentials,
+      'MCP tenant audit listing'
+    );
+    expect(auditPage.result.isError).toBe(false);
+    const auditData = objectValue(auditPage.structured.data, 'MCP tenant audit page');
+    const auditRecords = arrayValue(auditData.records, 'MCP tenant audit records');
+    expect(auditRecords.length).toBeGreaterThan(0);
+    for (const value of auditRecords) {
+      const record = objectValue(value, 'MCP tenant audit record');
+      expect(Object.keys(record).sort()).toEqual([
+        'action',
+        'actorPrincipalId',
+        'aggregateId',
+        'id',
+        'occurredAt',
+        'organizationId',
+        'requestId',
+      ]);
+      expect(record.organizationId).toBe(organizationId);
+      expect(record).not.toHaveProperty('details');
+    }
+
     const ontologyEvidence = await proveOntologyConformance(
       environment,
       organizationId,

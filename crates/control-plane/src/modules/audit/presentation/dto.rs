@@ -1,0 +1,72 @@
+use crate::modules::audit::domain::{AuditRecord, AuditRecordPage};
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditRecordResponse {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub actor_principal_id: Option<Uuid>,
+    pub action: String,
+    pub aggregate_id: Uuid,
+    pub occurred_at: DateTime<Utc>,
+    pub request_id: Uuid,
+}
+
+impl From<AuditRecord> for AuditRecordResponse {
+    fn from(record: AuditRecord) -> Self {
+        Self {
+            id: record.id,
+            organization_id: record.organization_id.as_uuid(),
+            actor_principal_id: record.actor_principal_id.map(|value| value.as_uuid()),
+            action: record.action,
+            aggregate_id: record.aggregate_id,
+            occurred_at: record.occurred_at,
+            request_id: record.request_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AuditRecordPageResponse {
+    pub records: Vec<AuditRecordResponse>,
+    pub next_cursor: Option<String>,
+}
+
+impl From<AuditRecordPage> for AuditRecordPageResponse {
+    fn from(page: AuditRecordPage) -> Self {
+        Self {
+            records: page
+                .records
+                .into_iter()
+                .map(AuditRecordResponse::from)
+                .collect(),
+            next_cursor: page.next_cursor,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId};
+
+    #[test]
+    fn public_projection_never_exposes_unstructured_details() {
+        let response = AuditRecordResponse::from(AuditRecord {
+            id: Uuid::now_v7(),
+            organization_id: OrganizationId::new(),
+            actor_principal_id: Some(PrincipalId::new()),
+            action: "identity.membership.created".into(),
+            aggregate_id: Uuid::now_v7(),
+            occurred_at: Utc::now(),
+            request_id: Uuid::now_v7(),
+        });
+        let value = serde_json::to_value(response).expect("audit response");
+        assert_eq!(value.as_object().map(serde_json::Map::len), Some(7));
+        assert!(!value.as_object().expect("object").contains_key("details"));
+    }
+}

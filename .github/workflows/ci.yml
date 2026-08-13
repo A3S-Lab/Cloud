@@ -71,6 +71,13 @@ jobs:
           postgres_membership_invitations_are_atomic_exact_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify tenant audit query persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_audit_query_is_tenant_scoped_filtered_and_keyset_paginated
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Workflow finite Execution persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

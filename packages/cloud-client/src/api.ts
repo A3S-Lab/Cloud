@@ -1,4 +1,5 @@
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
+import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import { readHealthResponse, readResponse } from './response';
@@ -182,7 +183,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.25.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.26.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1485,6 +1486,18 @@ export class CloudApi {
 
   listOperations(organizationId: string, signal?: AbortSignal): Promise<Operation[]> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/operations?limit=100`, signal);
+  }
+
+  listAuditRecords(
+    organizationId: string,
+    query: AuditRecordQuery = {},
+    signal?: AbortSignal
+  ): Promise<AuditRecordPage> {
+    const parameters = encodeAuditRecordQuery(query);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/audit-records?${parameters.toString()}`,
+      signal
+    );
   }
 
   listBuildRuns(

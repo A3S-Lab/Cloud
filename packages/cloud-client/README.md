@@ -230,6 +230,13 @@ authority, duplicate Membership exclusion, and atomic invitation-to-Membership
 transition. The client adds no email/OIDC discovery, role inference, invitation
 store, notification queue, or authorization model.
 
+`listAuditRecords` implements the owner/admin-only read projection added by
+REST contract `1.26.0`. It validates exact Principal/aggregate/request UUIDs,
+canonical action names, RFC 3339 time bounds, the opaque cursor, and the
+1-through-200 page limit before transport. The result contains only typed
+audit metadata and a next cursor; it cannot expose the shared record's
+unstructured `details` or create a client-side audit store.
+
 `createDomainClaim`, `verifyDomainClaim`, and `revokeDomainClaim` return the
 complete DomainClaim projection with its durable `replayed` flag.
 `createGatewayScope` accepts an ordered member list plus `minReady` and

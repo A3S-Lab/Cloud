@@ -110,6 +110,7 @@ Commands:
   nodes drain ID        Drain one current node
   nodes revoke ID       Revoke one current node
   operations list       List recent operations in the selected organization
+  audit-records list    List bounded, redacted organization audit history (owner/admin)
   search resources QUERY Search authorized resources in the selected organization
   plugin-registries list List trusted A3S Use Registry references
   plugin-registries get ID Get one trusted A3S Use Registry reference
@@ -172,8 +173,8 @@ Global options:
   --environment <uuid>    Environment context
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
-  --cursor <cursor>       Opaque cursor for a log or Agent event command
-  --limit <n>             Search, log, or Agent event page limit
+  --cursor <cursor>       Opaque cursor for a log, Agent event, or audit command
+  --limit <n>             Search, log, Agent event, or audit page limit
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL, native Form, Workflow, or catalog JSON input file
@@ -194,6 +195,12 @@ Global options:
   --agent-release-url <url>  HTTPS node-agent release binary for nodes bootstrap
   --agent-release-sha256 <digest> SHA-256 of the node-agent release binary
   --node-config <path>       Absolute A3S ACL node config path on the target host
+  --actor-principal <uuid>   Exact audit actor Principal filter
+  --action <action>          Exact lowercase dot-separated audit action filter
+  --aggregate <uuid>         Exact audit aggregate filter
+  --request-id <uuid>        Exact audit request-correlation filter
+  --from <timestamp>         Inclusive RFC 3339 audit lower bound
+  --to <timestamp>           Inclusive RFC 3339 audit upper bound
   -h, --help              Show help
   -V, --version           Show version
 

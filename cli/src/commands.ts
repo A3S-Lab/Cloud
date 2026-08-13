@@ -1,6 +1,7 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import { executeAgentCommand } from './agent-commands';
+import { executeAuditCommand, rejectMisplacedAuditOptions } from './audit-commands';
 import type { ParsedArguments } from './arguments';
 import { executeAssetCommand } from './asset-commands';
 import {
@@ -89,6 +90,7 @@ export async function executeCommand(
   rejectMisplacedSecretValueOption(command, arguments_);
   rejectMisplacedIdentityOptions(command, arguments_);
   rejectMisplacedNodeOptions(command, arguments_);
+  rejectMisplacedAuditOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -123,6 +125,10 @@ export async function executeCommand(
   const searchResult = await executeSearchCommand(command, arguments_, context, cloudApi);
   if (searchResult !== undefined) {
     return searchResult;
+  }
+  const auditResult = await executeAuditCommand(command, arguments_, context, cloudApi);
+  if (auditResult !== undefined) {
+    return auditResult;
   }
   const ontologyResult = await executeOntologyCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

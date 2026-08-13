@@ -213,6 +213,45 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             ["responses"]["201"]
             .is_object()
     );
+    let audit_records = &document["paths"]["/organizations/{organization_id}/audit-records"]["get"];
+    assert_eq!(audit_records["tags"], json!(["Audit"]));
+    assert!(audit_records["responses"]["200"].is_object());
+    assert!(audit_records["responses"]["403"].is_object());
+    let audit_parameters = audit_records["parameters"]
+        .as_array()
+        .expect("audit query parameters");
+    for (name, format) in [
+        ("actorPrincipalId", Some("uuid")),
+        ("aggregateId", Some("uuid")),
+        ("requestId", Some("uuid")),
+        ("action", None),
+        ("from", Some("date-time")),
+        ("to", Some("date-time")),
+        ("cursor", None),
+        ("limit", None),
+    ] {
+        let parameter = audit_parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .unwrap_or_else(|| panic!("missing audit query parameter `{name}`"));
+        assert_eq!(parameter["in"], "query");
+        assert_eq!(parameter["required"], false);
+        if let Some(format) = format {
+            assert_eq!(parameter["schema"]["format"], format);
+        }
+    }
+    let audit_limit = audit_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "limit")
+        .expect("audit limit parameter");
+    assert_eq!(audit_limit["schema"]["minimum"], 1);
+    assert_eq!(audit_limit["schema"]["maximum"], 200);
+    assert_eq!(audit_limit["schema"]["default"], 50);
+    let audit_cursor = audit_parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "cursor")
+        .expect("audit cursor parameter");
+    assert_eq!(audit_cursor["schema"]["maxLength"], 128);
     let resource_grants = &document["paths"]
         ["/organizations/{organization_id}/memberships/{membership_id}/resource-grants"];
     assert_eq!(resource_grants["get"]["tags"], json!(["Identity"]));

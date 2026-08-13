@@ -1068,20 +1068,11 @@ pub(crate) async fn store_audit(
     transaction: &PostgresTransaction,
     audit: &AuditWrite,
 ) -> Result<(), PostgresPersistenceError> {
-    let valid_action = !audit.action.is_empty()
-        && audit.action.len() <= 255
-        && audit.action.split('.').count() >= 3
-        && audit.action.split('.').all(|segment| {
-            !segment.is_empty()
-                && segment
-                    .bytes()
-                    .all(|byte| byte.is_ascii_lowercase() || byte == b'-')
-        });
     if audit.audit_id.is_nil()
         || audit.organization_id.is_nil()
         || audit.aggregate_id.is_nil()
         || audit.request_id.is_nil()
-        || !valid_action
+        || crate::modules::shared_kernel::domain::validate_audit_action(audit.action).is_err()
         || !audit.details.is_object()
     {
         return Err(PostgresPersistenceError::Invariant(

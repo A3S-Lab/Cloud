@@ -249,19 +249,52 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
     }
     if method == "get"
         && (path.ends_with("/operations")
+            || path.ends_with("/audit-records")
             || path.ends_with("/build-runs")
             || path.ends_with("/agent-conversations")
             || path.ends_with("/executions")
             || path.ends_with("/workflow-runs")
             || path.ends_with("/human-tasks"))
     {
+        let schema = if path.ends_with("/audit-records") {
+            json!({ "type": "integer", "minimum": 1, "maximum": 200, "default": 50 })
+        } else {
+            json!({ "type": "integer", "minimum": 1, "maximum": 200 })
+        };
         upsert_parameter(
             parameters,
             json!({
                 "name": "limit", "in": "query", "required": false,
-                "schema": { "type": "integer", "minimum": 1, "maximum": 200 }
+                "schema": schema
             }),
         );
+    }
+    if method == "get" && path.ends_with("/audit-records") {
+        for (name, format) in [
+            ("actorPrincipalId", Some("uuid")),
+            ("aggregateId", Some("uuid")),
+            ("requestId", Some("uuid")),
+            ("action", None),
+            ("from", Some("date-time")),
+            ("to", Some("date-time")),
+            ("cursor", None),
+        ] {
+            let mut schema = json!({"type": "string", "minLength": 1});
+            if let Some(format) = format {
+                schema["format"] = json!(format);
+            }
+            if name == "action" {
+                schema["maxLength"] = json!(255);
+                schema["pattern"] = json!("^[a-z-]+(?:\\.[a-z-]+){2,}$");
+            }
+            if name == "cursor" {
+                schema["maxLength"] = json!(128);
+            }
+            upsert_parameter(
+                parameters,
+                json!({"name": name, "in": "query", "required": false, "schema": schema}),
+            );
+        }
     }
     if method == "get" && path.ends_with("/human-tasks") {
         upsert_parameter(
@@ -805,6 +838,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Projects"
     } else if path.contains("operations") {
         "Operations"
+    } else if path.contains("audit-records") {
+        "Audit"
     } else if path.contains("plugin-registries") {
         "Plugins"
     } else if path.contains("search") {

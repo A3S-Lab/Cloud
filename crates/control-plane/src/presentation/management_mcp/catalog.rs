@@ -49,6 +49,7 @@ pub const RESOURCE_GRANTS_REVOKE: &str = "a3s_cloud_resource_grants_revoke";
 pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
+pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
 pub const PROJECTS_CREATE: &str = "a3s_cloud_projects_create";
 pub const PROJECTS_LIST: &str = "a3s_cloud_projects_list";
 pub const ONTOLOGIES_CREATE: &str = "a3s_cloud_ontologies_create";
@@ -165,6 +166,7 @@ pub enum ManagementTool {
     NodesList,
     NodesGet,
     OperationsList,
+    AuditRecordsList,
     WorkloadsList,
     WorkloadsGet,
     WorkloadLogsGet,
@@ -197,7 +199,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 83] = [
+    const ALL: [Self; 84] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ExecutionTemplatesCreate,
@@ -266,6 +268,7 @@ impl ManagementTool {
         Self::NodesList,
         Self::NodesGet,
         Self::OperationsList,
+        Self::AuditRecordsList,
         Self::WorkloadsList,
         Self::WorkloadsGet,
         Self::WorkloadLogsGet,
@@ -377,6 +380,7 @@ impl ManagementTool {
             Self::NodesList => NODES_LIST,
             Self::NodesGet => NODES_GET,
             Self::OperationsList => OPERATIONS_LIST,
+            Self::AuditRecordsList => AUDIT_RECORDS_LIST,
             Self::WorkloadsList => WORKLOADS_LIST,
             Self::WorkloadsGet => WORKLOADS_GET,
             Self::WorkloadLogsGet => WORKLOAD_LOGS_GET,
@@ -429,7 +433,9 @@ impl ManagementTool {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
-            Self::MyMembershipInvitationsList => Some(ApiTokenScope::CLOUD_READ),
+            Self::MyMembershipInvitationsList | Self::AuditRecordsList => {
+                Some(ApiTokenScope::CLOUD_READ)
+            }
             Self::MembershipInvitationsAccept => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::EnvironmentsList
             | Self::ExecutionTemplatesGet
@@ -493,6 +499,7 @@ impl ManagementTool {
                 | Self::MembershipInvitationsGet
                 | Self::MembershipInvitationsCreate
                 | Self::MembershipInvitationsRevoke
+                | Self::AuditRecordsList
                 | Self::ResourceGrantsList
                 | Self::ResourceGrantsGet
                 | Self::ResourceGrantsCreate
@@ -1010,6 +1017,12 @@ impl ManagementTool {
                 bounded_limit_schema(),
                 true,
             ),
+            Self::AuditRecordsList => (
+                "List audit records",
+                "List one bounded, redacted page from the shared append-only organization audit history.",
+                audit_record_list_schema(),
+                true,
+            ),
             Self::WorkloadsList => (
                 "List workloads",
                 "List workloads in one tenant-authorized environment.",
@@ -1239,6 +1252,28 @@ fn bounded_limit_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+        },
+        "additionalProperties": false
+    })
+}
+
+fn audit_record_list_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "actorPrincipalId": {"type": "string", "format": "uuid"},
+            "action": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 255,
+                "pattern": "^[a-z-]+(?:\\.[a-z-]+){2,}$"
+            },
+            "aggregateId": {"type": "string", "format": "uuid"},
+            "requestId": {"type": "string", "format": "uuid"},
+            "from": {"type": "string", "format": "date-time"},
+            "to": {"type": "string", "format": "date-time"},
+            "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
             "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
         },
         "additionalProperties": false

@@ -7,6 +7,7 @@ use crate::config::{
 };
 use crate::modules::agents::InMemoryAgentRepository;
 use crate::modules::artifacts::InMemoryBuildRunRepository;
+use crate::modules::audit::{AuditRecord, InMemoryAuditRecordRepository};
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
 };
@@ -72,6 +73,7 @@ mod api_contract_tests;
 mod asset_catalog_tests;
 mod asset_git_support;
 mod asset_git_tests;
+mod audit_tests;
 mod build_tests;
 mod execution_tests;
 mod forms_tests;
@@ -105,6 +107,8 @@ const SERVICE_MEMBER_TOKEN: &str =
     "a3s_ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 const PRIVILEGE_ESCALATION_TOKEN: &str =
     "a3s_0000000000000000000000000000000000000000000000000000000000000000";
+const AUDIT_MEMBER_TOKEN: &str =
+    "a3s_2222222222222222222222222222222222222222222222222222222222222222";
 const GITHUB_WEBHOOK_SECRET: &str = "github-webhook-test-secret-0123456789abcdef";
 
 struct TestCertificateAuthority;
@@ -459,6 +463,7 @@ struct TestRuntimeRepositories {
     executions: Option<Arc<InMemoryExecutionRepository>>,
     operations: Option<Arc<InMemoryOperationRepository>>,
     human_tasks: Option<Arc<TestHumanTaskRepository>>,
+    audit_records: Option<Arc<InMemoryAuditRecordRepository>>,
 }
 
 #[async_trait::async_trait]
@@ -1191,6 +1196,34 @@ fn build_test_application_with_execution_and_operation_repositories(
             executions: Some(executions),
             operations: Some(operations),
             human_tasks: None,
+            audit_records: None,
+        },
+    )
+}
+
+fn build_test_application_with_audit_records(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    audit_records: Arc<InMemoryAuditRecordRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            audit_records: Some(audit_records),
+            ..TestRuntimeRepositories::default()
         },
     )
 }
@@ -1529,6 +1562,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         executions,
         operations,
         human_tasks,
+        audit_records,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -1600,6 +1634,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             forms: Arc::new(InMemoryFormRepository::new()),
             form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
             search,
+            audit_records: audit_records
+                .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
             plugin_trust_roots: Arc::new(

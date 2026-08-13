@@ -1,3 +1,4 @@
+mod audit_action;
 mod authorization_decision_ref;
 mod canonical_json;
 mod git_commit_sha;
@@ -8,6 +9,7 @@ mod resource_name;
 mod sha256_digest;
 mod timestamp;
 
+pub(crate) use audit_action::validate_audit_action;
 pub use authorization_decision_ref::AuthorizationDecisionRef;
 pub use canonical_json::{canonical_json_bounded, sha256_digest};
 pub use git_commit_sha::GitCommitSha;
