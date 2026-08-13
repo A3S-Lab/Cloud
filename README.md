@@ -347,10 +347,15 @@ exact state/nonce/S256 PKCE, and validates the configured issuer, one exact
 audience, asymmetric signature, `azp`, `at_hash`, nonce, issue time, and expiry.
 Its local TLS fixtures cover key rotation, unsafe endpoints, oversized
 responses, redirect refusal, token substitution, and secret unavailability.
-Public login/link begin and callback surfaces remain unavailable until the
-application commands, REST/OpenAPI contract, maintained client, and retained
-PostgreSQL cross-surface evidence land. This adds no email directory, session
-store, notification queue, or parallel role authority. Closed
+Internal Identity begin/complete commands now compose that protocol adapter
+with the existing one-time flow/link/token Repository: they persist only
+secret digests, resolve state before provider access, reject provider identity
+or configuration drift, and return a generated short-lived Cloud credential
+only after the atomic login write succeeds. Public login/link begin and
+callback surfaces remain unavailable until production application wiring, the
+REST/OpenAPI contract, maintained client, and retained PostgreSQL cross-surface
+evidence land. This adds no email directory, session store, notification queue,
+or parallel role authority. Closed
 project/environment/node Resource Grants now use one shared evaluator for
 direct scopes, filtered collections, and owner-resolved indirect resources.
 Workloads, external-source BuildRuns, ordinary Routes, Secrets, Forms, Assets,

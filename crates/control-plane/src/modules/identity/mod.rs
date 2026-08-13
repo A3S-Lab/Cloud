@@ -6,11 +6,17 @@ pub mod presentation;
 pub use application::commands::accept_membership_invitation::{
     AcceptMembershipInvitation, AcceptMembershipInvitationHandler,
 };
+pub use application::commands::begin_oidc_flow::{
+    BeginOidcFlow, BeginOidcFlowHandler, BeginOidcFlowResult,
+};
 pub use application::commands::bootstrap_identity::{
     BootstrapIdentity, BootstrapIdentityHandler, BootstrapIdentityResult,
 };
 pub use application::commands::change_membership_role::{
     ChangeMembershipRole, ChangeMembershipRoleHandler,
+};
+pub use application::commands::complete_oidc_flow::{
+    CompleteOidcFlow, CompleteOidcFlowHandler, CompleteOidcFlowResult,
 };
 pub use application::commands::create_api_token::{
     CreateApiToken, CreateApiTokenHandler, CreateApiTokenResult,

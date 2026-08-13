@@ -74,6 +74,10 @@ async fn discovers_authorizes_and_verifies_rotated_jwks_with_exact_pkce() {
         authorization.provider_config_digest,
         config.public_config_digest().expect("digest")
     );
+    assert_eq!(
+        authorization.flow_lifetime,
+        ChronoDuration::milliseconds(config.flow_ttl_ms as i64)
+    );
 
     fixture.rotate_signing_key();
     let verified = service
@@ -88,6 +92,10 @@ async fn discovers_authorizes_and_verifies_rotated_jwks_with_exact_pkce() {
 
     assert_eq!(verified.issuer.as_str(), fixture.issuer());
     assert_eq!(verified.subject.as_str(), SUBJECT);
+    assert_eq!(
+        verified.login_token_lifetime,
+        ChronoDuration::milliseconds(config.login_token_ttl_ms as i64)
+    );
     assert_eq!(fixture.state.jwks_requests.load(Ordering::SeqCst), 2);
     let exchange = fixture.state.last_exchange();
     assert_eq!(

@@ -3,6 +3,7 @@ use crate::modules::identity::domain::value_objects::{
 };
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use async_trait::async_trait;
+use chrono::Duration;
 use zeroize::Zeroizing;
 
 pub struct OidcAuthorizationRequest {
@@ -18,6 +19,7 @@ pub struct OidcAuthorization {
     pub provider_key: OidcProviderKey,
     pub issuer: OidcIssuer,
     pub provider_config_digest: Sha256Digest,
+    pub flow_lifetime: Duration,
 }
 
 pub struct OidcCodeVerificationRequest {
@@ -33,6 +35,7 @@ pub struct VerifiedOidcIdentity {
     pub issuer: OidcIssuer,
     pub provider_config_digest: Sha256Digest,
     pub subject: ExternalIdentitySubject,
+    pub login_token_lifetime: Duration,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

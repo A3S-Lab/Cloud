@@ -1853,9 +1853,13 @@ node.
   callback, sends exact state/nonce/S256 PKCE, and validates exact issuer,
   single audience, asymmetric signature, `azp`, `at_hash`, time bounds, and
   subject. Identity and Sources reuse one shared OAuth flow-secret/digest/PKCE
-  primitive. Public OIDC application and transport surfaces remain gated and
+  primitive. Identity application commands now compose that adapter with the
+  existing one-time flow/link/token Repository: begin persists digests only,
+  while complete state-resolves before provider access, rejects provider
+  identity/configuration drift, and atomically links or returns one generated
+  short-lived credential. Public OIDC transport surfaces remain gated and
   unavailable. `C0.3` remains in progress because the remaining OIDC
-  integration, attribution, notifications, security
+  transport integration, attribution, notifications, security
   investigation, audit retention/export, and
   role-focused frontend projections remain open.
 - Add optional enterprise OIDC identity sources inside the existing Identity

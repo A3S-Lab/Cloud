@@ -1,8 +1,10 @@
 use sha2::{Digest, Sha256};
+use std::fmt::Write;
 use subtle::ConstantTimeEq;
+use zeroize::Zeroizing;
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct ApiTokenSecret(String);
+pub struct ApiTokenSecret(Zeroizing<String>);
 
 impl ApiTokenSecret {
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
@@ -17,11 +19,25 @@ impl ApiTokenSecret {
                 "API token must use the a3s_ prefix followed by 64 lowercase hex digits".into(),
             );
         }
-        Ok(Self(value))
+        Ok(Self(Zeroizing::new(value)))
     }
 
     pub fn digest(&self) -> ApiTokenDigest {
         ApiTokenDigest(format!("sha256:{:x}", Sha256::digest(self.0.as_bytes())))
+    }
+
+    pub fn generate() -> Result<(Zeroizing<String>, ApiTokenDigest), String> {
+        let mut random = Zeroizing::new([0_u8; 32]);
+        getrandom::fill(&mut *random)
+            .map_err(|error| format!("could not generate API token: {error}"))?;
+        let mut plaintext = Zeroizing::new(String::with_capacity(68));
+        plaintext.push_str("a3s_");
+        for byte in random.iter() {
+            write!(&mut plaintext, "{byte:02x}")
+                .map_err(|error| format!("could not encode API token: {error}"))?;
+        }
+        let digest = Self(plaintext.clone()).digest();
+        Ok((plaintext, digest))
     }
 }
 
@@ -73,6 +89,14 @@ mod tests {
         let token = ApiTokenSecret::parse(format!("a3s_{}", "a".repeat(64))).expect("token");
         assert!(token.digest().as_str().starts_with("sha256:"));
         assert!(ApiTokenSecret::parse("short").is_err());
+        let (generated, digest) = ApiTokenSecret::generate().expect("generated token");
+        assert!(ApiTokenSecret::parse(generated.to_string()).is_ok());
+        assert_eq!(
+            ApiTokenSecret::parse(generated.to_string())
+                .expect("generated token")
+                .digest(),
+            digest
+        );
 
         let bootstrap = BootstrapCredential::new(&"b".repeat(32)).expect("bootstrap");
         assert!(bootstrap.verify(&"b".repeat(32)));

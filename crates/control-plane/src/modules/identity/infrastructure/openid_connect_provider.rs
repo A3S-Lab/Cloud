@@ -43,6 +43,8 @@ struct Provider {
     client_secret_env: String,
     callback_url: String,
     config_digest: Sha256Digest,
+    flow_lifetime: chrono::Duration,
+    login_token_lifetime: chrono::Duration,
     client: BoundedOidcHttpClient,
 }
 
@@ -101,6 +103,14 @@ impl Provider {
         if !valid_endpoint(&callback) {
             return Err("OIDC callback URL is unsafe".into());
         }
+        let flow_lifetime =
+            bounded_lifetime(config.flow_ttl_ms, 60_000, 900_000, "OIDC flow lifetime")?;
+        let login_token_lifetime = bounded_lifetime(
+            config.login_token_ttl_ms,
+            300_000,
+            86_400_000,
+            "OIDC login token lifetime",
+        )?;
         Ok(Self {
             key,
             issuer,
@@ -108,6 +118,8 @@ impl Provider {
             client_secret_env: config.client_secret_env.clone(),
             callback_url: config.callback_url.clone(),
             config_digest: config.public_config_digest()?,
+            flow_lifetime,
+            login_token_lifetime,
             client,
         })
     }
@@ -261,6 +273,7 @@ impl IOidcProviderService for OpenIdConnectProviderService {
             provider_key: provider.key.clone(),
             issuer: provider.issuer.clone(),
             provider_config_digest: provider.config_digest.clone(),
+            flow_lifetime: provider.flow_lifetime,
         })
     }
 
@@ -350,6 +363,7 @@ impl IOidcProviderService for OpenIdConnectProviderService {
             issuer: provider.issuer.clone(),
             provider_config_digest: provider.config_digest.clone(),
             subject,
+            login_token_lifetime: provider.login_token_lifetime,
         })
     }
 }
@@ -429,6 +443,22 @@ fn valid_endpoint(url: &Url) -> bool {
         && url.username().is_empty()
         && url.password().is_none()
         && url.fragment().is_none()
+}
+
+fn bounded_lifetime(
+    milliseconds: u64,
+    minimum: u64,
+    maximum: u64,
+    label: &str,
+) -> Result<chrono::Duration, String> {
+    if !(minimum..=maximum).contains(&milliseconds) {
+        return Err(format!(
+            "{label} must be between {minimum} ms and {maximum} ms"
+        ));
+    }
+    let milliseconds =
+        i64::try_from(milliseconds).map_err(|_| format!("{label} exceeds the supported range"))?;
+    Ok(chrono::Duration::milliseconds(milliseconds))
 }
 
 fn require_safe_endpoint(url: &Url, label: &str) -> Result<(), OidcProviderError> {
