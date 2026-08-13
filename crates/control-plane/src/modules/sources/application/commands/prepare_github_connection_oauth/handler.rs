@@ -1,8 +1,10 @@
 use super::{PrepareGithubConnectionOauth, PrepareGithubConnectionOauthResult};
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::application::{
+    generate_oauth_flow_secret, oauth_flow_digest, pkce_s256_challenge, validate_oauth_flow_secret,
+    ApplicationError, ApplicationResult,
+};
 use crate::modules::sources::application::github_flow_security::{
-    digest, generate_flow_secret, map_authorization_error, map_state_repository_error,
-    pkce_challenge, validate_flow_secret,
+    map_authorization_error, map_state_repository_error,
 };
 use crate::modules::sources::domain::{
     GithubInstallationId, IGithubAppAuthorizationService, IGithubConnectionRepository,
@@ -43,32 +45,33 @@ impl CommandHandler<PrepareGithubConnectionOauth> for PrepareGithubConnectionOau
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let installation_state =
-                match validate_flow_secret(command.installation_state, "GitHub installation state")
-                {
-                    Ok(value) => value,
-                    Err(error) => return Ok(Err(error)),
-                };
-            let oauth_state = match generate_flow_secret() {
+            let installation_state = match validate_oauth_flow_secret(
+                command.installation_state,
+                "GitHub installation state",
+            ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
-            let pkce_verifier = match generate_flow_secret() {
+            let oauth_state = match generate_oauth_flow_secret("GitHub OAuth state") {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
+            let pkce_verifier = match generate_oauth_flow_secret("GitHub PKCE verifier") {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
             let authorization_url = match authorization
-                .authorization_url(&oauth_state, &pkce_challenge(&pkce_verifier))
+                .authorization_url(&oauth_state, &pkce_s256_challenge(&pkce_verifier))
             {
                 Ok(url) => url,
                 Err(error) => return Ok(Err(map_authorization_error(error))),
             };
             let flow = match connections
                 .prepare_oauth(
-                    &digest(&installation_state),
+                    oauth_flow_digest(&installation_state).as_str(),
                     installation_id,
-                    digest(&oauth_state),
-                    digest(&pkce_verifier),
+                    oauth_flow_digest(&oauth_state).to_string(),
+                    oauth_flow_digest(&pkce_verifier).to_string(),
                     command.requested_at,
                 )
                 .await

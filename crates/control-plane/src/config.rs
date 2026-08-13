@@ -89,6 +89,43 @@ pub struct OidcProviderConfig {
     pub login_token_ttl_ms: u64,
 }
 
+impl OidcProviderConfig {
+    pub fn public_config_digest(
+        &self,
+    ) -> Result<crate::modules::shared_kernel::domain::Sha256Digest, String> {
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct PublicConfiguration<'a> {
+            profile: &'static str,
+            key: &'a str,
+            issuer: &'a str,
+            client_id: &'a str,
+            client_secret_env: &'a str,
+            callback_url: &'a str,
+            request_timeout_ms: u64,
+            flow_ttl_ms: u64,
+            login_token_ttl_ms: u64,
+        }
+
+        let canonical = crate::modules::shared_kernel::domain::canonical_json_bounded(
+            &PublicConfiguration {
+                profile: "a3s-cloud-oidc-provider-v1",
+                key: &self.key,
+                issuer: &self.issuer,
+                client_id: &self.client_id,
+                client_secret_env: &self.client_secret_env,
+                callback_url: &self.callback_url,
+                request_timeout_ms: self.request_timeout_ms,
+                flow_ttl_ms: self.flow_ttl_ms,
+                login_token_ttl_ms: self.login_token_ttl_ms,
+            },
+            8192,
+            "OIDC provider configuration",
+        )?;
+        Ok(crate::modules::shared_kernel::domain::Sha256Digest::from_bytes(&canonical))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventProviderKind {
     Memory,

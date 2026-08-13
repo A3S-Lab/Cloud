@@ -1,9 +1,9 @@
 use super::{BeginGithubConnection, BeginGithubConnectionResult};
 use crate::modules::identity::domain::repositories::IOrganizationRepository;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::sources::application::github_flow_security::{
-    digest, generate_flow_secret, map_authorization_error,
+use crate::modules::shared_kernel::application::{
+    generate_oauth_flow_secret, oauth_flow_digest, ApplicationError, ApplicationResult,
 };
+use crate::modules::sources::application::github_flow_security::map_authorization_error;
 use crate::modules::sources::domain::{
     GithubConnectionFlow, IGithubAppAuthorizationService, IGithubConnectionRepository,
 };
@@ -61,7 +61,7 @@ impl CommandHandler<BeginGithubConnection> for BeginGithubConnectionHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
-            let state = match generate_flow_secret() {
+            let state = match generate_oauth_flow_secret("GitHub connection state") {
                 Ok(state) => state,
                 Err(error) => return Ok(Err(error)),
             };
@@ -73,7 +73,7 @@ impl CommandHandler<BeginGithubConnection> for BeginGithubConnectionHandler {
             let flow = match GithubConnectionFlow::begin(
                 Uuid::now_v7(),
                 command.organization_id,
-                digest(&state),
+                oauth_flow_digest(&state).to_string(),
                 command.requested_at,
                 expires_at,
             ) {

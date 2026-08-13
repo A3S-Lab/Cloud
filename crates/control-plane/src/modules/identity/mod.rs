@@ -54,6 +54,11 @@ pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
 };
 pub use domain::repositories::{IOidcIdentityRepository, IResourceAuthorizationDecisionRepository};
-pub use domain::services::{ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest};
+pub use domain::services::{
+    IOidcProviderService, OidcAuthorization, OidcAuthorizationRequest, OidcCodeVerificationRequest,
+    OidcProviderError, ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest,
+    VerifiedOidcIdentity,
+};
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
+pub use infrastructure::OpenIdConnectProviderService;
 pub use presentation::IdentityModule;

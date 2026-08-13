@@ -150,8 +150,9 @@ Primary aggregates:
 - `MembershipInvitation`
 - `ApiToken`
 - `ResourceGrant`
-- `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence implemented;
-  discovery/JWKS/callback surfaces still gated)
+- `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence and the
+  internal discovery/JWKS/ID-token adapter are implemented; public application
+  and callback surfaces remain gated)
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
 

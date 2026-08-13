@@ -1,9 +1,10 @@
 use super::CompleteGithubConnection;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::application::{
+    oauth_flow_digest, validate_oauth_flow_secret, ApplicationError, ApplicationResult,
+};
 use crate::modules::shared_kernel::domain::SourceConnectionId;
 use crate::modules::sources::application::github_flow_security::{
-    digest, map_authorization_error, map_state_repository_error, validate_flow_secret,
-    validate_oauth_code,
+    map_authorization_error, map_state_repository_error, validate_oauth_code,
 };
 use crate::modules::sources::domain::{
     CompleteGithubConnection as PersistGithubConnection, GithubConnection, GithubConnectionCreated,
@@ -39,13 +40,13 @@ impl CommandHandler<CompleteGithubConnection> for CompleteGithubConnectionHandle
         let connections = Arc::clone(&self.connections);
         let authorization = Arc::clone(&self.authorization);
         Box::pin(async move {
-            let oauth_state = match validate_flow_secret(command.oauth_state, "GitHub OAuth state")
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(error)),
-            };
+            let oauth_state =
+                match validate_oauth_flow_secret(command.oauth_state, "GitHub OAuth state") {
+                    Ok(value) => value,
+                    Err(error) => return Ok(Err(error)),
+                };
             let pkce_verifier =
-                match validate_flow_secret(command.pkce_verifier, "GitHub PKCE verifier") {
+                match validate_oauth_flow_secret(command.pkce_verifier, "GitHub PKCE verifier") {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error)),
                 };
@@ -55,8 +56,8 @@ impl CommandHandler<CompleteGithubConnection> for CompleteGithubConnectionHandle
             };
             let flow = match connections
                 .find_oauth_flow(
-                    &digest(&oauth_state),
-                    &digest(&pkce_verifier),
+                    oauth_flow_digest(&oauth_state).as_str(),
+                    oauth_flow_digest(&pkce_verifier).as_str(),
                     command.completed_at,
                 )
                 .await

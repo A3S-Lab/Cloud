@@ -56,6 +56,10 @@ hmac = "0.12"
 http-body-util = "0.1"
 libc = "0.2"
 object_store = { version = "=0.12.4", default-features = false, features = ["aws"] }
+openidconnect = { version = "=4.0.1", default-features = false, features = [
+    "reqwest",
+    "rustls-tls",
+] }
 rcgen = { version = "0.13.2", features = ["x509-parser"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 ring = "0.17"

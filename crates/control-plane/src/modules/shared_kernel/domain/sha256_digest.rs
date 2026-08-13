@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -6,6 +7,10 @@ use std::fmt;
 pub struct Sha256Digest(String);
 
 impl Sha256Digest {
+    pub fn from_bytes(value: &[u8]) -> Self {
+        Self(format!("sha256:{:x}", Sha256::digest(value)))
+    }
+
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
         let Some(hexadecimal) = value.strip_prefix("sha256:") else {
@@ -43,5 +48,9 @@ mod tests {
         assert!(Sha256Digest::parse("a".repeat(64)).is_err());
         assert!(Sha256Digest::parse(format!("sha256:{}", "A".repeat(64))).is_err());
         assert!(Sha256Digest::parse(format!("sha256:{}", "a".repeat(63))).is_err());
+        assert_eq!(
+            Sha256Digest::from_bytes(b"abc").as_str(),
+            "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }
