@@ -385,7 +385,7 @@ not business ownership or convenience wrappers.
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
-| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; the `W0.3` planning/API, Workflow-local steps, deterministic single/multiple Output aggregation, HumanTask loop, and exact finite `execution` step are implemented. Descriptors, variables, composite regions, Answer/error semantics, business-service and remaining provider steps, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
+| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, immutable step descriptors, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; the `W0.3` planning/API, immutable descriptor domain contract, Workflow-local steps, deterministic single/multiple Output aggregation, HumanTask loop, and exact finite `execution` step are implemented. Descriptor catalog persistence and plan pinning, typed variables, composite regions, Answer/error semantics, remaining application ports, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
 | Applications | Application identities, immutable releases, six authoring/delivery projections including classic/New Agent distinction, sessions, messages/variants, conversation variables, toolkit/feedback/annotation/publication policy, and managed application delivery | Planned `APP0`; every release binds one exact Workflow revision and no application mode or toolkit feature owns an execution engine/provider client |
 | Knowledge | Knowledge Bases, documents, General/Parent-child/Q&A and multimodal chunks, metadata, ingestion intent, index/retrieval policy, citations, external Knowledge bindings, and immutable KnowledgePipelineRelease-to-Workflow bindings | Planned `K0`; pipeline execution reuses `W0` and Flow, while Search/vector indexes remain rebuildable projections |
 | Files | User upload sessions, metadata, scan/quota/retention state, and typed immutable-object references | Planned `K0.1`; bytes reuse the shared immutable-object client and are not Build Artifacts |
@@ -396,6 +396,13 @@ not business ownership or convenience wrappers.
 | Agents | Conversations, heterogeneous-provider Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented; the `A1.2` native Code provider is implemented locally with publication and Linux recovery verification pending; provider-neutral `A1.3` and `A1.4` through `A1.6` are planned |
 | Data | Managed databases, immutable-object and volume provider policy, distributed volumes, backup, restore, retention, and writer fencing | Planned `S0`; shared immutable-object foundation already verified under `A1.0` |
 | Inference | Models, backends, deployments, routes, provider egress, and durable usage | Planned `I0` |
+
+Workflow also owns the implemented immutable descriptor domain contract. It
+defines semantic metadata and admission only; A3S Flow remains the sole durable
+orchestration engine, and Automations remains the owner of invocation-only
+trigger subscriptions. Persistent descriptor catalog management, an explicit
+next plan/compiler revision that pins semantic digests, and public node
+availability remain open.
 
 `Executions` and `Agents` are intentionally different. `Executions` owns the
 generic finite Task product. `Agents` owns conversation semantics and binds an

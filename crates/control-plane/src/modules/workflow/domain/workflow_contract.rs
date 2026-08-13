@@ -125,6 +125,25 @@ impl WorkflowStepKind {
             Self::Input | Self::Output | Self::Transform | Self::Branch | Self::HumanDecision
         )
     }
+
+    /// Returns the capability types admitted by the existing Workflow graph
+    /// contract for this coarse dispatch kind.
+    ///
+    /// Step descriptors reuse this mapping so descriptor admission cannot
+    /// diverge from the graph that current Plan revisions compile.
+    pub(super) const fn allowed_capability_types(self) -> &'static [CapabilityType] {
+        match self {
+            Self::Input | Self::Output | Self::Transform | Self::Branch => &[],
+            Self::HumanDecision => &[CapabilityType::FormRelease],
+            Self::Execution => &[CapabilityType::ExecutionTemplate],
+            Self::Agent => &[CapabilityType::AgentRelease],
+            Self::Mcp => &[CapabilityType::McpServiceProfile],
+            Self::Model => &[CapabilityType::ModelRevision],
+            Self::Tool | Self::Memory => &[CapabilityType::UsePackage],
+            Self::Service => &[CapabilityType::ConnectorRevision],
+            Self::Subworkflow => &[CapabilityType::WorkflowRevision],
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

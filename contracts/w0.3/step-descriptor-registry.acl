@@ -1,0 +1,80 @@
+descriptor_registry "cloud.builtin" {
+  compiler_schema_version = 2
+  revision = "1.0.0"
+  schema = "cloud.workflow.step-descriptor-registry.v1"
+  descriptor "executions.finite" "1.0.0" {
+    admission = "admitted"
+    allowed_capability_types = ["execution_template"]
+    configuration_schema_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    default_policy_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    execution_class = "owning_application_port"
+    kind = "execution"
+    maximum_compiler_schema_version = 2
+    minimum_compiler_schema_version = 2
+    owner = "executions"
+    required_bindings = ["capability_reference", "placement_policy"]
+    semantic_profile = "executions.finite"
+    input "input" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    output "result" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    error_output "error" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    failure {
+      failure_branch = true
+      fallback = "failure_branch"
+      retry_classification = "owner_classified"
+    }
+    presentation {
+      icon_key = "executions.finite"
+      label = "Finite Execution"
+      summary = "Runs one exact Executions-owned template"
+    }
+  }
+  descriptor "workflow.input" "1.0.0" {
+    admission = "admitted"
+    allowed_capability_types = []
+    configuration_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    execution_class = "workflow_local"
+    kind = "input"
+    maximum_compiler_schema_version = 3
+    minimum_compiler_schema_version = 2
+    owner = "workflow"
+    required_bindings = []
+    semantic_profile = "workflow.input"
+    input "invocation" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    output "value" {
+      cardinality = "single"
+      dynamic = false
+      required = true
+      value_type = "object"
+    }
+    failure {
+      failure_branch = false
+      fallback = "unsupported"
+      retry_classification = "not_retryable"
+    }
+    presentation {
+      icon_key = "workflow.input"
+      label = "User Input"
+      summary = "User Input descriptor"
+    }
+  }
+}

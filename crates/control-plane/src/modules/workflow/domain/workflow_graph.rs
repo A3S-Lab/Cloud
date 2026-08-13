@@ -1,7 +1,5 @@
 use super::validation::{validate_identifier, validate_text};
-use super::{
-    CapabilityType, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind,
-};
+use super::{WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(super) fn validate_workflow(
@@ -104,20 +102,7 @@ fn validate_capability_binding(
     kind: WorkflowStepKind,
     capability: Option<&super::CapabilityReference>,
 ) -> Result<(), String> {
-    let allowed: &[CapabilityType] = match kind {
-        WorkflowStepKind::Input
-        | WorkflowStepKind::Output
-        | WorkflowStepKind::Transform
-        | WorkflowStepKind::Branch => &[],
-        WorkflowStepKind::HumanDecision => &[CapabilityType::FormRelease],
-        WorkflowStepKind::Execution => &[CapabilityType::ExecutionTemplate],
-        WorkflowStepKind::Agent => &[CapabilityType::AgentRelease],
-        WorkflowStepKind::Mcp => &[CapabilityType::McpServiceProfile],
-        WorkflowStepKind::Model => &[CapabilityType::ModelRevision],
-        WorkflowStepKind::Tool | WorkflowStepKind::Memory => &[CapabilityType::UsePackage],
-        WorkflowStepKind::Service => &[CapabilityType::ConnectorRevision],
-        WorkflowStepKind::Subworkflow => &[CapabilityType::WorkflowRevision],
-    };
+    let allowed = kind.allowed_capability_types();
     match (allowed, capability) {
         ([], None) => Ok(()),
         ([], Some(_)) => Err(format!(

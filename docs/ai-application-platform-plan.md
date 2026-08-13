@@ -318,9 +318,29 @@ must not grow by one enum variant for every built-in or marketplace node.
 - compatibility range and unavailable-reason contract; and
 - a separate presentation digest that cannot change execution semantics.
 
-Every `PlanRevision` pins the exact descriptor revisions and canonical
-configuration digests it compiled. A descriptor upgrade creates a new Workflow
-revision; it cannot reinterpret a running or historical plan.
+The Workflow domain now implements this boundary as
+`cloud.workflow.step-descriptor-registry.v1`, including canonical ACL restore,
+exact revision lookup, compiler-range admission, semantic and presentation
+digests, and fail-closed authority validation. The checked-in registry is a
+two-descriptor conformance fixture, not the persistent built-in catalog and not
+evidence that all public nodes are available. It deliberately adds no
+scheduler, executor, queue, Flow command, Runtime provider, or invocation
+subscription mechanism.
+
+The frozen parity manifest is an acceptance inventory, not an executable
+descriptor catalog and not the source of descriptor ownership. Descriptor
+owners follow the accepted authority decisions and this architecture: for
+example, an HTTP Request executes through a Connectors-owned application port,
+while Automations owns only trigger definitions that create new invocations.
+Changing an owner field in the v1 acceptance report requires an explicit
+manifest/decision revision; catalog generation must never infer semantic
+ownership from that report.
+
+The current `cloud.workflow.plan.v1` does not consume descriptors and remains
+unchanged for replay. The next explicit compiler/plan schema revision must pin
+each exact descriptor revision, semantic digest, and canonical configuration
+digest. A descriptor upgrade then creates a new Workflow revision; it cannot
+reinterpret a running or historical plan.
 
 An invocation-only trigger descriptor is validated with the authoring graph but
 is not scheduled as a Flow step. Publication asks Automations to create an

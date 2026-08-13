@@ -204,7 +204,7 @@ impl WorkflowDataType {
         }
     }
 
-    fn parse(value: &str) -> Result<Self, String> {
+    pub(super) fn parse(value: &str) -> Result<Self, String> {
         match value {
             "any" => Ok(Self::Any),
             "object" => Ok(Self::Object),

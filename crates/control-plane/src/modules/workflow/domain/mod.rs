@@ -12,6 +12,7 @@ mod workflow_goal_contract;
 mod workflow_graph;
 mod workflow_payload;
 mod workflow_run_contract;
+mod workflow_step_descriptor;
 
 pub use capability_reference::{CapabilityOwner, CapabilityReference, CapabilityType};
 pub use entities::{
@@ -88,8 +89,19 @@ pub use workflow_run_contract::{
     WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
     WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
 };
+pub use workflow_step_descriptor::{
+    WorkflowStepBindingKind, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
+    WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorRevision, WorkflowStepDescriptorSpec,
+    WorkflowStepExecutionClass, WorkflowStepFailureContract, WorkflowStepFallbackMode,
+    WorkflowStepOwner, WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepPresentation,
+    WorkflowStepPresentationSpec, WorkflowStepRetryClassification,
+    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_MAX_ACL_BYTES, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
+    WORKFLOW_STEP_DESCRIPTOR_SEMANTIC_SCHEMA, WORKFLOW_STEP_PRESENTATION_SCHEMA,
+};
 
 #[cfg(test)]
 mod authority_tests;
 #[cfg(test)]
 mod human_task_contract_tests;
+#[cfg(test)]
+mod workflow_step_descriptor_contract_tests;

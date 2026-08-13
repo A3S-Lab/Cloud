@@ -125,9 +125,17 @@ Search index authoritative.
 | `W0.4` | Add immutable Agent, MCP, model, Tool, and business-service step bindings with typed inputs/outputs, compensation, approval, and bounded evidence references | `W0.3`, provider-neutral `A1.3`, `MCP0.5`, `I0.2`, `U0.4` where a Use surface is selected |
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
-`W0.1`, the backend implementation of `W0.2`, and the planning/persistence plus
-internal Workflow-local, reachable-Output, HumanTask, and finite Execution portions of `W0.3`
-are now present. Migration
+`W0.1`, the backend implementation of `W0.2`, and the planning/persistence,
+immutable descriptor domain contract, internal Workflow-local,
+reachable-Output, HumanTask, and finite Execution portions of `W0.3` are now
+present. The descriptor registry uses canonical ACL, exact SemVer identity,
+typed ports, existing coarse step/capability types, owner/execution class,
+semantic/configuration/default-policy digests, required bindings, typed failure
+behavior, compiler ranges, fail-closed admission, and presentation isolation.
+Its representative fixture is not a production catalog or availability claim,
+and existing `cloud.workflow.plan.v1` histories are unchanged. Persistent
+catalog management and exact descriptor semantic-digest pinning require an
+explicit next compiler/plan revision. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
 and deterministic diff are exposed through REST `1.15.0`, the maintained
@@ -198,9 +206,10 @@ and the same seven process-death boundaries, while the clean C0.2 Management
 MCP/A3S Box/PostgreSQL gate passes the exact `77/47` catalog and an `8/8`
 ExecutionTemplate persistence, replay, rollback, immutability, and tenant
 non-disclosure result. This verifies the finite Execution sub-gate, not all of
-W0.3. Business-service and remaining Agent/MCP/model/Tool capability dispatch,
-compensation, expanded cross-surface evidence, and public Workflow availability
-remain open.
+W0.3. Persistent descriptor management and plan pinning, typed variable scopes,
+composite regions, Answer/error semantics, business-service and remaining
+Agent/MCP/model/Tool capability dispatch, compensation, expanded cross-surface
+evidence, and public Workflow availability remain open.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more

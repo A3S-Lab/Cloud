@@ -1,4 +1,23 @@
-# W0.3 finite Execution contract
+# W0.3 conformance contracts
+
+## Immutable step descriptors
+
+`step-descriptor-registry.acl` is the canonical conformance fixture for the
+Workflow-owned immutable descriptor registry contract. It proves exact SemVer
+identity, typed ports, the existing coarse `WorkflowStepKind`, semantic owner,
+execution class, configuration/default-policy digests, required bindings,
+allowed existing `CapabilityType` values, typed failure behavior, compiler
+compatibility, admission metadata, and a separate presentation digest.
+
+The fixture contains two representative admitted descriptors so both a
+Workflow-local step and the existing finite Executions application port are
+covered. It is not the production built-in catalog, does not advertise all 23
+application-platform nodes, and does not change public parity availability.
+The current `cloud.workflow.plan.v1` replay shape is unchanged. A later explicit
+compiler/plan revision must pin exact descriptor semantic digests before the
+registry can become plan authority.
+
+## Finite Execution
 
 `execution-template.acl` is the single ACL-native finite-task definition used
 by the Workflow PostgreSQL/process-death fixture and the REST/Management MCP

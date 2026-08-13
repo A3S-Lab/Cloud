@@ -198,12 +198,21 @@ runtime now also accept one or more terminal `output` sinks, wait until every
 sink is active or inactive, preserve the legacy scalar result for a single
 sink, and emit an output-ID-keyed object for multiple declared sinks. Focused
 Workflow tests verify deterministic ordering, inactive-branch omission,
-aggregate size bounds, replay, and HumanTask compatibility. W0.3 remains in
-progress because descriptors, typed variable scopes, Iteration/Loop, Answer,
-error branches, business-service and remaining provider steps, compensation,
-expanded provider evidence, and production recovery remain open. No second
-engine, scheduler, queue, Runtime provider, authorization store, or frontend
-was added.
+aggregate size bounds, replay, and HumanTask compatibility. The Workflow domain
+now also freezes `cloud.workflow.step-descriptor-registry.v1`: canonical ACL,
+exact SemVer identities, typed ports, existing coarse step/capability kinds,
+owner and execution class, immutable semantic/configuration/default-policy
+digests, required bindings, typed failure behavior, compiler compatibility,
+fail-closed admission, and a presentation digest that cannot alter execution
+semantics. Its checked-in conformance fixture contains only one local step and
+one finite Execution application port; it is not a production node catalog or
+a public availability claim. Existing `cloud.workflow.plan.v1` replay is
+unchanged. W0.3 remains in progress because descriptor persistence and exact
+pinning in an explicit next compiler/plan revision, typed variable scopes,
+Iteration/Loop, Answer, error branches, business-service and remaining provider
+steps, compensation, expanded provider evidence, and production recovery
+remain open. No second engine, scheduler, queue, Runtime provider,
+authorization store, or frontend was added.
 
 The shared Operations execution foundation now pins A3S Flow `0.12.0`, A3S
 Boot `0.2.0` with its PostgreSQL queue, and A3S ORM `0.3.0`-backed PostgreSQL
@@ -503,7 +512,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, Form, WorkflowRun, HumanTask loop, shared grants, deterministic reachable-Output aggregation, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Focused Output semantics and the finite Execution recovery/cross-surface sub-gate are verified; descriptors, variables, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, immutable descriptor domain contract, Form, WorkflowRun, HumanTask loop, shared grants, deterministic reachable-Output aggregation, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented. Focused Output semantics and the finite Execution recovery/cross-surface sub-gate are verified; descriptor persistence/plan pinning, typed variables, composite regions, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` | Six current application experiences, shared release/session/delivery, publication, monitoring, and enterprise completion | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` | Files, RAG Knowledge, multi-source General/Parent-child/Q&A and multimodal processing, retrieval, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` | New-invocation triggers and reusable outbound connection profiles | Planned and unavailable |
