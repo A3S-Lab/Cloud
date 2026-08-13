@@ -869,6 +869,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/099_workflow_execution_bindings.sql"
             )),
         ),
+        Migration::new(
+            "100",
+            "Workflow finite-task step projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/100_workflow_execution_step_projections.sql"
+            )),
+        ),
     ]
 }
 

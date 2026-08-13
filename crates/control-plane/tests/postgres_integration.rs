@@ -287,7 +287,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (99, "099".into()));
+    assert_eq!(migration_state, (100, "100".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1092,6 +1092,21 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert!(workflow_step_kind_constraint.contains("'human_decision'"));
+    assert!(workflow_step_kind_constraint.contains("'execution'"));
+    for unavailable in [
+        "agent",
+        "mcp",
+        "model",
+        "tool",
+        "memory",
+        "service",
+        "subworkflow",
+    ] {
+        assert!(
+            !workflow_step_kind_constraint.contains(&format!("'{unavailable}'")),
+            "WorkflowStepProjection admitted unavailable kind {unavailable}"
+        );
+    }
     let decision_submission_foreign_key = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from pg_constraint where conrelid = 'workflow_decisions'::regclass and conname = 'workflow_decisions_submission_fk'",

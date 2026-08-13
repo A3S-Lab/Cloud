@@ -10,3 +10,8 @@ The fixture pins a digest-addressed OCI artifact, bounded process and resource
 settings, and the exact `execution.run` capability surface. Invocation input,
 child lifecycle, Operation/Flow history, and cleanup state remain runtime data,
 not product configuration.
+
+Migrations `098` and `099` own the immutable template and exact child binding.
+Migration `100` only evolves the existing WorkflowStepProjection kind
+constraint to admit `execution`; it creates no parallel projection or child
+execution mechanism.

@@ -164,21 +164,23 @@ the coordinator binds one HumanTask cancellation decision to the exact Flow
 worker records `RunCancelled` as terminal supersession evidence for both the
 generated cancellation and any earlier undelivered decision.
 
-Migrations `098` and `099` add the first finite typed capability step without
-adding an execution mechanism. Executions owns immutable, project-scoped,
+Migrations `098` through `100` add the first finite typed capability step
+without adding an execution mechanism. Executions owns immutable, project-scoped,
 ACL-native `ExecutionTemplate` revisions and materializes invocation input only
 after resolving an exact template ID, revision ID, digest, capability, and
 environment. Workflow persists that exact Plan/Run/step/attempt binding on the
 ordinary Execution, creates or adopts it through the Executions application
 port, links its existing Operation as an A3S Flow child, and resumes the parent
-only from an authority-bound terminal result. Parent cancellation and timeout
-wait for the child Execution's existing cleanup-first lifecycle. REST contract
-`1.24.0`, the maintained client, `execution-templates` CLI commands, and three
+only from an authority-bound terminal result. Migration `100` evolves the
+existing `WorkflowStepProjection` kind constraint to admit that `execution`
+projection; it does not add a child store or executor. Parent cancellation and
+timeout wait for the child Execution's existing cleanup-first lifecycle. REST
+contract `1.24.0`, the maintained client, `execution-templates` CLI commands, and three
 Management MCP tools reuse the same commands, queries, tenant guards,
 idempotency, A3S ORM, Outbox, and audit paths. Focused domain, application,
-Workflow coordinator, REST, OpenAPI, MCP, client, CLI, and PostgreSQL-fixture
-compilation tests pass. The retained real PostgreSQL/provider and expanded
-cross-surface recovery gates still block verification. Business-service,
+Workflow coordinator, REST, OpenAPI, MCP, client, CLI, and local real
+PostgreSQL seven-boundary tests pass. The retained clean Linux/provider and
+expanded cross-surface recovery gates still block verification. Business-service,
 Agent, MCP, model, Tool, compensation, and production recovery remain open;
 no second engine, scheduler, queue, Runtime provider, authorization store, or
 frontend was added.

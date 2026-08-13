@@ -1545,6 +1545,12 @@ Operations remains the only durable orchestration mechanism.
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
+Migration `100` completes the finite-step relational admission by evolving the
+existing `WorkflowStepProjection` kind constraint to accept `execution`. It
+adds no projection store, executor, scheduler, queue, or child lifecycle. The
+seven-boundary fixture passes against a local real PostgreSQL 17 instance;
+clean Linux and provider gates remain the verification authorities.
+
 The shared execution substrate now pins A3S Flow `0.12.0`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.0`-backed PostgreSQL stores. Flow events and
 Boot tasks use isolated `a3s_flow` and `a3s_boot` schemas. New Cloud Operation

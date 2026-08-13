@@ -546,10 +546,22 @@ async fn exercise_execution_child_matrix(
         return Err("finite child Operation authority drifted during enqueue".into());
     }
     let child_start = runtime.operation_reconciler().run_once().await?;
-    if child_start.inspected != 1 || child_start.projected != 1 || !child_start.failures.is_empty()
+    if child_start.inspected != 2 || child_start.projected != 2 || !child_start.failures.is_empty()
     {
         return Err(format!(
-            "finite child Operation did not start its existing Flow: {child_start:#?}"
+            "finite child Operation and suspended parent were not projected exactly once: {child_start:#?}"
+        )
+        .into());
+    }
+    let parent_projection = runtime
+        .operations
+        .find_projection(created.value.run.operation_id)
+        .await?
+        .ok_or("finite parent Operation projection disappeared while starting its child")?;
+    if parent_projection.status != OperationStatus::Suspended {
+        return Err(format!(
+            "finite parent Operation projected {:?} while its child started",
+            parent_projection.status
         )
         .into());
     }

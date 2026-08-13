@@ -3052,8 +3052,11 @@ the same Workflow repository, domain state machine, transaction-bound
 idempotency/Outbox/audit path, and shared Resource Grant evaluator. Migrations
 `098` and `099` add Executions-owned immutable ACL-native ExecutionTemplate
 revisions plus an exact WorkflowRun/Plan/step/attempt/template/digest binding
-on the ordinary Execution. The `execution` plan step requires one exact
-environment and `executions/execution_template/execution.run` capability. The
+on the ordinary Execution. Migration `100` evolves the existing
+WorkflowStepProjection kind constraint to admit `execution`; it adds no
+parallel projection, child store, or executor. The `execution` plan step
+requires one exact environment and
+`executions/execution_template/execution.run` capability. The
 Workflow coordinator calls one typed Executions application port, creates or
 adopts the replay-safe child, links its existing Operation into the parent A3S
 Flow run, resumes only after cleanup reaches an authority-bound terminal
@@ -3067,9 +3070,9 @@ The Management MCP scenario publishes the same
 `contracts/w0.3/execution-template.acl` through REST, replays and reads it
 through MCP, and checks accepted/rejected idempotency, Outbox, audit, migration
 `098`, immutability, and tenant non-disclosure against PostgreSQL. Focused
-domain/application/coordinator/REST/MCP/client/CLI tests and provider-gate
-sources pass local compilation/static checks; the retained clean Linux
-PostgreSQL runs must turn green before this slice is verified. Business-service
+domain/application/coordinator/REST/MCP/client/CLI tests, a local real PostgreSQL
+seven-boundary run, and provider-gate source checks pass; retained clean Linux
+PostgreSQL/provider gates still govern verification. Business-service
 and remaining provider capability dispatch, compensation, expanded clean
 provider evidence, and public availability remain open; no frontend was added.
 
