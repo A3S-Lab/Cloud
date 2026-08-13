@@ -37,6 +37,17 @@ pub struct IdentityPrincipal {
 }
 
 impl IdentityPrincipal {
+    pub fn create_human(id: PrincipalId, name: ResourceName, created_at: DateTime<Utc>) -> Self {
+        Self {
+            id,
+            kind: IdentityPrincipalKind::Human,
+            name,
+            aggregate_version: 1,
+            created_at: canonical_timestamp(created_at),
+            disabled_at: None,
+        }
+    }
+
     pub fn create_service(id: PrincipalId, name: ResourceName, created_at: DateTime<Utc>) -> Self {
         Self {
             id,
@@ -67,6 +78,17 @@ mod tests {
         );
         assert_eq!(principal.kind, IdentityPrincipalKind::Service);
         assert_eq!(principal.aggregate_version, 1);
+        assert!(principal.is_active());
+    }
+
+    #[test]
+    fn human_principal_uses_the_same_stable_identity_authority() {
+        let principal = IdentityPrincipal::create_human(
+            PrincipalId::new(),
+            ResourceName::parse("Human operator").expect("name"),
+            Utc::now(),
+        );
+        assert_eq!(principal.kind, IdentityPrincipalKind::Human);
         assert!(principal.is_active());
     }
 }

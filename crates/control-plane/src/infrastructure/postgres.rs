@@ -885,6 +885,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/101_membership_invitations.sql"
             )),
         ),
+        Migration::new(
+            "102",
+            "external OIDC identity links and one-time flows",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/102_external_oidc_identity.sql"
+            )),
+        ),
     ]
 }
 

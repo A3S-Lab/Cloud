@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::value_objects::{OidcIssuer, OidcProviderKey};
 use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
 use std::collections::BTreeSet;
@@ -73,6 +74,19 @@ pub struct PostgresConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AuthConfig {
     pub bootstrap_token_env: String,
+    pub oidc_providers: Vec<OidcProviderConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OidcProviderConfig {
+    pub key: String,
+    pub issuer: String,
+    pub client_id: String,
+    pub client_secret_env: String,
+    pub callback_url: String,
+    pub request_timeout_ms: u64,
+    pub flow_ttl_ms: u64,
+    pub login_token_ttl_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -399,7 +413,7 @@ impl CloudConfig {
         let postgres = one_block(&document, "postgres")?;
         validate_block(postgres, &["url_env", "max_connections"])?;
         let auth = one_block(&document, "auth")?;
-        validate_block(auth, &["bootstrap_token_env"])?;
+        let oidc_providers = parse_oidc_providers(auth)?;
         let events = one_block(&document, "events")?;
         validate_block(
             events,
@@ -634,6 +648,7 @@ impl CloudConfig {
             },
             auth: AuthConfig {
                 bootstrap_token_env: string(auth, "bootstrap_token_env")?,
+                oidc_providers,
             },
             events: EventsConfig {
                 provider: EventProviderKind::parse(&string(events, "provider")?)?,
@@ -967,6 +982,36 @@ impl CloudConfig {
         if !valid_env_name(&self.auth.bootstrap_token_env) {
             return Err(ConfigError::Invalid(
                 "auth.bootstrap_token_env must be an uppercase environment variable name".into(),
+            ));
+        }
+        let oidc_keys = self
+            .auth
+            .oidc_providers
+            .iter()
+            .map(|provider| provider.key.as_str())
+            .collect::<BTreeSet<_>>();
+        let oidc_issuers = self
+            .auth
+            .oidc_providers
+            .iter()
+            .map(|provider| provider.issuer.as_str())
+            .collect::<BTreeSet<_>>();
+        if oidc_keys.len() != self.auth.oidc_providers.len()
+            || oidc_issuers.len() != self.auth.oidc_providers.len()
+            || self.auth.oidc_providers.iter().any(|provider| {
+                OidcProviderKey::parse(provider.key.clone()).is_err()
+                    || OidcIssuer::parse(provider.issuer.clone()).is_err()
+                    || !valid_credential(&provider.client_id, 255)
+                    || !valid_env_name(&provider.client_secret_env)
+                    || !valid_oidc_callback_url(&provider.callback_url, &provider.key)
+                    || !(1..=60_000).contains(&provider.request_timeout_ms)
+                    || !(60_000..=900_000).contains(&provider.flow_ttl_ms)
+                    || !(300_000..=86_400_000).contains(&provider.login_token_ttl_ms)
+            })
+        {
+            return Err(ConfigError::Invalid(
+                "auth OIDC providers must be unique, canonical, HTTPS, bounded, and secret-referenced"
+                    .into(),
             ));
         }
         if !valid_env_name(&self.events.nats_url_env) {
@@ -1645,6 +1690,109 @@ fn valid_github_callback_url(value: &str) -> bool {
         && url.path() == "/api/v1/source-connections/github/callback"
 }
 
+fn parse_oidc_providers(auth: &Block) -> Result<Vec<OidcProviderConfig>, ConfigError> {
+    if !auth.labels.is_empty()
+        || auth
+            .attributes
+            .keys()
+            .map(String::as_str)
+            .collect::<BTreeSet<_>>()
+            != BTreeSet::from(["bootstrap_token_env"])
+        || auth
+            .blocks
+            .iter()
+            .any(|provider| provider.name != "oidc_provider")
+    {
+        return Err(ConfigError::Invalid(
+            "auth block must contain exactly bootstrap_token_env and optional oidc_provider blocks"
+                .into(),
+        ));
+    }
+    let mut keys = BTreeSet::new();
+    let mut issuers = BTreeSet::new();
+    auth.blocks
+        .iter()
+        .map(|provider| {
+            if provider.labels.len() != 1 || !provider.blocks.is_empty() {
+                return Err(ConfigError::Invalid(
+                    "auth.oidc_provider must contain exactly one provider key label and no nested blocks"
+                        .into(),
+                ));
+            }
+            let expected = BTreeSet::from([
+                "issuer",
+                "client_id",
+                "client_secret_env",
+                "callback_url",
+                "request_timeout_ms",
+                "flow_ttl_ms",
+                "login_token_ttl_ms",
+            ]);
+            let actual = provider
+                .attributes
+                .keys()
+                .map(String::as_str)
+                .collect::<BTreeSet<_>>();
+            if actual != expected {
+                return Err(ConfigError::Invalid(
+                    "auth.oidc_provider must contain exactly issuer, client_id, client_secret_env, callback_url, request_timeout_ms, flow_ttl_ms, login_token_ttl_ms"
+                        .into(),
+                ));
+            }
+            let key = OidcProviderKey::parse(provider.labels[0].clone())
+                .map_err(|error| ConfigError::Invalid(format!("auth.oidc_provider key is invalid: {error}")))?;
+            let issuer = OidcIssuer::parse(string(provider, "issuer")?)
+                .map_err(|error| ConfigError::Invalid(format!("auth.oidc_provider issuer is invalid: {error}")))?;
+            let client_id = string(provider, "client_id")?;
+            let client_secret_env = string(provider, "client_secret_env")?;
+            let callback_url = string(provider, "callback_url")?;
+            let request_timeout_ms = integer(provider, "request_timeout_ms")?;
+            let flow_ttl_ms = integer(provider, "flow_ttl_ms")?;
+            let login_token_ttl_ms = integer(provider, "login_token_ttl_ms")?;
+            if !valid_credential(&client_id, 255)
+                || !valid_env_name(&client_secret_env)
+                || !valid_oidc_callback_url(&callback_url, key.as_str())
+                || !(1..=60_000).contains(&request_timeout_ms)
+                || !(60_000..=900_000).contains(&flow_ttl_ms)
+                || !(300_000..=86_400_000).contains(&login_token_ttl_ms)
+            {
+                return Err(ConfigError::Invalid(format!(
+                    "auth.oidc_provider {:?} configuration is invalid",
+                    key.as_str()
+                )));
+            }
+            if !keys.insert(key.as_str().to_owned()) || !issuers.insert(issuer.as_str().to_owned()) {
+                return Err(ConfigError::Invalid(
+                    "auth.oidc_provider keys and issuers must be unique".into(),
+                ));
+            }
+            Ok(OidcProviderConfig {
+                key: key.as_str().to_owned(),
+                issuer: issuer.as_str().to_owned(),
+                client_id,
+                client_secret_env,
+                callback_url,
+                request_timeout_ms,
+                flow_ttl_ms,
+                login_token_ttl_ms,
+            })
+        })
+        .collect()
+}
+
+fn valid_oidc_callback_url(value: &str, provider_key: &str) -> bool {
+    let Ok(url) = Url::parse(value) else {
+        return false;
+    };
+    url.scheme() == "https"
+        && url.host_str().is_some()
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.query().is_none()
+        && url.fragment().is_none()
+        && url.path() == format!("/api/v1/identity/oidc/{provider_key}/callback")
+}
+
 fn valid_provider_segment(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 255
@@ -1839,7 +1987,18 @@ assets {
   backup_max_bytes = 1073741824
 }
 postgres { url_env = "A3S_CLOUD_POSTGRES_URL" max_connections = 16 }
-auth { bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN" }
+auth {
+  bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN"
+  oidc_provider "workforce" {
+    issuer = "https://identity.example.test"
+    client_id = "a3s-cloud"
+    client_secret_env = "A3S_CLOUD_OIDC_CLIENT_SECRET"
+    callback_url = "https://cloud.example.test/api/v1/identity/oidc/workforce/callback"
+    request_timeout_ms = 10000
+    flow_ttl_ms = 600000
+    login_token_ttl_ms = 3600000
+  }
+}
 events {
   provider = "memory"
   nats_url_env = "A3S_CLOUD_NATS_URL"
@@ -1994,6 +2153,30 @@ security {
 }
 "#;
 
+    fn platform_valid() -> String {
+        let certificate_directory = std::env::temp_dir()
+            .join("a3s-cloud-config-test")
+            .join("gateway-certificates")
+            .display()
+            .to_string()
+            .replace('\\', "/");
+        let managed_state_file = std::env::temp_dir()
+            .join("a3s-cloud-config-test")
+            .join("managed-snapshot.json")
+            .display()
+            .to_string()
+            .replace('\\', "/");
+        VALID
+            .replace(
+                "/var/lib/a3s-cloud/gateway/certificates",
+                &certificate_directory,
+            )
+            .replace(
+                "/var/lib/a3s-gateway/managed-snapshot.json",
+                &managed_state_file,
+            )
+    }
+
     #[test]
     fn parses_closed_acl_configuration() {
         let config = CloudConfig::parse(VALID).expect("valid config");
@@ -2001,6 +2184,12 @@ security {
         assert_eq!(config.server_address().expect("address").port(), 8080);
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
+        assert_eq!(config.auth.oidc_providers.len(), 1);
+        assert_eq!(config.auth.oidc_providers[0].key, "workforce");
+        assert_eq!(
+            config.auth.oidc_providers[0].issuer,
+            "https://identity.example.test"
+        );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.human_tasks.coordination_batch_size, 100);
         assert_eq!(config.human_tasks.flow_operation_timeout_ms, 5_000);
@@ -2059,6 +2248,7 @@ security {
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
         assert_eq!(config.human_tasks.resume_lease_ms, 30_000);
+        assert!(config.auth.oidc_providers.is_empty());
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);
         assert_eq!(config.sources.github_webhook_max_body_bytes, 1_048_576);
         assert_eq!(config.sources.github_authority_poll_interval_ms, 300_000);
@@ -2335,5 +2525,41 @@ security {
             "s3_endpoint = \"https://credential@objects.example\""
         ))
         .is_err());
+    }
+
+    #[test]
+    fn oidc_provider_acl_is_closed_unique_and_https_only() {
+        let valid = platform_valid();
+        let configured = CloudConfig::parse(&valid).expect("platform-valid OIDC ACL");
+        assert_eq!(configured.auth.oidc_providers.len(), 1);
+        assert!(CloudConfig::parse(&valid.replace(
+            "issuer = \"https://identity.example.test\"",
+            "issuer = \"http://identity.example.test\""
+        ))
+        .is_err());
+        assert!(CloudConfig::parse(&valid.replace(
+            "/api/v1/identity/oidc/workforce/callback",
+            "/api/v1/identity/oidc/other/callback"
+        ))
+        .is_err());
+        assert!(
+            CloudConfig::parse(&valid.replace("flow_ttl_ms = 600000", "flow_ttl_ms = 1")).is_err()
+        );
+        let duplicate = valid.replace(
+            "\n}\nevents {",
+            r#"
+  oidc_provider "other" {
+    issuer = "https://identity.example.test"
+    client_id = "a3s-cloud-other"
+    client_secret_env = "A3S_CLOUD_OIDC_OTHER_SECRET"
+    callback_url = "https://cloud.example.test/api/v1/identity/oidc/other/callback"
+    request_timeout_ms = 10000
+    flow_ttl_ms = 600000
+    login_token_ttl_ms = 3600000
+  }
+}
+events {"#,
+        );
+        assert!(CloudConfig::parse(&duplicate).is_err());
     }
 }

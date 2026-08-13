@@ -71,6 +71,8 @@ mod edge_certificate_lifecycle_support;
 mod edge_support;
 #[path = "support/executions.rs"]
 mod executions_support;
+#[path = "support/external_oidc_identity.rs"]
+mod external_oidc_identity_support;
 #[path = "support/fleet.rs"]
 mod fleet_support;
 #[path = "support/forms.rs"]
@@ -294,6 +296,19 @@ async fn postgres_membership_invitations_are_atomic_exact_and_immutable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_external_oidc_identity_is_exact_replay_safe_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        external_oidc_identity_support::exercise_external_oidc_identity_foundation,
+    )
+    .await
+    .expect("PostgreSQL external OIDC identity foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_audit_query_is_tenant_scoped_filtered_and_keyset_paginated() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
@@ -441,7 +456,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (101, "101".into()));
+    assert_eq!(migration_state, (102, "102".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

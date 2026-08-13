@@ -815,6 +815,7 @@ fn config() -> CloudConfig {
         },
         auth: AuthConfig {
             bootstrap_token_env: "A3S_CLOUD_BOOTSTRAP_TOKEN".into(),
+            oidc_providers: Vec::new(),
         },
         events: EventsConfig {
             provider: EventProviderKind::Memory,

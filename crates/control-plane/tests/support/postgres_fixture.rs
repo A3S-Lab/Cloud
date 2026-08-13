@@ -222,6 +222,7 @@ pub(super) fn config() -> CloudConfig {
         },
         auth: AuthConfig {
             bootstrap_token_env: BOOTSTRAP_ENV.into(),
+            oidc_providers: Vec::new(),
         },
         events: EventsConfig {
             provider: EventProviderKind::Memory,
