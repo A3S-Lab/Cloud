@@ -171,7 +171,8 @@ const preservationContracts = [
   {
     path: 'ROADMAP.md',
     required: [
-      'External OIDC identity federation',
+      'external identity federation',
+      'OIDC issuer/subject links',
       '`HarnessInvocationProfile`',
       '`I0.6`',
       'tenant-scoped security investigation',

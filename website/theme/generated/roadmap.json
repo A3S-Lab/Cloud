@@ -67,8 +67,8 @@
     {
       "code": "C0",
       "name": "Control surfaces",
-      "outcome": "REST/CLI/management MCP parity, External OIDC identity federation, grants, search, collaboration, security investigation, notifications, audit, and bounded exec/terminal",
-      "status": "In progress",
+      "outcome": "REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal",
+      "status": "In progress; enterprise `C0.5` planned",
       "statusKind": "in-progress"
     },
     {
@@ -105,6 +105,27 @@
       "outcome": "Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs",
       "status": "In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/plan, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain)",
       "statusKind": "in-progress"
+    },
+    {
+      "code": "APP0",
+      "name": "AI application lifecycle and delivery",
+      "outcome": "Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences over one immutable ApplicationRelease-to-WorkflowRevision path, with sessions, publishing, streaming, embed, MCP, monitoring, feedback, and enterprise governance",
+      "status": "Planned and unavailable; no public parity claim before `APP0.6`",
+      "statusKind": "planned"
+    },
+    {
+      "code": "K0",
+      "name": "Knowledge and Knowledge Pipeline",
+      "outcome": "User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines",
+      "status": "Planned and unavailable",
+      "statusKind": "planned"
+    },
+    {
+      "code": "AUT0",
+      "name": "Automations and Connectors",
+      "outcome": "Schedule, webhook, plugin/source-event triggers and reusable outbound HTTP/business connections with exact targets, deduplication, Secret/egress policy, and recovery",
+      "status": "Planned and unavailable",
+      "statusKind": "planned"
     },
     {
       "code": "S0",
