@@ -1,6 +1,7 @@
 mod api_token_repository;
 mod membership_invitation_repository;
 mod membership_repository;
+mod oidc_identity_repository;
 mod organization_repository;
 mod resource_authorization_decision_repository;
 mod resource_grant_repository;
@@ -14,6 +15,9 @@ pub use membership_invitation_repository::{
 pub use membership_repository::{
     ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
     RevokeMembershipWrite,
+};
+pub use oidc_identity_repository::{
+    CompleteOidcLinkWrite, CompleteOidcLoginWrite, IOidcIdentityRepository,
 };
 pub use organization_repository::{CreateOrganizationWrite, IOrganizationRepository};
 pub use resource_authorization_decision_repository::IResourceAuthorizationDecisionRepository;

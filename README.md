@@ -332,8 +332,19 @@ requests that omit the field retain the previous `service` default.
 Acceptance rechecks the exact authenticated Principal and expected version,
 then creates the ordinary Membership and marks the invitation accepted in one
 transaction; a different Principal receives the same `404` as a missing
-invitation, and exact command replay is stable. This adds no email directory,
-OIDC link, session, notification queue, or parallel role authority. Closed
+invitation, and exact command replay is stable. Migration `102` and the
+Identity Repository now persist exact OIDC issuer/subject links and bounded
+one-time login/link flows. Final callbacks lock and consume the flow together
+with either link verification or issuance of a 5-minute-to-24-hour ordinary
+Cloud API token; the token reuses the existing verifier, Membership, Resource
+Grant, Outbox, and audit authorities and never receives `platform:write`.
+It also omits `token:write`, so a short-lived login credential cannot mint a
+replacement long-lived credential.
+Provider tokens, email/group claims, and logout are not Cloud credentials,
+roles, or revocation evidence. Discovery/JWKS validation and public protocol
+surfaces remain unavailable until their security fixtures pass. This adds no
+email directory, session store, notification queue, or parallel role
+authority. Closed
 project/environment/node Resource Grants now use one shared evaluator for
 direct scopes, filtered collections, and owner-resolved indirect resources.
 Workloads, external-source BuildRuns, ordinary Routes, Secrets, Forms, Assets,
@@ -342,8 +353,8 @@ repositories; denied and missing indirect IDs share one `404`, and
 authorization precedes mutation replay. The polymorphic Operation feed resolves
 each subject through that same owner set, keyset-pages until it has the requested
 visible records, and shares one filtered boundary across REST, SSE, and
-Management MCP. External OIDC links and frontend identity projections remain
-open. Contract `1.26.0` also exposes one owner/admin-only, `cloud:read`
+Management MCP. OIDC discovery/callback surfaces and frontend identity
+projections remain open. Contract `1.26.0` also exposes one owner/admin-only, `cloud:read`
 tenant audit query through REST, the maintained client, CLI, and Management
 MCP. It keyset-pages the existing append-only `audit_records` by
 `(occurred_at, audit_id)`, supports exact actor/action/aggregate/request and
@@ -358,8 +369,8 @@ matrix against PostgreSQL 17. CI reuses the existing foundation job and
 [successful RG3 run](https://github.com/A3S-Lab/Cloud/actions/runs/31589844014)
 closes the Resource Grant evidence without claiming the unfinished `C0.3`
 identity surfaces are available.
-Future OIDC subjects attach to the same Principal instead of creating another
-identity or RBAC mechanism.
+OIDC subjects attach to the same Principal instead of creating another identity
+or RBAC mechanism.
 
 ### One concern, one authority
 
@@ -489,7 +500,7 @@ mechanisms of the reference products.
 | Reference outcome | A3S-owned design | Availability boundary | Not copied |
 | --- | --- | --- | --- |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and health diagnostics | Inference owns immutable model/provider/policy revisions; Edge owns route intent; Gateway applies the typed data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
-| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, invitations, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential, exact-Principal invitation, and Resource Grant lifecycles plus indirect owner-resolution through the current Operation surface are implemented; dedicated real-PostgreSQL gates verify Resource Grant closure and invitation persistence/acceptance; external OIDC, role-focused projections, and `I0.2e` model/key self-service remain planned | A second identity/key store, browser-only authorization, or plaintext credential recovery |
+| TokenHub-style workspaces, enterprise sign-in, RBAC, scoped keys, quotas, and concurrency policy | Identity owns principals, memberships, invitations, grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The backend-only `C0.3` Principal/Membership/credential, exact-Principal invitation, Resource Grant, exact OIDC link/flow persistence, and short-lived ordinary login-credential lifecycles plus indirect owner-resolution through the current Operation surface are implemented; dedicated real-PostgreSQL gates verify their atomicity and replay safety; OIDC discovery/JWKS/protocol surfaces, role-focused projections, and `I0.2e` model/key self-service remain planned | A second identity/key store, browser-only authorization, or plaintext credential recovery |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; `C0` owns authorized project views | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts/responses in management telemetry, client-side usage truth, or commercial billing authority |
 | TokenHub-style protocol and provider breadth | Separately versioned `InferenceProtocolProfile` contracts and credential-isolated providers behind the same Inference, Edge, Gateway, Secret, and usage boundaries | Optional post-production `I0.6`, only after real protocol, terms, credential, usage, failure, and recovery conformance | An untyped byte proxy, browser-held upstream credentials, or implied support for every vendor |
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |

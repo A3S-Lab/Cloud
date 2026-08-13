@@ -73,4 +73,30 @@ impl ApiTokenScope {
         .map(|scope| Self(scope.to_owned()))
         .collect()
     }
+
+    pub fn interactive_scopes() -> std::collections::BTreeSet<Self> {
+        Self::bootstrap_scopes()
+            .into_iter()
+            .filter(|scope| !matches!(scope.as_str(), Self::PLATFORM_WRITE | Self::TOKEN_WRITE))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interactive_credentials_never_receive_platform_authority() {
+        let scopes = ApiTokenScope::interactive_scopes();
+        assert!(scopes
+            .iter()
+            .any(|scope| scope.as_str() == ApiTokenScope::CLOUD_READ));
+        assert!(scopes
+            .iter()
+            .all(|scope| scope.as_str() != ApiTokenScope::PLATFORM_WRITE));
+        assert!(scopes
+            .iter()
+            .all(|scope| scope.as_str() != ApiTokenScope::TOKEN_WRITE));
+    }
 }

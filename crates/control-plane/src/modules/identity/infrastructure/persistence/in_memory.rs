@@ -1,6 +1,6 @@
 use crate::modules::identity::domain::entities::{
-    ApiToken, AuthenticatedApiToken, IdentityBootstrap, IdentityPrincipal, Membership,
-    MembershipInvitation, Organization, ResourceGrant,
+    ApiToken, AuthenticatedApiToken, ExternalIdentityLink, IdentityBootstrap, IdentityPrincipal,
+    Membership, MembershipInvitation, OidcFlow, Organization, ResourceGrant,
 };
 use crate::modules::identity::domain::repositories::{
     CreateApiTokenWrite, CreateOrganizationWrite, IApiTokenRepository, IOrganizationRepository,
@@ -8,8 +8,9 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::domain::services::ResourceAuthorizationDecision;
 use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
 use crate::modules::shared_kernel::domain::{
-    ApiTokenId, IdempotencyRequest, IdempotentWrite, MembershipId, MembershipInvitationId,
-    OrganizationId, PrincipalId, RepositoryError, ResourceGrantId,
+    ApiTokenId, ExternalIdentityLinkId, IdempotencyRequest, IdempotentWrite, MembershipId,
+    MembershipInvitationId, OidcFlowId, OrganizationId, PrincipalId, RepositoryError,
+    ResourceGrantId, Sha256Digest,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -36,6 +37,9 @@ pub(super) struct State {
     pub(super) resource_grants: BTreeMap<ResourceGrantId, ResourceGrant>,
     pub(super) resource_authorization_decisions: BTreeMap<Uuid, ResourceAuthorizationDecision>,
     pub(super) membership_subjects: BTreeMap<(OrganizationId, PrincipalId), MembershipId>,
+    pub(super) oidc_flows: BTreeMap<OidcFlowId, OidcFlow>,
+    pub(super) oidc_flow_states: BTreeMap<Sha256Digest, OidcFlowId>,
+    pub(super) external_identity_links: BTreeMap<ExternalIdentityLinkId, ExternalIdentityLink>,
     pub(super) tokens: BTreeMap<ApiTokenId, ApiToken>,
     pub(super) token_names: BTreeMap<(OrganizationId, String), ApiTokenId>,
     pub(super) token_digests: BTreeMap<String, ApiTokenId>,

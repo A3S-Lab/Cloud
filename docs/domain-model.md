@@ -135,8 +135,8 @@ are different facts.
 
 Owns stable human and service Principals, organizations, Membership roles,
 exact-Principal MembershipInvitations, Principal-bound API credentials,
-revocation, Resource Grants, planned external
-OIDC subject links under `C0.3`, planned SAML/OIDC provider, SCIM, and session
+revocation, Resource Grants, exact external OIDC subject links and one-time
+login/link flow persistence under `C0.3`, planned SAML/OIDC provider, SCIM, and session
 policy under `C0.5`, and tenant context. It answers who may
 issue a command. It does not decide runtime placement, treat a credential as a
 role, treat an identity-provider session as Cloud authority, or store asset
@@ -150,7 +150,8 @@ Primary aggregates:
 - `MembershipInvitation`
 - `ApiToken`
 - `ResourceGrant`
-- `ExternalIdentityLink` (planned `C0.3`)
+- `ExternalIdentityLink` and transient `OidcFlow` (`C0.3` persistence implemented;
+  discovery/JWKS/callback surfaces still gated)
 - `EnterpriseIdentityProvider` and `ProvisioningBinding` (planned `C0.5`)
 - `IdentitySessionPolicy` (planned `C0.5`)
 

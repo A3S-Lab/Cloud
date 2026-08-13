@@ -844,7 +844,7 @@ not introduce a second scheduler.
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
-| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, Outbox/audit, and one bounded tenant-administrator audit query with REST/OpenAPI/client/CLI/Management MCP parity are implemented as the backend foundation. External OIDC links, attribution, tenant-scoped security investigation, notification, retention/export policy, and the role-focused console projection remain planned |
+| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, exact OIDC issuer/subject links plus replay-safe one-time flows, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, Outbox/audit, and one bounded tenant-administrator audit query are implemented as the backend foundation. OIDC discovery/JWKS/protocol surfaces, attribution, tenant-scoped security investigation, notification, retention/export policy, and the role-focused console projection remain planned |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 | `C0.5` | Planned | Enterprise SAML/OIDC federation, SCIM provisioning/deprovisioning, session policy, application/Workflow/Knowledge-granular Resource Grants, tamper-evident audit and SIEM export, PII-redaction policy, BYOK/data-residency bindings, and air-gapped governance evidence over the existing Identity, Secrets, audit, `S0`, and `H0` authorities |
 
@@ -958,8 +958,16 @@ Principal lists its own invitations and accepts only its exact invitation.
 Acceptance locks and version-checks the invitation, creates the ordinary
 Membership, and records acceptance, idempotency, Outbox, and audit in one
 transaction. Wrong principals receive the same `404` as missing IDs, while
-expired or revoked invitations cannot create a Membership. No email, OIDC,
-session, notification, or parallel role authority is introduced. Migration
+expired or revoked invitations cannot create a Membership. No email, session,
+notification, or parallel role authority is introduced. Migration `102` adds
+exact OIDC issuer/subject links and bounded login/link flows through the same
+Identity Repository. Final completion consumes a flow with link verification
+or one 5-minute-to-24-hour ordinary API token, Outbox facts, and audit in one
+PostgreSQL transaction; provider-configuration drift and replay fail closed,
+concurrent callbacks admit one success, and these credentials receive neither
+`platform:write` nor self-renewing `token:write`. Provider tokens and claims do not become Cloud authority;
+discovery/JWKS verification and public protocol surfaces remain unavailable.
+Migration
 `087` adds Membership-bound closed project/environment/node Resource Grants;
 one shared evaluator enforces direct access and filters collections on every
 request, while the application handler validates targets through their owning
@@ -973,8 +981,8 @@ uses the foundation `audit_records` table and its existing
 ORM, returns stable keyset pages with exact actor/action/aggregate/request and
 inclusive time filters, and never exposes unstructured `details`. It adds no
 audit writer, table, event, queue, scheduler, or authorization mechanism.
-Future external OIDC issuer/subject links must attach to the same Principal
-and Membership authority. Attribution, notifications, tenant-scoped security
+External OIDC issuer/subject links attach to the same Principal and Membership
+authority. Attribution, notifications, tenant-scoped security
 investigation, audit retention/export policy, and role-focused frontend
 projections remain planned, so `C0.3` is in progress rather than verified.
 
@@ -987,6 +995,7 @@ their own RBAC or resource-ownership registry:
 | `C0.3-RG2` | Verified by the `RG3` PostgreSQL cross-surface gate | A typed route-metadata contract admits indirect requests only when the caller has coarse visibility. Workloads resolves Workload, Deployment, and workload-log IDs; Artifacts resolves BuildRun detail, evidence, logs, cancellation, and retry; Edge resolves ordinary Route detail; Secrets resolves detail, rotation, and version revocation; Forms resolves drafts before revision, publication, and release access; Assets resolves catalog, release, hosted Git, and MCP profile requests; Workflow resolves Ontology, WorkflowDefinition, WorkflowGoal, WorkflowRun, and HumanTask before aggregate and inherited revision/plan/history/output/task access, revision publication, or cancellation; Executions resolves generic finite Task detail and cancellation; Agents resolves AgentConversation and AgentExecution before detail, child execution/change-set/event access, SSE connection, start, or cancellation. The Operation query boundary handles its closed polymorphic subject set by delegating to those existing owner resolvers, keyset-pages past invisible records, and returns the same filtered feed through REST, SSE, and Management MCP. It never infers scope from workflow input or persists a second ownership table. Each owner uses its existing repository and calls the shared evaluator at the application boundary. Workflow revisions and plans inherit their parent project, while HumanTask authorizes its stored canonical project; environment-only grants do not authorize project-scoped Workflow aggregates. Generic Execution uses its canonical environment; AgentExecution inherits its AgentConversation environment, so an exact environment grant or its parent project grant authorizes either. Denied and missing IDs share the same `404` contract, and mutation authorization runs before idempotency replay so revocation applies on the next request. Asset and AssetRelease plus hosted Asset-release BuildRuns are organization-scoped today and therefore remain available to organization-wide roles while restricted memberships fail closed; no synthetic project ownership is inferred. MCP Route Policy, DomainClaim, Credential, internal Secret materialization, internal Agent provider/event ingestion, and FormSubmission retain their separate owning boundaries. No Identity-owned cross-context ownership table, presentation-only filter, or context-local grant evaluator is allowed. |
 | `C0.3-RG3` | Verified on PostgreSQL 17 in CI (`2026-08-12`) | Server-side collection filtering and direct/indirect command authorization pass one cross-surface matrix for owner/admin/member/restricted roles, project ancestry, exact environment/node grants, revocation on the next request and stream reconnect, guessed IDs, tenant isolation, idempotency, Outbox, and audit against real PostgreSQL. The dedicated conditional gate exercises REST, Management MCP, and the Operation SSE reconnect through the production application and asserts exact Grant/idempotency/Outbox/audit rows. CI reuses the existing PostgreSQL 17 foundation job and connection variable rather than adding another database job. The [successful RG3 run](https://github.com/A3S-Lab/Cloud/actions/runs/31589844014) is the verification evidence. |
 | `C0.3-MI1` | Verified on PostgreSQL 17 in CI (`2026-08-13`) | One exact active Principal can be invited into one organization for one ordinary Membership role with a maximum 30-day expiry. Administrator and self-service REST, client, CLI, and Management MCP surfaces reuse Identity CQRS, permission, idempotency, A3S ORM, Outbox, and audit authorities. Exact-Principal acceptance atomically creates the Membership; stale, foreign, expired, revoked, duplicate-membership, and replay cases pass the dedicated PostgreSQL test without adding a user directory, provider identity store, queue, or scheduler. The [successful MI1 job](https://github.com/A3S-Lab/Cloud/actions/runs/31679314189/job/94380946460) is the verification evidence. |
+| `C0.3-OIDC1` | Implemented; local PostgreSQL 17 gate passes (`2026-08-13`) | One Identity Repository port owns exact issuer/subject link history and bounded one-time login/link flows. PostgreSQL atomically consumes callbacks with link verification or issuance of an ordinary short-lived API token plus existing Outbox/audit writes; configuration-digest drift, replay, inactive membership, ambiguous binding, and concurrent completion fail closed. Public discovery/JWKS/callback surfaces remain unavailable pending `C0.3-OIDC2` security fixtures and retained CI evidence. |
 
 The verified `C0.3-RG2` boundary is the authorization prerequisite now reused
 by protected HumanTask submission and remains mandatory for any new

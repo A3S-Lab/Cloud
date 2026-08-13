@@ -416,7 +416,7 @@ pub(super) async fn insert_membership(
     Ok(())
 }
 
-async fn insert_token(
+pub(super) async fn insert_token(
     transaction: &a3s_orm::PostgresTransaction,
     token: &ApiToken,
     digest: &ApiTokenDigest,

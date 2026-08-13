@@ -53,7 +53,7 @@ pub use application::queries::list_organizations::{ListOrganizations, ListOrgani
 pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
 };
-pub use domain::repositories::IResourceAuthorizationDecisionRepository;
+pub use domain::repositories::{IOidcIdentityRepository, IResourceAuthorizationDecisionRepository};
 pub use domain::services::{ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest};
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
 pub use presentation::IdentityModule;
