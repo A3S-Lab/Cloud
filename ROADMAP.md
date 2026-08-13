@@ -1728,6 +1728,17 @@ Agent compilers produce ordinary Workflow revisions, New Agent wraps one exact
 A0 AgentRelease and A1/AR0 profile, and Chatflow/Workflow bind user-authored
 revisions.
 
+The canonical 2026-08-13 v1 parity baseline is now frozen in
+[`contracts/app-platform/v1/parity-manifest.acl`](contracts/app-platform/v1/parity-manifest.acl).
+It contains 91 required outcomes across all six application modes, 22
+authoring/toolkit outcomes, 23 built-in node labels, six plugin outcomes, 13
+Knowledge outcomes, six publication channels, seven monitoring outcomes, and
+eight enterprise outcomes. `a3s-cloud-contracts` rejects missing, duplicate,
+noncanonical, or falsely advertised entries and CI runs that gate explicitly.
+The manifest currently declares no public parity capability and keeps the
+composite claim false. The six accepted authority decisions live under
+[`docs/decisions/app-platform`](docs/decisions/app-platform/README.md).
+
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
 | `APP0.1` | Planned | Application/ApplicationRelease authority, six authoring projections with explicit classic/New Agent distinction, exact Workflow binding, closed ACL, authorization, idempotency, audit, Outbox, REST/OpenAPI, maintained client, CLI, and Management MCP contracts |
@@ -1884,8 +1895,8 @@ The default portfolio priority is:
    multi-node placement and networking;
 13. close `MCP0.6` only after its `H0.3` multi-node and `C0.3` grant/audit
     dependencies pass;
-14. after the protected `W0.3` run and descriptor contracts are complete,
-    freeze the versioned parity manifest and advance backend/interface
+14. retain the frozen versioned parity manifest while completing the protected
+    `W0.3` run and descriptor contracts, then advance backend/interface
     `APP0.1`, `K0.1`, and `AUT0.1` independently, with no new frontend work and
     no temporary provider or execution path;
 15. complete `AUT0.5`, then `K0.2` through `K0.5` as their `I0.2`, required

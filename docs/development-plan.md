@@ -3216,8 +3216,9 @@ semantic and durable execution path.
 Follow the detailed gates in
 [`ai-application-platform-plan.md`](ai-application-platform-plan.md):
 
-1. freeze the versioned ACL parity manifest, immutable step-descriptor contract,
-   application-delivery ADR, and the no-duplicate authority tests;
+1. retain the frozen versioned ACL parity manifest and six accepted authority
+   decisions; complete the immutable step-descriptor contract and expand the
+   no-duplicate authority tests;
 2. retain protected `W0.3` runs and the implemented reachable-sink Output
    aggregation; complete composite Iteration/Loop regions, ordered Answer
    frames, typed error branches/fallback, and Flow replay preservation before

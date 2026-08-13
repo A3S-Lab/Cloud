@@ -47,6 +47,12 @@ inventories, plus the public
 [enterprise comparison](https://dify.ai/pricing/dify-enterprise). The future
 ACL capability manifest pins individual source URLs and the observation date so
 later reference-product changes cannot silently alter a verified A3S release.
+That manifest is now frozen at
+[`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
+parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
+required outcomes and intentionally keeps `parity_claim = false`; an internal
+implementation is not a public capability. The six authority decisions are
+registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
 copy another product's internal API, storage model, package format, execution
@@ -604,13 +610,14 @@ lifts the freeze.
 
 The recommended sequence is:
 
-1. **Freeze the parity manifest and ADRs.** Add a versioned ACL capability
-   manifest under `contracts/app-platform/` with every application mode,
+1. **Freeze the parity manifest and ADRs.** Completed for the 2026-08-13 v1
+   baseline. The canonical ACL manifest accounts for every application mode,
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
-   publication channel, monitor outcome, enterprise outcome, owning gate, and
-   availability state. Record the Flow-preservation,
+   publication channel, monitor outcome, and enterprise outcome with one owner,
+   owning gate, dependencies, availability, and typed evidence. Strict tests
+   reject inventory/schema drift and false public claims. The Flow-preservation,
    application-delivery, descriptor-registry, trigger, file, and Knowledge
-   authority decisions.
+   authority decisions are accepted and versioned.
 2. **Finish the W0 semantic foundation.** Retain protected WorkflowRun and
    HumanTask surfaces plus the implemented multi-output aggregation; complete
    descriptor revisions, composite Iteration/Loop regions, Answer event

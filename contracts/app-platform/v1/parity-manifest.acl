@@ -1,0 +1,1056 @@
+parity_manifest "dify-commercial-core-2026-08-13" {
+  baseline = "2026-08-13"
+  parity_claim = false
+  public_claim_gate = "APP0.6"
+  schema = "a3s.cloud.app-platform.parity-manifest.v1"
+  reference "docs-index" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/llms.txt"
+  }
+  reference "enterprise" {
+    observed_on = "2026-08-13"
+    url = "https://dify.ai/pricing/dify-enterprise"
+  }
+  reference "knowledge-pipeline" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/en/cloud/use-dify/knowledge/knowledge-pipeline/knowledge-pipeline-orchestration"
+  }
+  reference "monitoring" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/en/cloud/use-dify/monitor/analysis"
+  }
+  reference "new-agent" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/en/self-host/use-dify/build/new-agent/overview"
+  }
+  reference "plugin-types" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/en/develop-plugin/getting-started/choose-plugin-type"
+  }
+  reference "publication" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/en/cloud/use-dify/publish/README"
+  }
+  reference "workflow-chatflow" {
+    observed_on = "2026-08-13"
+    url = "https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow"
+  }
+  gate "A0.5" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "in_progress"
+  }
+  gate "A1.3" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "A1.4" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "APP0.1" {
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/decisions/app-platform/0002-application-delivery.md"]
+    state = "planned"
+  }
+  gate "APP0.2" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "APP0.3" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "APP0.4" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "APP0.5" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "APP0.6" {
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "AUT0.2" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "AUT0.3" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "AUT0.4" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "AUT0.5" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "C0.3" {
+    evidence = ["implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]
+    state = "in_progress"
+  }
+  gate "C0.5" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "H0.5" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "I0.2" {
+    evidence = ["doc:docs/inference-plan.md"]
+    state = "planned"
+  }
+  gate "I0.2c" {
+    evidence = ["doc:docs/inference-plan.md"]
+    state = "planned"
+  }
+  gate "I0.6" {
+    evidence = ["doc:docs/inference-plan.md"]
+    state = "planned"
+  }
+  gate "K0.2" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "K0.3" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "K0.5" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  gate "MCP0.5" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "S0" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "U0.4" {
+    evidence = ["doc:ROADMAP.md"]
+    state = "planned"
+  }
+  gate "W0.3" {
+    evidence = ["implementation:crates/control-plane/src/modules/workflow/domain/workflow_graph.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs"]
+    state = "in_progress"
+  }
+  gate "W0.4" {
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    state = "planned"
+  }
+  capability "application.chatbot" {
+    availability = "unavailable"
+    category = "application_mode"
+    dependencies = ["I0.2", "W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Chatbot"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "application.chatflow" {
+    availability = "unavailable"
+    category = "application_mode"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Chatflow"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "application.classic-agent" {
+    availability = "unavailable"
+    category = "application_mode"
+    dependencies = ["A1.3", "I0.2", "U0.4", "W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Classic Agent"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "application.new-agent" {
+    availability = "unavailable"
+    category = "application_mode"
+    dependencies = ["A0.5", "A1.4", "W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "New Agent"
+    owner = "applications"
+    references = ["new-agent", "workflow-chatflow"]
+  }
+  capability "application.text-generator" {
+    availability = "unavailable"
+    category = "application_mode"
+    dependencies = ["I0.2", "W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Text Generator"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "application.workflow" {
+    availability = "unavailable"
+    category = "application_mode"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Workflow Application"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "enterprise.audit-security" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "C0.5"
+    label = "Audit, SIEM, Investigation, and PII Redaction"
+    owner = "identity"
+    references = ["enterprise"]
+  }
+  capability "enterprise.byok-residency-airgap" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = ["C0.5", "H0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "S0"
+    label = "BYOK, Data Residency, and Air-Gapped Governance"
+    owner = "platform"
+    references = ["enterprise"]
+  }
+  capability "enterprise.custom-domain-branding" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.6"
+    label = "Custom Domain and Branding"
+    owner = "edge_gateway"
+    references = ["enterprise"]
+  }
+  capability "enterprise.external-identity" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = []
+    evidence = ["doc:ROADMAP.md"]
+    gate = "C0.3"
+    label = "External Identity and Fine-Grained Access"
+    owner = "identity"
+    references = ["enterprise"]
+  }
+  capability "enterprise.ha-disaster-recovery" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = ["S0"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "H0.5"
+    label = "High Availability and Disaster Recovery"
+    owner = "platform"
+    references = ["enterprise"]
+  }
+  capability "enterprise.isolation-quota-retention" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = ["C0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.6"
+    label = "Tenant Isolation, Quotas, and Retention"
+    owner = "platform"
+    references = ["enterprise"]
+  }
+  capability "enterprise.organizations-workspaces" {
+    availability = "internal"
+    category = "enterprise"
+    dependencies = []
+    evidence = ["implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]
+    gate = "C0.3"
+    label = "Organizations, Workspaces, Projects, and Environments"
+    owner = "identity"
+    references = ["enterprise"]
+  }
+  capability "enterprise.saml-oidc-scim" {
+    availability = "unavailable"
+    category = "enterprise"
+    dependencies = []
+    evidence = ["doc:ROADMAP.md"]
+    gate = "C0.5"
+    label = "SAML, OIDC, SCIM, and Session Policy"
+    owner = "identity"
+    references = ["enterprise"]
+  }
+  capability "knowledge.datasource-debug" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.5"
+    label = "Whole-Pipeline Test and Single-Datasource Debug"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.datasource-file" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.2"
+    label = "File-Upload Datasource"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.datasource-marketplace" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["U0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.2"
+    label = "Marketplace Datasource"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.datasource-online" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["U0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.2"
+    label = "Online Document and Drive Datasource"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.datasource-web" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["AUT0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.2"
+    label = "Web-Crawler Datasource"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.document-processor" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.2"
+    label = "Document Extraction, OCR, and Layout Processing"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.input-scopes" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.5"
+    label = "Global and Datasource-Local Inputs"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.pipeline-publish-run" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.5"
+    label = "Knowledge Pipeline Publication and Run"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.processor-tool" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["U0.4", "W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.2"
+    label = "Tool and Multimodal Processor"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.sink" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = ["I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.3"
+    label = "Knowledge Base Index and Retrieval Sink"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.transform-general" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.3"
+    label = "General Chunking"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.transform-parent-child" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.3"
+    label = "Parent-Child Chunking"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "knowledge.transform-qa" {
+    availability = "unavailable"
+    category = "knowledge"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "K0.3"
+    label = "Q-and-A Chunking"
+    owner = "knowledge"
+    references = ["knowledge-pipeline"]
+  }
+  capability "monitoring.alerts" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Operator Alerts"
+    owner = "operations_telemetry"
+    references = ["monitoring"]
+  }
+  capability "monitoring.feedback-review" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = ["APP0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Feedback and Annotation Review"
+    owner = "applications"
+    references = ["monitoring"]
+  }
+  capability "monitoring.latency-failure" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Latency and Failure Diagnostics"
+    owner = "operations_telemetry"
+    references = ["monitoring"]
+  }
+  capability "monitoring.retention-redaction" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = ["C0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Retention and Redaction"
+    owner = "operations_telemetry"
+    references = ["monitoring"]
+  }
+  capability "monitoring.run-history" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Application Run History"
+    owner = "operations_telemetry"
+    references = ["monitoring"]
+  }
+  capability "monitoring.telemetry-export" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Telemetry Export"
+    owner = "operations_telemetry"
+    references = ["monitoring"]
+  }
+  capability "monitoring.usage-cost" {
+    availability = "unavailable"
+    category = "monitoring"
+    dependencies = ["I0.2c"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.5"
+    label = "Usage and Cost Correlation"
+    owner = "inference"
+    references = ["monitoring"]
+  }
+  capability "node.agent" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["A1.3", "I0.2", "U0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Agent"
+    owner = "agents"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.answer" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["APP0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.3"
+    label = "Answer"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.code" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Code"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.document-extractor" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["K0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Document Extractor"
+    owner = "knowledge"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.http-request" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["AUT0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "HTTP Request"
+    owner = "automations"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.human-input" {
+    availability = "internal"
+    category = "node"
+    dependencies = []
+    evidence = ["implementation:crates/control-plane/src/modules/workflow/domain/entities/human_task.rs", "test:crates/control-plane/src/modules/workflow/domain/human_task_contract_tests.rs"]
+    gate = "W0.3"
+    label = "Human Input"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.if-else" {
+    availability = "internal"
+    category = "node"
+    dependencies = []
+    evidence = ["implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution.rs"]
+    gate = "W0.3"
+    label = "If-Else"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.integration-trigger" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["U0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "AUT0.4"
+    label = "Integration Trigger"
+    owner = "automations"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.iteration" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.3"
+    label = "Iteration"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.knowledge-retrieval" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["K0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Knowledge Retrieval"
+    owner = "knowledge"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.list-operator" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.3"
+    label = "List Operator"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.llm" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "LLM"
+    owner = "inference"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.loop" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.3"
+    label = "Loop"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.output" {
+    availability = "internal"
+    category = "node"
+    dependencies = []
+    evidence = ["implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/workflow.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs"]
+    gate = "W0.3"
+    label = "Output"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.parameter-extractor" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Parameter Extractor"
+    owner = "inference"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.question-classifier" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Question Classifier"
+    owner = "inference"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.schedule-trigger" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "AUT0.3"
+    label = "Schedule Trigger"
+    owner = "automations"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.template" {
+    availability = "internal"
+    category = "node"
+    dependencies = []
+    evidence = ["implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution.rs"]
+    gate = "W0.3"
+    label = "Template"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.tool" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["U0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Tool"
+    owner = "use"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.user-input" {
+    availability = "internal"
+    category = "node"
+    dependencies = []
+    evidence = ["implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/execution.rs"]
+    gate = "W0.3"
+    label = "User Input"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.variable-aggregator" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.3"
+    label = "Variable Aggregator"
+    owner = "workflow"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.variable-assigner" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = ["APP0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "W0.4"
+    label = "Variable Assigner"
+    owner = "applications"
+    references = ["workflow-chatflow"]
+  }
+  capability "node.webhook-trigger" {
+    availability = "unavailable"
+    category = "node"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "AUT0.2"
+    label = "Webhook Trigger"
+    owner = "automations"
+    references = ["workflow-chatflow"]
+  }
+  capability "plugin.agent-strategy" {
+    availability = "unavailable"
+    category = "plugin"
+    dependencies = ["A1.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "U0.4"
+    label = "Agent Strategy Plugin"
+    owner = "use"
+    references = ["plugin-types"]
+  }
+  capability "plugin.datasource" {
+    availability = "unavailable"
+    category = "plugin"
+    dependencies = ["K0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "U0.4"
+    label = "Datasource Plugin"
+    owner = "use"
+    references = ["plugin-types"]
+  }
+  capability "plugin.extension" {
+    availability = "unavailable"
+    category = "plugin"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "U0.4"
+    label = "Extension Plugin"
+    owner = "use"
+    references = ["plugin-types"]
+  }
+  capability "plugin.model" {
+    availability = "unavailable"
+    category = "plugin"
+    dependencies = ["I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "U0.4"
+    label = "Model Plugin"
+    owner = "use"
+    references = ["plugin-types"]
+  }
+  capability "plugin.tool" {
+    availability = "unavailable"
+    category = "plugin"
+    dependencies = ["W0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "U0.4"
+    label = "Tool Plugin"
+    owner = "use"
+    references = ["plugin-types"]
+  }
+  capability "plugin.trigger" {
+    availability = "unavailable"
+    category = "plugin"
+    dependencies = ["AUT0.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "U0.4"
+    label = "Trigger Plugin"
+    owner = "use"
+    references = ["plugin-types"]
+  }
+  capability "publication.api-blocking" {
+    availability = "unavailable"
+    category = "publication_channel"
+    dependencies = ["APP0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.3"
+    label = "Blocking API"
+    owner = "applications"
+    references = ["publication"]
+  }
+  capability "publication.api-streaming" {
+    availability = "unavailable"
+    category = "publication_channel"
+    dependencies = ["APP0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.3"
+    label = "Streaming API"
+    owner = "applications"
+    references = ["publication"]
+  }
+  capability "publication.embed" {
+    availability = "unavailable"
+    category = "publication_channel"
+    dependencies = ["C0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.3"
+    label = "Embed"
+    owner = "applications"
+    references = ["publication"]
+  }
+  capability "publication.internal" {
+    availability = "unavailable"
+    category = "publication_channel"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Internal Application Invocation"
+    owner = "applications"
+    references = ["publication"]
+  }
+  capability "publication.mcp" {
+    availability = "unavailable"
+    category = "publication_channel"
+    dependencies = ["MCP0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Hosted MCP Facade"
+    owner = "applications"
+    references = ["publication"]
+  }
+  capability "publication.web" {
+    availability = "unavailable"
+    category = "publication_channel"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.3"
+    label = "Generated Web Application"
+    owner = "applications"
+    references = ["publication"]
+  }
+  capability "toolkit.acl-import-export" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Canonical ACL Import and Export"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.annotation-reply" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Annotation Reply"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.citations" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["K0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Citations"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.collaborative-revision" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["C0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Collaborative Revision Safety"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.error-policy" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Per-Node Error Policy"
+    owner = "workflow"
+    references = ["docs-index"]
+  }
+  capability "toolkit.file-input" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "File Input"
+    owner = "files"
+    references = ["docs-index"]
+  }
+  capability "toolkit.follow-up" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Suggested Follow-Up Prompts"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.global-discovery" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["C0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Authorized Global Discovery"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.hosted-mcp-facade" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["MCP0.5"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Hosted MCP Application Facade"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.internal-invocation" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Internal Application Invocation"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.moderation" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["AUT0.5", "I0.2"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Input and Output Moderation"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.more-like-this" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "More Like This Message Variants"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.new-agent-build-chat" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["A0.5", "A1.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "New Agent Build Chat Apply and Discard"
+    owner = "assets"
+    references = ["docs-index"]
+  }
+  capability "toolkit.new-agent-skill-files" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["A0.5", "A1.4"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "New Agent Skills and Permanent Files"
+    owner = "assets"
+    references = ["docs-index"]
+  }
+  capability "toolkit.node-test" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Single Node Test"
+    owner = "workflow"
+    references = ["docs-index"]
+  }
+  capability "toolkit.opener" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = []
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.2"
+    label = "Personalized Opener"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.snippets" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Reusable Workflow Snippets"
+    owner = "workflow"
+    references = ["docs-index"]
+  }
+  capability "toolkit.stt" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["I0.6"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Speech to Text"
+    owner = "inference"
+    references = ["docs-index"]
+  }
+  capability "toolkit.templates-catalog" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["C0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Application Templates and Catalog"
+    owner = "applications"
+    references = ["docs-index"]
+  }
+  capability "toolkit.tts" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["I0.6"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Text to Speech"
+    owner = "inference"
+    references = ["docs-index"]
+  }
+  capability "toolkit.variable-inspection" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Variable Inspection"
+    owner = "workflow"
+    references = ["docs-index"]
+  }
+  capability "toolkit.version-control" {
+    availability = "unavailable"
+    category = "authoring_toolkit"
+    dependencies = ["W0.3"]
+    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    gate = "APP0.4"
+    label = "Workflow Version Control"
+    owner = "workflow"
+    references = ["docs-index"]
+  }
+}

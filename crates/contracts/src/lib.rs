@@ -1,6 +1,7 @@
 //! Versioned public and node protocol contracts for A3S Cloud.
 
 mod api;
+mod app_platform_manifest;
 mod event;
 mod mcp;
 mod node;
@@ -21,6 +22,11 @@ pub use a3s_code_core::{
 };
 pub use a3s_runtime::contract::RuntimeServiceEndpoint;
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
+pub use app_platform_manifest::{
+    AppPlatformCapability, AppPlatformCapabilityAvailability, AppPlatformCapabilityCategory,
+    AppPlatformGate, AppPlatformGateState, AppPlatformParityManifest, AppPlatformReference,
+    APP_PLATFORM_PARITY_MANIFEST_SCHEMA,
+};
 pub use event::DomainEventEnvelope;
 pub use mcp::{
     validate_mcp_allowed_origins, validate_mcp_telemetry_names, McpCredentialProjection,

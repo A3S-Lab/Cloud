@@ -144,6 +144,7 @@ dependencies = [
 name = "a3s-cloud-contracts"
 version = "0.1.0"
 dependencies = [
+ "a3s-acl 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "a3s-code-core",
  "a3s-runtime",
  "a3s-use-core",

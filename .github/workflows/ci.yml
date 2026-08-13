@@ -389,6 +389,11 @@ jobs:
             exit 1
           fi
 
+      - name: Verify the AI application parity manifest
+        run: >-
+          cargo test --locked -p a3s-cloud-contracts
+          --test app_platform_parity_manifest
+
       - name: Enforce A3S ORM as the relational persistence authority
         run: |
           direct_driver='sqlx|tokio-postgres|deadpool-postgres|postgres|diesel|sea-orm'

@@ -1,0 +1,313 @@
+use super::AppPlatformCapabilityCategory;
+
+pub(super) const REQUIRED_REFERENCES: &[(&str, &str)] = &[
+    ("docs-index", "https://docs.dify.ai/llms.txt"),
+    ("enterprise", "https://dify.ai/pricing/dify-enterprise"),
+    ("knowledge-pipeline", "https://docs.dify.ai/en/cloud/use-dify/knowledge/knowledge-pipeline/knowledge-pipeline-orchestration"),
+    ("monitoring", "https://docs.dify.ai/en/cloud/use-dify/monitor/analysis"),
+    ("new-agent", "https://docs.dify.ai/en/self-host/use-dify/build/new-agent/overview"),
+    ("plugin-types", "https://docs.dify.ai/en/develop-plugin/getting-started/choose-plugin-type"),
+    ("publication", "https://docs.dify.ai/en/cloud/use-dify/publish/README"),
+    ("workflow-chatflow", "https://docs.dify.ai/en/cloud/use-dify/build/workflow-chatflow"),
+];
+
+pub(super) const REQUIRED_CAPABILITIES: &[(&str, AppPlatformCapabilityCategory)] = &[
+    (
+        "application.chatbot",
+        AppPlatformCapabilityCategory::ApplicationMode,
+    ),
+    (
+        "application.chatflow",
+        AppPlatformCapabilityCategory::ApplicationMode,
+    ),
+    (
+        "application.classic-agent",
+        AppPlatformCapabilityCategory::ApplicationMode,
+    ),
+    (
+        "application.new-agent",
+        AppPlatformCapabilityCategory::ApplicationMode,
+    ),
+    (
+        "application.text-generator",
+        AppPlatformCapabilityCategory::ApplicationMode,
+    ),
+    (
+        "application.workflow",
+        AppPlatformCapabilityCategory::ApplicationMode,
+    ),
+    (
+        "enterprise.audit-security",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.byok-residency-airgap",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.custom-domain-branding",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.external-identity",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.ha-disaster-recovery",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.isolation-quota-retention",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.organizations-workspaces",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "enterprise.saml-oidc-scim",
+        AppPlatformCapabilityCategory::Enterprise,
+    ),
+    (
+        "knowledge.datasource-debug",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.datasource-file",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.datasource-marketplace",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.datasource-online",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.datasource-web",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.document-processor",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.input-scopes",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.pipeline-publish-run",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.processor-tool",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    ("knowledge.sink", AppPlatformCapabilityCategory::Knowledge),
+    (
+        "knowledge.transform-general",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.transform-parent-child",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "knowledge.transform-qa",
+        AppPlatformCapabilityCategory::Knowledge,
+    ),
+    (
+        "monitoring.alerts",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    (
+        "monitoring.feedback-review",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    (
+        "monitoring.latency-failure",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    (
+        "monitoring.retention-redaction",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    (
+        "monitoring.run-history",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    (
+        "monitoring.telemetry-export",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    (
+        "monitoring.usage-cost",
+        AppPlatformCapabilityCategory::Monitoring,
+    ),
+    ("node.agent", AppPlatformCapabilityCategory::Node),
+    ("node.answer", AppPlatformCapabilityCategory::Node),
+    ("node.code", AppPlatformCapabilityCategory::Node),
+    (
+        "node.document-extractor",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    ("node.http-request", AppPlatformCapabilityCategory::Node),
+    ("node.human-input", AppPlatformCapabilityCategory::Node),
+    ("node.if-else", AppPlatformCapabilityCategory::Node),
+    (
+        "node.integration-trigger",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    ("node.iteration", AppPlatformCapabilityCategory::Node),
+    (
+        "node.knowledge-retrieval",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    ("node.list-operator", AppPlatformCapabilityCategory::Node),
+    ("node.llm", AppPlatformCapabilityCategory::Node),
+    ("node.loop", AppPlatformCapabilityCategory::Node),
+    ("node.output", AppPlatformCapabilityCategory::Node),
+    (
+        "node.parameter-extractor",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    (
+        "node.question-classifier",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    ("node.schedule-trigger", AppPlatformCapabilityCategory::Node),
+    ("node.template", AppPlatformCapabilityCategory::Node),
+    ("node.tool", AppPlatformCapabilityCategory::Node),
+    ("node.user-input", AppPlatformCapabilityCategory::Node),
+    (
+        "node.variable-aggregator",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    (
+        "node.variable-assigner",
+        AppPlatformCapabilityCategory::Node,
+    ),
+    ("node.webhook-trigger", AppPlatformCapabilityCategory::Node),
+    (
+        "plugin.agent-strategy",
+        AppPlatformCapabilityCategory::Plugin,
+    ),
+    ("plugin.datasource", AppPlatformCapabilityCategory::Plugin),
+    ("plugin.extension", AppPlatformCapabilityCategory::Plugin),
+    ("plugin.model", AppPlatformCapabilityCategory::Plugin),
+    ("plugin.tool", AppPlatformCapabilityCategory::Plugin),
+    ("plugin.trigger", AppPlatformCapabilityCategory::Plugin),
+    (
+        "publication.api-blocking",
+        AppPlatformCapabilityCategory::PublicationChannel,
+    ),
+    (
+        "publication.api-streaming",
+        AppPlatformCapabilityCategory::PublicationChannel,
+    ),
+    (
+        "publication.embed",
+        AppPlatformCapabilityCategory::PublicationChannel,
+    ),
+    (
+        "publication.internal",
+        AppPlatformCapabilityCategory::PublicationChannel,
+    ),
+    (
+        "publication.mcp",
+        AppPlatformCapabilityCategory::PublicationChannel,
+    ),
+    (
+        "publication.web",
+        AppPlatformCapabilityCategory::PublicationChannel,
+    ),
+    (
+        "toolkit.acl-import-export",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.annotation-reply",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.citations",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.collaborative-revision",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.error-policy",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.file-input",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.follow-up",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.global-discovery",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.hosted-mcp-facade",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.internal-invocation",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.moderation",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.more-like-this",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.new-agent-build-chat",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.new-agent-skill-files",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.node-test",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.opener",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.snippets",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.stt",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.templates-catalog",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.tts",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.variable-inspection",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+    (
+        "toolkit.version-control",
+        AppPlatformCapabilityCategory::AuthoringToolkit,
+    ),
+];
