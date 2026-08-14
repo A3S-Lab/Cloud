@@ -1015,6 +1015,7 @@ export type {
   WorkflowCapabilityType,
   WorkflowDefinition,
   WorkflowDefinitionMutationResult,
+  WorkflowDataType,
   WorkflowGoal,
   WorkflowGoalMutationResult,
   WorkflowNodeCatalog,
@@ -1042,10 +1043,16 @@ export type {
   WorkflowRunHistoryPage,
   WorkflowRunMutationResult,
   WorkflowRunOutput,
+  WorkflowRunVariable,
+  WorkflowRunVariableInspection,
+  WorkflowRunVariableState,
   WorkflowRunStatus,
   WorkflowStepKind,
   WorkflowStepProjection,
   WorkflowStepProjectionStatus,
+  WorkflowVariableMutationMode,
+  WorkflowVariableScope,
+  WorkflowVariableStorageClass,
 } from './workflow';
 
 export type WorkloadLogStreamFilter = 'stdout' | 'stderr';

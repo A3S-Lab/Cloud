@@ -1321,6 +1321,48 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
     let run = response_json(&run)?;
     assert_eq!(run["data"]["workflowRun"]["status"], "pending");
     assert_eq!(run["data"]["workflowRun"]["planRevisionId"], plan["id"]);
+    let workflow_run_id = required_string(&run["data"]["workflowRun"]["id"], "WorkflowRun ID")?;
+    let variables = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/workflow-runs/{workflow_run_id}/variables"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(variables.status(), 200);
+    let variables = response_json(&variables)?;
+    assert_eq!(
+        variables["data"]["schema"],
+        "cloud.workflow-run.variable-inspection.v1"
+    );
+    assert_eq!(variables["data"]["workflowRunId"], workflow_run_id);
+    assert_eq!(variables["data"]["planRevisionId"], plan["id"]);
+    assert_eq!(
+        variables["data"]["variableContractDigest"],
+        plan["plan"]["variableContractDigest"]
+    );
+    assert_eq!(variables["data"]["lastFlowSequence"], 0);
+    assert_eq!(variables["data"]["variables"][0]["name"], "request");
+    assert_eq!(variables["data"]["variables"][0]["state"], "materialized");
+    assert_eq!(
+        variables["data"]["variables"][0]["value"],
+        json!({"ticketId": "T-42"})
+    );
+    assert!(variables["data"]["variables"][0]["valueDigest"].is_string());
+    let mcp_variables = app
+        .call(mcp_tool_call_as(
+            901,
+            "a3s_cloud_workflow_run_variables_get",
+            json!({"workflowRunId": workflow_run_id}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    let mcp_variables = response_json(&mcp_variables)?;
+    assert_eq!(
+        mcp_variables["result"]["structuredContent"]["data"],
+        variables["data"]
+    );
 
     let downgrade = app
         .call(
@@ -1524,6 +1566,15 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
         .status(),
         409
     );
+    assert_eq!(
+        app.call(get_as(
+            format!("{granted_run_root}/variables"),
+            RESTRICTED_WORKFLOW_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
 
     let denied_definition_root = format!(
         "/api/v1/organizations/{organization}/workflow-definitions/{}",
@@ -1582,6 +1633,10 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
         (
             format!("{denied_run_root}/history?limit=10"),
             format!("{missing_run_root}/history?limit=10"),
+        ),
+        (
+            format!("{denied_run_root}/variables"),
+            format!("{missing_run_root}/variables"),
         ),
     ] {
         assert_resource_not_found_equivalent(
@@ -1650,6 +1705,12 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
         (
             28,
             "a3s_cloud_workflow_run_output_get",
+            json!({"workflowRunId": granted.run_id}),
+            409,
+        ),
+        (
+            29,
+            "a3s_cloud_workflow_run_variables_get",
             json!({"workflowRunId": granted.run_id}),
             409,
         ),
@@ -1735,6 +1796,12 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
             "a3s_cloud_workflow_run_history_get",
             json!({"workflowRunId": denied.run_id, "limit": 10}),
             json!({"workflowRunId": Uuid::now_v7(), "limit": 10}),
+        ),
+        (
+            58,
+            "a3s_cloud_workflow_run_variables_get",
+            json!({"workflowRunId": denied.run_id}),
+            json!({"workflowRunId": Uuid::now_v7()}),
         ),
     ] {
         let denied_response = app

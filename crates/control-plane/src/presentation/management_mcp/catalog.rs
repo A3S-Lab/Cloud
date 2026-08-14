@@ -87,6 +87,7 @@ pub const WORKFLOW_RUNS_LIST: &str = "a3s_cloud_workflow_runs_list";
 pub const WORKFLOW_RUNS_WAIT: &str = "a3s_cloud_workflow_runs_wait";
 pub const WORKFLOW_RUN_OUTPUT_GET: &str = "a3s_cloud_workflow_run_output_get";
 pub const WORKFLOW_RUN_HISTORY_GET: &str = "a3s_cloud_workflow_run_history_get";
+pub const WORKFLOW_RUN_VARIABLES_GET: &str = "a3s_cloud_workflow_run_variables_get";
 pub const HUMAN_TASKS_CLAIM: &str = "a3s_cloud_human_tasks_claim";
 pub const HUMAN_TASKS_GET: &str = "a3s_cloud_human_tasks_get";
 pub const HUMAN_TASKS_LIST: &str = "a3s_cloud_human_tasks_list";
@@ -165,6 +166,7 @@ pub enum ManagementTool {
     WorkflowRunsWait,
     WorkflowRunOutputGet,
     WorkflowRunHistoryGet,
+    WorkflowRunVariablesGet,
     HumanTasksClaim,
     HumanTasksGet,
     HumanTasksList,
@@ -216,7 +218,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 90] = [
+    const ALL: [Self; 91] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ExecutionTemplatesCreate,
@@ -273,6 +275,7 @@ impl ManagementTool {
         Self::WorkflowRunsWait,
         Self::WorkflowRunOutputGet,
         Self::WorkflowRunHistoryGet,
+        Self::WorkflowRunVariablesGet,
         Self::HumanTasksClaim,
         Self::HumanTasksGet,
         Self::HumanTasksList,
@@ -391,6 +394,7 @@ impl ManagementTool {
             Self::WorkflowRunsWait => WORKFLOW_RUNS_WAIT,
             Self::WorkflowRunOutputGet => WORKFLOW_RUN_OUTPUT_GET,
             Self::WorkflowRunHistoryGet => WORKFLOW_RUN_HISTORY_GET,
+            Self::WorkflowRunVariablesGet => WORKFLOW_RUN_VARIABLES_GET,
             Self::HumanTasksClaim => HUMAN_TASKS_CLAIM,
             Self::HumanTasksGet => HUMAN_TASKS_GET,
             Self::HumanTasksList => HUMAN_TASKS_LIST,
@@ -497,6 +501,7 @@ impl ManagementTool {
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
             | Self::WorkflowRunHistoryGet
+            | Self::WorkflowRunVariablesGet
             | Self::HumanTasksGet
             | Self::HumanTasksList
             | Self::Search
@@ -587,6 +592,7 @@ impl ManagementTool {
             | Self::WorkflowRunsWait
             | Self::WorkflowRunOutputGet
             | Self::WorkflowRunHistoryGet
+            | Self::WorkflowRunVariablesGet
             | Self::HumanTasksClaim
             | Self::HumanTasksGet
             | Self::HumanTasksRelease
@@ -983,6 +989,12 @@ impl ManagementTool {
                 "Get Workflow run history",
                 "Get one bounded, redacted page of the correlated A3S Flow history.",
                 workflow_run_history_schema(),
+                true,
+            ),
+            Self::WorkflowRunVariablesGet => (
+                "Inspect Workflow run variables",
+                "Inspect bounded typed values reconstructed from immutable WorkflowRun input and the correlated A3S Flow history.",
+                uuid_id_schema("workflowRunId"),
                 true,
             ),
             Self::HumanTasksGet => (
@@ -2146,6 +2158,7 @@ mod tests {
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
             ManagementTool::WorkflowRunHistoryGet,
+            ManagementTool::WorkflowRunVariablesGet,
             ManagementTool::HumanTasksClaim,
             ManagementTool::HumanTasksGet,
             ManagementTool::HumanTasksList,
@@ -2208,6 +2221,7 @@ mod tests {
             ManagementTool::WorkflowRunsWait,
             ManagementTool::WorkflowRunOutputGet,
             ManagementTool::WorkflowRunHistoryGet,
+            ManagementTool::WorkflowRunVariablesGet,
             ManagementTool::HumanTasksClaim,
             ManagementTool::HumanTasksGet,
             ManagementTool::HumanTasksList,

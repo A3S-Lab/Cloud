@@ -11,4 +11,5 @@ pub use response::{
     WorkflowDefinitionResponse, WorkflowGoalMutationResponse, WorkflowGoalResponse,
     WorkflowNodeCatalogResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
     WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
+    WorkflowRunVariableInspectionResponse,
 };

@@ -11,5 +11,6 @@ pub use human_task_flow::{
 };
 pub use workflow_run_flow::{
     project_workflow_run_record, FlowWorkflowRunCoordinator, WorkflowLocalStepResult,
-    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WORKFLOW_RUN_STEP_NAME,
+    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunVariableReader,
+    WORKFLOW_RUN_STEP_NAME,
 };

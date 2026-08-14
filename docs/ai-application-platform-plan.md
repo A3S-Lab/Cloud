@@ -51,7 +51,7 @@ That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The nine authority decisions are
+implementation is not a public capability. The ten authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -382,10 +382,13 @@ schema 2 atomically owns bindings, an exact recoverable registry snapshot, and
 the variable contract. Plan v2 can prove the owning descriptor, and WorkflowRun
 input/runtime/Flow v2 now reconstructs invocation, node-output, deterministic
 run-assignment, direct-read, and opaque-reference values from immutable input
-plus existing Flow history. Runtime inspection, digest-only defaults,
+plus existing Flow history. REST/OpenAPI `1.33.0`, the maintained client, CLI,
+and Management MCP inspect that same materialization through one authorized,
+bounded `cloud.workflow-run.variable-inspection.v1` read projection. It reports
+the observed Flow sequence and materialized/unavailable state, redacts Secret
+references, adds no variable store, and rejects Plan v1. Digest-only defaults,
 composite-region frames/exports, and Applications dispatch remain open and
-therefore fail closed. Existing `cloud.workflow.plan.v1` histories are
-unchanged.
+therefore fail closed. Existing `cloud.workflow.plan.v1` histories are unchanged.
 
 `Iteration` compiles to a bounded fan-out region with deterministic item IDs,
 result ordering, concurrency, failure, cancellation, and maximum-item policy.
@@ -661,16 +664,18 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All nine
+   reject inventory/schema drift and false public claims. All ten
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
-   and discovery are accepted and versioned. The exact digest-bound 23-node
+   discovery, and Flow-derived variable inspection are accepted and versioned.
+   The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.
 2. **Finish the W0 semantic foundation.** Retain protected WorkflowRun and
    HumanTask surfaces, revision-owned exact descriptors and Plan v2 pins,
-   typed-variable foundations, built-in discovery, and multi-output aggregation;
-   complete runtime inspection/defaults, composite Iteration/Loop regions,
+   typed-variable foundations, Flow-derived inspection, built-in discovery, and
+   multi-output aggregation; complete digest-only defaults, composite
+   Iteration/Loop regions,
    Applications-owned variables, the Answer event contract, node error
    branches/fallback, and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.

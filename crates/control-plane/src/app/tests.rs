@@ -50,9 +50,10 @@ use crate::modules::sources::{
 use crate::modules::workflow::{
     ChangeHumanTaskWrite, CreateHumanTaskWrite, DecideHumanTaskWrite, FlowResumeReceipt,
     HumanTaskDecisionRecord, HumanTaskRecord, HumanTaskResumeDelivery, HumanTaskStatus,
-    IHumanTaskRepository, IWorkflowRunHistoryReader, InMemoryOntologyRepository,
-    InMemoryWorkflowDefinitionRepository, InMemoryWorkflowGoalRepository,
-    InMemoryWorkflowRunRepository, WorkflowDecisionOutcome, WorkflowRunHistoryPage,
+    IHumanTaskRepository, IWorkflowRunHistoryReader, IWorkflowRunVariableReader,
+    InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
+    InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, WorkflowDecisionOutcome,
+    WorkflowRunHistoryPage, WorkflowRunRecord, WorkflowRunVariableInspection,
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
@@ -127,6 +128,8 @@ struct TestGithubAppAuthorization;
 struct UnavailableMcpRoutePolicyRepository;
 
 struct EmptyWorkflowRunHistoryReader;
+
+struct InputWorkflowRunVariableReader;
 
 struct TestPluginRegistryEnrollmentAuthorizer;
 
@@ -550,6 +553,21 @@ impl IWorkflowRunHistoryReader for EmptyWorkflowRunHistoryReader {
             events: Vec::new(),
             next_sequence: None,
         })
+    }
+}
+
+#[async_trait::async_trait]
+impl IWorkflowRunVariableReader for InputWorkflowRunVariableReader {
+    async fn inspect(
+        &self,
+        record: &WorkflowRunRecord,
+    ) -> std::result::Result<WorkflowRunVariableInspection, String> {
+        crate::modules::workflow::domain::inspect_workflow_run_variables(
+            record,
+            record.run.last_flow_sequence,
+            record.run.updated_at,
+            &std::collections::BTreeMap::new(),
+        )
     }
 }
 
@@ -1699,6 +1717,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             human_tasks: human_tasks
                 .unwrap_or_else(|| Arc::new(TestHumanTaskRepository::default())),
             workflow_run_history: Arc::new(EmptyWorkflowRunHistoryReader),
+            workflow_run_variables: Arc::new(InputWorkflowRunVariableReader),
             forms: Arc::new(InMemoryFormRepository::new()),
             form_semantic_core: Arc::new(NativeFormSemanticCore::new()),
             search,

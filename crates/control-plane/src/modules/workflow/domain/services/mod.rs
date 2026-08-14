@@ -4,6 +4,7 @@ mod workflow_plan_compiler;
 mod workflow_run_compiler;
 mod workflow_run_coordinator;
 mod workflow_run_history;
+mod workflow_run_variables;
 
 pub use human_task_deadline_authority::{
     expected_human_task_expiry, HumanTaskCancellationAuthority, HumanTaskDeadlineAuthority,
@@ -19,4 +20,12 @@ pub use workflow_run_compiler::{CompiledWorkflowRun, WorkflowRunCompiler};
 pub use workflow_run_coordinator::{IWorkflowRunCoordinator, WorkflowRunCoordinationError};
 pub use workflow_run_history::{
     IWorkflowRunHistoryReader, WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
+};
+pub use workflow_run_variables::{
+    inspect_workflow_run_variables, IWorkflowRunVariableReader, WorkflowRunVariable,
+    WorkflowRunVariableInspection, WorkflowRunVariableState,
+    WORKFLOW_RUN_VARIABLE_INSPECTION_MAX_BYTES, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
+};
+pub(crate) use workflow_run_variables::{
+    lookup_workflow_variable_path, materialize_workflow_variables,
 };

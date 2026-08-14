@@ -4,12 +4,13 @@ use super::workflow::{
 use super::WorkflowLocalStepResult;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest, Sha256Digest};
 use crate::modules::workflow::domain::{
-    flow_step_id, IWorkflowRunHistoryReader, WorkflowExecutionChildReferenceMetadata,
+    flow_step_id, inspect_workflow_run_variables, IWorkflowRunHistoryReader,
+    IWorkflowRunVariableReader, WorkflowExecutionChildReferenceMetadata,
     WorkflowExecutionHookMetadata, WorkflowExecutionResumePayload,
     WorkflowExecutionResumeResolution, WorkflowHumanDecisionHookMetadata, WorkflowRunFlowState,
     WorkflowRunHistoryEvent, WorkflowRunHistoryPage, WorkflowRunInput, WorkflowRunRecord,
-    WorkflowRunStatus, WorkflowStepFlowState, WorkflowStepKind, WorkflowStepProjectionStatus,
-    WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
+    WorkflowRunStatus, WorkflowRunVariableInspection, WorkflowStepFlowState, WorkflowStepKind,
+    WorkflowStepProjectionStatus, WORKFLOW_EXECUTION_STEP_ATTEMPT, WORKFLOW_RUN_OUTPUT_MAX_BYTES,
 };
 use a3s_flow::{
     FlowEngine, FlowError, FlowEvent, FlowEventEnvelope, HookSnapshot, HookStatus, RuntimeKind,
@@ -60,79 +61,10 @@ pub fn project_workflow_run_record(
     }
 
     let resolved_steps = record.run.execution_input.resolved_steps()?;
-    let mut completed = snapshot
-        .steps
-        .values()
-        .filter_map(|step| {
-            step.output
-                .as_ref()
-                .map(|output| serde_json::from_value::<WorkflowLocalStepResult>(output.clone()))
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| format!("WorkflowRun Flow step result is invalid: {error}"))?
-        .into_iter()
-        .map(|result| (result.step_id.clone(), result))
-        .collect::<BTreeMap<_, _>>();
-    let mut execution_failures = BTreeMap::<String, String>::new();
-    for resolved in &resolved_steps {
-        match resolved.plan.kind {
-            WorkflowStepKind::HumanDecision => {
-                let Some((hook, metadata)) =
-                    human_decision_hook(&record.run.execution_input, resolved, snapshot)?
-                else {
-                    continue;
-                };
-                if hook.status == HookStatus::Received {
-                    let payload = hook.payload.as_ref().ok_or_else(|| {
-                        format!(
-                            "Workflow human-decision hook {:?} is received without a payload",
-                            hook.hook_id
-                        )
-                    })?;
-                    let result = human_decision_result(
-                        &snapshot.run_id,
-                        &metadata.flow_hook_id(),
-                        resolved,
-                        payload,
-                    )
-                    .map_err(|error| error.to_string())?;
-                    completed.insert(result.step_id.clone(), result);
-                }
-            }
-            WorkflowStepKind::Execution => {
-                let Some((hook, metadata)) =
-                    execution_hook(&record.run.execution_input, resolved, snapshot)?
-                else {
-                    continue;
-                };
-                if hook.status == HookStatus::Received {
-                    let payload = hook.payload.as_ref().ok_or_else(|| {
-                        format!(
-                            "Workflow execution hook {:?} is received without a payload",
-                            hook.hook_id
-                        )
-                    })?;
-                    match execution_result(
-                        &snapshot.run_id,
-                        &metadata.flow_hook_id(),
-                        resolved,
-                        &metadata,
-                        payload,
-                    )
-                    .map_err(|error| error.to_string())?
-                    {
-                        ExecutionResolution::Succeeded(result) => {
-                            completed.insert(result.step_id.clone(), result);
-                        }
-                        ExecutionResolution::Failed(error) => {
-                            execution_failures.insert(resolved.plan.id.clone(), error);
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
+    let CompletedWorkflowSteps {
+        completed,
+        execution_failures,
+    } = completed_workflow_steps(&record.run.execution_input, &resolved_steps, snapshot)?;
     let inactive = inactive_step_ids(&record.run.execution_input, &completed)?;
 
     for projection in &mut projected.steps {
@@ -340,6 +272,103 @@ pub fn project_workflow_run_record(
     }
     projected.validate()?;
     Ok(Some(projected))
+}
+
+struct CompletedWorkflowSteps {
+    completed: BTreeMap<String, WorkflowLocalStepResult>,
+    execution_failures: BTreeMap<String, String>,
+}
+
+fn completed_workflow_steps(
+    input: &WorkflowRunInput,
+    resolved_steps: &[crate::modules::workflow::domain::ResolvedWorkflowRunStep],
+    snapshot: &WorkflowRunSnapshot,
+) -> Result<CompletedWorkflowSteps, String> {
+    let mut completed = BTreeMap::new();
+    for (durable_step_id, step) in &snapshot.steps {
+        let Some(output) = &step.output else {
+            continue;
+        };
+        let result = serde_json::from_value::<WorkflowLocalStepResult>(output.clone())
+            .map_err(|error| format!("WorkflowRun Flow step result is invalid: {error}"))?;
+        let resolved = resolved_steps
+            .iter()
+            .find(|resolved| resolved.plan.id == result.step_id)
+            .ok_or_else(|| {
+                format!(
+                    "WorkflowRun Flow step result {:?} is not declared by the plan",
+                    result.step_id
+                )
+            })?;
+        if durable_step_id != &flow_step_id(&result.step_id) {
+            return Err("WorkflowRun Flow step result identity drifted".into());
+        }
+        result.validate(resolved)?;
+        if completed.insert(result.step_id.clone(), result).is_some() {
+            return Err("WorkflowRun Flow contains duplicate step results".into());
+        }
+    }
+
+    let mut execution_failures = BTreeMap::new();
+    for resolved in resolved_steps {
+        match resolved.plan.kind {
+            WorkflowStepKind::HumanDecision => {
+                let Some((hook, metadata)) = human_decision_hook(input, resolved, snapshot)? else {
+                    continue;
+                };
+                if hook.status == HookStatus::Received {
+                    let payload = hook.payload.as_ref().ok_or_else(|| {
+                        format!(
+                            "Workflow human-decision hook {:?} is received without a payload",
+                            hook.hook_id
+                        )
+                    })?;
+                    let result = human_decision_result(
+                        &snapshot.run_id,
+                        &metadata.flow_hook_id(),
+                        resolved,
+                        payload,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    completed.insert(result.step_id.clone(), result);
+                }
+            }
+            WorkflowStepKind::Execution => {
+                let Some((hook, metadata)) = execution_hook(input, resolved, snapshot)? else {
+                    continue;
+                };
+                if hook.status == HookStatus::Received {
+                    let payload = hook.payload.as_ref().ok_or_else(|| {
+                        format!(
+                            "Workflow execution hook {:?} is received without a payload",
+                            hook.hook_id
+                        )
+                    })?;
+                    match execution_result(
+                        &snapshot.run_id,
+                        &metadata.flow_hook_id(),
+                        resolved,
+                        &metadata,
+                        payload,
+                    )
+                    .map_err(|error| error.to_string())?
+                    {
+                        ExecutionResolution::Succeeded(result) => {
+                            completed.insert(result.step_id.clone(), result);
+                        }
+                        ExecutionResolution::Failed(error) => {
+                            execution_failures.insert(resolved.plan.id.clone(), error);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(CompletedWorkflowSteps {
+        completed,
+        execution_failures,
+    })
 }
 
 pub(super) fn verify_flow_authority(
@@ -619,6 +648,93 @@ fn last_hook_sequence(history: &[FlowEventEnvelope], expected_hook_id: &str) -> 
         };
         (hook_id == expected_hook_id).then_some(envelope.sequence)
     })
+}
+
+#[derive(Clone)]
+pub struct WorkflowRunVariableReader {
+    engine: FlowEngine,
+}
+
+impl WorkflowRunVariableReader {
+    pub const fn new(engine: FlowEngine) -> Self {
+        Self { engine }
+    }
+
+    async fn inspect_record(
+        &self,
+        record: &WorkflowRunRecord,
+    ) -> Result<WorkflowRunVariableInspection, FlowError> {
+        for attempt in 0..3 {
+            let snapshot = match self.engine.snapshot(&record.run.flow_run_id).await {
+                Ok(snapshot) => snapshot,
+                Err(FlowError::RunNotFound(_)) if record.run.last_flow_sequence == 0 => {
+                    return inspect_workflow_run_variables(
+                        record,
+                        0,
+                        record.run.requested_at,
+                        &BTreeMap::new(),
+                    )
+                    .map_err(FlowError::Runtime)
+                }
+                Err(error) => return Err(error),
+            };
+            let history = self.engine.history(&record.run.flow_run_id).await?;
+            if history.last().map(|event| event.sequence) != Some(snapshot.last_sequence) {
+                if attempt < 2 {
+                    tokio::task::yield_now().await;
+                    continue;
+                }
+                return Err(FlowError::Runtime(
+                    "Workflow variable inspection observed concurrent Flow transitions".into(),
+                ));
+            }
+            verify_flow_authority(record, &snapshot, &history).map_err(FlowError::Runtime)?;
+            if snapshot.last_sequence < record.run.last_flow_sequence {
+                return Err(FlowError::Runtime(
+                    "Workflow variable inspection precedes the persisted Flow projection".into(),
+                ));
+            }
+            let resolved_steps = record
+                .run
+                .execution_input
+                .resolved_steps()
+                .map_err(FlowError::Runtime)?;
+            let completed =
+                completed_workflow_steps(&record.run.execution_input, &resolved_steps, &snapshot)
+                    .map_err(FlowError::Runtime)?
+                    .completed;
+            let outputs = completed
+                .into_iter()
+                .map(|(step_id, result)| (step_id, result.output))
+                .collect::<BTreeMap<_, _>>();
+            let observed_at = history
+                .last()
+                .map(|event| event.timestamp)
+                .ok_or_else(|| FlowError::Runtime("WorkflowRun Flow history is empty".into()))?;
+            return inspect_workflow_run_variables(
+                record,
+                snapshot.last_sequence,
+                observed_at,
+                &outputs,
+            )
+            .map_err(FlowError::Runtime);
+        }
+        Err(FlowError::Runtime(
+            "Workflow variable inspection exhausted its observation attempts".into(),
+        ))
+    }
+}
+
+#[async_trait::async_trait]
+impl IWorkflowRunVariableReader for WorkflowRunVariableReader {
+    async fn inspect(
+        &self,
+        record: &WorkflowRunRecord,
+    ) -> Result<WorkflowRunVariableInspection, String> {
+        self.inspect_record(record)
+            .await
+            .map_err(|error| error.to_string())
+    }
 }
 
 #[derive(Clone)]

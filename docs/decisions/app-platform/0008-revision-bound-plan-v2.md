@@ -42,6 +42,7 @@ semantics into the revision.
 
 The first runtime subset materializes invocation inputs, node outputs,
 deterministically ordered run assignments, direct reads, and opaque Secret or
-immutable-object references. Digest-only defaults, composite-local scopes and
-exports, Applications-owned reads/writes, and runtime variable inspection fail
+immutable-object references. Decision 0010 exposes the same materialization as
+one authorized, Flow-derived read projection. Digest-only defaults,
+composite-local scopes and exports, and Applications-owned reads/writes fail
 closed until their owning adapters exist.

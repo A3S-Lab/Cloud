@@ -1,9 +1,7 @@
-use super::execution::value_matches_type;
 use crate::modules::shared_kernel::domain::canonical_json_bounded;
 use crate::modules::workflow::domain::{
-    WorkflowRunInput, WorkflowVariableAssignment, WorkflowVariableContract,
-    WorkflowVariableDeclaration, WorkflowVariableReadMode, WorkflowVariableScope,
-    WORKFLOW_RUN_INPUT_MAX_BYTES,
+    lookup_workflow_variable_path, materialize_workflow_variables, WorkflowRunInput,
+    WorkflowVariableReadMode, WORKFLOW_RUN_INPUT_MAX_BYTES,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -39,7 +37,7 @@ pub(super) fn effective_input(
         });
     }
 
-    let values = materialize_variables(input, &contract, outputs)?;
+    let values = materialize_workflow_variables(input, &contract, outputs)?;
     let mut ports = Map::new();
     for read in reads {
         let Some(variable) = values.get(&read.variable) else {
@@ -53,7 +51,7 @@ pub(super) fn effective_input(
         };
         let value = if read.mode == WorkflowVariableReadMode::OpaqueReference {
             variable
-        } else if let Some(value) = lookup_path(variable, &read.path) {
+        } else if let Some(value) = lookup_workflow_variable_path(variable, &read.path) {
             value
         } else if read.required {
             return Err(format!(
@@ -63,7 +61,7 @@ pub(super) fn effective_input(
         } else {
             continue;
         };
-        if !value_matches_type(&read.expected_type, value) {
+        if !read.expected_type.matches_json_value(value) {
             return Err(format!(
                 "Workflow variable read {:?} value does not match {}",
                 read.id,
@@ -84,133 +82,14 @@ pub(super) fn effective_input(
     })
 }
 
-fn materialize_variables(
-    input: &WorkflowRunInput,
-    contract: &WorkflowVariableContract,
-    outputs: &BTreeMap<String, Value>,
-) -> Result<BTreeMap<String, Value>, String> {
-    let mut values = BTreeMap::new();
-    for declaration in &contract.spec().declarations {
-        let source = match declaration.scope {
-            WorkflowVariableScope::InvocationInput => Some(&input.goal_input),
-            WorkflowVariableScope::NodeOutput => declaration
-                .source_step_id
-                .as_ref()
-                .and_then(|step_id| outputs.get(step_id)),
-            WorkflowVariableScope::Run => None,
-            WorkflowVariableScope::CompositeLocal | WorkflowVariableScope::Application => {
-                return Err(format!(
-                    "WorkflowRun runtime v2 cannot materialize {} variable {:?}",
-                    declaration.scope.as_str(),
-                    declaration.name
-                ));
-            }
-        };
-        if let Some(value) = materialize_declaration(declaration, source)? {
-            values.insert(declaration.name.clone(), value);
-        }
-    }
-
-    for step in &input.plan.steps {
-        if !outputs.contains_key(&step.id) {
-            continue;
-        }
-        let assignments = contract
-            .spec()
-            .assignments
-            .iter()
-            .filter(|assignment| assignment.writer_step_id == step.id)
-            .collect::<Vec<_>>();
-        let updates = assignments
-            .into_iter()
-            .map(|assignment| {
-                resolve_assignment(assignment, &values)
-                    .map(|value| (assignment.target_variable.clone(), value))
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        for (target, value) in updates {
-            values.insert(target, value);
-        }
-    }
-    Ok(values)
-}
-
-fn materialize_declaration(
-    declaration: &WorkflowVariableDeclaration,
-    source: Option<&Value>,
-) -> Result<Option<Value>, String> {
-    let Some(source) = source else {
-        if declaration.required && declaration.scope == WorkflowVariableScope::InvocationInput {
-            return Err(format!(
-                "required Workflow variable {:?} source is unavailable",
-                declaration.name
-            ));
-        }
-        return Ok(None);
-    };
-    let Some(value) = lookup_path(source, &declaration.source_path) else {
-        if declaration.required {
-            return Err(format!(
-                "required Workflow variable {:?} source path is unavailable",
-                declaration.name
-            ));
-        }
-        return Ok(None);
-    };
-    if !value_matches_type(&declaration.value_type, value) {
-        return Err(format!(
-            "Workflow variable {:?} value does not match {}",
-            declaration.name,
-            declaration.value_type.as_str()
-        ));
-    }
-    Ok(Some(value.clone()))
-}
-
-fn resolve_assignment(
-    assignment: &WorkflowVariableAssignment,
-    values: &BTreeMap<String, Value>,
-) -> Result<Value, String> {
-    let source = values.get(&assignment.source_variable).ok_or_else(|| {
-        format!(
-            "Workflow assignment {:?} source {:?} is unavailable",
-            assignment.id, assignment.source_variable
-        )
-    })?;
-    let value = lookup_path(source, &assignment.source_path).ok_or_else(|| {
-        format!(
-            "Workflow assignment {:?} source path is unavailable",
-            assignment.id
-        )
-    })?;
-    if !value_matches_type(&assignment.value_type, value) {
-        return Err(format!(
-            "Workflow assignment {:?} value does not match {}",
-            assignment.id,
-            assignment.value_type.as_str()
-        ));
-    }
-    Ok(value.clone())
-}
-
-fn lookup_path<'a>(mut value: &'a Value, path: &[String]) -> Option<&'a Value> {
-    for segment in path {
-        value = match value {
-            Value::Object(object) => object.get(segment)?,
-            Value::Array(values) => values.get(segment.parse::<usize>().ok()?)?,
-            _ => return None,
-        };
-    }
-    Some(value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::Sha256Digest;
     use crate::modules::workflow::domain::{
-        ResolvedWorkflowVariableContract, WorkflowDataType, WorkflowVariableContractSpec,
-        WorkflowVariableDeclaration, WorkflowVariableMutationMode, WorkflowVariableRead,
+        ResolvedWorkflowVariableContract, WorkflowDataType, WorkflowVariableAssignment,
+        WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
+        WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableScope,
         WorkflowVariableStorageClass, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
     };
 
@@ -366,7 +245,7 @@ mod tests {
             exports: vec![],
         })
         .expect("atomic-writer contract");
-        let values = materialize_variables(
+        let values = materialize_workflow_variables(
             &input,
             &contract,
             &BTreeMap::from([

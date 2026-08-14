@@ -10,6 +10,7 @@ pub mod get_workflow_revision;
 pub mod get_workflow_run;
 pub mod get_workflow_run_history;
 pub mod get_workflow_run_output;
+pub mod get_workflow_run_variables;
 pub mod list_human_tasks;
 pub mod list_ontologies;
 pub mod list_ontology_revisions;

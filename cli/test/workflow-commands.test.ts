@@ -102,6 +102,11 @@ describe('a3s-cloud Workflow commands', () => {
       workflowRunOutput(),
     ],
     [
+      ['workflow-runs', 'variables', RUN_ID],
+      `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/variables`,
+      workflowRunVariables(),
+    ],
+    [
       ['workflow-runs', 'history', RUN_ID, '--cursor=7', '--limit=10'],
       `/organizations/${ORGANIZATION_ID}/workflow-runs/${RUN_ID}/history?afterSequence=7&limit=10`,
       workflowRunHistory(),
@@ -759,6 +764,33 @@ function workflowRunHistory() {
       },
     ],
     nextSequence: null,
+  };
+}
+
+function workflowRunVariables() {
+  return {
+    schema: 'cloud.workflow-run.variable-inspection.v1',
+    workflowRunId: RUN_ID,
+    planRevisionId: PLAN_ID,
+    variableContractDigest: DIGEST,
+    lastFlowSequence: 8,
+    observedAt: '2026-08-09T00:00:30.000Z',
+    variables: [
+      {
+        name: 'request',
+        scope: 'invocation_input',
+        valueType: 'object',
+        valueSchemaDigest: DIGEST,
+        storageClass: 'inline',
+        mutationMode: 'immutable',
+        required: true,
+        sourceStepId: null,
+        state: 'materialized',
+        redacted: false,
+        value: { ticketId: 'T-42' },
+        valueDigest: DIGEST,
+      },
+    ],
   };
 }
 

@@ -204,6 +204,18 @@ impl WorkflowDataType {
         }
     }
 
+    pub(crate) fn matches_json_value(&self, value: &serde_json::Value) -> bool {
+        match self {
+            Self::Any => true,
+            Self::Object => value.is_object(),
+            Self::Array => value.is_array(),
+            Self::String => value.is_string(),
+            Self::Number => value.is_number(),
+            Self::Boolean => value.is_boolean(),
+            Self::Null => value.is_null(),
+        }
+    }
+
     pub(super) fn parse(value: &str) -> Result<Self, String> {
         match value {
             "any" => Ok(Self::Any),

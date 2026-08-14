@@ -51,37 +51,38 @@ fn checked_in_profiles_exactly_enrich_the_twenty_three_node_inventory() {
 #[test]
 fn profiles_fail_closed_on_manifest_or_semantic_drift() {
     let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
-    let profiles = WorkflowNodeProfiles::parse_acl(PROFILES).expect("profiles");
+    let canonical_profiles = PROFILES.replace("\r\n", "\n");
+    let profiles = WorkflowNodeProfiles::parse_acl(&canonical_profiles).expect("profiles");
 
     let stale_manifest = MANIFEST.replacen("owner = \"executions\"", "owner = \"workflow\"", 1);
     let stale_manifest =
         AppPlatformParityManifest::parse_acl(&stale_manifest).expect("stale manifest");
     assert!(profiles.validate_manifest(&stale_manifest).is_err());
 
-    let rebound = PROFILES.replacen(manifest.digest(), stale_manifest.digest(), 1);
+    let rebound = canonical_profiles.replacen(manifest.digest(), stale_manifest.digest(), 1);
     let rebound = WorkflowNodeProfiles::parse_acl(&rebound).expect("rebound profiles");
     let error = rebound
         .validate_manifest(&stale_manifest)
         .expect_err("owner drift");
     assert!(error.contains("conflicts with owner"), "{error}");
 
-    let duplicate = PROFILES.replacen("model.question-classifier", "model.llm", 1);
+    let duplicate = canonical_profiles.replacen("model.question-classifier", "model.llm", 1);
     assert!(WorkflowNodeProfiles::parse_acl(&duplicate).is_err());
 
-    let invocation_with_kind = PROFILES.replacen(
+    let invocation_with_kind = canonical_profiles.replacen(
         "  node \"node.integration-trigger\" {\n    execution_class = \"invocation_only\"\n",
         "  node \"node.integration-trigger\" {\n    execution_class = \"invocation_only\"\n    kind = \"input\"\n",
         1,
     );
     assert!(WorkflowNodeProfiles::parse_acl(&invocation_with_kind).is_err());
 
-    let unknown = PROFILES.replacen(
+    let unknown = canonical_profiles.replacen(
         "  revision = \"1.0.0\"\n",
         "  legacy = true\n  revision = \"1.0.0\"\n",
         1,
     );
     assert!(WorkflowNodeProfiles::parse_acl(&unknown).is_err());
-    assert!(WorkflowNodeProfiles::parse_acl(&format!("\n{PROFILES}")).is_err());
+    assert!(WorkflowNodeProfiles::parse_acl(&format!("\n{canonical_profiles}")).is_err());
 }
 
 #[test]

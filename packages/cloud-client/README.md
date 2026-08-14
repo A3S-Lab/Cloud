@@ -135,6 +135,16 @@ evidence, and unavailable reason. The client neither merges catalog sources nor
 infers descriptor admission or public availability; Cloud remains authoritative
 for composition and project access.
 
+`getWorkflowRunVariables` exposes the Flow-derived typed-value inspection added
+by REST contract `1.33.0`. Cloud resolves the WorkflowRun's existing project
+authorization, exact Plan v2 variable contract, immutable run input, and
+correlated A3S Flow history through the same materializer used by execution.
+The client returns the versioned, declaration-ordered inspection with observed
+Flow sequence, materialized/unavailable state, metadata, inline or opaque values,
+and value digests. Secret-reference values are always redacted. A run not yet
+created in Flow may expose immutable inputs at sequence zero; Plan v1 returns a
+conflict. The client does not reconstruct, cache, or mutate variable state.
+
 `listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
 `submitHumanTask` expose the protected HumanTask surface in REST contract
 `1.24.0`. Lists accept only the closed status set and a limit from 1 through 200

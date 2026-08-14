@@ -11,13 +11,14 @@ use a3s_cloud_control_plane::modules::workflow::domain::{
 use a3s_cloud_control_plane::modules::workflow::{
     CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite, CreateWorkflowRunWrite,
     IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunRepository, Ontology, OntologyName, PostgresOntologyRepository,
-    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
-    PostgresWorkflowRunRepository, WorkflowContract, WorkflowDataSchema, WorkflowDataType,
-    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowEdgeSpec, WorkflowGoalCompiled,
-    WorkflowGoalRecord, WorkflowPayload, WorkflowPayloadContent, WorkflowPlanCompiler,
-    WorkflowRevision, WorkflowRevisionPublished, WorkflowRunCompiler, WorkflowRunFlowRuntime,
-    WorkflowRunRecord, WorkflowRunRequested, WorkflowSpec, WorkflowStepConfiguration,
+    IWorkflowRunRepository, IWorkflowRunVariableReader, Ontology, OntologyName,
+    PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
+    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, WorkflowContract,
+    WorkflowDataSchema, WorkflowDataType, WorkflowDefinition, WorkflowDefinitionRecord,
+    WorkflowEdgeSpec, WorkflowGoalCompiled, WorkflowGoalRecord, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPlanCompiler, WorkflowRevision, WorkflowRevisionPublished,
+    WorkflowRunCompiler, WorkflowRunFlowRuntime, WorkflowRunRecord, WorkflowRunRequested,
+    WorkflowRunVariableReader, WorkflowSpec, WorkflowStepConfiguration,
     WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
     WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorSpec, WorkflowStepExecutionClass,
     WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
@@ -65,6 +66,14 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         run_input_migration_state,
         (1, "WorkflowRun input v2 capacity".into())
     );
+    let variable_table_count = database
+        .fetch_one_as(
+            sql_query::<i64>(
+                "select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'workflow_run_variables'",
+            ),
+        )
+        .await?;
+    assert_eq!(variable_table_count, 0);
 
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -450,6 +459,15 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         }))
     );
     let durable_history = flow.engine().history(&flow_run_id).await?;
+    let inspection = WorkflowRunVariableReader::new(flow.engine())
+        .inspect(&run_record)
+        .await
+        .expect("Flow-backed variable inspection");
+    assert_eq!(inspection.variables.len(), 1);
+    assert_eq!(
+        inspection.variables[0].value.as_ref(),
+        Some(&run_record.run.execution_input.goal_input)
+    );
     drop(flow);
 
     let restarted = FlowInfrastructure::connect(&url, Arc::new(WorkflowRunFlowRuntime)).await?;
@@ -458,6 +476,13 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         durable_history
     );
     assert_eq!(restarted.engine().snapshot(&flow_run_id).await?, completed);
+    assert_eq!(
+        WorkflowRunVariableReader::new(restarted.engine())
+            .inspect(&run_record)
+            .await
+            .expect("restarted Flow-backed variable inspection"),
+        inspection
+    );
     restarted
         .engine()
         .start_with_id(&flow_run_id, flow_spec, flow_input)

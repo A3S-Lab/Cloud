@@ -9,17 +9,18 @@ use crate::modules::workflow::presentation::{
     WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse, WorkflowGoalMutationResponse,
     WorkflowGoalResponse, WorkflowNodeCatalogResponse, WorkflowRevisionResponse,
     WorkflowRevisionSummaryResponse, WorkflowRunMutationResponse, WorkflowRunOutputResponse,
-    WorkflowRunResponse,
+    WorkflowRunResponse, WorkflowRunVariableInspectionResponse,
 };
 use crate::modules::workflow::{
     CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
     GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowNodeCatalog,
     GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput,
-    HumanTaskAssignmentAction, HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions,
-    ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition,
-    StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind,
-    WorkflowSemanticContractAcls, HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT,
-    WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
+    GetWorkflowRunVariables, HumanTaskAssignmentAction, HumanTaskStatus, ListHumanTasks,
+    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
+    ReviseWorkflowDefinition, StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun,
+    WorkflowPayloadAcl, WorkflowPayloadKind, WorkflowSemanticContractAcls,
+    HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
+    WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use a3s_form_core::FormInteractionSubmission;
@@ -883,6 +884,30 @@ pub async fn get_run_history(
         .await?
     {
         Ok(value) => tool_result::success(200, value, request_id),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_run_variables(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: WorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetWorkflowRunVariables {
+            organization_id,
+            workflow_run_id: WorkflowRunId::from_uuid(arguments.workflow_run_id),
+            resource_access,
+        })
+        .await?
+    {
+        Ok(value) => tool_result::success(
+            200,
+            WorkflowRunVariableInspectionResponse::from(value),
+            request_id,
+        ),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

@@ -254,6 +254,7 @@ workflow-runs start <workflow-goal-id> <plan-revision-id> [--run-timeout-seconds
 workflow-runs wait <workflow-run-id> [--wait-seconds=<0..30>]
 workflow-runs cancel <workflow-run-id> [--reason=<text>]
 workflow-runs output <workflow-run-id>
+workflow-runs variables <workflow-run-id>
 workflow-runs history <workflow-run-id> [--cursor=<sequence>] [--limit=<1..100>]
 execution-templates list
 execution-templates get <template-id> <revision-id>
@@ -412,7 +413,11 @@ Goal and deterministic Plan revision. Cloud owns digest validation,
 compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
 persistence. `workflow-runs` starts and cancels the exact Plan idempotently,
 lists and reads current semantic step projections, waits for bounded terminal
-progress, returns completed output, and pages redacted A3S Flow history. The
+progress, returns completed output, inspects declaration-ordered typed values,
+and pages redacted A3S Flow history. Variable inspection reuses the exact Plan
+v2 contract, immutable run input, and correlated Flow history; Secret references
+are redacted, unavailable declarations stay explicit, and Plan v1 conflicts.
+The CLI does not reconstruct or retain variable state. The
 runtime supports Workflow-local `input`, `transform`, `branch`,
 `human_decision`, `execution`, and `output`. Business-service and remaining
 provider capability steps plus compensation remain unavailable. The CLI does
