@@ -9,10 +9,13 @@ pub use application::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
 };
 pub use domain::{
-    INotificationRepository, MarkNotificationReadWrite, Notification, NotificationCursor,
-    NotificationPage, NotificationScope, NotificationSeverity,
+    INotificationRepository, IOutboundNotificationAdapter, MarkNotificationReadWrite, Notification,
+    NotificationCursor, NotificationPage, NotificationScope, NotificationSeverity,
+    OutboundNotificationChannel, OutboundNotificationDelivery, OutboundNotificationDeliveryError,
+    OutboundNotificationDeliveryReceipt,
 };
 pub use infrastructure::{
     InMemoryNotificationRepository, OutboxNotificationProjector, PostgresNotificationRepository,
+    SignedWebhookNotificationAdapter, SlackCompatibleNotificationAdapter,
 };
 pub use presentation::NotificationsModule;

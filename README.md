@@ -450,8 +450,18 @@ mutation that commits its Outbox fact and audit record atomically through A3S
 ORM. Migration `106` is registered by the existing A3S ORM migrator. This
 projection neither mutates its source fact nor introduces a provider queue,
 template/subscription store, scheduler, or notification-specific configuration
-format; outbound webhook, SMTP, and Slack-compatible delivery remain future
-adapters over this boundary.
+format.
+
+The component-only `C0.3-N2a` follow-up now freezes a deterministic outbound
+delivery envelope plus signed-webhook and Slack-compatible single-attempt
+adapters. They share one redirect-free, timeout-bounded, production-HTTPS-only
+HTTP transport; canonical HMAC signing, zeroized material, stable delivery
+identity, redaction, and retry classification pass focused Rust 1.88 tests.
+They are not production-wired. Durable dispatch must reuse the transactional
+Outbox and A3S Event subscription path, while target/subscription and Secret
+authority remain with shared Connectors and Secrets. SMTP remains unavailable
+until Identity owns an exact verified recipient contact reference; no address
+may be inferred from OIDC claims.
 
 The existing PostgreSQL 17 foundation job executes both the Project-attribution
 and personal-notification gates against the production repositories. The
@@ -476,7 +486,7 @@ transaction evidence without adding another database or migration path.
 | Plugin assignments and package lifecycle | Cloud Plugins for tenant intent; shared A3S Use Plugin Manager for package generations | A Cloud installer, catalog copy, grant store, binding store, or generic plugin RPC |
 | Immutable bytes | One shared content-addressed object client with typed domain adapters | Parallel filesystem/S3 clients or untyped cross-domain blob APIs |
 | Principal identity and organization access | Identity Principals, Memberships, MembershipInvitations, Resource Grants, credentials, and revocation | A console-local user store, credential-owned roles, a second RBAC evaluator, or presentation-only authorization |
-| Personal in-app notifications | Notifications projects curated committed transactional Outbox facts for one exact recipient Principal and applies the shared Resource Grant evaluator | A second event rail, provider queue, template/subscription authority, scheduler, or presentation-local inbox |
+| Personal and outbound notifications | Notifications owns the exact-recipient inbox and deterministic delivery intent; A3S Event owns durable consumption; Connectors/Secrets own target and credential material; Identity owns verified recipient contacts | A second event rail or queue, provider-local retry scheduler, copied connection/Secret/contact authority, or presentation-local inbox |
 | Audit history | Shared append-only `audit_records` plus one tenant-administrator read projection | Per-domain or MCP audit stores, a second writer, or public exposure of unstructured audit details |
 | Management behavior | One application command/query layer | REST-, CLI-, MCP-, or Web-specific business state and rules |
 
