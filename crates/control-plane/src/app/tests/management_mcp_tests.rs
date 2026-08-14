@@ -387,6 +387,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_nodes_get",
             "a3s_cloud_operations_list",
             "a3s_cloud_audit_records_list",
+            "a3s_cloud_notifications_list",
+            "a3s_cloud_notifications_get",
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
             "a3s_cloud_workload_logs_get",
@@ -511,6 +513,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_nodes_get",
             "a3s_cloud_operations_list",
             "a3s_cloud_audit_records_list",
+            "a3s_cloud_notifications_list",
+            "a3s_cloud_notifications_get",
+            "a3s_cloud_notifications_read",
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
             "a3s_cloud_workload_logs_get",
@@ -1440,7 +1445,11 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
     let restricted_tools = list_tools(&app, MCP_FORM_MEMBER_TOKEN, 4).await?;
     assert_eq!(
         tool_names(&restricted_tools),
-        vec!["a3s_cloud_my_membership_invitations_list"]
+        vec![
+            "a3s_cloud_my_membership_invitations_list",
+            "a3s_cloud_notifications_list",
+            "a3s_cloud_notifications_get",
+        ]
     );
     let denied = app
         .call(mcp_request(

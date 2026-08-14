@@ -78,6 +78,15 @@ profile in the selected Project. `project-attribution update <owner>` requires
 bounded transport validation through the maintained client and never derives
 ownership, billing, or usage truth locally.
 
+`notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]`
+reads only the authenticated Principal's server-authorized in-app inbox;
+`notifications get <notification-id>` reads one exact visible record.
+`notifications read <notification-id>` requires `--expected-version` and
+`--idempotency-key`. Recipient identity and Resource Grant filtering remain in
+the Notifications application boundary. The CLI has no local inbox, event
+projector, delivery queue, provider/template/subscription policy, scheduler, or
+notification configuration.
+
 `ontologies revise` also requires a positive `--expected-version`. A breaking
 object, relation, or rule change additionally requires
 `--migration-rule=<target-rule-id>` naming an exact rule of kind `migration`
@@ -215,6 +224,10 @@ projects list
 projects create <name>
 project-attribution get [profile-id]
 project-attribution update <owner> --expected-version=<version> [--cost-attribution-code=<code>] [--label=<key=value> ...]
+audit-records list
+notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]
+notifications get <notification-id>
+notifications read <notification-id> --expected-version=<version>
 environments list
 environments create <name>
 ontologies list

@@ -327,6 +327,24 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             );
         }
     }
+    if method == "get" && path.ends_with("/notifications") {
+        for parameter in [
+            json!({
+                "name": "unreadOnly", "in": "query", "required": false,
+                "schema": { "type": "boolean", "default": false }
+            }),
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }),
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+            }),
+        ] {
+            upsert_parameter(parameters, parameter);
+        }
+    }
     if method == "get" && path.ends_with("/human-tasks") {
         upsert_parameter(
             parameters,
@@ -614,6 +632,20 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                             },
                             "default": {}
                         }
+                    }
+                }
+            }),
+        );
+    } else if is_notification_read_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["expectedVersion"],
+                    "properties": {
+                        "expectedVersion": {"type": "integer", "minimum": 1}
                     }
                 }
             }),
@@ -980,6 +1012,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Operations"
     } else if path.contains("audit-records") {
         "Audit"
+    } else if path.contains("notifications") {
+        "Notifications"
     } else if path.contains("plugin-registries") {
         "Plugins"
     } else if path.contains("search") {
@@ -1140,6 +1174,10 @@ fn is_membership_invitation_create_path(path: &str) -> bool {
 fn is_membership_invitation_version_path(path: &str) -> bool {
     path.ends_with("/membership-invitations/{invitation_id}/acceptance")
         || path.ends_with("/membership-invitations/{invitation_id}/revocation")
+}
+
+fn is_notification_read_path(path: &str) -> bool {
+    path.ends_with("/notifications/{notification_id}/read")
 }
 
 fn is_resource_grant_revocation_path(path: &str) -> bool {

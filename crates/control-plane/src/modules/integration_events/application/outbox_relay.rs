@@ -1,5 +1,7 @@
 use crate::modules::integration_events::domain::repositories::IOutboxRepository;
-use crate::modules::integration_events::domain::services::IEventPublisher;
+use crate::modules::integration_events::domain::services::{
+    IEventPublisher, IIntegrationEventProjector,
+};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use chrono::Utc;
 use std::sync::Arc;
@@ -49,6 +51,7 @@ pub struct OutboxRelay {
     owner: Uuid,
     repository: Arc<dyn IOutboxRepository>,
     publisher: Arc<dyn IEventPublisher>,
+    projectors: Vec<Arc<dyn IIntegrationEventProjector>>,
     config: OutboxRelayConfig,
 }
 
@@ -62,8 +65,14 @@ impl OutboxRelay {
             owner: Uuid::new_v4(),
             repository,
             publisher,
+            projectors: Vec::new(),
             config: config.validate()?,
         })
+    }
+
+    pub fn with_projector(mut self, projector: Arc<dyn IIntegrationEventProjector>) -> Self {
+        self.projectors.push(projector);
+        self
     }
 
     pub async fn run_once(&self) -> Result<OutboxRelayReport, RepositoryError> {
@@ -81,10 +90,19 @@ impl OutboxRelay {
         };
         for message in messages {
             let event_id = message.event_id;
-            let publish = tokio::time::timeout(
-                self.config.publish_timeout,
-                self.publisher.publish(&message),
-            )
+            let publish = tokio::time::timeout(self.config.publish_timeout, async {
+                for projector in &self.projectors {
+                    projector
+                        .project(&message)
+                        .await
+                        .map_err(|error| {
+                            crate::modules::integration_events::domain::services::EventPublishError::new(
+                                format!("integration event projection failed: {error}"),
+                            )
+                        })?;
+                }
+                self.publisher.publish(&message).await
+            })
             .await;
             let failure = match publish {
                 Ok(Ok(())) => match self

@@ -38,6 +38,7 @@ export interface ParsedArguments {
   auditRequestId?: string;
   auditFrom?: string;
   auditTo?: string;
+  unreadOnly: boolean;
   valueStdin: boolean;
   tokenStdin: boolean;
   enrollmentTokenStdin: boolean;
@@ -52,6 +53,7 @@ type ValueOption = Exclude<
   | 'positionals'
   | 'projectAttributionLabels'
   | 'tokenStdin'
+  | 'unreadOnly'
   | 'valueStdin'
   | 'version'
 >;
@@ -101,6 +103,7 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     valueStdin: false,
     tokenStdin: false,
     enrollmentTokenStdin: false,
+    unreadOnly: false,
     help: false,
     version: false,
   };
@@ -147,6 +150,16 @@ export function parseArguments(argv: readonly string[]): ParsedArguments {
     }
     if (argument === '--token' || argument.startsWith('--token=')) {
       throw usageError('API tokens are accepted only through A3S_CLOUD_TOKEN');
+    }
+    if (argument === '--unread-only') {
+      if (parsed.unreadOnly) {
+        throw usageError('option --unread-only may be specified only once');
+      }
+      parsed.unreadOnly = true;
+      continue;
+    }
+    if (argument.startsWith('--unread-only=')) {
+      throw usageError('option --unread-only does not accept a value');
     }
     if (argument === '--label' || argument.startsWith('--label=')) {
       const separator = argument.indexOf('=');

@@ -79,6 +79,7 @@ mod execution_tests;
 mod forms_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
+mod notification_tests;
 mod oidc_tests;
 mod ontology_tests;
 mod operation_tests;
@@ -466,6 +467,7 @@ struct TestRuntimeRepositories {
     operations: Option<Arc<InMemoryOperationRepository>>,
     human_tasks: Option<Arc<TestHumanTaskRepository>>,
     audit_records: Option<Arc<InMemoryAuditRecordRepository>>,
+    notifications: Option<Arc<crate::modules::notifications::InMemoryNotificationRepository>>,
     oidc_provider: Option<Arc<dyn IOidcProviderService>>,
 }
 
@@ -1228,6 +1230,7 @@ fn build_test_application_with_execution_and_operation_repositories(
             operations: Some(operations),
             human_tasks: None,
             audit_records: None,
+            notifications: None,
             oidc_provider: None,
         },
     )
@@ -1255,6 +1258,33 @@ fn build_test_application_with_audit_records(
         None,
         TestRuntimeRepositories {
             audit_records: Some(audit_records),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
+fn build_test_application_with_notifications(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    notifications: Arc<crate::modules::notifications::InMemoryNotificationRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            notifications: Some(notifications),
             ..TestRuntimeRepositories::default()
         },
     )
@@ -1595,6 +1625,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         operations,
         human_tasks,
         audit_records,
+        notifications,
         oidc_provider,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
@@ -1673,6 +1704,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             search,
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),
+            notifications: notifications.unwrap_or_else(|| {
+                Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new())
+            }),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
             plugin_trust_roots: Arc::new(

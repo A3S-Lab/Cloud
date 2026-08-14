@@ -10,6 +10,7 @@ mod handler;
 mod identity;
 mod module;
 mod nodes;
+mod notifications;
 mod ontology;
 mod operations;
 mod plugins;

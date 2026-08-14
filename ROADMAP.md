@@ -844,7 +844,7 @@ not introduce a second scheduler.
 | `C0.1` | Verified | REST/CLI parity, stable errors, authorized search, focused operational Web workspaces, and automation contracts |
 | `C0.2` | Verified | Scoped, sessionless management MCP on the legacy initialization-based `2025-06-18` revision and real PostgreSQL parity over the same commands and queries |
 | `C0.2m` | Verified | Modern per-request metadata, `server/discover`, protocol revision `2026-07-28`, and clean real PostgreSQL/Box parity over the existing application-command boundary |
-| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, exact OIDC issuer/subject links plus replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired REST/OpenAPI/client login-link-callback surfaces, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable project attribution, Outbox/audit, and one bounded tenant-administrator audit query are implemented. Tenant-scoped security investigation, notification, retention/export policy, usage-fact attribution snapshots, and the role-focused console projection remain planned |
+| `C0.3` | In progress | Stable human/service Principals, organization Membership roles, exact-Principal membership invitations, Principal-bound scoped credentials, exact OIDC issuer/subject links plus replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired REST/OpenAPI/client login-link-callback surfaces, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable project attribution, a personal in-app notification inbox, Outbox/audit, and one bounded tenant-administrator audit query are implemented. Outbound notification adapters and alert policy, tenant-scoped security investigation, retention/export policy, usage-fact attribution snapshots, and the role-focused console projection remain planned |
 | `C0.4` | Planned | Outbound-protocol exec and terminal with bounded sessions and full audit |
 | `C0.5` | Planned | Enterprise SAML/OIDC federation, SCIM provisioning/deprovisioning, session policy, application/Workflow/Knowledge-granular Resource Grants, tamper-evident audit and SIEM export, PII-redaction policy, BYOK/data-residency bindings, and air-gapped governance evidence over the existing Identity, Secrets, audit, `S0`, and `H0` authorities |
 
@@ -915,7 +915,7 @@ authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
 
-The current catalog contains 86 administrator tools and 50 read-only tools:
+The current catalog contains 89 administrator tools and 52 read-only tools:
 the verified catalog is retained, fifteen Identity tools come from the
 implemented Membership, MembershipInvitation, and Resource Grant `C0.3`
 slices, seven Ontology tools come from backend `W0.2`, and ten Workflow
@@ -929,12 +929,13 @@ ExecutionTemplate create/list/exact-get tools reuse the Executions CQRS and
 immutable ACL-native repository. Six `U0.2`
 Plugin Registry/catalog tools add only tenant-scoped read queries. One
 owner/admin-only audit query reuses `cloud:read` and the shared append-only
-audit repository. Focused catalog,
+audit repository. Three personal-notification tools add list, exact get, and
+idempotent mark-read over the same Notifications CQRS boundary. Focused catalog,
 permission, strict-argument, lifecycle, migration, deterministic-plan,
 WorkflowRun, ExecutionTemplate, plugin tenant, and historical-replay tests
 pass. The retained clean A3S Box/PostgreSQL gate passes the predecessor
 `77/47` catalog; focused catalog and invitation lifecycle tests pass the current
-`86/50` source catalog, and the dedicated invitation PostgreSQL 17 promotion
+`89/52` source catalog, and the dedicated invitation PostgreSQL 17 promotion
 gate below passes. The clean gate retains the strict `W0.2` Ontology
 evidence and adds an `8/8` W0.3
 ExecutionTemplate cross-surface result for accepted/rejected idempotency,
@@ -959,7 +960,7 @@ Acceptance locks and version-checks the invitation, creates the ordinary
 Membership, and records acceptance, idempotency, Outbox, and audit in one
 transaction. Wrong principals receive the same `404` as missing IDs, while
 expired or revoked invitations cannot create a Membership. No email, session,
-notification, or parallel role authority is introduced. Migration `102` adds
+provider-delivery queue, or parallel role authority is introduced. Migration `102` adds
 exact OIDC issuer/subject links and bounded login/link flows through the same
 Identity Repository. Final completion consumes a flow with link verification
 or one 5-minute-to-24-hour ordinary API token, Outbox facts, and audit in one
@@ -997,10 +998,19 @@ Outbox fact, and shared audit row through A3S ORM migration `104`; exact prior
 profiles remain readable and cannot be updated or deleted. REST/OpenAPI
 `1.30.0`, the maintained client, CLI, and Management MCP share the same CQRS
 and Resource Grant evaluator. Usage/audit producers must snapshot the selected
-profile ID in future facts; pricing and billing remain external. Notifications,
-tenant-scoped security investigation, audit retention/export policy, and
-role-focused frontend projections remain planned, so `C0.3` is in progress
-rather than verified.
+profile ID in future facts; pricing and billing remain external. The
+Notifications context now projects a curated closed set of committed
+Identity transactional-Outbox facts into one deterministic record per source
+event and exact recipient Principal. Recipient isolation, shared Resource Grant
+filtering, and idempotent version-checked mark-read are exposed through
+REST/OpenAPI `1.31.0`, the maintained client, CLI, and three Management MCP
+tools. Migration `106` runs through the existing A3S ORM migrator; Outbox relay
+retry cannot create a second logical notification. No provider queue,
+template/subscription store, scheduler, or notification-specific configuration
+format is added. Outbound delivery adapters and alert policy, tenant-scoped
+security investigation, audit retention/export policy, and role-focused
+frontend projections remain planned, so `C0.3` is in progress rather than
+verified.
 
 Resource Grant closure is deliberately staged so later contexts do not create
 their own RBAC or resource-ownership registry:
@@ -1015,6 +1025,7 @@ their own RBAC or resource-ownership registry:
 | `C0.3-OIDC2` | Implemented; focused local TLS fixtures pass (`2026-08-14`) | One Identity provider port and adapter perform redirect-free HTTPS discovery with a 1 MiB response bound, refresh discovery/JWKS at callback time, require code flow plus confidential-client authentication, send exact state/nonce/S256 PKCE, and validate exact issuer, one exact audience, asymmetric signature, optional `azp`/`at_hash`, issue time, expiry, and subject. Tests cover rotated and stale keys, wrong issuer/audience/nonce/signature/time, token substitution, unsafe endpoints, redirects, oversized responses, missing credentials, and secret redaction. Shared OAuth flow primitives are reused by Sources; no second state, digest, or PKCE mechanism is added. |
 | `C0.3-OIDC3` | Implemented; local PostgreSQL 17 cross-surface gate passes and CI is wired (`2026-08-14`) | Identity begin/complete commands compose `OIDC1` persistence and `OIDC2` verification without adding a repository, session, token, or OAuth-security mechanism. Begin generates shared state/nonce/PKCE material and persists digests only; complete resolves the state-bound flow before provider access, rechecks provider key/issuer/configuration digest, then atomically links or issues one existing-scope short-lived credential. REST/OpenAPI `1.29.0` exposes a public login redirect, authenticated human-principal link start returning `authorizationUrl`, and public callback. State-digest-scoped callback cookies are `Secure`, `HttpOnly`, and `SameSite=Lax`; success and bounded failures delete them, and the short-lived credential appears only once in JSON. The maintained client exposes login URL construction and browser-safe link start. The real PostgreSQL gate crosses HTTP, authentication, CQRS, the production repository, and the provider port across four application constructions; it proves exact link/login commits, usable returned authentication after restart, replay rejection before provider access, digest-only flow persistence, plaintext-credential exclusion, cookie cleanup, and exact Outbox/audit rows. CI reuses the existing PostgreSQL 17 foundation job rather than adding a database stack. |
 | `C0.3-PA1` | Implemented; focused tests pass and the conditional PostgreSQL gate is compiled (`2026-08-14`) | Projects owns one immutable `ProjectAttributionProfile` lineage and the current Project pointer. Business-owner references, optional external cost-attribution codes, and labels are canonical and bounded; every update uses Project optimistic concurrency and existing idempotency, Resource Grant, A3S ORM, Outbox, and audit mechanisms. REST/OpenAPI `1.30.0`, client, CLI, and two MCP tools expose current and exact historical reads plus append-only updates. Migration `104` rejects UPDATE/DELETE and cross-project lineage. No pricing, billing account, balance, invoice, credit, settlement, usage ledger, or duplicate migration framework is introduced. |
+| `C0.3-N1` | Implemented; focused tests pass and the conditional PostgreSQL gate compiles (`2026-08-14`) | Notifications projects only curated committed Outbox facts into a personal in-app inbox. Deterministic source-event-plus-recipient identity makes relay retry and concurrent projection idempotent; exact Principal isolation and the shared Resource Grant evaluator protect list, get, and mark-read across REST/OpenAPI `1.31.0`, client, CLI, and three MCP tools. Mark-read reuses optimistic concurrency, idempotency, Outbox, audit, A3S ORM, and migration `106`. No second event rail, delivery queue, provider/template/subscription authority, scheduler, or configuration format is introduced. |
 
 The verified `C0.3-RG2` boundary is the authorization prerequisite now reused
 by protected HumanTask submission and remains mandatory for any new

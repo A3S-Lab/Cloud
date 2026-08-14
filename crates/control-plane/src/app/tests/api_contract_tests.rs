@@ -321,6 +321,64 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .find(|parameter| parameter["name"] == "cursor")
         .expect("audit cursor parameter");
     assert_eq!(audit_cursor["schema"]["maxLength"], 128);
+    let notification_collection =
+        &document["paths"]["/organizations/{organization_id}/notifications"]["get"];
+    assert_eq!(notification_collection["tags"], json!(["Notifications"]));
+    assert!(notification_collection["responses"]["200"].is_object());
+    let notification_parameters = notification_collection["parameters"]
+        .as_array()
+        .expect("notification query parameters");
+    for (name, schema) in [
+        ("unreadOnly", json!({"type": "boolean", "default": false})),
+        (
+            "cursor",
+            json!({"type": "string", "minLength": 1, "maxLength": 128}),
+        ),
+        (
+            "limit",
+            json!({
+                "type": "integer", "minimum": 1, "maximum": 200, "default": 50
+            }),
+        ),
+    ] {
+        let parameter = notification_parameters
+            .iter()
+            .find(|parameter| parameter["name"] == name)
+            .unwrap_or_else(|| panic!("missing notification query parameter `{name}`"));
+        assert_eq!(parameter["in"], "query");
+        assert_eq!(parameter["required"], false);
+        assert_eq!(parameter["schema"], schema);
+    }
+    let notification = &document["paths"]
+        ["/organizations/{organization_id}/notifications/{notification_id}"]["get"];
+    assert_eq!(notification["tags"], json!(["Notifications"]));
+    assert!(notification["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "notification_id"
+                && parameter["in"] == "path"
+                && parameter["schema"]["format"] == "uuid"
+        })));
+    let notification_read = &document["paths"]
+        ["/organizations/{organization_id}/notifications/{notification_id}/read"]["post"];
+    assert_eq!(notification_read["tags"], json!(["Notifications"]));
+    assert_eq!(
+        notification_read["requestBody"]["content"]["application/json"]["schema"]
+            ["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        notification_read["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedVersion"]["minimum"],
+        1
+    );
+    assert!(notification_read["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
     let resource_grants = &document["paths"]
         ["/organizations/{organization_id}/memberships/{membership_id}/resource-grants"];
     assert_eq!(resource_grants["get"]["tags"], json!(["Identity"]));

@@ -55,6 +55,9 @@ pub const NODES_GET: &str = "a3s_cloud_nodes_get";
 pub const NODES_LIST: &str = "a3s_cloud_nodes_list";
 pub const OPERATIONS_LIST: &str = "a3s_cloud_operations_list";
 pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
+pub const NOTIFICATIONS_LIST: &str = "a3s_cloud_notifications_list";
+pub const NOTIFICATIONS_GET: &str = "a3s_cloud_notifications_get";
+pub const NOTIFICATIONS_READ: &str = "a3s_cloud_notifications_read";
 pub const PROJECTS_CREATE: &str = "a3s_cloud_projects_create";
 pub const PROJECTS_LIST: &str = "a3s_cloud_projects_list";
 pub const PROJECT_ATTRIBUTION_GET: &str = "a3s_cloud_project_attribution_get";
@@ -176,6 +179,9 @@ pub enum ManagementTool {
     NodesGet,
     OperationsList,
     AuditRecordsList,
+    NotificationsList,
+    NotificationsGet,
+    NotificationsRead,
     WorkloadsList,
     WorkloadsGet,
     WorkloadLogsGet,
@@ -208,7 +214,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 86] = [
+    const ALL: [Self; 89] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ExecutionTemplatesCreate,
@@ -280,6 +286,9 @@ impl ManagementTool {
         Self::NodesGet,
         Self::OperationsList,
         Self::AuditRecordsList,
+        Self::NotificationsList,
+        Self::NotificationsGet,
+        Self::NotificationsRead,
         Self::WorkloadsList,
         Self::WorkloadsGet,
         Self::WorkloadLogsGet,
@@ -394,6 +403,9 @@ impl ManagementTool {
             Self::NodesGet => NODES_GET,
             Self::OperationsList => OPERATIONS_LIST,
             Self::AuditRecordsList => AUDIT_RECORDS_LIST,
+            Self::NotificationsList => NOTIFICATIONS_LIST,
+            Self::NotificationsGet => NOTIFICATIONS_GET,
+            Self::NotificationsRead => NOTIFICATIONS_READ,
             Self::WorkloadsList => WORKLOADS_LIST,
             Self::WorkloadsGet => WORKLOADS_GET,
             Self::WorkloadLogsGet => WORKLOAD_LOGS_GET,
@@ -448,9 +460,11 @@ impl ManagementTool {
                 Some(ApiTokenScope::WORKLOAD_WRITE)
             }
             Self::BuildRunsCancel | Self::BuildRunsRetry => Some(ApiTokenScope::BUILD_WRITE),
-            Self::MyMembershipInvitationsList | Self::AuditRecordsList => {
-                Some(ApiTokenScope::CLOUD_READ)
-            }
+            Self::MyMembershipInvitationsList
+            | Self::AuditRecordsList
+            | Self::NotificationsList
+            | Self::NotificationsGet => Some(ApiTokenScope::CLOUD_READ),
+            Self::NotificationsRead => Some(ApiTokenScope::NOTIFICATION_WRITE),
             Self::MembershipInvitationsAccept => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::EnvironmentsList
             | Self::ExecutionTemplatesGet
@@ -588,9 +602,11 @@ impl ManagementTool {
             Self::NodesList => Some(ManagementResourceBinding::NodeCollection),
             Self::Search => Some(ManagementResourceBinding::SearchCollection),
             Self::OperationsList => Some(ManagementResourceBinding::PolymorphicCollection),
-            Self::MyMembershipInvitationsList | Self::MembershipInvitationsAccept => {
-                Some(ManagementResourceBinding::SelfPrincipal)
-            }
+            Self::MyMembershipInvitationsList
+            | Self::MembershipInvitationsAccept
+            | Self::NotificationsList
+            | Self::NotificationsGet
+            | Self::NotificationsRead => Some(ManagementResourceBinding::SelfPrincipal),
             _ => None,
         }
     }
@@ -1053,6 +1069,24 @@ impl ManagementTool {
                 audit_record_list_schema(),
                 true,
             ),
+            Self::NotificationsList => (
+                "List my notifications",
+                "List one bounded, Resource-Grant-filtered page from the authenticated Principal's in-app inbox.",
+                notification_list_schema(),
+                true,
+            ),
+            Self::NotificationsGet => (
+                "Get my notification",
+                "Get one exact notification addressed to the authenticated Principal when its resource scope remains authorized.",
+                uuid_id_schema("notificationId"),
+                true,
+            ),
+            Self::NotificationsRead => (
+                "Mark my notification read",
+                "Mark one exact notification addressed to the authenticated Principal read with optimistic concurrency and idempotency.",
+                mark_notification_read_schema(),
+                false,
+            ),
             Self::WorkloadsList => (
                 "List workloads",
                 "List workloads in one tenant-authorized environment.",
@@ -1359,6 +1393,31 @@ fn audit_record_list_schema() -> Value {
             "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
             "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
         },
+        "additionalProperties": false
+    })
+}
+
+fn notification_list_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "unreadOnly": {"type": "boolean", "default": false},
+            "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+        },
+        "additionalProperties": false
+    })
+}
+
+fn mark_notification_read_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "notificationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["notificationId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

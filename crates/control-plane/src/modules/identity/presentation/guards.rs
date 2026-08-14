@@ -21,6 +21,8 @@ pub enum DeferredResourceScope {
     Project,
     Node,
     Any,
+    /// The owning handler resolves a record addressed to the authenticated Principal itself.
+    Personal,
 }
 
 pub fn with_deferred_resource_scope(
@@ -119,6 +121,7 @@ fn deferred_resource_is_visible(
         DeferredResourceScope::Project => evaluator.has_project_visibility(),
         DeferredResourceScope::Node => evaluator.has_node_visibility(),
         DeferredResourceScope::Any => evaluator.has_any_visible_resource(),
+        DeferredResourceScope::Personal => true,
     }
 }
 

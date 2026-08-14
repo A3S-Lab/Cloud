@@ -94,6 +94,8 @@ mod human_tasks_support;
 mod mcp_route_policies_support;
 #[path = "support/membership_invitations.rs"]
 mod membership_invitations_support;
+#[path = "support/notifications.rs"]
+mod notifications_support;
 #[path = "support/oidc_cross_surface.rs"]
 mod oidc_cross_surface_support;
 #[path = "support/plugins.rs"]
@@ -233,6 +235,19 @@ async fn postgres_project_attribution_is_atomic_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL project attribution authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_notifications_are_deduplicated_personal_and_atomic() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        notifications_support::exercise_notification_persistence,
+    )
+    .await
+    .expect("PostgreSQL notification inbox projection gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -504,7 +519,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (105, "105".into()));
+    assert_eq!(migration_state, (106, "106".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

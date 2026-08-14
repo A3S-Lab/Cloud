@@ -59,6 +59,7 @@ distributes committed facts after the corresponding database transaction.
 | Provisioning binding | Planned `C0.5` SCIM external identity/version bound idempotently to one Principal and explicit Membership lifecycle; provider groups never become implicit Resource Grants. |
 | Project | Product grouping owned by one organization. |
 | Project attribution profile | Immutable project showback metadata containing a business-owner reference, optional external cost-attribution code, and validated labels; it is not a price or billing account. |
+| Personal notification | Exact-Principal in-app projection of one curated committed transactional Outbox fact. Source identity, content, recipient, and resource scope are immutable; only its unread-to-read state may change. |
 | Environment | Isolated desired-state namespace such as production or staging. |
 | Asset | Hosted reusable A3S unit. Its kind is exactly Agent, MCP, or Skill. |
 | Asset revision | An immutable Git commit plus its validated manifest digest. |
@@ -659,6 +660,30 @@ existing Runtime/Box and Workloads boundaries, routing to Edge/Gateway,
 authorization to Identity plus the canonical A3S Use policy, Secrets to the
 Secrets context, and audit to the shared audit chain. It writes none of those
 contexts' tables.
+
+### 3.18 Personal notifications (`C0.3-N1`)
+
+Owns the recipient-specific in-app projection and its read state. One curated
+committed transactional Outbox fact may project to one deterministic
+`Notification` for one exact Principal. The identity derives from source event
+and recipient, so relay retry and concurrent projection cannot create a second
+logical record. Source fact identity, schema version, aggregate reference,
+content, recipient, occurrence time, and resource scope are immutable.
+
+The only mutation is a version-checked unread-to-read transition. It reuses the
+shared idempotency record, Outbox, audit writer, A3S ORM transactions and
+migrator, exact authenticated Principal, and `ResourceAccessEvaluator` used by
+the owning APIs. A resource-scoped notification hidden by the caller's current
+grants is indistinguishable from a missing record. Notifications cannot mutate
+the source aggregate or source Outbox fact, infer a recipient, or publish a
+provider delivery itself. Outbound webhook, SMTP, and Slack-compatible
+adapters, template/subscription policy, rate policy, and alert generation are
+not part of `N1` and may not introduce a second event rail, queue, scheduler, or
+configuration format.
+
+Primary record:
+
+- `Notification`
 
 ## 4. Aggregate invariants
 
@@ -1976,6 +2001,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Remote plugin command delivery and replay | Fleet command queue, lease, and Node Agent command journal; no plugin-specific queue or endpoint |
 | Assignment reconciliation progress and user-visible result | One A3S Flow run plus the shared Operation projection; Use child-saga phases are not copied into Cloud |
 | Current project attribution reference and immutable business-owner, external cost-attribution code, and label revisions | PostgreSQL Projects tables |
+| Personal in-app notification projection and unread/read state | PostgreSQL Notifications table through A3S ORM migration `106`; the committed transactional Outbox record remains authority for the source fact |
 | Expiring GitHub installation/OAuth state digests and PKCE verifier digest | PostgreSQL GitHub connection-flow table; plaintext state and verifier are transient |
 | Verified GitHub installation/account ownership, verifying-user identity, explicit status, provider-check health/backoff, and retained history | PostgreSQL GitHub source-connection table; no OAuth credential or raw provider body |
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
@@ -2034,7 +2060,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
-| Integration notifications | A3S Event; never the sole source of truth |
+| Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |
 
 ## 8. Domain events
 

@@ -43,6 +43,13 @@ project-qualified Resource Grant evaluator, A3S ORM repository, shared audit,
 and Outbox. MCP owns no attribution store, label validator, billing model, or
 migration path.
 
+The personal-notification slice adds recipient-only list, exact get, and
+idempotent mark-read tools over the same Notifications CQRS, exact authenticated
+Principal, Resource Grant evaluator, A3S ORM repository/migrator, Outbox, and
+audit used by REST, the maintained client, and CLI. MCP owns no notification
+projection, delivery queue, provider/template/subscription policy, scheduler, or
+configuration format.
+
 ## Transport contract
 
 The endpoint is `POST /api/v1/mcp` and implements a sessionless deployment of
@@ -64,7 +71,7 @@ idempotency, persistence, and audit boundaries.
 - The endpoint ignores legacy `Mcp-Session-Id` input and never creates or emits
   protocol session state; `GET` and `DELETE /api/v1/mcp` return `405`.
 - JSON-RPC batches are rejected. Each HTTP request carries one message.
-- Notifications and the legacy `initialize` method are rejected.
+- JSON-RPC notifications and the legacy `initialize` method are rejected.
 - Browser-originated requests are accepted only when `Origin` matches `Host`.
 - Transport responses are not wrapped in the REST envelope. A successful or
   failed tool execution carries the same REST success or business-error
@@ -137,6 +144,9 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_audit_records_list` | Administrator query | `cloud:read` plus organization administrator role |
+| `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
+| `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
+| `a3s_cloud_notifications_read` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
 | `a3s_cloud_ontologies_list` | Query | None |
 | `a3s_cloud_ontologies_get` | Query | None |
 | `a3s_cloud_ontology_revisions_list` | Query | None |
@@ -232,6 +242,24 @@ invitation, creates the ordinary Membership, and records acceptance atomically;
 expired, revoked, stale, or duplicate-membership cases cannot leave a partial
 Membership. The MCP adapter owns no email lookup, external-identity link,
 session, invitation store, RBAC evaluator, notification queue, or scheduler.
+
+## Personal notification inbox
+
+`a3s_cloud_notifications_list` returns only the authenticated Principal's
+records and accepts bounded keyset pagination plus an unread-only filter.
+`a3s_cloud_notifications_get` resolves one exact recipient record. Both apply
+the same current `ResourceAccessEvaluator` as REST, so a resource-scoped record
+hidden by revoked or absent grants is omitted or returned as `404`; MCP does not
+load a broad inbox and filter it locally.
+
+`a3s_cloud_notifications_read` requires the current aggregate version and a
+caller-owned idempotency key. Notifications performs authorization before
+replay and atomically persists the unread-to-read transition, one existing
+Outbox fact, shared audit, and idempotency receipt. The three tools expose no
+recipient selector: recipient identity always comes from the authenticated
+credential. They do not project source events or introduce an MCP-specific
+store, queue, delivery provider, template/subscription model, scheduler, or
+configuration document.
 
 ## Client flow
 

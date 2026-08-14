@@ -2,6 +2,15 @@ import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } f
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
+import {
+  type Notification,
+  type NotificationMutationResult,
+  type NotificationPage,
+  type NotificationQuery,
+  encodeNotificationQuery,
+  validateExpectedNotificationVersion,
+  validateNotificationId,
+} from './notifications';
 import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
@@ -189,7 +198,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.30.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.31.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1570,6 +1579,47 @@ export class CloudApi {
     const parameters = encodeAuditRecordQuery(query);
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/audit-records?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  listNotifications(
+    organizationId: string,
+    query: NotificationQuery = {},
+    signal?: AbortSignal
+  ): Promise<NotificationPage> {
+    const parameters = encodeNotificationQuery(query);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/notifications?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  getNotification(
+    organizationId: string,
+    notificationId: string,
+    signal?: AbortSignal
+  ): Promise<Notification> {
+    validateNotificationId(notificationId);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/notifications/${encodeURIComponent(notificationId)}`,
+      signal
+    );
+  }
+
+  markNotificationRead(
+    organizationId: string,
+    notificationId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<NotificationMutationResult> {
+    validateNotificationId(notificationId);
+    validateExpectedNotificationVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/notifications/${encodeURIComponent(notificationId)}/read`,
+      idempotencyKey,
+      { expectedVersion },
       signal
     );
   }

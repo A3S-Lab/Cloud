@@ -38,7 +38,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.30.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.31.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -75,11 +75,7 @@ describe('CloudApi', () => {
     const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
 
     await api.getProjectAttribution('organization / one', 'project / one');
-    await api.getProjectAttributionRevision(
-      'organization / one',
-      'project / one',
-      'profile / one'
-    );
+    await api.getProjectAttributionRevision('organization / one', 'project / one', 'profile / one');
     await api.updateProjectAttribution(
       'organization / one',
       'project / one',
@@ -2281,6 +2277,68 @@ describe('CloudApi', () => {
         to: '2026-08-13T00:00:00Z',
       })
     ).toThrow('audit from timestamp must not exceed to timestamp');
+    expect(called).toBe(false);
+  });
+
+  it('lists, gets, and idempotently reads personal notifications', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const notificationId = '019c0000-0000-7000-8000-000000000036';
+
+    await api.listNotifications('organization / one', {
+      unreadOnly: true,
+      cursor: `v1:1786579200000000:${notificationId}`,
+      limit: 25,
+    });
+    await api.getNotification('organization / one', notificationId);
+    await api.markNotificationRead('organization / one', notificationId, 1, 'client:notification:read');
+
+    expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/notifications?' +
+          `unreadOnly=true&cursor=v1%3A1786579200000000%3A${notificationId}&limit=25`,
+        'GET',
+      ],
+      [`/api/v1/organizations/organization%20%2F%20one/notifications/${notificationId}`, 'GET'],
+      [`/api/v1/organizations/organization%20%2F%20one/notifications/${notificationId}/read`, 'POST'],
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'client:notification:read' }),
+        body: JSON.stringify({ expectedVersion: 1 }),
+      })
+    );
+  });
+
+  it('rejects invalid notification identifiers, cursors, limits, and versions before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() => api.listNotifications('organization', { cursor: '' })).toThrow(
+      'notification cursor is invalid'
+    );
+    expect(() => api.listNotifications('organization', { limit: 201 })).toThrow(
+      'notification limit must be between 1 and 200'
+    );
+    expect(() => api.getNotification('organization', 'not-a-uuid')).toThrow(
+      'notification ID must be a non-nil UUID'
+    );
+    expect(() =>
+      api.markNotificationRead(
+        'organization',
+        '019c0000-0000-7000-8000-000000000036',
+        0,
+        'client:notification:read'
+      )
+    ).toThrow('expected notification version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

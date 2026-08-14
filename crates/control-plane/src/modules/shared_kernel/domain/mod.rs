@@ -20,12 +20,12 @@ pub use identifiers::{
     ExecutionTemplateId, ExecutionTemplateRevisionId, ExternalIdentityLinkId, FormId,
     FormReleaseId, FormSubmissionId, GatewayCertificateId, GatewayRolloutId, GatewayScopeId,
     HumanTaskId, McpCredentialId, MembershipId, MembershipInvitationId, NodeCertificateId,
-    NodeCommandId, NodeId, NodePoolId, OidcFlowId, OntologyId, OntologyRevisionId, OperationId,
-    OrganizationId, PlanRevisionId, PluginRegistryId, PrincipalId, ProjectAttributionProfileId,
-    ProjectId, ResourceClaimId, ResourceGrantId, RouteId, SecretId, SourceConnectionId,
-    SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId, WorkflowDefinitionId,
-    WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId, WorkloadPlacementGroupId,
-    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    NodeCommandId, NodeId, NodePoolId, NotificationId, OidcFlowId, OntologyId, OntologyRevisionId,
+    OperationId, OrganizationId, PlanRevisionId, PluginRegistryId, PrincipalId,
+    ProjectAttributionProfileId, ProjectId, ResourceClaimId, ResourceGrantId, RouteId, SecretId,
+    SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
+    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
+    WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

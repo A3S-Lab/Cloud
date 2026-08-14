@@ -1,0 +1,404 @@
+//! HTTP and MCP contract tests for the personal notification inbox.
+
+use super::*;
+use crate::modules::notifications::{
+    INotificationRepository, Notification, NotificationScope, NotificationSeverity,
+};
+
+const NOTIFICATION_MEMBER_TOKEN: &str =
+    "a3s_3333333333333333333333333333333333333333333333333333333333333333";
+
+#[tokio::test]
+async fn personal_inbox_is_recipient_bound_paginated_and_idempotently_read() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let notifications =
+        Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new());
+    let app =
+        build_test_application_with_notifications(identity, projects, Arc::clone(&notifications))?;
+    let organization = bootstrap_organization(&app, "notification-bootstrap", "Inbox").await?;
+    let organization_id = organization_id(&organization)?;
+    let owner = owner_principal(&app, &organization).await?;
+
+    create_api_token(
+        &app,
+        &organization,
+        "notification-read-only-token",
+        "Notification read only",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::CLOUD_READ],
+        None,
+    )
+    .await?;
+
+    let older = projected_notification(
+        organization_id,
+        owner,
+        NotificationScope::Organization,
+        "Organization access granted",
+        0,
+    );
+    let newer = projected_notification(
+        organization_id,
+        owner,
+        NotificationScope::Organization,
+        "Organization role changed",
+        1,
+    );
+    let foreign = projected_notification(
+        organization_id,
+        PrincipalId::new(),
+        NotificationScope::Organization,
+        "Another Principal's notification",
+        2,
+    );
+    for notification in [&older, &newer, &foreign] {
+        assert!(notifications
+            .project(notification.clone())
+            .await
+            .map_err(|error| BootError::Internal(error.to_string()))?);
+    }
+
+    let root = format!("/api/v1/organizations/{organization}/notifications");
+    let first_page = app
+        .call(get_as(format!("{root}?limit=1"), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(first_page.status(), 200);
+    let first_page = response_json(&first_page)?;
+    assert_eq!(
+        first_page["data"]["notifications"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        first_page["data"]["notifications"][0]["id"],
+        newer.id.to_string()
+    );
+    assert!(first_page["data"]["notifications"][0]
+        .get("recipientPrincipalId")
+        .is_none());
+    let cursor = first_page["data"]["nextCursor"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("notification cursor is missing".into()))?;
+    let second_page = app
+        .call(get_as(
+            format!("{root}?limit=1&cursor={cursor}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(second_page.status(), 200);
+    let second_page = response_json(&second_page)?;
+    assert_eq!(
+        second_page["data"]["notifications"][0]["id"],
+        older.id.to_string()
+    );
+    assert!(second_page["data"]["nextCursor"].is_null());
+    assert!(!second_page.to_string().contains(&foreign.id.to_string()));
+
+    let exact = app
+        .call(get_as(format!("{root}/{}", newer.id), ADMIN_TOKEN))
+        .await?;
+    assert_eq!(exact.status(), 200);
+    assert_eq!(
+        response_json(&exact)?["data"]["scope"]["kind"],
+        "organization"
+    );
+    assert_eq!(
+        app.call(get_as(format!("{root}/{}", foreign.id), ADMIN_TOKEN))
+            .await?
+            .status(),
+        404
+    );
+
+    let read_request = || {
+        post_json(
+            format!("{root}/{}/read", newer.id),
+            "notification:read:newer",
+            json!({"expectedVersion": 1}),
+        )
+    };
+    let scope_denied = app
+        .call(post_json_as(
+            format!("{root}/{}/read", newer.id),
+            "notification:read:scope-denied",
+            json!({"expectedVersion": 1}),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    assert_eq!(scope_denied.status(), 403);
+
+    let read = app.call(read_request()).await?;
+    assert_eq!(read.status(), 200);
+    let read = response_json(&read)?;
+    assert_eq!(read["data"]["notification"]["aggregateVersion"], 2);
+    assert!(read["data"]["notification"]["readAt"].is_string());
+    assert_eq!(read["data"]["replayed"], false);
+    let replayed = app.call(read_request()).await?;
+    assert_eq!(replayed.status(), 200);
+    assert_eq!(response_json(&replayed)?["data"]["replayed"], true);
+    assert_eq!(notifications.outbox_events().await.len(), 1);
+
+    let changed_replay = app
+        .call(post_json(
+            format!("{root}/{}/read", newer.id),
+            "notification:read:newer",
+            json!({"expectedVersion": 2}),
+        ))
+        .await?;
+    assert_eq!(changed_replay.status(), 409);
+    let unread = app
+        .call(get_as(
+            format!("{root}?unreadOnly=true&limit=50"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(unread.status(), 200);
+    let unread = response_json(&unread)?;
+    assert_eq!(
+        unread["data"]["notifications"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        unread["data"]["notifications"][0]["id"],
+        older.id.to_string()
+    );
+
+    let mcp = app
+        .call(mcp_tool_call_as(
+            1,
+            "a3s_cloud_notifications_get",
+            json!({"notificationId": older.id}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    let mcp = response_json(&mcp)?;
+    assert_eq!(mcp["result"]["isError"], false);
+    assert_eq!(
+        mcp["result"]["structuredContent"]["data"]["id"],
+        older.id.to_string()
+    );
+
+    assert_eq!(
+        app.call(get_as(format!("{root}?cursor=untrusted"), ADMIN_TOKEN))
+            .await?
+            .status(),
+        422
+    );
+    assert_eq!(
+        app.call(get_as(format!("{root}?limit=0"), ADMIN_TOKEN))
+            .await?
+            .status(),
+        400
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn restricted_inbox_reuses_resource_grants_for_rest_and_mcp() -> Result<()> {
+    let notifications =
+        Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new());
+    let app = build_test_application_with_notifications(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        Arc::clone(&notifications),
+    )?;
+    let organization =
+        bootstrap_organization(&app, "notification-grants-bootstrap", "Inbox grants").await?;
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "notification-grants-membership",
+            json!({"name": "Restricted inbox reader", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let membership_id = membership["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("notification membership ID is missing".into()))?;
+    let principal = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("notification Principal ID is missing".into()))?;
+    let principal_id = PrincipalId::from_uuid(
+        Uuid::parse_str(principal)
+            .map_err(|error| BootError::Internal(format!("invalid Principal ID: {error}")))?,
+    );
+    let token = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "notification-grants-token",
+            json!({
+                "name": "Restricted inbox reader",
+                "token": NOTIFICATION_MEMBER_TOKEN,
+                "scopes": [ApiTokenScope::CLOUD_READ, ApiTokenScope::NOTIFICATION_WRITE],
+                "principalId": principal,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(token.status(), 201);
+
+    let granted_project = create_project(
+        &app,
+        &organization,
+        "notification-granted-project",
+        "Granted",
+    )
+    .await?;
+    let hidden_project =
+        create_project(&app, &organization, "notification-hidden-project", "Hidden").await?;
+    let grant = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants"
+            ),
+            "notification-project-grant",
+            json!({"scope": {"kind": "project", "projectId": granted_project}}),
+        ))
+        .await?;
+    assert_eq!(grant.status(), 201);
+
+    let organization_id = organization_id(&organization)?;
+    let granted_project_id = ProjectId::from_uuid(
+        Uuid::parse_str(&granted_project)
+            .map_err(|error| BootError::Internal(format!("invalid Project ID: {error}")))?,
+    );
+    let hidden_project_id = ProjectId::from_uuid(
+        Uuid::parse_str(&hidden_project)
+            .map_err(|error| BootError::Internal(format!("invalid Project ID: {error}")))?,
+    );
+    let organization_notification = projected_notification(
+        organization_id,
+        principal_id,
+        NotificationScope::Organization,
+        "Organization notice",
+        0,
+    );
+    let granted = projected_notification(
+        organization_id,
+        principal_id,
+        NotificationScope::Project {
+            project_id: granted_project_id,
+        },
+        "Granted project notice",
+        1,
+    );
+    let hidden = projected_notification(
+        organization_id,
+        principal_id,
+        NotificationScope::Project {
+            project_id: hidden_project_id,
+        },
+        "Hidden project notice",
+        2,
+    );
+    for notification in [&organization_notification, &granted, &hidden] {
+        notifications
+            .project(notification.clone())
+            .await
+            .map_err(|error| BootError::Internal(error.to_string()))?;
+    }
+
+    let root = format!("/api/v1/organizations/{organization}/notifications");
+    let listed = app
+        .call(get_as(
+            format!("{root}?limit=50"),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    let listed = response_json(&listed)?;
+    let ids = listed["data"]["notifications"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("notification list is not an array".into()))?
+        .iter()
+        .filter_map(|value| value["id"].as_str().map(str::to_owned))
+        .collect::<Vec<_>>();
+    assert!(ids.contains(&organization_notification.id.to_string()));
+    assert!(ids.contains(&granted.id.to_string()));
+    assert!(!ids.contains(&hidden.id.to_string()));
+    assert_eq!(
+        app.call(get_as(
+            format!("{root}/{}", hidden.id),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?
+        .status(),
+        404
+    );
+    assert_eq!(
+        app.call(post_json_as(
+            format!("{root}/{}/read", hidden.id),
+            "notification-hidden-read",
+            json!({"expectedVersion": 1}),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?
+        .status(),
+        404
+    );
+
+    let mcp = app
+        .call(mcp_tool_call_as(
+            2,
+            "a3s_cloud_notifications_list",
+            json!({"limit": 50}),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    let mcp = response_json(&mcp)?;
+    assert_eq!(mcp["result"]["isError"], false);
+    let mcp_text = mcp["result"]["structuredContent"].to_string();
+    assert!(mcp_text.contains(&granted.id.to_string()));
+    assert!(!mcp_text.contains(&hidden.id.to_string()));
+    Ok(())
+}
+
+fn projected_notification(
+    organization_id: OrganizationId,
+    recipient_principal_id: PrincipalId,
+    scope: NotificationScope,
+    title: &str,
+    offset_seconds: i64,
+) -> Notification {
+    let occurred_at = Utc::now() + chrono::Duration::seconds(offset_seconds);
+    Notification::project(
+        organization_id,
+        recipient_principal_id,
+        Uuid::now_v7(),
+        "identity.membership.role-changed".into(),
+        1,
+        Uuid::now_v7(),
+        1,
+        Uuid::now_v7(),
+        NotificationSeverity::Information,
+        title.into(),
+        format!("{title}."),
+        scope,
+        occurred_at,
+        occurred_at,
+    )
+    .expect("notification fixture")
+}
+
+async fn owner_principal(app: &BootApplication, organization: &str) -> Result<PrincipalId> {
+    let response = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response.status(), 200);
+    let value = response_json(&response)?["data"][0]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("owner Principal ID is missing".into()))?
+        .to_owned();
+    Ok(PrincipalId::from_uuid(Uuid::parse_str(&value).map_err(
+        |error| BootError::Internal(format!("invalid owner Principal ID: {error}")),
+    )?))
+}
+
+fn organization_id(value: &str) -> Result<OrganizationId> {
+    Ok(OrganizationId::from_uuid(Uuid::parse_str(value).map_err(
+        |error| BootError::Internal(format!("invalid Organization ID: {error}")),
+    )?))
+}

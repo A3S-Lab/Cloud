@@ -917,6 +917,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/105_workflow_run_input_v2.sql"
             )),
         ),
+        Migration::new(
+            "106",
+            "deduplicated notification inbox projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/106_notification_inbox.sql"
+            )),
+        ),
     ]
 }
 
@@ -1275,5 +1283,46 @@ mod workflow_run_input_v2_migration_tests {
             );
         }
         assert!(!MIGRATION.contains("create table"));
+    }
+}
+
+#[cfg(test)]
+mod notification_inbox_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/106_notification_inbox.sql"
+    ));
+
+    #[test]
+    fn migration_106_is_a_deduplicated_outbox_projection_not_a_second_queue() {
+        for expected in [
+            "create table notifications",
+            "unique (source_event_id, recipient_principal_id)",
+            "references outbox_events(event_id)",
+            "notifications_recipient_feed_idx",
+            "notifications_recipient_unread_idx",
+            "validate_notification_source_event",
+            "notifications_read_transition_only",
+            "Notifications cannot be deleted",
+            "aggregate_version = 1 and read_at is null",
+            "aggregate_version = 2 and read_at is not null",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 106 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table notification_queue",
+            "create table notification_providers",
+            "create table notification_templates",
+            "create table notification_subscriptions",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 106 must reuse the transactional outbox and existing ACL authority: {forbidden}"
+            );
+        }
     }
 }

@@ -33,6 +33,7 @@ import { usageError } from './errors';
 import { executeFormCommand } from './form-commands';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
+import { executeNotificationCommand, rejectMisplacedNotificationOptions } from './notification-commands';
 import { executeOntologyCommand } from './ontology-commands';
 import { executePluginCommand } from './plugin-commands';
 import { executeWorkflowCommand } from './workflow-commands';
@@ -94,6 +95,7 @@ export async function executeCommand(
   rejectMisplacedIdentityOptions(command, arguments_);
   rejectMisplacedNodeOptions(command, arguments_);
   rejectMisplacedAuditOptions(command, arguments_);
+  rejectMisplacedNotificationOptions(command, arguments_);
   rejectMisplacedProjectAttributionOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
@@ -133,6 +135,10 @@ export async function executeCommand(
   const auditResult = await executeAuditCommand(command, arguments_, context, cloudApi);
   if (auditResult !== undefined) {
     return auditResult;
+  }
+  const notificationResult = await executeNotificationCommand(command, arguments_, context, cloudApi);
+  if (notificationResult !== undefined) {
+    return notificationResult;
   }
   const ontologyResult = await executeOntologyCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,
@@ -229,11 +235,7 @@ export async function executeCommand(
       if (positionals.length !== 2 && positionals.length !== 3) {
         throw usageError('usage: a3s-cloud project-attribution get [profile-id]');
       }
-      requireReadCommand(
-        arguments_,
-        'project-attribution get [profile-id]',
-        positionals.length
-      );
+      requireReadCommand(arguments_, 'project-attribution get [profile-id]', positionals.length);
       const organizationId = requireOrganization(context);
       const projectId = requireProject(context);
       const profileId =
@@ -565,18 +567,12 @@ export async function executeCommand(
   }
 }
 
-function rejectMisplacedProjectAttributionOptions(
-  command: string,
-  arguments_: ParsedArguments
-): void {
+function rejectMisplacedProjectAttributionOptions(command: string, arguments_: ParsedArguments): void {
   if (
     command !== 'project-attribution update' &&
-    (arguments_.costAttributionCode !== undefined ||
-      arguments_.projectAttributionLabels.length > 0)
+    (arguments_.costAttributionCode !== undefined || arguments_.projectAttributionLabels.length > 0)
   ) {
-    throw usageError(
-      '--cost-attribution-code and --label are valid only for project-attribution update'
-    );
+    throw usageError('--cost-attribution-code and --label are valid only for project-attribution update');
   }
 }
 

@@ -39,5 +39,6 @@ export {
 } from './api';
 export * from './diagnostics';
 export * from './audit';
+export * from './notifications';
 export * from './search';
 export * from './types';

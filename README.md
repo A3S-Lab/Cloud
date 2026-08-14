@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.30.0" src="https://img.shields.io/badge/REST_contract-1.30.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.31.0" src="https://img.shields.io/badge/REST_contract-1.31.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -409,6 +409,19 @@ Idempotency, Outbox, and shared audit commit in the same PostgreSQL transaction.
 This is non-monetary showback metadata: pricing, balances, invoices, credits,
 settlement, and commercial entitlements remain outside Cloud.
 
+The first personal notification slice is also implemented. Curated committed
+Identity Outbox facts project into one deterministic in-app notification per
+source event and exact recipient Principal. REST/OpenAPI `1.31.0`, the
+maintained client, CLI, and three Management MCP tools share the Notifications
+commands and queries. Recipient isolation and Resource Grants are enforced on
+the server, and marking a notification read is an idempotent, version-checked
+mutation that commits its Outbox fact and audit record atomically through A3S
+ORM. Migration `106` is registered by the existing A3S ORM migrator. This
+projection neither mutates its source fact nor introduces a provider queue,
+template/subscription store, scheduler, or notification-specific configuration
+format; outbound webhook, SMTP, and Slack-compatible delivery remain future
+adapters over this boundary.
+
 ### One concern, one authority
 
 | Concern | Sole authority | Duplicate mechanism that is prohibited |
@@ -425,6 +438,7 @@ settlement, and commercial entitlements remain outside Cloud.
 | Plugin assignments and package lifecycle | Cloud Plugins for tenant intent; shared A3S Use Plugin Manager for package generations | A Cloud installer, catalog copy, grant store, binding store, or generic plugin RPC |
 | Immutable bytes | One shared content-addressed object client with typed domain adapters | Parallel filesystem/S3 clients or untyped cross-domain blob APIs |
 | Principal identity and organization access | Identity Principals, Memberships, MembershipInvitations, Resource Grants, credentials, and revocation | A console-local user store, credential-owned roles, a second RBAC evaluator, or presentation-only authorization |
+| Personal in-app notifications | Notifications projects curated committed transactional Outbox facts for one exact recipient Principal and applies the shared Resource Grant evaluator | A second event rail, provider queue, template/subscription authority, scheduler, or presentation-local inbox |
 | Audit history | Shared append-only `audit_records` plus one tenant-administrator read projection | Per-domain or MCP audit stores, a second writer, or public exposure of unstructured audit details |
 | Management behavior | One application command/query layer | REST-, CLI-, MCP-, or Web-specific business state and rules |
 
@@ -466,7 +480,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.30.0`.
+contract version `1.31.0`.
 
 ### Bootstrap the first organization
 

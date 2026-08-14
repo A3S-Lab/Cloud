@@ -112,6 +112,11 @@ use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, OutboxRelay, OutboxRelayConfig,
     PostgresOutboxRepository,
 };
+use crate::modules::notifications::{
+    GetNotificationHandler, INotificationRepository, ListNotificationsHandler,
+    MarkNotificationReadHandler, NotificationsModule, OutboxNotificationProjector,
+    PostgresNotificationRepository,
+};
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
     OperationsModule, PostgresOperationRepository, ReconcileOperationsHandler,
@@ -345,6 +350,8 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let audit_records: Arc<dyn IAuditRecordRepository> =
         Arc::new(PostgresAuditRecordRepository::new(executor.clone()));
+    let notifications: Arc<dyn INotificationRepository> =
+        Arc::new(PostgresNotificationRepository::new(executor.clone()));
     let plugin_repository = Arc::new(PostgresPluginRegistryRepository::new(executor.clone()));
     let plugin_registries: Arc<dyn IPluginRegistryRepository> = plugin_repository.clone();
     let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> =
@@ -937,7 +944,11 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             maximum_backoff: Duration::from_millis(config.events.retry_max_ms),
         },
     )
-    .map_err(ControlPlaneStartupError::Outbox)?;
+    .map_err(ControlPlaneStartupError::Outbox)?
+    .with_projector(Arc::new(OutboxNotificationProjector::new(
+        Arc::clone(&notifications),
+        Arc::clone(&memberships),
+    )));
     let run_operations = matches!(config.server.role, ProcessRole::All | ProcessRole::Worker);
     let run_relay = matches!(config.server.role, ProcessRole::All | ProcessRole::Relay);
     let log_retention_worker = LogRetentionWorker::new(
@@ -1022,6 +1033,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             form_semantic_core,
             search,
             audit_records,
+            notifications,
             plugin_registries,
             plugin_enrollment_authorizer,
             plugin_trust_roots,
@@ -1124,6 +1136,7 @@ struct ApplicationDependencies {
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
+    notifications: Arc<dyn INotificationRepository>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
@@ -1191,6 +1204,7 @@ fn build_application_with_health(
         form_semantic_core,
         search,
         audit_records,
+        notifications,
         plugin_registries,
         plugin_enrollment_authorizer,
         plugin_trust_roots,
@@ -1239,6 +1253,9 @@ fn build_application_with_health(
         Arc::clone(&agents),
         Arc::clone(&workflow_runs),
     ));
+    let list_notifications = Arc::clone(&notifications);
+    let get_notifications = Arc::clone(&notifications);
+    let mark_notifications_read = notifications;
     let project_organizations = Arc::clone(&organizations);
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
@@ -1609,6 +1626,9 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::projects::UpdateProjectAttribution, _>(
                     UpdateProjectAttributionHandler::new(update_project_attributions),
+                )
+                .command_handler::<crate::modules::notifications::MarkNotificationRead, _>(
+                    MarkNotificationReadHandler::new(mark_notifications_read),
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
@@ -2064,6 +2084,12 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::audit::ListAuditRecords, _>(
                     ListAuditRecordsHandler::new(audit_records),
                 )
+                .query_handler::<crate::modules::notifications::ListNotifications, _>(
+                    ListNotificationsHandler::new(list_notifications),
+                )
+                .query_handler::<crate::modules::notifications::GetNotification, _>(
+                    GetNotificationHandler::new(get_notifications),
+                )
                 .query_handler::<crate::modules::assets::ListAssets, _>(
                     ListAssetsHandler::new(list_assets),
                 )
@@ -2263,6 +2289,7 @@ fn build_application_with_health(
         .import(FormsModule)
         .import(SearchModule)
         .import(AuditModule)
+        .import(NotificationsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
         .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)

@@ -48,6 +48,7 @@ identifier!(ResourceGrantId);
 identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(ProjectAttributionProfileId);
+identifier!(NotificationId);
 identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
 identifier!(OperationId);

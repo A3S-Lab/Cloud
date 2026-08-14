@@ -20,6 +20,9 @@ use super::identity::{
     MembershipInvitationArguments, MembershipInvitationMutationArguments, ResourceGrantArguments,
     RevokeMembershipArguments, RevokeResourceGrantArguments,
 };
+use super::notifications::{
+    MarkNotificationReadArguments, NotificationArguments, NotificationListArguments,
+};
 use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
     OntologyRevisionArguments, ReviseOntologyArguments,
@@ -44,8 +47,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, audit, edge, execution_templates, forms, identity, nodes, ontology, operations,
-    plugins, projects, search, workflow, workloads,
+    artifacts, audit, edge, execution_templates, forms, identity, nodes, notifications, ontology,
+    operations, plugins, projects, search, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -747,6 +750,42 @@ pub async fn execute(
         ManagementTool::AuditRecordsList => {
             let arguments = arguments::parse::<AuditRecordListArguments>(arguments).ok()?;
             audit::list_audit_records(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::NotificationsList => {
+            let arguments = arguments::parse::<NotificationListArguments>(arguments).ok()?;
+            notifications::list(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationsGet => {
+            let arguments = arguments::parse::<NotificationArguments>(arguments).ok()?;
+            notifications::get(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationsRead => {
+            let arguments = arguments::parse::<MarkNotificationReadArguments>(arguments).ok()?;
+            notifications::mark_read(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkloadsList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;
