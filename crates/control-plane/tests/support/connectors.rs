@@ -456,6 +456,18 @@ pub(super) async fn exercise_connector_application_and_materialization(
         migration_state,
         (1, "race-safe active Connector Secret admission".into())
     );
+    let error_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("111"),
+        )
+        .await?;
+    assert_eq!(
+        error_migration_state,
+        (1, "typed Connector Secret admission failures".into())
+    );
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();

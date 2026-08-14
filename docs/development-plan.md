@@ -1980,7 +1980,8 @@ node.
   execution object and requires rematerialization for every later attempt.
   Migration `110` takes admission-only shared row locks over the exact active
   Secret/version pair, closing the application-check-to-Connector-commit race
-  without preventing later Secrets-owned revocation.
+  without preventing later Secrets-owned revocation. Migration `111` preserves
+  the existing typed missing-reference repository contract for that trigger.
   Focused in-memory authorization/replay/revoke/redaction tests pass and the
   existing PostgreSQL 17 job carries the production-repository gate.
 - Production egress/SSRF policy, execution evidence, internal execution

@@ -957,6 +957,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/110_connector_active_secret_admission.sql"
             )),
         ),
+        Migration::new(
+            "111",
+            "typed Connector Secret admission failures",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/111_connector_secret_admission_error.sql"
+            )),
+        ),
     ]
 }
 
@@ -1458,6 +1466,36 @@ mod connector_active_secret_admission_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 110 must not become another Secret or execution authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod connector_secret_admission_error_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/111_connector_secret_admission_error.sql"
+    ));
+
+    #[test]
+    fn migration_111_preserves_the_row_fence_and_restores_foreign_key_semantics() {
+        for expected in [
+            "create or replace function validate_connector_secret_binding_materializable()",
+            "for share of s, v",
+            "raise foreign_key_violation",
+            "Secrets remains lifecycle authority",
+            "execution must recheck just in time",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 111 is missing {expected}"
+            );
+        }
+        for forbidden in ["create table", "create trigger", "create queue"] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 111 must only normalize the existing admission constraint: {forbidden}"
             );
         }
     }

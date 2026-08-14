@@ -626,6 +626,8 @@ environment, Secret state, exact version, and version state in one snapshot.
 Migration `110` repeats that admission predicate while inserting each immutable
 binding and holds shared row locks until the Connector transaction commits, so
 a concurrent revoke cannot slip between application validation and persistence.
+Migration `111` keeps that same trigger and reports a failed admission through
+the repository's existing foreign-key/missing-reference classification.
 The lock does not prevent later revocation once that transaction commits and
 does not transfer Secret lifecycle ownership to Connectors.
 Successful mutation replay intentionally precedes that current-state check, so
