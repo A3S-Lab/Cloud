@@ -7,6 +7,7 @@ mod mcp;
 mod node;
 mod registry_credential;
 mod resource;
+mod workflow_node_profiles;
 
 pub use a3s_code_core::{
     AgentEventTypeV1, AgentProtocolChangeSetRequestV1, AgentProtocolChangeSetV1,
@@ -65,4 +66,8 @@ pub use registry_credential::RegistryCredentialMaterial;
 pub use resource::{
     validate_slot_bindings, validate_slot_evidence, validate_slot_requests, ResourceAllocation,
     ResourceKind, ResourceSlotBinding, ResourceSlotEvidence, ResourceSlotRequest, ResourceUnit,
+};
+pub use workflow_node_profiles::{
+    WorkflowNodeExecutionClass, WorkflowNodeKind, WorkflowNodeProfile, WorkflowNodeProfiles,
+    WORKFLOW_NODE_PROFILES_REVISION, WORKFLOW_NODE_PROFILES_SCHEMA,
 };

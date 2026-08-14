@@ -167,18 +167,18 @@ use crate::modules::workflow::{
     CreateWorkflowDefinitionHandler, CreateWorkflowGoalHandler, DiffOntologyRevisionsHandler,
     FlowWorkflowRunCoordinator, GetHumanTaskHandler, GetOntologyHandler,
     GetOntologyRevisionHandler, GetPlanRevisionHandler, GetWorkflowDefinitionHandler,
-    GetWorkflowGoalHandler, GetWorkflowRevisionHandler, GetWorkflowRunHandler,
-    GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler, HumanTaskCoordinator,
-    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
-    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
-    IWorkflowRunHistoryReader, IWorkflowRunRepository, ListHumanTasksHandler,
-    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
-    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
-    PostgresHumanTaskRepository, PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
-    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, ReviseOntologyHandler,
-    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, SubmitHumanTaskHandler,
-    WaitWorkflowRunHandler, WorkflowModule, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
-    WorkflowRunReconciler,
+    GetWorkflowGoalHandler, GetWorkflowNodeCatalogHandler, GetWorkflowRevisionHandler,
+    GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
+    HumanTaskCoordinator, HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository,
+    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
+    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    ListWorkflowRunsHandler, PostgresHumanTaskRepository, PostgresOntologyRepository,
+    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
+    PostgresWorkflowRunRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
+    StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler, WorkflowModule,
+    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
 };
 use crate::modules::workloads::domain::repositories::IDeploymentFlowWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
@@ -1269,6 +1269,7 @@ fn build_application_with_health(
     let list_ontology_revisions = Arc::clone(&ontologies);
     let diff_ontology_revisions = Arc::clone(&ontologies);
     let create_workflow_projects = Arc::clone(&projects);
+    let get_workflow_node_catalog_projects = Arc::clone(&projects);
     let create_workflow_definitions = Arc::clone(&workflow_definitions);
     let revise_workflow_definitions = Arc::clone(&workflow_definitions);
     let get_workflow_definitions = Arc::clone(&workflow_definitions);
@@ -2020,6 +2021,9 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::workflow::DiffOntologyRevisions, _>(
                     DiffOntologyRevisionsHandler::new(diff_ontology_revisions),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowNodeCatalog, _>(
+                    GetWorkflowNodeCatalogHandler::new(get_workflow_node_catalog_projects),
                 )
                 .query_handler::<crate::modules::workflow::GetWorkflowDefinition, _>(
                     GetWorkflowDefinitionHandler::new(get_workflow_definitions),

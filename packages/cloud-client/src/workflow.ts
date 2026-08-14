@@ -91,6 +91,55 @@ export interface ReviseWorkflowDefinitionOptions {
   expectedVersion: number;
 }
 
+export type WorkflowNodeCatalogAvailability = 'unavailable' | 'internal' | 'public';
+export type WorkflowNodeExecutionClass =
+  | 'workflow_local'
+  | 'composite_region'
+  | 'owning_application_port'
+  | 'invocation_only';
+export type WorkflowNodeGateState = 'planned' | 'in_progress' | 'implemented' | 'verified';
+export type WorkflowNodeOwner =
+  | 'agents'
+  | 'applications'
+  | 'assets'
+  | 'automations'
+  | 'connectors'
+  | 'edge_gateway'
+  | 'executions'
+  | 'files'
+  | 'identity'
+  | 'inference'
+  | 'knowledge'
+  | 'operations_telemetry'
+  | 'platform'
+  | 'use'
+  | 'workflow';
+
+export interface WorkflowNodeCatalogEntry {
+  capabilityId: string;
+  label: string;
+  owner: WorkflowNodeOwner;
+  gate: string;
+  gateState: WorkflowNodeGateState;
+  dependencies: string[];
+  availability: WorkflowNodeCatalogAvailability;
+  kind: WorkflowStepKind | null;
+  executionClass: WorkflowNodeExecutionClass;
+  semanticProfiles: string[];
+  evidence: string[];
+  unavailableReason: string | null;
+}
+
+export interface WorkflowNodeCatalog {
+  schema: 'a3s.cloud.app-platform.workflow-node-profiles.v1';
+  revision: '1.0.0';
+  baseline: string;
+  parityManifestDigest: string;
+  profileSetDigest: string;
+  parityClaim: boolean;
+  nodes: WorkflowNodeCatalogEntry[];
+}
+
 export type WorkflowStepKind =
   | 'input'
   | 'output'

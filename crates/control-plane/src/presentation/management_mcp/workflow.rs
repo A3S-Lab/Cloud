@@ -7,16 +7,17 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workflow::presentation::{
     HumanTaskMutationResponse, HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse,
     WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse, WorkflowGoalMutationResponse,
-    WorkflowGoalResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
-    WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
+    WorkflowGoalResponse, WorkflowNodeCatalogResponse, WorkflowRevisionResponse,
+    WorkflowRevisionSummaryResponse, WorkflowRunMutationResponse, WorkflowRunOutputResponse,
+    WorkflowRunResponse,
 };
 use crate::modules::workflow::{
     CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
-    GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision,
-    GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskAssignmentAction,
-    HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals,
-    ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun,
-    SubmitHumanTask, WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind,
+    GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowNodeCatalog,
+    GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput,
+    HumanTaskAssignmentAction, HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions,
+    ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition,
+    StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind,
     WorkflowSemanticContractAcls, HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT,
     WORKFLOW_RUN_LIST_MAX_LIMIT, WORKFLOW_RUN_MAX_TIMEOUT_SECONDS, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
@@ -438,6 +439,28 @@ pub async fn list_definitions(
                 .collect::<Vec<_>>(),
             request_id,
         ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_node_catalog(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListProjectWorkflowArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetWorkflowNodeCatalog {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            resource_access,
+        })
+        .await?
+    {
+        Ok(value) => {
+            tool_result::success(200, WorkflowNodeCatalogResponse::from(value), request_id)
+        }
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

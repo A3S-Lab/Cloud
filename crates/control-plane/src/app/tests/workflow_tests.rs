@@ -33,6 +33,123 @@ const RESTRICTED_WORKFLOW_TOKEN: &str =
     "a3s_8888888888888888888888888888888888888888888888888888888888888888";
 
 #[tokio::test]
+async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_surface_exact(
+) -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "workflow-node-catalog", "Workflow node catalog").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "workflow-node-catalog-project",
+        "Workflow node catalog",
+    )
+    .await?;
+    let path =
+        format!("/api/v1/organizations/{organization}/projects/{project}/workflow-node-catalog");
+
+    let first = app.call(get_as(&path, ADMIN_TOKEN)).await?;
+    assert_eq!(first.status(), 200);
+    let first = response_json(&first)?;
+    let catalog = first["data"].clone();
+    assert_eq!(
+        catalog["schema"],
+        "a3s.cloud.app-platform.workflow-node-profiles.v1"
+    );
+    assert_eq!(catalog["revision"], "1.0.0");
+    assert_eq!(catalog["baseline"], "2026-08-13");
+    assert_eq!(catalog["parityClaim"], false);
+    assert!(catalog["parityManifestDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
+    assert!(catalog["profileSetDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
+    let nodes = catalog["nodes"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("Workflow node catalog has no nodes".into()))?;
+    assert_eq!(nodes.len(), 23);
+    assert!(nodes
+        .windows(2)
+        .all(|pair| { pair[0]["capabilityId"].as_str() < pair[1]["capabilityId"].as_str() }));
+    assert!(nodes.iter().all(|node| node["availability"] != "public"));
+    assert_eq!(
+        nodes
+            .iter()
+            .filter(|node| node["availability"] == "internal")
+            .map(|node| node["capabilityId"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        [
+            "node.human-input",
+            "node.if-else",
+            "node.output",
+            "node.template",
+            "node.user-input",
+        ]
+    );
+    let by_id = |id: &str| {
+        nodes
+            .iter()
+            .find(|node| node["capabilityId"] == id)
+            .expect("checked-in node")
+    };
+    assert_eq!(by_id("node.code")["owner"], "executions");
+    assert_eq!(by_id("node.code")["kind"], "execution");
+    assert_eq!(by_id("node.http-request")["owner"], "connectors");
+    assert_eq!(
+        by_id("node.schedule-trigger")["executionClass"],
+        "invocation_only"
+    );
+    assert!(by_id("node.schedule-trigger")["kind"].is_null());
+    assert_eq!(
+        by_id("node.agent")["semanticProfiles"],
+        json!(["agent.classic", "agent.release"])
+    );
+
+    let second = app.call(get_as(&path, ADMIN_TOKEN)).await?;
+    assert_eq!(second.status(), 200);
+    assert_eq!(response_json(&second)?["data"], catalog);
+
+    let mcp = app
+        .call(mcp_tool_call_as(
+            1,
+            "a3s_cloud_workflow_node_catalog_get",
+            json!({"projectId": project}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    let mcp = response_json(&mcp)?;
+    assert_eq!(mcp["result"]["structuredContent"]["code"], 200);
+    assert_eq!(mcp["result"]["structuredContent"]["data"], catalog);
+
+    let missing_project = Uuid::now_v7();
+    let missing = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{missing_project}/workflow-node-catalog"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing.status(), 404);
+    let missing_mcp = app
+        .call(mcp_tool_call_as(
+            2,
+            "a3s_cloud_workflow_node_catalog_get",
+            json!({"projectId": missing_project}),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&missing_mcp)?["result"]["structuredContent"]["code"],
+        404
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn human_task_submission_reuses_native_form_and_persists_identity_evidence() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
@@ -1324,12 +1441,18 @@ async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_
 
     let granted_collections = [
         format!(
+            "/api/v1/organizations/{organization}/projects/{granted_project}/workflow-node-catalog"
+        ),
+        format!(
             "/api/v1/organizations/{organization}/projects/{granted_project}/workflow-definitions"
         ),
         format!("/api/v1/organizations/{organization}/projects/{granted_project}/workflow-goals"),
         format!("/api/v1/organizations/{organization}/projects/{granted_project}/workflow-runs"),
     ];
     let denied_collections = [
+        format!(
+            "/api/v1/organizations/{organization}/projects/{environment_only_project}/workflow-node-catalog"
+        ),
         format!(
             "/api/v1/organizations/{organization}/projects/{environment_only_project}/workflow-definitions"
         ),

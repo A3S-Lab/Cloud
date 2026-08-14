@@ -38,7 +38,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.31.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.32.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -687,6 +687,7 @@ describe('CloudApi', () => {
     };
     const goalAcl = 'goal { schema = "cloud.workflow.goal.v1" }';
 
+    await api.getWorkflowNodeCatalog('organization', 'project');
     await api.listWorkflowDefinitions('organization', 'project');
     await api.getWorkflowDefinition('organization', 'definition');
     await api.createWorkflowDefinitionFromAcl('organization', 'project', publication, 'workflow:create');
@@ -705,6 +706,7 @@ describe('CloudApi', () => {
     await api.getWorkflowPlanRevision('organization', 'goal', 'plan');
 
     expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization/projects/project/workflow-node-catalog',
       '/api/v1/organizations/organization/projects/project/workflow-definitions',
       '/api/v1/organizations/organization/workflow-definitions/definition',
       '/api/v1/organizations/organization/projects/project/workflow-definitions',
@@ -716,7 +718,7 @@ describe('CloudApi', () => {
       '/api/v1/organizations/organization/projects/project/workflow-goals',
       '/api/v1/organizations/organization/workflow-goals/goal/plan-revisions/plan',
     ]);
-    expect(calls[2]?.[1]).toEqual(
+    expect(calls[3]?.[1]).toEqual(
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify(publication),
@@ -726,14 +728,14 @@ describe('CloudApi', () => {
         }),
       })
     );
-    expect(calls[5]?.[1]).toEqual(
+    expect(calls[6]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({
           'x-a3s-expected-version': '2',
         }),
       })
     );
-    expect(calls[8]?.[1]).toEqual(
+    expect(calls[9]?.[1]).toEqual(
       expect.objectContaining({
         body: goalAcl,
         headers: expect.objectContaining({

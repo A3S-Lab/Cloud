@@ -36,9 +36,9 @@ the existing plan table to its paired v2 schema/compiler revision. Migration
 `105` only raises the existing immutable WorkflowRun input bound so the already
 bounded Plan, payloads, and variable ACL fit in one replay authority. Neither
 migration adds a mutable node catalog, variable store, event log, scheduler,
-queue, or runtime provider. A future discovery catalog may publish candidate
-descriptors, but publication always snapshots exact admitted semantics into the
-revision.
+queue, or runtime provider. Decision 0009's read-only discovery catalog may
+publish candidate profiles, but publication always snapshots exact admitted
+semantics into the revision.
 
 The first runtime subset materializes invocation inputs, node outputs,
 deterministically ordered run assignments, direct reads, and opaque Secret or

@@ -50,6 +50,7 @@ Commands:
   ontologies revision ID REV Get one immutable Ontology revision and canonical ACL
   ontologies diff ID FROM TO Diff two revisions deterministically
   ontologies revise ID  Publish a version-checked Ontology revision from A3S ACL
+  workflow-nodes list    Discover the frozen built-in Workflow node catalog
   workflow-definitions list List Workflow definitions in the selected project
   workflow-definitions get ID Get one WorkflowDefinition aggregate
   workflow-definitions create Publish a Workflow definition and exact ACL payload bundle

@@ -36,12 +36,14 @@ const CAPABILITY_ATTRIBUTES: [&str; 8] = [
     "references",
 ];
 const EVIDENCE_KINDS: [&str; 4] = ["contract", "doc", "implementation", "test"];
-const OWNERS: [&str; 13] = [
+const OWNERS: [&str; 15] = [
     "agents",
     "applications",
     "assets",
     "automations",
+    "connectors",
     "edge_gateway",
+    "executions",
     "files",
     "identity",
     "inference",

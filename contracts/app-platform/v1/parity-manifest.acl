@@ -510,7 +510,7 @@ parity_manifest "dify-commercial-core-2026-08-13" {
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "W0.4"
     label = "Code"
-    owner = "workflow"
+    owner = "executions"
     references = ["workflow-chatflow"]
   }
   capability "node.document-extractor" {
@@ -530,7 +530,7 @@ parity_manifest "dify-commercial-core-2026-08-13" {
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "W0.4"
     label = "HTTP Request"
-    owner = "automations"
+    owner = "connectors"
     references = ["workflow-chatflow"]
   }
   capability "node.human-input" {

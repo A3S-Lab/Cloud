@@ -77,6 +77,23 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
 }
 
 #[test]
+fn node_owners_follow_the_accepted_execution_boundaries() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let owners = manifest
+        .capabilities()
+        .iter()
+        .filter(|capability| capability.category() == AppPlatformCapabilityCategory::Node)
+        .map(|capability| (capability.id(), capability.owner()))
+        .collect::<BTreeMap<_, _>>();
+
+    assert_eq!(owners["node.code"], "executions");
+    assert_eq!(owners["node.http-request"], "connectors");
+    assert_eq!(owners["node.schedule-trigger"], "automations");
+    assert_eq!(owners["node.answer"], "applications");
+    assert_eq!(owners["node.output"], "workflow");
+}
+
+#[test]
 fn checked_in_manifest_evidence_references_repository_files() {
     let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");

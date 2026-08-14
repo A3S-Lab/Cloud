@@ -69,6 +69,7 @@ pub const ONTOLOGIES_REVISE: &str = "a3s_cloud_ontologies_revise";
 pub const ONTOLOGY_REVISIONS_GET: &str = "a3s_cloud_ontology_revisions_get";
 pub const ONTOLOGY_REVISIONS_LIST: &str = "a3s_cloud_ontology_revisions_list";
 pub const ONTOLOGY_REVISIONS_DIFF: &str = "a3s_cloud_ontology_revisions_diff";
+pub const WORKFLOW_NODE_CATALOG_GET: &str = "a3s_cloud_workflow_node_catalog_get";
 pub const WORKFLOW_DEFINITIONS_CREATE: &str = "a3s_cloud_workflow_definitions_create";
 pub const WORKFLOW_DEFINITIONS_GET: &str = "a3s_cloud_workflow_definitions_get";
 pub const WORKFLOW_DEFINITIONS_LIST: &str = "a3s_cloud_workflow_definitions_list";
@@ -146,6 +147,7 @@ pub enum ManagementTool {
     OntologyRevisionsGet,
     OntologyRevisionsList,
     OntologyRevisionsDiff,
+    WorkflowNodeCatalogGet,
     WorkflowDefinitionsCreate,
     WorkflowDefinitionsGet,
     WorkflowDefinitionsList,
@@ -214,7 +216,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 89] = [
+    const ALL: [Self; 90] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ExecutionTemplatesCreate,
@@ -253,6 +255,7 @@ impl ManagementTool {
         Self::OntologyRevisionsGet,
         Self::OntologyRevisionsList,
         Self::OntologyRevisionsDiff,
+        Self::WorkflowNodeCatalogGet,
         Self::WorkflowDefinitionsCreate,
         Self::WorkflowDefinitionsGet,
         Self::WorkflowDefinitionsList,
@@ -370,6 +373,7 @@ impl ManagementTool {
             Self::OntologyRevisionsGet => ONTOLOGY_REVISIONS_GET,
             Self::OntologyRevisionsList => ONTOLOGY_REVISIONS_LIST,
             Self::OntologyRevisionsDiff => ONTOLOGY_REVISIONS_DIFF,
+            Self::WorkflowNodeCatalogGet => WORKFLOW_NODE_CATALOG_GET,
             Self::WorkflowDefinitionsCreate => WORKFLOW_DEFINITIONS_CREATE,
             Self::WorkflowDefinitionsGet => WORKFLOW_DEFINITIONS_GET,
             Self::WorkflowDefinitionsList => WORKFLOW_DEFINITIONS_LIST,
@@ -480,6 +484,7 @@ impl ManagementTool {
             | Self::OntologyRevisionsGet
             | Self::OntologyRevisionsList
             | Self::OntologyRevisionsDiff
+            | Self::WorkflowNodeCatalogGet
             | Self::WorkflowDefinitionsGet
             | Self::WorkflowDefinitionsList
             | Self::WorkflowRevisionsGet
@@ -549,6 +554,7 @@ impl ManagementTool {
             | Self::FormsList
             | Self::OntologiesCreate
             | Self::OntologiesList
+            | Self::WorkflowNodeCatalogGet
             | Self::WorkflowDefinitionsCreate
             | Self::WorkflowDefinitionsList
             | Self::WorkflowGoalsCreate
@@ -869,6 +875,12 @@ impl ManagementTool {
                 "Diff Ontology revisions",
                 "Compute the deterministic structural and compatibility diff between two Ontology revisions.",
                 ontology_diff_schema(),
+                true,
+            ),
+            Self::WorkflowNodeCatalogGet => (
+                "Get Workflow node catalog",
+                "Discover the frozen built-in Workflow node catalog for one tenant-authorized project. Catalog visibility does not admit descriptors or confer execution authority.",
+                project_id_schema(),
                 true,
             ),
             Self::WorkflowDefinitionsCreate => (
@@ -2116,6 +2128,7 @@ mod tests {
             ManagementTool::OntologyRevisionsGet,
             ManagementTool::OntologyRevisionsList,
             ManagementTool::OntologyRevisionsDiff,
+            ManagementTool::WorkflowNodeCatalogGet,
             ManagementTool::WorkflowDefinitionsCreate,
             ManagementTool::WorkflowDefinitionsGet,
             ManagementTool::WorkflowDefinitionsList,
@@ -2177,6 +2190,7 @@ mod tests {
             ManagementTool::OntologyRevisionsGet,
             ManagementTool::OntologyRevisionsList,
             ManagementTool::OntologyRevisionsDiff,
+            ManagementTool::WorkflowNodeCatalogGet,
             ManagementTool::WorkflowDefinitionsCreate,
             ManagementTool::WorkflowDefinitionsGet,
             ManagementTool::WorkflowDefinitionsList,

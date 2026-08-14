@@ -32,6 +32,11 @@ const PUBLICATION = {
 describe('a3s-cloud Workflow commands', () => {
   it.each([
     [
+      ['workflow-nodes', 'list'],
+      `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-node-catalog`,
+      workflowNodeCatalog(),
+    ],
+    [
       ['workflow-definitions', 'list'],
       `/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/workflow-definitions`,
       [definition()],
@@ -117,6 +122,21 @@ describe('a3s-cloud Workflow commands', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.[0]).toBe(`http://127.0.0.1:8080/api/v1${path}`);
     expect(calls[0]?.[1]?.method).toBe('GET');
+    expect(output.stderr()).toBe('');
+  });
+
+  it('renders stable Workflow node identities and labels in table output', async () => {
+    const output = capture();
+    const exitCode = await runCli(['workflow-nodes', 'list'], {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      fetch: async () => envelope(workflowNodeCatalog()),
+    });
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(output.stdout()).toContain('node.user-input');
+    expect(output.stdout()).toContain('User Input');
+    expect(output.stdout()).toContain('workflow_local');
     expect(output.stderr()).toBe('');
   });
 
@@ -528,6 +548,33 @@ describe('a3s-cloud Workflow commands', () => {
     expect(called).toBe(false);
   });
 });
+
+function workflowNodeCatalog() {
+  return {
+    schema: 'a3s.cloud.app-platform.workflow-node-profiles.v1',
+    revision: '1.0.0',
+    baseline: '2026-08-13',
+    parityManifestDigest: DIGEST,
+    profileSetDigest: DIGEST,
+    parityClaim: false,
+    nodes: [
+      {
+        capabilityId: 'node.user-input',
+        label: 'User Input',
+        owner: 'workflow',
+        gate: 'W0.3',
+        gateState: 'in_progress',
+        dependencies: [],
+        availability: 'internal',
+        kind: 'input',
+        executionClass: 'workflow_local',
+        semanticProfiles: ['workflow.user-input'],
+        evidence: ['implementation:crates/control-plane/src/modules/workflow'],
+        unavailableReason: 'W0.3 is implemented for internal Workflow use but is not publicly available',
+      },
+    ],
+  };
+}
 
 function definition() {
   return {

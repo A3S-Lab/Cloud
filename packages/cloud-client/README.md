@@ -127,6 +127,14 @@ that set atomically, returns its canonical ACL and digests, and compiles Plan
 v2 with exact per-step descriptor pins. The client validates only transport
 shape and UTF-8 byte bounds; Cloud remains the ACL and compiler authority.
 
+`getWorkflowNodeCatalog` exposes the project-authorized read-only discovery
+projection added by REST contract `1.31.0`. It returns the exact frozen baseline,
+manifest/profile digests, parity flag, and 23 node entries with owner, gate,
+dependencies, availability, coarse kind, execution class, semantic profiles,
+evidence, and unavailable reason. The client neither merges catalog sources nor
+infers descriptor admission or public availability; Cloud remains authoritative
+for composition and project access.
+
 `listHumanTasks`, `getHumanTask`, `claimHumanTask`, `releaseHumanTask`, and
 `submitHumanTask` expose the protected HumanTask surface in REST contract
 `1.24.0`. Lists accept only the closed status set and a limit from 1 through 200

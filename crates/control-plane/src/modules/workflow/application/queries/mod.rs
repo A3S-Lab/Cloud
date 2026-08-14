@@ -5,6 +5,7 @@ pub mod get_ontology_revision;
 pub mod get_plan_revision;
 pub mod get_workflow_definition;
 pub mod get_workflow_goal;
+pub mod get_workflow_node_catalog;
 pub mod get_workflow_revision;
 pub mod get_workflow_run;
 pub mod get_workflow_run_history;

@@ -44,14 +44,14 @@ The auditable seed is Dify's public
 [Knowledge Pipeline](https://docs.dify.ai/en/cloud/use-dify/knowledge/knowledge-pipeline/knowledge-pipeline-orchestration),
 and [plugin-type](https://docs.dify.ai/en/develop-plugin/getting-started/choose-plugin-type)
 inventories, plus the public
-[enterprise comparison](https://dify.ai/pricing/dify-enterprise). The future
-ACL capability manifest pins individual source URLs and the observation date so
+[enterprise comparison](https://dify.ai/pricing/dify-enterprise). The ACL
+capability manifest pins individual source URLs and the observation date so
 later reference-product changes cannot silently alter a verified A3S release.
 That manifest is now frozen at
 [`contracts/app-platform/v1/parity-manifest.acl`](../contracts/app-platform/v1/parity-manifest.acl),
 parsed strictly by `a3s-cloud-contracts`, and enforced by CI. It records 91
 required outcomes and intentionally keeps `parity_claim = false`; an internal
-implementation is not a public capability. The six authority decisions are
+implementation is not a public capability. The nine authority decisions are
 registered under [`docs/decisions/app-platform`](decisions/app-platform/README.md).
 
 This is a capability target, not a compatibility promise. A3S Cloud does not
@@ -322,19 +322,30 @@ The Workflow domain now implements this boundary as
 `cloud.workflow.step-descriptor-registry.v1`, including canonical ACL restore,
 exact revision lookup, compiler-range admission, semantic and presentation
 digests, and fail-closed authority validation. The checked-in registry is a
-two-descriptor conformance fixture, not the persistent built-in catalog and not
-evidence that all public nodes are available. It deliberately adds no
+two-descriptor execution-conformance fixture, not a global built-in registry and
+not evidence that all public nodes are available. It deliberately adds no
 scheduler, executor, queue, Flow command, Runtime provider, or invocation
 subscription mechanism.
 
-The frozen parity manifest is an acceptance inventory, not an executable
-descriptor catalog and not the source of descriptor ownership. Descriptor
-owners follow the accepted authority decisions and this architecture: for
-example, an HTTP Request executes through a Connectors-owned application port,
-while Automations owns only trigger definitions that create new invocations.
-Changing an owner field in the v1 acceptance report requires an explicit
-manifest/decision revision; catalog generation must never infer semantic
-ownership from that report.
+The frozen parity manifest is the acceptance authority for the exact built-in
+inventory, owner, gate, dependencies, evidence, and availability; it is not an
+executable descriptor registry. Those explicit owners follow the accepted
+authority decisions and this architecture: for example, Code is
+Executions-owned, an HTTP Request executes through a Connectors-owned
+application port, and Automations owns only trigger definitions that create new
+invocations. Changing an owner field requires an explicit manifest and decision
+revision; a presentation projection cannot reinterpret it.
+
+Built-in discovery is implemented as a separate read-only composition. The
+exact 23-node `a3s.cloud.app-platform.workflow-node-profiles.v1` ACL binds the
+canonical parity-manifest digest and adds only coarse kind, execution class, and
+semantic profiles. Cloud fails closed on coverage, ordering, owner/class, or
+digest drift and exposes one project-authorized result through REST `1.31.0`,
+the maintained client, `workflow-nodes list`, and Management MCP. Five entries
+are internal, eighteen remain unavailable, none are public, and `parityClaim`
+remains false. The projection adds no catalog table, migration, index, writer,
+worker, cache, or Flow state. Only a WorkflowRevision-owned exact descriptor
+snapshot can admit execution semantics.
 
 `cloud.workflow.plan.v1` remains unchanged for replay. Compiler schema 2 now
 publishes `cloud.workflow.plan.v2`, which pins each exact descriptor revision
@@ -650,15 +661,19 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. The Flow-preservation,
-   application-delivery, descriptor-registry, trigger, file, and Knowledge
-   authority decisions are accepted and versioned.
+   reject inventory/schema drift and false public claims. All nine
+   application-platform decisions covering Flow preservation, application
+   delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
+   and discovery are accepted and versioned. The exact digest-bound 23-node
+   profile ACL and read-only project-authorized discovery projection are also
+   implemented without creating a registry writer or execution authority.
 2. **Finish the W0 semantic foundation.** Retain protected WorkflowRun and
-   HumanTask surfaces plus the implemented multi-output aggregation; complete
-   descriptor revisions, composite Iteration/Loop regions, Answer event
-   contract, variable scopes, node error branches/fallback, and retained Flow
-   replay tests. Prove any proposed Flow primitive is genuinely missing before
-   changing Flow.
+   HumanTask surfaces, revision-owned exact descriptors and Plan v2 pins,
+   typed-variable foundations, built-in discovery, and multi-output aggregation;
+   complete runtime inspection/defaults, composite Iteration/Loop regions,
+   Applications-owned variables, the Answer event contract, node error
+   branches/fallback, and retained Flow replay tests. Prove any proposed Flow
+   primitive is genuinely missing before changing Flow.
 3. **Land the three owning contracts.** Implement `APP0.1`, `K0.1`, and
    `AUT0.1` as independent vertical slices. Do not add provider behavior to
    these contract slices.

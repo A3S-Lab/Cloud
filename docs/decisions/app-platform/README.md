@@ -13,7 +13,8 @@ AI application platform parity manifest.
 | [0006](0006-knowledge-authority.md) | Keep Knowledge corpus truth separate from Workflow ontology and Search indexes |
 | [0007](0007-typed-variable-scopes.md) | Freeze Workflow-owned typed scopes without adding a second mutable state engine |
 | [0008](0008-revision-bound-plan-v2.md) | Persist revision-owned semantic contracts and pin exact execution semantics in Plan v2 |
+| [0009](0009-workflow-node-catalog-projection.md) | Compose read-only built-in node discovery without creating another descriptor or execution authority |
 
-All eight decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All nine decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

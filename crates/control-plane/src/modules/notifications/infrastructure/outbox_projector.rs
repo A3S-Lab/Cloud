@@ -1,4 +1,4 @@
-use crate::modules::identity::domain::events::{MembershipChanged, MembershipInvitationChanged};
+use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::IMembershipRepository;
 use crate::modules::identity::domain::value_objects::MembershipRole;
 use crate::modules::integration_events::{IIntegrationEventProjector, OutboxMessage};
@@ -33,27 +33,6 @@ impl OutboxNotificationProjector {
             return Ok(None);
         }
         let (recipient, severity, title, body) = match message.event_key.as_str() {
-            "identity.membership-invitation.created" => {
-                let payload = decode_invitation(message)?;
-                (
-                    PrincipalId::from_uuid(payload.principal_id),
-                    NotificationSeverity::Information,
-                    "Organization invitation created".to_owned(),
-                    format!(
-                        "You were invited to join this organization as {}.",
-                        payload.role
-                    ),
-                )
-            }
-            "identity.membership-invitation.revoked" => {
-                let payload = decode_invitation(message)?;
-                (
-                    PrincipalId::from_uuid(payload.principal_id),
-                    NotificationSeverity::Warning,
-                    "Organization invitation revoked".to_owned(),
-                    "Your pending invitation to this organization was revoked.".to_owned(),
-                )
-            }
             "identity.membership.created" => {
                 let payload = decode_membership(message)?;
                 (
@@ -72,40 +51,31 @@ impl OutboxNotificationProjector {
                     format!("Your organization role is now {}.", payload.role),
                 )
             }
-            "identity.membership.revoked" => {
-                let payload = decode_membership(message)?;
-                (
-                    PrincipalId::from_uuid(payload.principal_id),
-                    NotificationSeverity::Critical,
-                    "Organization access revoked".to_owned(),
-                    "Your access to this organization was revoked.".to_owned(),
-                )
-            }
             _ => return Ok(None),
         };
 
-        // Fail closed if the event payload claims a principal that does not match the owning
-        // Membership aggregate. Invitations intentionally precede membership creation.
-        if message.event_key.starts_with("identity.membership.") {
-            let membership = self
-                .memberships
-                .find_membership(
-                    OrganizationId::from_uuid(message.organization_id),
-                    crate::modules::shared_kernel::domain::MembershipId::from_uuid(
-                        message.aggregate_id,
-                    ),
-                )
-                .await?
-                .ok_or_else(|| {
-                    RepositoryError::Storage(
-                        "notification source membership no longer exists".into(),
-                    )
-                })?;
-            if membership.membership.principal_id != recipient {
-                return Err(RepositoryError::Storage(
-                    "notification source membership principal is inconsistent".into(),
-                ));
-            }
+        // The organization-scoped inbox is reachable only by active members. Invitation and
+        // revocation facts therefore remain in their existing lifecycle surfaces instead of
+        // creating dead inbox records. A delayed fact is also skipped if access has since ended.
+        let membership = self
+            .memberships
+            .find_membership(
+                OrganizationId::from_uuid(message.organization_id),
+                crate::modules::shared_kernel::domain::MembershipId::from_uuid(
+                    message.aggregate_id,
+                ),
+            )
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::Storage("notification source membership no longer exists".into())
+            })?;
+        if membership.membership.principal_id != recipient {
+            return Err(RepositoryError::Storage(
+                "notification source membership principal is inconsistent".into(),
+            ));
+        }
+        if !membership.membership.is_active() {
+            return Ok(None);
         }
 
         Notification::project(
@@ -158,25 +128,6 @@ fn decode_membership(message: &OutboxMessage) -> Result<MembershipChanged, Repos
     Ok(payload)
 }
 
-fn decode_invitation(
-    message: &OutboxMessage,
-) -> Result<MembershipInvitationChanged, RepositoryError> {
-    let payload: MembershipInvitationChanged = serde_json::from_value(message.payload.clone())
-        .map_err(|error| {
-            RepositoryError::Storage(format!(
-                "notification source invitation payload is invalid: {error}"
-            ))
-        })?;
-    validate_identity_payload(
-        message,
-        payload.invitation_id,
-        payload.principal_id,
-        &payload.role,
-        "invitation",
-    )?;
-    Ok(payload)
-}
-
 fn validate_identity_payload(
     message: &OutboxMessage,
     aggregate_id: uuid::Uuid,
@@ -199,17 +150,101 @@ fn validate_identity_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::identity::InMemoryIdentityRepository;
+    use crate::modules::identity::domain::entities::{
+        IdentityPrincipal, IdentityPrincipalKind, Membership,
+    };
+    use crate::modules::identity::domain::repositories::{
+        ChangeMembershipRoleWrite, CreateMembershipWrite, MembershipRecord, RevokeMembershipWrite,
+    };
     use crate::modules::integration_events::{
         EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay, OutboxRelayConfig,
     };
     use crate::modules::notifications::InMemoryNotificationRepository;
+    use crate::modules::shared_kernel::domain::{IdempotentWrite, MembershipId, ResourceName};
     use async_trait::async_trait;
     use chrono::{DateTime, Utc};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::sync::Mutex;
     use uuid::Uuid;
+
+    struct MembershipLookup {
+        record: MembershipRecord,
+    }
+
+    #[async_trait]
+    impl IMembershipRepository for MembershipLookup {
+        async fn create_membership(
+            &self,
+            _write: CreateMembershipWrite,
+        ) -> Result<IdempotentWrite<MembershipRecord>, RepositoryError> {
+            unreachable!("projection tests only perform membership lookup")
+        }
+
+        async fn find_membership(
+            &self,
+            organization_id: OrganizationId,
+            membership_id: MembershipId,
+        ) -> Result<Option<MembershipRecord>, RepositoryError> {
+            Ok((self.record.membership.organization_id == organization_id
+                && self.record.membership.id == membership_id)
+                .then(|| self.record.clone()))
+        }
+
+        async fn list_memberships(
+            &self,
+            _organization_id: OrganizationId,
+        ) -> Result<Vec<MembershipRecord>, RepositoryError> {
+            unreachable!("projection tests only perform membership lookup")
+        }
+
+        async fn find_active_membership_by_principal(
+            &self,
+            _organization_id: OrganizationId,
+            _principal_id: PrincipalId,
+        ) -> Result<Option<Membership>, RepositoryError> {
+            unreachable!("projection tests only perform membership lookup")
+        }
+
+        async fn change_membership_role(
+            &self,
+            _write: ChangeMembershipRoleWrite,
+        ) -> Result<IdempotentWrite<MembershipRecord>, RepositoryError> {
+            unreachable!("projection tests only perform membership lookup")
+        }
+
+        async fn revoke_membership(
+            &self,
+            _write: RevokeMembershipWrite,
+        ) -> Result<IdempotentWrite<MembershipRecord>, RepositoryError> {
+            unreachable!("projection tests only perform membership lookup")
+        }
+    }
+
+    fn membership_lookup(
+        organization_id: OrganizationId,
+        membership_id: MembershipId,
+        recipient: PrincipalId,
+        created_at: DateTime<Utc>,
+    ) -> Arc<dyn IMembershipRepository> {
+        Arc::new(MembershipLookup {
+            record: MembershipRecord {
+                principal: IdentityPrincipal::create(
+                    recipient,
+                    IdentityPrincipalKind::Human,
+                    ResourceName::parse("Notification recipient").expect("principal name"),
+                    created_at,
+                ),
+                membership: Membership::create(
+                    membership_id,
+                    organization_id,
+                    recipient,
+                    MembershipRole::Member,
+                    created_at,
+                ),
+            },
+        })
+    }
 
     struct RetryingOutboxRepository {
         state: Mutex<RetryingOutboxState>,
@@ -302,22 +337,22 @@ mod tests {
     async fn provider_retry_replays_one_logical_notification() {
         let organization_id = OrganizationId::new();
         let recipient = PrincipalId::new();
-        let invitation_id = Uuid::now_v7();
+        let membership_id = MembershipId::new();
+        let occurred_at = Utc::now();
         let message = OutboxMessage {
             event_id: Uuid::now_v7(),
-            event_key: "identity.membership-invitation.created".into(),
+            event_key: "identity.membership.created".into(),
             schema_version: 1,
             organization_id: organization_id.as_uuid(),
-            aggregate_id: invitation_id,
+            aggregate_id: membership_id.as_uuid(),
             aggregate_version: 1,
-            occurred_at: Utc::now(),
+            occurred_at,
             correlation_id: Uuid::now_v7(),
             causation_id: None,
             payload: serde_json::json!({
-                "invitation_id": invitation_id,
+                "membership_id": membership_id,
                 "principal_id": recipient,
-                "role": "member",
-                "accepted_membership_id": null
+                "role": "member"
             }),
             delivery_attempts: 1,
         };
@@ -326,7 +361,7 @@ mod tests {
         let notifications = Arc::new(InMemoryNotificationRepository::new());
         let projector = Arc::new(OutboxNotificationProjector::new(
             notifications.clone(),
-            Arc::new(InMemoryIdentityRepository::new()),
+            membership_lookup(organization_id, membership_id, recipient, occurred_at),
         ));
         let relay = OutboxRelay::new(
             outbox.clone(),
@@ -380,7 +415,7 @@ mod tests {
         let aggregate_id = Uuid::now_v7();
         let message = OutboxMessage {
             event_id: Uuid::now_v7(),
-            event_key: "identity.membership-invitation.created".into(),
+            event_key: "identity.membership.created".into(),
             schema_version: 1,
             organization_id: Uuid::now_v7(),
             aggregate_id,
@@ -389,18 +424,59 @@ mod tests {
             correlation_id: Uuid::now_v7(),
             causation_id: None,
             payload: serde_json::json!({
-                "invitation_id": Uuid::now_v7(),
+                "membership_id": Uuid::now_v7(),
                 "principal_id": Uuid::now_v7(),
-                "role": "member",
-                "accepted_membership_id": null
+                "role": "member"
             }),
             delivery_attempts: 1,
         };
-        assert!(decode_invitation(&message).is_err());
+        assert!(decode_membership(&message).is_err());
 
         let mut invalid_role = message;
-        invalid_role.payload["invitation_id"] = serde_json::json!(aggregate_id);
+        invalid_role.payload["membership_id"] = serde_json::json!(aggregate_id);
         invalid_role.payload["role"] = serde_json::json!("super-admin");
-        assert!(decode_invitation(&invalid_role).is_err());
+        assert!(decode_membership(&invalid_role).is_err());
+    }
+
+    #[tokio::test]
+    async fn inaccessible_identity_lifecycle_facts_are_not_projected() {
+        let organization_id = OrganizationId::new();
+        let recipient = PrincipalId::new();
+        let membership_id = MembershipId::new();
+        let occurred_at = Utc::now();
+        let notifications = Arc::new(InMemoryNotificationRepository::new());
+        let projector = OutboxNotificationProjector::new(
+            notifications.clone(),
+            membership_lookup(organization_id, membership_id, recipient, occurred_at),
+        );
+
+        for event_key in [
+            "identity.membership-invitation.created",
+            "identity.membership-invitation.revoked",
+            "identity.membership.revoked",
+        ] {
+            projector
+                .project(&OutboxMessage {
+                    event_id: Uuid::now_v7(),
+                    event_key: event_key.into(),
+                    schema_version: 1,
+                    organization_id: organization_id.as_uuid(),
+                    aggregate_id: membership_id.as_uuid(),
+                    aggregate_version: 1,
+                    occurred_at,
+                    correlation_id: Uuid::now_v7(),
+                    causation_id: None,
+                    payload: serde_json::json!({}),
+                    delivery_attempts: 1,
+                })
+                .await
+                .expect("unsupported lifecycle fact is a successful no-op");
+        }
+
+        assert!(notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("notifications")
+            .is_empty());
     }
 }

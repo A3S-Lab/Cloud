@@ -1,4 +1,5 @@
 mod human_task_response;
+mod workflow_node_catalog_response;
 mod workflow_response;
 mod workflow_run_response;
 
@@ -14,6 +15,7 @@ use uuid::Uuid;
 pub use human_task_response::{
     HumanTaskMutationResponse, HumanTaskResponse, HumanTaskSummaryResponse,
 };
+pub use workflow_node_catalog_response::WorkflowNodeCatalogResponse;
 pub use workflow_response::{
     PlanRevisionResponse, WorkflowDefinitionMutationResponse, WorkflowDefinitionResponse,
     WorkflowGoalMutationResponse, WorkflowGoalResponse, WorkflowRevisionResponse,
