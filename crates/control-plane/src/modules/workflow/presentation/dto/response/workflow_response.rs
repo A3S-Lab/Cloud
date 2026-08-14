@@ -174,6 +174,7 @@ pub struct WorkflowPlanResponse {
     pub workflow_payload_set_digest: String,
     pub semantic_contract_set_digest: Option<String>,
     pub variable_contract_digest: Option<String>,
+    pub composite_regions_digest: Option<String>,
     pub ontology_id: Uuid,
     pub ontology_revision_id: Uuid,
     pub ontology_digest: String,
@@ -197,6 +198,9 @@ impl From<WorkflowPlan> for WorkflowPlanResponse {
                 .map(|digest| digest.to_string()),
             variable_contract_digest: value
                 .variable_contract_digest
+                .map(|digest| digest.to_string()),
+            composite_regions_digest: value
+                .composite_regions_digest
                 .map(|digest| digest.to_string()),
             ontology_id: value.ontology_id.as_uuid(),
             ontology_revision_id: value.ontology_revision_id.as_uuid(),

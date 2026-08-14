@@ -12,6 +12,7 @@ export interface WorkflowSemanticContractAclsInput {
   descriptorRegistryAcl: string;
   variableContractAcl: string;
   variableDefaultsAcl?: string;
+  compositeRegionsAcl?: string;
 }
 
 export interface PublishWorkflowDefinitionInput {
@@ -68,6 +69,7 @@ export interface WorkflowRevision extends WorkflowRevisionSummary {
 }
 
 export type WorkflowSemanticContractKind =
+  | 'composite_regions'
   | 'descriptor_bindings'
   | 'descriptor_registry'
   | 'variable_contract'
@@ -76,6 +78,7 @@ export type WorkflowSemanticContractKind =
 export interface WorkflowSemanticContract {
   kind: WorkflowSemanticContractKind;
   schema:
+    | 'cloud.workflow.composite-regions.v1'
     | 'cloud.workflow.step-descriptor-bindings.v1'
     | 'cloud.workflow.step-descriptor-registry.v1'
     | 'cloud.workflow.variable-contract.v1'
@@ -211,6 +214,7 @@ export interface WorkflowPlan {
   workflowPayloadSetDigest: string;
   semanticContractSetDigest: string | null;
   variableContractDigest: string | null;
+  compositeRegionsDigest: string | null;
   ontologyId: string;
   ontologyRevisionId: string;
   ontologyDigest: string;

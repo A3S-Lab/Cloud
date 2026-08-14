@@ -808,7 +808,7 @@ async fn decode_semantic_contracts(
     if rows.is_empty() {
         return Ok(None);
     }
-    if !matches!(rows.len(), 3 | 4) {
+    if !matches!(rows.len(), 3..=5) {
         return Err(PostgresPersistenceError::Invariant(
             "stored Workflow revision semantic contract set is incomplete".into(),
         ));
@@ -840,13 +840,16 @@ async fn decode_semantic_contracts(
     let defaults = by_kind
         .get(&WorkflowRevisionSemanticContractKind::VariableDefaults)
         .copied();
+    let composite_regions = by_kind
+        .get(&WorkflowRevisionSemanticContractKind::CompositeRegions)
+        .copied();
     let workflow =
         WorkflowContract::restore(&row.canonical_acl, &row.content_digest).map_err(|error| {
             PostgresPersistenceError::Invariant(format!(
                 "stored Workflow contract is invalid: {error}"
             ))
         })?;
-    WorkflowRevisionSemanticContracts::restore_with_defaults(
+    WorkflowRevisionSemanticContracts::restore_with_optional_contracts(
         workflow.spec(),
         &bindings.canonical_acl,
         &bindings.digest,
@@ -855,6 +858,7 @@ async fn decode_semantic_contracts(
         &variables.canonical_acl,
         &variables.digest,
         defaults.map(|value| (value.canonical_acl.as_str(), value.digest.as_str())),
+        composite_regions.map(|value| (value.canonical_acl.as_str(), value.digest.as_str())),
     )
     .map(Some)
     .map_err(|error| {

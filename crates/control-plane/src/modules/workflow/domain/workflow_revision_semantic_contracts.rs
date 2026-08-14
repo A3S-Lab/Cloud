@@ -1,7 +1,9 @@
+use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
-    WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDescriptorBindings,
-    WorkflowStepDescriptorRegistry, WorkflowStepOwner, WorkflowVariableContract,
-    WorkflowVariableDefaults, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
+    WorkflowCompositeRegions, WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind,
+    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
+    WorkflowStepOwner, WorkflowVariableContract, WorkflowVariableDefaults,
+    WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
     WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
@@ -12,6 +14,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WorkflowRevisionSemanticContractKind {
+    CompositeRegions,
     DescriptorBindings,
     DescriptorRegistry,
     VariableContract,
@@ -21,6 +24,7 @@ pub enum WorkflowRevisionSemanticContractKind {
 impl WorkflowRevisionSemanticContractKind {
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::CompositeRegions => "composite_regions",
             Self::DescriptorBindings => "descriptor_bindings",
             Self::DescriptorRegistry => "descriptor_registry",
             Self::VariableContract => "variable_contract",
@@ -30,6 +34,7 @@ impl WorkflowRevisionSemanticContractKind {
 
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
+            "composite_regions" => Ok(Self::CompositeRegions),
             "descriptor_bindings" => Ok(Self::DescriptorBindings),
             "descriptor_registry" => Ok(Self::DescriptorRegistry),
             "variable_contract" => Ok(Self::VariableContract),
@@ -53,6 +58,7 @@ pub struct WorkflowRevisionSemanticContracts {
     descriptor_registry: WorkflowStepDescriptorRegistry,
     variable_contract: WorkflowVariableContract,
     variable_defaults: Option<WorkflowVariableDefaults>,
+    composite_regions: Option<WorkflowCompositeRegions>,
     digest: Sha256Digest,
 }
 
@@ -87,20 +93,42 @@ impl WorkflowRevisionSemanticContracts {
         variable_contract: WorkflowVariableContract,
         variable_defaults: Option<WorkflowVariableDefaults>,
     ) -> Result<Self, String> {
+        Self::create_with_optional_contracts(
+            workflow,
+            descriptor_bindings,
+            descriptor_registry,
+            variable_contract,
+            variable_defaults,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_with_optional_contracts(
+        workflow: &WorkflowSpec,
+        descriptor_bindings: WorkflowStepDescriptorBindings,
+        descriptor_registry: WorkflowStepDescriptorRegistry,
+        variable_contract: WorkflowVariableContract,
+        variable_defaults: Option<WorkflowVariableDefaults>,
+        composite_regions: Option<WorkflowCompositeRegions>,
+    ) -> Result<Self, String> {
         validate_default_material(&variable_contract, variable_defaults.as_ref())?;
         let digest = digest_contract_set(
             &descriptor_bindings,
             &variable_contract,
             variable_defaults.as_ref(),
+            composite_regions.as_ref(),
         )?;
         let value = Self {
             descriptor_bindings,
             descriptor_registry,
             variable_contract,
             variable_defaults,
+            composite_regions,
             digest,
         };
         value.validate(workflow)?;
+        value.validate_composite_region_material(workflow, true)?;
         Ok(value)
     }
 
@@ -136,6 +164,31 @@ impl WorkflowRevisionSemanticContracts {
         variable_contract_digest: &str,
         variable_defaults: Option<(&str, &str)>,
     ) -> Result<Self, String> {
+        Self::restore_with_optional_contracts(
+            workflow,
+            descriptor_bindings_acl,
+            descriptor_bindings_digest,
+            descriptor_registry_acl,
+            descriptor_registry_digest,
+            variable_contract_acl,
+            variable_contract_digest,
+            variable_defaults,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_with_optional_contracts(
+        workflow: &WorkflowSpec,
+        descriptor_bindings_acl: &str,
+        descriptor_bindings_digest: &str,
+        descriptor_registry_acl: &str,
+        descriptor_registry_digest: &str,
+        variable_contract_acl: &str,
+        variable_contract_digest: &str,
+        variable_defaults: Option<(&str, &str)>,
+        composite_regions: Option<(&str, &str)>,
+    ) -> Result<Self, String> {
         let descriptor_bindings = WorkflowStepDescriptorBindings::restore(
             descriptor_bindings_acl,
             descriptor_bindings_digest,
@@ -149,27 +202,25 @@ impl WorkflowRevisionSemanticContracts {
         let variable_defaults = variable_defaults
             .map(|(acl, digest)| WorkflowVariableDefaults::restore(acl, digest))
             .transpose()?;
-        if variable_defaults.is_some() {
-            return Self::create_with_defaults(
-                workflow,
-                descriptor_bindings,
-                descriptor_registry,
-                variable_contract,
-                variable_defaults,
-            );
-        }
+        let composite_regions = composite_regions
+            .map(|(acl, digest)| WorkflowCompositeRegions::restore(acl, digest))
+            .transpose()?;
 
-        // Schema-2 revisions published before migration 107 could retain a
-        // digest-only default declaration without its bytes. They remain
-        // readable with their original semantic-set digest, while Run
-        // compilation still fails closed until a successor revision supplies
-        // exact immutable material.
-        let digest = digest_contract_set(&descriptor_bindings, &variable_contract, None)?;
+        // Pre-migration optional material remains readable with its original
+        // semantic-set digest. New publication uses the strict constructor,
+        // while Run admission still fails closed when required bytes are absent.
+        let digest = digest_contract_set(
+            &descriptor_bindings,
+            &variable_contract,
+            variable_defaults.as_ref(),
+            composite_regions.as_ref(),
+        )?;
         let value = Self {
             descriptor_bindings,
             descriptor_registry,
             variable_contract,
-            variable_defaults: None,
+            variable_defaults,
+            composite_regions,
             digest,
         };
         value.validate(workflow)?;
@@ -187,12 +238,16 @@ impl WorkflowRevisionSemanticContracts {
                 &self.descriptor_bindings,
                 &self.variable_contract,
                 self.variable_defaults.as_ref(),
+                self.composite_regions.as_ref(),
             )? != self.digest
         {
             return Err("Workflow semantic contract compiler authority is invalid".into());
         }
         if let Some(defaults) = self.variable_defaults.as_ref() {
             defaults.validate_contract(&self.variable_contract)?;
+        }
+        if let Some(regions) = self.composite_regions.as_ref() {
+            regions.validate_identity(&self.descriptor_bindings, &self.variable_contract)?;
         }
         workflow.topological_order(Default::default())?;
         if self.descriptor_bindings.bindings().len() != workflow.steps.len() {
@@ -244,7 +299,8 @@ impl WorkflowRevisionSemanticContracts {
         }
         validate_variable_read_ports(self.variable_contract.spec(), &descriptors_by_step)?;
         self.variable_contract
-            .validate_graph_bindings_with_application_ports(workflow, &application_ports)
+            .validate_graph_bindings_with_application_ports(workflow, &application_ports)?;
+        self.validate_composite_region_material(workflow, false)
     }
 
     pub const fn descriptor_bindings(&self) -> &WorkflowStepDescriptorBindings {
@@ -263,6 +319,10 @@ impl WorkflowRevisionSemanticContracts {
         self.variable_defaults.as_ref()
     }
 
+    pub const fn composite_regions(&self) -> Option<&WorkflowCompositeRegions> {
+        self.composite_regions.as_ref()
+    }
+
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
     }
@@ -270,6 +330,11 @@ impl WorkflowRevisionSemanticContracts {
     pub(crate) fn validate_plan_bindings(&self, plan: &WorkflowPlan) -> Result<(), String> {
         if plan.semantic_contract_set_digest.as_ref() != Some(&self.digest)
             || plan.variable_contract_digest.as_ref() != Some(self.variable_contract.digest())
+            || plan.composite_regions_digest.as_ref()
+                != self
+                    .composite_regions
+                    .as_ref()
+                    .map(WorkflowCompositeRegions::digest)
             || plan.steps.len() != self.descriptor_bindings.bindings().len()
         {
             return Err("Workflow plan semantic contract authority drifted".into());
@@ -318,6 +383,14 @@ impl WorkflowRevisionSemanticContracts {
                 digest: defaults.digest(),
             });
         }
+        if let Some(regions) = &self.composite_regions {
+            values.push(WorkflowRevisionSemanticContractRef {
+                kind: WorkflowRevisionSemanticContractKind::CompositeRegions,
+                schema: WORKFLOW_COMPOSITE_REGIONS_SCHEMA,
+                canonical_acl: regions.canonical_acl(),
+                digest: regions.digest(),
+            });
+        }
         values
     }
 
@@ -327,6 +400,79 @@ impl WorkflowRevisionSemanticContracts {
                 .resolve(&binding.descriptor_id, &binding.descriptor_revision)
                 .is_some_and(|descriptor| descriptor.spec().required_bindings.contains(&kind))
         })
+    }
+
+    fn validate_composite_region_material(
+        &self,
+        workflow: &WorkflowSpec,
+        require_complete: bool,
+    ) -> Result<(), String> {
+        let steps = workflow
+            .steps
+            .iter()
+            .map(|step| (step.id.as_str(), step))
+            .collect::<BTreeMap<_, _>>();
+        let mut expected = BTreeMap::new();
+        for binding in self.descriptor_bindings.bindings() {
+            let descriptor = self
+                .descriptor_registry
+                .resolve(&binding.descriptor_id, &binding.descriptor_revision)
+                .ok_or_else(|| {
+                    format!(
+                        "Workflow composite region step {:?} lost its descriptor",
+                        binding.step_id
+                    )
+                })?;
+            if descriptor.spec().execution_class == WorkflowStepExecutionClass::CompositeRegion {
+                expected.insert(binding.step_id.as_str(), descriptor.spec());
+            }
+        }
+        match (expected.is_empty(), self.composite_regions.as_ref()) {
+            (true, None) => return Ok(()),
+            (true, Some(_)) => {
+                return Err(
+                    "Workflow composite region material exists without a composite descriptor"
+                        .into(),
+                )
+            }
+            (false, None) if require_complete => {
+                return Err(
+                    "Workflow composite descriptors require immutable region material".into(),
+                )
+            }
+            (false, None) => return Ok(()),
+            (false, Some(_)) => {}
+        }
+        let regions = self.composite_regions.as_ref().ok_or_else(|| {
+            "Workflow composite descriptors require immutable region material".to_owned()
+        })?;
+        if regions.spec().regions.len() != expected.len() {
+            return Err(
+                "Workflow composite regions must exactly cover composite descriptors".into(),
+            );
+        }
+        for (step_id, descriptor) in expected {
+            let policy = regions.resolve(step_id).ok_or_else(|| {
+                format!("Workflow composite step {step_id:?} has no region policy")
+            })?;
+            if policy.semantic_profile() != descriptor.semantic_profile {
+                return Err(format!(
+                    "Workflow composite step {step_id:?} policy does not match its semantic profile"
+                ));
+            }
+            let step = steps
+                .get(step_id)
+                .ok_or_else(|| format!("Workflow composite step {step_id:?} disappeared"))?;
+            let capability = step.capability.as_ref().ok_or_else(|| {
+                format!("Workflow composite step {step_id:?} has no child Workflow revision")
+            })?;
+            if !is_exact_child_workflow_revision(capability) {
+                return Err(format!(
+                    "Workflow composite step {step_id:?} must bind one exact workflow.run revision"
+                ));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -413,17 +559,21 @@ struct SemanticContractDigestInput<'a> {
     variable_contract_digest: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     variable_defaults_digest: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    composite_regions_digest: Option<&'a str>,
 }
 
 fn digest_contract_set(
     bindings: &WorkflowStepDescriptorBindings,
     variables: &WorkflowVariableContract,
     defaults: Option<&WorkflowVariableDefaults>,
+    composite_regions: Option<&WorkflowCompositeRegions>,
 ) -> Result<Sha256Digest, String> {
     let encoded = serde_json::to_vec(&SemanticContractDigestInput {
         descriptor_bindings_digest: bindings.digest().as_str(),
         variable_contract_digest: variables.digest().as_str(),
         variable_defaults_digest: defaults.map(|value| value.digest().as_str()),
+        composite_regions_digest: composite_regions.map(|value| value.digest().as_str()),
     })
     .map_err(|error| format!("could not encode Workflow semantic contract set: {error}"))?;
     Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(encoded)))

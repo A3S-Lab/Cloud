@@ -4,26 +4,24 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     WorkflowRevisionId,
 };
 use a3s_cloud_control_plane::modules::workflow::domain::{
-    CreateOntologyWrite, OntologyRecord, OntologyRevisionPublished,
-    WorkflowRevisionSemanticContracts, WorkflowStepDescriptorBinding,
-    WorkflowStepDescriptorBindings, WorkflowStepDescriptorBindingsSpec,
+    CreateOntologyWrite, OntologyRecord, OntologyRevisionPublished, WorkflowCompositeRegionPolicy,
+    WorkflowCompositeRegions, WorkflowCompositeRegionsSpec, WorkflowIterationFailureMode,
+    WorkflowIterationRegionPolicy, WorkflowRevisionSemanticContracts,
+    WorkflowStepDescriptorBinding, WorkflowStepDescriptorBindings,
+    WorkflowStepDescriptorBindingsSpec,
 };
 use a3s_cloud_control_plane::modules::workflow::{
-    CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite, CreateWorkflowRunWrite,
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunRepository, IWorkflowRunVariableReader, Ontology, OntologyName,
-    PostgresOntologyRepository, PostgresWorkflowDefinitionRepository,
-    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository, WorkflowContract,
-    WorkflowDataSchema, WorkflowDataType, WorkflowDefinition, WorkflowDefinitionRecord,
-    WorkflowEdgeSpec, WorkflowGoalCompiled, WorkflowGoalRecord, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPlanCompiler, WorkflowRevision, WorkflowRevisionPublished,
-    WorkflowRunCompiler, WorkflowRunFlowRuntime, WorkflowRunRecord, WorkflowRunRequested,
-    WorkflowRunVariableReader, WorkflowSpec, WorkflowStepConfiguration,
-    WorkflowStepDescriptorAdmission, WorkflowStepDescriptorRegistry,
-    WorkflowStepDescriptorRegistrySpec, WorkflowStepDescriptorSpec, WorkflowStepExecutionClass,
-    WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
-    WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepPresentationSpec,
-    WorkflowStepRetryClassification, WorkflowStepSpec, WorkflowVariableContract,
+    CapabilityOwner, CapabilityReference, CapabilityType, CreateWorkflowDefinitionWrite,
+    CreateWorkflowGoalWrite, CreateWorkflowRunWrite, IOntologyRepository,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunRepository,
+    IWorkflowRunVariableReader, Ontology, OntologyName, PostgresOntologyRepository,
+    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
+    PostgresWorkflowRunRepository, WorkflowContract, WorkflowDataSchema, WorkflowDataType,
+    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowEdgeSpec, WorkflowGoalCompiled,
+    WorkflowGoalRecord, WorkflowPayload, WorkflowPayloadContent, WorkflowPlanCompiler,
+    WorkflowRevision, WorkflowRevisionPublished, WorkflowRunCompiler, WorkflowRunFlowRuntime,
+    WorkflowRunRecord, WorkflowRunRequested, WorkflowRunVariableReader, WorkflowSpec,
+    WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
     WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableDefault,
     WorkflowVariableDefaults, WorkflowVariableDefaultsSpec, WorkflowVariableMutationMode,
     WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
@@ -37,6 +35,11 @@ use a3s_orm::{
 use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[path = "workflow_semantic_contract_descriptors.rs"]
+mod workflow_semantic_contract_descriptors;
+
+use workflow_semantic_contract_descriptors::{descriptor_registry, workflow_step};
 
 pub(super) async fn exercise_workflow_semantic_contract_persistence(
     url: String,
@@ -79,10 +82,22 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         defaults_migration_state,
         (1, "immutable Workflow variable default material".into())
     );
+    let composite_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("108"),
+        )
+        .await?;
+    assert_eq!(
+        composite_migration_state,
+        (1, "immutable Workflow composite-region policies".into())
+    );
     let variable_table_count = database
         .fetch_one_as(
             sql_query::<i64>(
-                "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('workflow_run_variables', 'workflow_variable_values', 'workflow_variable_events')",
+                "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('workflow_run_variables', 'workflow_variable_values', 'workflow_variable_events', 'workflow_composite_regions', 'workflow_iterations', 'workflow_loops', 'workflow_region_events')",
             ),
         )
         .await?;
@@ -135,6 +150,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         revision_id,
         actor,
         created_at,
+        false,
     );
     let definition = WorkflowDefinition::create(
         organization_id,
@@ -211,7 +227,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .expect_err("compiler schema 2 revision without semantic children must roll back");
     assert!(
         database_error_message(&incomplete)
-            == Some("Workflow compiler schema 2 requires three semantic contracts and optional default material"),
+            == Some("Workflow compiler schema 2 requires three semantic contracts and optional default/composite material"),
         "unexpected incomplete-contract error: {incomplete}"
     );
 
@@ -268,6 +284,83 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .bind(definition_id.as_uuid()))
         .await?;
     assert_eq!(semantic_count, 4);
+
+    let composite_definition_id = WorkflowDefinitionId::new();
+    let composite_revision_id = WorkflowRevisionId::new();
+    let composite_revision = semantic_revision(
+        organization_id,
+        project_id,
+        composite_definition_id,
+        composite_revision_id,
+        actor,
+        created_at,
+        true,
+    );
+    let composite_definition = WorkflowDefinition::create(
+        organization_id,
+        project_id,
+        composite_definition_id,
+        composite_revision.contract.spec().name.clone(),
+        composite_revision.contract.spec().description.clone(),
+        composite_revision_id,
+        composite_revision.contract.digest().clone(),
+        actor,
+        created_at,
+    )
+    .expect("composite Workflow definition");
+    let composite_record = WorkflowDefinitionRecord {
+        definition: composite_definition.clone(),
+        revision: composite_revision.clone(),
+    };
+    let composite_request_id = Uuid::now_v7();
+    repository
+        .create(CreateWorkflowDefinitionWrite {
+            event: WorkflowRevisionPublished::created(
+                &composite_definition,
+                &composite_revision,
+                composite_request_id,
+            )?,
+            record: composite_record.clone(),
+            actor_principal_id: actor,
+            request_id: composite_request_id,
+            idempotency: IdempotencyRequest::new(
+                "postgres-workflow-semantics",
+                "create-composite",
+                composite_revision.contract.canonical_acl().as_bytes(),
+            )
+            .expect("composite idempotency"),
+        })
+        .await?;
+    assert_eq!(
+        repository
+            .find_revision(
+                organization_id,
+                composite_definition_id,
+                composite_revision_id,
+            )
+            .await?,
+        Some(composite_revision.clone())
+    );
+    assert_eq!(
+        composite_revision
+            .semantic_contracts
+            .as_ref()
+            .expect("composite semantic contracts")
+            .persisted_contracts()
+            .len(),
+        5
+    );
+    let composite_rows = database
+        .fetch_one_as(sql_query::<(i64, i64)>(
+            "select count(*), count(*) filter (where kind = 'composite_regions') from workflow_revision_semantic_contracts where organization_id = ",
+        )
+        .bind(organization_id.as_uuid())
+        .append(" and workflow_definition_id = ")
+        .bind(composite_definition_id.as_uuid())
+        .append(" and workflow_revision_id = ")
+        .bind(composite_revision_id.as_uuid()))
+        .await?;
+    assert_eq!(composite_rows, (5, 1));
 
     let ontology = a3s_cloud_control_plane::modules::workflow::OntologyRevision::initial(
         organization_id,
@@ -573,6 +666,7 @@ fn semantic_revision(
     revision_id: WorkflowRevisionId,
     actor: PrincipalId,
     created_at: chrono::DateTime<Utc>,
+    include_composite: bool,
 ) -> WorkflowRevision {
     let schema =
         WorkflowPayload::from_content(WorkflowPayloadContent::DataSchema(WorkflowDataSchema {
@@ -589,36 +683,96 @@ fn semantic_revision(
             WorkflowStepConfiguration::empty(WorkflowStepKind::Output),
         ))
         .expect("output configuration");
-    let workflow = WorkflowSpec {
-        name: "Semantic persistence".into(),
-        description: "Revision-owned compiler contracts".into(),
-        steps: vec![
-            workflow_step(
-                "input",
-                WorkflowStepKind::Input,
-                input_configuration.digest().clone(),
-                schema.digest().clone(),
-            ),
-            workflow_step(
-                "output",
-                WorkflowStepKind::Output,
-                output_configuration.digest().clone(),
-                schema.digest().clone(),
-            ),
-        ],
-        edges: vec![WorkflowEdgeSpec {
+    let composite_configuration = include_composite.then(|| {
+        WorkflowPayload::from_content(WorkflowPayloadContent::Configuration(
+            WorkflowStepConfiguration::empty(WorkflowStepKind::Subworkflow),
+        ))
+        .expect("composite configuration")
+    });
+    let output_step = workflow_step(
+        "output",
+        WorkflowStepKind::Output,
+        output_configuration.digest().clone(),
+        schema.digest().clone(),
+    );
+    let mut steps = vec![workflow_step(
+        "input",
+        WorkflowStepKind::Input,
+        input_configuration.digest().clone(),
+        schema.digest().clone(),
+    )];
+    if let Some(configuration) = composite_configuration.as_ref() {
+        let mut iteration = workflow_step(
+            "iteration",
+            WorkflowStepKind::Subworkflow,
+            configuration.digest().clone(),
+            schema.digest().clone(),
+        );
+        iteration.capability = Some(CapabilityReference {
+            owner: CapabilityOwner::Workflow,
+            capability_type: CapabilityType::WorkflowRevision,
+            resource_id: WorkflowDefinitionId::new().as_uuid(),
+            revision: WorkflowRevisionId::new().to_string(),
+            digest: Sha256Digest::parse(format!("sha256:{}", "9".repeat(64)))
+                .expect("child Workflow digest"),
+            capability: "workflow.run".into(),
+        });
+        steps.push(iteration);
+    }
+    steps.push(output_step);
+    let edges = if include_composite {
+        vec![
+            WorkflowEdgeSpec {
+                id: "input-iteration".into(),
+                source: "input".into(),
+                target: "iteration".into(),
+                source_handle: None,
+            },
+            WorkflowEdgeSpec {
+                id: "iteration-output".into(),
+                source: "iteration".into(),
+                target: "output".into(),
+                source_handle: None,
+            },
+        ]
+    } else {
+        vec![WorkflowEdgeSpec {
             id: "input-output".into(),
             source: "input".into(),
             target: "output".into(),
             source_handle: None,
-        }],
+        }]
     };
-    let registry = descriptor_registry(input_configuration.digest().clone());
+    let workflow = WorkflowSpec {
+        name: if include_composite {
+            "Composite semantic persistence".into()
+        } else {
+            "Semantic persistence".into()
+        },
+        description: "Revision-owned compiler contracts".into(),
+        steps,
+        edges,
+    };
+    let registry = descriptor_registry(
+        input_configuration.digest().clone(),
+        composite_configuration
+            .as_ref()
+            .map(|configuration| configuration.digest().clone()),
+    );
+    let binding_pairs = if include_composite {
+        vec![
+            ("input", "workflow.input"),
+            ("iteration", "workflow.iteration"),
+            ("output", "workflow.output"),
+        ]
+    } else {
+        vec![("input", "workflow.input"), ("output", "workflow.output")]
+    };
     let bindings = WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
         id: "integration.workflow".into(),
         revision: "1.0.0".into(),
         compiler_schema_version: 2,
-        bindings: [("input", "workflow.input"), ("output", "workflow.output")]
+        bindings: binding_pairs
             .into_iter()
             .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
                 step_id: step_id.into(),
@@ -692,12 +846,29 @@ fn semantic_revision(
         values: vec![default],
     })
     .expect("variable defaults");
-    let semantics = WorkflowRevisionSemanticContracts::create_with_defaults(
+    let composite_regions = include_composite.then(|| {
+        WorkflowCompositeRegions::from_spec(WorkflowCompositeRegionsSpec {
+            id: "integration.workflow".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: 2,
+            regions: vec![WorkflowCompositeRegionPolicy::Iteration(
+                WorkflowIterationRegionPolicy {
+                    step_id: "iteration".into(),
+                    maximum_items: 1_000,
+                    maximum_concurrency: 10,
+                    failure_mode: WorkflowIterationFailureMode::ContinueNull,
+                },
+            )],
+        })
+        .expect("composite regions")
+    });
+    let semantics = WorkflowRevisionSemanticContracts::create_with_optional_contracts(
         &workflow,
         bindings,
         registry,
         variables,
         Some(defaults),
+        composite_regions,
     )
     .expect("semantic contracts");
     WorkflowRevision::initial_with_semantic_contracts(
@@ -706,103 +877,16 @@ fn semantic_revision(
         definition_id,
         revision_id,
         WorkflowContract::from_spec(workflow).expect("Workflow contract"),
-        vec![schema, input_configuration, output_configuration],
+        {
+            let mut payloads = vec![schema, input_configuration, output_configuration];
+            if let Some(configuration) = composite_configuration {
+                payloads.push(configuration);
+            }
+            payloads
+        },
         semantics,
         actor,
         created_at,
     )
     .expect("semantic Workflow revision")
-}
-
-fn workflow_step(
-    id: &str,
-    kind: WorkflowStepKind,
-    configuration_digest: Sha256Digest,
-    schema_digest: Sha256Digest,
-) -> WorkflowStepSpec {
-    WorkflowStepSpec {
-        id: id.into(),
-        label: id.into(),
-        kind,
-        configuration_digest,
-        input_schema_digest: schema_digest.clone(),
-        output_schema_digest: schema_digest,
-        policy_digest: None,
-        capability: None,
-    }
-}
-
-fn descriptor_registry(
-    configuration_schema_digest: Sha256Digest,
-) -> WorkflowStepDescriptorRegistry {
-    WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
-        id: "integration.workflow".into(),
-        revision: "1.0.0".into(),
-        compiler_schema_version: 2,
-        descriptors: vec![
-            descriptor(
-                "workflow.input",
-                WorkflowStepKind::Input,
-                "invocation",
-                "value",
-                configuration_schema_digest.clone(),
-            ),
-            descriptor(
-                "workflow.output",
-                WorkflowStepKind::Output,
-                "result",
-                "value",
-                configuration_schema_digest,
-            ),
-        ],
-    })
-    .expect("descriptor registry")
-}
-
-fn descriptor(
-    id: &str,
-    kind: WorkflowStepKind,
-    input_port: &str,
-    output_port: &str,
-    configuration_schema_digest: Sha256Digest,
-) -> WorkflowStepDescriptorSpec {
-    WorkflowStepDescriptorSpec {
-        id: id.into(),
-        revision: "1.0.0".into(),
-        owner: WorkflowStepOwner::Workflow,
-        kind: Some(kind),
-        semantic_profile: id.into(),
-        execution_class: WorkflowStepExecutionClass::WorkflowLocal,
-        input_ports: vec![port(input_port)],
-        output_ports: vec![port(output_port)],
-        configuration_schema_digest,
-        default_policy_digest: None,
-        required_bindings: Vec::new(),
-        allowed_capability_types: Vec::new(),
-        failure: WorkflowStepFailureContract {
-            error_output: None,
-            retry_classification: WorkflowStepRetryClassification::NotRetryable,
-            fallback: WorkflowStepFallbackMode::Unsupported,
-            failure_branch: false,
-        },
-        minimum_compiler_schema_version: 2,
-        maximum_compiler_schema_version: 2,
-        admission: WorkflowStepDescriptorAdmission::Admitted,
-        unavailable_reason: None,
-        presentation: WorkflowStepPresentationSpec {
-            label: id.into(),
-            summary: format!("{id} descriptor"),
-            icon_key: id.into(),
-        },
-    }
-}
-
-fn port(name: &str) -> WorkflowStepPort {
-    WorkflowStepPort {
-        name: name.into(),
-        value_type: WorkflowDataType::Object,
-        cardinality: WorkflowStepPortCardinality::Single,
-        required: true,
-        dynamic: false,
-    }
 }

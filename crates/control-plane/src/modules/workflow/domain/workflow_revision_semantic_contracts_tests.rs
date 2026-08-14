@@ -119,7 +119,7 @@ fn registry_with_output_bindings(
     .expect("registry")
 }
 
-fn variable_contract() -> WorkflowVariableContract {
+pub(super) fn variable_contract() -> WorkflowVariableContract {
     WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
         id: "support.bound".into(),
         revision: "1.0.0".into(),
@@ -176,6 +176,231 @@ fn bindings(registry: &WorkflowStepDescriptorRegistry) -> WorkflowStepDescriptor
             .collect(),
     })
     .expect("bindings")
+}
+
+pub(super) fn composite_workflow() -> WorkflowSpec {
+    let mut iteration = step("iteration", WorkflowStepKind::Subworkflow);
+    iteration.capability = Some(CapabilityReference {
+        owner: CapabilityOwner::Workflow,
+        capability_type: CapabilityType::WorkflowRevision,
+        resource_id: WorkflowDefinitionId::new().as_uuid(),
+        revision: WorkflowRevisionId::new().to_string(),
+        digest: digest('9'),
+        capability: "workflow.run".into(),
+    });
+    WorkflowSpec {
+        name: "Composite workflow".into(),
+        description: String::new(),
+        steps: vec![
+            step("input", WorkflowStepKind::Input),
+            iteration,
+            step("output", WorkflowStepKind::Output),
+        ],
+        edges: vec![
+            WorkflowEdgeSpec {
+                id: "input-iteration".into(),
+                source: "input".into(),
+                target: "iteration".into(),
+                source_handle: None,
+            },
+            WorkflowEdgeSpec {
+                id: "iteration-output".into(),
+                source: "iteration".into(),
+                target: "output".into(),
+                source_handle: None,
+            },
+        ],
+    }
+}
+
+pub(super) fn composite_registry() -> WorkflowStepDescriptorRegistry {
+    let mut iteration = descriptor(
+        "workflow.iteration",
+        WorkflowStepKind::Subworkflow,
+        "items",
+        "result",
+    );
+    iteration.semantic_profile = "workflow.iteration".into();
+    iteration.execution_class = WorkflowStepExecutionClass::CompositeRegion;
+    iteration.required_bindings = vec![WorkflowStepBindingKind::CapabilityReference];
+    iteration.allowed_capability_types = vec![CapabilityType::WorkflowRevision];
+    WorkflowStepDescriptorRegistry::from_spec(WorkflowStepDescriptorRegistrySpec {
+        id: "support.bound".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        descriptors: vec![
+            descriptor(
+                "workflow.input",
+                WorkflowStepKind::Input,
+                "invocation",
+                "value",
+            ),
+            iteration,
+            descriptor(
+                "workflow.output",
+                WorkflowStepKind::Output,
+                "result",
+                "value",
+            ),
+        ],
+    })
+    .expect("composite registry")
+}
+
+pub(super) fn composite_bindings(
+    registry: &WorkflowStepDescriptorRegistry,
+) -> WorkflowStepDescriptorBindings {
+    WorkflowStepDescriptorBindings::from_spec(WorkflowStepDescriptorBindingsSpec {
+        id: "support.bound".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        bindings: [
+            ("input", "workflow.input"),
+            ("iteration", "workflow.iteration"),
+            ("output", "workflow.output"),
+        ]
+        .into_iter()
+        .map(|(step_id, descriptor_id)| WorkflowStepDescriptorBinding {
+            step_id: step_id.into(),
+            descriptor_id: descriptor_id.into(),
+            descriptor_revision: "1.0.0".into(),
+            semantic_digest: registry
+                .resolve(descriptor_id, "1.0.0")
+                .expect("descriptor")
+                .semantic_digest()
+                .clone(),
+        })
+        .collect(),
+    })
+    .expect("composite bindings")
+}
+
+pub(super) fn composite_regions() -> WorkflowCompositeRegions {
+    WorkflowCompositeRegions::from_spec(WorkflowCompositeRegionsSpec {
+        id: "support.bound".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        regions: vec![WorkflowCompositeRegionPolicy::Iteration(
+            WorkflowIterationRegionPolicy {
+                step_id: "iteration".into(),
+                maximum_items: 1_000,
+                maximum_concurrency: 10,
+                failure_mode: WorkflowIterationFailureMode::Terminate,
+            },
+        )],
+    })
+    .expect("composite regions")
+}
+
+#[test]
+fn semantic_contracts_require_exact_composite_region_material_for_new_publication() {
+    let workflow = composite_workflow();
+    let registry = composite_registry();
+    let bindings = composite_bindings(&registry);
+    let variables = variable_contract();
+
+    let error = WorkflowRevisionSemanticContracts::create(
+        &workflow,
+        bindings.clone(),
+        registry.clone(),
+        variables.clone(),
+    )
+    .expect_err("new composite publication requires region material");
+    assert!(error.contains("require immutable region material"));
+
+    let legacy = WorkflowRevisionSemanticContracts::restore(
+        &workflow,
+        bindings.canonical_acl(),
+        bindings.digest().as_str(),
+        registry.canonical_acl(),
+        registry.digest().as_str(),
+        variables.canonical_acl(),
+        variables.digest().as_str(),
+    )
+    .expect("pre-contract composite revision remains readable");
+    assert!(legacy.composite_regions().is_none());
+
+    let regions = composite_regions();
+    let contracts = WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+        &workflow,
+        bindings,
+        registry,
+        variables,
+        None,
+        Some(regions.clone()),
+    )
+    .expect("composite semantic contracts");
+    assert_eq!(contracts.composite_regions(), Some(&regions));
+    assert_eq!(contracts.persisted_contracts().len(), 4);
+    assert!(contracts.persisted_contracts().iter().any(|contract| {
+        contract.kind == WorkflowRevisionSemanticContractKind::CompositeRegions
+    }));
+    assert_ne!(contracts.digest(), legacy.digest());
+}
+
+#[test]
+fn semantic_contracts_reject_composite_profile_or_child_revision_drift() {
+    let workflow = composite_workflow();
+    let registry = composite_registry();
+    let bindings = composite_bindings(&registry);
+    let variables = variable_contract();
+    let mut regions_spec = composite_regions().spec().clone();
+    regions_spec.regions = vec![WorkflowCompositeRegionPolicy::Loop(
+        WorkflowLoopRegionPolicy {
+            step_id: "iteration".into(),
+            maximum_iterations: 10,
+            time_budget_seconds: 60,
+            termination_path: vec!["done".into()],
+        },
+    )];
+    let regions = WorkflowCompositeRegions::from_spec(regions_spec).expect("loop policy");
+    assert!(
+        WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+            &workflow,
+            bindings.clone(),
+            registry.clone(),
+            variables.clone(),
+            None,
+            Some(regions),
+        )
+        .is_err()
+    );
+
+    let mut nil_workflow = workflow.clone();
+    nil_workflow.steps[1]
+        .capability
+        .as_mut()
+        .expect("child capability")
+        .revision = uuid::Uuid::nil().to_string();
+    assert!(
+        WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+            &nil_workflow,
+            bindings.clone(),
+            registry.clone(),
+            variables.clone(),
+            None,
+            Some(composite_regions()),
+        )
+        .is_err()
+    );
+
+    let mut drifted_workflow = workflow;
+    drifted_workflow.steps[1]
+        .capability
+        .as_mut()
+        .expect("child capability")
+        .revision = "latest".into();
+    assert!(
+        WorkflowRevisionSemanticContracts::create_with_optional_contracts(
+            &drifted_workflow,
+            bindings,
+            registry,
+            variables,
+            None,
+            Some(composite_regions()),
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -438,6 +663,7 @@ fn plan_v1_serialization_does_not_gain_v2_contract_fields() {
     let plan = encoded.as_object().expect("plan object");
     assert!(!plan.contains_key("semantic_contract_set_digest"));
     assert!(!plan.contains_key("variable_contract_digest"));
+    assert!(!plan.contains_key("composite_regions_digest"));
     assert!(encoded["steps"]
         .as_array()
         .expect("steps")

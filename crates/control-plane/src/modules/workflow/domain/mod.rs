@@ -7,6 +7,7 @@ pub mod repositories;
 pub mod services;
 mod validation;
 pub mod value_objects;
+mod workflow_composite_regions;
 mod workflow_contract;
 mod workflow_goal_contract;
 mod workflow_graph;
@@ -76,6 +77,13 @@ pub use value_objects::{
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_ID,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_REVISION,
 };
+pub use workflow_composite_regions::{
+    WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
+    WorkflowIterationFailureMode, WorkflowIterationRegionPolicy, WorkflowLoopRegionPolicy,
+    WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES, WORKFLOW_COMPOSITE_REGIONS_SCHEMA,
+    WORKFLOW_COMPOSITE_REGION_MAX_COUNT, WORKFLOW_COMPOSITE_REGION_MAX_TIME_BUDGET_SECONDS,
+    WORKFLOW_ITERATION_MAX_CONCURRENCY, WORKFLOW_ITERATION_MAX_ITEMS, WORKFLOW_LOOP_MAX_ITERATIONS,
+};
 pub use workflow_contract::{
     WorkflowContract, WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind,
     WorkflowStepSpec, WORKFLOW_DEFINITION_SCHEMA,
@@ -98,8 +106,8 @@ pub use workflow_revision_semantic_contracts::{
     WorkflowRevisionSemanticContracts,
 };
 pub use workflow_run_contract::{
-    workflow_run_timeout_seconds, ResolvedWorkflowPayload, ResolvedWorkflowRunStep,
-    ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
+    workflow_run_timeout_seconds, ResolvedWorkflowCompositeRegions, ResolvedWorkflowPayload,
+    ResolvedWorkflowRunStep, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
     WorkflowExecutionChildReferenceMetadata, WorkflowExecutionHookMetadata,
     WorkflowExecutionOutcome, WorkflowExecutionResumePayload, WorkflowExecutionResumeResolution,
     WorkflowExecutionStepOutput, WorkflowHumanDecisionHookMetadata, WorkflowRunInput,
@@ -143,6 +151,8 @@ pub use workflow_variable_defaults::{
 mod authority_tests;
 #[cfg(test)]
 mod human_task_contract_tests;
+#[cfg(test)]
+mod workflow_composite_regions_tests;
 #[cfg(test)]
 mod workflow_revision_semantic_contracts_tests;
 #[cfg(test)]

@@ -225,27 +225,37 @@ ExecutionTemplate persistence, replay, rollback, immutability, and tenant
 non-disclosure result. This verifies the finite Execution sub-gate, not all of
 W0.3. Revision-owned descriptor bindings, the recoverable registry snapshot,
 the variable contract, and exact Plan v2 pinning now persist through migration
-`103`. Migration `107` adds an optional immutable
-`cloud.workflow.variable-defaults.v1` child whose canonical JSON exactly covers
-the contract's default digests and participates in the semantic-contract-set
-identity. WorkflowRun input/runtime/Flow v2 freezes the exact variable ACL and
-optional default material and projects invocation, node-output, defaults,
-deterministic run-assignment, typed-read, and opaque-reference values from
-immutable input plus existing Flow history; migrations `105` and `107` only
-widen that immutable input. Explicit reads are authoritative for their step and
-are consumed only through `current`; steps without reads retain legacy
-dependency input. REST/OpenAPI `1.34.0`, the maintained client, CLI, and
-Management MCP accept optional `variableDefaultsAcl`. REST/OpenAPI `1.33.0`
-now expose `cloud.workflow-run.variable-inspection.v1` through one authorized
-CQRS query and the same materializer used by execution. The bounded,
-declaration-ordered response identifies the exact contract and observed Flow
-sequence, distinguishes materialized from unavailable values, and redacts
-Secret references. Pre-Flow immutable inputs may appear at sequence zero; Plan
-v1 conflicts. Inspection adds no table, cache, event log, or worker. Composite
-and Applications-owned variables, Answer/error semantics,
-business-service and remaining Agent/MCP/model/Tool capability dispatch,
-compensation, expanded cross-surface evidence, and public Workflow availability
-remain open.
+`103`. Migration `107` adds optional immutable default material. Migration
+`108` adds optional immutable `cloud.workflow.composite-regions.v1` material
+without a new table. New publication requires it to exactly cover admitted
+Iteration/Loop descriptors, their bounded scheduling/failure/termination
+policy, and one exact non-nil child WorkflowRevision binding. The semantic-set,
+Plan v2 `compositeRegionsDigest`, and immutable Run v2 input pin its exact ACL
+and digest while historical revisions remain readable.
+
+WorkflowRun input/runtime/Flow v2 freezes exact variable/default/composite
+material and projects invocation, node-output, defaults, deterministic
+run-assignment, typed-read, and opaque-reference values from immutable input
+plus existing Flow history; migrations `105`, `107`, and `108` only widen
+that immutable input. Explicit reads are authoritative for their step and are
+consumed only through `current`; steps without reads retain legacy dependency
+input. REST/OpenAPI `1.35.0`, the maintained client, CLI, and Management MCP
+accept optional `variableDefaultsAcl` and `compositeRegionsAcl`.
+REST/OpenAPI `1.33.0` expose
+`cloud.workflow-run.variable-inspection.v1` through one authorized CQRS query
+and the same materializer used by execution. The bounded, declaration-ordered
+response identifies the exact contract and observed Flow sequence,
+distinguishes materialized from unavailable values, and redacts Secret
+references. Pre-Flow immutable inputs may appear at sequence zero; Plan v1
+conflicts.
+
+Composite policy and exact child identity are implemented, but region
+frames/exports, deterministic result materialization, and Flow-backed
+Iteration/Loop dispatch remain fail-closed. Applications-owned variables,
+Answer/error semantics, business-service and remaining Agent/MCP/model/Tool
+capability dispatch, compensation, expanded cross-surface evidence, and public
+Workflow availability remain open. These foundations add no table, cache,
+event log, worker, scheduler, queue, or second Flow mechanism.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -256,15 +266,17 @@ stable step-ID-keyed object for multiple declared sinks under the existing
 output bound. Focused Workflow tests verify this behavior together with legacy
 replay and HumanTask compatibility. The descriptor registry and typed-variable
 domain contracts are implemented. Migration `103` atomically binds all three
-mandatory contracts to WorkflowRevision compiler schema 2, while migration
-`107` permits the optional exact default-material child. `cloud.workflow.plan.v2`
-pins every exact descriptor plus the semantic and variable digests. Legacy Plan
-v1 remains byte-stable and executable. Plan v2 executes the first typed-variable
-subset plus digest-bound defaults, and authorized inspection reads that same
-materialization from immutable input and Flow history. Runtime fails closed for
-composite-local/export semantics and Applications-owned reads/writes. Bounded
-Iteration/Loop regions, typed error branches/fallback, and ordered Answer frames
-remain unimplemented parts of `W0.3`.
+mandatory contracts to WorkflowRevision compiler schema 2, migration `107`
+permits the optional exact default-material child, and migration `108` permits
+the optional exact composite-region child. `cloud.workflow.plan.v2` pins every
+exact descriptor plus the semantic, variable, and optional composite-region
+digests. Legacy Plan v1 remains byte-stable and executable. Plan v2 executes
+the first typed-variable subset plus digest-bound defaults, and authorized
+inspection reads that same materialization from immutable input and Flow
+history. Runtime fails closed for composite-local/export semantics,
+Iteration/Loop dispatch, and Applications-owned reads/writes. Typed error
+branches/fallback and ordered Answer frames also remain unimplemented parts of
+`W0.3`.
 
 ### 4.3 Compiler rules
 

@@ -933,6 +933,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/107_workflow_variable_defaults.sql"
             )),
         ),
+        Migration::new(
+            "108",
+            "immutable Workflow composite-region policies",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/108_workflow_composite_regions.sql"
+            )),
+        ),
     ]
 }
 
@@ -1299,10 +1307,6 @@ mod workflow_variable_defaults_migration_tests {
 
     #[test]
     fn migration_107_adds_only_immutable_revision_material_and_run_input_capacity() {
-        assert_eq!(
-            crate::modules::workflow::WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
-            37_748_736
-        );
         for expected in [
             "'variable_defaults'",
             "cloud.workflow.variable-defaults.v1",
@@ -1323,6 +1327,46 @@ mod workflow_variable_defaults_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 107 must not add a variable state mechanism: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod workflow_composite_regions_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/108_workflow_composite_regions.sql"
+    ));
+
+    #[test]
+    fn migration_108_adds_only_immutable_region_policy_and_run_input_capacity() {
+        assert_eq!(
+            crate::modules::workflow::WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
+            38_797_312
+        );
+        for expected in [
+            "'composite_regions'",
+            "cloud.workflow.composite-regions.v1",
+            "required_contract_count <> 3",
+            "contract_count not in (3, 4, 5)",
+            "octet_length(execution_input) between 1 and 38797312",
+            "not a mutable node catalog, variable store, scheduler, or queue",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 108 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table workflow_composite",
+            "create table workflow_iteration",
+            "create table workflow_loop",
+            "create table workflow_region_events",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 108 must not add a composite execution mechanism: {forbidden}"
             );
         }
     }

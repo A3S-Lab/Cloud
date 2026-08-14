@@ -351,10 +351,13 @@ ACL plus the exact typed configuration, data-schema, and policy ACL payloads
 referenced by its digests. Their optional revision-semantic envelope contains
 three mandatory ACL children for descriptor bindings, the recoverable registry
 snapshot, and typed variables, plus optional `variableDefaultsAcl` material that
-must exactly cover all digest-backed defaults. Revision additionally requires a positive
-`expectedVersion`. Both mutations use `workflow:write`, caller-owned
-idempotency, immutable revision history, audit, and Outbox through the same
-A3S ORM repository as REST.
+must exactly cover all digest-backed defaults and optional
+`compositeRegionsAcl` material that must exactly cover admitted Iteration and
+Loop descriptors. The composite contract freezes bounded region policy and one
+exact child WorkflowRevision binding; it does not add an MCP execution path.
+Revision additionally requires a positive `expectedVersion`. Both mutations
+use `workflow:write`, caller-owned idempotency, immutable revision history,
+audit, and Outbox through the same A3S ORM repository as REST.
 
 Definition/revision list and get tools return the aggregate head, immutable
 lineage, canonical definition ACL, payload-set digest, and exact canonical
@@ -364,10 +367,10 @@ revision identities/digests and optional Environment identity, then compiles
 one immutable Plan revision. Legacy inputs retain
 `cloud.workflow.plan.v1`; complete revision-owned semantic contracts compile
 `cloud.workflow.plan.v2` with exact descriptor, variable, and semantic-set
-digests. Goal
-list/get and Plan get return the same DTOs as REST. Identical semantic inputs
-produce identical canonical Plan bytes and digest; Goal and Plan identities
-remain distinct records.
+digests plus an optional `compositeRegionsDigest`. Goal list/get and Plan get
+return the same DTOs as REST. Identical semantic inputs produce identical
+canonical Plan bytes and digest; Goal and Plan identities remain distinct
+records.
 
 ## Built-in Workflow node catalog
 
@@ -403,7 +406,8 @@ repository, Operation, A3S Flow history, audit, Outbox, and idempotency
 authority. The executor supports Workflow-local `input`, `transform`,
 `branch`, `human_decision`, finite `execution`, and `output`. HumanTask
 submission is exposed by the protected tool below. Business-service and
-remaining provider capability steps plus compensation are not exposed.
+remaining provider capability steps, Iteration/Loop execution, and
+compensation are not exposed.
 
 `a3s_cloud_workflow_run_variables_get` accepts one `workflowRunId` and returns
 the same `cloud.workflow-run.variable-inspection.v1` response as REST contract

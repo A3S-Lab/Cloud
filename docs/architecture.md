@@ -100,7 +100,7 @@ scheduler, event log, identity store, or data plane.
 
 | Reference outcome worth retaining | A3S-owned outcome | Owning gate and current boundary | Deliberately not copied |
 | --- | --- | --- | --- |
-| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics plus immutable descriptor and typed-variable contracts; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` is implemented and `W0.2` is verified; `W0.3` includes immutable definition/payload/goal authority, revision-owned descriptor bindings/registry snapshot/variable contract and digest-bound defaults, exact Plan v2 pinning, typed-variable Flow projection and authorized inspection, a project-authorized read-only 23-node discovery catalog, WorkflowRun, the HumanTask loop, protected reads, and finite Execution. Composite and Applications-owned variables, remaining provider bindings, compensation, production recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, variable store, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
+| Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics plus immutable descriptor, typed-variable, and composite-region policy contracts; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` is implemented and `W0.2` is verified; `W0.3` includes immutable definition/payload/goal authority, revision-owned descriptor bindings/registry snapshot/variable/default/composite contracts, exact Plan v2 pinning, typed-variable Flow projection and authorized inspection, a project-authorized read-only 23-node discovery catalog, WorkflowRun, the HumanTask loop, protected reads, and finite Execution. Composite frames/exports and Flow-backed Iteration/Loop dispatch, Applications-owned variables, remaining provider bindings, compensation, production recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, variable or region store, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
 | Dify-style six current application experiences, including distinct classic and New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin extension outcomes, multi-channel publication, monitoring, and enterprise governance | `APP0` owns application releases and delivery; `K0` owns RAG corpus and pipeline intent; `AUT0` owns new-invocation triggers and outbound connection profiles; `W0` compiles every executable graph to Flow; existing `A0`, `A1`, `AR0`, `I0`, `U0`, `MCP0`, `C0`, `S0`, and `H0` provide the shared platform | Planned and unavailable; the exact ownership, node mapping, delivery order, and composite parity gate are defined in the AI application platform plan | Dify APIs, storage topology, package lifecycle, configuration authority, separate mode runtimes, another Agent/sandbox lifecycle, pipeline engine, plugin installer, vector database as truth, or scheduler |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and route-health diagnostics | Inference owns immutable model, Provider, route, and policy revisions; Edge owns route intent; Gateway applies the typed protocol/data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` protocol/provider expansion | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
 | TokenHub-style consumer, project-steward, and platform-operator workspaces with project/environment keys, enterprise sign-in, RBAC, quotas, and concurrency policy | Identity owns Principals, external OIDC subject links, Memberships, MembershipInvitations, Resource Grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The `C0.3` Principal/Membership/credential, exact-Principal invitation, project/environment/node Resource Grant, exact OIDC link/flow persistence, ordinary short-lived login credential, bounded OIDC discovery/JWKS/ID-token adapter, and production-wired REST/OpenAPI/client login-link-callback surfaces are implemented and pass focused persistence, local TLS, or cross-layer gates; retained OIDC PostgreSQL cross-surface evidence and role-focused projections remain open; model/key self-service is planned in `I0.2e` | Browser-only filtering, another user/key store, plaintext credential recovery, credential-owned roles, or UI modes as authorization |
@@ -387,7 +387,7 @@ not business ownership or convenience wrappers.
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
 | Notifications | Deterministic personal in-app projections of curated committed Outbox facts, exact-recipient and Resource Grant filtering, idempotent read state, and a provider-neutral outbound delivery envelope with shared signed-webhook/Slack-compatible single-attempt HTTP adapters | `C0.3-N1` verified on PostgreSQL 17; component-only `C0.3-N2a` implemented. Durable dispatch, receipts, subscriptions, rate policy, SMTP, and alert policy remain unavailable |
 | Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
-| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, immutable step-descriptor and typed-variable semantics, built-in node discovery, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; `W0.3` planning/API, revision-owned semantic contracts, exact Plan v2 pinning, digest-bound variable defaults, initial typed-variable Flow projection, Flow-derived authorized variable inspection, the read-only 23-node catalog, Workflow-local steps, deterministic Output aggregation, HumanTask, and finite `execution` are implemented. Composite and Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
+| Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, immutable step-descriptor, typed-variable, and composite-region semantics, built-in node discovery, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; `W0.3` planning/API, revision-owned semantic contracts, exact Plan v2 pinning, digest-bound variable defaults, bounded composite policy/child bindings, initial typed-variable Flow projection, Flow-derived authorized variable inspection, the read-only 23-node catalog, Workflow-local steps, deterministic Output aggregation, HumanTask, and finite `execution` are implemented. Composite frames/exports and Flow-backed Iteration/Loop dispatch, Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
 | Applications | Application identities, immutable releases, six authoring/delivery projections including classic/New Agent distinction, sessions, messages/variants, conversation variables, toolkit/feedback/annotation/publication policy, and managed application delivery | Planned `APP0`; every release binds one exact Workflow revision and no application mode or toolkit feature owns an execution engine/provider client |
 | Knowledge | Knowledge Bases, documents, General/Parent-child/Q&A and multimodal chunks, metadata, ingestion intent, index/retrieval policy, citations, external Knowledge bindings, and immutable KnowledgePipelineRelease-to-Workflow bindings | Planned `K0`; pipeline execution reuses `W0` and Flow, while Search/vector indexes remain rebuildable projections |
 | Files | User upload sessions, metadata, scan/quota/retention state, and typed immutable-object references | Planned `K0.1`; bytes reuse the shared immutable-object client and are not Build Artifacts |
@@ -407,24 +407,36 @@ optimistic, idempotent owning port. A3S Flow remains the sole durable
 orchestration engine, and Automations remains the owner of invocation-only
 trigger subscriptions. Migration `103` persists the three mandatory
 revision-owned semantic contracts; migration `107` permits one optional exact
-`cloud.workflow.variable-defaults.v1` child. Plan v2 pins exact descriptors,
-variable semantics, and the semantic set containing any default material.
-WorkflowRun input/runtime/Flow v2 reconstructs supported values and defaults
-from immutable input plus existing Flow history. A step with explicit reads can
-consume only its typed `current` projection; a step without reads retains legacy
-dependency input. REST/OpenAPI `1.34.0`, the maintained client, CLI, and
-Management MCP accept optional digest-bound default ACL material. The `1.33.0`
-inspection path inspects the same materialization through one project-authorized
+`cloud.workflow.variable-defaults.v1` child. Migration `108` permits a second
+optional `cloud.workflow.composite-regions.v1` child without adding a table.
+New publication requires that child to exactly cover every admitted
+`composite_region` descriptor, match its Iteration or Loop profile, and bind
+the existing `subworkflow` step to one exact non-nil child WorkflowRevision.
+Historical revisions without it remain readable.
+
+Plan v2 pins exact descriptors, variable semantics, and the semantic set
+containing any default or composite material. Its optional
+`compositeRegionsDigest` and immutable Run v2 input preserve the exact bounded
+region ACL and digest. WorkflowRun input/runtime/Flow v2 reconstructs supported
+values and defaults from immutable input plus existing Flow history. A step
+with explicit reads can consume only its typed `current` projection; a step
+without reads retains legacy dependency input. REST/OpenAPI `1.34.0` transports
+digest-bound defaults, while `1.35.0` adds optional `compositeRegionsAcl`
+across the maintained client, CLI, and Management MCP. The `1.33.0` inspection
+path inspects variable materialization through one project-authorized
 `cloud.workflow-run.variable-inspection.v1` query. The response is bounded,
 sequence-aware, declaration-ordered, explicit about unavailable values, and
-redacts Secret references; Plan v1 conflicts. It has no table, cache, event log,
-or worker. The separate built-in discovery projection fail-closed composes the
-parity manifest's exact 23-node owner/gate/dependency/availability inventory
-with its digest-bound kind/execution-class/semantic-profile ACL. It is a
+redacts Secret references; Plan v1 conflicts.
+
+The separate built-in discovery projection fail-closed composes the parity
+manifest's exact 23-node owner/gate/dependency/availability inventory with its
+digest-bound kind/execution-class/semantic-profile ACL. It is a
 project-authorized read query with no store or write path and cannot admit a
 descriptor; exact execution semantics still come only from the immutable
-WorkflowRevision registry snapshot. Composite/Application variable adapters
-and public node availability remain open.
+WorkflowRevision registry snapshot. Composite policy is now revision-bound,
+but region frames/exports, Applications variable adapters, and Iteration/Loop
+dispatch remain open and fail closed. No variable/region table, cache, event
+log, worker, scheduler, queue, or Flow mechanism was added.
 
 `Executions` and `Agents` are intentionally different. `Executions` owns the
 generic finite Task product. `Agents` owns conversation semantics and binds an

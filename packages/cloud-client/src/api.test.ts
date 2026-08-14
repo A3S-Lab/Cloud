@@ -19,6 +19,7 @@ import {
   MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
   MAX_WORKFLOW_RUN_WAIT_SECONDS,
   MAX_WORKFLOW_STEP_DESCRIPTOR_BINDINGS_ACL_BYTES,
+  MAX_WORKFLOW_COMPOSITE_REGIONS_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
@@ -39,7 +40,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.34.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.35.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -686,6 +687,8 @@ describe('CloudApi', () => {
           'variable_contract "support.workflow" { schema = "cloud.workflow.variable-contract.v1" }',
         variableDefaultsAcl:
           'variable_defaults "support.workflow" { schema = "cloud.workflow.variable-defaults.v1" }',
+        compositeRegionsAcl:
+          'composite_regions "support.workflow" { schema = "cloud.workflow.composite-regions.v1" }',
       },
     };
     const goalAcl = 'goal { schema = "cloud.workflow.goal.v1" }';
@@ -826,6 +829,23 @@ describe('CloudApi', () => {
         'workflow:create'
       )
     ).toThrow('Workflow variable defaults ACL must contain between');
+    expect(() =>
+      api.createWorkflowDefinitionFromAcl(
+        'organization',
+        'project',
+        {
+          definitionAcl: 'workflow {}',
+          payloads: [{ kind: 'configuration', acl: 'configuration {}' }],
+          semanticContracts: {
+            descriptorBindingsAcl: 'descriptor_bindings {}',
+            descriptorRegistryAcl: 'descriptor_registry {}',
+            variableContractAcl: 'variable_contract {}',
+            compositeRegionsAcl: 'x'.repeat(MAX_WORKFLOW_COMPOSITE_REGIONS_ACL_BYTES + 1),
+          },
+        },
+        'workflow:create'
+      )
+    ).toThrow('Workflow composite regions ACL must contain between');
     expect(() =>
       api.createWorkflowGoalFromAcl(
         'organization',

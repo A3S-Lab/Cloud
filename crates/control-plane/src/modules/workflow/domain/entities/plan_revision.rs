@@ -44,6 +44,8 @@ pub struct WorkflowPlan {
     pub semantic_contract_set_digest: Option<Sha256Digest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variable_contract_digest: Option<Sha256Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composite_regions_digest: Option<Sha256Digest>,
     pub ontology_id: OntologyId,
     pub ontology_revision_id: OntologyRevisionId,
     pub ontology_digest: Sha256Digest,
@@ -74,8 +76,9 @@ impl WorkflowPlan {
             semantic_version,
             self.semantic_contract_set_digest.as_ref(),
             self.variable_contract_digest.as_ref(),
+            self.composite_regions_digest.as_ref(),
         ) {
-            (false, None, None) | (true, Some(_), Some(_)) => {}
+            (false, None, None, None) | (true, Some(_), Some(_), _) => {}
             _ => return Err("Workflow plan semantic contract bindings are invalid".into()),
         }
         let workflow = self.workflow_spec()?;

@@ -1089,6 +1089,7 @@ fn human_decision_input(
         workflow_payload_set_digest: payload_set_digest,
         semantic_contract_set_digest: None,
         variable_contract_digest: None,
+        composite_regions_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(sha('2'))?,
@@ -1139,6 +1140,7 @@ fn human_decision_input(
             .collect(),
         variable_contract: None,
         variable_defaults: None,
+        composite_regions: None,
         requested_at,
         deadline_at: requested_at + ChronoDuration::hours(1),
     };

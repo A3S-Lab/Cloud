@@ -6,10 +6,11 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::application::WorkflowDefinitionMutationResult;
 use crate::modules::workflow::domain::{
-    CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, WorkflowContract,
-    WorkflowDefinition, WorkflowDefinitionRecord, WorkflowPayload, WorkflowRevision,
-    WorkflowRevisionPublished, WorkflowRevisionSemanticContracts, WorkflowStepDescriptorBindings,
-    WorkflowStepDescriptorRegistry, WorkflowVariableContract, WorkflowVariableDefaults,
+    CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, WorkflowCompositeRegions,
+    WorkflowContract, WorkflowDefinition, WorkflowDefinitionRecord, WorkflowPayload,
+    WorkflowRevision, WorkflowRevisionPublished, WorkflowRevisionSemanticContracts,
+    WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowVariableContract,
+    WorkflowVariableDefaults,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
@@ -166,7 +167,7 @@ fn parse_semantic_contracts(
     contract: &WorkflowContract,
     value: crate::modules::workflow::application::WorkflowSemanticContractAcls,
 ) -> Result<WorkflowRevisionSemanticContracts, String> {
-    WorkflowRevisionSemanticContracts::create_with_defaults(
+    WorkflowRevisionSemanticContracts::create_with_optional_contracts(
         contract.spec(),
         WorkflowStepDescriptorBindings::parse_acl(&value.descriptor_bindings_acl)?,
         WorkflowStepDescriptorRegistry::parse_acl(&value.descriptor_registry_acl)?,
@@ -175,6 +176,11 @@ fn parse_semantic_contracts(
             .variable_defaults_acl
             .as_deref()
             .map(WorkflowVariableDefaults::parse_acl)
+            .transpose()?,
+        value
+            .composite_regions_acl
+            .as_deref()
+            .map(WorkflowCompositeRegions::parse_acl)
             .transpose()?,
     )
 }

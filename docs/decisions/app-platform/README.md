@@ -16,7 +16,8 @@ AI application platform parity manifest.
 | [0009](0009-workflow-node-catalog-projection.md) | Compose read-only built-in node discovery without creating another descriptor or execution authority |
 | [0010](0010-flow-derived-variable-inspection.md) | Inspect runtime variables by replaying immutable input and the sole A3S Flow history |
 | [0011](0011-digest-bound-variable-defaults.md) | Materialize digest-bound defaults from immutable WorkflowRevision and Run input without a variable store |
+| [0012](0012-revision-bound-composite-region-policies.md) | Bind bounded Iteration and Loop policy plus exact child Workflow identity without adding another execution engine |
 
-All eleven decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All twelve decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

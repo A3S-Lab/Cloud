@@ -225,6 +225,7 @@ fn workflow_run_input(
         workflow_payload_set_digest: digest_payload_set(&payloads)?,
         semantic_contract_set_digest: None,
         variable_contract_digest: None,
+        composite_regions_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('2'))?,
@@ -258,6 +259,7 @@ fn workflow_run_input(
             .collect(),
         variable_contract: None,
         variable_defaults: None,
+        composite_regions: None,
         requested_at,
         deadline_at: requested_at + Duration::hours(1),
     };
@@ -322,6 +324,7 @@ fn execution_workflow_run_input(
         workflow_payload_set_digest: digest_payload_set(&payloads)?,
         semantic_contract_set_digest: None,
         variable_contract_digest: None,
+        composite_regions_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('5'))?,
@@ -372,6 +375,7 @@ fn execution_workflow_run_input(
             .collect(),
         variable_contract: None,
         variable_defaults: None,
+        composite_regions: None,
         requested_at,
         deadline_at: requested_at + Duration::hours(1),
     };

@@ -99,6 +99,9 @@ impl WorkflowPlanCompiler {
                     .map(|contracts| contracts.digest().clone()),
                 variable_contract_digest: semantic_contracts
                     .map(|contracts| contracts.variable_contract().digest().clone()),
+                composite_regions_digest: semantic_contracts
+                    .and_then(|contracts| contracts.composite_regions())
+                    .map(|regions| regions.digest().clone()),
                 ontology_id: ontology_revision.ontology_id,
                 ontology_revision_id: ontology_revision.id,
                 ontology_digest: ontology_revision.contract.digest().clone(),

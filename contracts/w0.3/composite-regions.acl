@@ -1,0 +1,15 @@
+composite_regions "support.batch" {
+  compiler_schema_version = 2
+  revision = "1.0.0"
+  schema = "cloud.workflow.composite-regions.v1"
+  iteration "batch" {
+    failure_mode = "continue_null"
+    maximum_concurrency = 10
+    maximum_items = 1000
+  }
+  loop "refine" {
+    maximum_iterations = 100
+    termination_path = ["done"]
+    time_budget_seconds = 3600
+  }
+}

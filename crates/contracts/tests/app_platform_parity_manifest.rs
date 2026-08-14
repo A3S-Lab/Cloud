@@ -226,13 +226,19 @@ fn every_advertised_public_capability_requires_verified_gates_and_test_evidence(
 
 #[test]
 fn authority_decision_register_is_complete_and_manifest_references_it() {
-    const DECISIONS: [&str; 6] = [
+    const DECISIONS: [&str; 12] = [
         "0001-flow-preservation.md",
         "0002-application-delivery.md",
         "0003-step-descriptor-registry.md",
         "0004-trigger-authority.md",
         "0005-file-authority.md",
         "0006-knowledge-authority.md",
+        "0007-typed-variable-scopes.md",
+        "0008-revision-bound-plan-v2.md",
+        "0009-workflow-node-catalog-projection.md",
+        "0010-flow-derived-variable-inspection.md",
+        "0011-digest-bound-variable-defaults.md",
+        "0012-revision-bound-composite-region-policies.md",
     ];
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let register =

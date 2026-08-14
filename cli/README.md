@@ -407,9 +407,13 @@ aggregate and immutable revision lineage, including exact canonical payloads.
 Its JSON transport may include the complete `semanticContracts` object with
 descriptor bindings, an exact recoverable descriptor registry snapshot, and a
 typed-variable contract, plus optional `variableDefaultsAcl` material for every
-digest-backed declaration. Cloud persists the three mandatory children and any
-exact default child atomically and compiles Plan v2 with exact descriptor,
-variable, and semantic-set digests; incomplete or inconsistent sets fail closed.
+digest-backed declaration and optional `compositeRegionsAcl` material for
+admitted Iteration and Loop descriptors. Cloud persists the three mandatory
+children and any exact default/composite children atomically and compiles Plan
+v2 with exact descriptor, variable, semantic-set, and composite-region digests;
+incomplete or inconsistent sets fail closed. The CLI only reads the bounded
+JSON file and transports canonical ACL; it does not parse region policy or
+execute a `subworkflow`.
 `workflow-goals` creates one immutable Goal from closed ACL and lists/reads the
 Goal and deterministic Plan revision. Cloud owns digest validation,
 compilation, optimistic concurrency, idempotency, audit, Outbox, and A3S ORM
@@ -422,9 +426,9 @@ are redacted, unavailable declarations stay explicit, and Plan v1 conflicts.
 The CLI does not reconstruct or retain variable state. The
 runtime supports Workflow-local `input`, `transform`, `branch`,
 `human_decision`, `execution`, and `output`. Business-service and remaining
-provider capability steps plus compensation remain unavailable. The CLI does
-not retain a graph, compile or run a plan locally, start a provider, or
-recreate the retired standalone Workflow control plane.
+provider capability steps, Iteration/Loop execution, and compensation remain
+unavailable. The CLI does not retain a graph, compile or run a plan locally,
+start a provider, or recreate the retired standalone Workflow control plane.
 
 `execution-templates` publishes and reads the Executions-owned immutable
 finite-task definition used by a Workflow `execution` step. Create reads one

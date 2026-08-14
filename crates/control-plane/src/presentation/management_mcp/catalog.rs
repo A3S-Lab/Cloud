@@ -1732,7 +1732,8 @@ fn workflow_semantic_contracts_schema() -> Value {
             "descriptorBindingsAcl": {"type": "string", "minLength": 1, "maxLength": 524288},
             "descriptorRegistryAcl": {"type": "string", "minLength": 1, "maxLength": 4194304},
             "variableContractAcl": {"type": "string", "minLength": 1, "maxLength": 2097152},
-            "variableDefaultsAcl": {"type": "string", "minLength": 1, "maxLength": 2097152}
+            "variableDefaultsAcl": {"type": "string", "minLength": 1, "maxLength": 2097152},
+            "compositeRegionsAcl": {"type": "string", "minLength": 1, "maxLength": 524288}
         },
         "required": ["descriptorBindingsAcl", "descriptorRegistryAcl", "variableContractAcl"],
         "additionalProperties": false

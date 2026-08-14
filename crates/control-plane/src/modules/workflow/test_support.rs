@@ -236,6 +236,7 @@ pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
         workflow_payload_set_digest,
         semantic_contract_set_digest: None,
         variable_contract_digest: None,
+        composite_regions_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('2'))?,
@@ -313,6 +314,7 @@ pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
             .collect(),
         variable_contract: None,
         variable_defaults: None,
+        composite_regions: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -497,6 +499,7 @@ pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, St
         workflow_payload_set_digest,
         semantic_contract_set_digest: None,
         variable_contract_digest: None,
+        composite_regions_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('2'))?,
@@ -547,6 +550,7 @@ pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, St
             .collect(),
         variable_contract: None,
         variable_defaults: None,
+        composite_regions: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -607,6 +611,7 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
         workflow_payload_set_digest,
         semantic_contract_set_digest: None,
         variable_contract_digest: None,
+        composite_regions_digest: None,
         ontology_id: OntologyId::new(),
         ontology_revision_id: OntologyRevisionId::new(),
         ontology_digest: Sha256Digest::parse(digest('2'))?,
@@ -657,6 +662,7 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
             .collect(),
         variable_contract: None,
         variable_defaults: None,
+        composite_regions: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };

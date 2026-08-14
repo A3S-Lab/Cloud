@@ -36,6 +36,7 @@ fn v1_run_input_remains_byte_stable_without_v2_contract_fields() {
     let encoded =
         String::from_utf8(input.canonical_bytes().expect("canonical v1 input")).expect("UTF-8");
     assert!(!encoded.contains("variable_contract"));
+    assert!(!encoded.contains("composite_regions"));
     assert!(encoded.contains("\"schema\":\"cloud.workflow-run.input.v1\""));
     assert!(encoded.contains("\"flow_workflow_version\":\"1\""));
 }
@@ -44,6 +45,10 @@ fn v1_run_input_remains_byte_stable_without_v2_contract_fields() {
 fn v2_run_input_rejects_version_and_variable_contract_drift() {
     let input = typed_variable_workflow_run_input().expect("valid v2 WorkflowRun input");
     input.validate().expect("valid v2 input");
+    let encoded =
+        String::from_utf8(input.canonical_bytes().expect("canonical v2 input")).expect("UTF-8");
+    assert!(!encoded.contains("composite_regions"));
+    assert!(!encoded.contains("composite_regions_digest"));
 
     let mut version_drift = input.clone();
     version_drift.flow_workflow_version = WORKFLOW_RUN_FLOW_VERSION.into();

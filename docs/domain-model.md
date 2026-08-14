@@ -1454,7 +1454,9 @@ an address from an OIDC claim, display name, or provider payload.
   Executions port after coordinator restart, and reuses the existing
   Operation, Flow child reference, Runtime Task, and cleanup lifecycle.
 - Business-service, Agent, MCP, model, Tool, memory, and subworkflow dispatch
-  remain future gates. When admitted, each child must retain the same exact
+  remain future gates. Composite `subworkflow` publication now binds bounded
+  Iteration/Loop policy and one exact child WorkflowRevision, but runtime still
+  rejects it. When execution is admitted, each child must retain the same exact
   owning-context identity and adoption rule; no owner lifecycle may be copied
   into Workflow.
 - Dynamic planning is an explicit policy step with a recorded candidate set,
@@ -1471,6 +1473,12 @@ an address from an OIDC claim, display name, or provider payload.
   optional immutable default-material child supplies the exact canonical JSON
   for digest-backed declarations. Neither contract is a second variable store
   or Flow history.
+- An optional immutable composite-region child exactly covers every admitted
+  `composite_region` descriptor. It freezes bounded Iteration/Loop scheduling,
+  failure, and termination policy and requires `workflow.run` to bind one exact
+  non-nil child WorkflowRevision. It is compilation authority, not a region
+  store or executor; frames, exports, result ordering, and Flow-backed dispatch
+  remain fail-closed.
 
 ### Applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
 
@@ -1971,17 +1979,22 @@ canonical input. It points to one immutable `PlanRevision` compiled by
 `cloud.workflow.plan-compiler.v1`; identical semantic inputs produce identical
 canonical plan bytes and digest even though Goal and Plan identities differ.
 
-The implemented `cloud.workflow.step-descriptor-registry.v1` and
-`cloud.workflow.variable-contract.v1` freeze descriptor and value semantics as
-canonical digest-addressed domain contracts. Migration `103` persists exact
-descriptor bindings, the recoverable registry snapshot, and the variable
-contract atomically with compiler-schema-2 WorkflowRevision. Migration `107`
-permits one optional `cloud.workflow.variable-defaults.v1` child whose exact
-canonical JSON covers every declared default digest and participates in the
+The implemented `cloud.workflow.step-descriptor-registry.v1`,
+`cloud.workflow.variable-contract.v1`, and
+`cloud.workflow.composite-regions.v1` freeze descriptor, value, and bounded
+composite-policy semantics as canonical digest-addressed domain contracts.
+Migration `103` persists exact descriptor bindings, the recoverable registry
+snapshot, and the variable contract atomically with compiler-schema-2
+WorkflowRevision. Migration `107` permits one optional
+`cloud.workflow.variable-defaults.v1` child whose exact canonical JSON covers
+every declared default digest. Migration `108` permits one optional composite
+child that exactly covers admitted Iteration/Loop descriptors and exact child
+WorkflowRevision bindings. Both optional digests participate in the
 contract-set identity. The resulting `cloud.workflow.plan.v2` pins exact
-descriptor semantics and the contract-set and variable digests. Plan v1
-remains byte-stable; Applications-owned variable access remains fail-closed
-rather than inferring an owning port.
+descriptor semantics and contract-set, variable, and optional composite-region
+digests. Plan v1 remains byte-stable; composite execution and
+Applications-owned variable access remain fail-closed rather than inferring
+missing runtime or owner adapters.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and

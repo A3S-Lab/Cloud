@@ -28,6 +28,8 @@ const PUBLICATION = {
       'variable_contract "support.workflow" { schema = "cloud.workflow.variable-contract.v1" }\n',
     variableDefaultsAcl:
       'variable_defaults "support.workflow" { schema = "cloud.workflow.variable-defaults.v1" }\n',
+    compositeRegionsAcl:
+      'composite_regions "support.workflow" { schema = "cloud.workflow.composite-regions.v1" }\n',
   },
 };
 

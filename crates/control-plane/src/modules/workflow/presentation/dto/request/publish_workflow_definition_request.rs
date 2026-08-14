@@ -19,6 +19,8 @@ pub struct WorkflowSemanticContractAclsRequest {
     pub variable_contract_acl: String,
     #[serde(default)]
     pub variable_defaults_acl: Option<String>,
+    #[serde(default)]
+    pub composite_regions_acl: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -57,6 +59,7 @@ impl PublishWorkflowDefinitionRequest {
                     descriptor_registry_acl: value.descriptor_registry_acl,
                     variable_contract_acl: value.variable_contract_acl,
                     variable_defaults_acl: value.variable_defaults_acl,
+                    composite_regions_acl: value.composite_regions_acl,
                 }),
         )
     }

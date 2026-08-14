@@ -38,6 +38,7 @@ pub struct WorkflowSemanticContractAcls {
     pub descriptor_registry_acl: String,
     pub variable_contract_acl: String,
     pub variable_defaults_acl: Option<String>,
+    pub composite_regions_acl: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

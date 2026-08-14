@@ -1,12 +1,13 @@
 use super::entities::digest_payload_set;
 use super::{
-    WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
-    WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
-    WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
+    WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload,
+    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy,
+    WorkflowPolicyMode, WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
     WorkflowVariableDefaults, WorkflowVariableMutationMode, WorkflowVariableReadMode,
-    WorkflowVariableScope, WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES,
-    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
-    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
+    WorkflowVariableScope, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_INPUT_BYTES,
+    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
+    WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
+    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, EnvironmentId, ExecutionId,
@@ -31,6 +32,7 @@ pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
     + (2 * WORKFLOW_REVISION_MAX_PAYLOAD_BYTES)
     + (2 * WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES)
     + (2 * WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES)
+    + (2 * WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES)
     + (4 * 1024 * 1024);
 pub const WORKFLOW_RUN_OUTPUT_MAX_BYTES: usize = 256 * 1024;
 pub const WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
@@ -93,6 +95,26 @@ pub struct ResolvedWorkflowVariableDefaults {
     pub digest: Sha256Digest,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ResolvedWorkflowCompositeRegions {
+    pub canonical_acl: String,
+    pub digest: Sha256Digest,
+}
+
+impl ResolvedWorkflowCompositeRegions {
+    pub(crate) fn from_regions(regions: &WorkflowCompositeRegions) -> Self {
+        Self {
+            canonical_acl: regions.canonical_acl().to_owned(),
+            digest: regions.digest().clone(),
+        }
+    }
+
+    pub(crate) fn restore(&self) -> Result<WorkflowCompositeRegions, String> {
+        WorkflowCompositeRegions::restore(&self.canonical_acl, self.digest.as_str())
+    }
+}
+
 impl ResolvedWorkflowVariableDefaults {
     pub(crate) fn from_defaults(defaults: &WorkflowVariableDefaults) -> Self {
         Self {
@@ -126,6 +148,8 @@ pub struct WorkflowRunInput {
     pub variable_contract: Option<ResolvedWorkflowVariableContract>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variable_defaults: Option<ResolvedWorkflowVariableDefaults>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composite_regions: Option<ResolvedWorkflowCompositeRegions>,
     pub requested_at: DateTime<Utc>,
     pub deadline_at: DateTime<Utc>,
 }
@@ -606,13 +630,14 @@ impl WorkflowRunInput {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let (variable_contract, variable_defaults) = match (
+        let (variable_contract, variable_defaults, composite_regions) = match (
             self.schema.as_str(),
             self.runtime_contract_revision.as_str(),
             self.flow_workflow_version.as_str(),
             self.plan.schema.as_str(),
             self.variable_contract.as_ref(),
             self.variable_defaults.as_ref(),
+            self.composite_regions.as_ref(),
         ) {
             (
                 WORKFLOW_RUN_INPUT_SCHEMA,
@@ -621,7 +646,8 @@ impl WorkflowRunInput {
                 WORKFLOW_PLAN_SCHEMA,
                 None,
                 None,
-            ) => (None, None),
+                None,
+            ) => (None, None, None),
             (
                 WORKFLOW_RUN_INPUT_SCHEMA_V2,
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
@@ -629,6 +655,7 @@ impl WorkflowRunInput {
                 WORKFLOW_PLAN_SCHEMA_V2,
                 Some(resolved),
                 defaults,
+                regions,
             ) => {
                 let contract = resolved.restore()?;
                 if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -640,7 +667,23 @@ impl WorkflowRunInput {
                     .map(ResolvedWorkflowVariableDefaults::restore)
                     .transpose()?;
                 validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
-                (Some(contract), defaults)
+                let regions = regions
+                    .map(ResolvedWorkflowCompositeRegions::restore)
+                    .transpose()?;
+                match (
+                    self.plan.composite_regions_digest.as_ref(),
+                    regions.as_ref(),
+                ) {
+                    (None, None) => {}
+                    (Some(_), Some(_)) => {}
+                    _ => {
+                        return Err(
+                            "WorkflowRun composite region material drifted from the PlanRevision"
+                                .into(),
+                        )
+                    }
+                }
+                (Some(contract), defaults, regions)
             }
             _ => {
                 return Err(
@@ -666,6 +709,9 @@ impl WorkflowRunInput {
             (variable_contract.as_ref(), variable_defaults.as_ref())
         {
             defaults.validate_contract(contract)?;
+        }
+        if let Some(regions) = composite_regions.as_ref() {
+            regions.validate_plan(&self.plan)?;
         }
         let canonical_plan =
             canonical_json_bounded(&self.plan, WORKFLOW_PLAN_MAX_BYTES, "Workflow plan")?;
