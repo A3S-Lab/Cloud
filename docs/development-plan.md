@@ -359,7 +359,7 @@ Status as of 2026-08-14:
 | W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology foundation and `W0.2` verifies immutable Ontology revisions, deterministic migration policy, and authorized Search. `W0.3` includes immutable definitions and Goals, native Forms, Goal/Plan-bound WorkflowRuns, HumanTasks, reachable-Output aggregation, finite Execution, Flow-derived authorized variable inspection, deterministic project-authorized 23-node discovery, and the immutable composite-region policy/binding foundation. Migration `103` persists three mandatory semantic children; migration `107` permits optional exact variable-default material; migration `108` permits optional `cloud.workflow.composite-regions.v1` material without adding a table and requires new composite publication to exactly cover Iteration/Loop descriptors and child WorkflowRevision bindings. Compiler schema 2 emits Plan v2 with exact descriptor, semantic, variable, and optional composite-region digest pins, prevents authority downgrade, and preserves Plan v1 byte shape. WorkflowRun input/runtime/Flow v2 freezes exact variable/default/composite material and reconstructs the supported variable subset from immutable input plus existing Flow history; migrations `105`, `107`, and `108` only expand that immutable input's bound. REST/OpenAPI `1.35.0`, client, CLI, MCP, focused domain/REST/replay/catalog/default/inspection/composite tests, and PostgreSQL migration/replay/rollback/immutability plus reconnect gates cover the foundation. Variable inspection and composite binding add no table, cache, event log, worker, scheduler, queue, or Flow mechanism; the catalog has no persistence or write path and cannot admit descriptors or claim public parity. Composite frames/exports and Flow-backed Iteration/Loop dispatch, Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded provider conformance, `W0.4`-`W0.5`, and public availability remain planned. |
 | APP0 | Planned; unavailable | Applications, immutable releases, six authoring/delivery projections including classic/New Agent, sessions, publishing, monitoring, and enterprise completion are specified in `ai-application-platform-plan.md`. Full public parity is a composite `APP0.6` claim and no application-platform availability exists yet. |
 | K0 | Planned; unavailable | Files, Knowledge Bases/documents/chunks, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval, external Knowledge, and Flow-backed Knowledge Pipelines are specified in `ai-application-platform-plan.md`; no Knowledge product availability exists yet. |
-| AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`; no Automations or Connectors product availability exists yet. |
+| AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`. The component-only `AUT0.5-C1` exact-revision execution port and bounded HTTP executor are implemented, but profile persistence, A3S ACL admission, Secret materialization, production egress/SSRF policy, evidence, and all Automations/Connectors product availability remain open. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
 | U0 | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads and Search verified | Verified `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The root compatibility lock pins the same immutable Use revision and all ten consumed host schemas. Verified `U0.2` adds the `PluginRegistry` domain, migration 084 persistence, migration 085 integration with the sole authorized global Search view, one typed trust-root adapter over the shared immutable-object client, one published `a3s-use-extension` adapter for public-network refresh and online/cached catalog search/inspection, application enrollment plus tenant queries, REST `1.15.0`, the maintained client, CLI, and six read-only Management MCP tools. Cloud adds no TUF, catalog, query, cursor, cache, Search store/worker, object-storage, authorization, or cleanup mechanism. Stable CI verifies both the production public-HTTPS provider against the metadata-only fixture at the exact pinned Use revision and a strict `12/12` PostgreSQL 17 transaction, replay, tenancy, Search, fail-closed, and migration gate. Assignments and complete Manager mutation composition remain open; no assignment capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
@@ -1943,17 +1943,24 @@ node.
   idempotency, and transaction evidence. The slice adds no second event rail,
   provider queue, template/subscription authority, scheduler, or configuration
   format.
-- Implemented as the component-only `C0.3-N2a` boundary: one deterministic,
-  provider-neutral delivery envelope derives from the immutable N1
-  notification, channel, and opaque target revision without carrying an
-  endpoint, credential, provider response, or read state. Signed-webhook and
-  Slack-compatible adapters share one redirect-free, timeout-bounded,
-  production-HTTPS-only client and perform one attempt. The signed adapter uses
-  a canonical HMAC-SHA-256 envelope and zeroized key material; both classify
-  retryable status and bounded `Retry-After` without owning a retry loop.
-  Focused Rust 1.88 tests prove stable identity, canonical payload, signature,
-  endpoint/credential redaction, redirect rejection, and retry
-  classification. No provider is production-wired by this component gate.
+- Implemented as the component-only `C0.3-N2a` and `AUT0.5-C1` boundary: one
+  deterministic, provider-neutral delivery envelope derives from the immutable
+  N1 notification, channel, and typed exact Connector revision without carrying
+  an endpoint, credential, provider response, or read state. Signed-webhook and
+  Slack-compatible adapters submit only a bounded canonical body, non-secret
+  headers, and optional signing context through one shared
+  `IConnectorExecutionPort`; they own no HTTP client, Secret material, status
+  policy, or retry loop. The bounded Connector executor owns the fixed resolved
+  endpoint/method/content type, production HTTPS, redirect rejection,
+  request/response/time limits, immediate per-attempt egress authorization,
+  zeroized HMAC-SHA-256 material, closed status classification, and bounded
+  `Retry-After` for exactly one attempt. Focused Rust 1.88 tests prove exact
+  revision/receipt fencing, canonical signing context, endpoint/credential/body
+  redaction, egress denial before network access, redirect rejection, response
+  bounds, and no adapter-local retry. Connector profile/revision persistence,
+  A3S ACL admission, Secret materialization, production egress/SSRF policy,
+  execution evidence, revocation/recovery, and provider wiring remain open in
+  `AUT0.5`; this component creates no product availability claim.
 - Complete outbound delivery by emitting a Notification-owned transactional
   Outbox fact and consuming it through the existing A3S Event durable
   subscription/manual-ack path. Add logical delivery receipts, rate policy,

@@ -1,4 +1,5 @@
 use super::{OutboundNotificationChannel, OutboundNotificationDelivery};
+use crate::modules::shared_kernel::domain::ConnectorRevisionId;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::time::Duration;
@@ -28,7 +29,8 @@ impl OutboundNotificationDeliveryError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutboundNotificationDeliveryReceipt {
     pub delivery_id: Uuid,
-    pub target_revision_id: Uuid,
+    pub attempt_id: Uuid,
+    pub target_revision_id: ConnectorRevisionId,
     pub accepted_at: DateTime<Utc>,
 }
 
@@ -36,12 +38,13 @@ pub struct OutboundNotificationDeliveryReceipt {
 pub trait IOutboundNotificationAdapter: Send + Sync {
     fn channel(&self) -> OutboundNotificationChannel;
 
-    fn target_revision_id(&self) -> Uuid;
+    fn target_revision_id(&self) -> ConnectorRevisionId;
 
     /// Performs exactly one provider attempt. Retry, backoff, rate policy, and durable
     /// acknowledgement belong to the shared A3S Event consumer boundary.
     async fn deliver(
         &self,
         delivery: &OutboundNotificationDelivery,
+        attempt_id: Uuid,
     ) -> Result<OutboundNotificationDeliveryReceipt, OutboundNotificationDeliveryError>;
 }

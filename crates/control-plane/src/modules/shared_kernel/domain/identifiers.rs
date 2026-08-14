@@ -49,6 +49,8 @@ identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(ProjectAttributionProfileId);
 identifier!(NotificationId);
+identifier!(ConnectorProfileId);
+identifier!(ConnectorRevisionId);
 identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
 identifier!(OperationId);

@@ -696,23 +696,34 @@ inbox read state. Connection and subscription revisions remain external
 references; Notifications does not become another connection, Secret, or
 recipient-directory authority.
 
-The signed-webhook and Slack-compatible adapters share one redirect-free,
-timeout-bounded HTTP transport that requires HTTPS outside tests. The webhook
-signature is HMAC-SHA-256 over `v1`, the attempt timestamp, deterministic
-delivery ID, and exact canonical body. Signing material is zeroized and no
-endpoint, credential, response body, or transport error is exposed through
-debug or public errors. Both adapters perform exactly one attempt and classify
-retryable provider responses, including bounded delta-seconds `Retry-After`;
-they implement no retry loop, queue, scheduler, or rate-policy store.
+The signed-webhook and Slack-compatible adapters depend on one shared
+`IConnectorExecutionPort`. Notifications supplies a typed exact
+`ConnectorRevisionId`, bounded canonical body, non-secret headers, and optional
+signing context only. It never constructs an HTTP client or retains an endpoint,
+credential, transport policy, or provider-status policy. The signed-webhook
+context covers `v1`, the attempt timestamp, deterministic delivery ID, and exact
+canonical body.
 
-This component is not production delivery availability. The production
-dispatcher must publish a Notification-owned fact through the existing
-transactional Outbox and consume it with the existing A3S Event durable
-subscription/manual-ack path. Provider outage must never run inside the source
-Outbox projector or block unrelated integration-event publication. Logical
-deduplication and receipts key off the deterministic delivery ID. Subscription
-policy must reference the future shared Connectors profile and Secrets
-materialization boundary. External SMTP remains unavailable until Identity
+The component-only Connector executor materializes one fixed resolved revision
+and performs exactly one external attempt. Connectors owns the endpoint and
+method, production HTTPS requirement, redirect rejection, request/response/time
+limits, zeroized HMAC-SHA-256 material, per-attempt egress authorization,
+bounded response capture, closed status classification, and bounded
+delta-seconds `Retry-After`. Requests, revisions, and receipts redact body,
+header-value, endpoint, credential, signing-input, and response-body material
+from debug output. Flow or the owning A3S Event durable consumer remains the
+only retry, backoff, cancellation, and acknowledgement authority.
+
+This component is not production Connector or delivery availability. `AUT0.5`
+must still add immutable Connector profile/revision persistence, A3S ACL
+admission, authorization, Secret references and just-in-time materialization, a
+production egress/SSRF authorizer, execution evidence, revocation, and recovery
+over this same port. The production notification dispatcher must publish a
+Notification-owned fact through the existing transactional Outbox and consume
+it with the existing A3S Event durable subscription/manual-ack path. Provider
+outage must never run inside the source Outbox projector or block unrelated
+integration-event publication. Logical deduplication and receipts key off the
+deterministic delivery ID. External SMTP remains unavailable until Identity
 owns an exact verified recipient contact reference; an adapter may never infer
 an address from an OIDC claim, display name, or provider payload.
 

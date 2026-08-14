@@ -1,6 +1,6 @@
 use super::{Notification, NotificationScope, NotificationSeverity};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, NotificationId, OrganizationId, PrincipalId,
+    canonical_json_bounded, ConnectorRevisionId, NotificationId, OrganizationId, PrincipalId,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -35,7 +35,7 @@ impl OutboundNotificationChannel {
 pub struct OutboundNotificationDelivery {
     id: Uuid,
     channel: OutboundNotificationChannel,
-    target_revision_id: Uuid,
+    target_revision_id: ConnectorRevisionId,
     organization_id: OrganizationId,
     notification_id: NotificationId,
     recipient_principal_id: PrincipalId,
@@ -53,10 +53,10 @@ impl OutboundNotificationDelivery {
     pub fn from_notification(
         notification: &Notification,
         channel: OutboundNotificationChannel,
-        target_revision_id: Uuid,
+        target_revision_id: ConnectorRevisionId,
     ) -> Result<Self, String> {
         notification.validate()?;
-        if target_revision_id.is_nil() {
+        if target_revision_id.as_uuid().is_nil() {
             return Err("outbound notification target revision must not be nil".into());
         }
         let id = delivery_id(notification.id, channel, target_revision_id);
@@ -88,7 +88,7 @@ impl OutboundNotificationDelivery {
         self.channel
     }
 
-    pub const fn target_revision_id(&self) -> Uuid {
+    pub const fn target_revision_id(&self) -> ConnectorRevisionId {
         self.target_revision_id
     }
 
@@ -106,7 +106,7 @@ impl OutboundNotificationDelivery {
 
     pub fn validate(&self) -> Result<(), String> {
         if self.id.is_nil()
-            || self.target_revision_id.is_nil()
+            || self.target_revision_id.as_uuid().is_nil()
             || self.organization_id.as_uuid().is_nil()
             || self.notification_id.as_uuid().is_nil()
             || self.recipient_principal_id.as_uuid().is_nil()
@@ -157,7 +157,7 @@ struct OutboundNotificationPayload<'a> {
     schema: &'static str,
     delivery_id: Uuid,
     channel: OutboundNotificationChannel,
-    target_revision_id: Uuid,
+    target_revision_id: ConnectorRevisionId,
     organization_id: OrganizationId,
     notification_id: NotificationId,
     recipient_principal_id: PrincipalId,
@@ -174,7 +174,7 @@ struct OutboundNotificationPayload<'a> {
 fn delivery_id(
     notification_id: NotificationId,
     channel: OutboundNotificationChannel,
-    target_revision_id: Uuid,
+    target_revision_id: ConnectorRevisionId,
 ) -> Uuid {
     Uuid::new_v5(
         &notification_id.as_uuid(),
@@ -211,7 +211,7 @@ mod tests {
     #[test]
     fn delivery_identity_is_stable_per_notification_channel_and_target_revision() {
         let notification = notification();
-        let target_revision_id = Uuid::now_v7();
+        let target_revision_id = ConnectorRevisionId::new();
         let first = OutboundNotificationDelivery::from_notification(
             &notification,
             OutboundNotificationChannel::SignedWebhook,
@@ -252,16 +252,16 @@ mod tests {
         assert!(OutboundNotificationDelivery::from_notification(
             &notification,
             OutboundNotificationChannel::SignedWebhook,
-            Uuid::nil(),
+            ConnectorRevisionId::from_uuid(Uuid::nil()),
         )
         .is_err());
         let mut delivery = OutboundNotificationDelivery::from_notification(
             &notification,
             OutboundNotificationChannel::SignedWebhook,
-            Uuid::now_v7(),
+            ConnectorRevisionId::new(),
         )
         .expect("delivery");
-        delivery.target_revision_id = Uuid::now_v7();
+        delivery.target_revision_id = ConnectorRevisionId::new();
         assert!(delivery.validate().is_err());
     }
 }
