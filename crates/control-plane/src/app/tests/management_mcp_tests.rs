@@ -601,6 +601,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         workflow_semantic_contracts["properties"]["descriptorBindingsAcl"]["maxLength"],
         crate::modules::workflow::domain::WORKFLOW_STEP_DESCRIPTOR_BINDINGS_MAX_ACL_BYTES
     );
+    assert_eq!(
+        workflow_semantic_contracts["properties"]["variableDefaultsAcl"]["maxLength"],
+        crate::modules::workflow::domain::WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES
+    );
     let workflow_node_catalog =
         listed_tool(&administrator_tools, "a3s_cloud_workflow_node_catalog_get")?;
     assert_eq!(workflow_node_catalog["annotations"]["readOnlyHint"], true);

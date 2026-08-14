@@ -32,7 +32,8 @@ Migration `103` now persists the contract with its Workflow revision, and
 descriptor semantics. Plan v1 remains unchanged. WorkflowRun input/runtime/Flow
 v2 materializes the initial supported subset by replaying immutable run input
 and existing Flow history. Authorized inspection now exposes that same
-materialization through one bounded read projection; digest-only defaults,
-composite-region state/exports, and Applications-owned reads/writes remain
+materialization through one bounded read projection. Decision 0011 adds
+digest-bound defaults as immutable revision and Run input material;
+composite-region state/exports and Applications-owned reads/writes remain
 fail-closed. Cloud does not add another variable store, event log, scheduler,
 or queue.

@@ -3,10 +3,10 @@ use super::{
     WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
     WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy, WorkflowPolicyMode,
     WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
-    WorkflowVariableMutationMode, WorkflowVariableReadMode, WorkflowVariableScope,
-    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
-    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
+    WorkflowVariableDefaults, WorkflowVariableMutationMode, WorkflowVariableReadMode,
+    WorkflowVariableScope, WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, EnvironmentId, ExecutionId,
@@ -30,6 +30,7 @@ pub const WORKFLOW_RUN_FLOW_VERSION_V2: &str = "2";
 pub const WORKFLOW_RUN_INPUT_MAX_BYTES_V2: usize = WORKFLOW_PLAN_MAX_BYTES
     + (2 * WORKFLOW_REVISION_MAX_PAYLOAD_BYTES)
     + (2 * WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES)
+    + (2 * WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES)
     + (4 * 1024 * 1024);
 pub const WORKFLOW_RUN_OUTPUT_MAX_BYTES: usize = 256 * 1024;
 pub const WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
@@ -87,6 +88,26 @@ impl ResolvedWorkflowVariableContract {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ResolvedWorkflowVariableDefaults {
+    pub canonical_acl: String,
+    pub digest: Sha256Digest,
+}
+
+impl ResolvedWorkflowVariableDefaults {
+    pub(crate) fn from_defaults(defaults: &WorkflowVariableDefaults) -> Self {
+        Self {
+            canonical_acl: defaults.canonical_acl().to_owned(),
+            digest: defaults.digest().clone(),
+        }
+    }
+
+    pub(crate) fn restore(&self) -> Result<WorkflowVariableDefaults, String> {
+        WorkflowVariableDefaults::restore(&self.canonical_acl, self.digest.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct WorkflowRunInput {
     pub schema: String,
     pub runtime_contract_revision: String,
@@ -103,6 +124,8 @@ pub struct WorkflowRunInput {
     pub payloads: Vec<ResolvedWorkflowPayload>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub variable_contract: Option<ResolvedWorkflowVariableContract>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variable_defaults: Option<ResolvedWorkflowVariableDefaults>,
     pub requested_at: DateTime<Utc>,
     pub deadline_at: DateTime<Utc>,
 }
@@ -583,12 +606,13 @@ impl WorkflowRunInput {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        let variable_contract = match (
+        let (variable_contract, variable_defaults) = match (
             self.schema.as_str(),
             self.runtime_contract_revision.as_str(),
             self.flow_workflow_version.as_str(),
             self.plan.schema.as_str(),
             self.variable_contract.as_ref(),
+            self.variable_defaults.as_ref(),
         ) {
             (
                 WORKFLOW_RUN_INPUT_SCHEMA,
@@ -596,13 +620,15 @@ impl WorkflowRunInput {
                 WORKFLOW_RUN_FLOW_VERSION,
                 WORKFLOW_PLAN_SCHEMA,
                 None,
-            ) => None,
+                None,
+            ) => (None, None),
             (
                 WORKFLOW_RUN_INPUT_SCHEMA_V2,
                 WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
                 WORKFLOW_RUN_FLOW_VERSION_V2,
                 WORKFLOW_PLAN_SCHEMA_V2,
                 Some(resolved),
+                defaults,
             ) => {
                 let contract = resolved.restore()?;
                 if self.plan.variable_contract_digest.as_ref() != Some(contract.digest()) {
@@ -610,8 +636,11 @@ impl WorkflowRunInput {
                         "WorkflowRun variable contract drifted from the PlanRevision".into(),
                     );
                 }
-                validate_runtime_variable_contract(&contract, &self.plan)?;
-                Some(contract)
+                let defaults = defaults
+                    .map(ResolvedWorkflowVariableDefaults::restore)
+                    .transpose()?;
+                validate_runtime_variable_contract(&contract, defaults.as_ref(), &self.plan)?;
+                (Some(contract), defaults)
             }
             _ => {
                 return Err(
@@ -632,6 +661,11 @@ impl WorkflowRunInput {
         self.plan.validate()?;
         if let Some(contract) = variable_contract.as_ref() {
             contract.validate_graph_bindings(&self.plan.workflow_spec()?)?;
+        }
+        if let (Some(contract), Some(defaults)) =
+            (variable_contract.as_ref(), variable_defaults.as_ref())
+        {
+            defaults.validate_contract(contract)?;
         }
         let canonical_plan =
             canonical_json_bounded(&self.plan, WORKFLOW_PLAN_MAX_BYTES, "Workflow plan")?;
@@ -709,6 +743,7 @@ impl WorkflowRunInput {
 
 pub(crate) fn validate_runtime_variable_contract(
     contract: &WorkflowVariableContract,
+    defaults: Option<&WorkflowVariableDefaults>,
     plan: &WorkflowPlan,
 ) -> Result<(), String> {
     for declaration in &contract.spec().declarations {
@@ -722,17 +757,31 @@ pub(crate) fn validate_runtime_variable_contract(
                 declaration.name
             ));
         }
-        if declaration.default_value_digest.is_some() {
-            return Err(format!(
-                "WorkflowRun runtime v2 cannot materialize digest-only default for variable {:?}",
-                declaration.name
-            ));
-        }
         if declaration.mutation_mode == WorkflowVariableMutationMode::OptimisticApplicationPort {
             return Err(format!(
                 "WorkflowRun runtime v2 does not own application mutation for variable {:?}",
                 declaration.name
             ));
+        }
+    }
+    let requires_defaults = contract
+        .spec()
+        .declarations
+        .iter()
+        .any(|declaration| declaration.default_value_digest.is_some());
+    match (requires_defaults, defaults) {
+        (false, None) => {}
+        (true, Some(defaults)) => defaults.validate_contract(contract)?,
+        (true, None) => {
+            return Err(
+                "WorkflowRun runtime v2 cannot materialize digest-only defaults without immutable material"
+                    .into(),
+            )
+        }
+        (false, Some(_)) => {
+            return Err(
+                "WorkflowRun runtime v2 received unreferenced variable default material".into(),
+            )
         }
     }
     if contract

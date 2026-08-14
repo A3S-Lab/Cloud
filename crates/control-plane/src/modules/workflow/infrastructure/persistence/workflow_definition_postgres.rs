@@ -597,11 +597,7 @@ async fn insert_revision(
         )?;
     }
     if let Some(contracts) = &revision.semantic_contracts {
-        for kind in [
-            WorkflowRevisionSemanticContractKind::DescriptorBindings,
-            WorkflowRevisionSemanticContractKind::DescriptorRegistry,
-            WorkflowRevisionSemanticContractKind::VariableContract,
-        ] {
+        for contract in contracts.persisted_contracts() {
             require_one_row(
                 "Workflow revision semantic contract",
                 execute(
@@ -615,13 +611,13 @@ async fn insert_revision(
                         .append(", ")
                         .bind(revision.id.as_uuid())
                         .append(", ")
-                        .bind(kind.as_str())
+                        .bind(contract.kind.as_str())
                         .append(", ")
-                        .bind(contracts.schema(kind))
+                        .bind(contract.schema)
                         .append(", ")
-                        .bind(contracts.canonical_acl(kind))
+                        .bind(contract.canonical_acl)
                         .append(", ")
-                        .bind(contracts.contract_digest(kind).as_str())
+                        .bind(contract.digest.as_str())
                         .append(")"),
                 )
                 .await?,
@@ -812,7 +808,7 @@ async fn decode_semantic_contracts(
     if rows.is_empty() {
         return Ok(None);
     }
-    if rows.len() != 3 {
+    if !matches!(rows.len(), 3 | 4) {
         return Err(PostgresPersistenceError::Invariant(
             "stored Workflow revision semantic contract set is incomplete".into(),
         ));
@@ -841,13 +837,16 @@ async fn decode_semantic_contracts(
     let bindings = require(WorkflowRevisionSemanticContractKind::DescriptorBindings)?;
     let registry = require(WorkflowRevisionSemanticContractKind::DescriptorRegistry)?;
     let variables = require(WorkflowRevisionSemanticContractKind::VariableContract)?;
+    let defaults = by_kind
+        .get(&WorkflowRevisionSemanticContractKind::VariableDefaults)
+        .copied();
     let workflow =
         WorkflowContract::restore(&row.canonical_acl, &row.content_digest).map_err(|error| {
             PostgresPersistenceError::Invariant(format!(
                 "stored Workflow contract is invalid: {error}"
             ))
         })?;
-    WorkflowRevisionSemanticContracts::restore(
+    WorkflowRevisionSemanticContracts::restore_with_defaults(
         workflow.spec(),
         &bindings.canonical_acl,
         &bindings.digest,
@@ -855,6 +854,7 @@ async fn decode_semantic_contracts(
         &registry.digest,
         &variables.canonical_acl,
         &variables.digest,
+        defaults.map(|value| (value.canonical_acl.as_str(), value.digest.as_str())),
     )
     .map(Some)
     .map_err(|error| {

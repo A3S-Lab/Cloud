@@ -156,6 +156,26 @@ pub(crate) fn materialize_workflow_variables(
     contract: &WorkflowVariableContract,
     outputs: &BTreeMap<String, Value>,
 ) -> Result<BTreeMap<String, Value>, String> {
+    let defaults = input
+        .variable_defaults
+        .as_ref()
+        .map(|resolved| resolved.restore())
+        .transpose()?;
+    let requires_defaults = contract
+        .spec()
+        .declarations
+        .iter()
+        .any(|declaration| declaration.default_value_digest.is_some());
+    match (requires_defaults, defaults.as_ref()) {
+        (false, None) => {}
+        (true, Some(defaults)) => defaults.validate_contract(contract)?,
+        (true, None) => {
+            return Err("Workflow variable default material is unavailable".into());
+        }
+        (false, Some(_)) => {
+            return Err("Workflow variable default material is unreferenced".into());
+        }
+    }
     let mut values = BTreeMap::new();
     for declaration in &contract.spec().declarations {
         let source = match declaration.scope {
@@ -173,7 +193,10 @@ pub(crate) fn materialize_workflow_variables(
                 ));
             }
         };
-        if let Some(value) = materialize_declaration(declaration, source)? {
+        let default = defaults
+            .as_ref()
+            .and_then(|defaults| defaults.value(&declaration.name));
+        if let Some(value) = materialize_declaration(declaration, source, default)? {
             values.insert(declaration.name.clone(), value);
         }
     }
@@ -202,24 +225,33 @@ pub(crate) fn materialize_workflow_variables(
 fn materialize_declaration(
     declaration: &WorkflowVariableDeclaration,
     source: Option<&Value>,
+    default: Option<&Value>,
 ) -> Result<Option<Value>, String> {
-    let Some(source) = source else {
-        if declaration.required && declaration.scope == WorkflowVariableScope::InvocationInput {
-            return Err(format!(
-                "required Workflow variable {:?} source is unavailable",
-                declaration.name
-            ));
+    let value = match source {
+        Some(source) => {
+            match lookup_workflow_variable_path(source, &declaration.source_path).or(default) {
+                Some(value) => value,
+                None if declaration.required => {
+                    return Err(format!(
+                        "required Workflow variable {:?} source path is unavailable",
+                        declaration.name
+                    ));
+                }
+                None => return Ok(None),
+            }
         }
-        return Ok(None);
-    };
-    let Some(value) = lookup_workflow_variable_path(source, &declaration.source_path) else {
-        if declaration.required {
-            return Err(format!(
-                "required Workflow variable {:?} source path is unavailable",
-                declaration.name
-            ));
-        }
-        return Ok(None);
+        None => match default {
+            Some(value) => value,
+            None if declaration.required
+                && declaration.scope == WorkflowVariableScope::InvocationInput =>
+            {
+                return Err(format!(
+                    "required Workflow variable {:?} source is unavailable",
+                    declaration.name
+                ));
+            }
+            None => return Ok(None),
+        },
     };
     if !declaration.value_type.matches_json_value(value) {
         return Err(format!(
@@ -275,6 +307,46 @@ pub(crate) fn lookup_workflow_variable_path<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn declaration(required: bool) -> WorkflowVariableDeclaration {
+        let digest =
+            Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("schema digest");
+        WorkflowVariableDeclaration {
+            name: "result".into(),
+            scope: WorkflowVariableScope::NodeOutput,
+            value_type: WorkflowDataType::String,
+            value_schema_digest: digest.clone(),
+            source_schema_digest: Some(digest),
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Immutable,
+            required,
+            source_step_id: Some("source".into()),
+            source_path: vec!["value".into()],
+            region_id: None,
+            default_value_digest: None,
+        }
+    }
+
+    #[test]
+    fn missing_required_source_path_remains_an_error() {
+        let error = materialize_declaration(&declaration(true), Some(&serde_json::json!({})), None)
+            .expect_err("missing required source path");
+
+        assert!(error.contains("source path is unavailable"));
+    }
+
+    #[test]
+    fn optional_declaration_uses_default_when_its_source_path_is_absent() {
+        assert_eq!(
+            materialize_declaration(
+                &declaration(false),
+                Some(&serde_json::json!({})),
+                Some(&serde_json::json!("fallback")),
+            )
+            .expect("default materialization"),
+            Some(serde_json::json!("fallback"))
+        );
+    }
 
     #[test]
     fn secret_reference_values_are_digest_visible_but_value_redacted() {

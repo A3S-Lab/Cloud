@@ -15,7 +15,8 @@ AI application platform parity manifest.
 | [0008](0008-revision-bound-plan-v2.md) | Persist revision-owned semantic contracts and pin exact execution semantics in Plan v2 |
 | [0009](0009-workflow-node-catalog-projection.md) | Compose read-only built-in node discovery without creating another descriptor or execution authority |
 | [0010](0010-flow-derived-variable-inspection.md) | Inspect runtime variables by replaying immutable input and the sole A3S Flow history |
+| [0011](0011-digest-bound-variable-defaults.md) | Materialize digest-bound defaults from immutable WorkflowRevision and Run input without a variable store |
 
-All ten decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All eleven decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

@@ -7,7 +7,7 @@ use crate::modules::workflow::domain::{
     IWorkflowDefinitionRepository, ReviseWorkflowDefinitionWrite, WorkflowContract,
     WorkflowDefinitionRecord, WorkflowPayload, WorkflowRevision, WorkflowRevisionPublished,
     WorkflowRevisionSemanticContracts, WorkflowStepDescriptorBindings,
-    WorkflowStepDescriptorRegistry, WorkflowVariableContract,
+    WorkflowStepDescriptorRegistry, WorkflowVariableContract, WorkflowVariableDefaults,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Utc;
@@ -182,10 +182,15 @@ fn parse_semantic_contracts(
     contract: &WorkflowContract,
     value: crate::modules::workflow::application::WorkflowSemanticContractAcls,
 ) -> Result<WorkflowRevisionSemanticContracts, String> {
-    WorkflowRevisionSemanticContracts::create(
+    WorkflowRevisionSemanticContracts::create_with_defaults(
         contract.spec(),
         WorkflowStepDescriptorBindings::parse_acl(&value.descriptor_bindings_acl)?,
         WorkflowStepDescriptorRegistry::parse_acl(&value.descriptor_registry_acl)?,
         WorkflowVariableContract::parse_acl(&value.variable_contract_acl)?,
+        value
+            .variable_defaults_acl
+            .as_deref()
+            .map(WorkflowVariableDefaults::parse_acl)
+            .transpose()?,
     )
 }

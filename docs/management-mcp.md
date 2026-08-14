@@ -348,7 +348,10 @@ guard, and application handlers as REST and CLI.
 `a3s_cloud_workflow_definitions_create` and
 `a3s_cloud_workflow_definitions_revise` accept the canonical closed Workflow
 ACL plus the exact typed configuration, data-schema, and policy ACL payloads
-referenced by its digests. Revision additionally requires a positive
+referenced by its digests. Their optional revision-semantic envelope contains
+three mandatory ACL children for descriptor bindings, the recoverable registry
+snapshot, and typed variables, plus optional `variableDefaultsAcl` material that
+must exactly cover all digest-backed defaults. Revision additionally requires a positive
 `expectedVersion`. Both mutations use `workflow:write`, caller-owned
 idempotency, immutable revision history, audit, and Outbox through the same
 A3S ORM repository as REST.
@@ -360,7 +363,8 @@ closed Goal ACL, and idempotency key. It binds exact Workflow and Ontology
 revision identities/digests and optional Environment identity, then compiles
 one immutable Plan revision. Legacy inputs retain
 `cloud.workflow.plan.v1`; complete revision-owned semantic contracts compile
-`cloud.workflow.plan.v2` with exact descriptor and variable digests. Goal
+`cloud.workflow.plan.v2` with exact descriptor, variable, and semantic-set
+digests. Goal
 list/get and Plan get return the same DTOs as REST. Identical semantic inputs
 produce identical canonical Plan bytes and digest; Goal and Plan identities
 remain distinct records.

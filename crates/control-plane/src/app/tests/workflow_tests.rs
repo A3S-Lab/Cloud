@@ -10,6 +10,7 @@ use crate::modules::workflow::domain::{
     WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepOwner, WorkflowStepPort,
     WorkflowStepPortCardinality, WorkflowStepPresentationSpec, WorkflowStepRetryClassification,
     WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
+    WorkflowVariableDefault, WorkflowVariableDefaults, WorkflowVariableDefaultsSpec,
     WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableReadMode,
     WorkflowVariableScope, WorkflowVariableStorageClass,
 };
@@ -1214,7 +1215,7 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
     let created = response_json(&created)?;
     let revision = &created["data"]["revision"];
     assert_eq!(revision["compilerSchemaVersion"], 2);
-    assert_eq!(revision["semanticContractCount"], 3);
+    assert_eq!(revision["semanticContractCount"], 4);
     let semantic_contract_set_digest = fixture
         .semantic_contract_set_digest
         .as_deref()
@@ -1233,7 +1234,8 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
         Some(vec![
             "descriptor_bindings",
             "descriptor_registry",
-            "variable_contract"
+            "variable_contract",
+            "variable_defaults"
         ])
     );
     let definition_id = required_string(
@@ -1251,7 +1253,7 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
         ))
         .await?;
     assert_eq!(fetched.status(), 200);
-    assert_eq!(response_json(&fetched)?["data"]["semanticContractCount"], 3);
+    assert_eq!(response_json(&fetched)?["data"]["semanticContractCount"], 4);
 
     let ontology_id = OntologyId::from_uuid(required_uuid(
         &ontology["data"]["ontology"]["id"],
@@ -1343,13 +1345,23 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
         plan["plan"]["variableContractDigest"]
     );
     assert_eq!(variables["data"]["lastFlowSequence"], 0);
-    assert_eq!(variables["data"]["variables"][0]["name"], "request");
-    assert_eq!(variables["data"]["variables"][0]["state"], "materialized");
-    assert_eq!(
-        variables["data"]["variables"][0]["value"],
-        json!({"ticketId": "T-42"})
-    );
-    assert!(variables["data"]["variables"][0]["valueDigest"].is_string());
+    let projected = variables["data"]["variables"]
+        .as_array()
+        .ok_or_else(|| BootError::Internal("Workflow variables are not an array".into()))?;
+    let request = projected
+        .iter()
+        .find(|variable| variable["name"] == "request")
+        .ok_or_else(|| BootError::Internal("request variable is missing".into()))?;
+    assert_eq!(request["state"], "materialized");
+    assert_eq!(request["value"], json!({"ticketId": "T-42"}));
+    assert!(request["valueDigest"].is_string());
+    let fallback = projected
+        .iter()
+        .find(|variable| variable["name"] == "fallback")
+        .ok_or_else(|| BootError::Internal("fallback variable is missing".into()))?;
+    assert_eq!(fallback["state"], "materialized");
+    assert_eq!(fallback["value"], "normal");
+    assert!(fallback["valueDigest"].is_string());
     let mcp_variables = app
         .call(mcp_tool_call_as(
             901,
@@ -2207,6 +2219,9 @@ fn workflow_fixture_with_semantics(
     });
     let semantic_contract_set_digest = if include_semantics {
         let semantic_contracts = semantic_contracts(contract.spec(), &schema_digest)?;
+        let variable_defaults = semantic_contracts
+            .variable_defaults()
+            .ok_or_else(|| "semantic fixture has no variable defaults".to_owned())?;
         transport
             .as_object_mut()
             .ok_or_else(|| "Workflow transport is not an object".to_owned())?
@@ -2220,6 +2235,7 @@ fn workflow_fixture_with_semantics(
                         .descriptor_registry()
                         .canonical_acl(),
                     "variableContractAcl": semantic_contracts.variable_contract().canonical_acl(),
+                    "variableDefaultsAcl": variable_defaults.canonical_acl(),
                 }),
             );
         Some(semantic_contracts.digest().to_string())
@@ -2269,24 +2285,41 @@ fn semantic_contracts(
             })
             .collect::<std::result::Result<Vec<_>, String>>()?,
     })?;
+    let default = WorkflowVariableDefault::new("fallback", json!("normal"))?;
     let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
         id: "support.workflow".into(),
         revision: "1.0.0".into(),
         compiler_schema_version: 2,
-        declarations: vec![WorkflowVariableDeclaration {
-            name: "request".into(),
-            scope: WorkflowVariableScope::InvocationInput,
-            value_type: WorkflowDataType::Any,
-            value_schema_digest: schema_digest.clone(),
-            source_schema_digest: Some(schema_digest.clone()),
-            storage_class: WorkflowVariableStorageClass::Inline,
-            mutation_mode: WorkflowVariableMutationMode::Immutable,
-            required: true,
-            source_step_id: None,
-            source_path: Vec::new(),
-            region_id: None,
-            default_value_digest: None,
-        }],
+        declarations: vec![
+            WorkflowVariableDeclaration {
+                name: "request".into(),
+                scope: WorkflowVariableScope::InvocationInput,
+                value_type: WorkflowDataType::Any,
+                value_schema_digest: schema_digest.clone(),
+                source_schema_digest: Some(schema_digest.clone()),
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Immutable,
+                required: true,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: None,
+            },
+            WorkflowVariableDeclaration {
+                name: "fallback".into(),
+                scope: WorkflowVariableScope::Run,
+                value_type: WorkflowDataType::String,
+                value_schema_digest: schema_digest.clone(),
+                source_schema_digest: None,
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Deterministic,
+                required: false,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: Some(default.digest.clone()),
+            },
+        ],
         reads: vec![WorkflowVariableRead {
             id: "output-request".into(),
             variable: "request".into(),
@@ -2302,7 +2335,18 @@ fn semantic_contracts(
         assignments: Vec::new(),
         exports: Vec::new(),
     })?;
-    WorkflowRevisionSemanticContracts::create(workflow, bindings, registry, variables)
+    let defaults = WorkflowVariableDefaults::from_spec(WorkflowVariableDefaultsSpec {
+        id: variables.id().into(),
+        revision: variables.revision().into(),
+        values: vec![default],
+    })?;
+    WorkflowRevisionSemanticContracts::create_with_defaults(
+        workflow,
+        bindings,
+        registry,
+        variables,
+        Some(defaults),
+    )
 }
 
 fn workflow_local_descriptor(

@@ -179,6 +179,93 @@ fn bindings(registry: &WorkflowStepDescriptorRegistry) -> WorkflowStepDescriptor
 }
 
 #[test]
+fn semantic_contracts_bind_digest_only_defaults_to_exact_immutable_material() {
+    let default = WorkflowVariableDefault::new(
+        "fallback",
+        json!({"priority": "normal", "source": "revision-default"}),
+    )
+    .expect("default");
+    let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+        id: "support.bound".into(),
+        revision: "1.0.0".into(),
+        compiler_schema_version: 2,
+        declarations: vec![WorkflowVariableDeclaration {
+            name: "fallback".into(),
+            scope: WorkflowVariableScope::Run,
+            value_type: WorkflowDataType::Object,
+            value_schema_digest: digest('a'),
+            source_schema_digest: None,
+            storage_class: WorkflowVariableStorageClass::Inline,
+            mutation_mode: WorkflowVariableMutationMode::Deterministic,
+            required: false,
+            source_step_id: None,
+            source_path: Vec::new(),
+            region_id: None,
+            default_value_digest: Some(default.digest.clone()),
+        }],
+        reads: vec![WorkflowVariableRead {
+            id: "output-fallback".into(),
+            variable: "fallback".into(),
+            consumer_step_id: "output".into(),
+            consumer_region_id: None,
+            target_port: "result".into(),
+            path: Vec::new(),
+            expected_type: WorkflowDataType::Object,
+            expected_schema_digest: digest('a'),
+            required: true,
+            mode: WorkflowVariableReadMode::DirectValue,
+        }],
+        assignments: Vec::new(),
+        exports: Vec::new(),
+    })
+    .expect("variables");
+    let defaults = WorkflowVariableDefaults::from_spec(WorkflowVariableDefaultsSpec {
+        id: variables.id().into(),
+        revision: variables.revision().into(),
+        values: vec![default],
+    })
+    .expect("defaults");
+    let registry = registry();
+
+    let missing = WorkflowRevisionSemanticContracts::create(
+        &workflow(),
+        bindings(&registry),
+        registry.clone(),
+        variables.clone(),
+    )
+    .expect_err("digest-only declarations require material");
+    assert!(missing.contains("without immutable material"));
+
+    let legacy_bindings = bindings(&registry);
+    let restored_legacy = WorkflowRevisionSemanticContracts::restore(
+        &workflow(),
+        legacy_bindings.canonical_acl(),
+        legacy_bindings.digest().as_str(),
+        registry.canonical_acl(),
+        registry.digest().as_str(),
+        variables.canonical_acl(),
+        variables.digest().as_str(),
+    )
+    .expect("pre-107 digest-only revision remains readable");
+    assert!(restored_legacy.variable_defaults().is_none());
+
+    let contracts = WorkflowRevisionSemanticContracts::create_with_defaults(
+        &workflow(),
+        bindings(&registry),
+        registry,
+        variables,
+        Some(defaults.clone()),
+    )
+    .expect("semantic contracts with defaults");
+    assert_eq!(contracts.variable_defaults(), Some(&defaults));
+    assert_eq!(contracts.persisted_contracts().len(), 4);
+    assert_eq!(
+        contracts.persisted_contracts()[3].kind,
+        WorkflowRevisionSemanticContractKind::VariableDefaults
+    );
+}
+
+#[test]
 fn semantic_contracts_bind_every_step_and_exclude_presentation_from_the_digest() {
     let first_registry = registry();
     let first = WorkflowRevisionSemanticContracts::create(

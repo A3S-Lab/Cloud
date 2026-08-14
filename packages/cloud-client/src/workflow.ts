@@ -11,6 +11,7 @@ export interface WorkflowSemanticContractAclsInput {
   descriptorBindingsAcl: string;
   descriptorRegistryAcl: string;
   variableContractAcl: string;
+  variableDefaultsAcl?: string;
 }
 
 export interface PublishWorkflowDefinitionInput {
@@ -69,14 +70,16 @@ export interface WorkflowRevision extends WorkflowRevisionSummary {
 export type WorkflowSemanticContractKind =
   | 'descriptor_bindings'
   | 'descriptor_registry'
-  | 'variable_contract';
+  | 'variable_contract'
+  | 'variable_defaults';
 
 export interface WorkflowSemanticContract {
   kind: WorkflowSemanticContractKind;
   schema:
     | 'cloud.workflow.step-descriptor-bindings.v1'
     | 'cloud.workflow.step-descriptor-registry.v1'
-    | 'cloud.workflow.variable-contract.v1';
+    | 'cloud.workflow.variable-contract.v1'
+    | 'cloud.workflow.variable-defaults.v1';
   digest: string;
   canonicalAcl: string;
 }

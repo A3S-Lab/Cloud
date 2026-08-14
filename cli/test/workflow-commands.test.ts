@@ -26,6 +26,8 @@ const PUBLICATION = {
       'descriptor_registry "support.workflow" { schema = "cloud.workflow.step-descriptor-registry.v1" }\n',
     variableContractAcl:
       'variable_contract "support.workflow" { schema = "cloud.workflow.variable-contract.v1" }\n',
+    variableDefaultsAcl:
+      'variable_defaults "support.workflow" { schema = "cloud.workflow.variable-defaults.v1" }\n',
   },
 };
 

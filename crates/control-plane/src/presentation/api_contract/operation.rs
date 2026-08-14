@@ -791,6 +791,11 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                                     "type": "string",
                                     "minLength": 1,
                                     "maxLength": 2097152
+                                },
+                                "variableDefaultsAcl": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 2097152
                                 }
                             }
                         }
