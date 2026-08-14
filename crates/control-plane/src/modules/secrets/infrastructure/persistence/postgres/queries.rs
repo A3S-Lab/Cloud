@@ -82,6 +82,35 @@ pub(super) async fn find_version(
         .version()
 }
 
+pub(super) async fn find_materializable_version(
+    executor: &PostgresExecutor,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    secret_id: SecretId,
+    version: u64,
+) -> Result<SecretVersion, RepositoryError> {
+    Database::new(PostgresDialect, executor.clone())
+        .fetch_optional_as(
+            sql_query::<SecretVersionRow>(SELECT_SECRET_VERSIONS)
+                .append(" join secrets s on s.id = v.secret_id where s.organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and s.project_id = ")
+                .bind(project_id.as_uuid())
+                .append(" and s.environment_id = ")
+                .bind(environment_id.as_uuid())
+                .append(" and s.id = ")
+                .bind(secret_id.as_uuid())
+                .append(" and s.state = 'active' and v.version = ")
+                .bind(version)
+                .append(" and v.state = 'active'"),
+        )
+        .await
+        .map_err(storage)?
+        .ok_or(RepositoryError::NotFound)?
+        .version()
+}
+
 pub(super) async fn list(
     executor: &PostgresExecutor,
     organization_id: OrganizationId,

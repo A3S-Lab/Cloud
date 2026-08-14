@@ -949,6 +949,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/109_connector_profiles.sql"
             )),
         ),
+        Migration::new(
+            "110",
+            "race-safe active Connector Secret admission",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/110_connector_active_secret_admission.sql"
+            )),
+        ),
     ]
 }
 
@@ -1414,6 +1422,42 @@ mod connector_profile_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 109 must not add a duplicate execution or Secret mechanism: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod connector_active_secret_admission_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/110_connector_active_secret_admission.sql"
+    ));
+
+    #[test]
+    fn migration_110_fences_active_secret_admission_without_owning_secret_lifecycle() {
+        for expected in [
+            "before insert on connector_revision_secret_bindings",
+            "s.state = 'active'",
+            "v.state = 'active'",
+            "for share of s, v",
+            "Secrets remains lifecycle authority",
+            "execution must recheck just in time",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 110 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "before update on secrets",
+            "before update on secret_versions",
+            "create table",
+            "create queue",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 110 must not become another Secret or execution authority: {forbidden}"
             );
         }
     }

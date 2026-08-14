@@ -1,5 +1,14 @@
+pub mod application;
 pub mod domain;
 pub mod infrastructure;
+
+pub use application::{
+    ConnectorProfileMutationResult, CreateConnectorProfile, CreateConnectorProfileHandler,
+    GetConnectorProfile, GetConnectorProfileHandler, GetConnectorRevision,
+    GetConnectorRevisionHandler, ListConnectorProfiles, ListConnectorProfilesHandler,
+    ListConnectorRevisions, ListConnectorRevisionsHandler, ReviseConnectorProfile,
+    ReviseConnectorProfileHandler,
+};
 
 pub use domain::{
     ConnectorDefinition, ConnectorExecutionError, ConnectorExecutionReceipt,
@@ -12,7 +21,7 @@ pub use domain::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_HTTP_DEFINITION_SCHEMA,
 };
 pub use infrastructure::{
-    BoundedHttpConnectorExecutor, InMemoryConnectorProfileRepository,
-    PostgresConnectorProfileRepository, ResolvedConnectorAuthentication,
-    ResolvedConnectorHttpRevision,
+    BoundedHttpConnectorExecutor, ConnectorHttpRevisionMaterializer,
+    InMemoryConnectorProfileRepository, PostgresConnectorProfileRepository,
+    ResolvedConnectorAuthentication, ResolvedConnectorHttpRevision,
 };

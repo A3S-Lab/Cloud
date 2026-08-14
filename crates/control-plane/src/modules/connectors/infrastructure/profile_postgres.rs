@@ -35,6 +35,27 @@ impl PostgresConnectorProfileRepository {
 
 #[async_trait]
 impl IConnectorProfileRepository for PostgresConnectorProfileRepository {
+    async fn replay_write(
+        &self,
+        idempotency: &crate::modules::shared_kernel::domain::IdempotencyRequest,
+    ) -> Result<Option<ConnectorRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) =
+                        idempotency_replay::<ConnectorWriteReference>(transaction, &idempotency)
+                            .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_record(transaction, reference.value).await.map(Some)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn create(
         &self,
         write: CreateConnectorProfileWrite,
@@ -541,7 +562,17 @@ async fn insert_secret_bindings(
     transaction: &PostgresTransaction,
     revision: &ConnectorRevision,
 ) -> Result<(), PostgresPersistenceError> {
-    for binding in revision.definition.secret_bindings() {
+    let mut bindings = revision.definition.secret_bindings();
+    // Migration 110 locks each exact active Secret/version pair during admission. A canonical
+    // order prevents two revisions with reversed semantic purposes from forming a lock cycle.
+    bindings.sort_by(|left, right| {
+        left.reference
+            .secret_id
+            .cmp(&right.reference.secret_id)
+            .then_with(|| left.reference.version.cmp(&right.reference.version))
+            .then_with(|| left.purpose.as_str().cmp(right.purpose.as_str()))
+    });
+    for binding in bindings {
         require_one_row(
             "Connector Secret binding",
             execute(

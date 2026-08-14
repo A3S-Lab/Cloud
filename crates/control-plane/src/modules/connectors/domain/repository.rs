@@ -136,6 +136,11 @@ impl From<&ConnectorRecord> for ConnectorWriteReference {
 
 #[async_trait]
 pub trait IConnectorProfileRepository: Send + Sync {
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ConnectorRecord>, RepositoryError>;
+
     async fn create(
         &self,
         write: CreateConnectorProfileWrite,

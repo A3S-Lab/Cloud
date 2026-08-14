@@ -209,6 +209,32 @@ impl ISecretRepository for InMemorySecretRepository {
             .ok_or(RepositoryError::NotFound)
     }
 
+    async fn find_materializable_version(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        secret_id: SecretId,
+        version: u64,
+    ) -> Result<SecretVersion, RepositoryError> {
+        let state = self.state.read().await;
+        let secret = state
+            .secrets
+            .get(&secret_id)
+            .filter(|secret| {
+                secret.organization_id == organization_id
+                    && secret.project_id == project_id
+                    && secret.environment_id == environment_id
+            })
+            .ok_or(RepositoryError::NotFound)?;
+        state
+            .versions
+            .get(&(secret_id, version))
+            .filter(|version| version.is_materializable(secret))
+            .cloned()
+            .ok_or(RepositoryError::NotFound)
+    }
+
     async fn list(
         &self,
         organization_id: OrganizationId,

@@ -113,6 +113,13 @@ jobs:
           postgres_connector_profiles_are_exact_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify authorized Connector application and Secret materialization
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_connector_application_is_authorized_and_materializes_exact_secrets
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Workflow finite Execution persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

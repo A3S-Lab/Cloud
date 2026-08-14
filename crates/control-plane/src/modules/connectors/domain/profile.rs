@@ -13,6 +13,10 @@ pub enum ConnectorDefinition {
 }
 
 impl ConnectorDefinition {
+    pub fn parse_acl(source: &str) -> Result<Self, String> {
+        ConnectorHttpDefinition::parse_acl(source).map(Self::Http)
+    }
+
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Http(_) => "http",

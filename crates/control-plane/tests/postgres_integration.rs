@@ -280,6 +280,19 @@ async fn postgres_connector_profiles_are_exact_replay_safe_and_immutable() {
     .expect("PostgreSQL Connector profile authority gate");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_connector_application_is_authorized_and_materializes_exact_secrets() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        connectors_support::exercise_connector_application_and_materialization,
+    )
+    .await
+    .expect("PostgreSQL Connector application and materialization gate");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires private GitHub, exact A3S Box, external Registry, and Vault Transit providers"]
 async fn postgres_g0_external_release_persists_verified_evidence_and_workload_handoff() {
@@ -549,7 +562,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (109, "109".into()));
+    assert_eq!(migration_state, (110, "110".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

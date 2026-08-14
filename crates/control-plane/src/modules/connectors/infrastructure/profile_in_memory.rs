@@ -38,6 +38,14 @@ impl InMemoryConnectorProfileRepository {
 
 #[async_trait]
 impl IConnectorProfileRepository for InMemoryConnectorProfileRepository {
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ConnectorRecord>, RepositoryError> {
+        let state = self.state.read().await;
+        replay(&state, idempotency)
+    }
+
     async fn create(
         &self,
         write: CreateConnectorProfileWrite,

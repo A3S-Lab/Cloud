@@ -65,6 +65,25 @@ impl ISecretRepository for PostgresSecretRepository {
         queries::find_version(&self.executor, organization_id, secret_id, version).await
     }
 
+    async fn find_materializable_version(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        secret_id: SecretId,
+        version: u64,
+    ) -> Result<SecretVersion, RepositoryError> {
+        queries::find_materializable_version(
+            &self.executor,
+            organization_id,
+            project_id,
+            environment_id,
+            secret_id,
+            version,
+        )
+        .await
+    }
+
     async fn list(
         &self,
         organization_id: OrganizationId,

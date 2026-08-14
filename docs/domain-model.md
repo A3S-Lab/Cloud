@@ -617,6 +617,28 @@ Connector persistence reuses the shared idempotency, Outbox, audit, and A3S ORM
 transaction path; it adds no attempt log, queue, retry store, scheduler, or Flow
 mechanism.
 
+The `AUT0.5-C3` application boundary uses Identity's shared
+`ResourceAccessEvaluator` for the canonical environment and performs that check
+before idempotency replay, so revoked Resource Grants apply on the next request.
+Create and revise admission resolve each ACL-derived Secret reference through a
+Secrets-owned repository operation that evaluates organization, project,
+environment, Secret state, exact version, and version state in one snapshot.
+Migration `110` repeats that admission predicate while inserting each immutable
+binding and holds shared row locks until the Connector transaction commits, so
+a concurrent revoke cannot slip between application validation and persistence.
+The lock does not prevent later revocation once that transaction commits and
+does not transfer Secret lifecycle ownership to Connectors.
+Successful mutation replay intentionally precedes that current-state check, so
+an already committed response remains replayable after later Secret revocation
+without permitting a new revision to bind revoked material.
+
+Just-in-time execution uses the same Secrets-owned exact-version operation and
+decryptor already used by node Secret delivery. The Connector materializer
+accepts one authorized immutable revision, returns a non-serializable object
+whose debug representation redacts endpoint and authentication material, and
+must run again for every later attempt. It owns no cache, plaintext store,
+Secret lifecycle state, retry, scheduler, or execution evidence.
+
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
 

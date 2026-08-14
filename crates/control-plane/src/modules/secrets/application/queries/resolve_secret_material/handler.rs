@@ -1,12 +1,8 @@
 use super::ResolveSecretMaterial;
-use crate::modules::secrets::application::{encryption_error, SecretPlaintext};
-use crate::modules::secrets::domain::{
-    secret_encryption_context, ISecretEncryptionService, ISecretRepository,
-};
+use crate::modules::secrets::application::{ExactSecretMaterializer, SecretPlaintext};
+use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{
-    EnvironmentId, ProjectId, RepositoryError, SecretId, WorkloadRevisionId,
-};
+use crate::modules::shared_kernel::domain::{RepositoryError, SecretId, WorkloadRevisionId};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, WorkloadDesiredState};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -14,8 +10,7 @@ use std::sync::Arc;
 
 pub struct ResolveSecretMaterialHandler {
     workloads: Arc<dyn IWorkloadRepository>,
-    secrets: Arc<dyn ISecretRepository>,
-    encryption: Arc<dyn ISecretEncryptionService>,
+    materializer: ExactSecretMaterializer,
 }
 
 impl ResolveSecretMaterialHandler {
@@ -26,8 +21,7 @@ impl ResolveSecretMaterialHandler {
     ) -> Self {
         Self {
             workloads,
-            secrets,
-            encryption,
+            materializer: ExactSecretMaterializer::new(secrets, encryption),
         }
     }
 }
@@ -39,8 +33,7 @@ impl QueryHandler<ResolveSecretMaterial> for ResolveSecretMaterialHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<SecretPlaintext>>> {
         let workloads = Arc::clone(&self.workloads);
-        let secrets = Arc::clone(&self.secrets);
-        let encryption = Arc::clone(&self.encryption);
+        let materializer = self.materializer.clone();
         Box::pin(async move {
             if let Err(error) = query.reference.validate() {
                 return Ok(Err(ApplicationError::Invalid(error)));
@@ -88,57 +81,23 @@ impl QueryHandler<ResolveSecretMaterial> for ResolveSecretMaterialHandler {
             if !assigned || !bound {
                 return Ok(Err(not_authorized()));
             }
-            let secret = match secrets.find(query.organization_id, secret_id).await {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(authorization_repository_error(error))),
-            };
-            if !same_scope(
-                secret.project_id,
-                secret.environment_id,
-                workload.project_id,
-                workload.environment_id,
-            ) {
-                return Ok(Err(not_authorized()));
-            }
-            let version = match secrets
-                .find_version(query.organization_id, secret_id, query.reference.version)
+            let plaintext = match materializer
+                .materialize(
+                    query.organization_id,
+                    workload.project_id,
+                    workload.environment_id,
+                    secret_id,
+                    query.reference.version,
+                )
                 .await
             {
                 Ok(value) => value,
-                Err(error) => return Ok(Err(authorization_repository_error(error))),
-            };
-            if !version.is_materializable(&secret) {
-                return Ok(Err(not_authorized()));
-            }
-            let context = match secret_encryption_context(
-                query.organization_id,
-                secret_id,
-                version.version,
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Internal(error))),
-            };
-            let plaintext = match encryption
-                .decrypt(&version.encrypted_value, &context)
-                .await
-                .map_err(encryption_error)
-                .and_then(|value| SecretPlaintext::new(value).map_err(ApplicationError::Internal))
-            {
-                Ok(value) => value,
+                Err(ApplicationError::Forbidden(_)) => return Ok(Err(not_authorized())),
                 Err(error) => return Ok(Err(error)),
             };
             Ok(Ok(plaintext))
         })
     }
-}
-
-fn same_scope(
-    secret_project_id: ProjectId,
-    secret_environment_id: EnvironmentId,
-    workload_project_id: ProjectId,
-    workload_environment_id: EnvironmentId,
-) -> bool {
-    secret_project_id == workload_project_id && secret_environment_id == workload_environment_id
 }
 
 fn authorization_repository_error(error: RepositoryError) -> ApplicationError {
@@ -162,8 +121,8 @@ mod tests {
     };
     use crate::modules::secrets::infrastructure::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
-        DeploymentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
-        ProjectId, ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
+        DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
+        OrganizationId, ProjectId, ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
         Deployment, DeploymentStatus, HttpHealthCheck, OciArtifact, SecretBinding,

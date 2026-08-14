@@ -167,6 +167,20 @@ pub trait ISecretRepository: Send + Sync {
         version: u64,
     ) -> Result<SecretVersion, RepositoryError>;
 
+    /// Resolves one exact active Secret version in one canonical environment snapshot.
+    ///
+    /// Materializing consumers must use this query instead of composing `find` and
+    /// `find_version`; PostgreSQL evaluates scope plus Secret/version state in one statement,
+    /// while the in-memory repository evaluates them under one read lock.
+    async fn find_materializable_version(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        secret_id: SecretId,
+        version: u64,
+    ) -> Result<SecretVersion, RepositoryError>;
+
     async fn list(
         &self,
         organization_id: OrganizationId,

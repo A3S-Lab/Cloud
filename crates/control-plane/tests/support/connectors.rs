@@ -1,20 +1,30 @@
 use super::*;
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_control_plane::modules::connectors::{
     ConnectorDefinition, ConnectorHttpAuthentication, ConnectorHttpDefinition,
     ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
-    ConnectorHttpStatusPolicy, ConnectorProfile, ConnectorRecord, ConnectorRevision,
-    ConnectorRevisionPublished, ConnectorSecretReference, CreateConnectorProfileWrite,
-    IConnectorProfileRepository, PostgresConnectorProfileRepository, ReviseConnectorProfileWrite,
+    ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy, ConnectorProfile,
+    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorSecretReference,
+    CreateConnectorProfile, CreateConnectorProfileHandler, CreateConnectorProfileWrite,
+    GetConnectorProfile, GetConnectorProfileHandler, IConnectorProfileRepository,
+    ListConnectorRevisions, ListConnectorRevisionsHandler, PostgresConnectorProfileRepository,
+    ReviseConnectorProfile, ReviseConnectorProfileHandler, ReviseConnectorProfileWrite,
 };
+use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
+use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{
-    CreateSecretWrite, EncryptedSecretValue, ISecretRepository, PostgresSecretRepository, Secret,
-    SecretChanged,
+    CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,
+    PostgresSecretRepository, RevokeSecretVersion, RevokeSecretVersionHandler, Secret,
+    SecretChanged, SecretEncryptionError,
 };
+use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, OrganizationId,
     PrincipalId, ProjectId, RepositoryError, ResourceName, SecretId,
 };
 use chrono::Duration;
+use std::sync::Mutex;
 
 pub(super) async fn exercise_connector_profile_persistence(
     url: String,
@@ -427,6 +437,366 @@ pub(super) async fn exercise_connector_profile_persistence(
         .await?;
     assert_eq!(evidence, (1, 2, 4, 2, 2, 2));
     Ok(())
+}
+
+pub(super) async fn exercise_connector_application_and_materialization(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("110"),
+        )
+        .await?;
+    assert_eq!(
+        migration_state,
+        (1, "race-safe active Connector Secret admission".into())
+    );
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let actor = PrincipalId::new();
+    let created_at = Utc::now();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", 'Connector application tenant', ")
+            .bind(format!("connector-application-{organization_id}"))
+            .append(", 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("insert into identity_principals (id, kind, name, aggregate_version, created_at, disabled_at) values (")
+                .bind(actor.as_uuid())
+                .append(", 'human', 'Connector application owner', 1, ")
+                .bind(created_at)
+                .append(", null)"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", 'Connector application project', 'connector-application-project', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (")
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(project_id.as_uuid())
+                .append(", ")
+                .bind(environment_id.as_uuid())
+                .append(", 'Production', 'production', 1, ")
+                .bind(created_at)
+                .append(")"),
+        )
+        .await?;
+
+    let secrets = Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let destination_secret_id = create_secret(
+        secrets.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        "Connector application destination",
+        "connector-application-destination",
+        created_at,
+    )
+    .await?;
+    let hmac_secret_id = create_secret(
+        secrets.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        "Connector application HMAC",
+        "connector-application-hmac",
+        created_at,
+    )
+    .await?;
+    let connectors = Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
+    let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let create_handler =
+        CreateConnectorProfileHandler::new(projects, connectors.clone(), secrets.clone());
+    let create = CreateConnectorProfile {
+        organization_id,
+        project_id,
+        environment_id,
+        name: "Incident delivery".into(),
+        definition_acl: definition(destination_secret_id, hmac_secret_id, 5_000)?
+            .canonical_acl()
+            .to_owned(),
+        actor_principal_id: actor,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "connector-application-create".into(),
+        request_id: Uuid::now_v7(),
+    };
+    let created = create_handler
+        .execute(create.clone(), connector_context())
+        .await??;
+    assert!(!created.replayed);
+    assert!(
+        create_handler
+            .execute(create.clone(), connector_context())
+            .await??
+            .replayed
+    );
+
+    let denied_replay = create_handler
+        .execute(
+            CreateConnectorProfile {
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    },
+                ]),
+                ..create.clone()
+            },
+            connector_context(),
+        )
+        .await?;
+    assert!(matches!(denied_replay, Err(ApplicationError::NotFound(_))));
+
+    let encryption = Arc::new(ConnectorFixtureEncryption::default());
+    let materializer = ConnectorHttpRevisionMaterializer::new(secrets.clone(), encryption.clone());
+    let materialized = materializer.materialize(&created.record.revision).await?;
+    let debug = format!("{materialized:?}");
+    assert!(!debug.contains("hooks.example.test"));
+    assert!(!debug.contains("connector-token"));
+    assert_eq!(
+        encryption
+            .ciphertexts
+            .lock()
+            .expect("Connector fixture encryption lock")
+            .as_slice(),
+        [
+            "connector-application-destination",
+            "connector-application-hmac"
+        ]
+    );
+
+    RevokeSecretVersionHandler::new(secrets.clone())
+        .execute(
+            RevokeSecretVersion {
+                organization_id,
+                secret_id: hmac_secret_id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                version: 1,
+                idempotency_key: "revoke-connector-hmac".into(),
+                request_id: Uuid::now_v7(),
+            },
+            connector_context(),
+        )
+        .await??;
+    assert!(matches!(
+        materializer.materialize(&created.record.revision).await,
+        Err(ApplicationError::Forbidden(_))
+    ));
+    assert!(
+        create_handler
+            .execute(create.clone(), connector_context())
+            .await??
+            .replayed
+    );
+    let rejected_new_write = create_handler
+        .execute(
+            CreateConnectorProfile {
+                name: "Revoked HMAC".into(),
+                idempotency_key: "connector-application-revoked".into(),
+                request_id: Uuid::now_v7(),
+                ..create
+            },
+            connector_context(),
+        )
+        .await?;
+    assert!(matches!(
+        rejected_new_write,
+        Err(ApplicationError::Invalid(_))
+    ));
+
+    let revise_handler = ReviseConnectorProfileHandler::new(connectors.clone(), secrets.clone());
+    let revise = ReviseConnectorProfile {
+        organization_id,
+        project_id,
+        environment_id,
+        profile_id: created.record.profile.id,
+        expected_version: 1,
+        definition_acl: literal_definition_acl(7_500)?,
+        actor_principal_id: actor,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "connector-application-revise".into(),
+        request_id: Uuid::now_v7(),
+    };
+    let revised = revise_handler
+        .execute(revise.clone(), connector_context())
+        .await??;
+    assert!(!revised.replayed);
+    assert!(
+        revise_handler
+            .execute(revise, connector_context())
+            .await??
+            .replayed
+    );
+    materializer.materialize(&revised.record.revision).await?;
+
+    let admission_error = database
+        .execute(
+            sql_query::<()>("insert into connector_revision_secret_bindings (organization_id, project_id, environment_id, profile_id, revision_id, purpose, secret_id, secret_version) values (")
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(project_id.as_uuid())
+                .append(", ")
+                .bind(environment_id.as_uuid())
+                .append(", ")
+                .bind(revised.record.profile.id.as_uuid())
+                .append(", ")
+                .bind(revised.record.revision.id.as_uuid())
+                .append(", 'hmac_sha256', ")
+                .bind(hmac_secret_id.as_uuid())
+                .append(", 1)"),
+        )
+        .await
+        .expect_err("migration 110 must reject a revoked exact Secret binding");
+    let admission_error = format!("{admission_error:?}");
+    assert!(
+        admission_error.contains("Connector Secret binding is not active in its exact environment"),
+        "migration 110 returned an unexpected admission failure: {admission_error}"
+    );
+
+    let loaded = GetConnectorProfileHandler::new(connectors.clone())
+        .execute(
+            GetConnectorProfile {
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id: created.record.profile.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            connector_context(),
+        )
+        .await??;
+    assert_eq!(loaded, revised.record);
+    let history = ListConnectorRevisionsHandler::new(connectors)
+        .execute(
+            ListConnectorRevisions {
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id: created.record.profile.id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            connector_context(),
+        )
+        .await??;
+    assert_eq!(history.len(), 2);
+
+    assert_eq!(
+        secrets
+            .find_materializable_version(
+                organization_id,
+                project_id,
+                environment_id,
+                hmac_secret_id,
+                1,
+            )
+            .await,
+        Err(RepositoryError::NotFound)
+    );
+    let evidence = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64, i64)>("select (select count(*) from connector_profiles where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from connector_revisions where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from outbox_events where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and event_key in ('connector.profile.created', 'connector.profile.revised')), (select count(*) from audit_records where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and action in ('connector.profile.created', 'connector.profile.revised'))"),
+        )
+        .await?;
+    assert_eq!(evidence, (1, 2, 2, 2));
+    Ok(())
+}
+
+fn connector_context() -> CqrsContext {
+    CqrsContext::new(ModuleRef::new())
+}
+
+#[derive(Default)]
+struct ConnectorFixtureEncryption {
+    ciphertexts: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl ISecretEncryptionService for ConnectorFixtureEncryption {
+    async fn encrypt(
+        &self,
+        _plaintext: &[u8],
+        _context: &[u8],
+    ) -> Result<EncryptedSecretValue, SecretEncryptionError> {
+        Err(SecretEncryptionError::Rejected(
+            "Connector PostgreSQL fixture decrypts only".into(),
+        ))
+    }
+
+    async fn decrypt(
+        &self,
+        value: &EncryptedSecretValue,
+        _context: &[u8],
+    ) -> Result<Vec<u8>, SecretEncryptionError> {
+        self.ciphertexts
+            .lock()
+            .expect("Connector fixture encryption lock")
+            .push(value.ciphertext().to_owned());
+        match value.ciphertext() {
+            "connector-application-destination" => {
+                Ok(b"https://hooks.example.test/delivery?token=connector-token".to_vec())
+            }
+            "connector-application-hmac" => Ok(vec![b'h'; 32]),
+            _ => Err(SecretEncryptionError::Rejected(
+                "unexpected Connector fixture ciphertext".into(),
+            )),
+        }
+    }
+
+    async fn health(&self) -> Result<bool, SecretEncryptionError> {
+        Ok(true)
+    }
+}
+
+fn literal_definition_acl(timeout_milliseconds: u64) -> Result<String, String> {
+    ConnectorHttpDefinition::from_spec(ConnectorHttpDefinitionSpec {
+        destination: ConnectorHttpDestination::LiteralHttps {
+            endpoint: "https://hooks.example.test/revised".into(),
+        },
+        method: ConnectorHttpMethod::Post,
+        request_content_type: "application/json".into(),
+        maximum_request_bytes: 1024,
+        maximum_response_bytes: 1024,
+        timeout_milliseconds,
+        status_policy: ConnectorHttpStatusPolicy::standard_webhook(),
+        authentication: ConnectorHttpAuthentication::None,
+    })
+    .map(|definition| definition.canonical_acl().to_owned())
 }
 
 async fn create_secret(
