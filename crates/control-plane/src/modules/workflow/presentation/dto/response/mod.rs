@@ -23,6 +23,7 @@ pub use workflow_response::{
 };
 pub use workflow_run_response::{
     WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
+    WorkflowRunVariableInspectionResponse,
 };
 
 #[derive(Debug, Clone, Serialize)]

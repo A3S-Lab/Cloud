@@ -104,7 +104,7 @@ pub(super) fn validate_data_schema(
     label: &str,
 ) -> Result<(), String> {
     schema.validate()?;
-    if !value_matches_type(&schema.value_type, value) {
+    if !schema.value_type.matches_json_value(value) {
         return Err(format!(
             "{label} must be {}, not {}",
             schema.value_type.as_str(),
@@ -119,7 +119,7 @@ pub(super) fn validate_data_schema(
         .ok_or_else(|| format!("{label} must be an object"))?;
     for field in &schema.fields {
         match object.get(&field.name) {
-            Some(value) if value_matches_type(&field.value_type, value) => {}
+            Some(value) if field.value_type.matches_json_value(value) => {}
             Some(value) => {
                 return Err(format!(
                     "{label} field {:?} must be {}, not {}",
@@ -143,18 +143,6 @@ pub(super) fn validate_data_schema(
 pub(super) fn value_digest(value: &Value, label: &str) -> Result<Sha256Digest, String> {
     let canonical = canonical_json_bounded(value, WORKFLOW_RUN_OUTPUT_MAX_BYTES, label)?;
     Sha256Digest::parse(sha256_digest(&canonical))
-}
-
-pub(super) fn value_matches_type(expected: &WorkflowDataType, value: &Value) -> bool {
-    match expected {
-        WorkflowDataType::Any => true,
-        WorkflowDataType::Object => value.is_object(),
-        WorkflowDataType::Array => value.is_array(),
-        WorkflowDataType::String => value.is_string(),
-        WorkflowDataType::Number => value.is_number(),
-        WorkflowDataType::Boolean => value.is_boolean(),
-        WorkflowDataType::Null => value.is_null(),
-    }
 }
 
 fn json_type(value: &Value) -> &'static str {

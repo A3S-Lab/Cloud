@@ -15,6 +15,7 @@ import type {
   WorkflowRunHistoryPage,
   WorkflowRunMutationResult,
   WorkflowRunOutput,
+  WorkflowRunVariableInspection,
 } from '@a3s/cloud-client';
 import { renderTable } from './output';
 import type { CommandResult } from './results';
@@ -193,6 +194,22 @@ export function workflowRunHistoryResult(page: WorkflowRunHistoryPage): CommandR
       { header: 'STEP', value: (event) => event.stepId },
       { header: 'ATTEMPT', value: (event) => event.attempt },
       { header: 'OCCURRED AT', value: (event) => event.occurredAt },
+    ]),
+  };
+}
+
+export function workflowRunVariablesResult(inspection: WorkflowRunVariableInspection): CommandResult {
+  return {
+    json: inspection,
+    table: renderTable(inspection.variables, [
+      { header: 'NAME', value: (variable) => variable.name },
+      { header: 'SCOPE', value: (variable) => variable.scope },
+      { header: 'TYPE', value: (variable) => variable.valueType },
+      { header: 'STORAGE', value: (variable) => variable.storageClass },
+      { header: 'STATE', value: (variable) => variable.state },
+      { header: 'REDACTED', value: (variable) => variable.redacted },
+      { header: 'SOURCE STEP', value: (variable) => variable.sourceStepId },
+      { header: 'VALUE', value: (variable) => JSON.stringify(variable.value) },
     ]),
   };
 }

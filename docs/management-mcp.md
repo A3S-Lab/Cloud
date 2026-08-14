@@ -389,16 +389,27 @@ from 1 through 2,592,000. `a3s_cloud_workflow_runs_cancel` requires one run ID
 and idempotency key and accepts an optional bounded reason. Both require
 `workflow:write`; cancellation is marked destructive.
 
-The five read-only tools list runs, get one run and its semantic step
+The six read-only tools list runs, get one run and its semantic step
 projections, wait for at most 30 seconds, return a completed run's bounded
-output, and page redacted A3S Flow history with a non-negative sequence and a
-limit from 1 through 100. All seven tools derive organization and actor from
+output, page redacted A3S Flow history with a non-negative sequence and a limit
+from 1 through 100, and inspect typed variables. All eight tools derive
+organization and actor from
 the authenticated principal and reuse the REST CQRS handlers, A3S ORM
 repository, Operation, A3S Flow history, audit, Outbox, and idempotency
 authority. The executor supports Workflow-local `input`, `transform`,
 `branch`, `human_decision`, finite `execution`, and `output`. HumanTask
 submission is exposed by the protected tool below. Business-service and
 remaining provider capability steps plus compensation are not exposed.
+
+`a3s_cloud_workflow_run_variables_get` accepts one `workflowRunId` and returns
+the same `cloud.workflow-run.variable-inspection.v1` response as REST contract
+`1.33.0`. The shared Workflow query authorizes the owning Project, restores the
+exact Plan v2 variable contract, and materializes values from immutable run
+input and the correlated A3S Flow history through the execution materializer.
+Results preserve declaration order, observed Flow sequence,
+materialized/unavailable state, metadata, values, and digests. Secret references
+are redacted, pre-Flow immutable inputs may appear at sequence zero, and Plan v1
+conflicts. MCP adds no variable table, cache, history, worker, or mutation path.
 
 `a3s_cloud_human_tasks_list` accepts one explicit `projectId`, the closed
 optional task status, and an optional limit from 1 through 200. It returns

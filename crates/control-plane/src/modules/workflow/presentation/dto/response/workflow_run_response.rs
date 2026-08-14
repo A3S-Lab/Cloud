@@ -1,5 +1,7 @@
 use crate::modules::workflow::application::WorkflowRunMutationResult;
-use crate::modules::workflow::domain::{WorkflowRunRecord, WorkflowStepProjection};
+use crate::modules::workflow::domain::{
+    WorkflowRunRecord, WorkflowRunVariable, WorkflowRunVariableInspection, WorkflowStepProjection,
+};
 use crate::modules::workflow::WorkflowRunOutput;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -143,6 +145,72 @@ impl From<WorkflowRunOutput> for WorkflowRunOutputResponse {
             output: value.output,
             output_digest: value.output_digest.to_string(),
             finished_at: value.finished_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunVariableResponse {
+    pub name: String,
+    pub scope: String,
+    pub value_type: String,
+    pub value_schema_digest: String,
+    pub storage_class: String,
+    pub mutation_mode: String,
+    pub required: bool,
+    pub source_step_id: Option<String>,
+    pub state: String,
+    pub redacted: bool,
+    pub value: Option<serde_json::Value>,
+    pub value_digest: Option<String>,
+}
+
+impl From<WorkflowRunVariable> for WorkflowRunVariableResponse {
+    fn from(value: WorkflowRunVariable) -> Self {
+        Self {
+            name: value.name,
+            scope: value.scope.as_str().into(),
+            value_type: value.value_type.as_str().into(),
+            value_schema_digest: value.value_schema_digest.to_string(),
+            storage_class: value.storage_class.as_str().into(),
+            mutation_mode: value.mutation_mode.as_str().into(),
+            required: value.required,
+            source_step_id: value.source_step_id,
+            state: value.state.as_str().into(),
+            redacted: value.redacted,
+            value: value.value,
+            value_digest: value.value_digest.map(|digest| digest.to_string()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowRunVariableInspectionResponse {
+    pub schema: String,
+    pub workflow_run_id: Uuid,
+    pub plan_revision_id: Uuid,
+    pub variable_contract_digest: String,
+    pub last_flow_sequence: u64,
+    pub observed_at: DateTime<Utc>,
+    pub variables: Vec<WorkflowRunVariableResponse>,
+}
+
+impl From<WorkflowRunVariableInspection> for WorkflowRunVariableInspectionResponse {
+    fn from(value: WorkflowRunVariableInspection) -> Self {
+        Self {
+            schema: value.schema,
+            workflow_run_id: value.workflow_run_id.as_uuid(),
+            plan_revision_id: value.plan_revision_id.as_uuid(),
+            variable_contract_digest: value.variable_contract_digest.to_string(),
+            last_flow_sequence: value.last_flow_sequence,
+            observed_at: value.observed_at,
+            variables: value
+                .variables
+                .into_iter()
+                .map(WorkflowRunVariableResponse::from)
+                .collect(),
         }
     }
 }

@@ -371,6 +371,46 @@ export interface WorkflowRunHistoryPage {
   nextSequence: number | null;
 }
 
+export type WorkflowDataType = 'any' | 'object' | 'array' | 'string' | 'number' | 'boolean' | 'null';
+
+export type WorkflowVariableScope =
+  | 'invocation_input'
+  | 'node_output'
+  | 'composite_local'
+  | 'run'
+  | 'application';
+
+export type WorkflowVariableStorageClass = 'inline' | 'secret_reference' | 'immutable_object_reference';
+
+export type WorkflowVariableMutationMode = 'immutable' | 'deterministic' | 'optimistic_application_port';
+
+export type WorkflowRunVariableState = 'materialized' | 'unavailable';
+
+export interface WorkflowRunVariable {
+  name: string;
+  scope: WorkflowVariableScope;
+  valueType: WorkflowDataType;
+  valueSchemaDigest: string;
+  storageClass: WorkflowVariableStorageClass;
+  mutationMode: WorkflowVariableMutationMode;
+  required: boolean;
+  sourceStepId: string | null;
+  state: WorkflowRunVariableState;
+  redacted: boolean;
+  value: unknown;
+  valueDigest: string | null;
+}
+
+export interface WorkflowRunVariableInspection {
+  schema: 'cloud.workflow-run.variable-inspection.v1';
+  workflowRunId: string;
+  planRevisionId: string;
+  variableContractDigest: string;
+  lastFlowSequence: number;
+  observedAt: string;
+  variables: WorkflowRunVariable[];
+}
+
 export type HumanTaskStatus =
   | 'pending_activation'
   | 'ready'

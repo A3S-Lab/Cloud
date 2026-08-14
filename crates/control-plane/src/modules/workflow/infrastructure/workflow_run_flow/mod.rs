@@ -5,7 +5,9 @@ mod variables;
 mod workflow;
 
 pub use coordinator::FlowWorkflowRunCoordinator;
-pub use projection::{project_workflow_run_record, WorkflowRunHistoryReader};
+pub use projection::{
+    project_workflow_run_record, WorkflowRunHistoryReader, WorkflowRunVariableReader,
+};
 
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::workflow::domain::{
@@ -129,9 +131,10 @@ mod tests {
     use crate::modules::shared_kernel::domain::{HumanTaskId, PrincipalId};
     use crate::modules::shared_kernel::domain::{Sha256Digest, WorkflowDecisionId};
     use crate::modules::workflow::domain::{
-        flow_step_id, AssignmentPolicyRef, FlowResumePayload, HumanTask, NewHumanTask,
-        WorkflowDecision, WorkflowRun, WorkflowRunRecord, WorkflowStepProjectionStatus,
-        WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
+        flow_step_id, AssignmentPolicyRef, FlowResumePayload, HumanTask,
+        IWorkflowRunVariableReader, NewHumanTask, WorkflowDecision, WorkflowRun, WorkflowRunRecord,
+        WorkflowRunVariableState, WorkflowStepProjectionStatus, WORKFLOW_RUN_FLOW_NAME,
+        WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
     };
     use crate::modules::workflow::test_support::{
         accepted_submission, digest, exclusive_output_workflow_run_input,
@@ -220,6 +223,50 @@ mod tests {
         let history_length = engine.history(&run_id).await?.len();
         engine.start_with_id(&run_id, spec, encoded).await?;
         assert_eq!(engine.history(&run_id).await?.len(), history_length);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn variable_reader_reconstructs_values_from_the_same_flow_history(
+    ) -> Result<(), FlowError> {
+        let mut input = typed_variable_workflow_run_input().map_err(FlowError::Runtime)?;
+        input.requested_at = chrono::Utc::now();
+        input.deadline_at = input.requested_at + chrono::Duration::hours(1);
+        input.validate().map_err(FlowError::Runtime)?;
+        let (run, steps) =
+            WorkflowRun::create(input.clone(), PrincipalId::new()).map_err(FlowError::Runtime)?;
+        let record = WorkflowRunRecord { run, steps };
+        let run_id = input.workflow_run_id.to_string();
+        let engine = FlowEngine::in_memory(Arc::new(WorkflowRunFlowRuntime));
+        engine
+            .start_with_id(
+                &run_id,
+                WorkflowSpec::rust_embedded(
+                    WORKFLOW_RUN_FLOW_NAME,
+                    WORKFLOW_RUN_FLOW_VERSION_V2,
+                    "a3s-cloud",
+                    "main",
+                ),
+                serde_json::to_value(&input)?,
+            )
+            .await?;
+
+        let snapshot = engine.snapshot(&run_id).await?;
+        let inspection = WorkflowRunVariableReader::new(engine)
+            .inspect(&record)
+            .await
+            .map_err(FlowError::Runtime)?;
+
+        assert_eq!(inspection.last_flow_sequence, snapshot.last_sequence);
+        assert_eq!(inspection.variables.len(), 1);
+        assert_eq!(
+            inspection.variables[0].state,
+            WorkflowRunVariableState::Materialized
+        );
+        assert_eq!(
+            inspection.variables[0].value.as_ref(),
+            Some(&input.goal_input)
+        );
         Ok(())
     }
 

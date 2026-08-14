@@ -9,5 +9,6 @@ pub(crate) use dto::{
     WorkflowDefinitionResponse, WorkflowGoalMutationResponse, WorkflowGoalResponse,
     WorkflowNodeCatalogResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
     WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
+    WorkflowRunVariableInspectionResponse,
 };
 pub use workflow_module::WorkflowModule;

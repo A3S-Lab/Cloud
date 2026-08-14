@@ -128,7 +128,8 @@ Search index authoritative.
 `W0.1`, the backend implementation of `W0.2`, and the planning/persistence,
 immutable descriptor and typed-variable domain contracts, read-only built-in
 discovery, internal Workflow-local, reachable-Output, HumanTask, and finite
-Execution portions of `W0.3` are now present. The descriptor registry uses
+Execution portions of `W0.3`, plus Flow-derived authorized variable inspection,
+are now present. The descriptor registry uses
 canonical ACL, exact SemVer identity, typed ports, existing coarse
 step/capability types, owner/execution class, semantic/configuration/default-
 policy digests, required bindings, typed failure behavior, compiler ranges,
@@ -229,10 +230,17 @@ projects invocation, node-output, deterministic run-assignment, typed-read, and
 opaque-reference values from existing Flow history; migration `105` only widens
 that immutable input. Explicit reads are authoritative for their step and are
 consumed only through `current`; steps without reads retain legacy dependency
-input. Runtime variable inspection and defaults, composite and
-Applications-owned variables, Answer/error semantics, business-service and remaining
-Agent/MCP/model/Tool capability dispatch, compensation, expanded cross-surface
-evidence, and public Workflow availability remain open.
+input. REST/OpenAPI `1.33.0`, the maintained client, CLI, and Management MCP
+now expose `cloud.workflow-run.variable-inspection.v1` through one authorized
+CQRS query and the same materializer used by execution. The bounded,
+declaration-ordered response identifies the exact contract and observed Flow
+sequence, distinguishes materialized from unavailable values, and redacts
+Secret references. Pre-Flow immutable inputs may appear at sequence zero; Plan
+v1 conflicts. Inspection adds no table, cache, event log, or worker. Digest-only
+defaults, composite and Applications-owned variables, Answer/error semantics,
+business-service and remaining Agent/MCP/model/Tool capability dispatch,
+compensation, expanded cross-surface evidence, and public Workflow availability
+remain open.
 
 Reachable-sink Output aggregation is now implemented in the Workflow
 compiler/runtime adapter without changing Flow. A graph admits one or more
@@ -246,8 +254,9 @@ domain contracts are implemented. Migration `103` atomically binds all three
 contracts to WorkflowRevision compiler schema 2, and `cloud.workflow.plan.v2`
 pins every exact descriptor plus the semantic and variable digests. Legacy Plan
 v1 remains byte-stable and executable. Plan v2 executes the first typed-variable
-subset and fails closed for digest-only defaults, composite-local/export
-semantics, Applications-owned reads/writes, and runtime inspection. Bounded
+subset, and authorized inspection reads that same subset from immutable input
+and Flow history. Runtime fails closed for digest-only defaults,
+composite-local/export semantics, and Applications-owned reads/writes. Bounded
 Iteration/Loop regions, typed error branches/fallback, and ordered Answer frames
 remain unimplemented parts of `W0.3`.
 

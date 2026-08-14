@@ -1940,9 +1940,11 @@ canonical plan bytes and digest even though Goal and Plan identities differ.
 
 The implemented `cloud.workflow.step-descriptor-registry.v1` and
 `cloud.workflow.variable-contract.v1` freeze descriptor and value semantics as
-canonical digest-addressed domain contracts. They are not yet persisted and
-bound to WorkflowRevision or pinned by `cloud.workflow.plan.v1`; that requires
-an explicit next compiler/plan schema. Until then, application-state variable
+canonical digest-addressed domain contracts. Migration `103` persists exact
+descriptor bindings, the recoverable registry snapshot, and the variable
+contract atomically with compiler-schema-2 WorkflowRevision. The resulting
+`cloud.workflow.plan.v2` pins exact descriptor semantics and the contract-set
+and variable digests. Plan v1 remains byte-stable; Applications-owned variable
 access remains fail-closed rather than inferring an owning port.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
@@ -1969,6 +1971,16 @@ is now projected while an admitted `human_decision` hook awaits its exact
 WorkflowDecision. General pause/resume, service/capability blocking,
 compensation, and replanning remain gated work and cannot be inferred from this
 lifecycle.
+
+`cloud.workflow-run.variable-inspection.v1` is a read projection over this same
+run authority. One project-authorized query restores the exact Plan v2 contract
+and materializes declaration-ordered values from immutable WorkflowRun input and
+the correlated A3S Flow snapshot/history through the execution materializer.
+The bounded response reports its observed Flow sequence and explicit
+materialized/unavailable state, retains value digests, and redacts Secret
+references. Before Flow creates the run, immutable inputs may be observed at
+sequence zero; Plan v1 conflicts. No variable row, cache, event log, or worker is
+an authoritative or supporting state source.
 
 ### Evolution experiment and promotion state (planned EV0)
 
@@ -2019,6 +2031,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Agent permanent capability files and build-note evidence | A0 AssetRelease/Artifact immutable references; build-by-chat proposals become release state only through reviewed A0 Apply |
 | Agent task working directory, installed-program state, and provider-private sandbox files | The exact AR0-selected Harness provider through Workloads, Runtime, and Box; only typed exported references cross into Cloud-owned Files or Artifacts |
 | Ontology, Workflow, goal, plan, WorkflowRun, human decision, and semantic step state | PostgreSQL Workflow tables through A3S ORM |
+| WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |

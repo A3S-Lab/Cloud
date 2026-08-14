@@ -169,9 +169,10 @@ use crate::modules::workflow::{
     GetOntologyRevisionHandler, GetPlanRevisionHandler, GetWorkflowDefinitionHandler,
     GetWorkflowGoalHandler, GetWorkflowNodeCatalogHandler, GetWorkflowRevisionHandler,
     GetWorkflowRunHandler, GetWorkflowRunHistoryHandler, GetWorkflowRunOutputHandler,
-    HumanTaskCoordinator, HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskRepository,
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunCoordinator, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    GetWorkflowRunVariablesHandler, HumanTaskCoordinator, HumanTaskResumeWorker,
+    HumanTaskResumeWorkerConfig, IHumanTaskRepository, IOntologyRepository,
+    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
+    IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
     ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
     ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
     ListWorkflowRunsHandler, PostgresHumanTaskRepository, PostgresOntologyRepository,
@@ -179,6 +180,7 @@ use crate::modules::workflow::{
     PostgresWorkflowRunRepository, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
     StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler, WorkflowModule,
     WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+    WorkflowRunVariableReader,
 };
 use crate::modules::workloads::domain::repositories::IDeploymentFlowWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IResourceClaimRepository;
@@ -815,6 +817,8 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
     );
     let workflow_run_history: Arc<dyn IWorkflowRunHistoryReader> =
         Arc::new(WorkflowRunHistoryReader::new(flow.engine()));
+    let workflow_run_variables: Arc<dyn IWorkflowRunVariableReader> =
+        Arc::new(WorkflowRunVariableReader::new(flow.engine()));
     let workflow_run_reconciler = WorkflowRunReconciler::new(
         Arc::clone(&workflow_runs),
         workflow_run_coordinator,
@@ -1029,6 +1033,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             workflow_runs,
             human_tasks,
             workflow_run_history,
+            workflow_run_variables,
             forms,
             form_semantic_core,
             search,
@@ -1132,6 +1137,7 @@ struct ApplicationDependencies {
     workflow_runs: Arc<dyn IWorkflowRunRepository>,
     human_tasks: Arc<dyn IHumanTaskRepository>,
     workflow_run_history: Arc<dyn IWorkflowRunHistoryReader>,
+    workflow_run_variables: Arc<dyn IWorkflowRunVariableReader>,
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     search: Arc<dyn ISearchRepository>,
@@ -1200,6 +1206,7 @@ fn build_application_with_health(
         workflow_runs,
         human_tasks,
         workflow_run_history,
+        workflow_run_variables,
         forms,
         form_semantic_core,
         search,
@@ -1292,6 +1299,7 @@ fn build_application_with_health(
     let list_workflow_runs = Arc::clone(&workflow_runs);
     let wait_workflow_runs = Arc::clone(&workflow_runs);
     let get_workflow_run_outputs = Arc::clone(&workflow_runs);
+    let get_workflow_run_variable_runs = Arc::clone(&workflow_runs);
     let get_workflow_run_history_runs = workflow_runs;
     let change_human_task_assignments = Arc::clone(&human_tasks);
     let submit_human_tasks = Arc::clone(&human_tasks);
@@ -2057,6 +2065,12 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::workflow::GetWorkflowRunOutput, _>(
                     GetWorkflowRunOutputHandler::new(get_workflow_run_outputs),
+                )
+                .query_handler::<crate::modules::workflow::GetWorkflowRunVariables, _>(
+                    GetWorkflowRunVariablesHandler::new(
+                        get_workflow_run_variable_runs,
+                        workflow_run_variables,
+                    ),
                 )
                 .query_handler::<crate::modules::workflow::GetWorkflowRunHistory, _>(
                     GetWorkflowRunHistoryHandler::new(

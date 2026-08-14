@@ -634,6 +634,17 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::WorkflowRunVariablesGet => {
+            let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;
+            workflow::get_run_variables(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::HumanTasksGet => {
             let arguments = arguments::parse::<HumanTaskArguments>(arguments).ok()?;
             workflow::get_human_task(

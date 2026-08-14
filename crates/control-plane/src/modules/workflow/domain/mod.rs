@@ -58,10 +58,16 @@ pub use services::{
     diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,
     CompiledWorkflowGoal, CompiledWorkflowRun, HumanTaskCancellationAuthority,
     HumanTaskDeadlineAuthority, HumanTaskParentCancellationEvidence, IWorkflowRunCoordinator,
-    IWorkflowRunHistoryReader, OntologyChange, OntologyChangeCompatibility, OntologyChangeKind,
-    OntologyDiff, OntologyResourceKind, WorkflowPlanCompiler, WorkflowRunCompiler,
-    WorkflowRunCoordinationError, WorkflowRunHistoryEvent, WorkflowRunHistoryPage,
+    IWorkflowRunHistoryReader, IWorkflowRunVariableReader, OntologyChange,
+    OntologyChangeCompatibility, OntologyChangeKind, OntologyDiff, OntologyResourceKind,
+    WorkflowPlanCompiler, WorkflowRunCompiler, WorkflowRunCoordinationError,
+    WorkflowRunHistoryEvent, WorkflowRunHistoryPage, WorkflowRunVariable,
+    WorkflowRunVariableInspection, WorkflowRunVariableState,
     HUMAN_TASK_CANCELLATION_AUTHORITY_API_VERSION, HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
+    WORKFLOW_RUN_VARIABLE_INSPECTION_MAX_BYTES, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
+};
+pub(crate) use services::{
+    inspect_workflow_run_variables, lookup_workflow_variable_path, materialize_workflow_variables,
 };
 pub use value_objects::{
     AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName,
@@ -134,6 +140,8 @@ mod human_task_contract_tests;
 mod workflow_revision_semantic_contracts_tests;
 #[cfg(test)]
 mod workflow_run_contract_tests;
+#[cfg(test)]
+mod workflow_run_variable_inspection_tests;
 #[cfg(test)]
 mod workflow_step_descriptor_bindings_tests;
 #[cfg(test)]
