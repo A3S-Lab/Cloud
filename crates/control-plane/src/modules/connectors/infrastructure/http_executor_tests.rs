@@ -5,9 +5,16 @@ use axum::http::{HeaderMap as AxumHeaderMap, StatusCode as AxumStatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::Router;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU16, AtomicUsize, Ordering};
+use tokio::process::Command;
 use tokio::sync::Mutex;
 use uuid::Uuid;
+
+const SYSTEM_PROXY_CHILD_MARKER: &str = "A3S_CONNECTOR_PROXY_CHILD";
+const SYSTEM_PROXY_CHILD_VALUE: &str = "a3s-c4-isolated-v1";
+const SYSTEM_PROXY_CHILD_TEST: &str =
+    "modules::connectors::infrastructure::http_executor::tests::system_proxy_child";
 
 #[derive(Debug, Clone)]
 struct CapturedRequest {
@@ -25,6 +32,7 @@ struct FixtureState {
 
 struct HttpFixture {
     endpoint: Url,
+    address: SocketAddr,
     state: FixtureState,
     server: tokio::task::JoinHandle<()>,
 }
@@ -56,6 +64,7 @@ impl HttpFixture {
         Self {
             endpoint: Url::parse(&format!("http://{address}/delivery/top-secret-endpoint"))
                 .expect("fixture endpoint"),
+            address,
             state,
             server,
         }
@@ -96,16 +105,34 @@ async fn capture_request(
 struct ExactEgressAuthorizer {
     revision_id: ConnectorRevisionId,
     endpoint: Url,
-    allow: bool,
+    authorized: Option<AuthorizedConnectorDestination>,
     calls: AtomicUsize,
 }
 
 impl ExactEgressAuthorizer {
-    fn allowing(revision_id: ConnectorRevisionId, endpoint: Url) -> Self {
+    fn allowing(revision_id: ConnectorRevisionId, endpoint: Url, address: SocketAddr) -> Self {
+        let authorized = AuthorizedConnectorDestination::new(&endpoint, vec![address])
+            .expect("authorized fixture destination");
         Self {
             revision_id,
             endpoint,
-            allow: true,
+            authorized: Some(authorized),
+            calls: AtomicUsize::new(0),
+        }
+    }
+
+    fn returning(
+        revision_id: ConnectorRevisionId,
+        endpoint: Url,
+        authorized_endpoint: Url,
+        address: SocketAddr,
+    ) -> Self {
+        let authorized = AuthorizedConnectorDestination::new(&authorized_endpoint, vec![address])
+            .expect("authorized fixture destination");
+        Self {
+            revision_id,
+            endpoint,
+            authorized: Some(authorized),
             calls: AtomicUsize::new(0),
         }
     }
@@ -114,7 +141,7 @@ impl ExactEgressAuthorizer {
         Self {
             revision_id,
             endpoint,
-            allow: false,
+            authorized: None,
             calls: AtomicUsize::new(0),
         }
     }
@@ -126,13 +153,14 @@ impl IConnectorEgressAuthorizer for ExactEgressAuthorizer {
         &self,
         connector_revision_id: ConnectorRevisionId,
         endpoint: &Url,
-    ) -> Result<(), ConnectorExecutionError> {
+    ) -> Result<AuthorizedConnectorDestination, ConnectorExecutionError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        if self.allow && connector_revision_id == self.revision_id && endpoint == &self.endpoint {
-            Ok(())
-        } else {
-            Err(ConnectorExecutionError::Rejected)
+        if connector_revision_id == self.revision_id && endpoint == &self.endpoint {
+            if let Some(authorized) = &self.authorized {
+                return Ok(authorized.clone());
+            }
         }
+        Err(ConnectorExecutionError::Rejected)
     }
 }
 
@@ -167,13 +195,18 @@ fn request(revision_id: ConnectorRevisionId, body: &[u8]) -> ConnectorExecutionR
 }
 
 #[tokio::test]
-async fn exact_egress_and_hmac_materialization_are_enforced_for_one_attempt() {
+async fn exact_egress_addresses_are_pinned_and_hmac_is_enforced_for_one_attempt() {
     let fixture = HttpFixture::start(AxumStatusCode::OK, None, b"accepted".to_vec()).await;
     let revision_id = ConnectorRevisionId::new();
     let secret = b"0123456789abcdef0123456789abcdef";
+    let endpoint = Url::parse(&format!(
+        "http://connector.invalid:{}/delivery/top-secret-endpoint",
+        fixture.address.port()
+    ))
+    .expect("pinned fixture endpoint");
     let revision = resolved_revision(
         revision_id,
-        fixture.endpoint.clone(),
+        endpoint.clone(),
         ResolvedConnectorAuthentication::hmac_sha256(
             Zeroizing::new(secret.to_vec()),
             "x-a3s-signature",
@@ -187,10 +220,10 @@ async fn exact_egress_and_hmac_materialization_are_enforced_for_one_attempt() {
     assert!(!debug.contains("0123456789abcdef"));
     let egress = Arc::new(ExactEgressAuthorizer::allowing(
         revision_id,
-        fixture.endpoint.clone(),
+        endpoint,
+        fixture.address,
     ));
-    let executor =
-        BoundedHttpConnectorExecutor::new(revision, egress.clone()).expect("Connector executor");
+    let executor = BoundedHttpConnectorExecutor::new(revision, egress.clone());
     let signing_input = b"v1\n2026-08-14T00:00:00Z\nattempt\nbody";
     let request = request(revision_id, br#"{"delivery":"body"}"#)
         .with_header("x-a3s-delivery-id", Uuid::now_v7().to_string())
@@ -206,6 +239,11 @@ async fn exact_egress_and_hmac_materialization_are_enforced_for_one_attempt() {
     let requests = fixture.requests().await;
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].body, request.body());
+    assert!(requests[0]
+        .headers
+        .get("host")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|host| host.starts_with("connector.invalid:")));
     let signature = requests[0]
         .headers
         .get("x-a3s-signature")
@@ -233,14 +271,131 @@ async fn egress_denial_prevents_network_access() {
             1024,
         ),
         egress.clone(),
-    )
-    .expect("Connector executor");
+    );
     assert_eq!(
         executor.execute(&request(revision_id, b"body")).await,
         Err(ConnectorExecutionError::Rejected)
     );
     assert_eq!(egress.calls.load(Ordering::SeqCst), 1);
     assert!(fixture.requests().await.is_empty());
+}
+
+#[tokio::test]
+async fn executor_rejects_an_authorization_bound_to_another_endpoint() {
+    let fixture = HttpFixture::start(AxumStatusCode::OK, None, Vec::new()).await;
+    let revision_id = ConnectorRevisionId::new();
+    let endpoint = Url::parse(&format!(
+        "http://connector.invalid:{}/delivery/top-secret-endpoint",
+        fixture.address.port()
+    ))
+    .expect("requested endpoint");
+    let other_endpoint = Url::parse(&format!(
+        "http://other.invalid:{}/delivery/top-secret-endpoint",
+        fixture.address.port()
+    ))
+    .expect("other endpoint");
+    let egress = Arc::new(ExactEgressAuthorizer::returning(
+        revision_id,
+        endpoint.clone(),
+        other_endpoint,
+        fixture.address,
+    ));
+    let executor = BoundedHttpConnectorExecutor::new(
+        resolved_revision(
+            revision_id,
+            endpoint,
+            ResolvedConnectorAuthentication::none(),
+            1024,
+        ),
+        egress.clone(),
+    );
+
+    assert_eq!(
+        executor.execute(&request(revision_id, b"body")).await,
+        Err(ConnectorExecutionError::Rejected)
+    );
+    assert_eq!(egress.calls.load(Ordering::SeqCst), 1);
+    assert!(fixture.requests().await.is_empty());
+}
+
+#[tokio::test]
+async fn system_proxy_is_disabled_for_pinned_connector_attempts() {
+    let output = Command::new(std::env::current_exe().expect("current test executable"))
+        .arg("--exact")
+        .arg(SYSTEM_PROXY_CHILD_TEST)
+        .arg("--nocapture")
+        .env(SYSTEM_PROXY_CHILD_MARKER, SYSTEM_PROXY_CHILD_VALUE)
+        .output()
+        .await
+        .expect("isolated proxy test process");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() && stdout.contains("1 passed"),
+        "isolated proxy test failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+}
+
+#[tokio::test]
+async fn system_proxy_child() {
+    if std::env::var(SYSTEM_PROXY_CHILD_MARKER).as_deref() != Ok(SYSTEM_PROXY_CHILD_VALUE) {
+        return;
+    }
+
+    let proxy_listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("proxy trap listener");
+    let proxy_url = format!(
+        "http://{}",
+        proxy_listener.local_addr().expect("proxy trap address")
+    );
+    for name in [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ] {
+        std::env::set_var(name, &proxy_url);
+    }
+    for name in ["NO_PROXY", "no_proxy"] {
+        std::env::remove_var(name);
+    }
+
+    let fixture = HttpFixture::start(AxumStatusCode::OK, None, b"direct".to_vec()).await;
+    let revision_id = ConnectorRevisionId::new();
+    let endpoint = Url::parse(&format!(
+        "http://connector.invalid:{}/delivery/top-secret-endpoint",
+        fixture.address.port()
+    ))
+    .expect("pinned fixture endpoint");
+    let executor = BoundedHttpConnectorExecutor::new(
+        resolved_revision(
+            revision_id,
+            endpoint.clone(),
+            ResolvedConnectorAuthentication::none(),
+            1024,
+        ),
+        Arc::new(ExactEgressAuthorizer::allowing(
+            revision_id,
+            endpoint,
+            fixture.address,
+        )),
+    );
+
+    let receipt = executor
+        .execute(&request(revision_id, b"body"))
+        .await
+        .expect("direct pinned attempt");
+    assert_eq!(receipt.response_body(), b"direct");
+    assert_eq!(fixture.requests().await.len(), 1);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), proxy_listener.accept())
+            .await
+            .is_err(),
+        "Connector attempt must not contact the system proxy"
+    );
 }
 
 #[tokio::test]
@@ -258,9 +413,9 @@ async fn status_retry_after_redirect_and_response_bounds_are_connector_owned() {
         Arc::new(ExactEgressAuthorizer::allowing(
             revision_id,
             retrying.endpoint.clone(),
+            retrying.address,
         )),
-    )
-    .expect("Connector executor");
+    );
     let error = executor
         .execute(&request(revision_id, b"body"))
         .await
@@ -280,9 +435,9 @@ async fn status_retry_after_redirect_and_response_bounds_are_connector_owned() {
         Arc::new(ExactEgressAuthorizer::allowing(
             revision_id,
             redirect.endpoint.clone(),
+            redirect.address,
         )),
-    )
-    .expect("Connector executor");
+    );
     assert_eq!(
         executor.execute(&request(revision_id, b"body")).await,
         Err(ConnectorExecutionError::Rejected)
@@ -301,9 +456,9 @@ async fn status_retry_after_redirect_and_response_bounds_are_connector_owned() {
         Arc::new(ExactEgressAuthorizer::allowing(
             revision_id,
             oversized.endpoint.clone(),
+            oversized.address,
         )),
-    )
-    .expect("Connector executor");
+    );
     assert_eq!(
         executor.execute(&request(revision_id, b"body")).await,
         Err(ConnectorExecutionError::Rejected)

@@ -1,10 +1,12 @@
 use crate::modules::shared_kernel::domain::ConnectorRevisionId;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::fmt;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
-use url::Url;
+use url::{Host, Url};
 use uuid::Uuid;
 
 pub(crate) const MAXIMUM_CONNECTOR_BODY_BYTES: usize = 1024 * 1024;
@@ -13,6 +15,7 @@ const MAXIMUM_CONNECTOR_HEADER_NAME_BYTES: usize = 64;
 const MAXIMUM_CONNECTOR_HEADER_VALUE_BYTES: usize = 2 * 1024;
 const MAXIMUM_CONNECTOR_CONTENT_TYPE_BYTES: usize = 128;
 const MAXIMUM_CONNECTOR_SIGNING_INPUT_BYTES: usize = MAXIMUM_CONNECTOR_BODY_BYTES + 4 * 1024;
+pub(crate) const MAXIMUM_AUTHORIZED_CONNECTOR_ADDRESSES: usize = 16;
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct ConnectorExecutionRequest {
@@ -229,14 +232,95 @@ impl ConnectorExecutionError {
     }
 }
 
+/// The exact transport destination admitted for one Connector execution attempt.
+///
+/// An egress authorizer creates this value after resolving and evaluating the
+/// materialized endpoint. The HTTP executor must consume these addresses for the
+/// same attempt instead of resolving the hostname again.
+#[derive(Clone, PartialEq, Eq)]
+pub struct AuthorizedConnectorDestination {
+    endpoint_binding: [u8; 32],
+    socket_addresses: Box<[SocketAddr]>,
+}
+
+impl AuthorizedConnectorDestination {
+    pub fn new(
+        endpoint: &Url,
+        mut socket_addresses: Vec<SocketAddr>,
+    ) -> Result<Self, ConnectorExecutionError> {
+        let port = endpoint
+            .port_or_known_default()
+            .filter(|port| *port != 0)
+            .ok_or(ConnectorExecutionError::Rejected)?;
+        if endpoint.host().is_none()
+            || socket_addresses.is_empty()
+            || socket_addresses.len() > MAXIMUM_AUTHORIZED_CONNECTOR_ADDRESSES
+            || socket_addresses.iter().any(|address| {
+                address.port() != port
+                    || matches!(address, SocketAddr::V6(address) if address.flowinfo() != 0 || address.scope_id() != 0)
+            })
+        {
+            return Err(ConnectorExecutionError::Rejected);
+        }
+
+        match endpoint.host() {
+            Some(Host::Ipv4(expected))
+                if socket_addresses
+                    .iter()
+                    .any(|address| address.ip() != IpAddr::V4(expected)) =>
+            {
+                return Err(ConnectorExecutionError::Rejected);
+            }
+            Some(Host::Ipv6(expected))
+                if socket_addresses
+                    .iter()
+                    .any(|address| address.ip() != IpAddr::V6(expected)) =>
+            {
+                return Err(ConnectorExecutionError::Rejected);
+            }
+            _ => {}
+        }
+
+        socket_addresses.sort_unstable();
+        socket_addresses.dedup();
+        Ok(Self {
+            endpoint_binding: endpoint_binding(endpoint),
+            socket_addresses: socket_addresses.into_boxed_slice(),
+        })
+    }
+
+    pub fn matches_endpoint(&self, endpoint: &Url) -> bool {
+        self.endpoint_binding == endpoint_binding(endpoint)
+    }
+
+    pub fn socket_addresses(&self) -> &[SocketAddr] {
+        &self.socket_addresses
+    }
+}
+
+fn endpoint_binding(endpoint: &Url) -> [u8; 32] {
+    Sha256::digest(endpoint.as_str().as_bytes()).into()
+}
+
+impl fmt::Debug for AuthorizedConnectorDestination {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("AuthorizedConnectorDestination")
+            .field("destination", &"redacted")
+            .field("address_count", &self.socket_addresses.len())
+            .finish()
+    }
+}
+
 #[async_trait]
 pub trait IConnectorEgressAuthorizer: Send + Sync {
-    /// Re-evaluates the exact materialized destination immediately before each attempt.
+    /// Re-evaluates the exact materialized destination immediately before each attempt and
+    /// returns the only socket addresses that attempt may use.
     async fn authorize(
         &self,
         connector_revision_id: ConnectorRevisionId,
         endpoint: &Url,
-    ) -> Result<(), ConnectorExecutionError>;
+    ) -> Result<AuthorizedConnectorDestination, ConnectorExecutionError>;
 }
 
 #[async_trait]
@@ -375,6 +459,7 @@ fn mime_token(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn request_rejects_transport_and_credential_authority_from_callers() {
@@ -440,6 +525,48 @@ mod tests {
             Uuid::now_v7(),
             "application/json;",
             Vec::new(),
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn authorized_destination_is_exact_bounded_canonical_and_redacted() {
+        let endpoint =
+            Url::parse("https://top-secret-host.example:8443/path?token=secret").expect("endpoint");
+        let first = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8)), 8443);
+        let second = SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 8443);
+        let destination =
+            AuthorizedConnectorDestination::new(&endpoint, vec![second, first, first])
+                .expect("authorized destination");
+
+        assert!(destination.matches_endpoint(&endpoint));
+        assert!(!destination.matches_endpoint(
+            &Url::parse("https://top-secret-host.example:8443/other?token=secret")
+                .expect("other endpoint")
+        ));
+        assert_eq!(destination.socket_addresses(), &[first, second]);
+        let debug = format!("{destination:?}");
+        assert!(!debug.contains("top-secret-host"));
+        assert!(!debug.contains("8.8.8.8"));
+        assert!(!debug.contains("token=secret"));
+        assert!(debug.contains("address_count: 2"));
+    }
+
+    #[test]
+    fn authorized_destination_rejects_empty_wrong_port_and_ip_literal_substitution() {
+        let endpoint = Url::parse("https://192.0.2.1/path").expect("endpoint");
+        assert!(AuthorizedConnectorDestination::new(&endpoint, Vec::new()).is_err());
+        assert!(AuthorizedConnectorDestination::new(
+            &endpoint,
+            vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1)), 80)],
+        )
+        .is_err());
+        assert!(AuthorizedConnectorDestination::new(
+            &endpoint,
+            vec![SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(192, 0, 2, 2)),
+                443
+            )],
         )
         .is_err());
     }

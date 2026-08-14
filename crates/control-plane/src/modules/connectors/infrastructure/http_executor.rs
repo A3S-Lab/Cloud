@@ -1,9 +1,10 @@
 use crate::modules::connectors::domain::{
     maximum_connector_retry_after, validate_connector_content_type, validate_connector_http_limits,
     validate_connector_signature_metadata, validate_connector_signing_secret_length,
-    validate_resolved_connector_endpoint, ConnectorExecutionError, ConnectorExecutionReceipt,
-    ConnectorExecutionRequest, ConnectorHttpMethod, ConnectorHttpStatusPolicy,
-    ConnectorStatusDisposition, IConnectorEgressAuthorizer, IConnectorExecutionPort,
+    validate_resolved_connector_endpoint, AuthorizedConnectorDestination, ConnectorExecutionError,
+    ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpMethod,
+    ConnectorHttpStatusPolicy, ConnectorStatusDisposition, IConnectorEgressAuthorizer,
+    IConnectorExecutionPort,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, ConnectorRevisionId};
 use async_trait::async_trait;
@@ -199,7 +200,6 @@ impl fmt::Debug for ResolvedConnectorHttpRevision {
 
 pub struct BoundedHttpConnectorExecutor {
     revision: ResolvedConnectorHttpRevision,
-    client: Client,
     egress: Arc<dyn IConnectorEgressAuthorizer>,
 }
 
@@ -207,21 +207,8 @@ impl BoundedHttpConnectorExecutor {
     pub fn new(
         revision: ResolvedConnectorHttpRevision,
         egress: Arc<dyn IConnectorEgressAuthorizer>,
-    ) -> Result<Self, String> {
-        let client = Client::builder()
-            .use_rustls_tls()
-            .timeout(revision.timeout)
-            .connect_timeout(revision.timeout)
-            .redirect(reqwest::redirect::Policy::none())
-            .https_only(!revision.allow_http)
-            .user_agent("a3s-cloud-connectors")
-            .build()
-            .map_err(|_| "could not build bounded Connector HTTP client".to_owned())?;
-        Ok(Self {
-            revision,
-            client,
-            egress,
-        })
+    ) -> Self {
+        Self { revision, egress }
     }
 }
 
@@ -251,12 +238,12 @@ impl IConnectorExecutionPort for BoundedHttpConnectorExecutor {
         }
         let endpoint = Url::parse(self.revision.endpoint.as_str())
             .map_err(|_| ConnectorExecutionError::Rejected)?;
-        self.egress.authorize(self.revision.id, &endpoint).await?;
+        let authorized = self.egress.authorize(self.revision.id, &endpoint).await?;
+        let client = attempt_http_client(&self.revision, &endpoint, &authorized)?;
 
         let mut headers = request_headers(request)?;
         apply_authentication(&self.revision.authentication, request, &mut headers)?;
-        let response = self
-            .client
+        let response = client
             .request(http_method(self.revision.method), endpoint)
             .headers(headers)
             .body(request.body().to_vec())
@@ -288,6 +275,30 @@ impl IConnectorExecutionPort for BoundedHttpConnectorExecutor {
             response_body,
         )
     }
+}
+
+fn attempt_http_client(
+    revision: &ResolvedConnectorHttpRevision,
+    endpoint: &Url,
+    authorized: &AuthorizedConnectorDestination,
+) -> Result<Client, ConnectorExecutionError> {
+    if !authorized.matches_endpoint(endpoint) {
+        return Err(ConnectorExecutionError::Rejected);
+    }
+    let host = endpoint
+        .host_str()
+        .ok_or(ConnectorExecutionError::Rejected)?;
+    Client::builder()
+        .use_rustls_tls()
+        .timeout(revision.timeout)
+        .connect_timeout(revision.timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .https_only(!revision.allow_http)
+        .no_proxy()
+        .resolve_to_addrs(host, authorized.socket_addresses())
+        .user_agent("a3s-cloud-connectors")
+        .build()
+        .map_err(|_| ConnectorExecutionError::Retryable { retry_after: None })
 }
 
 fn request_headers(

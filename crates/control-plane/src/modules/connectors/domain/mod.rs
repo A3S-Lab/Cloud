@@ -9,11 +9,11 @@ pub use events::ConnectorRevisionPublished;
 
 pub(crate) use execution::{
     validate_connector_content_type, validate_connector_signature_metadata,
-    MAXIMUM_CONNECTOR_BODY_BYTES,
+    MAXIMUM_AUTHORIZED_CONNECTOR_ADDRESSES, MAXIMUM_CONNECTOR_BODY_BYTES,
 };
 pub use execution::{
-    ConnectorExecutionError, ConnectorExecutionReceipt, ConnectorExecutionRequest,
-    IConnectorEgressAuthorizer, IConnectorExecutionPort,
+    AuthorizedConnectorDestination, ConnectorExecutionError, ConnectorExecutionReceipt,
+    ConnectorExecutionRequest, IConnectorEgressAuthorizer, IConnectorExecutionPort,
 };
 #[cfg(test)]
 pub(crate) use http_definition::MINIMUM_SIGNING_SECRET_BYTES;

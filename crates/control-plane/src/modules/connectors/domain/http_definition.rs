@@ -575,6 +575,7 @@ pub(crate) fn validate_resolved_connector_endpoint(
     if !accepted_scheme
         || endpoint.as_str().chars().count() > MAXIMUM_ENDPOINT_CHARACTERS
         || endpoint.host_str().is_none()
+        || endpoint.port() == Some(0)
         || !endpoint.username().is_empty()
         || endpoint.password().is_some()
         || endpoint.fragment().is_some()

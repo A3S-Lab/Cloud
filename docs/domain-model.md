@@ -641,6 +641,17 @@ whose debug representation redacts endpoint and authentication material, and
 must run again for every later attempt. It owns no cache, plaintext store,
 Secret lifecycle state, retry, scheduler, or execution evidence.
 
+The component-only `AUT0.5-C4` egress boundary keeps authorization and transport
+coupled without creating another HTTP mechanism. The production public-Internet
+authorizer accepts HTTPS only, resolves an absolute DNS name immediately before
+each attempt, rejects special-use names and the entire DNS answer set when any
+address is not public, and returns one bounded `AuthorizedConnectorDestination`
+bound to the exact materialized endpoint. The sole bounded HTTP executor creates
+an attempt-scoped Rustls client that disables system proxies and connects only
+to those authorized socket addresses while retaining the original hostname for
+HTTP authority and TLS verification. It never re-resolves the name, follows a
+redirect, retries, caches policy/material, or records evidence.
+
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
 
@@ -750,19 +761,22 @@ canonical body.
 The component-only Connector executor materializes one fixed resolved revision
 and performs exactly one external attempt. Connectors owns the endpoint and
 method, production HTTPS requirement, redirect rejection, request/response/time
-limits, zeroized HMAC-SHA-256 material, per-attempt egress authorization,
+limits, zeroized HMAC-SHA-256 material, per-attempt exact-destination egress
+authorization, DNS-rebinding-safe address pinning, system-proxy disablement,
 bounded response capture, closed status classification, and bounded
-delta-seconds `Retry-After`. Requests, revisions, and receipts redact body,
-header-value, endpoint, credential, signing-input, and response-body material
-from debug output. Flow or the owning A3S Event durable consumer remains the
-only retry, backoff, cancellation, and acknowledgement authority.
+delta-seconds `Retry-After`. Requests, revisions, destinations, and receipts
+redact body, header-value, endpoint, address, credential, signing-input, and
+response-body material from debug output. Flow or the owning A3S Event durable
+consumer remains the only retry, backoff, cancellation, and acknowledgement
+authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` profile/revision authority and exact Secret references now exist,
-but `AUT0.5` must still add authorized application surfaces, just-in-time Secret
-materialization with active-state rechecks, a production egress/SSRF authorizer,
-execution evidence, revocation, recovery, and Workflow ports over this same
-authority and execution port. The production notification dispatcher must publish a
+`AUT0.5-C2` through `C4` profile/revision, authorized application,
+just-in-time Secret materialization, and public-Internet egress foundations now
+exist, but `AUT0.5` must still add execution evidence, internal execution
+authorization, revocation/recovery, supported management surfaces, provider
+wiring, and Workflow ports over this same authority and execution port. The
+production notification dispatcher must publish a
 Notification-owned fact through the existing transactional Outbox and consume
 it with the existing A3S Event durable subscription/manual-ack path. Provider
 outage must never run inside the source Outbox projector or block unrelated

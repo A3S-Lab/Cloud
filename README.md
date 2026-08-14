@@ -124,14 +124,15 @@ failure, recovery, cleanup, and release evidence passes.
 | Workflow | Ontologies, immutable definitions/revisions/goals, Plan v2, WorkflowRun, Forms/HumanTasks, finite Execution, typed variables/defaults, inspection, node discovery, and immutable composite-region policy | Public Workflow, composite execution, remaining providers, compensation, and production evidence remain |
 | Plugins | Exact A3S Use compatibility plus trusted Registry/catalog reads | Tenant assignments and complete `U0` gate remain |
 | Agent execution | Provider-neutral Harness boundary and common workload path | Native Code verification and later governance gates remain |
-| Connectors | Exact-revision single-attempt execution port and bounded HTTP executor | Profiles, A3S ACL admission, Secret materialization, production egress/SSRF policy, evidence, and `AUT0.5` availability remain |
+| Connectors | Exact-revision profiles, canonical A3S ACL admission, authorized just-in-time Secret materialization, single-attempt execution, and component-only public-Internet DNS/SSRF enforcement with exact address pinning | Evidence, internal execution authorization/recovery, provider wiring, supported management surfaces, Workflow ports, and `AUT0.5` availability remain |
 | Applications, Knowledge, Automations, Inference | Ownership and staged architecture are frozen | `APP0`, `K0`, `AUT0`, `PW0`, and `I0` remain unavailable |
 
 Notifications now include exact-recipient in-app projections plus component-tested
 signed-webhook and Slack-compatible adapters that submit one attempt through the
 shared Connector execution port. Durable production dispatch is not wired;
-Connector profiles, Secret materialization, egress policy, evidence, and the
-shared Outbox/Event consumer remain gated.
+Connector evidence, internal execution authorization/recovery, provider wiring,
+supported management surfaces, Workflow ports, and the shared Outbox/Event
+consumer remain gated.
 
 ### Latest Workflow contract slice
 
