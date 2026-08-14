@@ -374,7 +374,7 @@ not business ownership or convenience wrappers.
 | Context | Responsibility | State |
 | --- | --- | --- |
 | Identity | Organizations, principals, tokens, membership, grants, authorization, and planned enterprise federation/provisioning/session policy | Current foundation; `C0.3` in progress and enterprise `C0.5` planned |
-| Projects | Projects, environments, and tenant boundaries | Current |
+| Projects | Projects, environments, tenant boundaries, and immutable attribution-profile lineage | Current; `C0.3-PA1` verified on PostgreSQL 17 |
 | Sources | External source identities, revisions, webhooks, and subscriptions | Current |
 | Assets | Agent, MCP, and Skill identities, hosted Git, immutable release lifecycle, Agent deployment, and Skill-to-Agent-Workload release binding | `A0.1` and `A0.2` verified; `A0.3` through `A0.5` implemented but awaiting retained provider and PostgreSQL/Box lifecycle evidence |
 | Artifacts | Immutable admitted bytes, receipts, evidence, and retention | Current |
@@ -385,7 +385,7 @@ not business ownership or convenience wrappers.
 | Secrets | Immutable Secret versions, bindings, authorization, and materialization policy | Current |
 | Operations | User-visible long-running operation identity and progress projection | Current |
 | Integration Events | Transactional outbox publication and consumer coordination | Current |
-| Notifications | Deterministic personal in-app projections of curated committed Outbox facts, exact-recipient and Resource Grant filtering, and idempotent read state | `C0.3-N1` implemented; outbound delivery adapters and alert policy remain planned and unavailable |
+| Notifications | Deterministic personal in-app projections of curated committed Outbox facts, exact-recipient and Resource Grant filtering, and idempotent read state | `C0.3-N1` verified on PostgreSQL 17; outbound delivery adapters and alert policy remain planned and unavailable |
 | Search | Tenant-authorized resource, capability-catalog, ontology, and evidence projections and bounded discovery; never an owning registry or graph | Current, including the rebuildable `W0.2` Ontology projection; later projections remain gate-driven |
 | Workflow | Ontologies, immutable ontology and Workflow revisions, goals, deterministic plan revisions, immutable step-descriptor and typed-variable semantics, built-in node discovery, Workflow runs, reachable-Output termination, HumanTasks, human decisions, finite-child coordination, and semantic step projections | `W0.1` is implemented and `W0.2` is verified; `W0.3` planning/API, revision-owned semantic contracts, exact Plan v2 pinning, initial typed-variable Flow projection, the read-only 23-node catalog, Workflow-local steps, deterministic Output aggregation, HumanTask, and finite `execution` are implemented. Runtime variable inspection/defaults, composite and Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded real-provider conformance, and `W0.4`-`W0.5` remain |
 | Applications | Application identities, immutable releases, six authoring/delivery projections including classic/New Agent distinction, sessions, messages/variants, conversation variables, toolkit/feedback/annotation/publication policy, and managed application delivery | Planned `APP0`; every release binds one exact Workflow revision and no application mode or toolkit feature owns an execution engine/provider client |

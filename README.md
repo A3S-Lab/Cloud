@@ -437,6 +437,12 @@ template/subscription store, scheduler, or notification-specific configuration
 format; outbound webhook, SMTP, and Slack-compatible delivery remain future
 adapters over this boundary.
 
+The existing PostgreSQL 17 foundation job executes both the Project-attribution
+and personal-notification gates against the production repositories. The
+[successful job](https://github.com/A3S-Lab/Cloud/actions/runs/31766502180/job/94663412171)
+retains their lineage, replay, isolation, deduplication, immutability, and exact
+transaction evidence without adding another database or migration path.
+
 ### One concern, one authority
 
 | Concern | Sole authority | Duplicate mechanism that is prohibited |
