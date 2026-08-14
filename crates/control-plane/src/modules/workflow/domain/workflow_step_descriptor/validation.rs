@@ -116,7 +116,7 @@ fn validate_binding_contract(spec: &WorkflowStepDescriptorSpec) -> Result<(), St
     let requires_capability = spec
         .required_bindings
         .contains(&WorkflowStepBindingKind::CapabilityReference);
-    if requires_capability != !spec.allowed_capability_types.is_empty() {
+    if requires_capability == spec.allowed_capability_types.is_empty() {
         return Err(
             "Workflow descriptor capability binding and allowed types must be declared together"
                 .into(),
