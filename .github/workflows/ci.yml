@@ -99,6 +99,13 @@ jobs:
           postgres_project_attribution_is_atomic_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify personal notification persistence
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_notifications_are_deduplicated_personal_and_atomic
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Workflow finite Execution persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
