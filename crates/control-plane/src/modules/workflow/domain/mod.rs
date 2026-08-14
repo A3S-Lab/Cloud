@@ -10,6 +10,7 @@ pub mod value_objects;
 mod workflow_contract;
 mod workflow_goal_contract;
 mod workflow_graph;
+mod workflow_node_catalog;
 mod workflow_payload;
 mod workflow_revision_semantic_contracts;
 mod workflow_run_contract;
@@ -75,6 +76,9 @@ pub use workflow_contract::{
 pub use workflow_goal_contract::{
     WorkflowGoalContract, WorkflowGoalSpec, WORKFLOW_GOAL_MAX_ACL_BYTES,
     WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_GOAL_SCHEMA,
+};
+pub use workflow_node_catalog::{
+    WorkflowNodeCatalog, WorkflowNodeCatalogAvailability, WorkflowNodeCatalogEntry,
 };
 pub use workflow_payload::{
     WorkflowBranchRoute, WorkflowDataField, WorkflowDataSchema, WorkflowDataType, WorkflowPayload,

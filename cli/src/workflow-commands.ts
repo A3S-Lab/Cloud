@@ -41,6 +41,7 @@ import {
   workflowGoalMutationResult,
   workflowGoalResult,
   workflowGoalsResult,
+  workflowNodeCatalogResult,
   workflowPlanRevisionResult,
   workflowRevisionResult,
   workflowRevisionsResult,
@@ -70,6 +71,11 @@ export async function executeWorkflowCommand(
     rejectMisplacedWorkflowRunOptions(arguments_);
   }
   switch (command) {
+    case 'workflow-nodes list':
+      requireListCommand(arguments_);
+      return workflowNodeCatalogResult(
+        await cloudApi().getWorkflowNodeCatalog(requireOrganization(context), requireProject(context))
+      );
     case 'workflow-definitions list':
       requireListCommand(arguments_);
       return workflowDefinitionsResult(

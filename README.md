@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.30.0" src="https://img.shields.io/badge/REST_contract-1.30.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.31.0" src="https://img.shields.io/badge/REST_contract-1.31.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -223,11 +223,23 @@ node outputs, run assignments, typed reads, and opaque references from existing
 Flow history. Explicit reads are the step's sole data authority and are exposed
 through `current`; steps without reads retain the legacy dependency input.
 Migration `105` only widens the existing immutable run-input
-column; no variable table or parallel event history was added. W0.3 remains in
-progress because runtime inspection, digest-only defaults, composite regions,
-Applications-owned variables, built-in catalog discovery, Iteration/Loop,
-Answer, error branches, business-service and remaining provider steps,
-compensation, expanded provider evidence, and production recovery remain open.
+column; no variable table or parallel event history was added. REST/OpenAPI
+`1.31.0` now adds a separate project-authorized, read-only discovery projection
+for the exact 23-node application-platform baseline. It composes the parity
+manifest's owner/gate/dependency/availability decisions with the digest-bound
+Workflow kind, execution-class, and semantic-profile contract and fails closed
+on drift.
+The maintained client, `workflow-nodes list`, and
+`a3s_cloud_workflow_node_catalog_get` return the same deterministic catalog.
+Five nodes are internal, eighteen remain unavailable, none are public, and
+`parityClaim` remains false. Catalog presence is not descriptor admission:
+only the exact immutable registry snapshot owned by a WorkflowRevision can
+authorize compilation and execution. No catalog table, migration, index,
+synchronizer, worker, or Flow change was added. W0.3 remains in progress because
+runtime inspection, digest-only defaults, composite regions,
+Applications-owned variables, Iteration/Loop, Answer, error branches,
+business-service and remaining provider steps, compensation, expanded provider
+evidence, and production recovery remain open.
 No second engine, variable store, scheduler, queue, Runtime provider,
 authorization store, or frontend was added.
 
@@ -416,6 +428,7 @@ settlement, and commercial entitlements remain outside Cloud.
 | Business desired state | PostgreSQL through A3S ORM | Redis, an event stream, a node journal, or a local file as product truth |
 | Ontology semantics and revision lineage | Workflow-owned immutable ACL revisions in PostgreSQL through A3S ORM | A graph database authority, Search-owned writes, mutable schema rows, or a second migration-policy store |
 | Workflow definition, payload, goal, and plan semantics | Workflow-owned immutable revisions in PostgreSQL through A3S ORM | Flow history as business truth, planner-local files, mutable external payloads, or a second Workflow engine |
+| Built-in Workflow node discovery | The frozen parity manifest plus its exact digest-bound node-profile ACL, composed as a read-only Workflow projection | A catalog table, registry writer, descriptor admission shortcut, provider dispatch path, or Flow extension |
 | Long-running work | A3S Flow plus Cloud Operations | Product-specific workflow engines, queues, or retry loops |
 | Placement, replicas, rollout, scaling | Workloads | Agent-, MCP-, inference-, Gateway-, or import-specific schedulers |
 | Node delivery and hard-resource ownership | Fleet commands, Node Agent journal, and Fleet Claims | A second node channel, direct process control, or in-memory reservations |
@@ -466,7 +479,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 
 The raw OpenAPI document is the committed
 [`openapi/v1.json`](openapi/v1.json) snapshot for REST major version 1 and
-contract version `1.30.0`.
+contract version `1.31.0`.
 
 ### Bootstrap the first organization
 
@@ -543,7 +556,7 @@ mechanisms of the reference products.
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider`; Workloads, Fleet, Runtime, and Box own placement, delivery, isolation, and lifecycle | `A1.0` verified; `A1.1` implemented; native Code `A1.2` awaits verification; `A1.3` onward is gate-driven | AX server/controller deployment, a provider scheduler, a separate run store, or direct Harness clients |
 | Google AX-style replay, approvals, pause/resume, checkpoints, forks, trajectories, and telemetry | One PostgreSQL Agent semantic sequence, shared cursor/SSE transport, immutable checkpoints, and the common Operation/Fleet/provider recovery path | Foundations exist; complete governance and recovery remain planned in `A1.5` and `A1.6` | AX event-log authority, Flow history as transcript, Runtime logs as semantic state, or a second checkpoint store |
 | Google AX-style per-execution Harness, instruction, environment, model, Skill, MCP, and Tool customization | One immutable, closed `HarnessInvocationProfile` binds exact release and Secret references before dispatch | Planned `A1.4`, after the provider-neutral `A1.3` contract and applicable `A0`/`MCP0`/`I0` identities | Mutable provider JSON as desired state, arbitrary environment injection, copied Secret material, or provider-owned authorization |
-| Dify-style six current application experiences, including distinct classic and New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin outcomes, publication, monitoring, and enterprise governance | Applications, Knowledge, Files, Automations, and Connectors compose exact Workflow revisions with existing A0/A1/AR0, Flow, Inference, Use, Identity, storage, Gateway, and Operations authorities | Planned and unavailable; composite `APP0.6` is the only public core parity gate | Dify APIs, storage topology, package lifecycle, configuration authority, separate mode runtimes, another Agent/sandbox lifecycle, pipeline engine, plugin installer, vector database authority, or trigger scheduler |
+| Dify-style six current application experiences, including distinct classic and New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin outcomes, publication, monitoring, and enterprise governance | Applications, Knowledge, Files, Automations, and Connectors compose exact Workflow revisions with existing A0/A1/AR0, Flow, Inference, Use, Identity, storage, Gateway, and Operations authorities | The project-authorized 23-node acceptance catalog is implemented as a read-only discovery projection, but no node is public and the application experiences remain planned and unavailable; composite `APP0.6` is the only public core parity gate | Dify APIs, storage topology, package lifecycle, configuration authority, separate mode runtimes, another Agent/sandbox lifecycle, pipeline engine, plugin installer, vector database authority, or trigger scheduler |
 
 These rows preserve product intent; they do not claim that planned gates are
 already available. Removing a reference name from a site or navigation label
@@ -572,7 +585,7 @@ current Box-only provider contract.
 | `U0` | Exact A3S Use registry and workspace package assignments through the shared Plugin Manager | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads verified, assignments unavailable |
 | `MCP0` | Modern hosted MCP admission, Runtime hosting, orchestration, Gateway enforcement, and recovery | Cloud orchestration foundation in progress; unavailable until the joint release gate |
 | `A1` | Heterogeneous Agent execution, semantic events, approvals, checkpoints, forks, and trajectories | In progress (`A1.0` verified; `A1.1` implemented; native Code `A1.2` pending verification) |
-| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; `W0.3` includes definition/goal persistence, revision-owned descriptor bindings/registry snapshot/typed-variable contract, Plan v2 exact pinning and initial typed-variable Flow projection, Form, WorkflowRun, HumanTask, reachable-Output aggregation, ExecutionTemplate, and finite Execution. Plan v1 replay remains stable; runtime inspection/defaults, built-in catalog discovery, composite and Applications-owned variables, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` | Ontology-driven Workflow planning and recoverable typed execution | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; `W0.3` includes definition/goal persistence, revision-owned descriptor bindings/registry snapshot/typed-variable contract, Plan v2 exact pinning and initial typed-variable Flow projection, the read-only 23-node discovery catalog, Form, WorkflowRun, HumanTask, reachable-Output aggregation, ExecutionTemplate, and finite Execution. Plan v1 replay remains stable; runtime inspection/defaults, composite and Applications-owned variables, error/Answer semantics, remaining providers, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` | Six current application experiences, shared release/session/delivery, publication, monitoring, and enterprise completion | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` | Files, RAG Knowledge, multi-source General/Parent-child/Q&A and multimodal processing, retrieval, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` | New-invocation triggers and reusable outbound connection profiles | Planned and unavailable |

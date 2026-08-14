@@ -462,6 +462,17 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::WorkflowNodeCatalogGet => {
+            let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
+            workflow::get_node_catalog(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::WorkflowDefinitionsRevise => {
             let arguments =
                 arguments::parse::<ReviseWorkflowDefinitionArguments>(arguments).ok()?;

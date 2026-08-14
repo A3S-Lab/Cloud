@@ -6,6 +6,8 @@ import type {
   WorkflowDefinitionMutationResult,
   WorkflowGoal,
   WorkflowGoalMutationResult,
+  WorkflowNodeCatalog,
+  WorkflowNodeCatalogEntry,
   WorkflowPlanRevision,
   WorkflowRevision,
   WorkflowRevisionSummary,
@@ -16,6 +18,21 @@ import type {
 } from '@a3s/cloud-client';
 import { renderTable } from './output';
 import type { CommandResult } from './results';
+
+const WORKFLOW_NODE_COLUMNS = [
+  { header: 'ID', value: (row: WorkflowNodeCatalogEntry) => row.capabilityId },
+  { header: 'LABEL', value: (row: WorkflowNodeCatalogEntry) => row.label },
+  { header: 'KIND', value: (row: WorkflowNodeCatalogEntry) => row.kind },
+  { header: 'EXECUTION', value: (row: WorkflowNodeCatalogEntry) => row.executionClass },
+  { header: 'OWNER', value: (row: WorkflowNodeCatalogEntry) => row.owner },
+  { header: 'AVAILABILITY', value: (row: WorkflowNodeCatalogEntry) => row.availability },
+  { header: 'GATE', value: (row: WorkflowNodeCatalogEntry) => `${row.gate} (${row.gateState})` },
+  { header: 'PROFILES', value: (row: WorkflowNodeCatalogEntry) => row.semanticProfiles.join(', ') },
+] as const;
+
+export function workflowNodeCatalogResult(catalog: WorkflowNodeCatalog): CommandResult {
+  return { json: catalog, table: renderTable(catalog.nodes, WORKFLOW_NODE_COLUMNS) };
+}
 
 const WORKFLOW_DEFINITION_COLUMNS = [
   { header: 'ID', value: (row: WorkflowDefinition) => row.id },

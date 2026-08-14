@@ -1,0 +1,117 @@
+workflow_node_profiles "dify-commercial-core-2026-08-13" {
+  parity_manifest_digest = "sha256:f2de39aee75d7ea8969e0a8ae24a988e8f19b4f30ce8bef9631a7d1e98ed6a71"
+  revision = "1.0.0"
+  schema = "a3s.cloud.app-platform.workflow-node-profiles.v1"
+  node "node.agent" {
+    execution_class = "owning_application_port"
+    kind = "agent"
+    semantic_profiles = ["agent.classic", "agent.release"]
+  }
+  node "node.answer" {
+    execution_class = "owning_application_port"
+    kind = "output"
+    semantic_profiles = ["application.answer"]
+  }
+  node "node.code" {
+    execution_class = "owning_application_port"
+    kind = "execution"
+    semantic_profiles = ["execution.code"]
+  }
+  node "node.document-extractor" {
+    execution_class = "owning_application_port"
+    kind = "service"
+    semantic_profiles = ["knowledge.document-extract"]
+  }
+  node "node.http-request" {
+    execution_class = "owning_application_port"
+    kind = "service"
+    semantic_profiles = ["connector.http"]
+  }
+  node "node.human-input" {
+    execution_class = "workflow_local"
+    kind = "human_decision"
+    semantic_profiles = ["workflow.human-input"]
+  }
+  node "node.if-else" {
+    execution_class = "workflow_local"
+    kind = "branch"
+    semantic_profiles = ["workflow.if-else"]
+  }
+  node "node.integration-trigger" {
+    execution_class = "invocation_only"
+    semantic_profiles = ["automation.plugin-trigger"]
+  }
+  node "node.iteration" {
+    execution_class = "composite_region"
+    kind = "subworkflow"
+    semantic_profiles = ["workflow.iteration"]
+  }
+  node "node.knowledge-retrieval" {
+    execution_class = "owning_application_port"
+    kind = "service"
+    semantic_profiles = ["knowledge.retrieve"]
+  }
+  node "node.list-operator" {
+    execution_class = "workflow_local"
+    kind = "transform"
+    semantic_profiles = ["workflow.list-operator"]
+  }
+  node "node.llm" {
+    execution_class = "owning_application_port"
+    kind = "model"
+    semantic_profiles = ["model.llm"]
+  }
+  node "node.loop" {
+    execution_class = "composite_region"
+    kind = "subworkflow"
+    semantic_profiles = ["workflow.loop"]
+  }
+  node "node.output" {
+    execution_class = "workflow_local"
+    kind = "output"
+    semantic_profiles = ["workflow.output"]
+  }
+  node "node.parameter-extractor" {
+    execution_class = "owning_application_port"
+    kind = "model"
+    semantic_profiles = ["model.parameter-extract"]
+  }
+  node "node.question-classifier" {
+    execution_class = "owning_application_port"
+    kind = "model"
+    semantic_profiles = ["model.question-classifier"]
+  }
+  node "node.schedule-trigger" {
+    execution_class = "invocation_only"
+    semantic_profiles = ["automation.schedule"]
+  }
+  node "node.template" {
+    execution_class = "workflow_local"
+    kind = "transform"
+    semantic_profiles = ["workflow.template"]
+  }
+  node "node.tool" {
+    execution_class = "owning_application_port"
+    kind = "tool"
+    semantic_profiles = ["use.tool"]
+  }
+  node "node.user-input" {
+    execution_class = "workflow_local"
+    kind = "input"
+    semantic_profiles = ["workflow.user-input"]
+  }
+  node "node.variable-aggregator" {
+    execution_class = "workflow_local"
+    kind = "transform"
+    semantic_profiles = ["workflow.variable-aggregate"]
+  }
+  node "node.variable-assigner" {
+    execution_class = "owning_application_port"
+    kind = "service"
+    semantic_profiles = ["application.conversation-variable-assign"]
+  }
+  node "node.webhook-trigger" {
+    execution_class = "invocation_only"
+    semantic_profiles = ["automation.webhook"]
+  }
+}

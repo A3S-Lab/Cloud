@@ -7,7 +7,7 @@ pub(crate) use dto::{
     OntologyMutationResponse, OntologyResponse, OntologyRevisionResponse,
     OntologyRevisionSummaryResponse, PlanRevisionResponse, WorkflowDefinitionMutationResponse,
     WorkflowDefinitionResponse, WorkflowGoalMutationResponse, WorkflowGoalResponse,
-    WorkflowRevisionResponse, WorkflowRevisionSummaryResponse, WorkflowRunMutationResponse,
-    WorkflowRunOutputResponse, WorkflowRunResponse,
+    WorkflowNodeCatalogResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
+    WorkflowRunMutationResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
 };
 pub use workflow_module::WorkflowModule;

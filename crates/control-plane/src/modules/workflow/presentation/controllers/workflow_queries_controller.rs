@@ -8,14 +8,14 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::presentation::dto::{
     HumanTaskResponse, HumanTaskSummaryResponse, PlanRevisionResponse, WorkflowDefinitionResponse,
-    WorkflowGoalResponse, WorkflowRevisionResponse, WorkflowRevisionSummaryResponse,
-    WorkflowRunOutputResponse, WorkflowRunResponse,
+    WorkflowGoalResponse, WorkflowNodeCatalogResponse, WorkflowRevisionResponse,
+    WorkflowRevisionSummaryResponse, WorkflowRunOutputResponse, WorkflowRunResponse,
 };
 use crate::modules::workflow::{
-    GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowRevision,
-    GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput, HumanTaskStatus, ListHumanTasks,
-    ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns,
-    WaitWorkflowRun,
+    GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowNodeCatalog,
+    GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunHistory, GetWorkflowRunOutput,
+    HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals,
+    ListWorkflowRevisions, ListWorkflowRuns, WaitWorkflowRun,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
@@ -27,6 +27,7 @@ use std::time::Duration;
 use uuid::Uuid;
 
 pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
+    let get_node_catalog_bus = Arc::clone(&bus);
     let list_definitions_bus = Arc::clone(&bus);
     let get_definition_bus = Arc::clone(&bus);
     let list_revisions_bus = Arc::clone(&bus);
@@ -42,6 +43,32 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
     let output_run_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
+        .get(
+            "/{organization_id}/projects/{project_id}/workflow-node-catalog",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_node_catalog_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetWorkflowNodeCatalog {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            resource_access: resource_access(&request)?,
+                        })
+                        .await?
+                    {
+                        Ok(value) => {
+                            BootResponse::json(&WorkflowNodeCatalogResponse::from(value))
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .get(
             "/{organization_id}/projects/{project_id}/workflow-definitions",
             move |request: BootRequest| {

@@ -110,6 +110,8 @@ mod resource_grants_support;
 mod secret_rotation_restart_support;
 #[path = "support/source_subscription.rs"]
 mod source_subscription_support;
+#[path = "support/workflow_node_catalog.rs"]
+mod workflow_node_catalog_support;
 #[path = "support/workflow_run_process_death.rs"]
 mod workflow_run_process_death_support;
 #[path = "support/workflow_semantic_contracts.rs"]
@@ -220,6 +222,19 @@ async fn postgres_workflow_semantic_contracts_are_atomic_recoverable_and_immutab
     )
     .await
     .expect("PostgreSQL Workflow semantic contract authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_workflow_node_catalog_reconnects_without_catalog_persistence() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        workflow_node_catalog_support::exercise_workflow_node_catalog_reconnect,
+    )
+    .await
+    .expect("PostgreSQL Workflow node catalog projection gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

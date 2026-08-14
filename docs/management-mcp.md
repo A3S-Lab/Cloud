@@ -22,6 +22,10 @@ The `W0.3` planning slice adds ten Workflow definition, immutable revision,
 Goal, and deterministic Plan tools over the same CQRS handlers used by REST,
 the maintained client, and CLI. It adds no MCP-owned planner, run engine,
 payload store, or authorization path.
+The built-in discovery slice adds one read-only Workflow node-catalog tool over
+the same project-authorized Workflow query used by REST contract `1.31.0`. It
+does not add an MCP-owned catalog, descriptor admission path, provider dispatch,
+or Flow mechanism.
 The protected HumanTask slice adds two reads and three claim/release/submission mutations
 over the same Workflow commands, queries, domain state machine, response DTOs,
 repository, idempotency, audit, and Outbox path used by REST, the maintained
@@ -151,6 +155,7 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_workflow_goals_list` | Query | None |
 | `a3s_cloud_workflow_goals_get` | Query | None |
 | `a3s_cloud_workflow_plan_revisions_get` | Query | None |
+| `a3s_cloud_workflow_node_catalog_get` | Query | None; exact Project Resource Grant enforcement occurs in Workflow |
 | `a3s_cloud_human_tasks_list` | Query | None |
 | `a3s_cloud_human_tasks_get` | Query | None |
 | `a3s_cloud_workflow_definitions_create` | Command | `workflow:write` |
@@ -325,10 +330,28 @@ lineage, canonical definition ACL, payload-set digest, and exact canonical
 payload ACL. `a3s_cloud_workflow_goals_create` accepts a project ID, bounded
 closed Goal ACL, and idempotency key. It binds exact Workflow and Ontology
 revision identities/digests and optional Environment identity, then compiles
-one immutable `cloud.workflow.plan.v1` revision with
-`cloud.workflow.plan-compiler.v1`. Goal list/get and Plan get return the same
-DTOs as REST. Identical semantic inputs produce identical canonical Plan bytes
-and digest; Goal and Plan identities remain distinct records.
+one immutable Plan revision. Legacy inputs retain
+`cloud.workflow.plan.v1`; complete revision-owned semantic contracts compile
+`cloud.workflow.plan.v2` with exact descriptor and variable digests. Goal
+list/get and Plan get return the same DTOs as REST. Identical semantic inputs
+produce identical canonical Plan bytes and digest; Goal and Plan identities
+remain distinct records.
+
+## Built-in Workflow node catalog
+
+`a3s_cloud_workflow_node_catalog_get` requires exactly one `projectId` and is
+visible to administrator and read-only catalogs. The handler first resolves the
+Project and applies the same Resource Grant evaluator as REST, then returns the
+deterministic 23-node projection composed from the frozen parity manifest and
+its exact digest-bound node-profile ACL.
+
+The parity manifest remains authoritative for node owner, gate, dependencies,
+evidence, and availability. The profile contract adds only coarse kind,
+execution class, and semantic profiles. Five nodes are internal, eighteen are
+unavailable, none are public, and `parityClaim` is false. Catalog visibility
+does not admit descriptor publication or execution; only the exact immutable
+registry snapshot owned by a WorkflowRevision can do that. MCP adds no table,
+migration, cache, synchronizer, worker, writer, or Flow state.
 
 ## Minimal WorkflowRun lifecycle
 
@@ -496,7 +519,8 @@ logs, evidence, or the PostgreSQL dump. Production persistence reaches
 PostgreSQL only through A3S ORM repositories.
 
 The expanded focused catalog, permission, Ontology migration, Workflow
-definition/Goal/Plan lifecycle, native Form lifecycle, minimal WorkflowRun,
+definition/Goal/Plan lifecycle, built-in node-catalog cross-surface equality,
+native Form lifecycle, minimal WorkflowRun,
 protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
 strict-boundary, and replay tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun

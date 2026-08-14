@@ -126,22 +126,32 @@ Search index authoritative.
 | `W0.5` | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, multi-day recovery, and operator runbooks | `W0.4`, `H0.3`, applicable `A1`/`MCP0`/`I0` recovery gates |
 
 `W0.1`, the backend implementation of `W0.2`, and the planning/persistence,
-immutable descriptor and typed-variable domain contracts, internal Workflow-local,
-reachable-Output, HumanTask, and finite Execution portions of `W0.3` are now
-present. The descriptor registry uses canonical ACL, exact SemVer identity,
-typed ports, existing coarse step/capability types, owner/execution class,
-semantic/configuration/default-policy digests, required bindings, typed failure
-behavior, compiler ranges, fail-closed admission, and presentation isolation.
-Its representative fixture is not a production catalog or availability claim,
-and existing `cloud.workflow.plan.v1` histories are unchanged. Persistent
-catalog management and exact descriptor semantic-digest pinning require an
-explicit next compiler/plan revision. The typed-variable contract uses
-canonical ACL, exact SemVer and compiler-schema identity, typed declaration/read/
-assignment/export records, root and leaf schema digests, reachability and
-dominance, deterministic mutation order, opaque Secret/object references, and
-optimistic Applications-port evidence. Its fixture is also conformance-only;
-`plan.v1` rejects Applications state access because it cannot prove the owning
-descriptor. Migration
+immutable descriptor and typed-variable domain contracts, read-only built-in
+discovery, internal Workflow-local, reachable-Output, HumanTask, and finite
+Execution portions of `W0.3` are now present. The descriptor registry uses
+canonical ACL, exact SemVer identity, typed ports, existing coarse
+step/capability types, owner/execution class, semantic/configuration/default-
+policy digests, required bindings, typed failure behavior, compiler ranges,
+fail-closed admission, and presentation isolation. Its representative fixture
+is execution-conformance evidence, not a global catalog or availability claim.
+Migration `103` snapshots the exact admitted registry under WorkflowRevision,
+and Plan v2 pins exact descriptor semantic digests while existing Plan v1
+histories remain byte-stable.
+
+The separate catalog projection composes the frozen parity manifest's exact
+23-node owner/gate/dependency/evidence/availability inventory with its exact
+digest-bound kind/execution-class/semantic-profile ACL. REST `1.31.0`, the
+maintained client, CLI, and Management MCP call one project-authorized Workflow
+query. Five entries are internal, eighteen remain unavailable, none are public,
+and the projection cannot admit descriptors. It has no persistent catalog
+management, table, migration, writer, worker, or Flow state.
+
+The typed-variable contract uses canonical ACL, exact SemVer and compiler-schema
+identity, typed declaration/read/assignment/export records, root and leaf schema
+digests, reachability and dominance, deterministic mutation order, opaque
+Secret/object references, and optimistic Applications-port evidence. Its
+fixture is also conformance-only; Plan v1 rejects Applications state access
+because it cannot prove the owning descriptor. Migration
 `075` stores one project-scoped Ontology aggregate head and immutable canonical
 ACL revisions through A3S ORM. Create, list, get, revise, revision list/get,
 and deterministic diff are exposed through REST `1.15.0`, the maintained
@@ -219,9 +229,8 @@ projects invocation, node-output, deterministic run-assignment, typed-read, and
 opaque-reference values from existing Flow history; migration `105` only widens
 that immutable input. Explicit reads are authoritative for their step and are
 consumed only through `current`; steps without reads retain legacy dependency
-input. Built-in catalog discovery, runtime variable inspection
-and defaults, composite and Applications-owned variables, Answer/error
-semantics, business-service and remaining
+input. Runtime variable inspection and defaults, composite and
+Applications-owned variables, Answer/error semantics, business-service and remaining
 Agent/MCP/model/Tool capability dispatch, compensation, expanded cross-surface
 evidence, and public Workflow availability remain open.
 
@@ -238,9 +247,9 @@ contracts to WorkflowRevision compiler schema 2, and `cloud.workflow.plan.v2`
 pins every exact descriptor plus the semantic and variable digests. Legacy Plan
 v1 remains byte-stable and executable. Plan v2 executes the first typed-variable
 subset and fails closed for digest-only defaults, composite-local/export
-semantics, Applications-owned reads/writes, and runtime inspection. Built-in
-catalog discovery, bounded Iteration/Loop regions, typed error branches/fallback,
-and ordered Answer frames remain unimplemented parts of `W0.3`.
+semantics, Applications-owned reads/writes, and runtime inspection. Bounded
+Iteration/Loop regions, typed error branches/fallback, and ordered Answer frames
+remain unimplemented parts of `W0.3`.
 
 ### 4.3 Compiler rules
 
@@ -308,8 +317,10 @@ digest can become a Workflow revision.
 
 ### 4.5 Step descriptor and Designer boundary
 
-One versioned descriptor drives future CLI discovery, Management MCP schema,
-and the deferred Designer without becoming execution authority:
+One versioned descriptor defines exact executable semantics. The separate
+read-only catalog now drives REST, client, CLI, and Management MCP discovery,
+and the deferred Designer must consume that same projection without becoming
+execution authority:
 
 ```text
 WorkflowStepDescriptor

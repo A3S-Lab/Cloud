@@ -224,6 +224,7 @@ ontologies revisions <ontology-id>
 ontologies revision <ontology-id> <revision-id>
 ontologies diff <ontology-id> <from-revision-id> <to-revision-id>
 ontologies revise <ontology-id> --file=<path> --expected-version=<version> [--migration-rule=<rule-id>]
+workflow-nodes list
 workflow-definitions list
 workflow-definitions get <workflow-definition-id>
 workflow-definitions create --file=<publication.json>
@@ -379,6 +380,13 @@ diffs, infers compatible migration policy, validates explicit breaking
 migrations against the target ACL, and persists through A3S ORM. The CLI does
 not parse Ontology ACL, store revisions, maintain a graph index, or define a
 second migration mechanism.
+
+`workflow-nodes list` reads the exact project-authorized 23-node discovery
+projection from Cloud. Table output shows capability, label, owner, gate,
+availability, execution class, and semantic profiles; `--json` preserves the
+full baseline, digests, parity flag, dependencies, evidence, and unavailable
+reasons. The CLI does not merge manifests, register descriptors, infer public
+availability, or add an execution path.
 
 `workflow-definitions` creates, revises, lists, and reads the project-scoped
 aggregate and immutable revision lineage, including exact canonical payloads.

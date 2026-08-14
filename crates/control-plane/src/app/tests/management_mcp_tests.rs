@@ -362,6 +362,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_ontology_revisions_get",
             "a3s_cloud_ontology_revisions_list",
             "a3s_cloud_ontology_revisions_diff",
+            "a3s_cloud_workflow_node_catalog_get",
             "a3s_cloud_workflow_definitions_get",
             "a3s_cloud_workflow_definitions_list",
             "a3s_cloud_workflow_revisions_get",
@@ -478,6 +479,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_ontology_revisions_get",
             "a3s_cloud_ontology_revisions_list",
             "a3s_cloud_ontology_revisions_diff",
+            "a3s_cloud_workflow_node_catalog_get",
             "a3s_cloud_workflow_definitions_create",
             "a3s_cloud_workflow_definitions_get",
             "a3s_cloud_workflow_definitions_list",
@@ -591,6 +593,17 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     assert_eq!(
         workflow_semantic_contracts["properties"]["descriptorBindingsAcl"]["maxLength"],
         crate::modules::workflow::domain::WORKFLOW_STEP_DESCRIPTOR_BINDINGS_MAX_ACL_BYTES
+    );
+    let workflow_node_catalog =
+        listed_tool(&administrator_tools, "a3s_cloud_workflow_node_catalog_get")?;
+    assert_eq!(workflow_node_catalog["annotations"]["readOnlyHint"], true);
+    assert_eq!(
+        workflow_node_catalog["inputSchema"]["required"],
+        json!(["projectId"])
+    );
+    assert_eq!(
+        workflow_node_catalog["inputSchema"]["additionalProperties"],
+        false
     );
     for name in [
         "a3s_cloud_human_tasks_claim",

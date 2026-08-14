@@ -536,6 +536,15 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(workflow_definition_collection["post"]["responses"]["201"].is_object());
     assert!(workflow_definition_collection["post"]["responses"]["413"].is_object());
     assert!(workflow_definition_collection["post"]["responses"]["415"].is_object());
+    let workflow_node_catalog = &document["paths"]
+        ["/organizations/{organization_id}/projects/{project_id}/workflow-node-catalog"]["get"];
+    assert_eq!(workflow_node_catalog["tags"], json!(["Workflow"]));
+    assert!(workflow_node_catalog["requestBody"].is_null());
+    assert!(workflow_node_catalog["responses"]["200"].is_object());
+    assert_eq!(
+        workflow_node_catalog["x-a3s-api-contract-version"],
+        OPENAPI_CONTRACT_VERSION
+    );
     let workflow_revision = &document["paths"]
         ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"]
         ["post"];
