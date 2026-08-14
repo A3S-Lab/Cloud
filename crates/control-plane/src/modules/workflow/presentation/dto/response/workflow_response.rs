@@ -4,7 +4,7 @@ use crate::modules::workflow::application::{
 use crate::modules::workflow::domain::{
     CapabilityReference, PlanRevision, WorkflowDefinition, WorkflowEdgeSpec, WorkflowGoalRecord,
     WorkflowPayload, WorkflowPlan, WorkflowPlanStep, WorkflowRevision,
-    WorkflowRevisionSemanticContractKind, WorkflowStepDescriptorBinding,
+    WorkflowStepDescriptorBinding,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -256,7 +256,10 @@ impl From<&WorkflowRevision> for WorkflowRevisionSummaryResponse {
             semantic_contract_set_digest: value
                 .semantic_contract_set_digest()
                 .map(ToString::to_string),
-            semantic_contract_count: value.semantic_contracts.as_ref().map_or(0, |_| 3),
+            semantic_contract_count: value
+                .semantic_contracts
+                .as_ref()
+                .map_or(0, |contracts| contracts.persisted_contracts().len()),
             created_by: value.created_by.as_uuid(),
             created_at: value.created_at,
         }
@@ -295,19 +298,16 @@ impl From<WorkflowRevision> for WorkflowRevisionResponse {
             .semantic_contracts
             .as_ref()
             .map(|contracts| {
-                [
-                    WorkflowRevisionSemanticContractKind::DescriptorBindings,
-                    WorkflowRevisionSemanticContractKind::DescriptorRegistry,
-                    WorkflowRevisionSemanticContractKind::VariableContract,
-                ]
-                .into_iter()
-                .map(|kind| WorkflowSemanticContractResponse {
-                    kind: kind.as_str().into(),
-                    schema: contracts.schema(kind).into(),
-                    digest: contracts.contract_digest(kind).to_string(),
-                    canonical_acl: contracts.canonical_acl(kind).into(),
-                })
-                .collect()
+                contracts
+                    .persisted_contracts()
+                    .into_iter()
+                    .map(|contract| WorkflowSemanticContractResponse {
+                        kind: contract.kind.as_str().into(),
+                        schema: contract.schema.into(),
+                        digest: contract.digest.to_string(),
+                        canonical_acl: contract.canonical_acl.into(),
+                    })
+                    .collect()
             })
             .unwrap_or_default();
         Self {

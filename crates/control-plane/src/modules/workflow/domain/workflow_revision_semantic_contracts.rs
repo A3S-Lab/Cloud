@@ -1,8 +1,9 @@
 use super::{
     WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind, WorkflowStepDescriptorBindings,
     WorkflowStepDescriptorRegistry, WorkflowStepOwner, WorkflowVariableContract,
-    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
-    WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
+    WorkflowVariableDefaults, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
+    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
+    WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use serde::Serialize;
@@ -14,6 +15,7 @@ pub enum WorkflowRevisionSemanticContractKind {
     DescriptorBindings,
     DescriptorRegistry,
     VariableContract,
+    VariableDefaults,
 }
 
 impl WorkflowRevisionSemanticContractKind {
@@ -22,6 +24,7 @@ impl WorkflowRevisionSemanticContractKind {
             Self::DescriptorBindings => "descriptor_bindings",
             Self::DescriptorRegistry => "descriptor_registry",
             Self::VariableContract => "variable_contract",
+            Self::VariableDefaults => "variable_defaults",
         }
     }
 
@@ -30,6 +33,7 @@ impl WorkflowRevisionSemanticContractKind {
             "descriptor_bindings" => Ok(Self::DescriptorBindings),
             "descriptor_registry" => Ok(Self::DescriptorRegistry),
             "variable_contract" => Ok(Self::VariableContract),
+            "variable_defaults" => Ok(Self::VariableDefaults),
             _ => Err(format!(
                 "unsupported Workflow revision semantic contract kind {value:?}"
             )),
@@ -41,13 +45,23 @@ impl WorkflowRevisionSemanticContractKind {
 ///
 /// The registry is retained so every bound semantic digest is recoverable. Its
 /// presentation and admission metadata are deliberately excluded from
-/// `digest`, which is derived from the binding and variable contracts only.
+/// `digest`, which is derived from the binding, variable, and optional
+/// variable-default contracts only.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkflowRevisionSemanticContracts {
     descriptor_bindings: WorkflowStepDescriptorBindings,
     descriptor_registry: WorkflowStepDescriptorRegistry,
     variable_contract: WorkflowVariableContract,
+    variable_defaults: Option<WorkflowVariableDefaults>,
     digest: Sha256Digest,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct WorkflowRevisionSemanticContractRef<'a> {
+    pub kind: WorkflowRevisionSemanticContractKind,
+    pub schema: &'static str,
+    pub canonical_acl: &'a str,
+    pub digest: &'a Sha256Digest,
 }
 
 impl WorkflowRevisionSemanticContracts {
@@ -57,11 +71,33 @@ impl WorkflowRevisionSemanticContracts {
         descriptor_registry: WorkflowStepDescriptorRegistry,
         variable_contract: WorkflowVariableContract,
     ) -> Result<Self, String> {
-        let digest = digest_contract_set(&descriptor_bindings, &variable_contract)?;
+        Self::create_with_defaults(
+            workflow,
+            descriptor_bindings,
+            descriptor_registry,
+            variable_contract,
+            None,
+        )
+    }
+
+    pub fn create_with_defaults(
+        workflow: &WorkflowSpec,
+        descriptor_bindings: WorkflowStepDescriptorBindings,
+        descriptor_registry: WorkflowStepDescriptorRegistry,
+        variable_contract: WorkflowVariableContract,
+        variable_defaults: Option<WorkflowVariableDefaults>,
+    ) -> Result<Self, String> {
+        validate_default_material(&variable_contract, variable_defaults.as_ref())?;
+        let digest = digest_contract_set(
+            &descriptor_bindings,
+            &variable_contract,
+            variable_defaults.as_ref(),
+        )?;
         let value = Self {
             descriptor_bindings,
             descriptor_registry,
             variable_contract,
+            variable_defaults,
             digest,
         };
         value.validate(workflow)?;
@@ -77,18 +113,67 @@ impl WorkflowRevisionSemanticContracts {
         variable_contract_acl: &str,
         variable_contract_digest: &str,
     ) -> Result<Self, String> {
-        Self::create(
+        Self::restore_with_defaults(
             workflow,
-            WorkflowStepDescriptorBindings::restore(
-                descriptor_bindings_acl,
-                descriptor_bindings_digest,
-            )?,
-            WorkflowStepDescriptorRegistry::restore(
-                descriptor_registry_acl,
-                descriptor_registry_digest,
-            )?,
-            WorkflowVariableContract::restore(variable_contract_acl, variable_contract_digest)?,
+            descriptor_bindings_acl,
+            descriptor_bindings_digest,
+            descriptor_registry_acl,
+            descriptor_registry_digest,
+            variable_contract_acl,
+            variable_contract_digest,
+            None,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn restore_with_defaults(
+        workflow: &WorkflowSpec,
+        descriptor_bindings_acl: &str,
+        descriptor_bindings_digest: &str,
+        descriptor_registry_acl: &str,
+        descriptor_registry_digest: &str,
+        variable_contract_acl: &str,
+        variable_contract_digest: &str,
+        variable_defaults: Option<(&str, &str)>,
+    ) -> Result<Self, String> {
+        let descriptor_bindings = WorkflowStepDescriptorBindings::restore(
+            descriptor_bindings_acl,
+            descriptor_bindings_digest,
+        )?;
+        let descriptor_registry = WorkflowStepDescriptorRegistry::restore(
+            descriptor_registry_acl,
+            descriptor_registry_digest,
+        )?;
+        let variable_contract =
+            WorkflowVariableContract::restore(variable_contract_acl, variable_contract_digest)?;
+        let variable_defaults = variable_defaults
+            .map(|(acl, digest)| WorkflowVariableDefaults::restore(acl, digest))
+            .transpose()?;
+        if variable_defaults.is_some() {
+            return Self::create_with_defaults(
+                workflow,
+                descriptor_bindings,
+                descriptor_registry,
+                variable_contract,
+                variable_defaults,
+            );
+        }
+
+        // Schema-2 revisions published before migration 107 could retain a
+        // digest-only default declaration without its bytes. They remain
+        // readable with their original semantic-set digest, while Run
+        // compilation still fails closed until a successor revision supplies
+        // exact immutable material.
+        let digest = digest_contract_set(&descriptor_bindings, &variable_contract, None)?;
+        let value = Self {
+            descriptor_bindings,
+            descriptor_registry,
+            variable_contract,
+            variable_defaults: None,
+            digest,
+        };
+        value.validate(workflow)?;
+        Ok(value)
     }
 
     pub fn validate(&self, workflow: &WorkflowSpec) -> Result<(), String> {
@@ -98,10 +183,16 @@ impl WorkflowRevisionSemanticContracts {
                 != WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION
             || self.variable_contract.compiler_schema_version()
                 != WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION
-            || digest_contract_set(&self.descriptor_bindings, &self.variable_contract)?
-                != self.digest
+            || digest_contract_set(
+                &self.descriptor_bindings,
+                &self.variable_contract,
+                self.variable_defaults.as_ref(),
+            )? != self.digest
         {
             return Err("Workflow semantic contract compiler authority is invalid".into());
+        }
+        if let Some(defaults) = self.variable_defaults.as_ref() {
+            defaults.validate_contract(&self.variable_contract)?;
         }
         workflow.topological_order(Default::default())?;
         if self.descriptor_bindings.bindings().len() != workflow.steps.len() {
@@ -168,6 +259,10 @@ impl WorkflowRevisionSemanticContracts {
         &self.variable_contract
     }
 
+    pub const fn variable_defaults(&self) -> Option<&WorkflowVariableDefaults> {
+        self.variable_defaults.as_ref()
+    }
+
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
     }
@@ -194,46 +289,36 @@ impl WorkflowRevisionSemanticContracts {
         Ok(())
     }
 
-    pub fn schema(&self, kind: WorkflowRevisionSemanticContractKind) -> &'static str {
-        match kind {
-            WorkflowRevisionSemanticContractKind::DescriptorBindings => {
-                WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA
-            }
-            WorkflowRevisionSemanticContractKind::DescriptorRegistry => {
-                WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA
-            }
-            WorkflowRevisionSemanticContractKind::VariableContract => {
-                WORKFLOW_VARIABLE_CONTRACT_SCHEMA
-            }
+    pub fn persisted_contracts(&self) -> Vec<WorkflowRevisionSemanticContractRef<'_>> {
+        let mut values = vec![
+            WorkflowRevisionSemanticContractRef {
+                kind: WorkflowRevisionSemanticContractKind::DescriptorBindings,
+                schema: WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
+                canonical_acl: self.descriptor_bindings.canonical_acl(),
+                digest: self.descriptor_bindings.digest(),
+            },
+            WorkflowRevisionSemanticContractRef {
+                kind: WorkflowRevisionSemanticContractKind::DescriptorRegistry,
+                schema: WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
+                canonical_acl: self.descriptor_registry.canonical_acl(),
+                digest: self.descriptor_registry.digest(),
+            },
+            WorkflowRevisionSemanticContractRef {
+                kind: WorkflowRevisionSemanticContractKind::VariableContract,
+                schema: WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
+                canonical_acl: self.variable_contract.canonical_acl(),
+                digest: self.variable_contract.digest(),
+            },
+        ];
+        if let Some(defaults) = &self.variable_defaults {
+            values.push(WorkflowRevisionSemanticContractRef {
+                kind: WorkflowRevisionSemanticContractKind::VariableDefaults,
+                schema: WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
+                canonical_acl: defaults.canonical_acl(),
+                digest: defaults.digest(),
+            });
         }
-    }
-
-    pub fn canonical_acl(&self, kind: WorkflowRevisionSemanticContractKind) -> &str {
-        match kind {
-            WorkflowRevisionSemanticContractKind::DescriptorBindings => {
-                self.descriptor_bindings.canonical_acl()
-            }
-            WorkflowRevisionSemanticContractKind::DescriptorRegistry => {
-                self.descriptor_registry.canonical_acl()
-            }
-            WorkflowRevisionSemanticContractKind::VariableContract => {
-                self.variable_contract.canonical_acl()
-            }
-        }
-    }
-
-    pub fn contract_digest(&self, kind: WorkflowRevisionSemanticContractKind) -> &Sha256Digest {
-        match kind {
-            WorkflowRevisionSemanticContractKind::DescriptorBindings => {
-                self.descriptor_bindings.digest()
-            }
-            WorkflowRevisionSemanticContractKind::DescriptorRegistry => {
-                self.descriptor_registry.digest()
-            }
-            WorkflowRevisionSemanticContractKind::VariableContract => {
-                self.variable_contract.digest()
-            }
-        }
+        values
     }
 
     pub fn requires_binding(&self, kind: WorkflowStepBindingKind) -> bool {
@@ -326,16 +411,42 @@ fn validate_capability_binding(
 struct SemanticContractDigestInput<'a> {
     descriptor_bindings_digest: &'a str,
     variable_contract_digest: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    variable_defaults_digest: Option<&'a str>,
 }
 
 fn digest_contract_set(
     bindings: &WorkflowStepDescriptorBindings,
     variables: &WorkflowVariableContract,
+    defaults: Option<&WorkflowVariableDefaults>,
 ) -> Result<Sha256Digest, String> {
     let encoded = serde_json::to_vec(&SemanticContractDigestInput {
         descriptor_bindings_digest: bindings.digest().as_str(),
         variable_contract_digest: variables.digest().as_str(),
+        variable_defaults_digest: defaults.map(|value| value.digest().as_str()),
     })
     .map_err(|error| format!("could not encode Workflow semantic contract set: {error}"))?;
     Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(encoded)))
+}
+
+fn validate_default_material(
+    variables: &WorkflowVariableContract,
+    defaults: Option<&WorkflowVariableDefaults>,
+) -> Result<(), String> {
+    let requires_defaults = variables
+        .spec()
+        .declarations
+        .iter()
+        .any(|declaration| declaration.default_value_digest.is_some());
+    match (requires_defaults, defaults) {
+        (false, None) => Ok(()),
+        (true, Some(defaults)) => defaults.validate_contract(variables),
+        (true, None) => Err(
+            "Workflow variable contract declares digest-only defaults without immutable material"
+                .into(),
+        ),
+        (false, Some(_)) => {
+            Err("Workflow variable defaults are present without digest-backed declarations".into())
+        }
+    }
 }

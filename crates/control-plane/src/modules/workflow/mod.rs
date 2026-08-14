@@ -113,7 +113,8 @@ pub use domain::{
     WorkflowStepPortCardinality, WorkflowStepPresentation, WorkflowStepPresentationSpec,
     WorkflowStepProjection, WorkflowStepProjectionStatus, WorkflowStepRetryClassification,
     WorkflowStepSpec, WorkflowVariableAssignment, WorkflowVariableContract,
-    WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableExport,
+    WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableDefault,
+    WorkflowVariableDefaults, WorkflowVariableDefaultsSpec, WorkflowVariableExport,
     WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableReadMode,
     WorkflowVariableScope, WorkflowVariableStorageClass, FLOW_RESUME_PAYLOAD_API_VERSION,
     FLOW_RESUME_RECEIPT_API_VERSION, FLOW_RESUME_TERMINAL_RECEIPT_API_VERSION,
@@ -136,6 +137,8 @@ pub use domain::{
     WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_SEMANTIC_SCHEMA,
     WORKFLOW_STEP_PRESENTATION_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
     WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
+    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
+    WORKFLOW_VARIABLE_DEFAULT_MAX_VALUE_BYTES,
 };
 pub use infrastructure::persistence::{
     InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,

@@ -59,7 +59,7 @@ fn v2_run_input_rejects_version_and_variable_contract_drift() {
 }
 
 #[test]
-fn runtime_v2_rejects_unmaterialized_default_and_external_variable_ownership() {
+fn runtime_v2_requires_exact_default_material_and_rejects_external_variable_ownership() {
     let input = typed_variable_workflow_run_input().expect("valid v2 WorkflowRun input");
     let base = input
         .variable_contract
@@ -70,6 +70,8 @@ fn runtime_v2_rejects_unmaterialized_default_and_external_variable_ownership() {
         .spec()
         .clone();
 
+    let default = WorkflowVariableDefault::new("fallback", serde_json::json!("normal"))
+        .expect("default material");
     let mut default_spec = base.clone();
     default_spec.declarations.push(WorkflowVariableDeclaration {
         name: "fallback".into(),
@@ -83,13 +85,21 @@ fn runtime_v2_rejects_unmaterialized_default_and_external_variable_ownership() {
         source_step_id: None,
         source_path: Vec::new(),
         region_id: None,
-        default_value_digest: Some(test_digest('b')),
+        default_value_digest: Some(default.digest.clone()),
     });
     let default_contract = WorkflowVariableContract::from_spec(default_spec)
         .expect("valid digest-backed default contract");
-    let default_error = validate_runtime_variable_contract(&default_contract, &input.plan)
+    let default_error = validate_runtime_variable_contract(&default_contract, None, &input.plan)
         .expect_err("runtime must reject a digest without materialized default bytes");
     assert!(default_error.contains("digest-only default"));
+    let defaults = WorkflowVariableDefaults::from_spec(WorkflowVariableDefaultsSpec {
+        id: default_contract.id().into(),
+        revision: default_contract.revision().into(),
+        values: vec![default],
+    })
+    .expect("default set");
+    validate_runtime_variable_contract(&default_contract, Some(&defaults), &input.plan)
+        .expect("digest-backed default material");
 
     let mut composite_spec = base.clone();
     composite_spec
@@ -110,8 +120,9 @@ fn runtime_v2_rejects_unmaterialized_default_and_external_variable_ownership() {
         });
     let composite_contract = WorkflowVariableContract::from_spec(composite_spec)
         .expect("valid composite-local contract");
-    let composite_error = validate_runtime_variable_contract(&composite_contract, &input.plan)
-        .expect_err("runtime must reject composite-local state");
+    let composite_error =
+        validate_runtime_variable_contract(&composite_contract, None, &input.plan)
+            .expect_err("runtime must reject composite-local state");
     assert!(composite_error.contains("composite_local"));
 
     let mut application_spec = base;
@@ -133,8 +144,9 @@ fn runtime_v2_rejects_unmaterialized_default_and_external_variable_ownership() {
         });
     let application_contract = WorkflowVariableContract::from_spec(application_spec)
         .expect("valid application-owned contract");
-    let application_error = validate_runtime_variable_contract(&application_contract, &input.plan)
-        .expect_err("runtime must reject application-owned state");
+    let application_error =
+        validate_runtime_variable_contract(&application_contract, None, &input.plan)
+            .expect_err("runtime must reject application-owned state");
     assert!(application_error.contains("application"));
 }
 
@@ -171,7 +183,7 @@ fn runtime_v2_rejects_reads_for_steps_without_projected_input_support() {
         ..spec
     })
     .expect("valid input-read contract");
-    let error = validate_runtime_variable_contract(&contract, &input.plan)
+    let error = validate_runtime_variable_contract(&contract, None, &input.plan)
         .expect_err("runtime must reject projection into Input");
     assert!(error.contains("input step"));
 }

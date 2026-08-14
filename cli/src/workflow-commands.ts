@@ -531,10 +531,13 @@ function isWorkflowPublication(value: unknown): value is PublishWorkflowDefiniti
       return false;
     }
     const semanticContracts = contracts as Record<string, unknown>;
-    const keys = ['descriptorBindingsAcl', 'descriptorRegistryAcl', 'variableContractAcl'];
+    const requiredKeys = ['descriptorBindingsAcl', 'descriptorRegistryAcl', 'variableContractAcl'];
+    const keys = [...requiredKeys, 'variableDefaultsAcl'];
     if (
       Object.keys(semanticContracts).some((key) => !keys.includes(key)) ||
-      keys.some((key) => typeof semanticContracts[key] !== 'string')
+      requiredKeys.some((key) => typeof semanticContracts[key] !== 'string') ||
+      (semanticContracts.variableDefaultsAcl !== undefined &&
+        typeof semanticContracts.variableDefaultsAcl !== 'string')
     ) {
       return false;
     }

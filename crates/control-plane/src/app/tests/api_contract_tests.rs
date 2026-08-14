@@ -586,6 +586,10 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         semantic_contracts["properties"]["variableContractAcl"]["maxLength"],
         2_097_152
     );
+    assert_eq!(
+        semantic_contracts["properties"]["variableDefaultsAcl"]["maxLength"],
+        2_097_152
+    );
     assert!(
         workflow_definition_collection["post"]["requestBody"]["content"]
             .get("application/vnd.a3s.acl")

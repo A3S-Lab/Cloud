@@ -75,6 +75,8 @@ struct WorkflowSemanticContractArguments {
     descriptor_bindings_acl: String,
     descriptor_registry_acl: String,
     variable_contract_acl: String,
+    #[serde(default)]
+    variable_defaults_acl: Option<String>,
 }
 
 impl From<WorkflowSemanticContractArguments> for WorkflowSemanticContractAcls {
@@ -83,6 +85,7 @@ impl From<WorkflowSemanticContractArguments> for WorkflowSemanticContractAcls {
             descriptor_bindings_acl: value.descriptor_bindings_acl,
             descriptor_registry_acl: value.descriptor_registry_acl,
             variable_contract_acl: value.variable_contract_acl,
+            variable_defaults_acl: value.variable_defaults_acl,
         }
     }
 }

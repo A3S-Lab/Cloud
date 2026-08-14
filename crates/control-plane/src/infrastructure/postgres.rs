@@ -925,6 +925,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/106_notification_inbox.sql"
             )),
         ),
+        Migration::new(
+            "107",
+            "immutable Workflow variable default material",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/107_workflow_variable_defaults.sql"
+            )),
+        ),
     ]
 }
 
@@ -1268,10 +1276,6 @@ mod workflow_run_input_v2_migration_tests {
 
     #[test]
     fn migration_105_widens_the_existing_immutable_run_input_without_new_storage() {
-        assert_eq!(
-            crate::modules::workflow::WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
-            33_554_432
-        );
         for expected in [
             "drop constraint workflow_runs_execution_input_check",
             "add constraint workflow_runs_execution_input_check",
@@ -1283,6 +1287,44 @@ mod workflow_run_input_v2_migration_tests {
             );
         }
         assert!(!MIGRATION.contains("create table"));
+    }
+}
+
+#[cfg(test)]
+mod workflow_variable_defaults_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/107_workflow_variable_defaults.sql"
+    ));
+
+    #[test]
+    fn migration_107_adds_only_immutable_revision_material_and_run_input_capacity() {
+        assert_eq!(
+            crate::modules::workflow::WORKFLOW_RUN_INPUT_MAX_BYTES_V2,
+            37_748_736
+        );
+        for expected in [
+            "'variable_defaults'",
+            "cloud.workflow.variable-defaults.v1",
+            "contract_count not in (3, 4)",
+            "octet_length(execution_input) between 1 and 37748736",
+            "not a mutable node catalog or variable store",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 107 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table workflow_run_variables",
+            "create table workflow_variable_values",
+            "create table workflow_variable_events",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 107 must not add a variable state mechanism: {forbidden}"
+            );
+        }
     }
 }
 

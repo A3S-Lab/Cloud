@@ -312,6 +312,7 @@ pub(crate) fn workflow_run_input() -> Result<WorkflowRunInput, String> {
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
         variable_contract: None,
+        variable_defaults: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -545,6 +546,7 @@ pub(crate) fn human_decision_workflow_run_input() -> Result<WorkflowRunInput, St
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
         variable_contract: None,
+        variable_defaults: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };
@@ -654,6 +656,7 @@ pub(crate) fn execution_workflow_run_input() -> Result<WorkflowRunInput, String>
             .map(ResolvedWorkflowPayload::from_payload)
             .collect(),
         variable_contract: None,
+        variable_defaults: None,
         requested_at: timestamp(8, 0),
         deadline_at: timestamp(9, 0),
     };

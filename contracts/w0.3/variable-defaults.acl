@@ -1,0 +1,8 @@
+variable_defaults "support.defaults" {
+  revision = "1.0.0"
+  schema = "cloud.workflow.variable-defaults.v1"
+  default "fallback" {
+    canonical_json = "\"normal\""
+    digest = "sha256:82fbb169e798324839513347c048ecc9c91a6574588e1760f13d6b9650c328bf"
+  }
+}

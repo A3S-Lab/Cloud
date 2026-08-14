@@ -22,6 +22,7 @@ export const MAX_WORKFLOW_REVISION_PAYLOADS = 2048;
 export const MAX_WORKFLOW_STEP_DESCRIPTOR_BINDINGS_ACL_BYTES = 512 * 1024;
 export const MAX_WORKFLOW_STEP_DESCRIPTOR_REGISTRY_ACL_BYTES = 4 * 1024 * 1024;
 export const MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES = 2 * 1024 * 1024;
+export const MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES = 2 * 1024 * 1024;
 export const MAX_WORKFLOW_GOAL_ACL_BYTES = 256 * 1024;
 export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const MAX_EXECUTION_TEMPLATE_ACL_BYTES = 128 * 1024;
@@ -255,6 +256,7 @@ export function validateWorkflowDefinitionPublication(input: {
     descriptorBindingsAcl: string;
     descriptorRegistryAcl: string;
     variableContractAcl: string;
+    variableDefaultsAcl?: string;
   };
 }): void {
   validateAclBytes(input.definitionAcl, MAX_WORKFLOW_DEFINITION_ACL_BYTES, 'Workflow definition ACL');
@@ -296,6 +298,13 @@ export function validateWorkflowDefinitionPublication(input: {
       MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
       'Workflow variable contract ACL'
     );
+    if (input.semanticContracts.variableDefaultsAcl !== undefined) {
+      validateAclBytes(
+        input.semanticContracts.variableDefaultsAcl,
+        MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
+        'Workflow variable defaults ACL'
+      );
+    }
   }
 }
 

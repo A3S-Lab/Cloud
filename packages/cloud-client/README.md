@@ -122,10 +122,13 @@ cancellation, timeout, output digest, and redacted history.
 
 Workflow definition publication may also carry the complete revision semantic
 contract set: descriptor bindings, the exact recoverable descriptor registry
-snapshot, and the typed-variable contract. REST contract `1.29.0` persists
-that set atomically, returns its canonical ACL and digests, and compiles Plan
-v2 with exact per-step descriptor pins. The client validates only transport
-shape and UTF-8 byte bounds; Cloud remains the ACL and compiler authority.
+snapshot, and the typed-variable contract. REST contract `1.29.0` introduced
+those three mandatory children; `1.34.0` adds optional `variableDefaultsAcl`
+whose exact immutable material must cover every digest-backed declaration. Cloud
+persists the set atomically, returns canonical ACL and digests, and compiles Plan
+v2 with exact per-step descriptor and semantic-set pins. The client validates
+only transport shape and UTF-8 byte bounds; Cloud remains the ACL and compiler
+authority.
 
 `getWorkflowNodeCatalog` exposes the project-authorized read-only discovery
 projection added by REST contract `1.31.0`. It returns the exact frozen baseline,

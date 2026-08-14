@@ -42,9 +42,15 @@ for their step and are consumed only through `current`; steps without reads
 retain their legacy dependency input.
 
 This is a persisted compiler/runtime contract, not a variable store or a public
-availability claim. Authorized inspection, digest-only defaults, composite
-frames/exports, and Applications port dispatch remain open. No Flow history
-shape or existing Workflow replay behavior changed.
+availability claim. `variable-defaults.acl` is the companion canonical
+`cloud.workflow.variable-defaults.v1` fixture. The variable contract retains
+only each default digest; the companion revision child supplies exact bounded
+canonical JSON, must cover the digest-backed declarations exactly, participates
+in the semantic-contract-set digest, and is copied into immutable Run v2 input.
+The shared execution/inspection materializer applies it only when the declared
+source value is absent. Composite frames/exports and Applications port dispatch remain open.
+No mutable variable table, event log, scheduler, queue, Flow history shape, or
+existing Workflow replay behavior was added.
 
 ## Finite Execution
 

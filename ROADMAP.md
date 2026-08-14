@@ -163,7 +163,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `U0` — A3S Use plugin assignments | Trusted registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `A1` — Heterogeneous Agent execution | Durable conversations, one provider-neutral Harness contract, semantic events, approvals, checkpoints, forks, and trajectories over existing Cloud control paths | In progress (`A1.0` verified; `A1.1` implemented, native Code `A1.2` integration pending verification) |
-| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/Plan v2, initial typed-variable Flow projection, Flow-derived authorized variable inspection, project-authorized read-only 23-node discovery catalog, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Digest-only defaults, composite and Applications-owned variables, business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
+| `W0` — Ontology-driven Workflow | Versioned ontologies and Workflows, deterministic goal-to-plan compilation, typed Agent/MCP/model/human steps, and Flow-based recoverable runs | In progress and unavailable (`W0.1` is implemented and `W0.2` is verified; the `W0.3` definition/goal/Plan v2, typed-variable defaults/runtime projection and inspection, project-authorized read-only 23-node discovery catalog, native Form, WorkflowRun, HumanTask loop, immutable ExecutionTemplate lifecycle, and exact finite Execution step are implemented, and the finite Execution recovery/cross-surface sub-gate is verified. Composite and Applications-owned variables, business-service and remaining provider steps, compensation, expanded real-provider verification, and `W0.4`-`W0.5` remain) |
 | `APP0` — AI application lifecycle and delivery | Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences over one immutable ApplicationRelease-to-WorkflowRevision path, with sessions, publishing, streaming, embed, MCP, monitoring, feedback, and enterprise governance | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` — Knowledge and Knowledge Pipeline | User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` — Automations and Connectors | Schedule, webhook, plugin/source-event triggers and reusable outbound HTTP/business connections with exact targets, deduplication, Secret/egress policy, and recovery | Planned and unavailable |
@@ -1713,7 +1713,7 @@ Operations remains the only durable orchestration mechanism.
 | --- | --- | --- |
 | `W0.1` | Implemented | Closed Ontology and Workflow ACL contracts, canonical semantic digests, bounded DAG and ontology validation, quotas, standalone-node capability mapping, federated capability references, and source guards that reject a second Flow/Runtime/persistence authority |
 | `W0.2` | Verified | Migration `075` persists immutable canonical Ontology revisions and one optimistic aggregate head through A3S ORM; deterministic object/relation/rule/metadata diffs infer compatible changes and require an exact target ACL `migration` rule for breaking changes; authorized REST `1.15.0`, client, CLI, seven Management MCP tools, and one rebuildable Search projection share the same handlers. Focused tests plus the clean A3S Box/PostgreSQL C0.2 gate certify the strict `12/12` persistence, rejected-write, idempotency, Outbox, audit, Search, immutability, replay, and tenant non-disclosure evidence |
-| `W0.3` | In progress; revision semantic authority, Plan v2, initial typed-variable runtime projection, Flow-derived inspection, and built-in discovery implemented | Migrations `076`, `079` through `081`, `096` through `100`, `103`, and `105` retain the immutable Workflow definition/Goal/Plan, native Form, exact Goal/Plan-bound WorkflowRun, HumanTask, and finite Execution authorities. Migration `103` atomically stores exactly three immutable WorkflowRevision children: step descriptor bindings, the exact recoverable registry snapshot, and the typed-variable contract. Compiler schema 2 cannot downgrade to legacy authority; `cloud.workflow.plan.v2` pins every exact descriptor plus semantic-contract-set and variable-contract digests, while Plan v1 remains byte-stable. WorkflowRun input/runtime/Flow v2 freezes the exact variable ACL and reconstructs invocation, node-output, deterministic run-assignment, typed-read, and opaque-reference values solely from immutable input and existing Flow history; migration `105` only raises that input's storage bound. REST/OpenAPI `1.33.0`, the maintained client, `workflow-runs variables`, and one read-only Management MCP tool expose a bounded, project-authorized `cloud.workflow-run.variable-inspection.v1` projection through the same execution materializer. It preserves exact contract/Plan identity, canonical declaration order, observed Flow sequence, materialized/unavailable state, metadata, and value digests; Secret references are redacted, pre-Flow immutable inputs may appear at sequence zero, and Plan v1 conflicts. It adds no table, cache, event log, worker, or Flow mechanism. REST/OpenAPI `1.31.0`, the maintained client, `workflow-nodes list`, and a separate read-only Management MCP tool expose the project-authorized deterministic 23-node catalog composed from the frozen parity manifest and its exact digest-bound node-profile ACL. Five entries are internal, eighteen remain unavailable, none are public, and catalog presence never admits a descriptor; no catalog persistence or Flow mechanism exists. Domain, REST, replay, OpenAPI, client, CLI, MCP, and real PostgreSQL tests cover publication, recovery, replay, incomplete-set rollback, lineage, immutability, exact catalog composition, authorization, cross-surface equality, variable inspection recovery, and reconnect without catalog or variable persistence. Digest-only defaults, bounded composite and Applications-owned variables, Answer/error semantics, business-service and remaining Agent/MCP/model/Tool dispatch, compensation, expanded clean provider evidence, and public availability remain required |
+| `W0.3` | In progress; revision semantic authority, Plan v2, typed-variable defaults/runtime inspection, and built-in discovery implemented | Migrations `076`, `079` through `081`, `096` through `100`, `103`, `105`, and `107` retain the immutable Workflow definition/Goal/Plan, native Form, exact Goal/Plan-bound WorkflowRun, HumanTask, and finite Execution authorities. Migration `103` stores three mandatory immutable WorkflowRevision semantic children; migration `107` permits one optional `cloud.workflow.variable-defaults.v1` child whose bounded canonical JSON exactly covers declared default digests. Compiler schema 2 cannot downgrade to legacy authority; `cloud.workflow.plan.v2` pins every exact descriptor plus semantic-contract-set and variable-contract digests, while Plan v1 remains byte-stable. WorkflowRun input/runtime/Flow v2 freezes the exact variable ACL and optional default material and reconstructs invocation, node-output, defaults, deterministic run-assignment, typed-read, and opaque-reference values solely from immutable input and existing Flow history. REST/OpenAPI `1.34.0`, the maintained client, CLI, and Management MCP accept optional `variableDefaultsAcl`; REST/OpenAPI `1.33.0`, `getWorkflowRunVariables`, `workflow-runs variables`, and the read-only variable MCP tool expose the same bounded, project-authorized materialization. REST/OpenAPI `1.31.0` and the remaining maintained surfaces expose the deterministic 23-node catalog composed from the parity manifest and exact profile ACL. Tests cover publication, recovery, replay, incomplete-set rollback, lineage, immutability, authorization, cross-surface equality, catalog composition, default reconstruction, variable inspection, and PostgreSQL/Flow reconnect while asserting that no variable table, cache, event log, worker, scheduler, queue, or second Flow mechanism exists. Bounded composite and Applications-owned variables, Answer/error semantics, business-service and remaining Agent/MCP/model/Tool dispatch, compensation, expanded clean provider evidence, and public availability remain required |
 | `W0.4` | Planned | Bind typed Agent, MCP, model, Tool, and business-service steps with exact revisions, approvals, compensation, and bounded evidence references |
 | `W0.5` | Planned | Certify pause/resume, migration, replay, cancellation, compensation, tenant isolation, quotas, history/tracing/statistics integrity, multi-day recovery, scale, and runbooks |
 
@@ -1754,6 +1754,14 @@ the initial invocation, node-output, deterministic run-assignment, direct-read,
 and opaque-reference subset from immutable input plus existing Flow history.
 Explicit reads are authoritative for their step and may be consumed only from
 the typed `current` projection; steps without reads keep legacy dependency input.
+Migration `107` adds the optional immutable
+`cloud.workflow.variable-defaults.v1` revision child. Its identity must match
+the variable contract, its bounded canonical JSON must exactly cover declared
+default digests, and its digest participates in the semantic-contract-set
+identity. Compilation copies the exact material into immutable Run v2 input;
+the shared materializer applies it only when the declared source value is
+absent and then replays deterministic Flow-observed assignments. Existing three-child
+revisions and Run v2 histories without defaults retain their byte shape.
 REST/OpenAPI `1.33.0`, `getWorkflowRunVariables`, `workflow-runs variables`, and
 `a3s_cloud_workflow_run_variables_get` now expose that exact materialization
 through one project-authorized `cloud.workflow-run.variable-inspection.v1`
@@ -1763,8 +1771,9 @@ materialized from unavailable values, and redacts Secret references while
 retaining their digest. Immutable invocation inputs may be observed at sequence
 zero before Flow creates the run; Plan v1 conflicts. Inspection adds no table,
 cache, event log, synchronizer, worker, scheduler, queue, or second Flow
-mechanism. Digest-only defaults, composite regions/exports, and
-Applications-owned reads/writes remain fail-closed.
+mechanism. REST/OpenAPI `1.34.0`, the maintained client, CLI publication files,
+and Management MCP accept optional `variableDefaultsAcl`. Composite
+regions/exports and Applications-owned reads/writes remain fail-closed.
 
 Migration `100` completes the finite-step relational admission by evolving the
 existing `WorkflowStepProjection` kind constraint to accept `execution`. It
@@ -1778,8 +1787,7 @@ Output to be terminal, and proves every step reaches at least one sink. The
 runtime waits for all declared sinks, omits inactive branch sinks, preserves a
 single sink's historical value shape, orders a multiple-sink object by stable
 step ID, and enforces the existing aggregate byte bound. `W0.3` remains open
-for digest-only defaults, remaining composite and Applications-owned variable
-semantics, bounded
+for remaining composite and Applications-owned variable semantics, bounded
 Iteration and Loop composite regions, typed node error
 branches/fallback, and ordered Answer frames.
 
@@ -1990,8 +1998,8 @@ The default portfolio priority is:
     compatibility lock and native submitted-value parity; retain protected
     submission, the implemented revision-owned semantic contract set, Plan v2
     exact pinning, initial typed-variable Flow projection, Flow-derived
-    authorized variable inspection, and read-only built-in catalog discovery,
-    then finish digest-only defaults, composite and Applications-owned variables,
+    authorized variable inspection, digest-bound defaults, and read-only
+    built-in catalog discovery, then finish composite and Applications-owned variables,
     Iteration/Loop regions, error branches/fallback, and Answer frames while
     retaining the implemented reachable-sink Output aggregation and WorkflowRun
     execution on Operations and A3S Flow; expand real-PostgreSQL/provider cross-surface and process-death

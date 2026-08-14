@@ -13,11 +13,13 @@ existing exact-payload invariant.
 
 ## Decision
 
-Compiler schema 2 Workflow revisions atomically own three immutable canonical
-ACL children: exact step-to-descriptor bindings, the recoverable descriptor
-registry snapshot containing exactly those revisions, and one typed-variable
-contract. The revision semantic digest includes the binding and variable
-digests, but excludes registry presentation and admission metadata.
+Compiler schema 2 Workflow revisions atomically own three mandatory immutable
+canonical ACL children: exact step-to-descriptor bindings, the recoverable
+descriptor registry snapshot containing exactly those revisions, and one
+typed-variable contract. Decision 0011 permits one optional digest-bound
+variable-default material child. The revision semantic digest includes the
+binding, variable, and optional default-material digests, but excludes registry
+presentation and admission metadata.
 
 `cloud.workflow.plan.v2` copies every step's exact descriptor ID, SemVer, and
 semantic digest and pins both the revision semantic-contract-set digest and the
@@ -43,6 +45,7 @@ semantics into the revision.
 The first runtime subset materializes invocation inputs, node outputs,
 deterministically ordered run assignments, direct reads, and opaque Secret or
 immutable-object references. Decision 0010 exposes the same materialization as
-one authorized, Flow-derived read projection. Digest-only defaults,
-composite-local scopes and exports, and Applications-owned reads/writes fail
-closed until their owning adapters exist.
+one authorized, Flow-derived read projection. Decision 0011 supplies exact
+digest-bound defaults through immutable revision and Run input material.
+Composite-local scopes and exports and Applications-owned reads/writes still
+fail closed until their owning adapters exist.

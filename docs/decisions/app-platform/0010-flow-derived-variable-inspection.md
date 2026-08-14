@@ -50,7 +50,8 @@ projection worker, scheduler, or Flow primitive. PostgreSQL recovery tests
 reconnect to the same Flow history and reproduce the exact inspection while
 asserting that no `workflow_run_variables` table exists.
 
-Digest-only defaults, composite-region frames/exports, and Applications-owned
-ports remain separate unfinished semantics. Adding any of them must extend the
-single runtime materializer first; an inspection-only implementation is not
-acceptable.
+Decision 0011 makes digest-bound defaults part of immutable Revision and Run v2
+input. Because inspection and execution share the materializer, those values
+appear without adding a read model or changing this inspection schema.
+Composite-region frames/exports and Applications-owned ports remain separate
+unfinished semantics and must extend the single runtime materializer first.

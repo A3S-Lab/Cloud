@@ -1,11 +1,12 @@
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, WorkflowRunId};
 use crate::modules::workflow::domain::{
     validate_runtime_variable_contract, workflow_run_timeout_seconds, PlanRevision,
-    ResolvedWorkflowPayload, ResolvedWorkflowVariableContract, WorkflowGoal, WorkflowRevision,
-    WorkflowRun, WorkflowRunInput, WorkflowStepProjection, WORKFLOW_PLAN_SCHEMA,
-    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION,
-    WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_INPUT_SCHEMA, WORKFLOW_RUN_INPUT_SCHEMA_V2,
-    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+    ResolvedWorkflowPayload, ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults,
+    WorkflowGoal, WorkflowRevision, WorkflowRun, WorkflowRunInput, WorkflowStepProjection,
+    WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_RUN_FLOW_NAME,
+    WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2, WORKFLOW_RUN_INPUT_SCHEMA,
+    WORKFLOW_RUN_INPUT_SCHEMA_V2, WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
 };
 use chrono::{DateTime, Duration, Utc};
 
@@ -52,35 +53,44 @@ impl WorkflowRunCompiler {
                     .into(),
             );
         }
-        let (input_schema, runtime_revision, flow_version, variable_contract) = match (
-            plan.schema.as_str(),
-            workflow_revision.semantic_contracts.as_ref(),
-        ) {
-            (WORKFLOW_PLAN_SCHEMA, None) => (
-                WORKFLOW_RUN_INPUT_SCHEMA,
-                WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
-                WORKFLOW_RUN_FLOW_VERSION,
-                None,
-            ),
-            (WORKFLOW_PLAN_SCHEMA_V2, Some(contracts)) => {
-                contracts.validate_plan_bindings(plan)?;
-                validate_runtime_variable_contract(contracts.variable_contract(), plan)?;
-                (
-                    WORKFLOW_RUN_INPUT_SCHEMA_V2,
-                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
-                    WORKFLOW_RUN_FLOW_VERSION_V2,
-                    Some(ResolvedWorkflowVariableContract::from_contract(
+        let (input_schema, runtime_revision, flow_version, variable_contract, variable_defaults) =
+            match (
+                plan.schema.as_str(),
+                workflow_revision.semantic_contracts.as_ref(),
+            ) {
+                (WORKFLOW_PLAN_SCHEMA, None) => (
+                    WORKFLOW_RUN_INPUT_SCHEMA,
+                    WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION,
+                    WORKFLOW_RUN_FLOW_VERSION,
+                    None,
+                    None,
+                ),
+                (WORKFLOW_PLAN_SCHEMA_V2, Some(contracts)) => {
+                    contracts.validate_plan_bindings(plan)?;
+                    validate_runtime_variable_contract(
                         contracts.variable_contract(),
-                    )),
-                )
-            }
-            _ => {
-                return Err(
-                    "WorkflowRun plan version does not match its Workflow semantic authority"
-                        .into(),
-                )
-            }
-        };
+                        contracts.variable_defaults(),
+                        plan,
+                    )?;
+                    (
+                        WORKFLOW_RUN_INPUT_SCHEMA_V2,
+                        WORKFLOW_RUN_RUNTIME_CONTRACT_REVISION_V2,
+                        WORKFLOW_RUN_FLOW_VERSION_V2,
+                        Some(ResolvedWorkflowVariableContract::from_contract(
+                            contracts.variable_contract(),
+                        )),
+                        contracts
+                            .variable_defaults()
+                            .map(ResolvedWorkflowVariableDefaults::from_defaults),
+                    )
+                }
+                _ => {
+                    return Err(
+                        "WorkflowRun plan version does not match its Workflow semantic authority"
+                            .into(),
+                    )
+                }
+            };
         let timeout_seconds = workflow_run_timeout_seconds(timeout_seconds)?;
         let requested_at = canonical_timestamp(requested_at);
         let timeout_seconds = i64::try_from(timeout_seconds)
@@ -109,6 +119,7 @@ impl WorkflowRunCompiler {
             goal_input: goal.contract.spec().input.clone(),
             payloads,
             variable_contract,
+            variable_defaults,
             requested_at,
             deadline_at,
         };

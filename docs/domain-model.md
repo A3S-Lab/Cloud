@@ -1436,8 +1436,10 @@ Primary record:
   composite-local, run, and Applications-owned scopes. Required reads obey graph
   dominance, run writes have one deterministic order, and composite locals exit
   only through typed exports. Secret and large values are opaque references;
-  Applications state remains behind its optimistic, idempotent owner port. This
-  contract is not a second variable store or Flow history.
+  Applications state remains behind its optimistic, idempotent owner port. An
+  optional immutable default-material child supplies the exact canonical JSON
+  for digest-backed declarations. Neither contract is a second variable store
+  or Flow history.
 
 ### Applications, Knowledge, Files, Automations, and Connectors (planned APP0/K0/AUT0)
 
@@ -1942,10 +1944,13 @@ The implemented `cloud.workflow.step-descriptor-registry.v1` and
 `cloud.workflow.variable-contract.v1` freeze descriptor and value semantics as
 canonical digest-addressed domain contracts. Migration `103` persists exact
 descriptor bindings, the recoverable registry snapshot, and the variable
-contract atomically with compiler-schema-2 WorkflowRevision. The resulting
-`cloud.workflow.plan.v2` pins exact descriptor semantics and the contract-set
-and variable digests. Plan v1 remains byte-stable; Applications-owned variable
-access remains fail-closed rather than inferring an owning port.
+contract atomically with compiler-schema-2 WorkflowRevision. Migration `107`
+permits one optional `cloud.workflow.variable-defaults.v1` child whose exact
+canonical JSON covers every declared default digest and participates in the
+contract-set identity. The resulting `cloud.workflow.plan.v2` pins exact
+descriptor semantics and the contract-set and variable digests. Plan v1
+remains byte-stable; Applications-owned variable access remains fail-closed
+rather than inferring an owning port.
 
 PostgreSQL through A3S ORM is the sole authority for these records. REST,
 client, CLI, and Management MCP are adapters over the same commands and
@@ -1974,8 +1979,9 @@ lifecycle.
 
 `cloud.workflow-run.variable-inspection.v1` is a read projection over this same
 run authority. One project-authorized query restores the exact Plan v2 contract
-and materializes declaration-ordered values from immutable WorkflowRun input and
-the correlated A3S Flow snapshot/history through the execution materializer.
+and optional default material, then materializes declaration-ordered values from
+immutable WorkflowRun input and the correlated A3S Flow snapshot/history through
+the execution materializer.
 The bounded response reports its observed Flow sequence and explicit
 materialized/unavailable state, retains value digests, and redacts Secret
 references. Before Flow creates the run, immutable inputs may be observed at
@@ -2031,7 +2037,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Agent permanent capability files and build-note evidence | A0 AssetRelease/Artifact immutable references; build-by-chat proposals become release state only through reviewed A0 Apply |
 | Agent task working directory, installed-program state, and provider-private sandbox files | The exact AR0-selected Harness provider through Workloads, Runtime, and Box; only typed exported references cross into Cloud-owned Files or Artifacts |
 | Ontology, Workflow, goal, plan, WorkflowRun, human decision, and semantic step state | PostgreSQL Workflow tables through A3S ORM |
-| WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
+| WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |

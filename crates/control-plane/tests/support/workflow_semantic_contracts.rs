@@ -24,7 +24,8 @@ use a3s_cloud_control_plane::modules::workflow::{
     WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind, WorkflowStepOwner,
     WorkflowStepPort, WorkflowStepPortCardinality, WorkflowStepPresentationSpec,
     WorkflowStepRetryClassification, WorkflowStepSpec, WorkflowVariableContract,
-    WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableMutationMode,
+    WorkflowVariableContractSpec, WorkflowVariableDeclaration, WorkflowVariableDefault,
+    WorkflowVariableDefaults, WorkflowVariableDefaultsSpec, WorkflowVariableMutationMode,
     WorkflowVariableRead, WorkflowVariableReadMode, WorkflowVariableScope,
     WorkflowVariableStorageClass, WORKFLOW_RUN_FLOW_VERSION_V2,
 };
@@ -66,10 +67,22 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         run_input_migration_state,
         (1, "WorkflowRun input v2 capacity".into())
     );
+    let defaults_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("107"),
+        )
+        .await?;
+    assert_eq!(
+        defaults_migration_state,
+        (1, "immutable Workflow variable default material".into())
+    );
     let variable_table_count = database
         .fetch_one_as(
             sql_query::<i64>(
-                "select count(*) from information_schema.tables where table_schema = 'public' and table_name = 'workflow_run_variables'",
+                "select count(*) from information_schema.tables where table_schema = 'public' and table_name in ('workflow_run_variables', 'workflow_variable_values', 'workflow_variable_events')",
             ),
         )
         .await?;
@@ -190,7 +203,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .bind(definition_id.as_uuid())
         .append("), (select count(*) from idempotency_records where scope_key = 'postgres-workflow-semantics')"))
         .await?;
-    assert_eq!(persisted, (1, 3, 1, 1, 1));
+    assert_eq!(persisted, (1, 4, 1, 1, 1));
 
     let incomplete_id = WorkflowRevisionId::new();
     let incomplete = insert_unbound_successor(&database, &revision, incomplete_id, 2)
@@ -198,7 +211,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .expect_err("compiler schema 2 revision without semantic children must roll back");
     assert!(
         database_error_message(&incomplete)
-            == Some("Workflow compiler schema 2 requires three semantic contracts"),
+            == Some("Workflow compiler schema 2 requires three semantic contracts and optional default material"),
         "unexpected incomplete-contract error: {incomplete}"
     );
 
@@ -254,7 +267,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .append(" and workflow_definition_id = ")
         .bind(definition_id.as_uuid()))
         .await?;
-    assert_eq!(semantic_count, 3);
+    assert_eq!(semantic_count, 4);
 
     let ontology = a3s_cloud_control_plane::modules::workflow::OntologyRevision::initial(
         organization_id,
@@ -363,6 +376,7 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         compiled_run.run.execution_input.flow_workflow_version,
         WORKFLOW_RUN_FLOW_VERSION_V2
     );
+    assert!(compiled_run.run.execution_input.variable_defaults.is_some());
     let goal_request_id = Uuid::now_v7();
     PostgresWorkflowGoalRepository::new(executor.clone())
         .create(CreateWorkflowGoalWrite {
@@ -463,10 +477,22 @@ pub(super) async fn exercise_workflow_semantic_contract_persistence(
         .inspect(&run_record)
         .await
         .expect("Flow-backed variable inspection");
-    assert_eq!(inspection.variables.len(), 1);
+    assert_eq!(inspection.variables.len(), 2);
     assert_eq!(
-        inspection.variables[0].value.as_ref(),
+        inspection
+            .variables
+            .iter()
+            .find(|variable| variable.name == "request")
+            .and_then(|variable| variable.value.as_ref()),
         Some(&run_record.run.execution_input.goal_input)
+    );
+    assert_eq!(
+        inspection
+            .variables
+            .iter()
+            .find(|variable| variable.name == "fallback")
+            .and_then(|variable| variable.value.as_ref()),
+        Some(&serde_json::json!({"priority": "normal"}))
     );
     drop(flow);
 
@@ -607,24 +633,43 @@ fn semantic_revision(
             .collect(),
     })
     .expect("descriptor bindings");
+    let default =
+        WorkflowVariableDefault::new("fallback", serde_json::json!({"priority": "normal"}))
+            .expect("variable default");
     let variables = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
         id: "integration.workflow".into(),
         revision: "1.0.0".into(),
         compiler_schema_version: 2,
-        declarations: vec![WorkflowVariableDeclaration {
-            name: "request".into(),
-            scope: WorkflowVariableScope::InvocationInput,
-            value_type: WorkflowDataType::Object,
-            value_schema_digest: schema.digest().clone(),
-            source_schema_digest: Some(schema.digest().clone()),
-            storage_class: WorkflowVariableStorageClass::Inline,
-            mutation_mode: WorkflowVariableMutationMode::Immutable,
-            required: true,
-            source_step_id: None,
-            source_path: Vec::new(),
-            region_id: None,
-            default_value_digest: None,
-        }],
+        declarations: vec![
+            WorkflowVariableDeclaration {
+                name: "request".into(),
+                scope: WorkflowVariableScope::InvocationInput,
+                value_type: WorkflowDataType::Object,
+                value_schema_digest: schema.digest().clone(),
+                source_schema_digest: Some(schema.digest().clone()),
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Immutable,
+                required: true,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: None,
+            },
+            WorkflowVariableDeclaration {
+                name: "fallback".into(),
+                scope: WorkflowVariableScope::Run,
+                value_type: WorkflowDataType::Object,
+                value_schema_digest: schema.digest().clone(),
+                source_schema_digest: None,
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Deterministic,
+                required: false,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: Some(default.digest.clone()),
+            },
+        ],
         reads: vec![WorkflowVariableRead {
             id: "output-request".into(),
             variable: "request".into(),
@@ -641,9 +686,20 @@ fn semantic_revision(
         exports: Vec::new(),
     })
     .expect("variable contract");
-    let semantics =
-        WorkflowRevisionSemanticContracts::create(&workflow, bindings, registry, variables)
-            .expect("semantic contracts");
+    let defaults = WorkflowVariableDefaults::from_spec(WorkflowVariableDefaultsSpec {
+        id: variables.id().into(),
+        revision: variables.revision().into(),
+        values: vec![default],
+    })
+    .expect("variable defaults");
+    let semantics = WorkflowRevisionSemanticContracts::create_with_defaults(
+        &workflow,
+        bindings,
+        registry,
+        variables,
+        Some(defaults),
+    )
+    .expect("semantic contracts");
     WorkflowRevision::initial_with_semantic_contracts(
         organization_id,
         project_id,

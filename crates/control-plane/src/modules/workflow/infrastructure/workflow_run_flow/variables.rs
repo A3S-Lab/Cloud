@@ -87,10 +87,12 @@ mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::Sha256Digest;
     use crate::modules::workflow::domain::{
-        ResolvedWorkflowVariableContract, WorkflowDataType, WorkflowVariableAssignment,
-        WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
-        WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableScope,
-        WorkflowVariableStorageClass, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
+        ResolvedWorkflowVariableContract, ResolvedWorkflowVariableDefaults, WorkflowDataType,
+        WorkflowVariableAssignment, WorkflowVariableContract, WorkflowVariableContractSpec,
+        WorkflowVariableDeclaration, WorkflowVariableDefault, WorkflowVariableDefaults,
+        WorkflowVariableDefaultsSpec, WorkflowVariableMutationMode, WorkflowVariableRead,
+        WorkflowVariableScope, WorkflowVariableStorageClass,
+        WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
     };
 
     fn digest(character: char) -> Sha256Digest {
@@ -176,6 +178,61 @@ mod tests {
         .expect("projected input");
         assert!(projected.authoritative);
         assert_eq!(projected.input, serde_json::json!({"result": "HIGH T-42"}));
+    }
+
+    #[test]
+    fn projection_materializes_digest_backed_default_without_a_variable_store() {
+        let mut input = crate::modules::workflow::test_support::workflow_run_input()
+            .expect("WorkflowRun input");
+        let default =
+            WorkflowVariableDefault::new("fallback", serde_json::json!("normal")).expect("default");
+        let contract = WorkflowVariableContract::from_spec(WorkflowVariableContractSpec {
+            id: "support.default-runtime".into(),
+            revision: "1.0.0".into(),
+            compiler_schema_version: WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
+            declarations: vec![WorkflowVariableDeclaration {
+                name: "fallback".into(),
+                scope: WorkflowVariableScope::Run,
+                value_type: WorkflowDataType::String,
+                value_schema_digest: digest('c'),
+                source_schema_digest: None,
+                storage_class: WorkflowVariableStorageClass::Inline,
+                mutation_mode: WorkflowVariableMutationMode::Deterministic,
+                required: false,
+                source_step_id: None,
+                source_path: Vec::new(),
+                region_id: None,
+                default_value_digest: Some(default.digest.clone()),
+            }],
+            reads: vec![WorkflowVariableRead {
+                id: "output-fallback".into(),
+                variable: "fallback".into(),
+                consumer_step_id: "output".into(),
+                consumer_region_id: None,
+                target_port: "result".into(),
+                path: Vec::new(),
+                expected_type: WorkflowDataType::String,
+                expected_schema_digest: digest('c'),
+                required: true,
+                mode: WorkflowVariableReadMode::DirectValue,
+            }],
+            assignments: Vec::new(),
+            exports: Vec::new(),
+        })
+        .expect("variable contract");
+        let defaults = WorkflowVariableDefaults::from_spec(WorkflowVariableDefaultsSpec {
+            id: contract.id().into(),
+            revision: contract.revision().into(),
+            values: vec![default],
+        })
+        .expect("variable defaults");
+        input.variable_contract = Some(ResolvedWorkflowVariableContract::from_contract(&contract));
+        input.variable_defaults = Some(ResolvedWorkflowVariableDefaults::from_defaults(&defaults));
+
+        let projected = effective_input(&input, "output", Value::Null, &BTreeMap::new())
+            .expect("default projection");
+        assert!(projected.authoritative);
+        assert_eq!(projected.input, serde_json::json!({"result": "normal"}));
     }
 
     #[test]
