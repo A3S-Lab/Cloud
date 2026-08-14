@@ -24,7 +24,7 @@
       <rect width="148" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
       <text x="74" y="27" fill="#d7ff9f" text-anchor="middle">ACL-NATIVE</text>
       <rect x="162" width="182" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
-      <text x="253" y="27" fill="#d7ff9f" text-anchor="middle">BACKEND-FIRST</text>
+      <text x="253" y="27" fill="#d7ff9f" text-anchor="middle">ONE AUTHORITY</text>
       <rect x="358" width="176" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
       <text x="446" y="27" fill="#d7ff9f" text-anchor="middle">FAIL-CLOSED</text>
     </g>
