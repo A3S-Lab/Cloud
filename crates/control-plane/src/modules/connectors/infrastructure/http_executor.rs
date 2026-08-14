@@ -1,8 +1,9 @@
 use crate::modules::connectors::domain::{
-    connector_transport_owns_header, validate_connector_content_type, ConnectorExecutionError,
-    ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpMethod,
-    ConnectorHttpStatusPolicy, ConnectorStatusDisposition, IConnectorEgressAuthorizer,
-    IConnectorExecutionPort,
+    maximum_connector_retry_after, validate_connector_content_type, validate_connector_http_limits,
+    validate_connector_signature_metadata, validate_connector_signing_secret_length,
+    validate_resolved_connector_endpoint, ConnectorExecutionError, ConnectorExecutionReceipt,
+    ConnectorExecutionRequest, ConnectorHttpMethod, ConnectorHttpStatusPolicy,
+    ConnectorStatusDisposition, IConnectorEgressAuthorizer, IConnectorExecutionPort,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, ConnectorRevisionId};
 use async_trait::async_trait;
@@ -20,12 +21,8 @@ use std::time::Duration;
 use url::Url;
 use zeroize::Zeroizing;
 
-const MINIMUM_SIGNING_SECRET_BYTES: usize = 32;
-const MAXIMUM_SIGNING_SECRET_BYTES: usize = 4 * 1024;
-const MAXIMUM_ENDPOINT_CHARACTERS: usize = 2_048;
-const MAXIMUM_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
-const MAXIMUM_HTTP_BODY_BYTES: usize = 1024 * 1024;
-const MAXIMUM_RETRY_AFTER: Duration = Duration::from_secs(86_400);
+#[cfg(test)]
+use crate::modules::connectors::domain::MINIMUM_SIGNING_SECRET_BYTES;
 
 pub struct ResolvedConnectorAuthentication {
     kind: ResolvedConnectorAuthenticationKind,
@@ -52,24 +49,11 @@ impl ResolvedConnectorAuthentication {
         signature_header: impl AsRef<str>,
         value_prefix: impl Into<String>,
     ) -> Result<Self, String> {
-        if !(MINIMUM_SIGNING_SECRET_BYTES..=MAXIMUM_SIGNING_SECRET_BYTES)
-            .contains(&signing_secret.len())
-        {
-            return Err("connector signing secret must contain between 32 and 4096 bytes".into());
-        }
+        validate_connector_signing_secret_length(signing_secret.len())?;
+        let value_prefix = value_prefix.into();
+        validate_connector_signature_metadata(signature_header.as_ref(), &value_prefix)?;
         let signature_header = HeaderName::from_bytes(signature_header.as_ref().as_bytes())
             .map_err(|_| "connector signature header is invalid".to_owned())?;
-        if connector_transport_owns_header(signature_header.as_str()) {
-            return Err("connector signature header is reserved by the transport".into());
-        }
-        let value_prefix = value_prefix.into();
-        if value_prefix.len() > 64
-            || value_prefix
-                .bytes()
-                .any(|byte| byte.is_ascii_control() || byte == 0x7f)
-        {
-            return Err("connector signature value prefix is invalid".into());
-        }
         Ok(Self {
             kind: ResolvedConnectorAuthenticationKind::HmacSha256 {
                 signing_secret,
@@ -148,28 +132,13 @@ impl ResolvedConnectorHttpRevision {
         authentication: ResolvedConnectorAuthentication,
         allow_http: bool,
     ) -> Result<Self, String> {
-        let accepted_scheme =
-            endpoint.scheme() == "https" || (allow_http && endpoint.scheme() == "http");
-        if id.as_uuid().is_nil()
-            || !accepted_scheme
-            || endpoint.as_str().chars().count() > MAXIMUM_ENDPOINT_CHARACTERS
-            || endpoint.host_str().is_none()
-            || !endpoint.username().is_empty()
-            || endpoint.password().is_some()
-            || endpoint.fragment().is_some()
-        {
+        if id.as_uuid().is_nil() {
             return Err("resolved connector HTTP destination is invalid".into());
         }
+        validate_resolved_connector_endpoint(&endpoint, allow_http, true)?;
         validate_connector_content_type(&request_content_type)?;
-        if maximum_request_bytes == 0
-            || maximum_request_bytes > MAXIMUM_HTTP_BODY_BYTES
-            || maximum_response_bytes == 0
-            || maximum_response_bytes > MAXIMUM_HTTP_BODY_BYTES
-            || timeout.is_zero()
-            || timeout > MAXIMUM_REQUEST_TIMEOUT
-        {
-            return Err("resolved connector HTTP limits are invalid".into());
-        }
+        validate_connector_http_limits(maximum_request_bytes, maximum_response_bytes, timeout)?;
+        status_policy.validate()?;
         Ok(Self {
             id,
             endpoint: Zeroizing::new(endpoint.to_string()),
@@ -404,7 +373,7 @@ fn retry_after(headers: &HeaderMap) -> Option<Duration> {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<u64>().ok())
         .map(Duration::from_secs)
-        .filter(|duration| *duration <= MAXIMUM_RETRY_AFTER)
+        .filter(|duration| *duration <= maximum_connector_retry_after())
 }
 
 fn header_value(value: &str) -> Result<HeaderValue, ConnectorExecutionError> {

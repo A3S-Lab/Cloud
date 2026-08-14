@@ -7,7 +7,7 @@ use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
 
-const MAXIMUM_CONNECTOR_BODY_BYTES: usize = 1024 * 1024;
+pub(crate) const MAXIMUM_CONNECTOR_BODY_BYTES: usize = 1024 * 1024;
 const MAXIMUM_CONNECTOR_HEADER_COUNT: usize = 32;
 const MAXIMUM_CONNECTOR_HEADER_NAME_BYTES: usize = 64;
 const MAXIMUM_CONNECTOR_HEADER_VALUE_BYTES: usize = 2 * 1024;
@@ -250,6 +250,14 @@ pub trait IConnectorExecutionPort: Send + Sync {
 }
 
 fn validate_header(name: &str, value: &str) -> Result<(), String> {
+    validate_connector_header_name(name)?;
+    if forbidden_header(name) {
+        return Err("connector request header name is invalid or reserved".into());
+    }
+    validate_connector_header_value(value)
+}
+
+pub(crate) fn validate_connector_header_name(name: &str) -> Result<(), String> {
     let valid_name = !name.is_empty()
         && name.len() <= MAXIMUM_CONNECTOR_HEADER_NAME_BYTES
         && name.bytes().enumerate().all(|(index, byte)| {
@@ -257,9 +265,13 @@ fn validate_header(name: &str, value: &str) -> Result<(), String> {
                 || byte.is_ascii_digit()
                 || (byte == b'-' && index > 0 && index + 1 < name.len())
         });
-    if !valid_name || forbidden_header(name) {
-        return Err("connector request header name is invalid or reserved".into());
+    if !valid_name {
+        return Err("connector header name is invalid".into());
     }
+    Ok(())
+}
+
+fn validate_connector_header_value(value: &str) -> Result<(), String> {
     if value.is_empty()
         || value.len() > MAXIMUM_CONNECTOR_HEADER_VALUE_BYTES
         || value
@@ -267,6 +279,24 @@ fn validate_header(name: &str, value: &str) -> Result<(), String> {
             .any(|byte| byte.is_ascii_control() || byte == 0x7f)
     {
         return Err("connector request header value is invalid".into());
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_connector_signature_metadata(
+    signature_header: &str,
+    value_prefix: &str,
+) -> Result<(), String> {
+    validate_connector_header_name(signature_header)?;
+    if connector_transport_owns_header(signature_header) {
+        return Err("connector signature header is reserved by the transport".into());
+    }
+    if value_prefix.len() > 64
+        || value_prefix
+            .bytes()
+            .any(|byte| byte.is_ascii_control() || byte == 0x7f)
+    {
+        return Err("connector signature value prefix is invalid".into());
     }
     Ok(())
 }

@@ -1,4 +1,7 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ConnectorHttpMethod {
     Get,
     Post,
@@ -17,6 +20,17 @@ impl ConnectorHttpMethod {
             Self::Delete => "DELETE",
         }
     }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "GET" => Ok(Self::Get),
+            "POST" => Ok(Self::Post),
+            "PUT" => Ok(Self::Put),
+            "PATCH" => Ok(Self::Patch),
+            "DELETE" => Ok(Self::Delete),
+            _ => Err("connector HTTP method is unsupported".into()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +40,8 @@ pub(crate) enum ConnectorStatusDisposition {
     Rejected,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectorHttpStatusPolicy {
     accepted: Vec<(u16, u16)>,
     retryable: Vec<(u16, u16)>,
@@ -39,22 +54,29 @@ impl ConnectorHttpStatusPolicy {
     ) -> Result<Self, String> {
         accepted.sort_unstable();
         retryable.sort_unstable();
-        if accepted.is_empty()
-            || accepted.len() > 16
-            || retryable.len() > 16
-            || !valid_ranges(&accepted)
-            || !valid_ranges(&retryable)
-            || accepted
+        let policy = Self {
+            accepted,
+            retryable,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.accepted.is_empty()
+            || self.accepted.len() > 16
+            || self.retryable.len() > 16
+            || !valid_ranges(&self.accepted)
+            || !valid_ranges(&self.retryable)
+            || self
+                .accepted
                 .iter()
                 .any(|(start, end)| !(200..=299).contains(start) || !(200..=299).contains(end))
-            || ranges_overlap(&accepted, &retryable)
+            || ranges_overlap(&self.accepted, &self.retryable)
         {
             return Err("connector HTTP status policy is invalid or overlapping".into());
         }
-        Ok(Self {
-            accepted,
-            retryable,
-        })
+        Ok(())
     }
 
     pub fn standard_webhook() -> Self {
@@ -63,6 +85,14 @@ impl ConnectorHttpStatusPolicy {
             vec![(408, 408), (425, 425), (429, 429), (500, 599)],
         )
         .expect("static connector status policy")
+    }
+
+    pub fn accepted_ranges(&self) -> &[(u16, u16)] {
+        &self.accepted
+    }
+
+    pub fn retryable_ranges(&self) -> &[(u16, u16)] {
+        &self.retryable
     }
 
     pub(crate) fn classify(&self, status: u16) -> ConnectorStatusDisposition {
