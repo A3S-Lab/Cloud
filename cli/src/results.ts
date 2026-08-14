@@ -152,17 +152,12 @@ export function projectAttributionResult(row: ProjectAttributionProfile): Comman
   return singleResult(row, PROJECT_ATTRIBUTION_COLUMNS);
 }
 
-export function projectAttributionMutationResult(
-  row: ProjectAttributionMutationResult
-): CommandResult {
+export function projectAttributionMutationResult(row: ProjectAttributionMutationResult): CommandResult {
   return {
     json: row,
     table: renderTable(
       [{ ...row.attributionProfile, replayed: row.replayed }],
-      [
-        ...PROJECT_ATTRIBUTION_COLUMNS,
-        { header: 'REPLAYED', value: (value) => value.replayed },
-      ]
+      [...PROJECT_ATTRIBUTION_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
 }

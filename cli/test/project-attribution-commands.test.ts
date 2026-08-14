@@ -20,12 +20,10 @@ describe('a3s-cloud project attribution commands', () => {
       },
     };
 
-    expect(await runCli(['project-attribution', 'get', '--output=json'], runtime)).toBe(
+    expect(await runCli(['project-attribution', 'get', '--output=json'], runtime)).toBe(ExitCode.Success);
+    expect(await runCli(['project-attribution', 'get', PROFILE_ID, '--output=json'], runtime)).toBe(
       ExitCode.Success
     );
-    expect(
-      await runCli(['project-attribution', 'get', PROFILE_ID, '--output=json'], runtime)
-    ).toBe(ExitCode.Success);
     expect(calls.map(([input]) => input)).toEqual([
       `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/attribution-profile`,
       `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}/attribution-profiles/${PROFILE_ID}`,

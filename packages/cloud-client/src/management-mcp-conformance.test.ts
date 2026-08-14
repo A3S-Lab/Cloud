@@ -298,19 +298,37 @@ conformanceIt(
     expect(replayData.id).toBe(projectId);
     expect(replayData.replayed).toBe(true);
 
+    const ontologyEvidence = await proveOntologyConformance(
+      environment,
+      organizationId,
+      projectId,
+      credentials
+    );
+    const {
+      ontologyId,
+      firstRevisionId: firstOntologyRevisionId,
+      secondRevisionId: secondOntologyRevisionId,
+    } = ontologyEvidence;
+
+    // The audit query intentionally adds no writer. Exercise it only after a
+    // lifecycle that atomically commits a known foundation audit record.
     const auditPage = await callTool(
       environment,
       environment.readOnlyToken,
       108,
       'a3s_cloud_audit_records_list',
-      { limit: 25 },
+      {
+        action: 'workflow.ontology.created',
+        aggregateId: ontologyId,
+        limit: 25,
+      },
       credentials,
       'MCP tenant audit listing'
     );
     expect(auditPage.result.isError).toBe(false);
     const auditData = objectValue(auditPage.structured.data, 'MCP tenant audit page');
     const auditRecords = arrayValue(auditData.records, 'MCP tenant audit records');
-    expect(auditRecords.length).toBeGreaterThan(0);
+    expect(auditRecords).toHaveLength(1);
     for (const value of auditRecords) {
       const record = objectValue(value, 'MCP tenant audit record');
       expect(Object.keys(record).sort()).toEqual([
@@ -323,20 +341,11 @@ conformanceIt(
         'requestId',
       ]);
       expect(record.organizationId).toBe(organizationId);
+      expect(record.action).toBe('workflow.ontology.created');
+      expect(record.aggregateId).toBe(ontologyId);
       expect(record).not.toHaveProperty('details');
     }
 
-    const ontologyEvidence = await proveOntologyConformance(
-      environment,
-      organizationId,
-      projectId,
-      credentials
-    );
-    const {
-      ontologyId,
-      firstRevisionId: firstOntologyRevisionId,
-      secondRevisionId: secondOntologyRevisionId,
-    } = ontologyEvidence;
     const formEvidence = await proveFormConformance(environment, organizationId, projectId, credentials);
     const { formId, releaseId: formReleaseId } = formEvidence;
     const executionTemplateEvidence = await proveExecutionTemplateConformance(

@@ -277,9 +277,11 @@ mod tests {
             _lease_duration: Duration,
         ) -> Result<Vec<OutboxMessage>, RepositoryError> {
             let state = self.state.lock().await;
-            Ok((!state.published)
-                .then(|| vec![state.message.clone()])
-                .unwrap_or_default())
+            Ok(if state.published {
+                Vec::new()
+            } else {
+                vec![state.message.clone()]
+            })
         }
 
         async fn mark_published(
