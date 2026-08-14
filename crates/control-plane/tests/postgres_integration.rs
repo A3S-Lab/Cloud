@@ -66,6 +66,8 @@ mod build_flow_process_death_support;
 mod build_runs_support;
 #[path = "support/cancellation.rs"]
 mod cancellation_support;
+#[path = "support/connectors.rs"]
+mod connectors_support;
 #[path = "support/deployment_flow.rs"]
 mod deployment_flow_support;
 #[path = "support/edge_certificate_lifecycle.rs"]
@@ -263,6 +265,19 @@ async fn postgres_notifications_are_deduplicated_personal_and_atomic() {
     )
     .await
     .expect("PostgreSQL notification inbox projection gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_connector_profiles_are_exact_replay_safe_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        connectors_support::exercise_connector_profile_persistence,
+    )
+    .await
+    .expect("PostgreSQL Connector profile authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -534,7 +549,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (108, "108".into()));
+    assert_eq!(migration_state, (109, "109".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

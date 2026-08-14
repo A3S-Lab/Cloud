@@ -1,6 +1,11 @@
+mod events;
 mod execution;
 mod http_definition;
 mod http_policy;
+mod profile;
+mod repository;
+
+pub use events::ConnectorRevisionPublished;
 
 pub(crate) use execution::{
     validate_connector_content_type, validate_connector_signature_metadata,
@@ -24,3 +29,9 @@ pub use http_definition::{
 };
 pub(crate) use http_policy::ConnectorStatusDisposition;
 pub use http_policy::{ConnectorHttpMethod, ConnectorHttpStatusPolicy};
+pub use profile::{ConnectorDefinition, ConnectorProfile, ConnectorRevision};
+pub(crate) use repository::ConnectorWriteReference;
+pub use repository::{
+    ConnectorRecord, CreateConnectorProfileWrite, IConnectorProfileRepository,
+    ReviseConnectorProfileWrite,
+};

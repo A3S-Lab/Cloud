@@ -598,6 +598,25 @@ Primary aggregates and immutable records:
 - `ConnectorProfile` and `ConnectorRevision`
 - `ConnectorExecutionEvidence`
 
+The implemented `AUT0.5-C2` foundation makes `ConnectorProfile` an
+environment-scoped mutable head only. Each successful optimistic-concurrency
+advance points to one immutable `ConnectorRevision` whose revision number,
+parent ID, parent digest, canonical A3S ACL, and definition digest form a closed
+lineage. No-op revisions and forks are rejected. The current HTTP definition is
+the canonical `cloud.connector.http.v1` ACL contract; the aggregate leaves room
+for later typed business-connector definitions without creating another profile
+or revision authority.
+
+Secret-bearing destinations and HMAC keys are exact `SecretId` plus version
+references derived from that ACL. Migration `109` preserves their
+organization/project/environment relationship and exact `secret_versions`
+foreign key, but stores neither plaintext nor copied Secret state. Secrets
+remains the only lifecycle and materialization authority, so later execution
+must recheck the exact version is active immediately before resolving it.
+Connector persistence reuses the shared idempotency, Outbox, audit, and A3S ORM
+transaction path; it adds no attempt log, queue, retry store, scheduler, or Flow
+mechanism.
+
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
 
@@ -714,11 +733,12 @@ header-value, endpoint, credential, signing-input, and response-body material
 from debug output. Flow or the owning A3S Event durable consumer remains the
 only retry, backoff, cancellation, and acknowledgement authority.
 
-This component is not production Connector or delivery availability. `AUT0.5`
-must still add immutable Connector profile/revision persistence, A3S ACL
-admission, authorization, Secret references and just-in-time materialization, a
-production egress/SSRF authorizer, execution evidence, revocation, and recovery
-over this same port. The production notification dispatcher must publish a
+This component is not production Connector or delivery availability. The
+`AUT0.5-C2` profile/revision authority and exact Secret references now exist,
+but `AUT0.5` must still add authorized application surfaces, just-in-time Secret
+materialization with active-state rechecks, a production egress/SSRF authorizer,
+execution evidence, revocation, recovery, and Workflow ports over this same
+authority and execution port. The production notification dispatcher must publish a
 Notification-owned fact through the existing transactional Outbox and consume
 it with the existing A3S Event durable subscription/manual-ack path. Provider
 outage must never run inside the source Outbox projector or block unrelated

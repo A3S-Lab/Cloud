@@ -941,6 +941,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/108_workflow_composite_regions.sql"
             )),
         ),
+        Migration::new(
+            "109",
+            "immutable Connector profiles and Secret bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/109_connector_profiles.sql"
+            )),
+        ),
     ]
 }
 
@@ -1367,6 +1375,45 @@ mod workflow_composite_regions_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 108 must not add a composite execution mechanism: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod connector_profile_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/109_connector_profiles.sql"
+    ));
+
+    #[test]
+    fn migration_109_adds_one_immutable_connector_authority_without_execution_mechanisms() {
+        for expected in [
+            "create table connector_profiles",
+            "create table connector_revisions",
+            "create table connector_revision_secret_bindings",
+            "cloud.connector.http.v1",
+            "references secret_versions (secret_id, version)",
+            "revision.created_at = new.updated_at",
+            "Connector revisions are immutable",
+            "not an execution queue, scheduler, retry store, or Secret authority",
+            "never plaintext or copied Secret state",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 109 is missing {expected}"
+            );
+        }
+        for forbidden in [
+            "create table connector_jobs",
+            "create table connector_attempts",
+            "create table connector_retries",
+            "create table connector_secret_material",
+        ] {
+            assert!(
+                !MIGRATION.to_ascii_lowercase().contains(forbidden),
+                "migration 109 must not add a duplicate execution or Secret mechanism: {forbidden}"
             );
         }
     }

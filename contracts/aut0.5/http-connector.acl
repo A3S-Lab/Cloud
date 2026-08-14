@@ -1,0 +1,38 @@
+connector_http {
+  maximum_request_bytes = 16384
+  maximum_response_bytes = 32768
+  method = "POST"
+  request_content_type = "application/json; charset=utf-8"
+  schema = "cloud.connector.http.v1"
+  timeout_milliseconds = 5000
+  destination "secret_https_url" {
+    secret_id = "11111111-1111-1111-1111-111111111111"
+    secret_version = 4
+  }
+  authentication "hmac_sha256" {
+    secret_id = "22222222-2222-2222-2222-222222222222"
+    secret_version = 7
+    signature_header = "x-a3s-signature"
+    value_prefix = "v1="
+  }
+  accepted_status {
+    end = 299
+    start = 200
+  }
+  retryable_status {
+    end = 408
+    start = 408
+  }
+  retryable_status {
+    end = 425
+    start = 425
+  }
+  retryable_status {
+    end = 429
+    start = 429
+  }
+  retryable_status {
+    end = 599
+    start = 500
+  }
+}

@@ -697,4 +697,20 @@ mod tests {
         )
         .is_err());
     }
+
+    #[test]
+    fn shared_aut0_5_fixture_uses_the_owner_acl_parser() {
+        let source = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/aut0.5/http-connector.acl"
+        ));
+        let definition =
+            ConnectorHttpDefinition::parse_acl(source).expect("shared AUT0.5 Connector HTTP ACL");
+        assert_eq!(definition.canonical_acl(), source);
+        assert_eq!(definition.secret_bindings().len(), 2);
+        assert!(matches!(
+            &definition.spec().destination,
+            ConnectorHttpDestination::SecretHttpsUrl { .. }
+        ));
+    }
 }
