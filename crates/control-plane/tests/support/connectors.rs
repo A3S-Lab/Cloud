@@ -1,14 +1,18 @@
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_control_plane::modules::connectors::{
-    ConnectorDefinition, ConnectorHttpAuthentication, ConnectorHttpDefinition,
-    ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
-    ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy, ConnectorProfile,
-    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorSecretReference,
-    CreateConnectorProfile, CreateConnectorProfileHandler, CreateConnectorProfileWrite,
-    GetConnectorProfile, GetConnectorProfileHandler, IConnectorProfileRepository,
-    ListConnectorRevisions, ListConnectorRevisionsHandler, PostgresConnectorProfileRepository,
-    ReviseConnectorProfile, ReviseConnectorProfileHandler, ReviseConnectorProfileWrite,
+    ConnectorDefinition, ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor,
+    ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpAuthentication,
+    ConnectorHttpDefinition, ConnectorHttpDefinitionSpec, ConnectorHttpDestination,
+    ConnectorHttpMethod, ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy,
+    ConnectorProfile, ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished,
+    ConnectorSecretReference, CreateConnectorProfile, CreateConnectorProfileHandler,
+    CreateConnectorProfileWrite, GetConnectorProfile, GetConnectorProfileHandler,
+    IConnectorExecutionEvidenceRepository, IConnectorProfileRepository,
+    ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler, ListConnectorRevisions,
+    ListConnectorRevisionsHandler, PostgresConnectorExecutionEvidenceRepository,
+    PostgresConnectorProfileRepository, ReviseConnectorProfile, ReviseConnectorProfileHandler,
+    ReviseConnectorProfileWrite,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -746,6 +750,321 @@ pub(super) async fn exercise_connector_application_and_materialization(
         )
         .await?;
     assert_eq!(evidence, (1, 2, 2, 2));
+    Ok(())
+}
+
+pub(super) async fn exercise_connector_execution_evidence(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("112"),
+        )
+        .await?;
+    assert_eq!(
+        migration_state,
+        (1, "immutable Connector execution evidence".into())
+    );
+
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let actor = PrincipalId::new();
+    let created_at = Utc::now();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", 'Connector evidence tenant', ")
+            .bind(format!("connector-evidence-{organization_id}"))
+            .append(", 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("insert into identity_principals (id, kind, name, aggregate_version, created_at, disabled_at) values (")
+                .bind(actor.as_uuid())
+                .append(", 'service', 'Connector evidence recorder', 1, ")
+                .bind(created_at)
+                .append(", null)"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", 'Connector evidence project', 'connector-evidence-project', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>("insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (")
+                .bind(organization_id.as_uuid())
+                .append(", ")
+                .bind(project_id.as_uuid())
+                .append(", ")
+                .bind(environment_id.as_uuid())
+                .append(", 'Production', 'production', 1, ")
+                .bind(created_at)
+                .append(")"),
+        )
+        .await?;
+
+    let profiles = Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
+    let profile_id = ConnectorProfileId::new();
+    let revision = ConnectorRevision::initial(
+        organization_id,
+        project_id,
+        environment_id,
+        profile_id,
+        ConnectorRevisionId::new(),
+        ConnectorDefinition::parse_acl(&literal_definition_acl(5_000)?)?,
+        actor,
+        created_at + Duration::seconds(1),
+    )?;
+    let profile = ConnectorProfile::create(
+        profile_id,
+        ResourceName::parse("Execution evidence")?,
+        &revision,
+    )?;
+    let record = ConnectorRecord::new(profile, revision.clone())?;
+    let request_id = Uuid::now_v7();
+    profiles
+        .create(CreateConnectorProfileWrite {
+            event: ConnectorRevisionPublished::created(
+                &record.profile,
+                &record.revision,
+                request_id,
+            )?,
+            actor_principal_id: actor,
+            request_id,
+            idempotency: IdempotencyRequest::new(
+                "connector-execution-evidence-profile",
+                "create",
+                revision.definition.digest().as_str().as_bytes(),
+            )?,
+            record,
+        })
+        .await?;
+
+    let evidence = Arc::new(PostgresConnectorExecutionEvidenceRepository::new(
+        executor.clone(),
+    ));
+    let accepted_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"sensitive accepted request".to_vec(),
+    )?
+    .with_header("x-a3s-source", "workflow")?;
+    let accepted_receipt = ConnectorExecutionReceipt::accepted(
+        revision.id,
+        accepted_request.attempt_id(),
+        created_at + Duration::seconds(3),
+        202,
+        Some("application/json".into()),
+        b"sensitive accepted response".to_vec(),
+    )
+    .map_err(|error| error.to_string())?;
+    let accepted = ConnectorExecutionEvidence::accepted(
+        &revision,
+        &accepted_request,
+        &accepted_receipt,
+        created_at + Duration::seconds(2),
+    )?;
+    let (left, right) = tokio::join!(
+        evidence.record(accepted.clone()),
+        evidence.record(accepted.clone())
+    );
+    let mut replayed = [left?.replayed, right?.replayed];
+    replayed.sort_unstable();
+    assert_eq!(replayed, [false, true]);
+
+    let changed_request = ConnectorExecutionRequest::new(
+        revision.id,
+        accepted.attempt_id(),
+        "application/json",
+        b"different request".to_vec(),
+    )?;
+    let changed = ConnectorExecutionEvidence::rejected(
+        &revision,
+        &changed_request,
+        Some(400),
+        accepted.started_at(),
+        accepted.completed_at(),
+    )?;
+    assert!(matches!(
+        evidence.record(changed).await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let retryable_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"sensitive retryable request".to_vec(),
+    )?;
+    let retryable = ConnectorExecutionEvidence::retryable(
+        &revision,
+        &retryable_request,
+        Some(503),
+        Some(std::time::Duration::from_secs(7)),
+        created_at + Duration::seconds(4),
+        created_at + Duration::seconds(5),
+    )?;
+    evidence.record(retryable.clone()).await?;
+    let rejected_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"sensitive rejected request".to_vec(),
+    )?;
+    let rejected = ConnectorExecutionEvidence::rejected(
+        &revision,
+        &rejected_request,
+        Some(400),
+        created_at + Duration::seconds(6),
+        created_at + Duration::seconds(7),
+    )?;
+    evidence.record(rejected.clone()).await?;
+
+    let list_handler = ListConnectorExecutionEvidenceHandler::new(profiles, evidence.clone());
+    let list = ListConnectorExecutionEvidence {
+        organization_id,
+        project_id,
+        environment_id,
+        profile_id,
+        revision_id: revision.id,
+        after: None,
+        limit: 2,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+    };
+    let first = list_handler
+        .execute(list.clone(), connector_context())
+        .await??;
+    assert_eq!(first.evidence, vec![rejected.clone(), retryable.clone()]);
+    assert_eq!(
+        first.next_cursor,
+        Some(ConnectorExecutionEvidenceCursor::after(&retryable))
+    );
+    let second = list_handler
+        .execute(
+            ListConnectorExecutionEvidence {
+                after: first.next_cursor,
+                ..list.clone()
+            },
+            connector_context(),
+        )
+        .await??;
+    assert_eq!(second.evidence, vec![accepted.clone()]);
+    assert!(second.next_cursor.is_none());
+    let denied = list_handler
+        .execute(
+            ListConnectorExecutionEvidence {
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    },
+                ]),
+                ..list
+            },
+            connector_context(),
+        )
+        .await?;
+    assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
+
+    let recovered = PostgresConnectorExecutionEvidenceRepository::new(executor.clone())
+        .find(
+            organization_id,
+            project_id,
+            environment_id,
+            profile_id,
+            revision.id,
+            accepted.attempt_id(),
+        )
+        .await?;
+    assert_eq!(recovered, Some(accepted.clone()));
+    assert!(evidence
+        .find(
+            OrganizationId::new(),
+            project_id,
+            environment_id,
+            profile_id,
+            revision.id,
+            accepted.attempt_id(),
+        )
+        .await?
+        .is_none());
+
+    let wrong_environment = ConnectorExecutionEvidence::restore(
+        organization_id,
+        project_id,
+        EnvironmentId::new(),
+        profile_id,
+        revision.id,
+        Uuid::now_v7(),
+        accepted.request_digest().clone(),
+        accepted.request_body_bytes(),
+        accepted.outcome(),
+        accepted.response_status(),
+        accepted.response_digest().cloned(),
+        accepted.response_body_bytes(),
+        accepted.retry_after().map(|value| value.as_secs()),
+        accepted.started_at(),
+        accepted.completed_at(),
+    )?;
+    assert_eq!(
+        evidence.record(wrong_environment).await,
+        Err(RepositoryError::NotFound)
+    );
+
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("update connector_execution_evidence set outcome = 'rejected' where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and attempt_id = ")
+                    .bind(accepted.attempt_id()),
+            )
+            .await,
+        "mutating immutable Connector execution evidence",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "delete from connector_execution_evidence where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and attempt_id = ")
+                .bind(accepted.attempt_id()),
+            )
+            .await,
+        "deleting immutable Connector execution evidence",
+    );
+    let stored = database
+        .fetch_one_as(
+            sql_query::<(i64, i64)>("select count(*), count(*) filter (where request_digest like 'sha256:%' and (response_digest is null or response_digest like 'sha256:%')) from connector_execution_evidence where organization_id = ")
+                .bind(organization_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(stored, (3, 3));
     Ok(())
 }
 

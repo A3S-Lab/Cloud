@@ -1,4 +1,4 @@
-use crate::modules::shared_kernel::domain::ConnectorRevisionId;
+use crate::modules::shared_kernel::domain::{ConnectorRevisionId, Sha256Digest};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
@@ -92,6 +92,35 @@ impl ConnectorExecutionRequest {
         self.signing_input.as_deref()
     }
 
+    /// Produces the evidence binding for the complete caller-owned request.
+    ///
+    /// The digest includes the exact revision and attempt identities, content
+    /// type, ordered headers, body, and optional signing input. It never
+    /// includes materialized Connector credentials because those remain
+    /// transient and Secrets-owned.
+    pub(crate) fn evidence_digest(&self) -> Sha256Digest {
+        let mut hasher = Sha256::new();
+        hasher.update(b"a3s.cloud.connector-execution-request.v1\0");
+        hasher.update(self.connector_revision_id.as_uuid().as_bytes());
+        hasher.update(self.attempt_id.as_bytes());
+        hash_field(&mut hasher, self.content_type.as_bytes());
+        hasher.update((self.headers.len() as u64).to_be_bytes());
+        for (name, value) in &self.headers {
+            hash_field(&mut hasher, name.as_bytes());
+            hash_field(&mut hasher, value.as_bytes());
+        }
+        hash_field(&mut hasher, &self.body);
+        match &self.signing_input {
+            Some(value) => {
+                hasher.update([1]);
+                hash_field(&mut hasher, value);
+            }
+            None => hasher.update([0]),
+        }
+        Sha256Digest::parse(format!("sha256:{:x}", hasher.finalize()))
+            .expect("SHA-256 output is a canonical digest")
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         if self.connector_revision_id.as_uuid().is_nil() || self.attempt_id.is_nil() {
             return Err("connector execution identity is invalid".into());
@@ -113,6 +142,11 @@ impl ConnectorExecutionRequest {
         }
         Ok(())
     }
+}
+
+fn hash_field(hasher: &mut Sha256, value: &[u8]) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
 }
 
 impl fmt::Debug for ConnectorExecutionRequest {

@@ -4,26 +4,30 @@ pub mod infrastructure;
 
 pub use application::{
     ConnectorProfileMutationResult, CreateConnectorProfile, CreateConnectorProfileHandler,
-    GetConnectorProfile, GetConnectorProfileHandler, GetConnectorRevision,
-    GetConnectorRevisionHandler, ListConnectorProfiles, ListConnectorProfilesHandler,
-    ListConnectorRevisions, ListConnectorRevisionsHandler, ReviseConnectorProfile,
-    ReviseConnectorProfileHandler,
+    GetConnectorExecutionEvidence, GetConnectorExecutionEvidenceHandler, GetConnectorProfile,
+    GetConnectorProfileHandler, GetConnectorRevision, GetConnectorRevisionHandler,
+    ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler, ListConnectorProfiles,
+    ListConnectorProfilesHandler, ListConnectorRevisions, ListConnectorRevisionsHandler,
+    ReviseConnectorProfile, ReviseConnectorProfileHandler,
 };
 
 pub use domain::{
     AuthorizedConnectorDestination, ConnectorDefinition, ConnectorExecutionError,
-    ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpAuthentication,
-    ConnectorHttpDefinition, ConnectorHttpDefinitionSpec, ConnectorHttpDestination,
-    ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile, ConnectorRecord,
-    ConnectorRevision, ConnectorRevisionPublished, ConnectorSecretBinding,
+    ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor, ConnectorExecutionEvidencePage,
+    ConnectorExecutionOutcome, ConnectorExecutionReceipt, ConnectorExecutionRequest,
+    ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
+    ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile,
+    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorSecretBinding,
     ConnectorSecretBindingPurpose, ConnectorSecretReference, CreateConnectorProfileWrite,
-    IConnectorEgressAuthorizer, IConnectorExecutionPort, IConnectorProfileRepository,
-    ReviseConnectorProfileWrite, CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES,
-    CONNECTOR_HTTP_DEFINITION_SCHEMA,
+    IConnectorEgressAuthorizer, IConnectorExecutionEvidenceRepository, IConnectorExecutionPort,
+    IConnectorProfileRepository, ReviseConnectorProfileWrite,
+    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_HTTP_DEFINITION_SCHEMA,
+    MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
 };
 pub use infrastructure::{
     BoundedHttpConnectorExecutor, ConnectorHttpRevisionMaterializer,
-    InMemoryConnectorProfileRepository, PostgresConnectorProfileRepository,
+    InMemoryConnectorExecutionEvidenceRepository, InMemoryConnectorProfileRepository,
+    PostgresConnectorExecutionEvidenceRepository, PostgresConnectorProfileRepository,
     PublicInternetConnectorEgressAuthorizer, ResolvedConnectorAuthentication,
     ResolvedConnectorHttpRevision,
 };

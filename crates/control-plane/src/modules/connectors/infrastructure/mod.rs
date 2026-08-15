@@ -1,9 +1,13 @@
+mod evidence_in_memory;
+mod evidence_postgres;
 mod http_executor;
 mod profile_in_memory;
 mod profile_materializer;
 mod profile_postgres;
 mod public_egress_authorizer;
 
+pub use evidence_in_memory::InMemoryConnectorExecutionEvidenceRepository;
+pub use evidence_postgres::PostgresConnectorExecutionEvidenceRepository;
 pub use http_executor::{
     BoundedHttpConnectorExecutor, ResolvedConnectorAuthentication, ResolvedConnectorHttpRevision,
 };

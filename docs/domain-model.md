@@ -652,6 +652,34 @@ to those authorized socket addresses while retaining the original hostname for
 HTTP authority and TLS verification. It never re-resolves the name, follows a
 redirect, retries, caches policy/material, or records evidence.
 
+The component-only `AUT0.5-C5` evidence boundary records exactly one immutable
+terminal fact for one organization/project/environment/profile/revision/attempt
+identity. `ConnectorExecutionEvidence` stores a digest of the complete bounded
+caller-owned request, request-body byte count, the closed
+accepted/retryable/rejected outcome, optional HTTP status, accepted
+response-body digest and byte count, bounded delta-seconds `Retry-After`, and
+canonical start/completion times. Its debug projection omits both digests.
+Headers, bodies, signing input, endpoint, resolved addresses, credentials,
+provider response text, retry counters, leases, acknowledgement, and scheduler
+state are not evidence fields.
+
+Migration `112` binds every fact to the existing exact immutable Connector
+revision, rejects update/delete, and indexes the revision-local
+`(completed_at, attempt_id)` keyset. The exact attempt identity is also the
+repository replay identity: a concurrent identical terminal fact converges on
+one row, while different content for that identity conflicts. It deliberately
+does not allocate a second shared command-idempotency entry, Outbox event,
+audit actor, queue, or retry mechanism. Resource Grant-aware get/list queries
+authorize the exact environment before storage access and return bounded
+pages; they are component contracts, not REST, CLI, MCP, or Web availability.
+
+An external network effect and a PostgreSQL commit cannot be one atomic
+transaction. Therefore `C5` does not wrap the current executor and then retry
+when evidence persistence fails: that would risk duplicating a provider side
+effect. `AUT0.5-C6` must first add one durable reservation/fencing and
+indeterminate-outcome recovery boundary. Flow or the owning durable A3S Event
+consumer still owns retry, backoff, cancellation, and acknowledgement.
+
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
 
@@ -771,12 +799,13 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C4` profile/revision, authorized application,
-just-in-time Secret materialization, and public-Internet egress foundations now
-exist, but `AUT0.5` must still add execution evidence, internal execution
-authorization, revocation/recovery, supported management surfaces, provider
-wiring, and Workflow ports over this same authority and execution port. The
-production notification dispatcher must publish a
+`AUT0.5-C2` through `C5` profile/revision, authorized application,
+just-in-time Secret materialization, public-Internet egress, and immutable
+terminal-evidence foundations now exist, but `AUT0.5` must still add durable
+attempt fencing, internal execution authorization, indeterminate-outcome
+recovery, supported management surfaces, provider wiring, and Workflow ports
+over these same authorities. The production notification dispatcher must
+publish a
 Notification-owned fact through the existing transactional Outbox and consume
 it with the existing A3S Event durable subscription/manual-ack path. Provider
 outage must never run inside the source Outbox projector or block unrelated

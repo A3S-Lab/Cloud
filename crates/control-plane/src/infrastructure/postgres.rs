@@ -965,6 +965,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/111_connector_secret_admission_error.sql"
             )),
         ),
+        Migration::new(
+            "112",
+            "immutable Connector execution evidence",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/112_connector_execution_evidence.sql"
+            )),
+        ),
     ]
 }
 
@@ -1496,6 +1504,48 @@ mod connector_secret_admission_error_migration_tests {
             assert!(
                 !MIGRATION.to_ascii_lowercase().contains(forbidden),
                 "migration 111 must only normalize the existing admission constraint: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod connector_execution_evidence_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/112_connector_execution_evidence.sql"
+    ));
+
+    #[test]
+    fn migration_112_adds_only_bounded_immutable_terminal_facts() {
+        for expected in [
+            "create table connector_execution_evidence",
+            "references connector_revisions",
+            "request_body_bytes between 0 and 1048576",
+            "response_body_bytes between 0 and 1048576",
+            "retry_after_seconds between 0 and 86400",
+            "Connector execution evidence is immutable",
+            "not an execution queue, attempt reservation, retry store, scheduler",
+            "request headers, bodies, signing input, endpoints, addresses, and credentials are never stored",
+            "provider response bytes and text are never stored",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 112 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table connector_jobs",
+            "create table connector_attempts",
+            "create table connector_retries",
+            "create table connector_request_bodies",
+            "create table connector_response_bodies",
+            "create table connector_credentials",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 112 must not add another execution mechanism: {forbidden}"
             );
         }
     }

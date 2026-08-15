@@ -1,4 +1,6 @@
 mod events;
+mod evidence;
+mod evidence_repository;
 mod execution;
 mod http_definition;
 mod http_policy;
@@ -6,6 +8,11 @@ mod profile;
 mod repository;
 
 pub use events::ConnectorRevisionPublished;
+pub use evidence::{
+    ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor, ConnectorExecutionEvidencePage,
+    ConnectorExecutionOutcome, MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
+};
+pub use evidence_repository::IConnectorExecutionEvidenceRepository;
 
 pub(crate) use execution::{
     validate_connector_content_type, validate_connector_signature_metadata,
