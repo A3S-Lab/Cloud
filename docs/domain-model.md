@@ -788,7 +788,7 @@ Primary record:
 
 - `Notification`
 
-### 3.19 Outbound notification delivery (`C0.3-N2a` through `C0.3-N2e`)
+### 3.19 Outbound notification delivery (`C0.3-N2a` through `C0.3-N2f`)
 
 The first outbound component boundary derives one immutable
 `OutboundNotificationDelivery` from an existing personal notification, one
@@ -842,6 +842,13 @@ the existing receipt constraint and validates the same attempt/evidence/budget
 relationship. Neither slice adds a retry table, mutable counter, rate bucket,
 timer, queue, scheduler, or provider-response authority.
 
+`N2f` exposes that same immutable subscription authority through REST/OpenAPI,
+the maintained client, CLI, and Management MCP. Create accepts only canonical
+A3S ACL, list/get remain exact-recipient and Resource Grant filtered, and revoke
+is the sole state transition. These adapters reuse the same repository,
+idempotency, Outbox, audit, and Connector revision admission; they never expose
+resolved endpoints, Secrets, provider bodies, attempts, receipts, or retry state.
+
 The component-only Connector executor materializes one fixed resolved revision
 and performs exactly one external attempt. Connectors owns the endpoint and
 method, production HTTPS requirement, redirect rejection, request/response/time
@@ -861,9 +868,9 @@ fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, and the first Notification Event-consumer-to-C6 composition now
 exist. `AUT0.5` must still add general provider wiring,
 revocation/recovery operations, retained integration evidence, and Workflow
-ports over those same authorities. Notifications still needs supported subscription management
-surfaces and retained NATS evidence, plus separate versioned semantics before
-any user-configured suppression or delivery budget is admitted. Provider outage
+ports over those same authorities. Notifications still needs retained NATS
+evidence, plus separate versioned semantics before any user-configured
+suppression or delivery budget is admitted. Provider outage
 never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
 receipts key off the deterministic delivery ID. External SMTP remains

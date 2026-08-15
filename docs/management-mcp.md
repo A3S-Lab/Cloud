@@ -591,7 +591,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 97-tool administrator and 58-tool
+current focused source runner requires exact 101-tool administrator and 60-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
