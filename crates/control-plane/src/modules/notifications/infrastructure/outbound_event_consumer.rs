@@ -2,9 +2,10 @@ use crate::modules::notifications::application::{
     IOutboundNotificationDispatcher, OutboundNotificationDispatchResult,
 };
 use crate::modules::notifications::domain::{
-    OutboundNotificationDelivery, OUTBOUND_NOTIFICATION_EVENT_KEY,
+    IOutboundNotificationDeliveryRepository, OutboundNotificationDelivery,
+    OutboundNotificationDeliveryAdmission, OutboundNotificationTerminalReceipt,
+    OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
-use crate::modules::shared_kernel::application::ApplicationError;
 use a3s_event::{
     DeliverPolicy, EventBus, EventError, PendingEvent, ReceivedEvent, SubscribeOptions,
     SubscriptionFilter,
@@ -32,6 +33,7 @@ pub enum OutboundNotificationConsumerAction {
 pub struct A3sEventOutboundNotificationConsumer {
     bus: Arc<EventBus>,
     subject: String,
+    deliveries: Arc<dyn IOutboundNotificationDeliveryRepository>,
     dispatcher: Arc<dyn IOutboundNotificationDispatcher>,
 }
 
@@ -39,6 +41,7 @@ impl A3sEventOutboundNotificationConsumer {
     pub fn new(
         bus: Arc<EventBus>,
         subject: impl Into<String>,
+        deliveries: Arc<dyn IOutboundNotificationDeliveryRepository>,
         dispatcher: Arc<dyn IOutboundNotificationDispatcher>,
     ) -> Result<Self, String> {
         let subject = subject.into();
@@ -48,6 +51,7 @@ impl A3sEventOutboundNotificationConsumer {
         Ok(Self {
             bus,
             subject,
+            deliveries,
             dispatcher,
         })
     }
@@ -59,9 +63,9 @@ impl A3sEventOutboundNotificationConsumer {
                 subjects: vec![self.subject.clone()],
                 durable: true,
                 options: Some(SubscribeOptions {
-                    // Logical terminal receipts will close a later bounded-delivery
-                    // policy. Until then, fail closed with unlimited provider-owned
-                    // redelivery instead of silently dropping a committed fact.
+                    // Provider delivery counts include infrastructure redeliveries, so
+                    // keep that policy provider-owned and unbounded. Persisted terminal
+                    // receipts make all post-terminal replays ACK-only.
                     max_deliver: None,
                     backoff_secs: Vec::new(),
                     max_ack_pending: Some(64),
@@ -119,27 +123,72 @@ impl A3sEventOutboundNotificationConsumer {
             }
         };
 
-        match self.dispatcher.dispatch(&delivery, delivery_count).await {
-            Ok(result) if result.should_acknowledge() => {
+        match self.deliveries.admit_delivery(&delivery).await {
+            Ok(Some(OutboundNotificationDeliveryAdmission::Pending)) => {}
+            Ok(Some(OutboundNotificationDeliveryAdmission::Terminal(receipt))) => {
+                if let Err(error) = receipt.validate_against(&delivery) {
+                    tracing::error!(
+                        event_id,
+                        delivery_id = %delivery.id(),
+                        error,
+                        "leaving outbound notification fact unacknowledged after invalid stored receipt"
+                    );
+                    drop(pending);
+                    return Ok(OutboundNotificationConsumerAction::DeferredToEventProvider);
+                }
+                tracing::debug!(
+                    event_id,
+                    delivery_id = %delivery.id(),
+                    "acknowledging outbound notification fact from its terminal receipt"
+                );
                 pending.ack().await?;
-                Ok(OutboundNotificationConsumerAction::Acknowledged)
+                return Ok(OutboundNotificationConsumerAction::Acknowledged);
             }
+            Ok(None) => {
+                tracing::warn!(
+                    event_id,
+                    delivery_id = %delivery.id(),
+                    "acknowledging outbound notification fact without persisted delivery authorization"
+                );
+                pending.ack().await?;
+                return Ok(OutboundNotificationConsumerAction::Acknowledged);
+            }
+            Err(error) => {
+                tracing::warn!(
+                    event_id,
+                    delivery_id = %delivery.id(),
+                    error = %error,
+                    "leaving outbound notification fact unacknowledged while admission is unavailable"
+                );
+                drop(pending);
+                return Ok(OutboundNotificationConsumerAction::DeferredToEventProvider);
+            }
+        }
+
+        let receipt = match self.dispatcher.dispatch(&delivery, delivery_count).await {
+            Ok(OutboundNotificationDispatchResult::Delivered {
+                generation,
+                evidence,
+            }) => OutboundNotificationTerminalReceipt::delivered(&delivery, generation, &evidence),
+            Ok(OutboundNotificationDispatchResult::Rejected {
+                generation,
+                evidence,
+            }) => OutboundNotificationTerminalReceipt::rejected(&delivery, generation, &evidence),
             Ok(OutboundNotificationDispatchResult::Indeterminate {
                 generation,
                 attempt_id,
+                outcome_deadline_at,
                 ..
-            }) => {
-                tracing::error!(
-                    event_id,
-                    delivery_id = %delivery.id(),
-                    generation,
-                    attempt_id = %attempt_id,
-                    "acknowledging indeterminate fenced Connector attempt without retrying the provider"
-                );
-                pending.ack().await?;
-                Ok(OutboundNotificationConsumerAction::Acknowledged)
-            }
-            Ok(_) => {
+            }) => OutboundNotificationTerminalReceipt::indeterminate(
+                &delivery,
+                generation,
+                attempt_id,
+                outcome_deadline_at,
+            ),
+            Ok(
+                OutboundNotificationDispatchResult::Retryable { .. }
+                | OutboundNotificationDispatchResult::Deferred { .. },
+            ) => {
                 tracing::warn!(
                     event_id,
                     delivery_id = %delivery.id(),
@@ -147,15 +196,35 @@ impl A3sEventOutboundNotificationConsumer {
                     "leaving outbound notification fact unacknowledged for A3S Event redelivery"
                 );
                 drop(pending);
-                Ok(OutboundNotificationConsumerAction::DeferredToEventProvider)
+                return Ok(OutboundNotificationConsumerAction::DeferredToEventProvider);
             }
-            Err(error) if terminal_dispatch_error(&error) => {
-                tracing::error!(
+            Err(error) => {
+                tracing::warn!(
                     event_id,
                     delivery_id = %delivery.id(),
                     error = %error,
-                    "acknowledging terminal outbound notification dispatch error"
+                    "leaving outbound notification fact unacknowledged after dispatch failure"
                 );
+                drop(pending);
+                return Ok(OutboundNotificationConsumerAction::DeferredToEventProvider);
+            }
+        };
+        let receipt = match receipt {
+            Ok(receipt) => receipt,
+            Err(error) => {
+                tracing::error!(
+                    event_id,
+                    delivery_id = %delivery.id(),
+                    error,
+                    "leaving outbound notification fact unacknowledged after invalid terminal evidence"
+                );
+                drop(pending);
+                return Ok(OutboundNotificationConsumerAction::DeferredToEventProvider);
+            }
+        };
+
+        match self.deliveries.settle_delivery(&delivery, receipt).await {
+            Ok(_) => {
                 pending.ack().await?;
                 Ok(OutboundNotificationConsumerAction::Acknowledged)
             }
@@ -164,24 +233,13 @@ impl A3sEventOutboundNotificationConsumer {
                     event_id,
                     delivery_id = %delivery.id(),
                     error = %error,
-                    "leaving outbound notification fact unacknowledged after infrastructure failure"
+                    "leaving outbound notification fact unacknowledged until terminal receipt is durable"
                 );
                 drop(pending);
                 Ok(OutboundNotificationConsumerAction::DeferredToEventProvider)
             }
         }
     }
-}
-
-fn terminal_dispatch_error(error: &ApplicationError) -> bool {
-    matches!(
-        error,
-        ApplicationError::Invalid(_)
-            | ApplicationError::NotFound(_)
-            | ApplicationError::Conflict(_)
-            | ApplicationError::Forbidden(_)
-            | ApplicationError::Unavailable(_)
-    )
 }
 
 fn decode_delivery_event(

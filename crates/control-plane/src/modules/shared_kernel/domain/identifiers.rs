@@ -49,6 +49,7 @@ identifier!(ApiTokenId);
 identifier!(ProjectId);
 identifier!(ProjectAttributionProfileId);
 identifier!(NotificationId);
+identifier!(NotificationSubscriptionId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(EnvironmentId);

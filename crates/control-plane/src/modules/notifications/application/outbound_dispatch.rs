@@ -5,7 +5,9 @@ use crate::modules::connectors::{
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::domain::{
-    IOutboundNotificationRequestAdapter, OutboundNotificationChannel, OutboundNotificationDelivery,
+    outbound_notification_attempt_id, IOutboundNotificationRequestAdapter,
+    OutboundNotificationChannel, OutboundNotificationDelivery,
+    MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
 };
 use crate::modules::notifications::infrastructure::{
     SignedWebhookNotificationAdapter, SlackCompatibleNotificationAdapter,
@@ -16,8 +18,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
-
-pub const MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION: u64 = 1_000;
 
 #[async_trait]
 pub trait IOutboundNotificationDispatcher: Send + Sync {
@@ -53,12 +53,6 @@ pub enum OutboundNotificationDispatchResult {
         dispatch_started_at: DateTime<Utc>,
         outcome_deadline_at: DateTime<Utc>,
     },
-}
-
-impl OutboundNotificationDispatchResult {
-    pub const fn should_acknowledge(&self) -> bool {
-        matches!(self, Self::Delivered { .. } | Self::Rejected { .. })
-    }
 }
 
 /// Composes channel request builders with the sole fenced Connector execution service.
@@ -118,7 +112,8 @@ impl OutboundNotificationDispatcher {
             }]);
 
         for generation in 1..=maximum_generation {
-            let attempt_id = outbound_notification_attempt_id(delivery.id(), generation)?;
+            let attempt_id = outbound_notification_attempt_id(delivery.id(), generation)
+                .map_err(ApplicationError::Invalid)?;
             let request = adapter
                 .build_request(delivery, attempt_id)
                 .map_err(|error| ApplicationError::Invalid(error.to_string()))?;
@@ -259,24 +254,6 @@ impl IOutboundNotificationDispatcher for OutboundNotificationDispatcher {
     ) -> ApplicationResult<OutboundNotificationDispatchResult> {
         self.dispatch_fenced(delivery, delivery_count).await
     }
-}
-
-pub fn outbound_notification_attempt_id(
-    delivery_id: Uuid,
-    generation: u64,
-) -> Result<Uuid, ApplicationError> {
-    if delivery_id.is_nil()
-        || generation == 0
-        || generation > MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION
-    {
-        return Err(ApplicationError::Invalid(
-            "outbound notification attempt generation is invalid".into(),
-        ));
-    }
-    Ok(Uuid::new_v5(
-        &delivery_id,
-        format!("connector-attempt:{generation}").as_bytes(),
-    ))
 }
 
 #[cfg(test)]

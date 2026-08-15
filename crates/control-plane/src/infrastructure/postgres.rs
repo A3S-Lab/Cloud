@@ -981,6 +981,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/113_connector_execution_attempts.sql"
             )),
         ),
+        Migration::new(
+            "114",
+            "outbound notification subscriptions and receipts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/114_notification_outbound_delivery.sql"
+            )),
+        ),
     ]
 }
 
@@ -1599,6 +1607,52 @@ mod connector_execution_attempt_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 113 must not add retry, queue, or response authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_outbound_delivery_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/114_notification_outbound_delivery.sql"
+    ));
+
+    #[test]
+    fn migration_114_adds_acl_subscriptions_and_receipts_without_another_retry_rail() {
+        for expected in [
+            "create table notification_outbound_subscriptions",
+            "cloud.notification.outbound-subscription.v1",
+            "references connector_revisions",
+            "notification_outbound_subscription_revoke_only",
+            "create table notification_outbound_deliveries",
+            "references outbox_events(event_id)",
+            "notification.delivery.requested",
+            "notification_outbound_delivery_validate_fact",
+            "notification_outbound_delivery_terminal_only",
+            "notification_outbound_delivery_terminal_receipt_exact",
+            "does not match its exact C6 attempt",
+            "not a queue, retry schedule, retry counter",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 114 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "retry_count",
+            "next_attempt_at",
+            "available_at",
+            "create table notification_queue",
+            "create table notification_retries",
+            "provider_response",
+            "response_body",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 114 must not add queue, retry, or provider-response authority: {forbidden}"
             );
         }
     }

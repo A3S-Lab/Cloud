@@ -1,18 +1,20 @@
 use super::*;
 use crate::modules::connectors::{ConnectorExecutionEvidence, ConnectorExecutionOutcome};
 use crate::modules::notifications::{
+    outbound_notification_attempt_id, IOutboundNotificationDeliveryRepository,
     IOutboundNotificationDispatcher, Notification, NotificationScope, NotificationSeverity,
     OutboundNotificationChannel, OutboundNotificationConnectorTarget,
-    OutboundNotificationDispatchResult,
+    OutboundNotificationDeliveryAdmission, OutboundNotificationDispatchResult,
+    OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
 };
-use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, NotificationId,
-    OrganizationId, PrincipalId, ProjectId, Sha256Digest,
+    OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
 };
 use a3s_event::{Event, MemoryProvider};
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 const SUBJECT: &str = "events.cloud.notification.delivery.requested";
@@ -40,6 +42,88 @@ impl IOutboundNotificationDispatcher for RecordingDispatcher {
     ) -> ApplicationResult<OutboundNotificationDispatchResult> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.result.lock().expect("dispatch result lock").clone()
+    }
+}
+
+struct RecordingDeliveryRepository {
+    expected: OutboundNotificationDelivery,
+    authorized: AtomicBool,
+    admission_failure: AtomicBool,
+    settlement_failure: AtomicBool,
+    admission_calls: AtomicUsize,
+    settlement_calls: AtomicUsize,
+    receipt: Mutex<Option<OutboundNotificationTerminalReceipt>>,
+}
+
+impl RecordingDeliveryRepository {
+    fn new(expected: OutboundNotificationDelivery) -> Self {
+        Self {
+            expected,
+            authorized: AtomicBool::new(true),
+            admission_failure: AtomicBool::new(false),
+            settlement_failure: AtomicBool::new(false),
+            admission_calls: AtomicUsize::new(0),
+            settlement_calls: AtomicUsize::new(0),
+            receipt: Mutex::new(None),
+        }
+    }
+
+    fn receipt(&self) -> Option<OutboundNotificationTerminalReceipt> {
+        self.receipt.lock().expect("delivery receipt lock").clone()
+    }
+}
+
+#[async_trait]
+impl IOutboundNotificationDeliveryRepository for RecordingDeliveryRepository {
+    async fn admit_delivery(
+        &self,
+        delivery: &OutboundNotificationDelivery,
+    ) -> Result<Option<OutboundNotificationDeliveryAdmission>, RepositoryError> {
+        self.admission_calls.fetch_add(1, Ordering::SeqCst);
+        if self.admission_failure.load(Ordering::SeqCst) {
+            return Err(RepositoryError::Storage(
+                "simulated delivery admission failure".into(),
+            ));
+        }
+        if !self.authorized.load(Ordering::SeqCst) || delivery != &self.expected {
+            return Ok(None);
+        }
+        Ok(Some(match self.receipt() {
+            Some(receipt) => OutboundNotificationDeliveryAdmission::Terminal(receipt),
+            None => OutboundNotificationDeliveryAdmission::Pending,
+        }))
+    }
+
+    async fn settle_delivery(
+        &self,
+        delivery: &OutboundNotificationDelivery,
+        receipt: OutboundNotificationTerminalReceipt,
+    ) -> Result<bool, RepositoryError> {
+        self.settlement_calls.fetch_add(1, Ordering::SeqCst);
+        if self.settlement_failure.load(Ordering::SeqCst) {
+            return Err(RepositoryError::Storage(
+                "simulated delivery settlement failure".into(),
+            ));
+        }
+        receipt
+            .validate_against(delivery)
+            .map_err(RepositoryError::Storage)?;
+        if delivery != &self.expected {
+            return Err(RepositoryError::Conflict(
+                "delivery changed before settlement".into(),
+            ));
+        }
+        let mut stored = self.receipt.lock().expect("delivery receipt lock");
+        match stored.as_ref() {
+            Some(existing) if existing == &receipt => Ok(false),
+            Some(_) => Err(RepositoryError::Conflict(
+                "another terminal receipt already exists".into(),
+            )),
+            None => {
+                *stored = Some(receipt);
+                Ok(true)
+            }
+        }
     }
 }
 
@@ -107,6 +191,7 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
 fn evidence(
     delivery: &OutboundNotificationDelivery,
     outcome: ConnectorExecutionOutcome,
+    generation: u64,
 ) -> ConnectorExecutionEvidence {
     let now = canonical_timestamp(Utc::now());
     let target = delivery.target();
@@ -116,7 +201,7 @@ fn evidence(
         target.environment_id,
         target.profile_id,
         target.revision_id,
-        Uuid::now_v7(),
+        outbound_notification_attempt_id(delivery.id(), generation).expect("attempt ID"),
         Sha256Digest::from_bytes(b"request"),
         7,
         outcome,
@@ -136,12 +221,27 @@ fn pending(
     acknowledgements: Arc<AtomicUsize>,
     negative_acknowledgements: Arc<AtomicUsize>,
 ) -> PendingEvent {
+    pending_with_ack_failure(received, acknowledgements, negative_acknowledgements, false)
+}
+
+fn pending_with_ack_failure(
+    received: ReceivedEvent,
+    acknowledgements: Arc<AtomicUsize>,
+    negative_acknowledgements: Arc<AtomicUsize>,
+    fail_acknowledgement: bool,
+) -> PendingEvent {
     PendingEvent::new(
         received,
         move || {
             Box::pin(async move {
                 acknowledgements.fetch_add(1, Ordering::SeqCst);
-                Ok(())
+                if fail_acknowledgement {
+                    Err(EventError::Consumer(
+                        "simulated acknowledgement loss".into(),
+                    ))
+                } else {
+                    Ok(())
+                }
             })
         },
         move || {
@@ -153,13 +253,23 @@ fn pending(
     )
 }
 
-fn consumer(dispatcher: Arc<RecordingDispatcher>) -> A3sEventOutboundNotificationConsumer {
-    A3sEventOutboundNotificationConsumer::new(
+fn consumer(
+    delivery: &OutboundNotificationDelivery,
+    dispatcher: Arc<RecordingDispatcher>,
+) -> (
+    A3sEventOutboundNotificationConsumer,
+    Arc<RecordingDeliveryRepository>,
+) {
+    let deliveries = Arc::new(RecordingDeliveryRepository::new(delivery.clone()));
+    let delivery_repository: Arc<dyn IOutboundNotificationDeliveryRepository> = deliveries.clone();
+    let consumer = A3sEventOutboundNotificationConsumer::new(
         Arc::new(EventBus::new(MemoryProvider::default())),
         SUBJECT,
+        delivery_repository,
         dispatcher,
     )
-    .expect("consumer")
+    .expect("consumer");
+    (consumer, deliveries)
 }
 
 #[tokio::test]
@@ -168,10 +278,10 @@ async fn terminal_evidence_is_acknowledged_only_after_fenced_dispatch() {
     let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
         OutboundNotificationDispatchResult::Delivered {
             generation: 1,
-            evidence: evidence(&delivery, ConnectorExecutionOutcome::Accepted),
+            evidence: evidence(&delivery, ConnectorExecutionOutcome::Accepted, 1),
         },
     )));
-    let consumer = consumer(Arc::clone(&dispatcher));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
     let acknowledgements = Arc::new(AtomicUsize::new(0));
     let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
 
@@ -186,6 +296,11 @@ async fn terminal_evidence_is_acknowledged_only_after_fenced_dispatch() {
 
     assert_eq!(action, OutboundNotificationConsumerAction::Acknowledged);
     assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        deliveries.receipt().expect("terminal receipt").outcome(),
+        OutboundNotificationTerminalOutcome::Delivered
+    );
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
 }
@@ -196,10 +311,10 @@ async fn retryable_evidence_is_left_to_provider_ack_wait_without_local_nak() {
     let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
         OutboundNotificationDispatchResult::Retryable {
             generation: 1,
-            evidence: evidence(&delivery, ConnectorExecutionOutcome::Retryable),
+            evidence: evidence(&delivery, ConnectorExecutionOutcome::Retryable, 1),
         },
     )));
-    let consumer = consumer(dispatcher);
+    let (consumer, deliveries) = consumer(&delivery, dispatcher);
     let acknowledgements = Arc::new(AtomicUsize::new(0));
     let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
 
@@ -218,6 +333,7 @@ async fn retryable_evidence_is_left_to_provider_ack_wait_without_local_nak() {
     );
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -227,12 +343,12 @@ async fn indeterminate_attempt_is_acknowledged_without_blind_provider_retry() {
     let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
         OutboundNotificationDispatchResult::Indeterminate {
             generation: 1,
-            attempt_id: Uuid::now_v7(),
+            attempt_id: outbound_notification_attempt_id(delivery.id(), 1).expect("attempt ID"),
             dispatch_started_at: now,
             outcome_deadline_at: now + chrono::Duration::seconds(30),
         },
     )));
-    let consumer = consumer(Arc::clone(&dispatcher));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
     let acknowledgements = Arc::new(AtomicUsize::new(0));
     let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
 
@@ -247,6 +363,10 @@ async fn indeterminate_attempt_is_acknowledged_without_blind_provider_retry() {
 
     assert_eq!(action, OutboundNotificationConsumerAction::Acknowledged);
     assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        deliveries.receipt().expect("terminal receipt").outcome(),
+        OutboundNotificationTerminalOutcome::Indeterminate
+    );
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
 }
@@ -257,7 +377,7 @@ async fn malformed_facts_are_poison_acknowledged_without_dispatch() {
     let dispatcher = Arc::new(RecordingDispatcher::new(Err(ApplicationError::Internal(
         "must not dispatch".into(),
     ))));
-    let consumer = consumer(Arc::clone(&dispatcher));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
     let acknowledgements = Arc::new(AtomicUsize::new(0));
     let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
     let mut malformed = event(&delivery, 1);
@@ -274,7 +394,123 @@ async fn malformed_facts_are_poison_acknowledged_without_dispatch() {
 
     assert_eq!(action, OutboundNotificationConsumerAction::Acknowledged);
     assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(deliveries.admission_calls.load(Ordering::SeqCst), 0);
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn unpersisted_delivery_authorization_is_poison_acknowledged_without_dispatch() {
+    let delivery = delivery();
+    let dispatcher = Arc::new(RecordingDispatcher::new(Err(ApplicationError::Internal(
+        "must not dispatch".into(),
+    ))));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
+    deliveries.authorized.store(false, Ordering::SeqCst);
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    let action = consumer
+        .process_pending(pending(
+            event(&delivery, 1),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("acknowledge unauthorized fact");
+
+    assert_eq!(action, OutboundNotificationConsumerAction::Acknowledged);
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn admission_or_receipt_failure_defers_without_acknowledgement() {
+    let delivery = delivery();
+    let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
+        OutboundNotificationDispatchResult::Delivered {
+            generation: 1,
+            evidence: evidence(&delivery, ConnectorExecutionOutcome::Accepted, 1),
+        },
+    )));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    deliveries.admission_failure.store(true, Ordering::SeqCst);
+    let admission_action = consumer
+        .process_pending(pending(
+            event(&delivery, 1),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("defer admission failure");
+    assert_eq!(
+        admission_action,
+        OutboundNotificationConsumerAction::DeferredToEventProvider
+    );
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 0);
+
+    deliveries.admission_failure.store(false, Ordering::SeqCst);
+    deliveries.settlement_failure.store(true, Ordering::SeqCst);
+    let settlement_action = consumer
+        .process_pending(pending(
+            event(&delivery, 2),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("defer settlement failure");
+    assert_eq!(
+        settlement_action,
+        OutboundNotificationConsumerAction::DeferredToEventProvider
+    );
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert!(deliveries.receipt().is_none());
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn acknowledgement_loss_replays_terminal_receipt_without_provider_dispatch() {
+    let delivery = delivery();
+    let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
+        OutboundNotificationDispatchResult::Delivered {
+            generation: 1,
+            evidence: evidence(&delivery, ConnectorExecutionOutcome::Accepted, 1),
+        },
+    )));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    assert!(consumer
+        .process_pending(pending_with_ack_failure(
+            event(&delivery, 1),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+            true,
+        ))
+        .await
+        .is_err());
+    assert!(deliveries.receipt().is_some());
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 1);
+
+    let replay = consumer
+        .process_pending(pending(
+            event(&delivery, 2),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("acknowledge terminal replay");
+    assert_eq!(replay, OutboundNotificationConsumerAction::Acknowledged);
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 2);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
 }
 
@@ -284,7 +520,7 @@ async fn infrastructure_failure_defers_to_a3s_event_without_cloud_retry_loop() {
     let dispatcher = Arc::new(RecordingDispatcher::new(Err(ApplicationError::Internal(
         "database unavailable".into(),
     ))));
-    let consumer = consumer(dispatcher);
+    let (consumer, deliveries) = consumer(&delivery, dispatcher);
     let acknowledgements = Arc::new(AtomicUsize::new(0));
     let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
 
@@ -303,19 +539,26 @@ async fn infrastructure_failure_defers_to_a3s_event_without_cloud_retry_loop() {
     );
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 0);
 }
 
 #[test]
 fn consumer_requires_one_exact_non_wildcard_subject() {
+    let delivery = delivery();
     let dispatcher = Arc::new(RecordingDispatcher::new(Err(ApplicationError::Internal(
         "unused".into(),
     ))));
+    let deliveries: Arc<dyn IOutboundNotificationDeliveryRepository> =
+        Arc::new(RecordingDeliveryRepository::new(delivery));
     let bus = Arc::new(EventBus::new(MemoryProvider::default()));
     assert!(A3sEventOutboundNotificationConsumer::new(
         Arc::clone(&bus),
         "events.cloud.notification.>",
+        deliveries.clone(),
         dispatcher.clone(),
     )
     .is_err());
-    assert!(A3sEventOutboundNotificationConsumer::new(bus, SUBJECT, dispatcher).is_ok());
+    assert!(
+        A3sEventOutboundNotificationConsumer::new(bus, SUBJECT, deliveries, dispatcher).is_ok()
+    );
 }

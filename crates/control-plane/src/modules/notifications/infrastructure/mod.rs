@@ -1,6 +1,7 @@
 mod in_memory;
 mod outbound_connector;
 mod outbound_event_consumer;
+mod outbound_postgres;
 mod outbox_projector;
 mod postgres;
 

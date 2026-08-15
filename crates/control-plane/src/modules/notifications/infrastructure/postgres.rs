@@ -79,7 +79,7 @@ fn decode_column<T: FromValue>(row: &impl Row, index: usize) -> Result<T, Decode
 
 #[derive(Clone)]
 pub struct PostgresNotificationRepository {
-    executor: PostgresExecutor,
+    pub(super) executor: PostgresExecutor,
 }
 
 impl PostgresNotificationRepository {
@@ -166,7 +166,14 @@ impl INotificationRepository for PostgresNotificationRepository {
                     )
                     .await;
                     match inserted {
-                        Ok(1) => Ok(true),
+                        Ok(1) => {
+                            super::outbound_postgres::store_outbound_deliveries(
+                                transaction,
+                                &notification,
+                            )
+                            .await?;
+                            Ok(true)
+                        }
                         Ok(0) => {
                             let existing = fetch_optional::<NotificationRow, _>(
                                 transaction,

@@ -10,6 +10,7 @@ use uuid::Uuid;
 
 pub const OUTBOUND_NOTIFICATION_SCHEMA: &str = "a3s.cloud.notification-delivery.v1";
 pub const OUTBOUND_NOTIFICATION_EVENT_KEY: &str = "notification.delivery.requested";
+pub const MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION: u64 = 1_000;
 const MAXIMUM_OUTBOUND_PAYLOAD_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,6 +27,15 @@ impl OutboundNotificationChannel {
             Self::SignedWebhook => "signed_webhook",
             Self::SlackCompatible => "slack_compatible",
             Self::Smtp => "smtp",
+        }
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "signed_webhook" => Ok(Self::SignedWebhook),
+            "slack_compatible" => Ok(Self::SlackCompatible),
+            "smtp" => Ok(Self::Smtp),
+            _ => Err("outbound notification channel is invalid".into()),
         }
     }
 }
@@ -291,6 +301,22 @@ impl OutboundNotificationDelivery {
         }
         Ok(delivery)
     }
+}
+
+pub fn outbound_notification_attempt_id(
+    delivery_id: Uuid,
+    generation: u64,
+) -> Result<Uuid, String> {
+    if delivery_id.is_nil()
+        || generation == 0
+        || generation > MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION
+    {
+        return Err("outbound notification attempt generation is invalid".into());
+    }
+    Ok(Uuid::new_v5(
+        &delivery_id,
+        format!("connector-attempt:{generation}").as_bytes(),
+    ))
 }
 
 #[derive(Serialize)]

@@ -120,9 +120,10 @@ use crate::modules::integration_events::{
 };
 use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, GetNotificationHandler, INotificationRepository,
-    IOutboundNotificationDispatcher, ListNotificationsHandler, MarkNotificationReadHandler,
-    NotificationsModule, OutboundNotificationDispatcher, OutboxNotificationProjector,
-    PostgresNotificationRepository, OUTBOUND_NOTIFICATION_EVENT_KEY,
+    IOutboundNotificationDeliveryRepository, IOutboundNotificationDispatcher,
+    ListNotificationsHandler, MarkNotificationReadHandler, NotificationsModule,
+    OutboundNotificationDispatcher, OutboxNotificationProjector, PostgresNotificationRepository,
+    OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
@@ -363,8 +364,10 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         Arc::new(PostgresSearchRepository::new(executor.clone()));
     let audit_records: Arc<dyn IAuditRecordRepository> =
         Arc::new(PostgresAuditRecordRepository::new(executor.clone()));
-    let notifications: Arc<dyn INotificationRepository> =
-        Arc::new(PostgresNotificationRepository::new(executor.clone()));
+    let notification_repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
+    let notifications: Arc<dyn INotificationRepository> = notification_repository.clone();
+    let outbound_notification_deliveries: Arc<dyn IOutboundNotificationDeliveryRepository> =
+        notification_repository;
     let plugin_repository = Arc::new(PostgresPluginRegistryRepository::new(executor.clone()));
     let plugin_registries: Arc<dyn IPluginRegistryRepository> = plugin_repository.clone();
     let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> =
@@ -507,6 +510,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             A3sEventOutboundNotificationConsumer::new(
                 event_publisher.bus(),
                 event_publisher.subject(OUTBOUND_NOTIFICATION_EVENT_KEY),
+                outbound_notification_deliveries,
                 dispatcher,
             )
             .map_err(ControlPlaneStartupError::Notification)?,

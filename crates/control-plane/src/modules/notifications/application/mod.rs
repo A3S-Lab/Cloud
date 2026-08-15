@@ -2,6 +2,7 @@ mod get_notification;
 mod list_notifications;
 mod mark_notification_read;
 mod outbound_dispatch;
+mod outbound_subscription;
 
 pub use get_notification::{GetNotification, GetNotificationHandler};
 pub use list_notifications::{
@@ -12,7 +13,11 @@ pub use mark_notification_read::{
     MarkNotificationRead, MarkNotificationReadHandler, MarkNotificationReadResult,
 };
 pub use outbound_dispatch::{
-    outbound_notification_attempt_id, IOutboundNotificationDispatcher,
-    OutboundNotificationDispatchResult, OutboundNotificationDispatcher,
-    MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
+    IOutboundNotificationDispatcher, OutboundNotificationDispatchResult,
+    OutboundNotificationDispatcher,
+};
+pub use outbound_subscription::{
+    CreateOutboundNotificationSubscription, CreateOutboundNotificationSubscriptionHandler,
+    OutboundNotificationSubscriptionMutationResult, RevokeOutboundNotificationSubscription,
+    RevokeOutboundNotificationSubscriptionHandler,
 };
