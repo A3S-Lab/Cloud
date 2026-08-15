@@ -575,7 +575,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (114, "114".into()));
+    assert_eq!(migration_state, (115, "115".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();

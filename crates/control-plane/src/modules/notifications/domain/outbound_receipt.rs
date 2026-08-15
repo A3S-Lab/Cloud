@@ -1,6 +1,6 @@
 use super::{
     outbound_notification_attempt_id, OutboundNotificationConnectorTarget,
-    OutboundNotificationDelivery,
+    OutboundNotificationDelivery, MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::connectors::{ConnectorExecutionEvidence, ConnectorExecutionOutcome};
 use crate::modules::shared_kernel::domain::{canonical_timestamp, OrganizationId};
@@ -14,6 +14,7 @@ pub enum OutboundNotificationTerminalOutcome {
     Delivered,
     Rejected,
     Indeterminate,
+    Exhausted,
 }
 
 impl OutboundNotificationTerminalOutcome {
@@ -22,6 +23,7 @@ impl OutboundNotificationTerminalOutcome {
             Self::Delivered => "delivered",
             Self::Rejected => "rejected",
             Self::Indeterminate => "indeterminate",
+            Self::Exhausted => "exhausted",
         }
     }
 
@@ -30,6 +32,7 @@ impl OutboundNotificationTerminalOutcome {
             "delivered" => Ok(Self::Delivered),
             "rejected" => Ok(Self::Rejected),
             "indeterminate" => Ok(Self::Indeterminate),
+            "exhausted" => Ok(Self::Exhausted),
             _ => Err("outbound notification terminal outcome is unsupported".into()),
         }
     }
@@ -76,6 +79,20 @@ impl OutboundNotificationTerminalReceipt {
             evidence,
             ConnectorExecutionOutcome::Rejected,
             OutboundNotificationTerminalOutcome::Rejected,
+        )
+    }
+
+    pub fn exhausted(
+        delivery: &OutboundNotificationDelivery,
+        generation: u64,
+        evidence: &ConnectorExecutionEvidence,
+    ) -> Result<Self, String> {
+        Self::from_evidence(
+            delivery,
+            generation,
+            evidence,
+            ConnectorExecutionOutcome::Retryable,
+            OutboundNotificationTerminalOutcome::Exhausted,
         )
     }
 
@@ -163,6 +180,8 @@ impl OutboundNotificationTerminalReceipt {
             || self.attempt_id.is_nil()
             || self.attempt_id
                 != outbound_notification_attempt_id(self.delivery_id, self.generation)?
+            || self.outcome == OutboundNotificationTerminalOutcome::Exhausted
+                && self.generation != MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
             || self.terminal_at != canonical_timestamp(self.terminal_at)
         {
             return Err("outbound notification terminal receipt is invalid".into());

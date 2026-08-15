@@ -33,6 +33,13 @@ async fn fixture() -> Fixture {
 }
 
 async fn fixture_with_retry_after(retry_after: Option<Duration>) -> Fixture {
+    fixture_with_retryable_generations(retry_after, &[1]).await
+}
+
+async fn fixture_with_retryable_generations(
+    retry_after: Option<Duration>,
+    retryable_generations: &[u64],
+) -> Fixture {
     let now = canonical_timestamp(Utc::now());
     let revision = ConnectorRevision::initial(
         OrganizationId::new(),
@@ -118,10 +125,15 @@ async fn fixture_with_retry_after(retry_after: Option<Duration>) -> Fixture {
         .expect("target"),
     )
     .expect("delivery");
-    let first_attempt = outbound_notification_attempt_id(delivery.id(), 1).expect("first attempt");
+    let retryable_attempts = retryable_generations
+        .iter()
+        .map(|generation| {
+            outbound_notification_attempt_id(delivery.id(), *generation).expect("retryable attempt")
+        })
+        .collect();
     let dispatches = Arc::new(AtomicUsize::new(0));
     let preparation = Arc::new(RecordingSequencePreparation {
-        retryable_attempts: Mutex::new(HashSet::from([first_attempt])),
+        retryable_attempts: Mutex::new(retryable_attempts),
         retry_after,
         dispatches: Arc::clone(&dispatches),
     });
@@ -139,6 +151,48 @@ async fn fixture_with_retry_after(retry_after: Option<Duration>) -> Fixture {
         delivery,
         dispatches,
     }
+}
+
+#[tokio::test]
+async fn provider_attempt_budget_terminates_from_durable_retryable_evidence() {
+    let retryable_generations =
+        (1..=MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS).collect::<Vec<_>>();
+    let fixture = fixture_with_retryable_generations(None, &retryable_generations).await;
+
+    for delivery_count in 1..=MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS {
+        let result = fixture
+            .dispatcher
+            .dispatch(&fixture.delivery, delivery_count)
+            .await
+            .expect("retryable generation");
+        assert!(matches!(
+            result,
+            OutboundNotificationDispatchResult::Retryable { generation, .. }
+                if generation == delivery_count
+        ));
+    }
+    assert_eq!(
+        fixture.dispatches.load(Ordering::SeqCst),
+        MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS as usize
+    );
+
+    let exhausted = fixture
+        .dispatcher
+        .dispatch(
+            &fixture.delivery,
+            MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS + 1,
+        )
+        .await
+        .expect("exhausted replay");
+    assert!(matches!(
+        exhausted,
+        OutboundNotificationDispatchResult::Exhausted { generation, .. }
+            if generation == MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS
+    ));
+    assert_eq!(
+        fixture.dispatches.load(Ordering::SeqCst),
+        MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS as usize
+    );
 }
 
 struct RecordingSequencePreparation {

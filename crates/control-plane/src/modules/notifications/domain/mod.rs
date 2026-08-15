@@ -14,7 +14,8 @@ pub use outbound_adapter::{IOutboundNotificationRequestAdapter, OutboundNotifica
 pub use outbound_delivery::{
     outbound_notification_attempt_id, OutboundNotificationChannel,
     OutboundNotificationConnectorTarget, OutboundNotificationDelivery,
-    MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION, OUTBOUND_NOTIFICATION_EVENT_KEY,
+    MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, OUTBOUND_NOTIFICATION_EVENT_KEY,
     OUTBOUND_NOTIFICATION_SCHEMA,
 };
 pub use outbound_receipt::{

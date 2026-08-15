@@ -6,6 +6,7 @@ use crate::modules::notifications::{
     OutboundNotificationChannel, OutboundNotificationConnectorTarget,
     OutboundNotificationDeliveryAdmission, OutboundNotificationDispatchResult,
     OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -302,6 +303,63 @@ async fn terminal_evidence_is_acknowledged_only_after_fenced_dispatch() {
         OutboundNotificationTerminalOutcome::Delivered
     );
     assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn exhausted_attempt_budget_is_receipted_before_acknowledgement_and_survives_ack_loss() {
+    let delivery = delivery();
+    let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
+        OutboundNotificationDispatchResult::Exhausted {
+            generation: MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+            evidence: evidence(
+                &delivery,
+                ConnectorExecutionOutcome::Retryable,
+                MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+            ),
+        },
+    )));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    assert!(consumer
+        .process_pending(pending_with_ack_failure(
+            event(
+                &delivery,
+                MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS + 1,
+            ),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+            true,
+        ))
+        .await
+        .is_err());
+
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        deliveries.receipt().expect("terminal receipt").outcome(),
+        OutboundNotificationTerminalOutcome::Exhausted
+    );
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+
+    let replay = consumer
+        .process_pending(pending(
+            event(
+                &delivery,
+                MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS + 2,
+            ),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("acknowledge exhausted receipt replay");
+    assert_eq!(replay, OutboundNotificationConsumerAction::Acknowledged);
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 2);
     assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
 }
 

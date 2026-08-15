@@ -24,8 +24,9 @@ pub use domain::{
     OutboundNotificationSubscriptionEvent, OutboundNotificationSubscriptionSpec,
     OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
     RevokeOutboundNotificationSubscriptionWrite, MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
-    OUTBOUND_NOTIFICATION_EVENT_KEY, OUTBOUND_NOTIFICATION_SCHEMA,
-    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, OUTBOUND_NOTIFICATION_EVENT_KEY,
+    OUTBOUND_NOTIFICATION_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
 };
 pub use infrastructure::{
     A3sEventOutboundNotificationConsumer, InMemoryNotificationRepository,

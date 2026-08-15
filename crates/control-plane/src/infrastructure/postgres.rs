@@ -989,6 +989,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/114_notification_outbound_delivery.sql"
             )),
         ),
+        Migration::new(
+            "115",
+            "bounded outbound notification attempt receipts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/115_notification_outbound_attempt_budget.sql"
+            )),
+        ),
     ]
 }
 
@@ -1653,6 +1661,53 @@ mod notification_outbound_delivery_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 114 must not add queue, retry, or provider-response authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod notification_outbound_attempt_budget_migration_tests {
+    use crate::modules::notifications::MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS;
+
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/115_notification_outbound_attempt_budget.sql"
+    ));
+
+    #[test]
+    fn migration_115_terminates_retryable_evidence_without_another_retry_mechanism() {
+        for expected in [
+            "'exhausted'",
+            "evidence_outcome is distinct from 'retryable'",
+            "exact C6 attempt and delivery budget",
+            "create or replace function validate_notification_outbound_terminal_receipt",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 115 is missing {expected}"
+            );
+        }
+        assert!(
+            MIGRATION.contains(&format!(
+                "new.terminal_generation is distinct from {MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS}"
+            )),
+            "migration 115 must match the domain provider-attempt budget"
+        );
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table",
+            "add column",
+            "retry_count",
+            "next_attempt",
+            "next_retry",
+            "token_bucket",
+            "rate_bucket",
+            "provider_response",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 115 must not add another rate/retry authority: {forbidden}"
             );
         }
     }

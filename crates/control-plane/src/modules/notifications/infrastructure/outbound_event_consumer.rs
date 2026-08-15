@@ -174,6 +174,10 @@ impl A3sEventOutboundNotificationConsumer {
                 generation,
                 evidence,
             }) => OutboundNotificationTerminalReceipt::rejected(&delivery, generation, &evidence),
+            Ok(OutboundNotificationDispatchResult::Exhausted {
+                generation,
+                evidence,
+            }) => OutboundNotificationTerminalReceipt::exhausted(&delivery, generation, &evidence),
             Ok(OutboundNotificationDispatchResult::Indeterminate {
                 generation,
                 attempt_id,

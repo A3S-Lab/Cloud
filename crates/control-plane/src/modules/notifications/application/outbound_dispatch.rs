@@ -8,6 +8,7 @@ use crate::modules::notifications::domain::{
     outbound_notification_attempt_id, IOutboundNotificationRequestAdapter,
     OutboundNotificationChannel, OutboundNotificationDelivery,
     MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use crate::modules::notifications::infrastructure::{
     SignedWebhookNotificationAdapter, SlackCompatibleNotificationAdapter,
@@ -39,6 +40,10 @@ pub enum OutboundNotificationDispatchResult {
         evidence: ConnectorExecutionEvidence,
     },
     Retryable {
+        generation: u64,
+        evidence: ConnectorExecutionEvidence,
+    },
+    Exhausted {
         generation: u64,
         evidence: ConnectorExecutionEvidence,
     },
@@ -101,8 +106,9 @@ impl OutboundNotificationDispatcher {
         // A3S Event's delivery count includes transport/infrastructure redeliveries;
         // it is not itself a Connector retry counter. Keep accepting those
         // redeliveries while bounding the number of logical provider attempts.
-        let maximum_generation =
-            delivery_count.min(MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION);
+        let maximum_generation = delivery_count
+            .min(MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION)
+            .min(MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS);
         let adapter = self.adapter(delivery.channel())?;
         let target = delivery.target();
         let resource_access =
@@ -148,6 +154,15 @@ impl OutboundNotificationDispatcher {
                         })
                     }
                     ConnectorExecutionOutcome::Retryable
+                        if replayed
+                            && generation == MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS =>
+                    {
+                        return Ok(OutboundNotificationDispatchResult::Exhausted {
+                            generation,
+                            evidence,
+                        })
+                    }
+                    ConnectorExecutionOutcome::Retryable
                         if replayed && generation < maximum_generation =>
                     {
                         if let Some(deferred) = defer_retryable_replay(
@@ -183,6 +198,16 @@ impl OutboundNotificationDispatcher {
                             }
                             ConnectorExecutionOutcome::Rejected => {
                                 return Ok(OutboundNotificationDispatchResult::Rejected {
+                                    generation,
+                                    evidence,
+                                })
+                            }
+                            ConnectorExecutionOutcome::Retryable
+                                if replayed
+                                    && generation
+                                        == MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS =>
+                            {
+                                return Ok(OutboundNotificationDispatchResult::Exhausted {
                                     generation,
                                     evidence,
                                 })

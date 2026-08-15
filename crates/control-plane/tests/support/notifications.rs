@@ -20,6 +20,7 @@ use a3s_cloud_control_plane::modules::notifications::{
     OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
     OutboundNotificationSubscriptionEvent, OutboundNotificationSubscriptionSpec,
     OutboundNotificationTerminalReceipt, PostgresNotificationRepository,
+    MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest,
@@ -55,6 +56,18 @@ pub(super) async fn exercise_notification_persistence(
     assert_eq!(
         outbound_migration_state,
         (1, "outbound notification subscriptions and receipts".into())
+    );
+    let attempt_budget_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("115"),
+        )
+        .await?;
+    assert_eq!(
+        attempt_budget_migration_state,
+        (1, "bounded outbound notification attempt receipts".into())
     );
 
     let organization_id = OrganizationId::new();
@@ -205,32 +218,13 @@ pub(super) async fn exercise_notification_persistence(
         dispatch_started_at,
     )?;
     let attempts = PostgresConnectorExecutionAttemptRepository::new(executor.clone());
-    let reserved_at = dispatch_started_at - ChronoDuration::milliseconds(1);
-    let fence = match attempts
-        .reserve(ReserveConnectorExecutionAttempt::new(
-            ConnectorExecutionAttemptBinding::from_exact(&connector_revision, &connector_request)?,
-            Uuid::now_v7(),
-            reserved_at,
-            reserved_at + ChronoDuration::seconds(30),
-        )?)
-        .await?
-    {
-        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
-        other => return Err(format!("unexpected Connector reservation: {other:?}").into()),
-    };
-    attempts
-        .begin_dispatch(BeginConnectorExecutionDispatch::new(
-            fence.clone(),
-            dispatch_started_at,
-            dispatch_started_at + ChronoDuration::seconds(60),
-        )?)
-        .await?;
-    attempts
-        .settle(SettleConnectorExecutionAttempt::new(
-            fence,
-            connector_evidence.clone(),
-        )?)
-        .await?;
+    persist_connector_evidence(
+        &attempts,
+        &connector_revision,
+        &connector_request,
+        connector_evidence.clone(),
+    )
+    .await?;
     let terminal_receipt =
         OutboundNotificationTerminalReceipt::delivered(&outbound_delivery, 1, &connector_evidence)?;
     assert!(
@@ -267,6 +261,54 @@ pub(super) async fn exercise_notification_persistence(
     );
     let outcomes = [left?, right?];
     assert_eq!(outcomes.into_iter().filter(|inserted| *inserted).count(), 1);
+
+    let exhausted_delivery = OutboundNotificationDelivery::from_notification(
+        &concurrent,
+        subscription.definition.spec().channel,
+        target,
+    )?;
+    let exhausted_attempt_id = outbound_notification_attempt_id(
+        exhausted_delivery.id(),
+        MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+    )?;
+    let exhausted_request = ConnectorExecutionRequest::new(
+        connector_revision.id,
+        exhausted_attempt_id,
+        "application/json",
+        b"exhausted notification delivery fixture".to_vec(),
+    )?;
+    let exhausted_started_at = created_at + ChronoDuration::seconds(7);
+    let exhausted_evidence = ConnectorExecutionEvidence::retryable(
+        &connector_revision,
+        &exhausted_request,
+        Some(503),
+        Some(std::time::Duration::from_secs(60)),
+        exhausted_started_at,
+        created_at + ChronoDuration::seconds(8),
+    )?;
+    persist_connector_evidence(
+        &attempts,
+        &connector_revision,
+        &exhausted_request,
+        exhausted_evidence.clone(),
+    )
+    .await?;
+    let exhausted_receipt = OutboundNotificationTerminalReceipt::exhausted(
+        &exhausted_delivery,
+        MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS,
+        &exhausted_evidence,
+    )?;
+    assert!(
+        repository
+            .settle_delivery(&exhausted_delivery, exhausted_receipt.clone())
+            .await?
+    );
+    assert_eq!(
+        repository.admit_delivery(&exhausted_delivery).await?,
+        Some(OutboundNotificationDeliveryAdmission::Terminal(
+            exhausted_receipt
+        ))
+    );
 
     assert!(repository
         .find(organization_id, other_recipient, first.id)
@@ -375,16 +417,50 @@ pub(super) async fn exercise_notification_persistence(
     assert_eq!(evidence, (2, 1, 1, 1));
     let outbound_evidence = database
         .fetch_one_as(
-            sql_query::<(i64, i64, i64)>("select (select count(*) from notification_outbound_subscriptions where organization_id = ")
+            sql_query::<(i64, i64, i64, i64)>("select (select count(*) from notification_outbound_subscriptions where organization_id = ")
                 .bind(organization_id.as_uuid())
                 .append("), (select count(*) from notification_outbound_deliveries where organization_id = ")
                 .bind(organization_id.as_uuid())
                 .append("), (select count(*) from notification_outbound_deliveries where organization_id = ")
                 .bind(organization_id.as_uuid())
-                .append(" and terminal_outcome = 'delivered')"),
+                .append(" and terminal_outcome = 'delivered'), (select count(*) from notification_outbound_deliveries where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and terminal_outcome = 'exhausted')"),
         )
         .await?;
-    assert_eq!(outbound_evidence, (1, 2, 1));
+    assert_eq!(outbound_evidence, (1, 2, 1, 1));
+    Ok(())
+}
+
+async fn persist_connector_evidence(
+    attempts: &PostgresConnectorExecutionAttemptRepository,
+    revision: &ConnectorRevision,
+    request: &ConnectorExecutionRequest,
+    evidence: ConnectorExecutionEvidence,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let reserved_at = evidence.started_at() - ChronoDuration::milliseconds(1);
+    let fence = match attempts
+        .reserve(ReserveConnectorExecutionAttempt::new(
+            ConnectorExecutionAttemptBinding::from_exact(revision, request)?,
+            Uuid::now_v7(),
+            reserved_at,
+            reserved_at + ChronoDuration::seconds(30),
+        )?)
+        .await?
+    {
+        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+        other => return Err(format!("unexpected Connector reservation: {other:?}").into()),
+    };
+    attempts
+        .begin_dispatch(BeginConnectorExecutionDispatch::new(
+            fence.clone(),
+            evidence.started_at(),
+            evidence.started_at() + ChronoDuration::seconds(60),
+        )?)
+        .await?;
+    attempts
+        .settle(SettleConnectorExecutionAttempt::new(fence, evidence)?)
+        .await?;
     Ok(())
 }
 

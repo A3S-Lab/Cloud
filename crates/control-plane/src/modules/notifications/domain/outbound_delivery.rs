@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub const OUTBOUND_NOTIFICATION_SCHEMA: &str = "a3s.cloud.notification-delivery.v1";
 pub const OUTBOUND_NOTIFICATION_EVENT_KEY: &str = "notification.delivery.requested";
 pub const MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION: u64 = 1_000;
+pub const MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS: u64 = 8;
 const MAXIMUM_OUTBOUND_PAYLOAD_BYTES: usize = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
