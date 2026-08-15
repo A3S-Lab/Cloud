@@ -6,6 +6,7 @@ mod queries;
 mod resource_access;
 mod result;
 mod secret_references;
+mod workflow_port;
 
 pub use commands::{
     CreateConnectorProfile, CreateConnectorProfileHandler, ReviseConnectorProfile,
@@ -26,6 +27,10 @@ pub use queries::{
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 pub use result::ConnectorProfileMutationResult;
+pub use workflow_port::{
+    IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptRequest,
+    WorkflowConnectorAttemptResult, WORKFLOW_CONNECTOR_CAPABILITY,
+};
 
 #[cfg(test)]
 mod tests;

@@ -11,7 +11,7 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId,
-    ProjectId, RepositoryError,
+    ProjectId, RepositoryError, Sha256Digest,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::fmt;
@@ -136,6 +136,27 @@ impl ConnectorExecutionApplicationService {
         &self,
         command: ExecuteConnectorAttempt,
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
+        self.execute_with_expected_revision(command, None).await
+    }
+
+    /// Executes against an exact immutable revision only when its persisted
+    /// definition digest matches the caller's already-pinned authority.
+    pub async fn execute_exact(
+        &self,
+        command: ExecuteConnectorAttempt,
+        expected_revision_digest: &Sha256Digest,
+    ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
+        Sha256Digest::parse(expected_revision_digest.as_str())
+            .map_err(ApplicationError::Invalid)?;
+        self.execute_with_expected_revision(command, Some(expected_revision_digest))
+            .await
+    }
+
+    async fn execute_with_expected_revision(
+        &self,
+        command: ExecuteConnectorAttempt,
+        expected_revision_digest: Option<&Sha256Digest>,
+    ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
         validate_command(&command)?;
         environment(
             command.project_id,
@@ -154,6 +175,12 @@ impl ConnectorExecutionApplicationService {
             .await
             .map_err(map_revision_repository_error)?
             .ok_or_else(revision_not_found)?;
+        if expected_revision_digest.is_some_and(|expected| revision.definition.digest() != expected)
+        {
+            return Err(ApplicationError::Conflict(
+                "Connector revision digest does not match the caller's exact authority".into(),
+            ));
+        }
         let binding = ConnectorExecutionAttemptBinding::from_exact(&revision, &command.request)
             .map_err(ApplicationError::Invalid)?;
         let lease_expires_at = add_std(command.requested_at, self.options.reservation_lease)?;

@@ -540,17 +540,19 @@ mod tests {
             resource_id: Uuid::now_v7(),
             revision: if matches!(
                 capability_type,
-                CapabilityType::FormRelease | CapabilityType::ExecutionTemplate
+                CapabilityType::FormRelease
+                    | CapabilityType::ExecutionTemplate
+                    | CapabilityType::ConnectorRevision
             ) {
                 Uuid::now_v7().to_string()
             } else {
                 "revision-1".into()
             },
             digest: digest('d'),
-            capability: if capability_type == CapabilityType::ExecutionTemplate {
-                "execution.run".into()
-            } else {
-                "workflow.test".into()
+            capability: match capability_type {
+                CapabilityType::ExecutionTemplate => "execution.run".into(),
+                CapabilityType::ConnectorRevision => "connector.http".into(),
+                _ => "workflow.test".into(),
             },
         }
     }

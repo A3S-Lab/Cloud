@@ -701,6 +701,22 @@ settlement command; full execution replay observes the durable dispatch and
 cannot call the provider again. Flow or the owning durable A3S Event consumer
 still owns retry, backoff, cancellation, and acknowledgement.
 
+The component-only `AUT0.5-C8` Workflow adapter is a Connectors-owned
+application port over that same C6 service. Its request binds one exact
+WorkflowRun, Plan revision/digest, step attempt, environment, Connector profile,
+revision/digest, `connector.http` capability, and bounded effective JSON input.
+A stable UUIDv5 maps that authority to the C6 attempt, so Flow redelivery reads
+the same evidence while a later Flow attempt receives a different identity.
+C6 compares the caller-pinned digest during its sole immutable-revision load
+before reservation or dispatch. The adapter returns only body-free terminal
+evidence or a typed deferred/indeterminate observation; it does not expose
+fences, transient response bodies, credentials, or provider configuration and
+does not own retry, waiting, a queue, or a scheduler. Workflow capability
+admission correspondingly maps `ConnectorRevision` only to the `connectors`
+owner and requires an exact non-nil revision UUID plus `connector.http`.
+Flow scheduling, retry/wait interpretation, and a shared immutable response-
+object authority remain required before the HTTP Request node is available.
+
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
 
@@ -862,13 +878,14 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C7` profile/revision, authorized application,
+`AUT0.5-C2` through `C8` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, atomic immutable terminal
-evidence, and the first Notification Event-consumer-to-C6 composition now
-exist. `AUT0.5` must still add general provider wiring,
-revocation/recovery operations, retained integration evidence, and Workflow
-ports over those same authorities. Notifications now retains PostgreSQL 17 plus
+evidence, the Workflow exact-attempt adapter, and the first Notification
+Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
+provider wiring, revocation/recovery operations, retained integration evidence,
+and Workflow Flow scheduling plus immutable response-object composition over
+those same authorities. Notifications now retains PostgreSQL 17 plus
 real NATS evidence for its first Event-consumer-to-C6 composition, but still
 needs separate versioned semantics before any user-configured suppression or
 delivery budget is admitted. Provider outage

@@ -124,7 +124,7 @@ failure, recovery, cleanup, and release evidence passes.
 | Workflow | Ontologies, immutable definitions/revisions/goals, Plan v2, WorkflowRun, Forms/HumanTasks, finite Execution, typed variables/defaults, inspection, node discovery, and immutable composite-region policy | Public Workflow, composite execution, remaining providers, compensation, and production evidence remain |
 | Plugins | Exact A3S Use compatibility plus trusted Registry/catalog reads | Tenant assignments and complete `U0` gate remain |
 | Agent execution | Provider-neutral Harness boundary and common workload path | Native Code verification and later governance gates remain |
-| Connectors | Exact-revision profiles, canonical A3S ACL admission, authorized just-in-time Secret materialization, public-Internet DNS/SSRF enforcement with exact address pinning, durable pre-dispatch attempt fencing, one-shot authorized execution composition, atomic immutable terminal evidence, authorized bounded recovery reads, REST/OpenAPI/client/CLI/Management MCP profile lifecycle, and the first Notification-owned A3S Event consumer composition | General provider wiring, revocation/recovery operations, Workflow ports, retained integration evidence, and `AUT0.5` availability remain |
+| Connectors | Exact-revision profiles, canonical A3S ACL admission, authorized just-in-time Secret materialization, public-Internet DNS/SSRF enforcement with exact address pinning, durable pre-dispatch attempt fencing, one-shot authorized execution composition, atomic immutable terminal evidence, authorized bounded recovery reads, REST/OpenAPI/client/CLI/Management MCP profile lifecycle, the first Notification-owned A3S Event consumer composition, and a component-only Workflow exact-attempt adapter over the same C6 service | Workflow Flow scheduling and immutable response-object composition, general provider wiring, revocation/recovery operations, retained integration evidence, and `AUT0.5` availability remain |
 | Applications, Knowledge, Automations, Inference | Ownership and staged architecture are frozen | `APP0`, `K0`, `AUT0`, `PW0`, and `I0` remain unavailable |
 
 Notifications now include exact-recipient in-app projections, immutable personal
@@ -140,7 +140,7 @@ call. Retryable C6 evidence defers later generations until its exact
 eighth immutable evidence record without a ninth Provider call. A3S Event remains
 the only waiting/redelivery mechanism; no Notification retry table, mutable
 counter, token bucket, timer, queue, or scheduler is introduced. User-configured
-alert suppression/delivery budgets, SMTP, Workflow ports, the intentionally
+alert suppression/delivery budgets, SMTP, Workflow Flow composition, the intentionally
 deferred Web surface, and production availability remain gated. A retained
 PostgreSQL 17 plus real NATS gate verifies terminal C6 evidence before ACK and
 ACK-only replay after durable-consumer restart.

@@ -7,6 +7,7 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityOwner {
     Assets,
+    Connectors,
     Forms,
     Workflow,
     Inference,
@@ -18,6 +19,7 @@ impl CapabilityOwner {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Assets => "assets",
+            Self::Connectors => "connectors",
             Self::Forms => "forms",
             Self::Workflow => "workflow",
             Self::Inference => "inference",
@@ -29,6 +31,7 @@ impl CapabilityOwner {
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "assets" => Ok(Self::Assets),
+            "connectors" => Ok(Self::Connectors),
             "forms" => Ok(Self::Forms),
             "workflow" => Ok(Self::Workflow),
             "inference" => Ok(Self::Inference),
@@ -83,8 +86,9 @@ impl CapabilityType {
     pub const fn owner(self) -> CapabilityOwner {
         match self {
             Self::AgentRelease | Self::McpServiceProfile => CapabilityOwner::Assets,
+            Self::ConnectorRevision => CapabilityOwner::Connectors,
             Self::FormRelease => CapabilityOwner::Forms,
-            Self::WorkflowRevision | Self::ConnectorRevision => CapabilityOwner::Workflow,
+            Self::WorkflowRevision => CapabilityOwner::Workflow,
             Self::ModelRevision => CapabilityOwner::Inference,
             Self::UsePackage => CapabilityOwner::Use,
             Self::ExecutionTemplate => CapabilityOwner::Executions,
@@ -124,7 +128,9 @@ impl CapabilityReference {
         validate_revision("Workflow capability revision", &self.revision)?;
         if matches!(
             self.capability_type,
-            CapabilityType::FormRelease | CapabilityType::ExecutionTemplate
+            CapabilityType::FormRelease
+                | CapabilityType::ExecutionTemplate
+                | CapabilityType::ConnectorRevision
         ) {
             let release_id = Uuid::parse_str(&self.revision).map_err(|_| {
                 format!(
@@ -154,6 +160,13 @@ impl CapabilityReference {
                 "Workflow ExecutionTemplate capability must be exactly execution.run".into(),
             );
         }
+        if self.capability_type == CapabilityType::ConnectorRevision
+            && self.capability != "connector.http"
+        {
+            return Err(
+                "Workflow ConnectorRevision capability must be exactly connector.http".into(),
+            );
+        }
         Ok(())
     }
 }
@@ -173,7 +186,10 @@ mod tests {
             (CapabilityType::McpServiceProfile, CapabilityOwner::Assets),
             (CapabilityType::FormRelease, CapabilityOwner::Forms),
             (CapabilityType::WorkflowRevision, CapabilityOwner::Workflow),
-            (CapabilityType::ConnectorRevision, CapabilityOwner::Workflow),
+            (
+                CapabilityType::ConnectorRevision,
+                CapabilityOwner::Connectors,
+            ),
             (CapabilityType::ModelRevision, CapabilityOwner::Inference),
             (CapabilityType::UsePackage, CapabilityOwner::Use),
             (
@@ -225,5 +241,17 @@ mod tests {
         assert!(reference.validate().is_err());
         reference.revision = Uuid::now_v7().to_string();
         reference.validate().expect("exact FormRelease reference");
+
+        reference.owner = CapabilityOwner::Connectors;
+        reference.capability_type = CapabilityType::ConnectorRevision;
+        reference.capability = "connector.http".into();
+        reference.revision = "latest".into();
+        assert!(reference.validate().is_err());
+        reference.revision = Uuid::now_v7().to_string();
+        reference
+            .validate()
+            .expect("exact ConnectorRevision reference");
+        reference.capability = "workflow.test".into();
+        assert!(reference.validate().is_err());
     }
 }

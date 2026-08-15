@@ -9,12 +9,14 @@ pub use application::{
     CreateConnectorProfileHandler, ExecuteConnectorAttempt, GetConnectorExecutionAttempt,
     GetConnectorExecutionAttemptHandler, GetConnectorExecutionEvidence,
     GetConnectorExecutionEvidenceHandler, GetConnectorProfile, GetConnectorProfileHandler,
-    GetConnectorRevision, GetConnectorRevisionHandler, ListConnectorExecutionEvidence,
-    ListConnectorExecutionEvidenceHandler, ListConnectorProfiles, ListConnectorProfilesHandler,
-    ListConnectorRevisions, ListConnectorRevisionsHandler,
+    GetConnectorRevision, GetConnectorRevisionHandler, IWorkflowConnectorPort,
+    ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler, ListConnectorProfiles,
+    ListConnectorProfilesHandler, ListConnectorRevisions, ListConnectorRevisionsHandler,
     ListUnresolvedConnectorExecutionAttempts, ListUnresolvedConnectorExecutionAttemptsHandler,
-    ReviseConnectorProfile, ReviseConnectorProfileHandler, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
-    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+    ReviseConnectorProfile, ReviseConnectorProfileHandler, WorkflowConnectorApplicationService,
+    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult,
+    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+    WORKFLOW_CONNECTOR_CAPABILITY,
 };
 
 pub use domain::{
