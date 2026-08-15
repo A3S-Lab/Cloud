@@ -1992,8 +1992,8 @@ node.
   passes migration, Connector binding, fact emission, exact C6 evidence, and
   idempotent receipt settlement. This slice adds no queue, retry
   schedule/counter, provider body/response authority, Secret/contact copy,
-  scheduler, or second event rail. Rate policy, SMTP, alert policy, and supported
-  management surfaces remain later gates.
+  scheduler, or second event rail. User-configured suppression/delivery budgets,
+  SMTP, alert policy, and retained production evidence remain later gates.
 - Implemented as component-only `C0.3-N2d`: a replayed C6 `retryable` evidence
   record with bounded `Retry-After` defers every later deterministic Connector
   generation until the exact evidence completion-plus-delay deadline. Before
