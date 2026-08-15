@@ -119,7 +119,7 @@ failure, recovery, cleanup, and release evidence passes.
 | --- | --- | --- |
 | Durable control | A3S Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, PostgreSQL queue, Operations, Outbox, and replay | `F0` verified |
 | Management | REST/OpenAPI `1.35.0`, maintained TypeScript client, CLI, Management MCP, retained Web projection | Broader enterprise `C0` gates remain |
-| Identity | Principals, Memberships, invitations, grants, tokens, OIDC link/login flows, audit, project attribution, in-app notifications, and a component-tested outbound fact/consumer path over fenced Connectors | Transactional delivery emission, subscriptions, terminal receipts/rate policy, SMTP, and broader enterprise surfaces remain |
+| Identity | Principals, Memberships, invitations, grants, tokens, OIDC link/login flows, audit, project attribution, in-app notifications, immutable personal outbound-subscription ACLs, transactional delivery facts, and monotonic terminal receipts around the fenced Connector path | Rate policy, SMTP, supported management surfaces, retained production evidence, and broader enterprise surfaces remain |
 | Compute and delivery | Immutable sources/assets, builds, Executions, Workloads, Fleet, Node Agent, Edge snapshot publication, Gateway apply | Box-only recertification and clean-host provider gates remain |
 | Workflow | Ontologies, immutable definitions/revisions/goals, Plan v2, WorkflowRun, Forms/HumanTasks, finite Execution, typed variables/defaults, inspection, node discovery, and immutable composite-region policy | Public Workflow, composite execution, remaining providers, compensation, and production evidence remain |
 | Plugins | Exact A3S Use compatibility plus trusted Registry/catalog reads | Tenant assignments and complete `U0` gate remain |
@@ -127,15 +127,16 @@ failure, recovery, cleanup, and release evidence passes.
 | Connectors | Exact-revision profiles, canonical A3S ACL admission, authorized just-in-time Secret materialization, public-Internet DNS/SSRF enforcement with exact address pinning, durable pre-dispatch attempt fencing, one-shot authorized execution composition, atomic immutable terminal evidence, authorized bounded recovery reads, and the first Notification-owned A3S Event consumer composition | General provider wiring, supported non-Web management surfaces, revocation/recovery operations, Workflow ports, and `AUT0.5` availability remain |
 | Applications, Knowledge, Automations, Inference | Ownership and staged architecture are frozen | `APP0`, `K0`, `AUT0`, `PW0`, and `I0` remain unavailable |
 
-Notifications now include exact-recipient in-app projections, one deterministic
-bounded delivery fact, side-effect-free signed-webhook/Slack-compatible request
-builders, and a NATS-only durable/manual-ack A3S Event consumer composed with the
-fenced Connector application service. Redelivery replays durable C6 evidence and
-admits a new deterministic attempt generation only after the previous generation
-is durably `retryable`; ACK loss cannot issue another Provider call. Transactional
-fact emission, ACL-native subscriptions, logical terminal receipts/rate policy,
-SMTP, supported management surfaces, Workflow ports, and production availability
-remain gated.
+Notifications now include exact-recipient in-app projections, immutable personal
+outbound subscriptions authored as canonical A3S ACL, and transactional
+`notification.delivery.requested` facts. Side-effect-free signed-webhook and
+Slack-compatible builders feed a NATS-only durable/manual-ack A3S Event consumer
+through the fenced Connector application service. The consumer validates the
+persisted delivery authorization and commits one monotonic Delivered, Rejected,
+or Indeterminate receipt before ACK. Redelivery replays durable C6 evidence, and
+receipt-commit/ACK loss becomes ACK-only without another Provider call. Rate
+policy, SMTP, supported management surfaces, Workflow ports, retained PostgreSQL
+and NATS evidence, and production availability remain gated.
 
 ### Latest Workflow contract slice
 
