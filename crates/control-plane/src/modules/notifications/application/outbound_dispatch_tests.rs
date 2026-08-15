@@ -29,6 +29,10 @@ struct Fixture {
 }
 
 async fn fixture() -> Fixture {
+    fixture_with_retry_after(None).await
+}
+
+async fn fixture_with_retry_after(retry_after: Option<Duration>) -> Fixture {
     let now = canonical_timestamp(Utc::now());
     let revision = ConnectorRevision::initial(
         OrganizationId::new(),
@@ -118,6 +122,7 @@ async fn fixture() -> Fixture {
     let dispatches = Arc::new(AtomicUsize::new(0));
     let preparation = Arc::new(RecordingSequencePreparation {
         retryable_attempts: Mutex::new(HashSet::from([first_attempt])),
+        retry_after,
         dispatches: Arc::clone(&dispatches),
     });
     let service = Arc::new(
@@ -138,6 +143,7 @@ async fn fixture() -> Fixture {
 
 struct RecordingSequencePreparation {
     retryable_attempts: Mutex<HashSet<Uuid>>,
+    retry_after: Option<Duration>,
     dispatches: Arc<AtomicUsize>,
 }
 
@@ -155,6 +161,7 @@ impl IConnectorExecutionPreparationPort for RecordingSequencePreparation {
                 .lock()
                 .expect("retryable attempt lock")
                 .contains(&request.attempt_id()),
+            retry_after: self.retry_after,
             dispatches: Arc::clone(&self.dispatches),
         }))
     }
@@ -163,6 +170,7 @@ impl IConnectorExecutionPreparationPort for RecordingSequencePreparation {
 struct RecordingSequencePrepared {
     attempt_id: Uuid,
     retryable: bool,
+    retry_after: Option<Duration>,
     dispatches: Arc<AtomicUsize>,
 }
 
@@ -178,7 +186,9 @@ impl IPreparedConnectorExecution for RecordingSequencePrepared {
     ) -> Result<ConnectorExecutionReceipt, ConnectorExecutionError> {
         self.dispatches.fetch_add(1, Ordering::SeqCst);
         if self.retryable {
-            return Err(ConnectorExecutionError::Retryable { retry_after: None });
+            return Err(ConnectorExecutionError::Retryable {
+                retry_after: self.retry_after,
+            });
         }
         ConnectorExecutionReceipt::accepted(
             request.connector_revision_id(),
@@ -189,6 +199,47 @@ impl IPreparedConnectorExecution for RecordingSequencePrepared {
             Vec::new(),
         )
     }
+}
+
+#[tokio::test]
+async fn provider_retry_after_defers_replay_without_another_provider_call() {
+    let fixture = fixture_with_retry_after(Some(Duration::from_secs(3_600))).await;
+    let first = fixture
+        .dispatcher
+        .dispatch(&fixture.delivery, 1)
+        .await
+        .expect("first delivery");
+    let evidence = match first {
+        OutboundNotificationDispatchResult::Retryable {
+            generation: 1,
+            evidence,
+        } => evidence,
+        other => panic!("unexpected first result: {other:?}"),
+    };
+    assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
+
+    let attempt_id = outbound_notification_attempt_id(fixture.delivery.id(), 1).expect("attempt");
+    let replay = fixture
+        .dispatcher
+        .dispatch(&fixture.delivery, 2)
+        .await
+        .expect("retry-after replay");
+    assert!(matches!(
+        replay,
+        OutboundNotificationDispatchResult::Deferred {
+            generation: 1,
+            attempt_id: deferred_attempt_id,
+            retry_not_before,
+        } if deferred_attempt_id == attempt_id && retry_not_before > canonical_timestamp(Utc::now())
+    ));
+    assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
+    let retry_deadline =
+        canonical_timestamp(evidence.completed_at() + chrono::Duration::seconds(3_600));
+    assert!(
+        defer_retryable_replay(&evidence, 1, attempt_id, retry_deadline)
+            .expect("deadline decision")
+            .is_none()
+    );
 }
 
 #[tokio::test]

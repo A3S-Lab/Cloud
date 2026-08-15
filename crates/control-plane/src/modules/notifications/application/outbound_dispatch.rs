@@ -148,7 +148,17 @@ impl OutboundNotificationDispatcher {
                         })
                     }
                     ConnectorExecutionOutcome::Retryable
-                        if replayed && generation < maximum_generation => {}
+                        if replayed && generation < maximum_generation =>
+                    {
+                        if let Some(deferred) = defer_retryable_replay(
+                            &evidence,
+                            generation,
+                            attempt_id,
+                            canonical_timestamp(Utc::now()),
+                        )? {
+                            return Ok(deferred);
+                        }
+                    }
                     ConnectorExecutionOutcome::Retryable => {
                         return Ok(OutboundNotificationDispatchResult::Retryable {
                             generation,
@@ -178,7 +188,17 @@ impl OutboundNotificationDispatcher {
                                 })
                             }
                             ConnectorExecutionOutcome::Retryable
-                                if replayed && generation < maximum_generation => {}
+                                if replayed && generation < maximum_generation =>
+                            {
+                                if let Some(deferred) = defer_retryable_replay(
+                                    &evidence,
+                                    generation,
+                                    attempt_id,
+                                    canonical_timestamp(Utc::now()),
+                                )? {
+                                    return Ok(deferred);
+                                }
+                            }
                             ConnectorExecutionOutcome::Retryable => {
                                 return Ok(OutboundNotificationDispatchResult::Retryable {
                                     generation,
@@ -243,6 +263,35 @@ impl OutboundNotificationDispatcher {
             )),
         }
     }
+}
+
+fn defer_retryable_replay(
+    evidence: &ConnectorExecutionEvidence,
+    generation: u64,
+    attempt_id: Uuid,
+    observed_at: DateTime<Utc>,
+) -> ApplicationResult<Option<OutboundNotificationDispatchResult>> {
+    let Some(retry_after) = evidence.retry_after() else {
+        return Ok(None);
+    };
+    let retry_after = chrono::Duration::from_std(retry_after).map_err(|_| {
+        ApplicationError::Internal("Connector Retry-After exceeds chrono bounds".into())
+    })?;
+    let retry_not_before = evidence
+        .completed_at()
+        .checked_add_signed(retry_after)
+        .map(canonical_timestamp)
+        .ok_or_else(|| {
+            ApplicationError::Internal("Connector Retry-After deadline overflowed".into())
+        })?;
+    if observed_at < retry_not_before {
+        return Ok(Some(OutboundNotificationDispatchResult::Deferred {
+            generation,
+            attempt_id,
+            retry_not_before,
+        }));
+    }
+    Ok(None)
 }
 
 #[async_trait]

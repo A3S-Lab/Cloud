@@ -337,6 +337,39 @@ async fn retryable_evidence_is_left_to_provider_ack_wait_without_local_nak() {
 }
 
 #[tokio::test]
+async fn provider_retry_after_deferral_is_left_to_event_ack_wait() {
+    let delivery = delivery();
+    let dispatcher = Arc::new(RecordingDispatcher::new(Ok(
+        OutboundNotificationDispatchResult::Deferred {
+            generation: 1,
+            attempt_id: outbound_notification_attempt_id(delivery.id(), 1).expect("attempt ID"),
+            retry_not_before: canonical_timestamp(Utc::now()) + chrono::Duration::seconds(3_600),
+        },
+    )));
+    let (consumer, deliveries) = consumer(&delivery, Arc::clone(&dispatcher));
+    let acknowledgements = Arc::new(AtomicUsize::new(0));
+    let negative_acknowledgements = Arc::new(AtomicUsize::new(0));
+
+    let action = consumer
+        .process_pending(pending(
+            event(&delivery, 2),
+            Arc::clone(&acknowledgements),
+            Arc::clone(&negative_acknowledgements),
+        ))
+        .await
+        .expect("defer provider Retry-After");
+
+    assert_eq!(
+        action,
+        OutboundNotificationConsumerAction::DeferredToEventProvider
+    );
+    assert_eq!(dispatcher.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(deliveries.settlement_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
+    assert_eq!(negative_acknowledgements.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn indeterminate_attempt_is_acknowledged_without_blind_provider_retry() {
     let delivery = delivery();
     let now = canonical_timestamp(Utc::now());
