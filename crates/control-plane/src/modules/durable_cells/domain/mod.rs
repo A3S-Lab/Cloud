@@ -2,6 +2,7 @@ mod application;
 mod application_definition;
 mod projection_identity;
 mod service_profile;
+mod storage_binding;
 
 pub use application::{
     DurableCellApplication, DurableCellApplicationDesiredState, DurableCellApplicationRevision,
@@ -16,3 +17,4 @@ pub use service_profile::{
     DurableCellServiceProfile, DurableCellServiceProfileSpec, DURABLE_CELL_PROFILE_SCHEMA,
     DURABLE_CELL_PROVIDER_PROTOCOL, DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
 };
+pub use storage_binding::DurableCellStorageBinding;

@@ -368,9 +368,29 @@ Primary aggregates:
 - `PersistentVolume`
 - `Backup`
 
-The first stateless deployment slice does not implement this context. Its
-boundary is defined now so stateful behavior is not later hidden in workload
-metadata or provider-specific JSON.
+Implemented component-only `S0.1-C1` value/port foundation:
+
+- `ObjectNamespaceKey`
+- `ObjectNamespaceVersion`
+- `IObjectNamespace`
+- `ObjectNamespaceProbeEvidence`
+- `ObjectNamespaceCredentialBinding`
+
+The sole shared object client now exposes atomic create-only and exact-version
+overwrite/read operations behind that typed S0 port. Its destructive startup
+probe proves competing-create rejection, read-after-write, token advancement,
+stale-token rejection, and cleanup. The existing local immutable-object
+backend deliberately returns unsupported because it has not proved atomic CAS;
+the remote adapter uses the same object client already consumed by Artifacts,
+Fleet, and Plugins. `SecretVersionReference` is the one plaintext-free exact
+Secret identity shared with Connectors. Credential bindings preserve exact
+tenant/namespace scope, provider-profile digest, generation, and distinct
+Secret versions; Secrets still owns active-state admission and materialization.
+
+Managed database/volume/backup aggregates, persistence, production provider
+certification, sealed recovery, retention, and deletion remain planned. This
+boundary prevents stateful behavior from being hidden in workload metadata or
+provider-specific configuration.
 
 ### 3.11 Inference platform (planned I0)
 
@@ -921,7 +941,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1-C1/C2/C3` domain contracts implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; `CELL0.2-C1` foundation implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -975,6 +995,14 @@ number, and definition digest. It is neither persisted deployment state nor a
 second lifecycle: S0 owns namespace lifecycle, Workloads owns rollout,
 Operations owns progress, and environment orchestration later selects the
 existing Gateway scope.
+
+Component-only `CELL0.2-C1` adds `DurableCellStorageBinding`. It correlates the
+exact current application revision and deterministic namespace with one
+digest-locked S0 credential generation, provider-profile digest, and
+retention-policy digest. It contains no plaintext and owns no namespace,
+credential, backup, provider, or deployment lifecycle. Credential rotation
+changes only the exact binding generation/digest; application, revision, and
+namespace identities remain stable.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2375,7 +2403,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` currently supply the canonical Service/application ACL, immutable revision lineage, desired-state aggregate, digest-locked fixtures, and deterministic existing-owner projection identities without persistence |
+| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` supply the application foundation and component-only `CELL0.2-C1` adds exact S0 credential/storage correlation without persistence or plaintext |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
@@ -2414,7 +2442,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
-| Durable Cell object-store namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; no second object client or provider-native mutable Cloud configuration |
+| Durable Cell object-store namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1`/`CELL0.2-C1` currently supply the shared CAS port/probe and plaintext-free exact credential/storage binding only, with no second object client or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |

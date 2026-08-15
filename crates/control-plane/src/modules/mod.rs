@@ -3,6 +3,7 @@ pub mod artifacts;
 pub mod assets;
 pub mod audit;
 pub mod connectors;
+pub mod data;
 pub mod durable_cells;
 pub mod edge;
 pub mod executions;

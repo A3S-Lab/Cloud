@@ -6,6 +6,7 @@ mod idempotency;
 mod identifiers;
 mod repository_error;
 mod resource_name;
+mod secret_version_reference;
 mod sha256_digest;
 mod timestamp;
 
@@ -31,5 +32,6 @@ pub use identifiers::{
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;
+pub use secret_version_reference::SecretVersionReference;
 pub use sha256_digest::Sha256Digest;
 pub(crate) use timestamp::canonical_timestamp;

@@ -6,7 +6,7 @@ mod stream;
 mod tests;
 
 use object_store::path::Path as ObjectPath;
-use object_store::{ObjectStore, PutMode};
+use object_store::{ObjectStore, PutMode, PutResult, UpdateVersion};
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -18,10 +18,92 @@ pub(crate) use stream::{
 };
 
 const MAX_OBJECT_PATH_BYTES: usize = 4096;
+const MAX_CONDITIONAL_VERSION_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ImmutableObjectWrite {
     pub(crate) created: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConditionalObjectVersion {
+    e_tag: Option<String>,
+    version: Option<String>,
+}
+
+impl ConditionalObjectVersion {
+    fn from_put(result: PutResult) -> Result<Self, ConditionalObjectError> {
+        Self::new(result.e_tag, result.version)
+    }
+
+    fn new(e_tag: Option<String>, version: Option<String>) -> Result<Self, ConditionalObjectError> {
+        if e_tag.as_deref().is_some_and(invalid_conditional_token)
+            || version.as_deref().is_some_and(invalid_conditional_token)
+            || e_tag.is_none() && version.is_none()
+        {
+            return Err(ConditionalObjectError::Unsupported(
+                "object provider returned no usable conditional-write version".into(),
+            ));
+        }
+        Ok(Self { e_tag, version })
+    }
+
+    pub(crate) fn from_parts(
+        e_tag: Option<String>,
+        version: Option<String>,
+    ) -> Result<Self, ConditionalObjectError> {
+        Self::new(e_tag, version)
+    }
+
+    pub(crate) fn e_tag(&self) -> Option<&str> {
+        self.e_tag.as_deref()
+    }
+
+    pub(crate) fn version(&self) -> Option<&str> {
+        self.version.as_deref()
+    }
+
+    fn update_version(&self) -> UpdateVersion {
+        UpdateVersion {
+            e_tag: self.e_tag.clone(),
+            version: self.version.clone(),
+        }
+    }
+}
+
+fn invalid_conditional_token(value: &str) -> bool {
+    value.is_empty()
+        || value.len() > MAX_CONDITIONAL_VERSION_BYTES
+        || value.contains(['\0', '\r', '\n'])
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ConditionalObjectWrite {
+    pub(crate) version: ConditionalObjectVersion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ConditionalObjectRead {
+    Found {
+        body: Vec<u8>,
+        version: ConditionalObjectVersion,
+    },
+    Missing,
+    Corrupt,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ConditionalObjectError {
+    #[error("object namespace conditional request is invalid: {0}")]
+    Invalid(String),
+    #[error("object namespace conditional request lost its precondition: {0}")]
+    Precondition(String),
+    #[error("object namespace conditional content is corrupt: {0}")]
+    Corrupt(String),
+    #[error("object namespace conditional capability is unsupported: {0}")]
+    Unsupported(String),
+    #[error("object namespace conditional storage is unavailable: {0}")]
+    Unavailable(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -166,6 +248,118 @@ impl ImmutableObjectClient {
         }
     }
 
+    /// Atomically creates one mutable object only when the key is absent.
+    ///
+    /// This deliberately shares the same backend and namespace isolation as
+    /// immutable objects. Typed S0 adapters decide which keys may use mutable
+    /// conditional semantics; existing immutable adapters still call `put`.
+    pub(crate) async fn conditional_create(
+        &self,
+        object_key: &str,
+        body: Vec<u8>,
+        maximum_bytes: u64,
+    ) -> Result<ConditionalObjectWrite, ConditionalObjectError> {
+        let scoped_key = self
+            .scoped_key(object_key)
+            .map_err(map_base_conditional_error)?;
+        validate_conditional_body(&body, maximum_bytes)?;
+        let Backend::Remote(objects) = self.backend.as_ref() else {
+            return Err(ConditionalObjectError::Unsupported(
+                "the local immutable-object backend is not certified for atomic compare-and-swap"
+                    .into(),
+            ));
+        };
+        let path = remote_path(&scoped_key).map_err(map_base_conditional_error)?;
+        let result = objects
+            .put_opts(&path, body.into(), PutMode::Create.into())
+            .await
+            .map_err(|error| conditional_remote_error("conditionally create object", error))?;
+        Ok(ConditionalObjectWrite {
+            version: ConditionalObjectVersion::from_put(result)?,
+        })
+    }
+
+    /// Atomically replaces one mutable object only when its opaque provider
+    /// version still matches the version observed by the caller.
+    pub(crate) async fn conditional_overwrite(
+        &self,
+        object_key: &str,
+        expected: &ConditionalObjectVersion,
+        body: Vec<u8>,
+        maximum_bytes: u64,
+    ) -> Result<ConditionalObjectWrite, ConditionalObjectError> {
+        let scoped_key = self
+            .scoped_key(object_key)
+            .map_err(map_base_conditional_error)?;
+        validate_conditional_body(&body, maximum_bytes)?;
+        ConditionalObjectVersion::new(expected.e_tag.clone(), expected.version.clone())?;
+        let Backend::Remote(objects) = self.backend.as_ref() else {
+            return Err(ConditionalObjectError::Unsupported(
+                "the local immutable-object backend is not certified for atomic compare-and-swap"
+                    .into(),
+            ));
+        };
+        let path = remote_path(&scoped_key).map_err(map_base_conditional_error)?;
+        let result = objects
+            .put_opts(
+                &path,
+                body.into(),
+                PutMode::Update(expected.update_version()).into(),
+            )
+            .await
+            .map_err(|error| conditional_remote_error("conditionally overwrite object", error))?;
+        Ok(ConditionalObjectWrite {
+            version: ConditionalObjectVersion::from_put(result)?,
+        })
+    }
+
+    /// Reads the body and the exact provider version from one response so the
+    /// token cannot be confused with a later observation.
+    pub(crate) async fn conditional_get(
+        &self,
+        object_key: &str,
+        maximum_bytes: u64,
+    ) -> Result<ConditionalObjectRead, ConditionalObjectError> {
+        let scoped_key = self
+            .scoped_key(object_key)
+            .map_err(map_base_conditional_error)?;
+        if maximum_bytes == 0 {
+            return Err(ConditionalObjectError::Invalid(
+                "conditional object read bound must be positive".into(),
+            ));
+        }
+        let Backend::Remote(objects) = self.backend.as_ref() else {
+            return Err(ConditionalObjectError::Unsupported(
+                "the local immutable-object backend is not certified for atomic compare-and-swap"
+                    .into(),
+            ));
+        };
+        let path = remote_path(&scoped_key).map_err(map_base_conditional_error)?;
+        let result = match objects.get(&path).await {
+            Ok(result) => result,
+            Err(object_store::Error::NotFound { .. }) => return Ok(ConditionalObjectRead::Missing),
+            Err(error) => return Err(conditional_remote_error("read conditional object", error)),
+        };
+        if result.meta.size > maximum_bytes {
+            return Ok(ConditionalObjectRead::Corrupt);
+        }
+        let version = ConditionalObjectVersion::from_parts(
+            result.meta.e_tag.clone(),
+            result.meta.version.clone(),
+        )?;
+        let body = result
+            .bytes()
+            .await
+            .map_err(|error| conditional_remote_error("collect conditional object", error))?;
+        if body.len() as u64 > maximum_bytes {
+            return Ok(ConditionalObjectRead::Corrupt);
+        }
+        Ok(ConditionalObjectRead::Found {
+            body: body.to_vec(),
+            version,
+        })
+    }
+
     pub(crate) async fn remove(&self, object_key: &str) -> Result<(), ImmutableObjectError> {
         let scoped_key = self.scoped_key(object_key)?;
         match self.backend.as_ref() {
@@ -253,12 +447,47 @@ fn validate_relative_path(value: &str, description: &str) -> Result<(), Immutabl
     Ok(())
 }
 
+fn validate_conditional_body(
+    body: &[u8],
+    maximum_bytes: u64,
+) -> Result<(), ConditionalObjectError> {
+    if maximum_bytes == 0 || body.len() as u64 > maximum_bytes {
+        return Err(ConditionalObjectError::Invalid(
+            "conditional object exceeds its admission bound".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn remote_path(scoped_key: &str) -> Result<ObjectPath, ImmutableObjectError> {
     ObjectPath::parse(scoped_key).map_err(|error| ImmutableObjectError::Invalid(error.to_string()))
 }
 
 fn remote_error(action: &str, error: object_store::Error) -> ImmutableObjectError {
     ImmutableObjectError::Unavailable(format!("{action}: {error}"))
+}
+
+fn conditional_remote_error(action: &str, error: object_store::Error) -> ConditionalObjectError {
+    match error {
+        object_store::Error::AlreadyExists { .. }
+        | object_store::Error::Precondition { .. }
+        | object_store::Error::NotFound { .. } => {
+            ConditionalObjectError::Precondition(action.into())
+        }
+        object_store::Error::NotImplemented | object_store::Error::NotSupported { .. } => {
+            ConditionalObjectError::Unsupported(action.into())
+        }
+        other => ConditionalObjectError::Unavailable(format!("{action}: {other}")),
+    }
+}
+
+fn map_base_conditional_error(error: ImmutableObjectError) -> ConditionalObjectError {
+    match error {
+        ImmutableObjectError::Invalid(message) => ConditionalObjectError::Invalid(message),
+        ImmutableObjectError::Conflict(message) => ConditionalObjectError::Precondition(message),
+        ImmutableObjectError::Integrity(message) => ConditionalObjectError::Corrupt(message),
+        ImmutableObjectError::Unavailable(message) => ConditionalObjectError::Unavailable(message),
+    }
 }
 
 fn join_error(action: &'static str) -> impl FnOnce(tokio::task::JoinError) -> ImmutableObjectError {

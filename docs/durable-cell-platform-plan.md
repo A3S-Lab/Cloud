@@ -2,7 +2,7 @@
 
 ## 1. Authority and status
 
-**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3` implemented; the product is unavailable.**
+**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3` implemented and component-only `CELL0.2-C1` implemented; the product is unavailable.**
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
@@ -206,6 +206,21 @@ application-definition digest. Gateway scope stays an environment-selected
 lifecycle, scheduler, object client, or Gateway owner lookup; S0 still owns
 namespace lifecycle and Workloads/Operations retain their existing authority.
 
+Component-only `CELL0.2-C1` introduces the first shared S0 conditional-object
+foundation without a second client. The existing object client now exposes
+atomic create-only, exact-version overwrite, and body-plus-version reads
+through a typed `IObjectNamespace` port. A destructive unique-key startup probe
+requires competing-create rejection, read-after-write, version advancement,
+stale-version rejection, and verified cleanup. An uncertified local backend
+fails closed. `ObjectNamespaceCredentialBinding` uses the shared exact
+`SecretVersionReference`, locks tenant/namespace scope and credential lineage
+by digest, and contains no plaintext. `DurableCellStorageBinding` correlates
+the exact current application revision to that S0 credential generation plus
+provider/retention policy digests while leaving namespace and Secret lifecycle
+with their owners. Active-Secret admission/materialization, sealed backup and
+restore lineage, retention/deletion contracts, and real provider certification
+remain open.
+
 ## 8. Rollout and recovery
 
 A rollout follows the existing Workload generation lifecycle:
@@ -232,7 +247,7 @@ drain and rejects rolling coexistence.
 | Gate | State | Outcome | Required evidence/dependencies |
 | --- | --- | --- | --- |
 | `CELL0.1` | Implemented | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile, `C2` canonical application definition/revision aggregate, and `C3` digest-locked shared ACL fixtures plus deterministic existing-owner projection identities are implemented; this is a contract gate, not service availability |
-| `CELL0.2` | Planned | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `S0` object provider, Secrets, corruption/stale-token/credential-scope tests |
+| `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | Component-only `C1` implements the sole-client CAS port/probe, exact Secret reference, credential lineage, and Durable Cell storage correlation with focused stale-token/scope/cleanup tests; active Secret admission, sealed recovery/retention/deletion, and real-provider evidence remain |
 | `CELL0.3` | Planned | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | `BX0`, Runtime Service, Fleet journal, provider adapter; no new Runtime class |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, `H0.2` |
 | `CELL0.5` | Planned | Pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Exact Cloud/Runtime/Box/Gateway/S0/provider revisions and retained fault evidence |

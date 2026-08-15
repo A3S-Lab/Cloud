@@ -17,8 +17,9 @@ pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError}
 
 pub(crate) use git::{GitCommandError, GitCommandRunner};
 pub(crate) use immutable_object::{
-    ImmutableObjectClient, ImmutableObjectError, ImmutableObjectOpenResult, ImmutableObjectRead,
-    ImmutableObjectReader, ImmutableObjectVerification, S3ImmutableObjectOptions,
+    ConditionalObjectError, ConditionalObjectRead, ConditionalObjectVersion, ImmutableObjectClient,
+    ImmutableObjectError, ImmutableObjectOpenResult, ImmutableObjectRead, ImmutableObjectReader,
+    ImmutableObjectVerification, S3ImmutableObjectOptions,
 };
 pub(crate) use oci_registry_client::{
     required_registry_header, OciRegistryClient, OciRegistryClientError,

@@ -172,8 +172,8 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `APP0` — AI application lifecycle and delivery | Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences over one immutable ApplicationRelease-to-WorkflowRevision path, with sessions, publishing, streaming, embed, MCP, monitoring, feedback, and enterprise governance | Planned and unavailable; no public parity claim before `APP0.6` |
 | `K0` — Knowledge and Knowledge Pipeline | User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` — Automations and Connectors | Schedule, webhook, plugin/source-event triggers and reusable outbound HTTP/business connections with exact targets, deduplication, Secret/egress policy, and recovery | Planned and unavailable |
-| `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Planned |
-| `CELL0` — Durable Cell Service | Named SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path | In progress and unavailable; `CELL0.1-C1/C2/C3` contracts, shared fixtures, revision aggregate, and existing-owner projection identities are implemented, while real service availability waits for `CELL0.5` |
+| `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Foundation in progress; component-only `S0.1-C1` extends the sole shared object client with atomic conditional create/overwrite/read tokens and exposes one typed namespace port plus destructive CAS probe, but no production provider is certified |
+| `CELL0` — Durable Cell Service | Named SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path | In progress and unavailable; `CELL0.1` is implemented and component-only `CELL0.2-C1` adds exact S0 credential/storage correlation over the shared CAS foundation, while real service availability waits for `CELL0.5` |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
 | `EV0` — Governed self-evolution | Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback | Planned |
@@ -227,7 +227,7 @@ desired-state authority.
 | Gate | State | Outcome |
 | --- | --- | --- |
 | `CELL0.1` | Implemented | Freeze identities, immutable revision/projection boundaries, canonical ACL, provider protocol, errors, bounds, and compatibility vocabulary; `C1` implements `cloud.durable-cell.service.v1`, `C2` implements `cloud.durable-cell.application.v1` plus revision/desired-state rules, and `C3` adds digest-locked shared ACL fixtures and deterministic S0/Workloads/Operations identities without another deployment mechanism |
-| `CELL0.2` | Planned | Bind one S0 namespace and exact Secret versions; certify conditional create/overwrite, read-after-write, sealed recovery, backup, retention, and deletion |
+| `CELL0.2` | In progress | Component-only `C1` reuses the sole shared object client for typed conditional create/overwrite/read tokens and a destructive cleanup-verified CAS probe, centralizes exact Secret-version references, and binds one exact S0 credential generation to the current Durable Cell revision without plaintext or namespace lifecycle; active-Secret admission/materialization, sealed recovery, backup, retention, namespace-safe deletion, and real provider certification remain |
 | `CELL0.3` | Planned | Certify one pinned Cell provider and typed operator adapter as an ordinary Box-hosted Runtime Service with distinct public/internal endpoints, health, drain, adoption, and cleanup |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent application commands/queries, managed Workload/Gateway projection, Operations, audit, REST/client/CLI/Management MCP; Web remains deferred |
 | `CELL0.5` | Planned | Retain a real single-node application gate for named SQLite state, alarms, hibernatable WebSockets, eviction/reactivation, RPO=0 process death, rollout, rollback, restore, stop, and deletion; first public availability boundary |
@@ -1264,7 +1264,9 @@ configuration authorities, or direct client protocols.
 Ordered delivery:
 
 1. certify the shared immutable-object contract for distributed production
-   providers without adding another client or metadata authority;
+   providers without adding another client or metadata authority; component-only
+   `S0.1-C1` now supplies its conditional-object token path and destructive CAS
+   probe, while real provider certification remains;
 2. add fenced local volumes;
 3. add explicit PostgreSQL resources;
 4. prove backup, restore, retention, and disaster behavior;

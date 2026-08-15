@@ -2,7 +2,7 @@ use super::{
     validate_connector_content_type, validate_connector_signature_metadata, ConnectorHttpMethod,
     ConnectorHttpStatusPolicy, MAXIMUM_CONNECTOR_BODY_BYTES,
 };
-use crate::modules::shared_kernel::domain::{SecretId, Sha256Digest};
+use crate::modules::shared_kernel::domain::{SecretId, SecretVersionReference, Sha256Digest};
 use a3s_acl::builder::{integer, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
 use serde::{Deserialize, Serialize};
@@ -21,30 +21,7 @@ const MAXIMUM_SIGNING_SECRET_BYTES: usize = 4 * 1024;
 pub(crate) const MINIMUM_SIGNING_SECRET_BYTES: usize = 32;
 const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ConnectorSecretReference {
-    pub secret_id: SecretId,
-    pub version: u64,
-}
-
-impl ConnectorSecretReference {
-    pub fn new(secret_id: SecretId, version: u64) -> Result<Self, String> {
-        let value = Self { secret_id, version };
-        value.validate()?;
-        Ok(value)
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        if self.secret_id.as_uuid().is_nil()
-            || self.version == 0
-            || self.version > MAX_SAFE_ACL_INTEGER
-        {
-            return Err("connector Secret reference is invalid".into());
-        }
-        Ok(())
-    }
-}
+pub type ConnectorSecretReference = SecretVersionReference;
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
