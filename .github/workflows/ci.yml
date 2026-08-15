@@ -106,6 +106,35 @@ jobs:
           postgres_notifications_are_deduplicated_personal_and_atomic
           -- --exact --nocapture --test-threads=1
 
+      - name: Start digest-pinned NATS notification fixture
+        run: |
+          docker run --detach --rm \
+            --name a3s-cloud-notification-nats \
+            --publish 4222:4222 \
+            nats:2.11-alpine@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00 \
+            --jetstream --store_dir=/data
+          for attempt in $(seq 1 30); do
+            if timeout 1 bash -c '</dev/tcp/127.0.0.1/4222'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs a3s-cloud-notification-nats
+          exit 1
+
+      - name: Certify durable NATS notification delivery and terminal replay
+        env:
+          A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_notifications_are_deduplicated_personal_and_atomic
+          -- --exact --nocapture --test-threads=1
+
+      - name: Stop digest-pinned NATS notification fixture
+        if: always()
+        run: docker rm --force a3s-cloud-notification-nats >/dev/null 2>&1 || true
+
       - name: Certify immutable Connector profile persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

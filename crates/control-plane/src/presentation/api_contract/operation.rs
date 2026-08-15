@@ -715,21 +715,9 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
-    } else if is_notification_outbound_subscription_revoke_path(path) {
-        content.insert(
-            "application/json".into(),
-            json!({
-                "schema": {
-                    "type": "object",
-                    "additionalProperties": false,
-                    "required": ["expectedVersion"],
-                    "properties": {
-                        "expectedVersion": {"type": "integer", "minimum": 1}
-                    }
-                }
-            }),
-        );
-    } else if is_notification_read_path(path) {
+    } else if is_notification_outbound_subscription_revoke_path(path)
+        || is_notification_read_path(path)
+    {
         content.insert(
             "application/json".into(),
             json!({

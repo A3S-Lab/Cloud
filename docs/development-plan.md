@@ -2107,6 +2107,14 @@ node.
   Notifications repository authorities. Responses do not resolve endpoints,
   Secrets, credentials, provider bodies, attempts, receipts, or retry state;
   no Web work, table, migration, parser, queue, scheduler, or counter is added.
+- Implemented as `C0.3-N2g`, with retained CI evidence pending: the existing
+  PostgreSQL notification fixture optionally publishes through a real
+  digest-pinned NATS JetStream and the production exact-subject A3S Event
+  durable/manual-ack consumer. It proves terminal receipt persistence before
+  ACK, durable-consumer restart, and ACK-only replay without another dispatcher
+  call while reusing the same Outbox relay and Notifications repository. This
+  is an evidence gate only; it adds no product queue, retry mechanism, table,
+  repository, parser, or configuration format.
 - Workflow ports, provider/Event-consumer wiring, revocation/recovery
   operations, and retained PostgreSQL/end-to-end evidence
   remain open in `AUT0.5`; these components create no product availability
