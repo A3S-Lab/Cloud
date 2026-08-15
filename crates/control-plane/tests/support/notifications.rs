@@ -33,7 +33,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::{
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest,
     NotificationSubscriptionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    ResourceName, Sha256Digest,
+    ResourceName,
 };
 use a3s_event::{Event, NatsConfig, StorageType};
 use async_trait::async_trait;
@@ -451,6 +451,7 @@ pub(super) async fn exercise_notification_persistence(
             &repository,
             organization_id,
             recipient,
+            connector_revision,
             subscription.definition.spec().channel,
             target,
             created_at + ChronoDuration::seconds(20),
@@ -511,12 +512,21 @@ impl IOutboundNotificationDeliveryRepository for CountingDeliveryRepository {
     }
 }
 
-#[derive(Default)]
 struct NatsEvidenceDispatcher {
+    attempts: PostgresConnectorExecutionAttemptRepository,
+    revision: ConnectorRevision,
     calls: AtomicUsize,
 }
 
 impl NatsEvidenceDispatcher {
+    fn new(executor: PostgresExecutor, revision: ConnectorRevision) -> Self {
+        Self {
+            attempts: PostgresConnectorExecutionAttemptRepository::new(executor),
+            revision,
+            calls: AtomicUsize::new(0),
+        }
+    }
+
     fn call_count(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
@@ -536,27 +546,35 @@ impl IOutboundNotificationDispatcher for NatsEvidenceDispatcher {
         }
         self.calls.fetch_add(1, Ordering::SeqCst);
         let generation = 1;
-        let target = delivery.target();
-        let completed_at = delivery.occurred_at() + ChronoDuration::milliseconds(1);
-        let evidence = ConnectorExecutionEvidence::restore(
-            delivery.organization_id(),
-            target.project_id,
-            target.environment_id,
-            target.profile_id,
-            target.revision_id,
-            outbound_notification_attempt_id(delivery.id(), generation)
-                .map_err(ApplicationError::Invalid)?,
-            Sha256Digest::from_bytes(b"notification NATS request"),
-            25,
-            a3s_cloud_control_plane::modules::connectors::ConnectorExecutionOutcome::Accepted,
-            Some(204),
-            Some(Sha256Digest::from_bytes(b"notification NATS response")),
-            Some(0),
-            None,
-            completed_at,
-            completed_at,
+        let attempt_id = outbound_notification_attempt_id(delivery.id(), generation)
+            .map_err(ApplicationError::Invalid)?;
+        let request = ConnectorExecutionRequest::new(
+            self.revision.id,
+            attempt_id,
+            "application/json",
+            b"notification NATS request".to_vec(),
         )
         .map_err(ApplicationError::Invalid)?;
+        let started_at = delivery.occurred_at() + ChronoDuration::milliseconds(1);
+        let receipt = ConnectorExecutionReceipt::accepted(
+            self.revision.id,
+            attempt_id,
+            delivery.occurred_at() + ChronoDuration::milliseconds(2),
+            204,
+            None,
+            Vec::new(),
+        )
+        .map_err(|error| ApplicationError::Invalid(error.to_string()))?;
+        let evidence =
+            ConnectorExecutionEvidence::accepted(&self.revision, &request, &receipt, started_at)
+                .map_err(|error| ApplicationError::Invalid(error.to_string()))?;
+        persist_connector_evidence(&self.attempts, &self.revision, &request, evidence.clone())
+            .await
+            .map_err(|error| {
+                ApplicationError::Internal(format!(
+                    "persist NATS notification Connector evidence: {error}"
+                ))
+            })?;
         Ok(OutboundNotificationDispatchResult::Delivered {
             generation,
             evidence,
@@ -572,6 +590,7 @@ async fn exercise_notification_nats_delivery(
     repository: &PostgresNotificationRepository,
     organization_id: OrganizationId,
     recipient: PrincipalId,
+    connector_revision: ConnectorRevision,
     channel: OutboundNotificationChannel,
     target: OutboundNotificationConnectorTarget,
     occurred_at: chrono::DateTime<Utc>,
@@ -601,7 +620,10 @@ async fn exercise_notification_nats_delivery(
     let counting_repository = Arc::new(CountingDeliveryRepository::new(repository.clone()));
     let delivery_repository: Arc<dyn IOutboundNotificationDeliveryRepository> =
         counting_repository.clone();
-    let dispatcher = Arc::new(NatsEvidenceDispatcher::default());
+    let dispatcher = Arc::new(NatsEvidenceDispatcher::new(
+        executor.clone(),
+        connector_revision,
+    ));
     let dispatcher_port: Arc<dyn IOutboundNotificationDispatcher> = dispatcher.clone();
 
     let (shutdown, consumer_task) = start_notification_consumer(
