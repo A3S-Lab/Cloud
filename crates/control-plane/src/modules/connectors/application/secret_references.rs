@@ -12,12 +12,11 @@ pub(super) async fn validate_definition_secret_references(
 ) -> ApplicationResult<()> {
     for binding in definition.secret_bindings() {
         match access
-            .require(
+            .require_reference(
                 organization_id,
                 project_id,
                 environment_id,
-                binding.reference.secret_id,
-                binding.reference.version,
+                binding.reference,
             )
             .await
         {

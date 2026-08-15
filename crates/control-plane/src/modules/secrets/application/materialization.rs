@@ -4,7 +4,7 @@ use crate::modules::secrets::domain::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, RepositoryError, SecretId,
+    EnvironmentId, OrganizationId, ProjectId, RepositoryError, SecretId, SecretVersionReference,
 };
 use std::sync::Arc;
 
@@ -39,6 +39,24 @@ impl ExactSecretVersionAccess {
         )
         .await
         .map(drop)
+    }
+
+    pub(crate) async fn require_reference(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        reference: SecretVersionReference,
+    ) -> ApplicationResult<()> {
+        reference.validate().map_err(ApplicationError::Internal)?;
+        self.require(
+            organization_id,
+            project_id,
+            environment_id,
+            reference.secret_id,
+            reference.version,
+        )
+        .await
     }
 
     async fn version(
@@ -109,6 +127,24 @@ impl ExactSecretMaterializer {
             .await
             .map_err(encryption_error)
             .and_then(|value| SecretPlaintext::new(value).map_err(ApplicationError::Internal))
+    }
+
+    pub(crate) async fn materialize_reference(
+        &self,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        reference: SecretVersionReference,
+    ) -> ApplicationResult<SecretPlaintext> {
+        reference.validate().map_err(ApplicationError::Internal)?;
+        self.materialize(
+            organization_id,
+            project_id,
+            environment_id,
+            reference.secret_id,
+            reference.version,
+        )
+        .await
     }
 }
 

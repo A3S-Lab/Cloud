@@ -1,11 +1,13 @@
 use crate::modules::shared_kernel::domain::StorageNamespaceId;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use std::path::{Component, Path};
 
 const MAX_OBJECT_NAMESPACE_KEY_BYTES: usize = 4096;
 const MAX_OBJECT_NAMESPACE_VERSION_BYTES: usize = 4096;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ObjectNamespaceKey(String);
 
 impl ObjectNamespaceKey {

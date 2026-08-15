@@ -1,7 +1,10 @@
 use super::{
     DurableCellApplication, DurableCellApplicationRevision, DurableCellProjectionIdentity,
 };
-use crate::modules::data::ObjectNamespaceCredentialBinding;
+use crate::modules::data::{
+    ObjectNamespaceCredentialBinding, ObjectNamespaceDeletionPlan, ObjectNamespaceRecoveryPoint,
+    ObjectNamespaceRestoreEvidence, ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicy,
+};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, OrganizationId,
     ProjectId, Sha256Digest, StorageNamespaceId,
@@ -36,7 +39,7 @@ impl DurableCellStorageBinding {
         revision: &DurableCellApplicationRevision,
         projection: &DurableCellProjectionIdentity,
         credentials: &ObjectNamespaceCredentialBinding,
-        retention_policy_digest: Sha256Digest,
+        retention_policy: &ObjectNamespaceRetentionPolicy,
     ) -> Result<Self, String> {
         application.validate()?;
         revision.validate()?;
@@ -50,7 +53,7 @@ impl DurableCellStorageBinding {
             application.environment_id,
             projection.storage_namespace_id,
         )?;
-        Sha256Digest::parse(retention_policy_digest.as_str())?;
+        retention_policy.validate()?;
         let binding = Self {
             organization_id: application.organization_id,
             project_id: application.project_id,
@@ -63,7 +66,7 @@ impl DurableCellStorageBinding {
             credential_binding_generation: credentials.spec().generation,
             credential_binding_digest: credentials.digest().clone(),
             provider_profile_digest: credentials.spec().provider_profile_digest.clone(),
-            retention_policy_digest,
+            retention_policy_digest: retention_policy.digest().clone(),
         };
         binding.validate()?;
         Ok(binding)
@@ -75,7 +78,7 @@ impl DurableCellStorageBinding {
         revision: &DurableCellApplicationRevision,
         projection: &DurableCellProjectionIdentity,
         credentials: &ObjectNamespaceCredentialBinding,
-        retention_policy_digest: Sha256Digest,
+        retention_policy: &ObjectNamespaceRetentionPolicy,
     ) -> Result<Self, String> {
         self.validate()?;
         let expected = Self::for_current_revision(
@@ -83,7 +86,7 @@ impl DurableCellStorageBinding {
             revision,
             projection,
             credentials,
-            retention_policy_digest,
+            retention_policy,
         )?;
         if self != expected {
             return Err("stored Durable Cell storage binding drifted".into());
@@ -113,12 +116,71 @@ impl DurableCellStorageBinding {
         }
         Ok(())
     }
+
+    pub fn validate_recovery_point(
+        &self,
+        point: &ObjectNamespaceRecoveryPoint,
+        retention_policy: &ObjectNamespaceRetentionPolicy,
+    ) -> Result<(), String> {
+        self.validate()?;
+        point.validate()?;
+        retention_policy.validate()?;
+        if point.spec().namespace_id != self.storage_namespace_id
+            || point.spec().provider_profile_digest != self.provider_profile_digest
+            || retention_policy.digest() != &self.retention_policy_digest
+        {
+            return Err(
+                "Durable Cell recovery point does not match the exact S0 storage binding".into(),
+            );
+        }
+        Ok(())
+    }
+
+    pub fn validate_restore_plan(
+        &self,
+        point: &ObjectNamespaceRecoveryPoint,
+        plan: &ObjectNamespaceRestorePlan,
+        retention_policy: &ObjectNamespaceRetentionPolicy,
+    ) -> Result<(), String> {
+        self.validate_recovery_point(point, retention_policy)?;
+        plan.validate_source(point, retention_policy)?;
+        if plan.spec().source_namespace_id != self.storage_namespace_id
+            || plan.spec().source_provider_profile_digest != self.provider_profile_digest
+        {
+            return Err("Durable Cell restore plan changed the bound S0 source".into());
+        }
+        Ok(())
+    }
+
+    pub fn validate_deletion_plan(
+        &self,
+        point: &ObjectNamespaceRecoveryPoint,
+        restore_plan: &ObjectNamespaceRestorePlan,
+        restore_evidence: &ObjectNamespaceRestoreEvidence,
+        deletion_plan: &ObjectNamespaceDeletionPlan,
+        retention_policy: &ObjectNamespaceRetentionPolicy,
+    ) -> Result<(), String> {
+        self.validate_restore_plan(point, restore_plan, retention_policy)?;
+        deletion_plan.validate_against(point, restore_plan, restore_evidence, retention_policy)?;
+        if deletion_plan.spec().namespace_id != self.storage_namespace_id
+            || deletion_plan.spec().provider_profile_digest != self.provider_profile_digest
+            || deletion_plan.spec().retention_policy_digest != self.retention_policy_digest
+        {
+            return Err("Durable Cell deletion plan changed the bound S0 namespace".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::data::ObjectNamespaceCredentialBindingSpec;
+    use crate::modules::data::{
+        ObjectNamespaceCredentialBindingSpec, ObjectNamespaceDeletionPlan, ObjectNamespaceKey,
+        ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec,
+        ObjectNamespaceRestoreEvidence, ObjectNamespaceRestorePlan,
+        ObjectNamespaceRetentionPolicySpec,
+    };
     use crate::modules::durable_cells::domain::{
         DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
         DurableCellClassSpec, DurableCellRollbackPolicy, DurableCellStateSchema,
@@ -126,7 +188,7 @@ mod tests {
     use crate::modules::shared_kernel::domain::{
         BuildRunId, PrincipalId, ResourceName, SecretId, SecretVersionReference,
     };
-    use chrono::Utc;
+    use chrono::{Duration, Utc};
 
     fn digest(character: char) -> Sha256Digest {
         Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64))).expect("digest")
@@ -156,6 +218,16 @@ mod tests {
 
     fn reference() -> SecretVersionReference {
         SecretVersionReference::new(SecretId::new(), 1).expect("reference")
+    }
+
+    fn retention_policy() -> ObjectNamespaceRetentionPolicy {
+        ObjectNamespaceRetentionPolicy::from_spec(ObjectNamespaceRetentionPolicySpec {
+            minimum_sealed_recovery_points: 1,
+            maximum_sealed_recovery_points: 24,
+            maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,
+            deletion_grace_period_seconds: 60 * 60,
+        })
+        .expect("retention policy")
     }
 
     fn fixture() -> (
@@ -204,12 +276,13 @@ mod tests {
     #[test]
     fn binding_requires_exact_current_revision_namespace_and_credential_scope() {
         let (application, revision, projection, credentials) = fixture();
+        let retention_policy = retention_policy();
         let binding = DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
             &credentials,
-            digest('d'),
+            &retention_policy,
         )
         .expect("storage binding");
         assert_eq!(
@@ -224,7 +297,7 @@ mod tests {
                 &revision,
                 &projection,
                 &credentials,
-                digest('d'),
+                &retention_policy,
             )
             .expect("restore");
 
@@ -236,7 +309,7 @@ mod tests {
             &revision,
             &projection,
             &foreign,
-            digest('d')
+            &retention_policy
         )
         .is_err());
     }
@@ -244,12 +317,13 @@ mod tests {
     #[test]
     fn credential_rotation_changes_only_the_exact_s0_binding() {
         let (application, revision, projection, credentials) = fixture();
+        let retention_policy = retention_policy();
         let initial = DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
             &credentials,
-            digest('d'),
+            &retention_policy,
         )
         .expect("initial");
         let mut rotated = credentials.spec().clone();
@@ -264,7 +338,7 @@ mod tests {
             &revision,
             &projection,
             &rotated,
-            digest('d'),
+            &retention_policy,
         )
         .expect("successor");
         assert_eq!(
@@ -277,5 +351,82 @@ mod tests {
             successor.credential_binding_digest,
             initial.credential_binding_digest
         );
+    }
+
+    #[test]
+    fn recovery_and_deletion_remain_exact_s0_contracts() {
+        let (application, revision, projection, credentials) = fixture();
+        let retention_policy = retention_policy();
+        let binding = DurableCellStorageBinding::for_current_revision(
+            &application,
+            &revision,
+            &projection,
+            &credentials,
+            &retention_policy,
+        )
+        .expect("storage binding");
+        let now = Utc::now();
+        let point = ObjectNamespaceRecoveryPoint::seal(ObjectNamespaceRecoveryPointSpec {
+            namespace_id: binding.storage_namespace_id,
+            sequence: 1,
+            writer_epoch: 4,
+            provider_profile_digest: binding.provider_profile_digest.clone(),
+            manifest_key: ObjectNamespaceKey::parse("recovery/epoch-4/manifest")
+                .expect("manifest key"),
+            manifest_digest: digest('e'),
+            state_digest: digest('f'),
+            state_size_bytes: 4096,
+            predecessor_digest: None,
+            sealed_at: now,
+        })
+        .expect("recovery point");
+        binding
+            .validate_recovery_point(&point, &retention_policy)
+            .expect("bound recovery point");
+        let restore_plan = ObjectNamespaceRestorePlan::for_recovery_point(
+            &point,
+            StorageNamespaceId::new(),
+            digest('1'),
+            &retention_policy,
+            now + Duration::seconds(1),
+        )
+        .expect("restore plan");
+        binding
+            .validate_restore_plan(&point, &restore_plan, &retention_policy)
+            .expect("bound restore");
+        let restore_evidence = ObjectNamespaceRestoreEvidence::verified(
+            &restore_plan,
+            digest('2'),
+            now + Duration::seconds(2),
+        )
+        .expect("restore evidence");
+        let deletion_plan = ObjectNamespaceDeletionPlan::after_verified_restore(
+            &point,
+            &restore_plan,
+            &restore_evidence,
+            &retention_policy,
+            digest('3'),
+            digest('4'),
+            now + Duration::seconds(3),
+        )
+        .expect("deletion plan");
+        binding
+            .validate_deletion_plan(
+                &point,
+                &restore_plan,
+                &restore_evidence,
+                &deletion_plan,
+                &retention_policy,
+            )
+            .expect("bound deletion");
+
+        let foreign_point = ObjectNamespaceRecoveryPoint::seal(ObjectNamespaceRecoveryPointSpec {
+            namespace_id: StorageNamespaceId::new(),
+            ..point.spec().clone()
+        })
+        .expect("foreign point");
+        assert!(binding
+            .validate_recovery_point(&foreign_point, &retention_policy)
+            .is_err());
     }
 }

@@ -2,9 +2,15 @@ mod application;
 mod domain;
 mod infrastructure;
 
-pub use application::ObjectNamespaceConformanceProbe;
+pub use application::{
+    MaterializedObjectNamespaceCredentials, ObjectNamespaceConformanceProbe,
+    ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialMaterializer,
+};
 pub use domain::{
     IObjectNamespace, ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+    ObjectNamespaceDeletionEvidence, ObjectNamespaceDeletionPlan, ObjectNamespaceDeletionPlanSpec,
     ObjectNamespaceError, ObjectNamespaceKey, ObjectNamespaceProbeEvidence, ObjectNamespaceRead,
-    ObjectNamespaceVersion,
+    ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec, ObjectNamespaceRestoreEvidence,
+    ObjectNamespaceRestorePlan, ObjectNamespaceRestorePlanSpec, ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceRetentionPolicySpec, ObjectNamespaceVersion,
 };

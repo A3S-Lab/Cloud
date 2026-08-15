@@ -45,12 +45,11 @@ impl ConnectorHttpRevisionMaterializer {
                     ConnectorHttpDestination::SecretHttpsUrl { reference } => {
                         let plaintext = self
                             .secrets
-                            .materialize(
+                            .materialize_reference(
                                 revision.organization_id,
                                 revision.project_id,
                                 revision.environment_id,
-                                reference.secret_id,
-                                reference.version,
+                                *reference,
                             )
                             .await?;
                         let endpoint = Zeroizing::new(
@@ -69,12 +68,11 @@ impl ConnectorHttpRevisionMaterializer {
                     } => {
                         let plaintext = self
                             .secrets
-                            .materialize(
+                            .materialize_reference(
                                 revision.organization_id,
                                 revision.project_id,
                                 revision.environment_id,
-                                secret.secret_id,
-                                secret.version,
+                                *secret,
                             )
                             .await?;
                         ResolvedConnectorAuthentication::hmac_sha256(
