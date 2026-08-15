@@ -526,6 +526,17 @@ mod tests {
     use super::*;
     use crate::modules::durable_cells::domain::DurableCellServiceProfileSpec;
 
+    const APPLICATION_FIXTURE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/cell0.1/application.acl"
+    ));
+    const APPLICATION_FIXTURE_DIGEST: &str =
+        "sha256:5c4047cc251bfde4f2c3ce2677347fdce91fe7199ecd4477e16ce21513c2ea87";
+    const SERVICE_PROFILE_FIXTURE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/cell0.1/service-profile.acl"
+    ));
+
     fn profile() -> DurableCellServiceProfile {
         DurableCellServiceProfile::from_spec(DurableCellServiceProfileSpec {
             public_runtime_port: "cell-public".into(),
@@ -582,6 +593,22 @@ mod tests {
         assert!(definition
             .canonical_acl()
             .contains(DURABLE_CELL_BUNDLE_MEDIA_TYPE));
+    }
+
+    #[test]
+    fn shared_cell0_1_application_fixture_is_canonical_profile_bound_and_digest_locked() {
+        let profile =
+            DurableCellServiceProfile::parse_acl(SERVICE_PROFILE_FIXTURE).expect("profile");
+        let definition =
+            DurableCellApplicationDefinition::parse_acl(APPLICATION_FIXTURE).expect("application");
+        definition
+            .validate_service_profile(&profile)
+            .expect("exact profile binding");
+        assert_eq!(
+            format!("{}\n", definition.canonical_acl()),
+            APPLICATION_FIXTURE.replace("\r\n", "\n")
+        );
+        assert_eq!(definition.digest().as_str(), APPLICATION_FIXTURE_DIGEST);
     }
 
     #[test]

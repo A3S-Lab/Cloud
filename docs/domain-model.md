@@ -921,7 +921,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1-C1/C2` domain contracts implemented)
+### 3.20 Durable Cells (`CELL0.1-C1/C2/C3` domain contracts implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -933,7 +933,11 @@ Implemented primary aggregate and immutable revision:
 - `DurableCellApplication`
 - `DurableCellApplicationRevision`
 
-Planned projection resource:
+Implemented projection value object:
+
+- `DurableCellProjectionIdentity`
+
+Planned persisted correlation resource (`CELL0.4`):
 
 - `DurableCellDeployment`
 
@@ -962,6 +966,15 @@ rollback compatibility only when the parent can read the target write version;
 otherwise the revision is explicitly forward-only. The aggregate applies exact
 revision lineage, running/stopped intent, and optimistic concurrency without
 copying Workload or provider state.
+
+The implemented projection identity deterministically reserves one
+application-stable `StorageNamespaceId` and `WorkloadId`, plus revision-stable
+`WorkloadRevisionId`, existing Workloads `DeploymentId`, and `OperationId`.
+It reuses `ManagedOwnerReference` with the exact application ID, revision
+number, and definition digest. It is neither persisted deployment state nor a
+second lifecycle: S0 owns namespace lifecycle, Workloads owns rollout,
+Operations owns progress, and environment orchestration later selects the
+existing Gateway scope.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -1837,9 +1850,11 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
 - A revision binds exact bundle/provenance, compatibility, state migration,
   retention, profile ACL/digest, and Secret references. It contains no
   plaintext, provider deployment pointer, mutable Cell state, or owner address.
-- One deployment projects to one managed ordinary Workload Service fleet with
-  one exact S0 namespace and Gateway scope. Direct Workload mutation is rejected
-  through the existing managed-owner reference.
+- One deployment correlation points to one managed ordinary Workload Service
+  fleet with one exact S0 namespace and environment-selected Gateway scope.
+  It uses existing Workloads Deployment/Operation identities and managed-owner
+  fencing; no separate Durable Cell deployment ID or lifecycle exists. Direct
+  Workload mutation is rejected through the existing managed-owner reference.
 - The public and internal Runtime ports are distinct. Only the public port may
   enter Edge desired state; operator and peer traffic remain private.
 - One application/fleet/namespace boundary is required for the v1 hostile-
@@ -2360,7 +2375,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2` currently supply the canonical Service/application ACL, immutable revision lineage, and desired-state aggregate without persistence |
+| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` currently supply the canonical Service/application ACL, immutable revision lineage, desired-state aggregate, digest-locked fixtures, and deterministic existing-owner projection identities without persistence |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |

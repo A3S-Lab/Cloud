@@ -370,6 +370,13 @@ fn validate_literal_path(path: &str) -> Result<(), String> {
 mod tests {
     use super::*;
 
+    const SERVICE_PROFILE_FIXTURE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/cell0.1/service-profile.acl"
+    ));
+    const SERVICE_PROFILE_FIXTURE_DIGEST: &str =
+        "sha256:55422ee8bc0028a10e09aef7487e321511cbcc05545d693338b5cc086d43b303";
+
     fn fixture_spec() -> DurableCellServiceProfileSpec {
         DurableCellServiceProfileSpec {
             public_runtime_port: "cell-public".into(),
@@ -393,6 +400,17 @@ mod tests {
             .canonical_acl()
             .contains("replicate_before_acknowledgement = true"));
         assert!(profile.canonical_acl().contains("conditional_overwrite"));
+    }
+
+    #[test]
+    fn shared_cell0_1_service_profile_fixture_is_canonical_and_digest_locked() {
+        let profile =
+            DurableCellServiceProfile::parse_acl(SERVICE_PROFILE_FIXTURE).expect("fixture");
+        assert_eq!(
+            format!("{}\n", profile.canonical_acl()),
+            SERVICE_PROFILE_FIXTURE.replace("\r\n", "\n")
+        );
+        assert_eq!(profile.digest().as_str(), SERVICE_PROFILE_FIXTURE_DIGEST);
     }
 
     #[test]

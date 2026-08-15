@@ -1,0 +1,22 @@
+durable_cell_application {
+  build_run_id = "11111111-1111-7111-8111-111111111111"
+  bundle_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  bundle_media_type = "application/vnd.a3s.durable-cell.bundle.v1+tar"
+  bundle_size_bytes = 65536
+  compatibility_date = "2026-08-15"
+  compatibility_flags = ["nodejs-compat"]
+  main_module = "dist/worker.mjs"
+  rollback_policy = "compatible"
+  schema = "cloud.durable-cell.application.v1"
+  service_profile_digest = "sha256:55422ee8bc0028a10e09aef7487e321511cbcc05545d693338b5cc086d43b303"
+  cell_class "Counter" {
+    maximum_readable_state_version = 2
+    minimum_readable_state_version = 1
+    write_state_version = 1
+  }
+  cell_class "Room" {
+    maximum_readable_state_version = 1
+    minimum_readable_state_version = 1
+    write_state_version = 1
+  }
+}

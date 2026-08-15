@@ -2,7 +2,7 @@
 
 ## 1. Authority and status
 
-**Status as of 2026-08-15: `CELL0.1-C1` and `CELL0.1-C2` implemented; the product is unavailable.**
+**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3` implemented; the product is unavailable.**
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
@@ -156,7 +156,8 @@ The planned Durable Cells context owns these semantic resources:
 | --- | --- | --- |
 | `DurableCellApplication` | Tenant/project/environment identity, name, desired state, active revision, aggregate version | Runtime unit, Route, bucket credentials, or Cell inventory |
 | `DurableCellApplicationRevision` | Immutable bundle/provenance reference, compatibility policy, declared Cell classes/bindings, exact Service-profile digest, state schema/migration contract, retention policy | Mutable deployment pointer, per-Cell state, provider tuning, or plaintext Secret |
-| `DurableCellDeployment` | Correlation of one revision to its managed Workload revision, placement generation, S0 namespace binding, Gateway scope, and Operation | A second rollout controller or provider lease |
+| `DurableCellProjectionIdentity` | Deterministic application/revision correlation to reserved S0 namespace identity plus existing Workload, Workload revision, Deployment, and Operation identities | Persistence, lifecycle, Gateway-scope selection, a second rollout controller, or provider lease |
+| `DurableCellDeployment` (planned `CELL0.4`) | Persisted observation/correlation of one revision to its existing managed Workload deployment, S0 namespace binding, selected Gateway scope, and Operation | A separate deployment ID, aggregate lifecycle, scheduler, rollout controller, or provider lease |
 | `DurableCellServiceProfile` | Canonical ACL for non-negotiable provider semantics and bounded public/internal surface | Application code, placement, credentials, ownership rows, or state bytes |
 
 There is intentionally no authoritative `Cell` aggregate or `cells` table.
@@ -193,6 +194,18 @@ application aggregate owns only tenant identity, desired running/stopped state,
 exact revision lineage, and optimistic version. It does not own the BuildRun,
 bundle bytes, Workload, deployment pointer, provider state, or Cell inventory.
 
+`CELL0.1-C3` checks in canonical producer fixtures for both ACL schemas and
+locks their digests through the same `a3s-acl` parse/generate path. It also
+implements `DurableCellProjectionIdentity`: `StorageNamespaceId` and
+`WorkloadId` remain stable for the application, while `WorkloadRevisionId`,
+the existing Workloads `DeploymentId`, and `OperationId` remain stable for one
+application revision. The existing Workloads managed-owner fence carries kind
+`durable-cell.application`, application ID, revision number, and exact
+application-definition digest. Gateway scope stays an environment-selected
+`CELL0.4` input. C3 creates no `DurableCellDeploymentId`, persistence,
+lifecycle, scheduler, object client, or Gateway owner lookup; S0 still owns
+namespace lifecycle and Workloads/Operations retain their existing authority.
+
 ## 8. Rollout and recovery
 
 A rollout follows the existing Workload generation lifecycle:
@@ -218,7 +231,7 @@ drain and rejects rolling coexistence.
 
 | Gate | State | Outcome | Required evidence/dependencies |
 | --- | --- | --- | --- |
-| `CELL0.1` | In progress | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile and `C2` canonical application definition, immutable revision lineage, state-schema compatibility, and aggregate are implemented; checked-in shared fixtures and projection identities remain |
+| `CELL0.1` | Implemented | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile, `C2` canonical application definition/revision aggregate, and `C3` digest-locked shared ACL fixtures plus deterministic existing-owner projection identities are implemented; this is a contract gate, not service availability |
 | `CELL0.2` | Planned | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `S0` object provider, Secrets, corruption/stale-token/credential-scope tests |
 | `CELL0.3` | Planned | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | `BX0`, Runtime Service, Fleet journal, provider adapter; no new Runtime class |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, `H0.2` |

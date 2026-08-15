@@ -24,9 +24,10 @@ pub use identifiers::{
     NodeCommandId, NodeId, NodePoolId, NotificationId, NotificationSubscriptionId, OidcFlowId,
     OntologyId, OntologyRevisionId, OperationId, OrganizationId, PlanRevisionId, PluginRegistryId,
     PrincipalId, ProjectAttributionProfileId, ProjectId, ResourceClaimId, ResourceGrantId, RouteId,
-    SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId, WorkflowDecisionId,
-    WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId, WorkloadId,
-    WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    SecretId, SourceConnectionId, SourceRevisionId, SourceSubscriptionId, StorageNamespaceId,
+    WorkflowDecisionId, WorkflowDefinitionId, WorkflowGoalId, WorkflowRevisionId, WorkflowRunId,
+    WorkloadId, WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    WorkloadRevisionId,
 };
 pub use repository_error::RepositoryError;
 pub use resource_name::ResourceName;

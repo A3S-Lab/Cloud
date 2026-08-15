@@ -54,6 +54,7 @@ identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(DurableCellApplicationId);
 identifier!(DurableCellApplicationRevisionId);
+identifier!(StorageNamespaceId);
 identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
 identifier!(OperationId);

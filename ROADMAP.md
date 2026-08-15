@@ -173,7 +173,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `K0` — Knowledge and Knowledge Pipeline | User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines | Planned and unavailable |
 | `AUT0` — Automations and Connectors | Schedule, webhook, plugin/source-event triggers and reusable outbound HTTP/business connections with exact targets, deduplication, Secret/egress policy, and recovery | Planned and unavailable |
 | `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Planned |
-| `CELL0` — Durable Cell Service | Named SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path | In progress and unavailable; `CELL0.1-C1/C2` Service/application ACL and revision aggregate implemented, real service waits for `CELL0.5` |
+| `CELL0` — Durable Cell Service | Named SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path | In progress and unavailable; `CELL0.1-C1/C2/C3` contracts, shared fixtures, revision aggregate, and existing-owner projection identities are implemented, while real service availability waits for `CELL0.5` |
 | `H0` — Production scale | Durable replicas, multi-node placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
 | `EV0` — Governed self-evolution | Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback | Planned |
@@ -226,7 +226,7 @@ desired-state authority.
 
 | Gate | State | Outcome |
 | --- | --- | --- |
-| `CELL0.1` | In progress | Freeze identities, immutable revision/projection boundaries, canonical ACL, provider protocol, errors, bounds, and compatibility vocabulary; `C1` implements `cloud.durable-cell.service.v1`, while `C2` implements `cloud.durable-cell.application.v1`, BuildRun/bundle/profile bindings, ordered Cell classes, state-version migration/rollback rules, revision lineage, and the versioned desired-state aggregate |
+| `CELL0.1` | Implemented | Freeze identities, immutable revision/projection boundaries, canonical ACL, provider protocol, errors, bounds, and compatibility vocabulary; `C1` implements `cloud.durable-cell.service.v1`, `C2` implements `cloud.durable-cell.application.v1` plus revision/desired-state rules, and `C3` adds digest-locked shared ACL fixtures and deterministic S0/Workloads/Operations identities without another deployment mechanism |
 | `CELL0.2` | Planned | Bind one S0 namespace and exact Secret versions; certify conditional create/overwrite, read-after-write, sealed recovery, backup, retention, and deletion |
 | `CELL0.3` | Planned | Certify one pinned Cell provider and typed operator adapter as an ordinary Box-hosted Runtime Service with distinct public/internal endpoints, health, drain, adoption, and cleanup |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent application commands/queries, managed Workload/Gateway projection, Operations, audit, REST/client/CLI/Management MCP; Web remains deferred |
@@ -2050,11 +2050,12 @@ gates live in the
 ### 5.16 `CELL0`: Durable Cell Service
 
 `CELL0` supplies a managed named-state service similar in outcome to Deno
-celld. Its first contract slice is implemented, but the product remains
+celld. Its `CELL0.1` contract gate is implemented, but the product remains
 unavailable. Delivery is ordered as:
 
-1. finish `CELL0.1` aggregate/revision/projection identities and frozen ACL
-   fixtures around the implemented `C1` Service profile;
+1. preserve the completed `CELL0.1` Service/application ACL, immutable
+   aggregate/revision rules, shared fixtures, and existing-owner projection
+   identities as the contract baseline;
 2. implement `CELL0.2` only through the shared `S0` object provider and Secrets
    authorities, including destructive conditional-write and recovery probes;
 3. certify one provider adapter in `CELL0.3` as an ordinary Box-hosted Runtime
@@ -2116,8 +2117,8 @@ The default portfolio priority is:
 6. preserve the verified `A1.0` shared-infrastructure regressions while
    advancing the backend identity, grant, attribution, investigation,
    notification, and audit contracts of `C0.3`, the contract-only `U0.1`, and
-   the first `S0` foundation and remaining `CELL0.1` contracts independently
-   when staffed; do not implement the
+   the first `S0` foundation when staffed; preserve completed `CELL0.1`
+   contracts and do not implement the
    role-focused console during the active freeze, and make any missing
    canonical `U0.1` type in A3S Use rather than copying it into Cloud;
 7. re-certify the `H0.1` real-provider Claim behavior while beginning
