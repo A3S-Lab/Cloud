@@ -778,24 +778,36 @@ Primary record:
 
 - `Notification`
 
-### 3.19 Outbound notification delivery (`C0.3-N2a`)
+### 3.19 Outbound notification delivery (`C0.3-N2a` / `C0.3-N2b`)
 
 The first outbound component boundary derives one immutable
 `OutboundNotificationDelivery` from an existing personal notification, one
-channel, and one opaque target-revision reference. Its UUID is deterministic
-for that triple. The canonical `a3s.cloud.notification-delivery.v1` payload is
-bounded to 16 KiB and contains no endpoint, credential, provider response, or
-inbox read state. Connection and subscription revisions remain external
-references; Notifications does not become another connection, Secret, or
-recipient-directory authority.
+channel, and one opaque exact Connector project/environment/profile/revision
+reference. Its UUID is deterministic for the notification, channel, and exact
+revision. The canonical `a3s.cloud.notification-delivery.v1` payload is bounded
+to 16 KiB and contains no endpoint, credential, provider response, or inbox read
+state. Connection and subscription revisions remain external references;
+Notifications does not become another connection, Secret, or recipient-directory
+authority.
 
-The signed-webhook and Slack-compatible adapters depend on one shared
-`IConnectorExecutionPort`. Notifications supplies a typed exact
-`ConnectorRevisionId`, bounded canonical body, non-secret headers, and optional
-signing context only. It never constructs an HTTP client or retains an endpoint,
-credential, transport policy, or provider-status policy. The signed-webhook
-context covers `v1`, the attempt timestamp, deterministic delivery ID, and exact
-canonical body.
+The signed-webhook and Slack-compatible adapters are side-effect-free request
+builders. Notifications supplies a typed exact `ConnectorRevisionId`, bounded
+canonical body, non-secret headers, and optional signing context to the sole C6
+Connector application service. It never constructs an HTTP client or retains an
+endpoint, credential, transport policy, or provider-status policy. The
+signed-webhook context covers `v1`, the stable notification occurrence time,
+deterministic delivery ID, and exact canonical body, so replay of one fenced
+attempt cannot drift its request digest.
+
+`N2b` defines one deterministic `notification.delivery.requested` fact and an
+exact-subject, durable, explicit-ack A3S Event consumer. Connector attempt IDs
+derive from delivery ID plus a bounded logical generation. A redelivery may move
+to the next generation only when every preceding C6 attempt replays immutable
+`retryable` evidence; accepted, rejected, in-flight, or indeterminate evidence
+never permits another Provider call. Retryable/infrastructure results are left
+unacknowledged for provider-owned `AckWait`; Cloud does not call `nak`, sleep,
+schedule, or persist a retry counter. The production composition enables this
+consumer only for NATS, never the non-durable memory provider.
 
 The component-only Connector executor materializes one fixed resolved revision
 and performs exactly one external attempt. Connectors owns the endpoint and
@@ -813,15 +825,15 @@ This component is not production Connector or delivery availability. The
 `AUT0.5-C2` through `C6` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, and atomic immutable
-terminal-evidence foundations now exist, but `AUT0.5` must still add supported
-management surfaces, provider/Event-consumer wiring, revocation/recovery
-operations, and Workflow ports over these same authorities. The production
-notification dispatcher must publish a Notification-owned fact through the
-existing transactional Outbox and consume it with the existing A3S Event
-durable subscription/manual-ack path. Provider
-outage must never run inside the source Outbox projector or block unrelated
-integration-event publication. Logical deduplication and receipts key off the
-deterministic delivery ID. External SMTP remains unavailable until Identity
+terminal-evidence foundations and the first Notification Event-consumer-to-C6
+composition now exist, but `AUT0.5` must still add supported management surfaces,
+general provider wiring, revocation/recovery operations, and Workflow ports over
+these same authorities. Notification still must add ACL-native subscription
+state, atomically persist each deterministic delivery fact through the existing
+transactional Outbox, and persist logical terminal receipts before this path is
+available. Provider outage must never run inside the source Outbox projector or
+block unrelated integration-event publication. Logical deduplication and receipts
+key off the deterministic delivery ID. External SMTP remains unavailable until Identity
 owns an exact verified recipient contact reference; an adapter may never infer
 an address from an OIDC claim, display name, or provider payload.
 
@@ -2244,6 +2256,7 @@ identity.organization.created
 identity.enterprise-provider.published
 identity.provisioning-binding.changed
 identity.session-policy.changed
+notification.delivery.requested
 project.environment.created
 source.github-connection.created
 source.github-connection.reconciled
