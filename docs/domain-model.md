@@ -964,7 +964,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; `CELL0.2-C1/C2` foundations implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2` and `CELL0.3-C1` foundations implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -990,6 +990,7 @@ Implemented value objects:
 - `DurableCellApplicationDefinition`
 - `DurableCellClassSpec`
 - `DurableCellStateSchema`
+- `DurableCellProviderBinding`
 
 The implemented `cloud.durable-cell.service.v1` ACL requires the
 `a3s.durable-cell-provider.v1` protocol, a dedicated application fleet,
@@ -1038,6 +1039,17 @@ Component-only `CELL0.2-C3` consumes S0's shared real-provider fixture only in
 the retained conformance gate. It does not add a Durable Cells S3 adapter or
 provider client. The gate is checked in but has no retained operator-owned pass,
 so it changes no product availability claim.
+
+Component-only `CELL0.3-C1` binds the current application and deterministic
+existing Workload revision to the exact Service profile, resolved ordinary
+Service template, and digest-pinned provider artifact. It rejects extra ports,
+shared public/internal sockets, and health checks outside the internal profile
+endpoint. Its Runtime projection reuses the Workloads Service projector, and
+its readiness admission validates the existing Fleet `RuntimeApply`
+acknowledgement before returning the existing typed Runtime endpoints. This is
+not a deployment aggregate, provider configuration, endpoint registry, command
+journal, or receipt store. Operator drain/adoption/cleanup and provider
+certification remain open.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2438,7 +2450,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` and component-only `CELL0.2-C1/C2` supply application and exact S0 correlation, while `CELL0.2-C3` supplies only the shared unexecuted provider gate |
+| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` and component-only `CELL0.2-C1/C2` supply application and exact S0 correlation, `CELL0.2-C3` supplies the shared unexecuted storage-provider gate, and `CELL0.3-C1` supplies an unpersisted exact provider/ordinary Runtime Service/Fleet receipt binding |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |

@@ -83,7 +83,7 @@ pub(crate) fn project_placement_group_runtime_spec(
 
 /// Project one ordinary Runtime Service while binding an optional immutable
 /// product semantics profile. Runtime treats the digest as opaque.
-fn project_runtime_spec_with_digest(
+pub(crate) fn project_runtime_spec_with_digest(
     revision: &WorkloadRevision,
     semantics_profile_digest: Option<&str>,
 ) -> Result<RuntimeUnitSpec, String> {

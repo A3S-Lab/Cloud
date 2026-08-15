@@ -245,6 +245,21 @@ operator-owned pass is still required, and no provider is certified by this
 checked-in gate alone. Operator inputs and evidence rules are documented in the
 [S0 object namespace conformance guide](../tools/s0-conformance/README.md).
 
+Component-only `CELL0.3-C1` adds `DurableCellProviderBinding` without another
+Service definition or lifecycle. It correlates the exact current application
+revision and deterministic existing Workload revision with the canonical
+Service-profile digest, resolved Service-template digest, and digest-pinned OCI
+provider artifact. Admission requires exactly the profile's public and internal
+TCP ports on distinct container sockets and an HTTP health check on the internal
+port. The Runtime projection calls the shared Workloads Service projector and
+sets only Runtime's existing opaque semantics-profile digest. Readiness consumes
+the existing Fleet `RuntimeApply` command acknowledgement, validates it through
+the shared command/receipt contract, and returns the two existing typed Runtime
+endpoints. C1 adds no Runtime class, provider configuration, endpoint registry,
+command table, deployment state, or product-specific receipt store. Typed
+operator drain/adoption/cleanup dispatch and real provider certification remain
+open.
+
 ## 8. Rollout and recovery
 
 A rollout follows the existing Workload generation lifecycle:
@@ -272,7 +287,7 @@ drain and rejects rolling coexistence.
 | --- | --- | --- | --- |
 | `CELL0.1` | Implemented | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile, `C2` canonical application definition/revision aggregate, and `C3` digest-locked shared ACL fixtures plus deterministic existing-owner projection identities are implemented; this is a contract gate, not service availability |
 | `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `C1` implements the sole-client CAS port/probe and exact credential/storage bindings. `C2` implements exact active Secret/JIT materialization and digest-locked recovery, retention, restore, and deletion contracts. `C3` checks in the shared HTTPS S3-compatible gate, secret-safe retained-evidence script, and manual workflow while removing a duplicate raw test client. A retained provider pass, recovery/deletion execution, and fault evidence remain |
-| `CELL0.3` | Planned | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | `BX0`, Runtime Service, Fleet journal, provider adapter; no new Runtime class |
+| `CELL0.3` | In progress | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | Component-only `C1` binds and projects the exact provider through the shared Workloads Service path and admits only an exact healthy Fleet `RuntimeApply` receipt. Typed operator dispatch, drain/adoption/cleanup, real Box/provider execution, provenance, and retained certification remain; no new Runtime class or journal |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, `H0.2` |
 | `CELL0.5` | Planned | Pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Exact Cloud/Runtime/Box/Gateway/S0/provider revisions and retained fault evidence |
 | `CELL0.6` | Planned | Pass multi-node ownership, forwarding, takeover, node loss, partition, pressure shedding, graceful handoff, rolling provider upgrade, and stale-node return without split brain | `CELL0.5`, `H0.3`, production S0 provider and private networking |
