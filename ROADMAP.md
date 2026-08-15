@@ -1028,8 +1028,8 @@ adds no direct HTTP client, copied Connector/Secret/contact authority, retry
 table, mutable counter, token bucket, timer, queue, scheduler, second event rail,
 or configuration format.
 
-Supported outbound-subscription management, retained migration-115 and NATS
-evidence, user-configured suppression/delivery budgets, SMTP and alert policy,
+Supported outbound-subscription management, retained NATS evidence,
+user-configured suppression/delivery budgets, SMTP and alert policy,
 tenant-scoped security investigation, audit retention/export policy, and
 role-focused frontend projections remain planned, so `C0.3` is in progress
 rather than verified.
@@ -1052,7 +1052,7 @@ their own RBAC or resource-ownership registry:
 | `C0.3-N2b` | Implemented; focused Rust 1.88 tests pass (`2026-08-14`) | One deterministic `notification.delivery.requested` fact carries the exact Connector revision to one exact-subject NATS durable/manual-ack consumer. Deterministic attempt generations advance only past replayed immutable C6 retryable evidence; accepted, rejected, in-flight, and indeterminate attempts never authorize another Provider call. A3S Event `AckWait` remains the only redelivery authority; no `nak`, sleep, queue, scheduler, or retry counter is added. |
 | `C0.3-N2c` | Implemented; PostgreSQL 17 component evidence passes (`2026-08-15`) | One immutable personal `cloud.notification.outbound-subscription.v1` A3S ACL pins the recipient, channel, severity floor, and exact Connector revision. Migration `114` atomically persists matching inbox projection, delivery authorization, and Outbox fact. The consumer admits only that exact fact, commits one monotonic Delivered, Rejected, or Indeterminate C6 receipt before ACK, and turns receipt-commit/ACK loss into ACK-only replay. The [successful PostgreSQL 17 job](https://github.com/A3S-Lab/Cloud/actions/runs/31870067201/job/94977216459) proves migration, exact binding, atomic fact emission, and idempotent settlement without another configuration, queue, or retry mechanism. |
 | `C0.3-N2d` | Implemented; focused Rust 1.88 tests pass (`2026-08-15`) | Replayed C6 retryable evidence with bounded `Retry-After` prevents every later deterministic generation until its exact completion-plus-delay deadline. A3S Event `AckWait` supplies the only clock and redelivery; no token bucket, rate table, mutable counter, timer worker, sleep, queue, scheduler, or second retry policy is added. |
-| `C0.3-N2e` | Implemented; focused Rust 1.88 and migration guards pass, retained PostgreSQL evidence pending (`2026-08-15`) | A fixed budget permits eight deterministic Provider attempts derived solely from existing immutable C6 evidence. Replay of generation-eight retryable evidence commits one exact Exhausted receipt before ACK and cannot authorize generation nine; ACK loss remains ACK-only. Migration `115` expands the existing receipt constraint without adding a table or column. User-configured budgets remain a later versioned ACL semantic gate and cannot mutate the v1 subscription. |
+| `C0.3-N2e` | Implemented; PostgreSQL 17 component evidence passes (`2026-08-15`) | A fixed budget permits eight deterministic Provider attempts derived solely from existing immutable C6 evidence. Replay of generation-eight retryable evidence commits one exact Exhausted receipt before ACK and cannot authorize generation nine; ACK loss remains ACK-only. Migration `115` expands the existing receipt constraint without adding a table or column. The [successful PostgreSQL 17 job](https://github.com/A3S-Lab/Cloud/actions/runs/31872285521/job/94982690995) proves the migration, exhausted receipt, exact C6 evidence binding, and idempotent settlement. User-configured budgets remain a later versioned ACL semantic gate and cannot mutate the v1 subscription. |
 
 The verified `C0.3-RG2` boundary is the authorization prerequisite now reused
 by protected HumanTask submission and remains mandatory for any new

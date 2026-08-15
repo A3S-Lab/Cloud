@@ -852,9 +852,9 @@ evidence, and the first Notification Event-consumer-to-C6 composition now
 exist. `AUT0.5` must still add supported management surfaces, general provider
 wiring, revocation/recovery operations, and Workflow ports over those same
 authorities. Notifications still needs supported subscription management
-surfaces, retained NATS/PostgreSQL evidence for the final budget migration, and
-separate versioned semantics before any user-configured suppression or delivery
-budget is admitted. Provider outage never runs inside the source Outbox projector
+surfaces and retained NATS evidence, plus separate versioned semantics before
+any user-configured suppression or delivery budget is admitted. Provider outage
+never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
 receipts key off the deterministic delivery ID. External SMTP remains
 unavailable until Identity owns an exact verified recipient contact reference;
