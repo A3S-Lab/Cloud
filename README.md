@@ -35,7 +35,7 @@ path.
 
 ## Product system
 
-Four products compose the same Cloud authorities. None creates its own control
+Five products compose the same Cloud authorities. None creates its own control
 plane, scheduler, runtime, queue, identity store, or evidence rail.
 
 | Product | Outcome | Shared foundation |
@@ -44,6 +44,7 @@ plane, scheduler, runtime, queue, identity store, or evidence rail.
 | **02 / Workflow Orchestration** | Compile ontology-defined goals and typed graphs into recoverable execution | Workflow owns immutable semantics; A3S Flow and Operations own durable orchestration |
 | **03 / Agent Factory** | Turn heterogeneous Harness implementations into immutable, evaluated, deployable Agent products | Assets, Agents, Workloads, Fleet, Runtime, Box, and one `AgentExecutionProvider` boundary |
 | **04 / AI Application Platform** | Build, publish, monitor, and govern application experiences, Knowledge, plugins, and automations | Applications compose exact Workflow and Agent revisions with existing platform owners |
+| **05 / Durable Cell Service** | Run named, SQLite-backed state entities with alarms, WebSockets, idle eviction, and fenced recovery | Durable Cells owns application intent; Workloads/Fleet host one ordinary Runtime Service fleet; the selected provider and S0 own per-Cell state and fencing |
 
 A3S Code is one first-party Harness provider, not a privileged execution path.
 Security operations correlate Gateway, Runtime, Box, Agent, A3S Sentry,
@@ -68,8 +69,9 @@ The architecture separates three paths:
    versioned command through the outbound-only Node Agent. Runtime owns Task
    and Service lifecycle; Box is the sole local execution/build provider.
 3. **Live requests:** A3S Gateway sends opaque bytes directly to an exact
-   healthy workload, Harness, MCP, or Power endpoint. Cloud stays off this byte
-   path and advances only from matching applied evidence.
+   healthy workload, Harness, MCP, Power, or Durable Cell provider endpoint.
+   Cloud stays off this byte path and advances only from matching applied
+   evidence.
 
 Explore the [interactive architecture](https://a3s-lab.github.io/Cloud/architecture/)
 or read the [technical architecture](docs/architecture.md) for bounded
@@ -103,6 +105,8 @@ claim. The joint Runtime, Box, Gateway, recovery, and cleanup gates still apply.
 | Node delivery and hard resources | Fleet, Node Agent journal, and Claims | Direct process control or a second node channel |
 | Provider lifecycle | A3S Runtime Task and Service | Product policy inside Runtime or direct provider calls from business contexts |
 | Local execution and builds | A3S Box | Parallel Docker, BuildKit, sandbox, or Cloud executor paths |
+| Durable Cell application intent | Durable Cells context plus immutable `cloud.durable-cell.service.v1` ACL | A second Workload controller, Runtime class, provider configuration store, or per-Cell Cloud scheduler |
+| Per-Cell state and ownership | Selected Cell provider in one S0 application namespace | PostgreSQL Cell/lease/epoch/SQLite mirrors, Gateway owner lookup, or Cloud peer membership |
 | Traffic application | Edge planner/compiler, Fleet command, A3S Gateway applied state | Ordinary/MCP publishers, Cloud proxying, or inferred success |
 | Identity and authorization | Principals, Memberships, invitations, grants, credentials, and revocation | Console-local users, credential-owned roles, or adapter-specific RBAC |
 | Personal and outbound notifications | Notifications owns the exact-recipient inbox and deterministic delivery intent; A3S Event owns durable consumption; Connectors and Secrets own targets and credentials; Identity owns verified contacts | A second event rail, provider-local retry scheduler, copied target/Secret/contact authority, or presentation-local inbox |
@@ -125,6 +129,7 @@ failure, recovery, cleanup, and release evidence passes.
 | Plugins | Exact A3S Use compatibility plus trusted Registry/catalog reads | Tenant assignments and complete `U0` gate remain |
 | Agent execution | Provider-neutral Harness boundary and common workload path | Native Code verification and later governance gates remain |
 | Connectors | Exact-revision profiles, canonical A3S ACL admission, authorized just-in-time Secret materialization, public-Internet DNS/SSRF enforcement with exact address pinning, durable pre-dispatch attempt fencing, one-shot authorized execution composition, atomic immutable terminal evidence, authorized bounded recovery reads, REST/OpenAPI/client/CLI/Management MCP profile lifecycle, the first Notification-owned A3S Event consumer composition, a component-only Workflow exact-attempt adapter over the same C6 service, and an immutable Workflow policy v2 retry budget | Workflow Flow scheduling/interpretation and immutable response-object composition, general provider wiring, revocation/recovery operations, retained integration evidence, and `AUT0.5` availability remain |
+| Durable Cells | `CELL0.1-C1/C2` freeze the canonical Service profile plus application ACL, BuildRun/bundle/profile bindings, ordered Cell classes, state-schema migration/rollback rules, immutable revision lineage, and versioned desired-state aggregate | Shared fixtures/projection identities, S0 binding, Runtime/Box provider adapter, orchestration, Gateway publication, real fault evidence, and `CELL0.5` availability remain |
 | Applications, Knowledge, Automations, Inference | Ownership and staged architecture are frozen | `APP0`, `K0`, `AUT0`, `PW0`, and `I0` remain unavailable |
 
 Notifications now include exact-recipient in-app projections, immutable personal
@@ -180,7 +185,7 @@ transfer their owners.
 | Governance | Organizations, projects, environments, identity, grants, REST, CLI, Web, Search, Management MCP, audit, and notifications |
 | Source and artifacts | External Git, webhooks, immutable revisions, reproducible Box builds, provenance, previews, monorepos, imports, and hosted releases |
 | Compute and fleet | Finite Tasks, Services, cancellation, cleanup, placement, rollout, Claims, outbound mTLS, commands, receipts, fencing, draining, and recovery |
-| Traffic and data | Domains, TLS, Gateway scopes, routes, Secrets, immutable objects, volumes, databases, backup, restore, retention, and writer fencing |
+| Traffic and data | Domains, TLS, Gateway scopes, routes, Secrets, immutable objects, volumes, databases, backup, restore, retention, writer fencing, and named Durable Cells |
 | Agents and Workflow | Conversations, approvals, checkpoints, Tools, Skills, MCP, models, typed Workflows, HumanTasks, providers, compensation, evaluation, promotion, and rollback |
 | Application platform | Six application projections, sessions/messages, conversation variables, files, RAG Knowledge, Knowledge Pipelines, triggers, connectors, publication, monitoring, feedback, and enterprise policy |
 | Inference | Power-hosted models, accelerator Claims, provider policy, scoped keys, routing/fallback, usage, and governed self-service |
@@ -348,6 +353,7 @@ Client, CLI, Web, website, contract, and compatibility checks remain in CI.
 | [Domain model](docs/domain-model.md) | Aggregates, state machines, and invariants |
 | [Workflow and evolution](docs/workflow-evolution-plan.md) | `W0`, heterogeneous `A1`, and governed `EV0` contracts |
 | [AI application platform](docs/ai-application-platform-plan.md) | `APP0`, `K0`, `AUT0`, node coverage, Flow-preservation rules, and parity evidence |
+| [Durable Cell Service](docs/durable-cell-platform-plan.md) | `CELL0` ownership, fencing, provider boundary, ordered gates, and fault evidence |
 | [Architecture decisions](docs/decisions/app-platform/README.md) | Normative authority boundaries for application-platform work |
 | [Inference plan](docs/inference-plan.md) | Model, provider, routing, usage, and conformance design |
 | [Management MCP](docs/management-mcp.md) | Protocol, authorization, and tool contract |

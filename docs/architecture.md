@@ -20,6 +20,7 @@ shipped claim unless its gate is marked `Verified` in the product roadmap.
 | [Domain model](domain-model.md) | Aggregates, state machines, invariants, and data ownership |
 | [Workflow and evolution plan](workflow-evolution-plan.md) | Detailed `W0`, heterogeneous `A1`, and governed `EV0` contracts, ordering, and failure evidence |
 | [AI application platform plan](ai-application-platform-plan.md) | Detailed `APP0`, `K0`, `AUT0`, built-in node coverage, and public parity evidence |
+| [Durable Cell Service plan](durable-cell-platform-plan.md) | Detailed `CELL0` authority, provider/storage boundary, fencing, gates, and fault evidence |
 | [Inference plan](inference-plan.md) | Detailed `I0` model-serving design |
 | [Management MCP contract](management-mcp.md) | Management MCP transport and authorization contract |
 | [A3S Use plugin roadmap](https://github.com/A3S-Lab/Use/blob/main/ROADMAP.md) | Canonical package, catalog, plan/apply, grant, binding, capability-generation, and shared Plugin Manager delivery |
@@ -35,7 +36,7 @@ resumable Agent and application execution on operator-owned Linux systems. Its
 target is to replace the operational roles commonly assembled from Google AX
 and Kubernetes without requiring either system.
 
-The outward-facing application layer groups that platform into four products:
+The outward-facing application layer groups that platform into five products:
 
 | Product | Customer outcome | Reused authorities |
 | --- | --- | --- |
@@ -43,6 +44,7 @@ The outward-facing application layer groups that platform into four products:
 | Workflow autonomous orchestrator | Turn ontology-defined business objects, relationships, rules, goals, and constraints into executable, recoverable workflows across Agents, tools, people, and services | Workflow owns ontology and plan semantics; A3S Flow and Operations remain the only durable orchestration path; existing Agent, MCP, Inference, and Use ports execute typed steps |
 | Agent Factory | Turn heterogeneous Agent prototypes and Harnesses into versioned, evaluated, deployable products with one Cloud execution and evidence contract | Assets, Agents, Workloads, Fleet, Runtime, Box, and one provider-neutral Harness port; A3S Code is the first-party native provider rather than the only admissible Harness |
 | AI Application Platform | Build, publish, monitor, and govern Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow experiences with Knowledge, plugins, triggers, APIs, embed, and MCP delivery | Applications projects every mode to an exact Workflow revision; classic/New Agent reuse A0/A1/AR0; Knowledge pipelines reuse Workflow/Flow; Automations starts exact releases; existing platform authorities remain authoritative |
+| Durable Cell Service | Run named, SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, and fenced recovery | Durable Cells owns application intent; Workloads/Fleet host an ordinary Runtime Service fleet; a selected provider and S0 own per-Cell state and single-writer fencing |
 
 These are product compositions, not new control planes or bounded-context
 authorities. Each product reuses the single-authority map below. Their public
@@ -52,7 +54,7 @@ availability and completion claims remain governed by the exact gates in
 Security monitoring and investigation remain a capability inside the Unified
 Gateway product. They correlate Gateway, Runtime, Box, Agent, A3S Sentry, and
 AnySentry evidence through the shared Identity and audit model; they do not
-introduce a fifth product, a security scheduler, or another node channel.
+introduce a separate security product, scheduler, or node channel.
 
 The public website uses a product-layer vocabulary. The following projection
 is normative so those names cannot turn into duplicate mechanisms:
@@ -69,6 +71,7 @@ is normative so those names cannot turn into duplicate mechanisms:
 | Runtime WaaS/AaaS/FaaS | Product profiles compiled to existing primitives | WorkflowRun uses Flow, AgentExecution uses Agents, and finite functions use Executions; Runtime still exposes only Task and Service lifecycle |
 | Asset Hosting | Federated catalog of exact AssetRelease, WorkflowRevision, ModelRevision, and A3S Use package references | Search provides one read projection; each owning context retains release authority and bytes use one immutable-object client |
 | Distributed File Storage | Product storage plane over immutable objects and fenced mutable volumes | Shared immutable-object infrastructure plus `S0` Data providers and `H0` replication; it is never business desired-state authority |
+| Durable Cell Service | Managed named-state application over one immutable profile and ordinary Service fleet | Durable Cells owns application revisions/projections; the Cell provider owns individual SQLite/ownership inside S0; no Cell scheduler, Runtime class, Gateway lookup, or PostgreSQL state mirror |
 | A3S Event rail | Publication of committed integration facts | Transactional Outbox plus A3S Event; Fleet commands/receipts and audit records retain their distinct authorities |
 | Workloads + Fleet scheduling rail | The only placement, resource-claim, rollout, and node-delivery path | Workflow, Agent, MCP, inference, and evolution cannot add schedulers or queues |
 | Self-Evolution | Governed evidence, evaluation, candidate, and promotion policy | `EV0` reuses Flow, Workloads, Fleet, Runtime, Box, releases, and owning-context rollouts; no direct telemetry-to-production loop |
@@ -88,6 +91,7 @@ box in the public diagram. The following preservation matrix is mandatory:
 | Runtime/Box provider lifecycle, isolation, mounts, outputs, checkpoints, and builds | Runtime, Box, `BX0`, `PW0` | Sole execution substrate; new services do not add providers or executors |
 | Domains, certificates, Edge desired state, Gateway snapshots, health, routing, update, rollback, and logs | Edge, Gateway, Secrets, `E0`, `H0` | Concrete live-traffic and recovery mechanisms inside the Unified Gateway product |
 | Secrets, immutable objects, persistent volumes, databases, backup, restore, and retention | Secrets, Artifacts, Data, `S0` | Shared trust and storage plane; Distributed File Storage does not replace database or Secret semantics |
+| Named SQLite-backed Durable Cells, alarms, WebSockets, idle eviction, and fenced handoff | Durable Cells, selected provider, `CELL0` | Product intent compiles to Workloads/Runtime/Box; per-Cell state and ownership never enter Cloud PostgreSQL or Gateway |
 | Operations, idempotency, Outbox/Event, audit, Search, notifications, telemetry, and runbooks | Operations, Integration Events, Search, `F0`, `C0`, `H0` | Cross-cutting mechanisms reused by Workflow and Evolution; none becomes a new product-local implementation |
 
 ### 2.1 Reference capability preservation register
@@ -102,6 +106,7 @@ scheduler, event log, identity store, or data plane.
 | --- | --- | --- | --- |
 | Standalone A3S Workflow graph authoring, ten AI-native node outcomes, per-step placement intent, approvals, recovery, Runtime evidence, coding-agent automation, and a future Designer | Workflow owns closed ontology/graph/revision/plan semantics plus immutable descriptor, typed-variable, and composite-region policy contracts; typed steps call Agents, MCP, Inference, Use, Executions, and connector ports; Operations/Flow and the common execution path own recovery and compute | `W0.1` is implemented and `W0.2` is verified; `W0.3` includes immutable definition/payload/goal authority, revision-owned descriptor bindings/registry snapshot/variable/default/composite contracts, exact Plan v2 pinning, typed-variable Flow projection and authorized inspection, a project-authorized read-only 23-node discovery catalog, WorkflowRun, the HumanTask loop, protected reads, and finite Execution. Composite frames/exports and Flow-backed Iteration/Loop dispatch, Applications-owned variables, remaining provider bindings, compensation, production recovery, and deferred Designer delivery remain gate-driven | The standalone Boot server, PostgreSQL bootstrap, Flow queue/worker, process Runtime provider, node runner, variable or region store, Memory service, evidence store, CLI authority, deployment stack, legacy product-configuration authority, or React Studio |
 | Dify-style six current application experiences, including distinct classic and New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin extension outcomes, multi-channel publication, monitoring, and enterprise governance | `APP0` owns application releases and delivery; `K0` owns RAG corpus and pipeline intent; `AUT0` owns new-invocation triggers and outbound connection profiles; `W0` compiles every executable graph to Flow; existing `A0`, `A1`, `AR0`, `I0`, `U0`, `MCP0`, `C0`, `S0`, and `H0` provide the shared platform | Planned and unavailable; the exact ownership, node mapping, delivery order, and composite parity gate are defined in the AI application platform plan | Dify APIs, storage topology, package lifecycle, configuration authority, separate mode runtimes, another Agent/sandbox lifecycle, pipeline engine, plugin installer, vector database as truth, or scheduler |
+| Deno celld-style named Durable Objects, one SQLite database per object, alarms, hibernatable WebSockets, inactive residency, object-store CAS ownership, write durability, and node handoff | `CELL0` owns immutable Durable Cell application intent and projects one ordinary Workload Service fleet; the selected Cell provider owns per-Cell execution/ownership/state in one S0 namespace | `CELL0.1-C1/C2` Service/application ACL, state-version compatibility, revision lineage, and desired-state aggregate are implemented; S0 binding, provider adapter, orchestration, single-node `CELL0.5`, multi-node `CELL0.6`, and compatibility `CELL0.7` remain unavailable | celld control topology, raw configuration/deploy authority, public operator API, per-Cell Cloud rows, new Runtime class, Gateway owner lookup, or blanket Cloudflare compatibility |
 | TokenHub-style private multi-provider model gateway, model catalog, priority/weight routing, fallback, and route-health diagnostics | Inference owns immutable model, Provider, route, and policy revisions; Edge owns route intent; Gateway applies the typed protocol/data-plane snapshot | Planned `I0.2b`, `I0.2d`, `I0.5`, and optional `I0.6` protocol/provider expansion | TokenHub API/storage topology, provider-native desired state, a second proxy, or Gateway-owned management state |
 | TokenHub-style consumer, project-steward, and platform-operator workspaces with project/environment keys, enterprise sign-in, RBAC, quotas, and concurrency policy | Identity owns Principals, external OIDC subject links, Memberships, MembershipInvitations, Resource Grants, credentials, and revocation; `C0` owns authorized surfaces; Inference owns model access policy | The `C0.3` Principal/Membership/credential, exact-Principal invitation, project/environment/node Resource Grant, exact OIDC link/flow persistence, ordinary short-lived login credential, bounded OIDC discovery/JWKS/ID-token adapter, and production-wired REST/OpenAPI/client login-link-callback surfaces are implemented and pass focused persistence, local TLS, or cross-layer gates; retained OIDC PostgreSQL cross-surface evidence and role-focused projections remain open; model/key self-service is planned in `I0.2e` | Browser-only filtering, another user/key store, plaintext credential recovery, credential-owned roles, or UI modes as authorization |
 | TokenHub-style usage, request attribution, diagnostics, API exploration, and cost showback | Gateway emits bounded request/attempt facts; Inference owns the durable usage ledger; Project attribution and authorized views belong to `C0` | Planned `I0.2c`, `C0.3`, and `I0.2e` | Prompts or responses in management telemetry, commercial balance/invoice/settlement authority, or client-side usage truth |
@@ -152,7 +157,10 @@ The architecture also excludes:
 - a Cloud package installer, plugin capability registry, workspace-grant
   store, Runtime-binding store, or plugin-specific execution protocol;
 - Docker, a Docker-compatible daemon, or a fallback execution provider;
-- Cloud on the live application, MCP, or inference byte path;
+- Cloud on the live opaque application, MCP, Durable Cell, or inference byte
+  path;
+- a Cell-specific scheduler, Runtime class, node channel, object client,
+  Gateway ownership cache, or PostgreSQL copy of Cell state/leases/alarms;
 - mutable provider configuration as product desired state;
 - Redis as durable business, coordination, or replay state; and
 - parallel domain-specific implementations of idempotency, object storage,
@@ -187,6 +195,10 @@ The architecture also excludes:
     wants which exact A3S Use package on which authorized workspace host. The
     shared A3S Use Plugin Manager remains the only component allowed to plan,
     apply, reconcile, enable, disable, drain, or remove that package.
+12. **Durable Cell residency is provider state, not Cloud scheduling.** Cloud
+    schedules one ordinary Service fleet per application. The Cell provider
+    alone activates, evicts, restores, and fences named Cells inside its S0
+    namespace; Cloud and Gateway never mirror their ownership.
 
 ## 4. Single-authority map
 
@@ -206,6 +218,8 @@ second entry in an authority row must be redesigned before implementation.
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
 | Ontology, goal, plan, and Workflow semantic state | Workflow context in PostgreSQL | Flow history as business truth, a graph database authority, planner-local files, or a second workflow engine |
 | Application identity, immutable release, delivery/toolkit policy, sessions, messages/variants, conversation variables, feedback, and annotations | Applications context in PostgreSQL | Mode-specific/toolkit runtimes, Workflow-owned conversations, direct provider clients, delivery-local state, or presentation state as truth |
+| Durable Cell application identity, immutable revision, retention intent, and deployment projection | Durable Cells context in PostgreSQL | Cell state/lease rows, provider-native deployment authority, a second Workload controller, or application code as mutable desired state |
+| Individual Durable Cell SQLite, ownership epoch, alarm, WebSocket residency, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace | PostgreSQL mirrors, Cloud lease/peer tables, Runtime units per Cell, Gateway owner lookup, or Cloud timer rows |
 | Application template/catalog revisions | Applications owns immutable A3S-native template manifests; Search owns rebuildable authorized discovery | A copied reference-product package/configuration format, public catalog as authority, or another Search index |
 | Agent/Skill/MCP asset identity, immutable source/release, permanent capability files, and release evidence | Assets context through `A0` | Applications-owned Agent definitions/files, sandbox state as release truth, or a New-Agent package store |
 | RAG Knowledge Bases, documents, General/Parent-child/Q&A and multimodal chunks, ingestion intent, index/retrieval policy, citations, and external Knowledge bindings | Knowledge context in PostgreSQL | Workflow-owned corpus tables, Search/vector indexes as business truth, or plugin-owned Knowledge state |
@@ -218,13 +232,13 @@ second entry in an authority row must be redesigned before implementation.
 | Request replay | Shared tenant-scoped idempotency records | Per-context idempotency tables or in-memory replay state |
 | Integration facts | Transactional Outbox plus A3S Event | Direct publish-before-commit or a profile-specific event bus |
 | Personal and outbound notification projection | Notifications owns the exact-recipient inbox and deterministic delivery intent; A3S Event owns durable consumption; Connectors/Secrets own target and credential material; Identity owns verified recipient contacts and retains invitation/revocation lifecycle | Business desired state, source-fact mutation, a second event rail or queue, provider-local retry scheduler, copied connection/Secret/contact authority, or presentation-local inbox |
-| Placement, replicas, rollout, and scaling | Workloads | Agent, MCP, inference, Gateway, or import-specific schedulers and autoscalers |
+| Placement, replicas, rollout, and scaling | Workloads | Agent, MCP, Durable Cell, inference, Gateway, or import-specific schedulers and autoscalers |
 | Node delivery | Fleet `node_commands`, leases, and the Node Agent journal | Direct Cloud-to-process control, second queue, or profile-specific node channel |
 | Provider-neutral lifecycle | A3S Runtime Task and Service | Product policy inside Runtime or provider calls from Cloud contexts |
 | Local execution and build | A3S Box | Docker, BuildKit, another Runtime driver, or a Cloud-owned local executor |
 | Node resource ownership | Fleet Claims and fencing | In-memory reservations or provider state treated as a reusable claim |
 | Routing intent | Edge | Gateway-local desired routes in managed mode |
-| Applied request-path state | A3S Gateway | Cloud request proxying or Edge inferring an apply without acknowledgement |
+| Applied request-path state | A3S Gateway | Cloud request proxying, Durable Cell owner lookup/stickiness, or Edge inferring an apply without acknowledgement |
 | Product configuration | A3S ACL through `a3s-acl` | Non-ACL product configuration, provider-native manifests, or compatibility parsers |
 | Hosted Asset Git refs, objects, and rollback evidence | Assets `LocalAssetGitRepository` plus its same-lease checksummed journal | PostgreSQL ref mirrors, Source checkout clones, Artifact copies, or another Git runner |
 | Hosted Asset Git writer, quota, commit, and backup-reference state | One `asset_git_repository_controls` row through A3S ORM | Redis/file locks, process-local writer flags, a second repository-control table, or event-stream authority |
@@ -255,7 +269,7 @@ raw SQL as a local escape hatch.
 flowchart TB
     Client[Web / CLI / API / Management MCP]
     API[Cloud API and application layer]
-    Services[Applications / Workflow / Knowledge / Automations / Agent / MCP / Model ports]
+    Services[Applications / Workflow / Knowledge / Automations / Agent / MCP / Model / Durable Cell ports]
     DB[(PostgreSQL desired state)]
     Flow[A3S Flow and Operations]
     Workloads[Workloads placement and rollout]
@@ -264,6 +278,8 @@ flowchart TB
     Runtime[A3S Runtime Task / Service]
     Box[A3S Box]
     Payload[Hosted application / Harness / MCP / Power]
+    CellProvider[Durable Cell provider Service]
+    CellStore[(S0 application namespace)]
     Edge[Edge desired routing]
     Gateway[A3S Gateway applied state]
 
@@ -277,9 +293,12 @@ flowchart TB
     Agent --> Runtime
     Runtime --> Box
     Box --> Payload
+    Box --> CellProvider
+    CellProvider <--> CellStore
     Edge --> Fleet
     Fleet --> Gateway
     Gateway --> Payload
+    Gateway --> CellProvider
     Agent -->|observations and receipts| Fleet
     Fleet --> DB
     Gateway -->|applied revision| Agent
@@ -290,7 +309,7 @@ Flow progress, Fleet leases, node journal entries, Runtime receipts, and
 Gateway acknowledgements form explicit recovery boundaries.
 
 The website service labels are application capabilities inside the
-modular control plane, not four deployable control planes. Their executable
+modular control plane, not five deployable control planes. Their executable
 steps converge through the same Flow, Workloads, Fleet, Runtime, and Box path.
 The Unified Gateway product spans Cloud management policy and Gateway live
 traffic, but the concrete Gateway component never receives Work/CLI management
@@ -322,6 +341,20 @@ application client
 The delivery role is not a generic reverse proxy and does not interpret plans,
 invoke providers, schedule steps, or own a second session/event store. It is
 the sole public managed-application exception to the opaque workload rule.
+
+A `CELL0` application remains on the opaque workload path:
+
+```text
+HTTP or WebSocket client
+  -> A3S Gateway
+  -> any healthy public Cell-provider Service endpoint
+  -> current Cell owner, resolved or privately forwarded by the provider
+  -> SQLite state in the application-scoped S0 namespace
+```
+
+Cloud and Gateway never resolve the named Cell owner. The internal peer and
+operator endpoint is not a Route, and a dispatched request is never replayed
+by Gateway to compensate for provider ambiguity.
 
 ### 5.3 Deployable processes
 
@@ -396,6 +429,7 @@ not business ownership or convenience wrappers.
 | Evolution | Authorized evidence-dataset manifests, evaluation suites, experiments, candidate revisions, promotion decisions, and rollback evidence | Planned `EV0` |
 | Plugins | Tenant registry enrollment, desired A3S Use package assignments, reviewed-plan projection, and applied-host observations | Planned `U0` |
 | Agents | Conversations, heterogeneous-provider Agent executions, semantic events, approvals, checkpoints, forks, and trajectories | `A1.1` implemented; the `A1.2` native Code provider is implemented locally with publication and Linux recovery verification pending; provider-neutral `A1.3` and `A1.4` through `A1.6` are planned |
+| Durable Cells | Durable Cell application identity, immutable revision/profile, retention intent, and exact Workload/S0/Gateway deployment projection; never individual Cell state or ownership | `CELL0.1-C1/C2` Service/application ACL, migration-safe revision lineage, and desired-state aggregate implemented; remaining `CELL0.1`, provider/storage/orchestration gates, and `CELL0.5` availability are planned |
 | Data | Managed databases, immutable-object and volume provider policy, distributed volumes, backup, restore, retention, and writer fencing | Planned `S0`; shared immutable-object foundation already verified under `A1.0` |
 | Inference | Models, backends, deployments, routes, provider egress, and durable usage | Planned `I0` |
 
@@ -646,6 +680,7 @@ and digests rather than secret or transcript payloads.
 | Operation projection | User-visible asynchronous command progress | Workflow authority |
 | Agent semantic events | Conversation, tool, approval, checkpoint, and terminal semantics | Runtime log or integration bus |
 | Runtime logs | Ordered process output and explicit gaps | Business events or approval evidence |
+| Durable Cell provider lineage | Per-Cell SQLite segments/snapshots, ownership epochs, seals, alarms, and residency | Cloud desired state, a PostgreSQL aggregate, Gateway routing state, or audit |
 | Audit records | Security-relevant actor, action, target, and outcome | Domain state or telemetry |
 | Telemetry | Metrics, traces, and diagnostic correlation | Desired state or durable usage ledger |
 
@@ -695,6 +730,7 @@ The same path serves different products:
 | Stateless application or hosted MCP server | Workloads | Service | Health, replicas, rollout, and Gateway publication |
 | Agent Harness | Agents over Workloads | Service, with versioned Harness commands | Semantic events, immutable bindings, approval, checkpoint, and fork |
 | Stateful service | Data over Workloads | Service | Volume claim, writer fencing, backup, and restore |
+| Durable Cell application | Durable Cells over Workloads | Service | Dedicated application fleet, S0 namespace, provider-owned per-Cell SQLite/epoch fencing, alarms, WebSockets, and idle reactivation |
 | Inference backend | Inference over Workloads | Power Service | Accelerator claims, model cache, routing, limits, and usage |
 
 No import format or product profile may bypass this lifecycle. An importer
@@ -1083,7 +1119,7 @@ partition recovery are `H0.3` concerns. They extend the same endpoint identity
 and snapshot acknowledgement model instead of adding a service mesh or a
 second discovery database.
 
-## 13. Stateful and inference profiles
+## 13. Stateful, Durable Cell, and inference profiles
 
 ### 13.1 Stateful resources
 
@@ -1106,7 +1142,39 @@ volume Claim is released or a trusted provider fencing event proves it cannot
 write. A backup is not a product capability until restore succeeds in a clean
 environment and retained objects pass integrity checks.
 
-### 13.2 Inference
+### 13.2 Durable Cells
+
+`CELL0` adds a `Durable Cells` context for named, long-lived state application
+intent. The context owns application identity, immutable revisions, exact
+Service-profile ACL/digest, retention policy, and the correlation to existing
+Workload, S0 namespace, Gateway scope, Operation, and audit identities. It does
+not own individual Cell aggregates.
+
+One application revision projects to one dedicated ordinary Workload Service
+fleet. A digest-pinned Cell provider runs inside Box through the existing
+Runtime Service contract. Its public endpoint receives Gateway traffic; its
+distinct internal endpoint is restricted to provider peers and the Node
+Agent's typed operator adapter. Runtime does not gain a Cell unit class, Fleet
+does not gain a Cell scheduler, and Gateway does not gain owner lookup or
+stickiness.
+
+The provider owns each named Cell's private SQLite lineage, serial execution,
+alarm wakeups, WebSocket residency, idle eviction/reactivation, ownership
+record, and fencing epoch inside one application-scoped S0 namespace. The S0
+provider contract must prove conditional create, conditional overwrite, and
+read-after-write consistency. A mutation is acknowledged only after durable
+replication and current-epoch validation; loss of storage reachability
+self-fences writes. Cloud stores only bounded observations and never mirrors
+state bytes, leases, epochs, peers, or alarms.
+
+The first profile uses one provider fleet and credential scope per application.
+Hostile applications do not share a provider process until a later isolation
+gate passes. Provider deployment pointers and local SQLite copies are applied
+state derived from the immutable Cloud revision. See the
+[Durable Cell Service plan](durable-cell-platform-plan.md) for ordered gates,
+rollout rules, and the exact fault matrix.
+
+### 13.3 Inference
 
 `I0` adds an `Inference` context for model identities, backend compilations,
 accelerator requirements, deployments, routes, provider egress, limits, and
@@ -1213,6 +1281,9 @@ without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
 | Evolution evaluation or promotion ambiguity | The exact dataset, suite, candidate, decision, and owning-context Operation are adopted; no telemetry signal or retry starts another promotion |
 | PostgreSQL unavailability | New mutations and authoritative progress stop safely; no cache is promoted to authority |
 | Object backend unavailability | Metadata remains readable where safe; content-dependent work blocks explicitly and resumes |
+| Durable Cell storage probe or reachability failure | The provider fails readiness or self-fences writes; no mutation is acknowledged from uncertain ownership and Cloud does not substitute PostgreSQL state |
+| Durable Cell owner/process/node loss | A new provider owner advances the fencing epoch and restores only a sealed durable lineage; stale writes cannot enter it, while Gateway never replays an already dispatched request |
+| Durable Cell rollout or drain interruption | Existing healthy generation remains routable until exact replacement readiness; resident Cells hand off through provider state, and Claims/Secrets release only after the old Runtime generation is fenced and removed |
 | Redis loss | Optional acceleration degrades or exact-limit traffic follows its fail policy; business state is unchanged |
 
 No recovery path may create a second provider unit, advance a semantic sequence

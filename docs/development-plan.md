@@ -38,6 +38,12 @@ application/node/plugin parity manifest. This development plan retains their
 portfolio order and shared evidence policy rather than restating a competing
 implementation design.
 
+The [Durable Cell Service plan](durable-cell-platform-plan.md) owns `CELL0`
+application, provider, S0 namespace, fencing, rollout, compatibility, and fault
+contracts. This plan places those gates in the shared delivery order without
+creating another Runtime class, scheduler, node channel, object client, or
+per-Cell Cloud store.
+
 The [technical architecture](architecture.md) is authoritative for component
 ownership, control paths, deployment profiles, and failure behavior. This plan
 may record historical provider evidence, but historical Docker evidence never
@@ -55,6 +61,7 @@ The roadmap has cumulative delivery horizons:
 | Ontology-driven Workflow platform | `W0` plus the selected `A1`, `MCP0`, `I0`, `U0`, and `C0` dependencies | Versioned business semantics compile into deterministic, recoverable plans on the existing A3S Flow path |
 | AI application platform | `APP0`, `K0`, `AUT0`, `W0`, and their named A0/A1/AR0, provider, identity, storage, Gateway, and production gates | Six current application experiences, including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin outcomes, publication, monitoring, and enterprise policy share one release and Flow path |
 | Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable |
+| Durable entity platform | `CELL0.1` through `CELL0.5` plus named `BX0`/`E0`/`S0`/`H0` foundations | One named SQLite-backed application survives idle eviction and process loss with alarms, WebSockets, single-writer fencing, durable acknowledgement, and no parallel control path |
 | Governed evolution platform | `EV0`, `W0`, `A1.6`, `I0`, and named `H0`/`C0` safety foundations | Authorized evidence produces reproducible evaluations and immutable candidates promoted only through existing rollout and rollback authorities |
 
 These horizons are cumulative. A broader interface or import format never
@@ -98,6 +105,7 @@ not lost when the implementation is made A3S-native:
 | TokenHub-style private model gateway | Typed model protocols, Provider catalog and routing, project/environment keys, external OIDC identity federation, role-focused workspaces, diagnostics, API exploration, prompt-free usage and cost attribution, plus optional protocol/subscription channels | `C0.3`, `I0.2b` through `I0.2e`, `I0.5`, optional `I0.6`; commercial billing stays external and no TokenHub API/UI/storage compatibility is required |
 | Google AX-style distributed Harness runtime | Isolated heterogeneous providers, one semantic event writer and reconnect stream, immutable invocation profiles, approvals, resume, checkpoints, forks, trajectories, and telemetry correlation | `A1.1` through `A1.6`, `BX0`, and `H0`; no AX controller, event log, scheduler, config authority, or wire compatibility enters Cloud |
 | Dify-style public commercial core | Six current application projections including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Bases/Pipelines, six plugin outcomes, Web/API/embed/MCP delivery, monitoring/feedback, and enterprise governance | Composite `APP0.6` over `W0`, `K0`, `AUT0`, A0/A1/AR0, and named provider/platform gates; no copied API, storage topology, package lifecycle, configuration authority, mode runtime, Agent/sandbox lifecycle, pipeline engine, or scheduler enters Cloud |
+| Deno celld-style Durable Objects | Named SQLite state, alarms, hibernatable WebSockets, inactive residency, object-store CAS ownership, replication-before-acknowledgement, and node handoff | `CELL0.1` through `CELL0.7`; Cloud owns application intent only, the provider owns per-Cell state inside S0, and no celld control topology, raw configuration authority, public operator API, Runtime class, or blanket compatibility claim enters Cloud |
 | Cross-layer security operations | Authorized correlation of Gateway policy, Agent semantics, Runtime/Box and host evidence, tenant-scoped detections, investigation timelines, signed export, and explicit enforcement through the owning context | `C0.3` plus `E0`/`H0.5` evidence foundations; no fourth control plane, security node channel, telemetry-driven mutation, or second audit store |
 
 The [architecture reference capability register](architecture.md#21-reference-capability-preservation-register)
@@ -361,6 +369,7 @@ Status as of 2026-08-15:
 | K0 | Planned; unavailable | Files, Knowledge Bases/documents/chunks, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval, external Knowledge, and Flow-backed Knowledge Pipelines are specified in `ai-application-platform-plan.md`; no Knowledge product availability exists yet. |
 | AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`. Component-only `AUT0.5-C1` supplies the exact-revision execution port and bounded HTTP executor; verified `C2` adds canonical HTTP A3S ACL admission plus immutable environment-scoped profile/revision persistence and exact Secret-version bindings; verified `C3` adds Resource Grant-aware application contracts and Secrets-owned just-in-time materialization; verified `C4` adds public-Internet DNS/SSRF evaluation and exact address pinning; verified `C5` adds immutable exact-attempt terminal evidence through migration `112` and authorized bounded reads; verified `C6` adds durable pre-dispatch fencing, conservative indeterminate recovery, authorized one-shot composition, and atomic attempt/evidence settlement through migration `113`; implemented `C7` exposes that same profile/revision CQRS through REST/OpenAPI `1.36.0`, the maintained client, CLI, and six Management MCP tools without resolving Secrets or adding another repository; component-only `C8` binds exact WorkflowRun/plan/step-attempt and Connector profile/revision/digest authority to the same C6 service, stable attempt identity, body-free evidence, and typed deferred/indeterminate observations without another repository or retry mechanism; component-only `C9` freezes its exact bounded provider-attempt and fallback-delay semantics as Workflow policy v2 through the existing immutable payload channel without a table, schema fork, or second scheduler; component-only `C0.3-N2b` supplies the first exact-subject Notification NATS-to-C6 composition, while `N2c`-`N2e` keep subscription, delivery authorization, logical receipt, `Retry-After` pacing, and fixed attempt-budget authority in Notifications by consuming the same C6 evidence. Workflow Flow scheduling/interpretation and immutable response-object composition, remaining provider/consumer wiring, revocation/recovery operations, retained end-to-end integration evidence, and all Automations/Connectors product availability remain open. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
+| CELL0 | In progress; unavailable | `CELL0.1-C1/C2` implement canonical Service/application ACL, fixed provider guarantees, BuildRun/bundle/profile binding, ordered Cell classes, state-version migration and rollback checks, immutable revision lineage, and the versioned desired-state aggregate. Shared fixtures/projection identities, S0 binding, provider/Runtime/Box certification, Cloud orchestration, Gateway publication, retained fault evidence, and `CELL0.5` availability remain open. |
 | U0 | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads and Search verified | Verified `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The root compatibility lock pins the same immutable Use revision and all ten consumed host schemas. Verified `U0.2` adds the `PluginRegistry` domain, migration 084 persistence, migration 085 integration with the sole authorized global Search view, one typed trust-root adapter over the shared immutable-object client, one published `a3s-use-extension` adapter for public-network refresh and online/cached catalog search/inspection, application enrollment plus tenant queries, REST `1.15.0`, the maintained client, CLI, and six read-only Management MCP tools. Cloud adds no TUF, catalog, query, cursor, cache, Search store/worker, object-storage, authorization, or cleanup mechanism. Stable CI verifies both the production public-HTTPS provider against the metadata-only fixture at the exact pinned Use revision and a strict `12/12` PostgreSQL 17 transaction, replay, tenancy, Search, fail-closed, and migration gate. Assignments and complete Manager mutation composition remain open; no assignment capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
@@ -404,6 +413,7 @@ authoritative model:
 | New-invocation schedules, webhooks, plugin/source events, and outbound connection profiles | `AUT0` | Automations owns exact-target trigger policy and Connectors owns egress profiles; neither advances Flow steps or copies Sources/Secrets state |
 | Evidence datasets, evaluation, candidates, and promotion policy | `EV0` | Evolution owns experiment semantics only and reuses shared compute, storage, release, rollout, audit, halt, and rollback authorities |
 | Databases, distributed storage providers, volumes, and backups | `S0` | Model mutable data explicitly with fencing and verified restore while reusing the shared immutable-object infrastructure |
+| Named SQLite-backed state entities, alarms, hibernatable WebSockets, idle reactivation, and fenced handoff | `CELL0` | Durable Cells owns immutable application intent and projects one ordinary Service fleet; the provider owns per-Cell state/ownership in S0, with no Cell scheduler, Runtime class, Gateway lookup, or PostgreSQL mirror |
 | Replicas, multi-node placement, HA, and autoscaling | `H0` | Scale only measured, recovery-proven semantics |
 | Generic accelerator inventory, claims, and enforcement | `I0.0`/`I0.1` with `H0` placement ownership | Extend Runtime, Fleet, and Workloads without introducing model or backend semantics into their core contracts |
 | Model catalog, inference deployment, model routes, and usage | `I0` | Add a separate Inference bounded context that compiles the required A3S Power profile into Box-hosted managed Workloads and Edge target sets |
@@ -3646,6 +3656,62 @@ state in workload metadata.
 - Deleting a workload obeys volume retention policy; no implicit cascade loses
   retained data.
 
+## 14.1 Milestone CELL0: Durable Cell Service
+
+### Goal
+
+Deliver managed named, long-lived SQLite state entities with alarms,
+hibernatable WebSockets, idle eviction/reactivation, single-writer epoch
+fencing, and durable acknowledgement without adding another Cloud scheduler,
+Runtime class, node channel, object client, or per-Cell desired-state store.
+
+### Delivery
+
+- `CELL0.1` freezes the Durable Cell application/revision/projection boundary,
+  provider protocol, compatibility vocabulary, errors, bounds, and canonical
+  ACL. `CELL0.1-C1` implements `cloud.durable-cell.service.v1`;
+  `CELL0.1-C2` implements `cloud.durable-cell.application.v1`, exact
+  BuildRun/bundle/profile bindings, state-schema compatibility, immutable
+  revision lineage, and the desired-state aggregate. Shared fixtures and
+  projection identities remain open.
+- `CELL0.2` consumes the one S0 object-provider/Secret path and proves
+  conditional create, conditional overwrite, read-after-write, sealed lineage,
+  backup, retention, restore, and namespace-safe deletion.
+- `CELL0.3` certifies a pinned provider and typed operator adapter as one
+  ordinary Box-hosted Runtime Service fleet with distinct public/internal
+  endpoints, health, graceful drain, adoption, and cleanup.
+- `CELL0.4` adds A3S ORM persistence, idempotent commands/queries, the managed
+  Workload/S0/Gateway projection, Operations, audit, and REST/client/CLI/MCP
+  interfaces. Web is deferred under the active frontend freeze.
+- `CELL0.5` is the first availability gate: one real single-node application
+  proves named state, alarms, WebSockets, idle recovery, RPO=0 process death,
+  rollout/rollback, restore, stop, deletion, and exact cleanup.
+- `CELL0.6` adds multi-node acquisition, peer forwarding, takeover, partition,
+  pressure shedding, graceful handoff, upgrade, and stale-node return.
+- `CELL0.7` publishes only a capability-tested Workers/Durable Objects matrix
+  and closes quotas, observability, disaster recovery, and hostile-tenant
+  isolation posture.
+
+Cloud does not persist individual Cells, SQLite bytes, ownership records,
+epochs, alarms, peers, or WebSocket residency. The selected provider owns that
+data inside one application-scoped S0 namespace. Gateway routes to any healthy
+public provider endpoint and never resolves the Cell owner. Full contracts and
+the mandatory crash matrix live in the
+[Durable Cell Service plan](durable-cell-platform-plan.md).
+
+### Exit gate
+
+- Every acknowledged mutation survives process or node loss, and a stale
+  epoch cannot enter the restored lineage.
+- Object-store capability failure blocks readiness; loss of reachability
+  self-fences writes rather than serving uncertain ownership.
+- Public and internal endpoints remain distinct, no Secret or Cell state leaks,
+  and Gateway never replays after provider dispatch.
+- Stop preserves state according to retention; delete proves the exact
+  namespace and never cascades from Workload removal alone.
+- Real provider, process-death, partition, rollout, rollback, backup/restore,
+  tenant-isolation, and cleanup evidence passes at the gate that claims it.
+
 ## 15. Milestone H0: multi-node, replicas, and production hardening
 
 ### Goal
@@ -4189,6 +4255,9 @@ Later gates extend the same fault-injection discipline:
 | 29 | Child capability command accepted before Workflow step receipt | `W0.4` | The parent adopts the exact child identity and never creates a second Agent, MCP, model, Tool, or finite Task step |
 | 30 | Evaluation result object written before result projection | `EV0.2` | Replay verifies and imports the exact result once or removes the orphan; no missing evidence becomes success |
 | 31 | Owning-context canary starts before Evolution observes the Operation | `EV0.4` | Evolution adopts the exact Operation and decision; replay cannot request another promotion or bypass halt/rollback policy |
+| 32 | Durable Cell SQLite commit before replicated durability proof | `CELL0.5` | The provider withholds acknowledgement; restart either restores the write in the current lineage or exposes no successful response, never a lost acknowledged write |
+| 33 | Durable Cell takeover before prior-epoch seal | `CELL0.5`/`CELL0.6` | Activation completes only after one immutable prior-epoch cut is sealed; later stale writes cannot enter any restore |
+| 34 | Durable Cell handoff completes before old Runtime removal receipt | `CELL0.5`/`CELL0.6` | Reconciliation adopts the exact handoff, keeps the new generation routable, removes the old generation once, and releases Claims/Secrets only after fencing evidence |
 
 Each owning milestone must add its row to the current-evidence table when the
 real fault gate passes. Planned rows are not release evidence.
@@ -4305,6 +4374,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Knowledge and Knowledge Pipeline | `F0`, shared immutable objects; ingestion/retrieval consumes selected `AUT0.5`, `U0.4`, `I0.2`, required `I0.6` rerank/media profiles, `S0`, and `W0.4` | `K0.1` Files/Knowledge authority -> `K0.2` multi-source/text-multimodal processing -> `K0.3` three chunk structures/index/retrieval -> `K0.4` Workflow ports -> `K0.5` scoped inputs/debug/published Flow-backed pipelines -> `K0.6` production and retained Web |
 | Automations and Connectors | `F0`, `W0.3`; webhook, schedule, plugin, and production slices consume `E0`, P0 contract, `U0.4`, `C0.3`, and `H0.5` | `AUT0.1` authority -> `AUT0.2` webhook + `AUT0.3` schedule + `AUT0.4` plugin events + `AUT0.5` connectors -> `AUT0.6` production and retained Web |
 | Stateful and distributed storage platform | `E0`; production distribution also consumes `H0` | shared immutable-object provider conformance -> `S0` local volume -> PostgreSQL -> backup/restore -> distributed object/remote volume providers -> additional engines |
+| Durable Cell Service | `CELL0.1` consumes `F0`; storage/provider/orchestration consume named `S0`, `BX0`, `E0`, `C0.3`, and `H0.2`; multi-node consumes `H0.3` | `CELL0.1` authority/ACL -> `CELL0.2` S0 namespace/fencing -> `CELL0.3` Runtime Service provider -> `CELL0.4` Cloud projection/interfaces -> `CELL0.5` single-node release -> `CELL0.6` multi-node -> `CELL0.7` tested compatibility/production |
 | Production scale | `P0`, `C0`, `A0`, `A1`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
 | Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` API/client/CLI/MCP self-service and governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth -> optional independently certified `I0.6` protocol/channel profiles; console and playground projections are retained for the later frontend phase |
 | Governed self-evolution | `W0.5`, `A1.6`, `I0.5`, `H0.5`, `C0.3`, and shared storage/evidence foundations | `EV0.1` evidence admission -> `EV0.2` reproducible evaluation -> `EV0.3` candidate/Agentic RL jobs -> `EV0.4` approval/canary/halt/rollback -> `EV0.5` production safety and recovery |

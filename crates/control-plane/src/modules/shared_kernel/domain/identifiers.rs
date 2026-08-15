@@ -52,6 +52,8 @@ identifier!(NotificationId);
 identifier!(NotificationSubscriptionId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
+identifier!(DurableCellApplicationId);
+identifier!(DurableCellApplicationRevisionId);
 identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
 identifier!(OperationId);

@@ -44,6 +44,13 @@ authoritative for catalog verification, immutable package generations,
 Workspace Grants, Runtime Bindings, capability publication, drain, and
 receipt-owned cleanup.
 
+`CELL0` adds Durable Cell application intent for named, SQLite-backed state
+entities. Cloud owns immutable application revisions and exact deployment
+projections; the selected provider owns each Cell's state, ownership epoch,
+alarm, WebSocket residency, and peer forwarding inside one S0 namespace. It
+does not add a Cell table, scheduler, Runtime class, Gateway owner lookup, node
+channel, or object client.
+
 The domain uses ordinary transactional aggregates. It does not event-source all
 business data. A3S Flow event-sources long-running operations, and A3S Event
 distributes committed facts after the corresponding database transaction.
@@ -123,6 +130,10 @@ distributes committed facts after the corresponding database transaction.
 | Managed database | Stateful platform service with an engine contract, persistent volume, backup policy, and lifecycle. It is not an Asset. |
 | Persistent volume | Node/provider-backed durable storage with explicit attachment, retention, and backup state. |
 | Backup | Immutable, verified snapshot descriptor stored outside the source volume. |
+| Durable Cell application | Tenant/project/environment identity for one immutable named-state program and one dedicated provider Service fleet. It is not a Workload or Asset. |
+| Durable Cell application revision | Immutable bundle/provenance, compatibility and state-migration policy, declared Cell classes/bindings, exact Service-profile digest, retention policy, and deployment projection inputs. |
+| Durable Cell Service profile | Canonical ACL fixing the provider protocol, dedicated-fleet isolation, SQLite/single-writer/epoch/durable-ack guarantees, handler/storage requirements, distinct ports, and traffic bounds. |
+| Durable Cell | Application-addressed name whose SQLite lineage, ownership epoch, alarm, WebSocket residency, and activation state belong solely to the selected provider; it is intentionally not a Cloud aggregate. |
 | Secret | Tenant-owned secret identity with immutable encrypted versions. |
 | Operation | Durable A3S Flow run coordinating a deployment, build, backup, restore, rollback, or repair. |
 
@@ -909,6 +920,54 @@ receipts key off the deterministic delivery ID. External SMTP remains
 unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
+
+### 3.20 Durable Cells (`CELL0.1-C1/C2` domain contracts implemented)
+
+Owns Durable Cell application identity, immutable revisions, exact canonical
+Service-profile ACL/digest, retention intent, and correlation to an existing
+managed Workload revision, S0 namespace binding, Gateway scope, Operation, and
+audit record. It never owns individual Cell state or placement.
+
+Implemented primary aggregate and immutable revision:
+
+- `DurableCellApplication`
+- `DurableCellApplicationRevision`
+
+Planned projection resource:
+
+- `DurableCellDeployment`
+
+Implemented value objects:
+
+- `DurableCellServiceProfile`
+- `DurableCellApplicationDefinition`
+- `DurableCellClassSpec`
+- `DurableCellStateSchema`
+
+The implemented `cloud.durable-cell.service.v1` ACL requires the
+`a3s.durable-cell-provider.v1` protocol, a dedicated application fleet,
+SQLite-per-Cell, single-threaded event turns, idle eviction, hibernatable
+WebSockets, one writer, epoch fencing, replication before acknowledgement,
+exact fetch/alarm/WebSocket handlers, conditional create/overwrite plus
+read-after-write storage, distinct public/internal Runtime ports, and bounded
+Cell names and traffic. Construction and restoration use `a3s-acl` and bind a
+canonical digest.
+
+The implemented `cloud.durable-cell.application.v1` ACL binds an existing
+`BuildRun`, bounded bundle digest and main ESM module, compatibility date and
+ordered flags, exact Service-profile digest, ordered Cell classes, and each
+class's readable/writable state versions. Successors must read their parent's
+written state, cannot regress a write version or remove a class, and may claim
+rollback compatibility only when the parent can read the target write version;
+otherwise the revision is explicitly forward-only. The aggregate applies exact
+revision lineage, running/stopped intent, and optimistic concurrency without
+copying Workload or provider state.
+
+The selected provider, not this context, activates and evicts Cells, serializes
+their events, maintains SQLite/ownership/seal records, forwards to current
+owners, and restores state. Alarms wake an existing provider-owned Cell; they
+do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
+[Durable Cell Service plan](durable-cell-platform-plan.md).
 
 ## 4. Aggregate invariants
 
@@ -1771,6 +1830,29 @@ provider payload.
 - AnySentry, metrics, traces, logs, rewards, and evaluation output are evidence,
   never promotion or deployment authority.
 
+### Durable Cell application, revision, and deployment (planned `CELL0`)
+
+- A DurableCellApplication belongs to one organization, project, and
+  environment and has one active immutable revision at a time.
+- A revision binds exact bundle/provenance, compatibility, state migration,
+  retention, profile ACL/digest, and Secret references. It contains no
+  plaintext, provider deployment pointer, mutable Cell state, or owner address.
+- One deployment projects to one managed ordinary Workload Service fleet with
+  one exact S0 namespace and Gateway scope. Direct Workload mutation is rejected
+  through the existing managed-owner reference.
+- The public and internal Runtime ports are distinct. Only the public port may
+  enter Edge desired state; operator and peer traffic remain private.
+- One application/fleet/namespace boundary is required for the v1 hostile-
+  tenant posture. Sharing a provider process is a later explicit conformance
+  gate, never an optimization inferred by placement.
+- Individual Cell names do not create Cloud aggregates. Duplicate addressing
+  resolves to the same provider identity; enumeration or telemetry is never
+  ownership authority.
+- A write is successful only after provider durability and current fencing
+  epoch validation. Store reachability loss self-fences the writer.
+- Stop preserves state under retention policy. Delete is a separate audited
+  Operation and cannot be an implicit Workload cascade.
+
 ### Managed database, volume, and backup
 
 - A managed database belongs to one environment and references one immutable
@@ -2278,6 +2360,8 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
+| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2` currently supply the canonical Service/application ACL, immutable revision lineage, and desired-state aggregate without persistence |
+| Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
 | Knowledge Base/document/chunk/media metadata, ingestion intent, immutable chunk structure, index/retrieval policy, citations, external bindings, and pipeline-release-to-Workflow/input-schema reference | PostgreSQL Knowledge tables through A3S ORM |
@@ -2315,6 +2399,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
+| Durable Cell object-store namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; no second object client or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |
@@ -2444,6 +2529,12 @@ The first architecture does not implement:
   plaintext, or Connector provider state as desired state;
 - an Evolution training scheduler, model/Agent registry, dataset store,
   deployment controller, or direct telemetry-to-production path;
+- a Durable Cell scheduler, Runtime unit class, node channel, object client,
+  Gateway owner cache/sticky table, or PostgreSQL copy of Cell SQLite,
+  ownership, epochs, seals, alarms, peers, or WebSocket residency;
+- raw provider-native configuration or deployment pointers as Cloud desired
+  state, a public provider operator API, or untested blanket Cloudflare
+  compatibility;
 - Flow history or Runtime logs as an Agent semantic event stream; and
 - a direct client-to-Agent, client-to-Harness, or client-to-Gateway execution
   control path.
