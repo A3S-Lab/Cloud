@@ -9,6 +9,7 @@ use crate::modules::edge::{
 use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{LogCompactionWorker, LogRetentionWorker, NodeControlServer};
 use crate::modules::integration_events::OutboxRelay;
+use crate::modules::notifications::A3sEventOutboundNotificationConsumer;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
 use crate::modules::workflow::{
     HumanTaskCoordinator, HumanTaskResumeWorker, WorkflowRunReconciler,
@@ -48,6 +49,7 @@ pub(crate) struct ControlPlaneWorkers {
     workload_reconciler: Option<WorkloadRuntimeReconciler>,
     log_retention_worker: Option<LogRetentionWorker>,
     log_compaction_worker: Option<LogCompactionWorker>,
+    outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
     outbox_relay: Option<OutboxRelay>,
     node_control_server: Option<NodeControlServer>,
 }
@@ -77,6 +79,7 @@ impl ControlPlaneWorkers {
         workload_reconciler: Option<WorkloadRuntimeReconciler>,
         log_retention_worker: Option<LogRetentionWorker>,
         log_compaction_worker: Option<LogCompactionWorker>,
+        outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
         outbox_relay: Option<OutboxRelay>,
         node_control_server: Option<NodeControlServer>,
     ) -> Self {
@@ -103,6 +106,7 @@ impl ControlPlaneWorkers {
             workload_reconciler,
             log_retention_worker,
             log_compaction_worker,
+            outbound_notification_consumer,
             outbox_relay,
             node_control_server,
         }
@@ -207,6 +211,20 @@ impl ControlPlane {
         }
         if let Some(worker) = self.workers.log_compaction_worker {
             workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
+        }
+        if let Some(consumer) = self.workers.outbound_notification_consumer {
+            let failure_sender = failure_sender.clone();
+            let lifecycle = shutdown_receiver.clone();
+            let consumer_shutdown = shutdown_receiver.clone();
+            workers.push(tokio::spawn(async move {
+                if let Err(error) = consumer.run(consumer_shutdown).await {
+                    if !*lifecycle.borrow() {
+                        let _ = failure_sender.send(BootError::Internal(format!(
+                            "outbound notification A3S Event consumer stopped: {error}"
+                        )));
+                    }
+                }
+            }));
         }
         if let Some(relay) = self.workers.outbox_relay {
             workers.push(tokio::spawn(relay.run(shutdown_receiver.clone())));

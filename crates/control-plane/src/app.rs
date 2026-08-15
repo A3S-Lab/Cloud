@@ -34,6 +34,12 @@ use crate::modules::assets::{
 use crate::modules::audit::{
     AuditModule, IAuditRecordRepository, ListAuditRecordsHandler, PostgresAuditRecordRepository,
 };
+use crate::modules::connectors::{
+    ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
+    ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
+    PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
+    PublicInternetConnectorEgressAuthorizer,
+};
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
 };
@@ -113,9 +119,10 @@ use crate::modules::integration_events::{
     PostgresOutboxRepository,
 };
 use crate::modules::notifications::{
-    GetNotificationHandler, INotificationRepository, ListNotificationsHandler,
-    MarkNotificationReadHandler, NotificationsModule, OutboxNotificationProjector,
-    PostgresNotificationRepository,
+    A3sEventOutboundNotificationConsumer, GetNotificationHandler, INotificationRepository,
+    IOutboundNotificationDispatcher, ListNotificationsHandler, MarkNotificationReadHandler,
+    NotificationsModule, OutboundNotificationDispatcher, OutboxNotificationProjector,
+    PostgresNotificationRepository, OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
@@ -244,6 +251,10 @@ pub enum ControlPlaneStartupError {
     Auth(String),
     #[error("invalid outbox relay configuration: {0}")]
     Outbox(String),
+    #[error("could not initialize Connector execution: {0}")]
+    Connector(String),
+    #[error("could not initialize outbound notification delivery: {0}")]
+    Notification(String),
     #[error("could not initialize security providers: {0}")]
     Security(String),
     #[error("could not initialize Edge providers: {0}")]
@@ -463,6 +474,46 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
     ));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let outbound_notification_consumer = if config.events.provider == EventProviderKind::Nats {
+        let connector_profiles =
+            Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
+        let connector_attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
+            executor.clone(),
+        ));
+        let connector_materializer = ConnectorHttpRevisionMaterializer::new(
+            Arc::clone(&secrets),
+            Arc::clone(&key_encryption),
+        );
+        let connector_egress = Arc::new(
+            PublicInternetConnectorEgressAuthorizer::from_system_config(Duration::from_secs(5))
+                .map_err(ControlPlaneStartupError::Connector)?,
+        );
+        let connector_preparation = Arc::new(ConnectorHttpExecutionPreparationPort::new(
+            connector_materializer,
+            connector_egress,
+        ));
+        let connector_execution = Arc::new(
+            ConnectorExecutionApplicationService::new(
+                connector_profiles,
+                connector_attempts,
+                connector_preparation,
+                ConnectorExecutionServiceOptions::default(),
+            )
+            .map_err(ControlPlaneStartupError::Connector)?,
+        );
+        let dispatcher: Arc<dyn IOutboundNotificationDispatcher> =
+            Arc::new(OutboundNotificationDispatcher::new(connector_execution));
+        Some(
+            A3sEventOutboundNotificationConsumer::new(
+                event_publisher.bus(),
+                event_publisher.subject(OUTBOUND_NOTIFICATION_EVENT_KEY),
+                dispatcher,
+            )
+            .map_err(ControlPlaneStartupError::Notification)?,
+        )
+    } else {
+        None
+    };
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let sources: Arc<dyn ISourceRevisionRepository> = source_repository.clone();
     let source_webhooks: Arc<dyn ISourceWebhookRepository> = source_repository;
@@ -1114,6 +1165,9 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             run_operations.then_some(workload_reconciler),
             run_operations.then_some(log_retention_worker),
             run_operations.then_some(log_compaction_worker),
+            run_operations
+                .then_some(outbound_notification_consumer)
+                .flatten(),
             run_relay.then_some(outbox_relay),
             node_control_server,
         ),
@@ -2630,7 +2684,7 @@ fn chrono_duration(milliseconds: u64) -> Result<chrono::Duration> {
 
 async fn event_publisher(
     config: &CloudConfig,
-) -> std::result::Result<Arc<dyn IEventPublisher>, ControlPlaneStartupError> {
+) -> std::result::Result<Arc<A3sEventPublisher>, ControlPlaneStartupError> {
     match config.events.provider {
         EventProviderKind::Memory => Ok(Arc::new(A3sEventPublisher::memory())),
         EventProviderKind::Nats => {

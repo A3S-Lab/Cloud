@@ -40,13 +40,17 @@ impl A3sEventPublisher {
     pub fn bus(&self) -> Arc<EventBus> {
         Arc::clone(&self.bus)
     }
+
+    pub fn subject(&self, event_key: &str) -> String {
+        format!("{}.cloud.{event_key}", self.subject_prefix)
+    }
 }
 
 #[async_trait]
 impl IEventPublisher for A3sEventPublisher {
     async fn publish(&self, message: &OutboxMessage) -> Result<(), EventPublishError> {
         let mut event = Event::typed(
-            format!("{}.cloud.{}", self.subject_prefix, message.event_key),
+            self.subject(&message.event_key),
             "cloud",
             &message.event_key,
             message.schema_version,
