@@ -1,5 +1,9 @@
 use super::components::response_ref;
 use super::OPENAPI_CONTRACT_VERSION;
+use crate::modules::connectors::{
+    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+};
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::projects::domain::value_objects::{
@@ -285,10 +289,20 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             || path.ends_with("/agent-conversations")
             || path.ends_with("/executions")
             || path.ends_with("/workflow-runs")
-            || path.ends_with("/human-tasks"))
+            || path.ends_with("/human-tasks")
+            || is_connector_profile_collection_path(path)
+            || is_connector_revision_collection_path(path))
     {
-        let schema = if path.ends_with("/audit-records") {
-            json!({ "type": "integer", "minimum": 1, "maximum": 200, "default": 50 })
+        let schema = if path.ends_with("/audit-records")
+            || is_connector_profile_collection_path(path)
+            || is_connector_revision_collection_path(path)
+        {
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+                "default": DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT
+            })
         } else {
             json!({ "type": "integer", "minimum": 1, "maximum": 200 })
         };
@@ -636,6 +650,37 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
+    } else if is_connector_profile_mutation_path(path) {
+        let schema = if is_connector_revision_collection_path(path) {
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["expectedVersion", "definitionAcl"],
+                "properties": {
+                    "expectedVersion": {"type": "integer", "minimum": 1},
+                    "definitionAcl": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+                    }
+                }
+            })
+        } else {
+            json!({
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "definitionAcl"],
+                "properties": {
+                    "name": {"type": "string", "minLength": 1, "maxLength": 63},
+                    "definitionAcl": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+                    }
+                }
+            })
+        };
+        content.insert("application/json".into(), json!({"schema": schema}));
     } else if is_notification_read_path(path) {
         content.insert(
             "application/json".into(),
@@ -1016,6 +1061,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Workflow"
     } else if path.contains("/forms") {
         "Forms"
+    } else if path.contains("connector-profiles") {
+        "Connectors"
     } else if path.contains("projects") || path.contains("environments") {
         "Projects"
     } else if path.contains("operations") {
@@ -1158,6 +1205,7 @@ fn creates_resource(path: &str) -> bool {
         || (path.contains("/mcp-credentials/") && path.ends_with("/rotate"))
         || path.ends_with("/mcp-route-policies")
         || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
+        || is_connector_profile_mutation_path(path)
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
         || path.ends_with("/source-revisions")
@@ -1188,6 +1236,18 @@ fn is_membership_invitation_version_path(path: &str) -> bool {
 
 fn is_notification_read_path(path: &str) -> bool {
     path.ends_with("/notifications/{notification_id}/read")
+}
+
+fn is_connector_profile_mutation_path(path: &str) -> bool {
+    is_connector_profile_collection_path(path) || is_connector_revision_collection_path(path)
+}
+
+fn is_connector_profile_collection_path(path: &str) -> bool {
+    path.ends_with("/connector-profiles")
+}
+
+fn is_connector_revision_collection_path(path: &str) -> bool {
+    path.contains("/connector-profiles/{profile_id}/") && path.ends_with("/revisions")
 }
 
 fn is_resource_grant_revocation_path(path: &str) -> bool {

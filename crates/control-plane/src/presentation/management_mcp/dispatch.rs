@@ -6,6 +6,11 @@ use super::arguments::{
 use super::artifacts::BuildRunMutationArguments;
 use super::audit::AuditRecordListArguments;
 use super::catalog::ManagementTool;
+use super::connectors::{
+    ConnectorProfileArguments, ConnectorRevisionArguments, CreateConnectorProfileArguments,
+    ListConnectorProfilesArguments, ListConnectorRevisionsArguments,
+    ReviseConnectorProfileArguments,
+};
 use super::execution_templates::{
     CreateExecutionTemplateArguments, GetExecutionTemplateArguments,
     ListExecutionTemplatesArguments,
@@ -47,8 +52,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, audit, edge, execution_templates, forms, identity, nodes, notifications, ontology,
-    operations, plugins, projects, search, workflow, workloads,
+    artifacts, audit, connectors, edge, execution_templates, forms, identity, nodes, notifications,
+    ontology, operations, plugins, projects, search, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -137,6 +142,74 @@ pub async fn execute(
         ManagementTool::ExecutionTemplatesGet => {
             let arguments = arguments::parse::<GetExecutionTemplateArguments>(arguments).ok()?;
             execution_templates::get(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::ConnectorProfilesCreate => {
+            let arguments = arguments::parse::<CreateConnectorProfileArguments>(arguments).ok()?;
+            connectors::create_profile(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ConnectorProfilesRevise => {
+            let arguments = arguments::parse::<ReviseConnectorProfileArguments>(arguments).ok()?;
+            connectors::revise_profile(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ConnectorProfilesList => {
+            let arguments = arguments::parse::<ListConnectorProfilesArguments>(arguments).ok()?;
+            connectors::list_profiles(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ConnectorProfilesGet => {
+            let arguments = arguments::parse::<ConnectorProfileArguments>(arguments).ok()?;
+            connectors::get_profile(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ConnectorRevisionsList => {
+            let arguments = arguments::parse::<ListConnectorRevisionsArguments>(arguments).ok()?;
+            connectors::list_revisions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ConnectorRevisionsGet => {
+            let arguments = arguments::parse::<ConnectorRevisionArguments>(arguments).ok()?;
+            connectors::get_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::MembershipsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;

@@ -1,9 +1,9 @@
 import { CloudApi, type CloudFetch, type CloudLogQuery, MAX_WORKLOAD_ACL_BYTES } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import { executeAgentCommand } from './agent-commands';
-import { executeAuditCommand, rejectMisplacedAuditOptions } from './audit-commands';
 import type { ParsedArguments } from './arguments';
 import { executeAssetCommand } from './asset-commands';
+import { executeAuditCommand, rejectMisplacedAuditOptions } from './audit-commands';
 import {
   positionalResourceName,
   positionalUuid,
@@ -18,6 +18,7 @@ import {
   requireReadCommand,
   requireVersionedMutationCommand,
 } from './command-options';
+import { executeConnectorCommand } from './connector-commands';
 import type { CloudContext } from './context';
 import {
   hasUnsafeControl,
@@ -28,15 +29,14 @@ import {
   requireToken,
 } from './context';
 import { executeEdgeCommand } from './edge-commands';
-import { executeExecutionTemplateCommand } from './execution-template-commands';
 import { usageError } from './errors';
+import { executeExecutionTemplateCommand } from './execution-template-commands';
 import { executeFormCommand } from './form-commands';
 import { executeIdentityCommand, rejectMisplacedIdentityOptions } from './identity-commands';
 import { executeNodeCommand, rejectMisplacedNodeOptions } from './node-commands';
 import { executeNotificationCommand, rejectMisplacedNotificationOptions } from './notification-commands';
 import { executeOntologyCommand } from './ontology-commands';
 import { executePluginCommand } from './plugin-commands';
-import { executeWorkflowCommand } from './workflow-commands';
 import {
   buildEvidenceResult,
   buildRunLogsResult,
@@ -53,9 +53,9 @@ import {
   operationsResult,
   organizationMutationResult,
   organizationsResult,
-  projectMutationResult,
   projectAttributionMutationResult,
   projectAttributionResult,
+  projectMutationResult,
   projectsResult,
   retryBuildRunResult,
   routeResult,
@@ -70,6 +70,7 @@ import { executeSearchCommand } from './search-commands';
 import { executeSecretCommand, rejectMisplacedSecretValueOption } from './secret-commands';
 import { executeSourceCommand, rejectMisplacedSourceRecipeOptions } from './source-commands';
 import type { ReadStdin } from './standard-input';
+import { executeWorkflowCommand } from './workflow-commands';
 
 export interface CommandDependencies {
   fetch?: CloudFetch;
@@ -167,6 +168,12 @@ export async function executeCommand(
   );
   if (executionTemplateResult !== undefined) {
     return executionTemplateResult;
+  }
+  const connectorResult = await executeConnectorCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (connectorResult !== undefined) {
+    return connectorResult;
   }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

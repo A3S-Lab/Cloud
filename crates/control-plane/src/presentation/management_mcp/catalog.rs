@@ -1,4 +1,8 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
+use crate::modules::connectors::{
+    CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+};
 use crate::modules::executions::EXECUTION_TEMPLATE_MAX_ACL_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
@@ -26,6 +30,12 @@ pub const DEPLOYMENTS_CANCEL: &str = "a3s_cloud_deployments_cancel";
 pub const DEPLOYMENTS_GET: &str = "a3s_cloud_deployments_get";
 pub const ENVIRONMENTS_CREATE: &str = "a3s_cloud_environments_create";
 pub const ENVIRONMENTS_LIST: &str = "a3s_cloud_environments_list";
+pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
+pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
+pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
+pub const CONNECTOR_PROFILES_GET: &str = "a3s_cloud_connector_profiles_get";
+pub const CONNECTOR_REVISIONS_LIST: &str = "a3s_cloud_connector_revisions_list";
+pub const CONNECTOR_REVISIONS_GET: &str = "a3s_cloud_connector_revisions_get";
 pub const EXECUTION_TEMPLATES_CREATE: &str = "a3s_cloud_execution_templates_create";
 pub const EXECUTION_TEMPLATES_GET: &str = "a3s_cloud_execution_templates_get";
 pub const EXECUTION_TEMPLATES_LIST: &str = "a3s_cloud_execution_templates_list";
@@ -112,6 +122,12 @@ pub const WORKLOAD_LOGS_GET: &str = "a3s_cloud_workload_logs_get";
 pub enum ManagementTool {
     EnvironmentsCreate,
     EnvironmentsList,
+    ConnectorProfilesCreate,
+    ConnectorProfilesRevise,
+    ConnectorProfilesList,
+    ConnectorProfilesGet,
+    ConnectorRevisionsList,
+    ConnectorRevisionsGet,
     ExecutionTemplatesCreate,
     ExecutionTemplatesGet,
     ExecutionTemplatesList,
@@ -218,9 +234,15 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 91] = [
+    const ALL: [Self; 97] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
+        Self::ConnectorProfilesCreate,
+        Self::ConnectorProfilesRevise,
+        Self::ConnectorProfilesList,
+        Self::ConnectorProfilesGet,
+        Self::ConnectorRevisionsList,
+        Self::ConnectorRevisionsGet,
         Self::ExecutionTemplatesCreate,
         Self::ExecutionTemplatesGet,
         Self::ExecutionTemplatesList,
@@ -340,6 +362,12 @@ impl ManagementTool {
         match self {
             Self::EnvironmentsCreate => ENVIRONMENTS_CREATE,
             Self::EnvironmentsList => ENVIRONMENTS_LIST,
+            Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
+            Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
+            Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
+            Self::ConnectorProfilesGet => CONNECTOR_PROFILES_GET,
+            Self::ConnectorRevisionsList => CONNECTOR_REVISIONS_LIST,
+            Self::ConnectorRevisionsGet => CONNECTOR_REVISIONS_GET,
             Self::ExecutionTemplatesCreate => EXECUTION_TEMPLATES_CREATE,
             Self::ExecutionTemplatesGet => EXECUTION_TEMPLATES_GET,
             Self::ExecutionTemplatesList => EXECUTION_TEMPLATES_LIST,
@@ -435,6 +463,9 @@ impl ManagementTool {
     const fn required_scope(self) -> Option<&'static str> {
         match self {
             Self::EnvironmentsCreate => Some(ApiTokenScope::ENVIRONMENT_WRITE),
+            Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
+                Some(ApiTokenScope::CONNECTOR_WRITE)
+            }
             Self::ExecutionTemplatesCreate => Some(ApiTokenScope::EXECUTION_WRITE),
             Self::MembershipsList
             | Self::MembershipsGet
@@ -471,7 +502,11 @@ impl ManagementTool {
             Self::MyMembershipInvitationsList
             | Self::AuditRecordsList
             | Self::NotificationsList
-            | Self::NotificationsGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::NotificationsGet
+            | Self::ConnectorProfilesList
+            | Self::ConnectorProfilesGet
+            | Self::ConnectorRevisionsList
+            | Self::ConnectorRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead => Some(ApiTokenScope::NOTIFICATION_WRITE),
             Self::MembershipInvitationsAccept => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::EnvironmentsList
@@ -567,9 +602,15 @@ impl ManagementTool {
             | Self::WorkflowRunsStart
             | Self::WorkflowRunsList
             | Self::HumanTasksList => Some(ManagementResourceBinding::ProjectArgument),
-            Self::WorkloadsList | Self::RoutesList | Self::BuildRunsList => {
-                Some(ManagementResourceBinding::EnvironmentArguments)
-            }
+            Self::ConnectorProfilesCreate
+            | Self::ConnectorProfilesRevise
+            | Self::ConnectorProfilesList
+            | Self::ConnectorProfilesGet
+            | Self::ConnectorRevisionsList
+            | Self::ConnectorRevisionsGet
+            | Self::WorkloadsList
+            | Self::RoutesList
+            | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
             Self::WorkloadsGet
             | Self::FormsGet
             | Self::FormsRevise
@@ -665,6 +706,42 @@ impl ManagementTool {
                 "List environments",
                 "List environments in one tenant-authorized project.",
                 project_id_schema(),
+                true,
+            ),
+            Self::ConnectorProfilesCreate => (
+                "Create Connector profile",
+                "Create one immutable, environment-scoped Connector profile revision from canonical A3S ACL with explicit idempotency.",
+                create_connector_profile_schema(),
+                false,
+            ),
+            Self::ConnectorProfilesRevise => (
+                "Revise Connector profile",
+                "Publish one immutable Connector profile revision using optimistic concurrency and explicit idempotency.",
+                revise_connector_profile_schema(),
+                false,
+            ),
+            Self::ConnectorProfilesList => (
+                "List Connector profiles",
+                "List a bounded set of Connector profiles in one tenant-authorized environment.",
+                list_connector_profiles_schema(),
+                true,
+            ),
+            Self::ConnectorProfilesGet => (
+                "Get Connector profile",
+                "Get one exact Connector profile and its current immutable revision without resolving referenced Secrets.",
+                connector_profile_schema(),
+                true,
+            ),
+            Self::ConnectorRevisionsList => (
+                "List Connector revisions",
+                "List a bounded set of immutable revisions for one tenant-authorized Connector profile.",
+                list_connector_revisions_schema(),
+                true,
+            ),
+            Self::ConnectorRevisionsGet => (
+                "Get Connector revision",
+                "Get one exact immutable Connector revision and canonical A3S ACL without resolving referenced Secrets.",
+                connector_revision_schema(),
                 true,
             ),
             Self::ExecutionTemplatesCreate => (
@@ -1393,7 +1470,12 @@ fn bounded_limit_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+                "default": DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT
+            }
         },
         "additionalProperties": false
     })
@@ -1415,7 +1497,12 @@ fn audit_record_list_schema() -> Value {
             "from": {"type": "string", "format": "date-time"},
             "to": {"type": "string", "format": "date-time"},
             "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
-            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
+                "default": DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT
+            }
         },
         "additionalProperties": false
     })
@@ -1534,6 +1621,112 @@ fn create_environment_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["projectId", "name", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn create_connector_profile_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "name": {"type": "string", "minLength": 1, "maxLength": 63},
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "name",
+            "definitionAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn revise_connector_profile_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "profileId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "profileId",
+            "expectedVersion",
+            "definitionAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn list_connector_profiles_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+        },
+        "required": ["projectId", "environmentId"],
+        "additionalProperties": false
+    })
+}
+
+fn connector_profile_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "profileId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "environmentId", "profileId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_connector_revisions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "profileId": {"type": "string", "format": "uuid"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+        },
+        "required": ["projectId", "environmentId", "profileId"],
+        "additionalProperties": false
+    })
+}
+
+fn connector_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "profileId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "environmentId", "profileId", "revisionId"],
         "additionalProperties": false
     })
 }
@@ -2098,6 +2291,8 @@ mod tests {
             .with_scope(ApiTokenScope::ONTOLOGY_WRITE)
             .with_scope(ApiTokenScope::WORKFLOW_WRITE)
             .with_scope(ApiTokenScope::EXECUTION_WRITE)
+            .with_scope(ApiTokenScope::CONNECTOR_WRITE)
+            .with_scope(ApiTokenScope::CLOUD_READ)
             .with_claim("organization_role", "restricted")
             .expect("role")
             .with_claim(RESOURCE_GRANT_SCOPES_CLAIM, [scope])
@@ -2113,6 +2308,12 @@ mod tests {
         assert!(ManagementTool::ExecutionTemplatesCreate.visible_to(&principal));
         assert!(ManagementTool::ExecutionTemplatesGet.visible_to(&principal));
         assert!(ManagementTool::ExecutionTemplatesList.visible_to(&principal));
+        assert!(ManagementTool::ConnectorProfilesCreate.visible_to(&principal));
+        assert!(ManagementTool::ConnectorProfilesRevise.visible_to(&principal));
+        assert!(ManagementTool::ConnectorProfilesList.visible_to(&principal));
+        assert!(ManagementTool::ConnectorProfilesGet.visible_to(&principal));
+        assert!(ManagementTool::ConnectorRevisionsList.visible_to(&principal));
+        assert!(ManagementTool::ConnectorRevisionsGet.visible_to(&principal));
         assert!(ManagementTool::FormsList.visible_to(&principal));
         assert!(ManagementTool::FormsGet.visible_to(&principal));
         assert!(ManagementTool::FormsRevise.visible_to(&principal));
@@ -2183,6 +2384,12 @@ mod tests {
         assert!(!ManagementTool::ExecutionTemplatesCreate.visible_to(&principal));
         assert!(!ManagementTool::ExecutionTemplatesGet.visible_to(&principal));
         assert!(!ManagementTool::ExecutionTemplatesList.visible_to(&principal));
+        assert!(!ManagementTool::ConnectorProfilesCreate.visible_to(&principal));
+        assert!(!ManagementTool::ConnectorProfilesRevise.visible_to(&principal));
+        assert!(!ManagementTool::ConnectorProfilesList.visible_to(&principal));
+        assert!(!ManagementTool::ConnectorProfilesGet.visible_to(&principal));
+        assert!(!ManagementTool::ConnectorRevisionsList.visible_to(&principal));
+        assert!(!ManagementTool::ConnectorRevisionsGet.visible_to(&principal));
         assert!(!ManagementTool::ProjectsList.visible_to(&principal));
         assert!(!ManagementTool::FormsList.visible_to(&principal));
         assert!(!ManagementTool::FormsGet.visible_to(&principal));

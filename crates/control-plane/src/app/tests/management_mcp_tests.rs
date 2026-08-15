@@ -348,6 +348,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         tool_names(&read_only_tools),
         vec![
             "a3s_cloud_environments_list",
+            "a3s_cloud_connector_profiles_list",
+            "a3s_cloud_connector_profiles_get",
+            "a3s_cloud_connector_revisions_list",
+            "a3s_cloud_connector_revisions_get",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
             "a3s_cloud_my_membership_invitations_list",
@@ -446,6 +450,12 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         vec![
             "a3s_cloud_environments_create",
             "a3s_cloud_environments_list",
+            "a3s_cloud_connector_profiles_create",
+            "a3s_cloud_connector_profiles_revise",
+            "a3s_cloud_connector_profiles_list",
+            "a3s_cloud_connector_profiles_get",
+            "a3s_cloud_connector_revisions_list",
+            "a3s_cloud_connector_revisions_get",
             "a3s_cloud_execution_templates_create",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
@@ -582,6 +592,37 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         create_execution_template["annotations"]["readOnlyHint"],
         false
     );
+    let create_connector_profile =
+        listed_tool(&administrator_tools, "a3s_cloud_connector_profiles_create")?;
+    assert_eq!(
+        create_connector_profile["inputSchema"]["required"],
+        json!([
+            "projectId",
+            "environmentId",
+            "name",
+            "definitionAcl",
+            "idempotencyKey"
+        ])
+    );
+    assert_eq!(
+        create_connector_profile["inputSchema"]["properties"]["definitionAcl"]["maxLength"],
+        crate::modules::connectors::CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        create_connector_profile["inputSchema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(
+        create_connector_profile["annotations"]["readOnlyHint"],
+        false
+    );
+    let list_connector_profiles =
+        listed_tool(&administrator_tools, "a3s_cloud_connector_profiles_list")?;
+    assert_eq!(
+        list_connector_profiles["inputSchema"]["properties"]["limit"],
+        json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
+    );
+    assert_eq!(list_connector_profiles["annotations"]["readOnlyHint"], true);
     let create_workflow_definition = listed_tool(
         &administrator_tools,
         "a3s_cloud_workflow_definitions_create",
@@ -2247,6 +2288,226 @@ async fn management_mcp_reuses_the_execution_template_lifecycle() -> Result<()> 
             denied["result"]["structuredContent"]["statusCode"],
             "NOT_FOUND"
         );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_the_connector_profile_revision_lifecycle() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(&app, "mcp-connectors", "Connectors").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "mcp-connectors-project",
+        "Connector project",
+    )
+    .await?;
+    let environment = super::connector_tests::create_connector_environment(
+        &app,
+        &organization,
+        &project,
+        "mcp-connectors-environment",
+    )
+    .await?;
+    let initial_acl = super::connector_tests::connector_acl(1_000)?;
+    let create_arguments = json!({
+        "projectId": project,
+        "environmentId": environment,
+        "name": "Incident webhook",
+        "definitionAcl": initial_acl,
+        "idempotencyKey": "mcp-connector-create"
+    });
+
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_connector_profiles_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    let record = &created["result"]["structuredContent"]["data"]["record"];
+    assert_eq!(record["profile"]["aggregateVersion"], 1);
+    assert_eq!(record["revision"]["revisionNumber"], 1);
+    assert_eq!(record["revision"]["definitionAcl"], initial_acl);
+    assert!(record["revision"].get("endpoint").is_none());
+    let profile_id = super::connector_tests::required_connector_string(
+        &record["profile"]["profileId"],
+        "MCP profile ID",
+    )?;
+    let initial_revision_id = super::connector_tests::required_connector_string(
+        &record["revision"]["revisionId"],
+        "MCP revision ID",
+    )?;
+
+    let replay = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(2, "a3s_cloud_connector_profiles_create", create_arguments),
+        ))
+        .await?;
+    let replay = response_json(&replay)?;
+    assert_eq!(replay["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replay["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+    assert_eq!(
+        replay["result"]["structuredContent"]["data"]["record"]["profile"]["profileId"],
+        profile_id
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_connector_profiles_list",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "limit": 1
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&listed)?["result"]["structuredContent"]["data"][0]["profileId"],
+        profile_id
+    );
+
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_connector_profiles_get",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "profileId": profile_id
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&fetched)?["result"]["structuredContent"]["data"]["revision"]["revisionId"],
+        initial_revision_id
+    );
+
+    let revised_acl = super::connector_tests::connector_acl(2_000)?;
+    let revised = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                5,
+                "a3s_cloud_connector_profiles_revise",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "profileId": profile_id,
+                    "expectedVersion": 1,
+                    "definitionAcl": revised_acl,
+                    "idempotencyKey": "mcp-connector-revise"
+                }),
+            ),
+        ))
+        .await?;
+    let revised = response_json(&revised)?;
+    assert_eq!(revised["result"]["structuredContent"]["code"], 201);
+    let revised_record = &revised["result"]["structuredContent"]["data"]["record"];
+    assert_eq!(revised_record["profile"]["aggregateVersion"], 2);
+    assert_eq!(revised_record["revision"]["revisionNumber"], 2);
+    assert_eq!(
+        revised_record["revision"]["parentRevisionId"],
+        initial_revision_id
+    );
+    let revised_revision_id = super::connector_tests::required_connector_string(
+        &revised_record["revision"]["revisionId"],
+        "revised MCP revision ID",
+    )?;
+
+    let revisions = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                6,
+                "a3s_cloud_connector_revisions_list",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "profileId": profile_id
+                }),
+            ),
+        ))
+        .await?;
+    let revisions = response_json(&revisions)?;
+    assert_eq!(
+        revisions["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    assert_eq!(
+        revisions["result"]["structuredContent"]["data"][0]["revisionId"],
+        revised_revision_id
+    );
+
+    let initial_revision = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                7,
+                "a3s_cloud_connector_revisions_get",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "profileId": profile_id,
+                    "revisionId": initial_revision_id
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&initial_revision)?["result"]["structuredContent"]["data"]["revisionNumber"],
+        1
+    );
+
+    for (id, name, arguments) in [
+        (
+            8,
+            "a3s_cloud_connector_profiles_list",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "limit": 201
+            }),
+        ),
+        (
+            9,
+            "a3s_cloud_connector_profiles_get",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "profileId": profile_id,
+                "organizationId": organization
+            }),
+        ),
+    ] {
+        let rejected = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        assert_eq!(response_json(&rejected)?["error"]["code"], -32602, "{name}");
     }
     Ok(())
 }

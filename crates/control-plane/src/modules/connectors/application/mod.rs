@@ -22,7 +22,8 @@ pub use execution_service::{
 pub use queries::{
     GetConnectorProfile, GetConnectorProfileHandler, GetConnectorRevision,
     GetConnectorRevisionHandler, ListConnectorProfiles, ListConnectorProfilesHandler,
-    ListConnectorRevisions, ListConnectorRevisionsHandler,
+    ListConnectorRevisions, ListConnectorRevisionsHandler, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 pub use result::ConnectorProfileMutationResult;
 

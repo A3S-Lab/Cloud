@@ -2,6 +2,7 @@ mod arguments;
 mod artifacts;
 mod audit;
 mod catalog;
+mod connectors;
 mod dispatch;
 mod edge;
 mod execution_templates;

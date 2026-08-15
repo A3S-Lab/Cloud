@@ -229,6 +229,18 @@ canonicalizes, digest-binds, persists, and materializes the template; the
 client retains no parser, revision store, Workflow dispatcher, scheduler, or
 Runtime provider.
 
+`listConnectorProfiles`, `getConnectorProfile`, `createConnectorProfile`,
+`reviseConnectorProfile`, `listConnectorRevisions`, and
+`getConnectorRevision` expose the environment-scoped immutable Connector
+profile lifecycle added by REST contract `1.36.0`. Writes transport one
+bounded canonical A3S ACL in a strict JSON envelope; revise also carries one
+positive expected aggregate version. Lists default to 50 and accept at most
+200 records. Cloud remains authoritative for ACL parsing, exact Secret-version
+admission, Resource Grants, optimistic concurrency, idempotency, immutable
+digest lineage, Outbox, audit, and persistence. The client never resolves a
+Secret or projects endpoint, credential, provider body, attempt/evidence, or
+retry state.
+
 `listAgentConversations`, `getAgentConversation`, and
 `createAgentConversation` expose the `A1.1` conversation lifecycle.
 `listAgentExecutions`, `getAgentExecution`, and `startAgentExecution` bind one

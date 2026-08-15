@@ -11,6 +11,9 @@ use crate::modules::shared_kernel::domain::{
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
 
+pub const DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT: usize = 200;
+
 #[derive(Debug, Clone)]
 pub struct GetConnectorProfile {
     pub organization_id: OrganizationId,
@@ -66,6 +69,7 @@ pub struct ListConnectorProfiles {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub limit: usize,
     pub resource_access: ResourceAccessEvaluator,
 }
 
@@ -92,6 +96,9 @@ impl QueryHandler<ListConnectorProfiles> for ListConnectorProfilesHandler {
     {
         let connectors = Arc::clone(&self.connectors);
         Box::pin(async move {
+            if let Err(error) = validate_list_limit(query.limit) {
+                return Ok(Err(error));
+            }
             if let Err(error) = environment(
                 query.project_id,
                 query.environment_id,
@@ -104,6 +111,7 @@ impl QueryHandler<ListConnectorProfiles> for ListConnectorProfilesHandler {
                     query.organization_id,
                     query.project_id,
                     query.environment_id,
+                    query.limit,
                 )
                 .await
                 .map_err(Into::into))
@@ -176,6 +184,7 @@ pub struct ListConnectorRevisions {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub profile_id: ConnectorProfileId,
+    pub limit: usize,
     pub resource_access: ResourceAccessEvaluator,
 }
 
@@ -202,6 +211,9 @@ impl QueryHandler<ListConnectorRevisions> for ListConnectorRevisionsHandler {
     {
         let connectors = Arc::clone(&self.connectors);
         Box::pin(async move {
+            if let Err(error) = validate_list_limit(query.limit) {
+                return Ok(Err(error));
+            }
             if let Err(error) = environment(
                 query.project_id,
                 query.environment_id,
@@ -228,11 +240,21 @@ impl QueryHandler<ListConnectorRevisions> for ListConnectorRevisionsHandler {
                     query.project_id,
                     query.environment_id,
                     query.profile_id,
+                    query.limit,
                 )
                 .await
                 .map_err(Into::into))
         })
     }
+}
+
+fn validate_list_limit(limit: usize) -> ApplicationResult<()> {
+    if !(1..=MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT).contains(&limit) {
+        return Err(ApplicationError::Invalid(format!(
+            "Connector profile list limit must be between 1 and {MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT}"
+        )));
+    }
+    Ok(())
 }
 
 async fn load_record(

@@ -159,9 +159,9 @@ error. API-token list/get and create/revoke results are projected onto safe
 metadata; Cloud stores only the credential digest through its A3S ORM-backed
 Identity repository.
 
-Desired-state commands additionally require `--file=<path>`. Workload and MCP
-Service-profile commands accept a nonempty UTF-8 A3S ACL document of at most
-64 KiB; MCP route-policy create/revise accepts at most 512 KiB; Ontology
+Desired-state commands additionally require `--file=<path>`. Workload, MCP
+Service-profile, and Connector-profile commands accept a nonempty UTF-8 A3S
+ACL document of at most 64 KiB; MCP route-policy create/revise accepts at most 512 KiB; Ontology
 create/revise accepts at most 1 MiB. The CLI sends those exact bytes as
 `application/vnd.a3s.acl`; Cloud parses them with
 `a3s-acl`, applies bounded closed-schema validation, and dispatches the
@@ -230,6 +230,12 @@ notifications get <notification-id>
 notifications read <notification-id> --expected-version=<version>
 environments list
 environments create <name>
+connector-profiles list
+connector-profiles get <profile-id>
+connector-profiles create <name> --file=<connector.acl>
+connector-profiles revise <profile-id> --file=<connector.acl> --expected-version=<version>
+connector-revisions list <profile-id>
+connector-revisions get <profile-id> <revision-id>
 ontologies list
 ontologies get <ontology-id>
 ontologies create --file=<path>
@@ -436,6 +442,16 @@ bounded `.acl` file and requires the normal caller-owned idempotency key; list
 and get return canonical ACL and exact template/revision/digest identity. The
 CLI does not parse the ACL, materialize invocation input, schedule a Task, or
 store template state.
+
+`connector-profiles` creates, revises, lists, and reads environment-scoped
+Connector profile heads; `connector-revisions` lists or reads their immutable
+digest-linked history. Create/revise read one bounded `.acl` file, use the
+normal caller-owned idempotency key, and revise requires the current positive
+aggregate version. Cloud alone parses canonical Connector ACL, validates exact
+Secret-version references, authorizes the environment, and commits lineage,
+Outbox, audit, and idempotency through the shared repository. The CLI never
+resolves a Secret, stores profile state, contacts a provider, or exposes an
+endpoint, credential, provider body, attempt/evidence, or retry state.
 
 `forms` creates, revises, lists, and reads project-scoped canonical native Form
 drafts. `form-releases` publishes, lists, and reads immutable releases carrying

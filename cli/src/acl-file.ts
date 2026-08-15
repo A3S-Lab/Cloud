@@ -4,6 +4,7 @@ import {
   rejectGatewayRolloutOptions,
   rejectLogOptions,
   requireArity,
+  requireExpectedVersion,
   requireIdempotencyKey,
 } from './command-options';
 import { usageError } from './errors';
@@ -23,14 +24,23 @@ export function requireAclMutationCommand(
   const idempotencyKey = requireIdempotencyKey(arguments_);
   rejectExpectedVersionOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
-  const file = arguments_.file;
-  if (file === undefined) {
-    throw usageError('--file is required for ACL desired-state mutations');
-  }
-  if (file.length > 4_096 || /[\0\r\n]/.test(file)) {
-    throw usageError('ACL file path is invalid');
-  }
-  return { idempotencyKey, file };
+  return { idempotencyKey, file: requireAclFile(arguments_) };
+}
+
+export function requireVersionedAclMutationCommand(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string,
+  label: string
+): { expectedVersion: number; idempotencyKey: string; file: string } {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectLogOptions(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  return {
+    expectedVersion: requireExpectedVersion(arguments_, label),
+    idempotencyKey: requireIdempotencyKey(arguments_),
+    file: requireAclFile(arguments_),
+  };
 }
 
 export async function readAclDocument(
@@ -56,4 +66,15 @@ export async function readAclDocument(
 
 async function readLocalFile(path: string): Promise<Uint8Array> {
   return Bun.file(path).bytes();
+}
+
+function requireAclFile(arguments_: ParsedArguments): string {
+  const file = arguments_.file;
+  if (file === undefined) {
+    throw usageError('--file is required for ACL desired-state mutations');
+  }
+  if (file.length > 4_096 || /[\0\r\n]/.test(file)) {
+    throw usageError('ACL file path is invalid');
+  }
+  return file;
 }

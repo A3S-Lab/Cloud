@@ -164,6 +164,7 @@ pub trait IConnectorProfileRepository: Send + Sync {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<ConnectorProfile>, RepositoryError>;
 
     async fn find_revision(
@@ -181,6 +182,7 @@ pub trait IConnectorProfileRepository: Send + Sync {
         project_id: ProjectId,
         environment_id: EnvironmentId,
         profile_id: ConnectorProfileId,
+        limit: usize,
     ) -> Result<Vec<ConnectorRevision>, RepositoryError>;
 }
 

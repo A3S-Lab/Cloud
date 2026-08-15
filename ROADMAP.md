@@ -915,7 +915,7 @@ authentication, scopes, tenant guards, idempotency identities, audit, and A3S
 ORM repositories. Focused conformance and the clean real PostgreSQL/A3S Box
 gate pass; `C0.2m` is verified.
 
-The current catalog contains 91 administrator tools and 54 read-only tools:
+The current catalog contains 97 administrator tools and 58 read-only tools:
 the verified catalog is retained, fifteen Identity tools come from the
 implemented Membership, MembershipInvitation, and Resource Grant `C0.3`
 slices, seven Ontology tools come from backend `W0.2`, and ten Workflow
@@ -928,7 +928,9 @@ HumanTask list/detail queries plus claim/release/submission mutations reuse Work
 repository, domain state machine, response contracts, transaction-bound
 idempotency/Outbox/audit writes, and the shared Identity Resource Grant evaluator. Three
 ExecutionTemplate create/list/exact-get tools reuse the Executions CQRS and
-immutable ACL-native repository. Six `U0.2`
+immutable ACL-native repository. Six Connector profile/revision tools reuse the
+environment-authorized Connector CQRS and its single profile repository; four
+are read-only and none resolves referenced Secrets. Six `U0.2`
 Plugin Registry/catalog tools add only tenant-scoped read queries. One
 owner/admin-only audit query reuses `cloud:read` and the shared append-only
 audit repository. Three personal-notification tools add list, exact get, and
@@ -938,7 +940,8 @@ Workflow node-catalog, WorkflowRun, ExecutionTemplate, plugin tenant,
 notification, and historical-replay tests
 pass. The retained clean A3S Box/PostgreSQL gate passes the predecessor
 `77/47` catalog; focused catalog, Workflow node-catalog, invitation lifecycle,
-notification, and variable-inspection tests pass the current `91/54` source
+notification, Connector lifecycle, and variable-inspection tests pass the
+current `97/58` source
 catalog, and the
 dedicated invitation PostgreSQL 17 promotion
 gate below passes. The clean gate retains the strict `W0.2` Ontology
@@ -1948,7 +1951,8 @@ Automations target contract rather than retaining another scheduler.
 | `AUT0.5-C4` | Verified on Rust 1.88 in CI (`2026-08-15`) | The production public-Internet egress authorizer admits HTTPS only, resolves an absolute DNS name immediately before every attempt, rejects special-use names and any answer set containing a non-public address, and returns one bounded exact-endpoint authorization. The sole HTTP executor consumes those exact socket addresses in an attempt-scoped Rustls client, disables system proxies, preserves hostname/TLS authority, and rejects redirects, closing DNS re-resolution and proxy bypass paths without adding another HTTP client authority. Deterministic tests cover rebinding, mixed answers, address bounds, literal IPs, DNS timeout, endpoint substitution, address pinning, proxy traps, and redaction. The [successful Rust 1.88 job](https://github.com/A3S-Lab/Cloud/actions/runs/31836250302/job/94883079855) certifies this boundary. No egress ACL/configuration, policy cache, request retry, scheduler, evidence store, provider wiring, or product surface is added. |
 | `AUT0.5-C5` | Verified on PostgreSQL 17 in CI (`2026-08-15`) | One immutable `ConnectorExecutionEvidence` terminal fact is keyed by exact organization/project/environment/profile/revision/attempt. It retains only the complete request digest and body byte count, accepted/retryable/rejected outcome, optional HTTP status, accepted response digest/byte count, bounded `Retry-After`, and canonical start/completion times. Migration `112` uses A3S ORM, an exact revision foreign key, immutable triggers, and the attempt identity itself for exact replay/conflict; Resource Grant-aware get and bounded keyset list queries add no product surface. The [successful PostgreSQL 17 job](https://github.com/A3S-Lab/Cloud/actions/runs/31857834202/job/94945770009) certifies the persistence gate. Bodies, headers, signing input, endpoints, addresses, credentials, provider text, caller acknowledgement, retry counters, scheduler state, shared command-idempotency records, audit events, and Outbox facts are not copied; C6 makes the sole evidence write path part of atomic attempt settlement. |
 | `AUT0.5-C6` | Verified on PostgreSQL 17 in CI (`2026-08-15`) | Migration `113` adds one exact-attempt `reserved`/`dispatching`/`terminal` state machine. Only an expired pre-dispatch reservation may rotate generation/token; `dispatching` is never reacquired and becomes an indeterminate observation after its bounded outcome deadline. One authorized application service composes exact-revision load, just-in-time Secret materialization, per-attempt egress authorization, a durable non-replayable dispatch intent, one consumed network handle, and atomic terminal-attempt/evidence settlement. Resource Grant-aware exact and unresolved keyset reads support bounded recovery. Fault and concurrency tests prove stale-fence rejection, safe takeover, exact replay, settlement recovery, and no blind provider retry; the [successful PostgreSQL 17 job](https://github.com/A3S-Lab/Cloud/actions/runs/31863226596/job/94960033185) certifies migration, restart reads, database immutability, deferred pairing, and concurrent transaction behavior. Flow or the owning A3S Event consumer remains the only retry/backoff/cancellation/acknowledgement authority; no queue, scheduler, retry counter, response/body store, second HTTP client, audit, or Outbox mechanism is added. |
-| `AUT0.5` | Planned; `C1`-`C6` foundation only | Complete provider/Event-consumer wiring, Workflow HTTP/service ports, supported non-Web management surfaces, revocation/recovery operations, and retained integration evidence over the existing profile/revision, materializer, egress, executor, attempt, and evidence authorities; Flow remains the retry/backoff scheduler |
+| `AUT0.5-C7` | Implemented; focused cross-surface verification passes (`2026-08-15`) | REST/OpenAPI `1.36.0`, the maintained TypeScript client, CLI, and six Management MCP tools expose the existing environment-authorized create/revise/get/list/history Connector profile CQRS. All surfaces accept canonical bounded A3S ACL, share optimistic concurrency and idempotency, reuse one PostgreSQL profile repository and the shared Resource Grant evaluator, and expose immutable ACL/digest lineage without resolving Secrets or copying execution/provider state. Focused REST, OpenAPI, client, CLI, MCP catalog/permission, replay, strict-argument, isolation, and lifecycle tests pass. Web remains intentionally deferred, and retained PostgreSQL cross-surface evidence remains part of the complete `AUT0.5` gate. |
+| `AUT0.5` | Planned; `C1`-`C7` foundation only | Complete provider/Event-consumer wiring, Workflow HTTP/service ports, revocation/recovery operations, and retained integration evidence over the existing profile/revision, materializer, egress, executor, attempt, evidence, and management-surface authorities; Flow remains the retry/backoff scheduler |
 | `AUT0.6` | Planned | Duplicate/out-of-order delivery, clock shift, lease loss, process death, outage, revoke, quota, multi-node HA, replay, disaster recovery, and retained Web evidence |
 
 Automations never writes Sources, Applications, Workflow, or Operations tables;

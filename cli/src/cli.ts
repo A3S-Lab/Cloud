@@ -77,6 +77,12 @@ Commands:
   execution-templates list List immutable finite-task templates in the selected project
   execution-templates get ID REV Get one exact immutable ExecutionTemplate revision
   execution-templates create Publish an ACL-native ExecutionTemplate revision
+  connector-profiles list List Connector profiles in the selected environment
+  connector-profiles get ID Get one Connector profile and its current exact revision
+  connector-profiles create NAME Create a Connector profile from A3S ACL
+  connector-profiles revise ID Revise a Connector profile from A3S ACL
+  connector-revisions list PROFILE List immutable revisions for one Connector profile
+  connector-revisions get PROFILE REV Get one exact immutable Connector revision
   forms list            List Form drafts in the selected project
   forms get ID          Get one Form draft
   forms create          Create a Form draft from native Form JSON

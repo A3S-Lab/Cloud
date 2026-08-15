@@ -1,6 +1,7 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
+pub mod presentation;
 
 pub use application::{
     ConnectorExecutionApplicationService, ConnectorExecutionAttemptResult,
@@ -12,7 +13,8 @@ pub use application::{
     ListConnectorExecutionEvidenceHandler, ListConnectorProfiles, ListConnectorProfilesHandler,
     ListConnectorRevisions, ListConnectorRevisionsHandler,
     ListUnresolvedConnectorExecutionAttempts, ListUnresolvedConnectorExecutionAttemptsHandler,
-    ReviseConnectorProfile, ReviseConnectorProfileHandler,
+    ReviseConnectorProfile, ReviseConnectorProfileHandler, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 
 pub use domain::{
@@ -42,4 +44,9 @@ pub use infrastructure::{
     PostgresConnectorExecutionAttemptRepository, PostgresConnectorExecutionEvidenceRepository,
     PostgresConnectorProfileRepository, PublicInternetConnectorEgressAuthorizer,
     ResolvedConnectorAuthentication, ResolvedConnectorHttpRevision,
+};
+pub use presentation::{
+    ConnectorProfileMutationResponse, ConnectorProfileRecordResponse, ConnectorProfileResponse,
+    ConnectorRevisionResponse, ConnectorsModule, CreateConnectorProfileRequest,
+    ReviseConnectorProfileRequest,
 };

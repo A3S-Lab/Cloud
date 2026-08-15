@@ -12,6 +12,7 @@ import {
   MAX_MCP_ROUTE_POLICY_ACL_BYTES,
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
+  MAX_WORKFLOW_COMPOSITE_REGIONS_ACL_BYTES,
   MAX_WORKFLOW_GOAL_ACL_BYTES,
   MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
   MAX_WORKFLOW_RUN_HISTORY_LIMIT,
@@ -19,10 +20,10 @@ import {
   MAX_WORKFLOW_RUN_TIMEOUT_SECONDS,
   MAX_WORKFLOW_RUN_WAIT_SECONDS,
   MAX_WORKFLOW_STEP_DESCRIPTOR_BINDINGS_ACL_BYTES,
-  MAX_WORKFLOW_COMPOSITE_REGIONS_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
+import { MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES } from './connectors';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(
@@ -40,7 +41,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.35.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.36.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1231,6 +1232,127 @@ describe('CloudApi', () => {
     expect((calls[5]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:create');
     expect(calls[5]?.[1]?.body).toBe(JSON.stringify(input));
     expect((calls[6]?.[1]?.headers as Record<string, string>)['Idempotency-Key']).toBe('execution:cancel');
+  });
+
+  it('exposes bounded ACL-native Connector profile and revision management', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const acl = 'connector_http { schema = "cloud.connector.http.v1" }\n';
+
+    await api.listConnectorProfiles('organization / one', 'project', 'environment', 25);
+    await api.getConnectorProfile('organization / one', 'project', 'environment', 'profile / one');
+    await api.listConnectorRevisions('organization / one', 'project', 'environment', 'profile / one', 30);
+    await api.getConnectorRevision(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      'revision / one'
+    );
+    await api.createConnectorProfile(
+      'organization / one',
+      'project',
+      'environment',
+      { name: 'Incident webhook', definitionAcl: acl },
+      'connector:create'
+    );
+    await api.reviseConnectorProfile(
+      'organization / one',
+      'project',
+      'environment',
+      'profile / one',
+      { expectedVersion: 2, definitionAcl: acl },
+      'connector:revise'
+    );
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles?limit=25',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions?limit=30',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions/revision%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles',
+        'POST',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment/connector-profiles/profile%20%2F%20one/revisions',
+        'POST',
+      ],
+    ]);
+    expect(calls[4]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'connector:create' }),
+        body: JSON.stringify({ name: 'Incident webhook', definitionAcl: acl }),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'connector:revise' }),
+        body: JSON.stringify({ expectedVersion: 2, definitionAcl: acl }),
+      })
+    );
+
+    expect(() =>
+      api.createConnectorProfile(
+        'organization',
+        'project',
+        'environment',
+        { name: '   ', definitionAcl: acl },
+        'connector:invalid-name'
+      )
+    ).toThrow('Connector profile name must contain');
+    expect(() =>
+      api.createConnectorProfile(
+        'organization',
+        'project',
+        'environment',
+        { name: 'Webhook', definitionAcl: '' },
+        'connector:invalid-acl'
+      )
+    ).toThrow('Connector definition ACL must contain between');
+    expect(() =>
+      api.reviseConnectorProfile(
+        'organization',
+        'project',
+        'environment',
+        'profile',
+        {
+          expectedVersion: 1,
+          definitionAcl: '界'.repeat(MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES),
+        },
+        'connector:oversized-acl'
+      )
+    ).toThrow('Connector definition ACL must contain between');
+    expect(() =>
+      api.reviseConnectorProfile(
+        'organization',
+        'project',
+        'environment',
+        'profile',
+        { expectedVersion: 0, definitionAcl: acl },
+        'connector:invalid-version'
+      )
+    ).toThrow('expected Connector profile version must be a positive safe integer');
+    expect(() => api.listConnectorProfiles('organization', 'project', 'environment', 201)).toThrow(
+      'Connector list limit must be between 1 and 200'
+    );
+    expect(calls).toHaveLength(6);
   });
 
   it('exposes Agent conversations, executions, and resumable semantic events', async () => {

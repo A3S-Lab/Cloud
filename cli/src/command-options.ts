@@ -41,6 +41,11 @@ export function requireVersionedMutationCommand(
   rejectLogOptions(arguments_);
   rejectFileOption(arguments_);
   rejectGatewayRolloutOptions(arguments_);
+  const expectedVersion = requireExpectedVersion(arguments_, label);
+  return { expectedVersion, idempotencyKey: requireIdempotencyKey(arguments_) };
+}
+
+export function requireExpectedVersion(arguments_: ParsedArguments, label: string): number {
   const rawVersion = arguments_.expectedVersion;
   if (rawVersion === undefined || !/^[0-9]+$/u.test(rawVersion)) {
     throw usageError(`--expected-version must be a positive safe integer for ${label} mutation`);
@@ -49,7 +54,7 @@ export function requireVersionedMutationCommand(
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
     throw usageError(`--expected-version must be a positive safe integer for ${label} mutation`);
   }
-  return { expectedVersion, idempotencyKey: requireIdempotencyKey(arguments_) };
+  return expectedVersion;
 }
 
 export function requireIdempotencyKey(arguments_: ParsedArguments): string {

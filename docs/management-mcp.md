@@ -41,6 +41,13 @@ CQRS handlers, `execution:write` scope, Resource Grant checks, idempotency,
 A3S ORM repository, audit, Outbox, and REST response DTOs used by contract
 `1.24.0`. MCP does not gain a template parser, mutable template store,
 scheduler, Runtime provider, or Workflow dispatch path.
+The Connector profile slice adds create/revise/profile-list/profile-get and
+revision-list/revision-get tools over the same environment-authorized CQRS,
+single PostgreSQL repository, canonical A3S ACL parser, response DTOs,
+idempotency, Outbox, and audit path used by REST, the maintained client, and
+CLI. MCP owns no Connector parser, Secret resolver, profile store, retry rail,
+provider client, or execution path, and never exposes resolved endpoint or
+credential material.
 The project-attribution slice adds one current-or-exact immutable read tool and
 one optimistic, replay-safe update tool. Both reuse the Projects CQRS,
 project-qualified Resource Grant evaluator, A3S ORM repository, shared audit,
@@ -125,6 +132,12 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_projects_list` | Query | None |
 | `a3s_cloud_project_attribution_get` | Query | None; exact Project Resource Grant enforcement occurs in Projects |
 | `a3s_cloud_environments_list` | Query | None |
+| `a3s_cloud_connector_profiles_list` | Query | `cloud:read`; exact Environment Resource Grant enforcement occurs in Connectors |
+| `a3s_cloud_connector_profiles_get` | Query | `cloud:read`; returns the profile plus its current immutable revision |
+| `a3s_cloud_connector_revisions_list` | Query | `cloud:read`; bounded exact-profile revision history |
+| `a3s_cloud_connector_revisions_get` | Query | `cloud:read`; exact immutable revision |
+| `a3s_cloud_connector_profiles_create` | Command | `connector:write`; exact Environment Resource Grant, canonical ACL, and idempotency required |
+| `a3s_cloud_connector_profiles_revise` | Command | `connector:write`; exact Environment Resource Grant, positive expected version, canonical ACL, and idempotency required |
 | `a3s_cloud_forms_list` | Query | None |
 | `a3s_cloud_forms_get` | Query | None |
 | `a3s_cloud_form_releases_list` | Query | None |
@@ -444,6 +457,23 @@ returns `201`, or `200` with `replayed: true` for the exact idempotent replay.
 The returned definition is canonical A3S ACL with its semantic digest; MCP
 does not compile Workflow input, mutate a revision, or invoke a Runtime Task.
 
+## Immutable Connector profile lifecycle
+
+`a3s_cloud_connector_profiles_create` requires `projectId`, `environmentId`,
+a bounded name, canonical `cloud.connector.http.v1` `definitionAcl`, and
+`idempotencyKey`. `a3s_cloud_connector_profiles_revise` additionally requires
+the exact `profileId` and a positive `expectedVersion`. Both require
+`connector:write`, authorize the exact environment before replay, return `201`
+for a new revision, and return `200` with `replayed: true` for the exact
+idempotent replay.
+
+The four `cloud:read` tools list bounded profile heads, get a profile plus its
+current revision, list immutable revision history, or get one exact revision.
+Lists accept `limit` from 1 through 200 and default to 50. Every tool derives
+the organization from authentication and rejects unknown arguments. Returned
+ACL is canonical and digest-linked; resolved Secrets, endpoints, headers,
+provider response bodies, and execution-attempt state are never projected.
+
 `a3s_cloud_human_tasks_claim` and `a3s_cloud_human_tasks_release` require one
 task ID, a positive `expectedVersion`, and an `idempotencyKey`. They require
 `workflow:write`, resolve and authorize the stored project before replay, and
@@ -540,7 +570,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 84-tool administrator and 49-tool
+current focused source runner requires exact 97-tool administrator and 58-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -569,7 +599,8 @@ The expanded focused catalog, permission, Ontology migration, Workflow
 definition/Goal/Plan lifecycle, built-in node-catalog cross-surface equality,
 native Form lifecycle, minimal WorkflowRun,
 protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
-strict-boundary, and replay tests pass. The updated clean PostgreSQL/A3S Box
+immutable Connector profile/revision lifecycle, strict-boundary, and replay
+tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.
 The expanded provider scenario publishes the shared

@@ -1,13 +1,26 @@
 import { type AuditRecordPage, type AuditRecordQuery, encodeAuditRecordQuery } from './audit';
+import {
+  type ConnectorProfile,
+  type ConnectorProfileMutationResult,
+  type ConnectorProfileRecord,
+  type ConnectorRevision,
+  type CreateConnectorProfileInput,
+  DEFAULT_CONNECTOR_LIST_LIMIT,
+  type ReviseConnectorProfileInput,
+  validateConnectorDefinitionAcl,
+  validateConnectorExpectedVersion,
+  validateConnectorListLimit,
+  validateConnectorProfileName,
+} from './connectors';
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import {
+  encodeNotificationQuery,
   type Notification,
   type NotificationMutationResult,
   type NotificationPage,
   type NotificationQuery,
-  encodeNotificationQuery,
   validateExpectedNotificationVersion,
   validateNotificationId,
 } from './notifications';
@@ -200,7 +213,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.35.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.36.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -229,6 +242,7 @@ export {
   MAX_MCP_SERVICE_PROFILE_ACL_BYTES,
   MAX_ONTOLOGY_ACL_BYTES,
   MAX_SECRET_VALUE_BYTES,
+  MAX_WORKFLOW_COMPOSITE_REGIONS_ACL_BYTES,
   MAX_WORKFLOW_DEFINITION_ACL_BYTES,
   MAX_WORKFLOW_GOAL_ACL_BYTES,
   MAX_WORKFLOW_PAYLOAD_ACL_BYTES,
@@ -238,7 +252,6 @@ export {
   MAX_WORKFLOW_STEP_DESCRIPTOR_REGISTRY_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_CONTRACT_ACL_BYTES,
   MAX_WORKFLOW_VARIABLE_DEFAULTS_ACL_BYTES,
-  MAX_WORKFLOW_COMPOSITE_REGIONS_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
   validateExecutionTemplateAcl,
   validateFormDraftInput,
@@ -1759,6 +1772,103 @@ export class CloudApi {
     );
   }
 
+  listConnectorProfiles(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    limit = DEFAULT_CONNECTOR_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<ConnectorProfile[]> {
+    validateConnectorListLimit(limit);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/connector-profiles?limit=${limit}`,
+      signal
+    );
+  }
+
+  getConnectorProfile(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorProfileRecord> {
+    return this.get(this.connectorProfilePath(organizationId, projectId, environmentId, profileId), signal);
+  }
+
+  listConnectorRevisions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    limit = DEFAULT_CONNECTOR_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<ConnectorRevision[]> {
+    validateConnectorListLimit(limit);
+    return this.get(
+      `${this.connectorProfilePath(organizationId, projectId, environmentId, profileId)}` +
+        `/revisions?limit=${limit}`,
+      signal
+    );
+  }
+
+  getConnectorRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorRevision> {
+    return this.get(
+      `${this.connectorProfilePath(organizationId, projectId, environmentId, profileId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  createConnectorProfile(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateConnectorProfileInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorProfileMutationResult> {
+    validateConnectorProfileName(input.name);
+    validateConnectorDefinitionAcl(input.definitionAcl);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/connector-profiles`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  reviseConnectorProfile(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string,
+    input: ReviseConnectorProfileInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ConnectorProfileMutationResult> {
+    validateConnectorExpectedVersion(input.expectedVersion);
+    validateConnectorDefinitionAcl(input.definitionAcl);
+    return this.postJson(
+      `${this.connectorProfilePath(organizationId, projectId, environmentId, profileId)}/revisions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
   createExecution(
     organizationId: string,
     projectId: string,
@@ -2730,6 +2840,20 @@ export class CloudApi {
 
   private get<T>(path: string, signal?: AbortSignal): Promise<T> {
     return this.request('GET', path, { signal });
+  }
+
+  private connectorProfilePath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    profileId: string
+  ): string {
+    return (
+      `/organizations/${encodeURIComponent(organizationId)}` +
+      `/projects/${encodeURIComponent(projectId)}` +
+      `/environments/${encodeURIComponent(environmentId)}` +
+      `/connector-profiles/${encodeURIComponent(profileId)}`
+    );
   }
 
   private getHealth<T>(path: string, signal?: AbortSignal): Promise<T> {

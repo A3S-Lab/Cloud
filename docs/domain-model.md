@@ -641,6 +641,16 @@ whose debug representation redacts endpoint and authentication material, and
 must run again for every later attempt. It owns no cache, plaintext store,
 Secret lifecycle state, retry, scheduler, or execution evidence.
 
+The implemented `AUT0.5-C7` presentation boundary exposes that same profile
+and revision authority through REST/OpenAPI `1.36.0`, the maintained
+TypeScript client, CLI, and six Management MCP tools. Create and revise accept
+canonical bounded A3S ACL and reuse the application handler's optimistic
+concurrency, idempotency, Resource Grant, Secret-reference admission, Outbox,
+and audit path. Current/list/history reads reuse the same QueryBus handlers and
+response DTOs. All four surfaces share one PostgreSQL profile repository with
+execution materialization; none resolves a Secret or projects endpoints,
+credentials, provider bodies, attempts, evidence, or retry state.
+
 The component-only `AUT0.5-C4` egress boundary keeps authorization and transport
 coupled without creating another HTTP mechanism. The production public-Internet
 authorizer accepts HTTPS only, resolves an absolute DNS name immediately before
@@ -845,13 +855,13 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C6` profile/revision, authorized application,
+`AUT0.5-C2` through `C7` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, and the first Notification Event-consumer-to-C6 composition now
-exist. `AUT0.5` must still add supported management surfaces, general provider
-wiring, revocation/recovery operations, and Workflow ports over those same
-authorities. Notifications still needs supported subscription management
+exist. `AUT0.5` must still add general provider wiring,
+revocation/recovery operations, retained integration evidence, and Workflow
+ports over those same authorities. Notifications still needs supported subscription management
 surfaces and retained NATS evidence, plus separate versioned semantics before
 any user-configured suppression or delivery budget is admitted. Provider outage
 never runs inside the source Outbox projector

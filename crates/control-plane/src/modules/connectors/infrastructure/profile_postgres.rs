@@ -267,7 +267,11 @@ impl IConnectorProfileRepository for PostgresConnectorProfileRepository {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<ConnectorProfile>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
                 profile_select()
@@ -277,7 +281,8 @@ impl IConnectorProfileRepository for PostgresConnectorProfileRepository {
                     .bind(project_id.as_uuid())
                     .append(" and environment_id = ")
                     .bind(environment_id.as_uuid())
-                    .append(" order by name_key asc, id asc"),
+                    .append(" order by name_key asc, id asc limit ")
+                    .bind(limit),
             )
             .await
             .map_err(storage)?
@@ -321,7 +326,11 @@ impl IConnectorProfileRepository for PostgresConnectorProfileRepository {
         project_id: ProjectId,
         environment_id: EnvironmentId,
         profile_id: ConnectorProfileId,
+        limit: usize,
     ) -> Result<Vec<ConnectorRevision>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
                 revision_select()
@@ -333,7 +342,8 @@ impl IConnectorProfileRepository for PostgresConnectorProfileRepository {
                     .bind(environment_id.as_uuid())
                     .append(" and profile_id = ")
                     .bind(profile_id.as_uuid())
-                    .append(" order by revision_number desc, id asc"),
+                    .append(" order by revision_number desc, id asc limit ")
+                    .bind(limit),
             )
             .await
             .map_err(storage)?

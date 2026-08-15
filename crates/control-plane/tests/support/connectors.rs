@@ -279,7 +279,7 @@ pub(super) async fn exercise_connector_profile_persistence(
         .is_none());
     assert_eq!(
         repository
-            .list_revisions(organization_id, project_id, environment_id, profile_id)
+            .list_revisions(organization_id, project_id, environment_id, profile_id, 50)
             .await?,
         vec![successor.clone(), initial.clone()]
     );
@@ -722,6 +722,7 @@ pub(super) async fn exercise_connector_application_and_materialization(
                 project_id,
                 environment_id,
                 profile_id: created.record.profile.id,
+                limit: 50,
                 resource_access: ResourceAccessEvaluator::organization_wide(),
             },
             connector_context(),

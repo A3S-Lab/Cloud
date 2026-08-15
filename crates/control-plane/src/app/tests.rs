@@ -8,6 +8,7 @@ use crate::config::{
 use crate::modules::agents::InMemoryAgentRepository;
 use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::audit::{AuditRecord, InMemoryAuditRecordRepository};
+use crate::modules::connectors::InMemoryConnectorProfileRepository;
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
 };
@@ -76,6 +77,7 @@ mod asset_git_support;
 mod asset_git_tests;
 mod audit_tests;
 mod build_tests;
+mod connector_tests;
 mod execution_tests;
 mod forms_tests;
 mod management_mcp_tests;
@@ -1726,6 +1728,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             notifications: notifications.unwrap_or_else(|| {
                 Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new())
             }),
+            connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
             plugin_trust_roots: Arc::new(

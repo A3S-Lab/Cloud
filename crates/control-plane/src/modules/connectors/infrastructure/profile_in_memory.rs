@@ -166,7 +166,11 @@ impl IConnectorProfileRepository for InMemoryConnectorProfileRepository {
         organization_id: OrganizationId,
         project_id: ProjectId,
         environment_id: EnvironmentId,
+        limit: usize,
     ) -> Result<Vec<ConnectorProfile>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         let mut profiles = self
             .state
             .read()
@@ -186,6 +190,7 @@ impl IConnectorProfileRepository for InMemoryConnectorProfileRepository {
                 .cmp(right.name.key())
                 .then_with(|| left.id.cmp(&right.id))
         });
+        profiles.truncate(limit);
         Ok(profiles)
     }
 
@@ -215,7 +220,11 @@ impl IConnectorProfileRepository for InMemoryConnectorProfileRepository {
         project_id: ProjectId,
         environment_id: EnvironmentId,
         profile_id: ConnectorProfileId,
+        limit: usize,
     ) -> Result<Vec<ConnectorRevision>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
         let mut revisions = self
             .state
             .read()
@@ -236,6 +245,7 @@ impl IConnectorProfileRepository for InMemoryConnectorProfileRepository {
                 .cmp(&left.revision_number)
                 .then_with(|| left.id.cmp(&right.id))
         });
+        revisions.truncate(limit);
         Ok(revisions)
     }
 }
@@ -445,7 +455,7 @@ mod tests {
             .is_none());
         assert_eq!(
             repository
-                .list_revisions(organization_id, project_id, environment_id, profile_id)
+                .list_revisions(organization_id, project_id, environment_id, profile_id, 50)
                 .await
                 .expect("history"),
             vec![successor, initial]

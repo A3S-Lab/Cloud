@@ -243,6 +243,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 organization_id,
                 project_id,
                 environment_id,
+                limit: 50,
                 resource_access: ResourceAccessEvaluator::organization_wide(),
             },
             context(),
@@ -252,6 +253,24 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
         .expect("list profiles");
     assert_eq!(profiles, vec![revised.record.profile.clone()]);
 
+    let unbounded_profiles = ListConnectorProfilesHandler::new(connectors.clone())
+        .execute(
+            ListConnectorProfiles {
+                organization_id,
+                project_id,
+                environment_id,
+                limit: MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT + 1,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            context(),
+        )
+        .await
+        .expect("query framework");
+    assert!(matches!(
+        unbounded_profiles,
+        Err(ApplicationError::Invalid(_))
+    ));
+
     let history = ListConnectorRevisionsHandler::new(connectors.clone())
         .execute(
             ListConnectorRevisions {
@@ -259,6 +278,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 project_id,
                 environment_id,
                 profile_id: created.record.profile.id,
+                limit: 50,
                 resource_access: ResourceAccessEvaluator::organization_wide(),
             },
             context(),
@@ -269,6 +289,22 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
     assert_eq!(history.len(), 2);
     assert_eq!(history[0], revised.record.revision);
     assert_eq!(history[1], created.record.revision);
+
+    let empty_history = ListConnectorRevisionsHandler::new(connectors.clone())
+        .execute(
+            ListConnectorRevisions {
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id: created.record.profile.id,
+                limit: 0,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            context(),
+        )
+        .await
+        .expect("query framework");
+    assert!(matches!(empty_history, Err(ApplicationError::Invalid(_))));
 
     let initial_revision = GetConnectorRevisionHandler::new(connectors.clone())
         .execute(

@@ -36,9 +36,11 @@ use crate::modules::audit::{
 };
 use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
-    ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
+    ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer, ConnectorsModule,
+    CreateConnectorProfileHandler, GetConnectorProfileHandler, GetConnectorRevisionHandler,
+    IConnectorProfileRepository, ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
     PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
-    PublicInternetConnectorEgressAuthorizer,
+    PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
@@ -477,9 +479,9 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
     ));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let connector_profiles: Arc<dyn IConnectorProfileRepository> =
+        Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
     let outbound_notification_consumer = if config.events.provider == EventProviderKind::Nats {
-        let connector_profiles =
-            Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
         let connector_attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
             executor.clone(),
         ));
@@ -497,7 +499,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         ));
         let connector_execution = Arc::new(
             ConnectorExecutionApplicationService::new(
-                connector_profiles,
+                Arc::clone(&connector_profiles),
                 connector_attempts,
                 connector_preparation,
                 ConnectorExecutionServiceOptions::default(),
@@ -1094,6 +1096,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             search,
             audit_records,
             notifications,
+            connector_profiles,
             plugin_registries,
             plugin_enrollment_authorizer,
             plugin_trust_roots,
@@ -1201,6 +1204,7 @@ struct ApplicationDependencies {
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
     notifications: Arc<dyn INotificationRepository>,
+    connector_profiles: Arc<dyn IConnectorProfileRepository>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
@@ -1270,6 +1274,7 @@ fn build_application_with_health(
         search,
         audit_records,
         notifications,
+        connector_profiles,
         plugin_registries,
         plugin_enrollment_authorizer,
         plugin_trust_roots,
@@ -1321,6 +1326,15 @@ fn build_application_with_health(
     let list_notifications = Arc::clone(&notifications);
     let get_notifications = Arc::clone(&notifications);
     let mark_notifications_read = notifications;
+    let create_connector_environments = Arc::clone(&environments);
+    let create_connector_profiles = Arc::clone(&connector_profiles);
+    let revise_connector_profiles = Arc::clone(&connector_profiles);
+    let list_connector_profiles = Arc::clone(&connector_profiles);
+    let get_connector_profiles = Arc::clone(&connector_profiles);
+    let list_connector_revisions = Arc::clone(&connector_profiles);
+    let get_connector_revisions = connector_profiles;
+    let create_connector_secrets = Arc::clone(&secrets);
+    let revise_connector_secrets = Arc::clone(&secrets);
     let project_organizations = Arc::clone(&organizations);
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
@@ -1696,6 +1710,19 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::notifications::MarkNotificationRead, _>(
                     MarkNotificationReadHandler::new(mark_notifications_read),
+                )
+                .command_handler::<crate::modules::connectors::CreateConnectorProfile, _>(
+                    CreateConnectorProfileHandler::new(
+                        create_connector_environments,
+                        create_connector_profiles,
+                        create_connector_secrets,
+                    ),
+                )
+                .command_handler::<crate::modules::connectors::ReviseConnectorProfile, _>(
+                    ReviseConnectorProfileHandler::new(
+                        revise_connector_profiles,
+                        revise_connector_secrets,
+                    ),
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
@@ -2166,6 +2193,18 @@ fn build_application_with_health(
                 .query_handler::<crate::modules::notifications::GetNotification, _>(
                     GetNotificationHandler::new(get_notifications),
                 )
+                .query_handler::<crate::modules::connectors::ListConnectorProfiles, _>(
+                    ListConnectorProfilesHandler::new(list_connector_profiles),
+                )
+                .query_handler::<crate::modules::connectors::GetConnectorProfile, _>(
+                    GetConnectorProfileHandler::new(get_connector_profiles),
+                )
+                .query_handler::<crate::modules::connectors::ListConnectorRevisions, _>(
+                    ListConnectorRevisionsHandler::new(list_connector_revisions),
+                )
+                .query_handler::<crate::modules::connectors::GetConnectorRevision, _>(
+                    GetConnectorRevisionHandler::new(get_connector_revisions),
+                )
                 .query_handler::<crate::modules::assets::ListAssets, _>(
                     ListAssetsHandler::new(list_assets),
                 )
@@ -2366,6 +2405,7 @@ fn build_application_with_health(
         .import(SearchModule)
         .import(AuditModule)
         .import(NotificationsModule)
+        .import(ConnectorsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
         .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)

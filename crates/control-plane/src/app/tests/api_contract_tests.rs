@@ -11,6 +11,49 @@ use std::collections::BTreeSet;
 
 const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/v1.json");
 
+#[test]
+fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let collection = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles"];
+    assert_eq!(collection["get"]["tags"], json!(["Connectors"]));
+    assert_eq!(collection["post"]["tags"], json!(["Connectors"]));
+    assert_eq!(
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["definitionAcl"]["maxLength"],
+        crate::modules::connectors::CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]
+            ["additionalProperties"],
+        false
+    );
+    assert!(collection["post"]["responses"]["201"].is_object());
+    let list_limit = collection["get"]["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("Connector list limit is missing".into()))?;
+    assert_eq!(list_limit["schema"]["default"], 50);
+    assert_eq!(list_limit["schema"]["maximum"], 200);
+
+    let revisions = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/connector-profiles/{profile_id}/revisions"];
+    assert_eq!(
+        revisions["post"]["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion", "definitionAcl"])
+    );
+    assert_eq!(
+        revisions["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedVersion"]["minimum"],
+        1
+    );
+    assert!(revisions["post"]["responses"]["201"].is_object());
+    Ok(())
+}
+
 #[tokio::test]
 async fn openapi_contract_is_public_raw_and_versioned() -> Result<()> {
     let app = contract_test_application()?;
