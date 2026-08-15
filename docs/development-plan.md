@@ -2099,13 +2099,22 @@ node.
   isolation, and lifecycle tests pass. No surface resolves Secrets or exposes
   endpoint, credential, provider-body, attempt, evidence, or retry state; Web
   remains intentionally deferred.
+- Implemented as `C0.3-N2f`: REST/OpenAPI `1.37.0`, the maintained client, CLI,
+  and four Management MCP tools expose the existing recipient-bound outbound
+  subscription create/list/get/revoke CQRS. Bounded keyset reads apply current
+  Resource Grants, exact denials remain nondisclosing, and mutations reuse the
+  existing ACL, Connector revision, idempotency, Outbox, audit, and single
+  Notifications repository authorities. Responses do not resolve endpoints,
+  Secrets, credentials, provider bodies, attempts, receipts, or retry state;
+  no Web work, table, migration, parser, queue, scheduler, or counter is added.
 - Workflow ports, provider/Event-consumer wiring, revocation/recovery
   operations, and retained PostgreSQL/end-to-end evidence
   remain open in `AUT0.5`; these components create no product availability
   claim.
-- Complete outbound delivery product availability by exposing the existing
-  immutable Notification-owned subscription ACL through supported management
-  surfaces and retaining the NATS production-evidence gate. Any future
+- Complete outbound delivery product availability by retaining the NATS
+  production-evidence gate and the intentionally deferred Web projection. The
+  immutable Notification-owned subscription ACL is already exposed through
+  REST, the maintained client, CLI, and Management MCP. Any future
   user-configured suppression or delivery budget must be a versioned semantic
   extension over the same delivery, C6 evidence, A3S Event `AckWait`, and receipt
   authorities; it may not introduce another counter, timer, queue, scheduler,

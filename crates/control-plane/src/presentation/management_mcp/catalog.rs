@@ -8,6 +8,10 @@ use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
+use crate::modules::notifications::{
+    DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+};
 use crate::modules::projects::domain::value_objects::{
     BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
@@ -68,6 +72,14 @@ pub const AUDIT_RECORDS_LIST: &str = "a3s_cloud_audit_records_list";
 pub const NOTIFICATIONS_LIST: &str = "a3s_cloud_notifications_list";
 pub const NOTIFICATIONS_GET: &str = "a3s_cloud_notifications_get";
 pub const NOTIFICATIONS_READ: &str = "a3s_cloud_notifications_read";
+pub const NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_CREATE: &str =
+    "a3s_cloud_notification_outbound_subscriptions_create";
+pub const NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_LIST: &str =
+    "a3s_cloud_notification_outbound_subscriptions_list";
+pub const NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_GET: &str =
+    "a3s_cloud_notification_outbound_subscriptions_get";
+pub const NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_REVOKE: &str =
+    "a3s_cloud_notification_outbound_subscriptions_revoke";
 pub const PROJECTS_CREATE: &str = "a3s_cloud_projects_create";
 pub const PROJECTS_LIST: &str = "a3s_cloud_projects_list";
 pub const PROJECT_ATTRIBUTION_GET: &str = "a3s_cloud_project_attribution_get";
@@ -202,6 +214,10 @@ pub enum ManagementTool {
     NotificationsList,
     NotificationsGet,
     NotificationsRead,
+    NotificationOutboundSubscriptionsCreate,
+    NotificationOutboundSubscriptionsList,
+    NotificationOutboundSubscriptionsGet,
+    NotificationOutboundSubscriptionsRevoke,
     WorkloadsList,
     WorkloadsGet,
     WorkloadLogsGet,
@@ -234,7 +250,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 97] = [
+    const ALL: [Self; 101] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ConnectorProfilesCreate,
@@ -317,6 +333,10 @@ impl ManagementTool {
         Self::NotificationsList,
         Self::NotificationsGet,
         Self::NotificationsRead,
+        Self::NotificationOutboundSubscriptionsCreate,
+        Self::NotificationOutboundSubscriptionsList,
+        Self::NotificationOutboundSubscriptionsGet,
+        Self::NotificationOutboundSubscriptionsRevoke,
         Self::WorkloadsList,
         Self::WorkloadsGet,
         Self::WorkloadLogsGet,
@@ -442,6 +462,14 @@ impl ManagementTool {
             Self::NotificationsList => NOTIFICATIONS_LIST,
             Self::NotificationsGet => NOTIFICATIONS_GET,
             Self::NotificationsRead => NOTIFICATIONS_READ,
+            Self::NotificationOutboundSubscriptionsCreate => {
+                NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_CREATE
+            }
+            Self::NotificationOutboundSubscriptionsList => NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_LIST,
+            Self::NotificationOutboundSubscriptionsGet => NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_GET,
+            Self::NotificationOutboundSubscriptionsRevoke => {
+                NOTIFICATION_OUTBOUND_SUBSCRIPTIONS_REVOKE
+            }
             Self::WorkloadsList => WORKLOADS_LIST,
             Self::WorkloadsGet => WORKLOADS_GET,
             Self::WorkloadLogsGet => WORKLOAD_LOGS_GET,
@@ -503,11 +531,17 @@ impl ManagementTool {
             | Self::AuditRecordsList
             | Self::NotificationsList
             | Self::NotificationsGet
+            | Self::NotificationOutboundSubscriptionsList
+            | Self::NotificationOutboundSubscriptionsGet
             | Self::ConnectorProfilesList
             | Self::ConnectorProfilesGet
             | Self::ConnectorRevisionsList
             | Self::ConnectorRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
-            Self::NotificationsRead => Some(ApiTokenScope::NOTIFICATION_WRITE),
+            Self::NotificationsRead
+            | Self::NotificationOutboundSubscriptionsCreate
+            | Self::NotificationOutboundSubscriptionsRevoke => {
+                Some(ApiTokenScope::NOTIFICATION_WRITE)
+            }
             Self::MembershipInvitationsAccept => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::EnvironmentsList
             | Self::ExecutionTemplatesGet
@@ -659,7 +693,13 @@ impl ManagementTool {
             | Self::MembershipInvitationsAccept
             | Self::NotificationsList
             | Self::NotificationsGet
-            | Self::NotificationsRead => Some(ManagementResourceBinding::SelfPrincipal),
+            | Self::NotificationsRead
+            | Self::NotificationOutboundSubscriptionsCreate
+            | Self::NotificationOutboundSubscriptionsList
+            | Self::NotificationOutboundSubscriptionsGet
+            | Self::NotificationOutboundSubscriptionsRevoke => {
+                Some(ManagementResourceBinding::SelfPrincipal)
+            }
             _ => None,
         }
     }
@@ -1188,6 +1228,30 @@ impl ManagementTool {
                 mark_notification_read_schema(),
                 false,
             ),
+            Self::NotificationOutboundSubscriptionsCreate => (
+                "Create my outbound notification subscription",
+                "Create one immutable, recipient-bound outbound notification subscription from canonical A3S ACL and an exact Connector revision.",
+                create_notification_outbound_subscription_schema(),
+                false,
+            ),
+            Self::NotificationOutboundSubscriptionsList => (
+                "List my outbound notification subscriptions",
+                "List one bounded, Resource-Grant-filtered page of the authenticated Principal's outbound notification subscriptions.",
+                notification_outbound_subscription_list_schema(),
+                true,
+            ),
+            Self::NotificationOutboundSubscriptionsGet => (
+                "Get my outbound notification subscription",
+                "Get one exact recipient-bound outbound notification subscription without resolving its Connector endpoint or credentials.",
+                uuid_id_schema("subscriptionId"),
+                true,
+            ),
+            Self::NotificationOutboundSubscriptionsRevoke => (
+                "Revoke my outbound notification subscription",
+                "Revoke one exact recipient-bound outbound notification subscription with optimistic concurrency and idempotency.",
+                revoke_notification_outbound_subscription_schema(),
+                false,
+            ),
             Self::WorkloadsList => (
                 "List workloads",
                 "List workloads in one tenant-authorized environment.",
@@ -1529,6 +1593,51 @@ fn mark_notification_read_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["notificationId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn notification_outbound_subscription_list_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "cursor": {"type": "string", "minLength": 1, "maxLength": 128},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_NOTIFICATION_LIMIT,
+                "default": DEFAULT_NOTIFICATION_LIMIT
+            }
+        },
+        "additionalProperties": false
+    })
+}
+
+fn create_notification_outbound_subscription_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["definitionAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_notification_outbound_subscription_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "subscriptionId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["subscriptionId", "expectedVersion", "idempotencyKey"],
         "additionalProperties": false
     })
 }

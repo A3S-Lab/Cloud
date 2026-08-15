@@ -104,7 +104,7 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                     environment_id: spec.target.environment_id,
                 })
             {
-                return Ok(Err(not_found()));
+                return Ok(Err(outbound_subscription_not_found()));
             }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
@@ -165,7 +165,7 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                 }
                 Ok(None)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(not_found()))
+                    return Ok(Err(outbound_subscription_not_found()))
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -251,7 +251,7 @@ impl CommandHandler<RevokeOutboundNotificationSubscription>
                 Ok(Some(value)) => value,
                 Ok(None)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(not_found()))
+                    return Ok(Err(outbound_subscription_not_found()))
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -263,7 +263,7 @@ impl CommandHandler<RevokeOutboundNotificationSubscription>
                     environment_id: target.environment_id,
                 })
             {
-                return Ok(Err(not_found()));
+                return Ok(Err(outbound_subscription_not_found()));
             }
             let canonical = serde_json::to_vec(&serde_json::json!({
                 "organizationId": command.organization_id,
@@ -338,7 +338,7 @@ impl CommandHandler<RevokeOutboundNotificationSubscription>
     }
 }
 
-fn not_found() -> ApplicationError {
+pub(super) fn outbound_subscription_not_found() -> ApplicationError {
     ApplicationError::NotFound("outbound notification subscription not found".into())
 }
 

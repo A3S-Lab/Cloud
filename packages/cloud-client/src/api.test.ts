@@ -41,7 +41,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.36.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.37.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -2505,6 +2505,92 @@ describe('CloudApi', () => {
         'client:notification:read'
       )
     ).toThrow('expected notification version must be a positive safe integer');
+    expect(called).toBe(false);
+  });
+
+  it('manages ACL-native outbound notification subscriptions through recipient-bound paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const subscriptionId = '019c0000-0000-7000-8000-000000000037';
+    const acl = 'schema = "cloud.notification.outbound-subscription.v1"\n';
+
+    await api.listOutboundNotificationSubscriptions('organization / one', {
+      cursor: `v1:1786579200000000:${subscriptionId}`,
+      limit: 25,
+    });
+    await api.getOutboundNotificationSubscription('organization / one', subscriptionId);
+    await api.createOutboundNotificationSubscription(
+      'organization / one',
+      acl,
+      'client:notification-subscription:create'
+    );
+    await api.revokeOutboundNotificationSubscription(
+      'organization / one',
+      subscriptionId,
+      1,
+      'client:notification-subscription:revoke'
+    );
+
+    expect(calls.map(([input, init]) => [input, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/notification-outbound-subscriptions?' +
+          `cursor=v1%3A1786579200000000%3A${subscriptionId}&limit=25`,
+        'GET',
+      ],
+      [
+        `/api/v1/organizations/organization%20%2F%20one/notification-outbound-subscriptions/${subscriptionId}`,
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/notification-outbound-subscriptions', 'POST'],
+      [
+        `/api/v1/organizations/organization%20%2F%20one/notification-outbound-subscriptions/${subscriptionId}/revoke`,
+        'POST',
+      ],
+    ]);
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'client:notification-subscription:create',
+        }),
+        body: acl,
+      })
+    );
+    expect(calls[3]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ expectedVersion: 1 }) }));
+  });
+
+  it('rejects invalid outbound notification subscription inputs before transport', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+    expect(() => api.listOutboundNotificationSubscriptions('organization', { cursor: '' })).toThrow(
+      'outbound notification subscription cursor is invalid'
+    );
+    expect(() => api.listOutboundNotificationSubscriptions('organization', { limit: 201 })).toThrow(
+      'outbound notification subscription limit must be between 1 and 200'
+    );
+    expect(() => api.getOutboundNotificationSubscription('organization', 'not-a-uuid')).toThrow(
+      'outbound notification subscription ID must be a non-nil UUID'
+    );
+    expect(() =>
+      api.createOutboundNotificationSubscription('organization', '', 'client:subscription:create')
+    ).toThrow('outbound notification subscription ACL must contain between 1 and 16384 UTF-8 bytes');
+    expect(() =>
+      api.revokeOutboundNotificationSubscription(
+        'organization',
+        '019c0000-0000-7000-8000-000000000037',
+        0,
+        'client:subscription:revoke'
+      )
+    ).toThrow('expected outbound notification subscription version must be a positive safe integer');
     expect(called).toBe(false);
   });
 

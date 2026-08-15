@@ -27,7 +27,8 @@ pub use outbound_repository::{
     OutboundNotificationSubscriptionEvent, RevokeOutboundNotificationSubscriptionWrite,
 };
 pub use outbound_subscription::{
-    OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
+    OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionPage,
     OutboundNotificationSubscriptionSpec, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
 };

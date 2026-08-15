@@ -137,7 +137,9 @@ export async function executeCommand(
   if (auditResult !== undefined) {
     return auditResult;
   }
-  const notificationResult = await executeNotificationCommand(command, arguments_, context, cloudApi);
+  const notificationResult = await executeNotificationCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
   if (notificationResult !== undefined) {
     return notificationResult;
   }

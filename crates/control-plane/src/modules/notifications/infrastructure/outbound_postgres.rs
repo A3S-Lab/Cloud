@@ -8,9 +8,10 @@ use crate::modules::notifications::domain::{
     CreateOutboundNotificationSubscriptionWrite, IOutboundNotificationDeliveryRepository,
     IOutboundNotificationRepository, Notification, OutboundNotificationConnectorTarget,
     OutboundNotificationDelivery, OutboundNotificationDeliveryAdmission,
-    OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
-    OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
-    RevokeOutboundNotificationSubscriptionWrite, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
+    OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationTerminalOutcome,
+    OutboundNotificationTerminalReceipt, RevokeOutboundNotificationSubscriptionWrite,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
@@ -564,20 +565,33 @@ impl IOutboundNotificationRepository for PostgresNotificationRepository {
             .map_err(|error| RepositoryError::Storage(error.to_string()))
     }
 
-    async fn list_subscriptions(
+    async fn list_subscription_page(
         &self,
         organization_id: OrganizationId,
         recipient_principal_id: PrincipalId,
+        after: Option<OutboundNotificationSubscriptionCursor>,
+        limit: usize,
     ) -> Result<Vec<OutboundNotificationSubscription>, RepositoryError> {
+        let mut query = subscription_query()
+            .append(" where organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and recipient_principal_id = ")
+            .bind(recipient_principal_id.as_uuid());
+        if let Some(after) = after {
+            query = query
+                .append(" and (created_at < ")
+                .bind(after.created_at)
+                .append(" or (created_at = ")
+                .bind(after.created_at)
+                .append(" and id < ")
+                .bind(after.subscription_id.as_uuid())
+                .append("))");
+        }
+        query = query
+            .append(" order by created_at desc, id desc limit ")
+            .bind(i64::try_from(limit).unwrap_or(i64::MAX));
         Database::new(PostgresDialect, self.executor.clone())
-            .fetch_all_as(
-                subscription_query()
-                    .append(" where organization_id = ")
-                    .bind(organization_id.as_uuid())
-                    .append(" and recipient_principal_id = ")
-                    .bind(recipient_principal_id.as_uuid())
-                    .append(" order by created_at desc, id desc"),
-            )
+            .fetch_all_as(query)
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?
             .rows

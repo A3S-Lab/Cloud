@@ -5,12 +5,14 @@ pub mod presentation;
 
 pub use application::{
     CreateOutboundNotificationSubscription, CreateOutboundNotificationSubscriptionHandler,
-    GetNotification, GetNotificationHandler, IOutboundNotificationDispatcher, ListNotifications,
-    ListNotificationsHandler, MarkNotificationRead, MarkNotificationReadHandler,
-    MarkNotificationReadResult, OutboundNotificationDispatchResult, OutboundNotificationDispatcher,
-    OutboundNotificationSubscriptionMutationResult, RevokeOutboundNotificationSubscription,
-    RevokeOutboundNotificationSubscriptionHandler, DEFAULT_NOTIFICATION_LIMIT,
-    MAXIMUM_NOTIFICATION_LIMIT,
+    GetNotification, GetNotificationHandler, GetOutboundNotificationSubscription,
+    GetOutboundNotificationSubscriptionHandler, IOutboundNotificationDispatcher, ListNotifications,
+    ListNotificationsHandler, ListOutboundNotificationSubscriptions,
+    ListOutboundNotificationSubscriptionsHandler, MarkNotificationRead,
+    MarkNotificationReadHandler, MarkNotificationReadResult, OutboundNotificationDispatchResult,
+    OutboundNotificationDispatcher, OutboundNotificationSubscriptionMutationResult,
+    RevokeOutboundNotificationSubscription, RevokeOutboundNotificationSubscriptionHandler,
+    DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
 };
 pub use domain::{
     outbound_notification_attempt_id, CreateOutboundNotificationSubscriptionWrite,
@@ -20,8 +22,9 @@ pub use domain::{
     NotificationScope, NotificationSeverity, OutboundNotificationChannel,
     OutboundNotificationConnectorTarget, OutboundNotificationDelivery,
     OutboundNotificationDeliveryAdmission, OutboundNotificationRequestError,
-    OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
-    OutboundNotificationSubscriptionEvent, OutboundNotificationSubscriptionSpec,
+    OutboundNotificationSubscription, OutboundNotificationSubscriptionCursor,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionEvent,
+    OutboundNotificationSubscriptionPage, OutboundNotificationSubscriptionSpec,
     OutboundNotificationTerminalOutcome, OutboundNotificationTerminalReceipt,
     RevokeOutboundNotificationSubscriptionWrite, MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
     MAXIMUM_OUTBOUND_NOTIFICATION_PROVIDER_ATTEMPTS, OUTBOUND_NOTIFICATION_EVENT_KEY,

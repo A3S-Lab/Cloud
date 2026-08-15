@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'bun:test';
-import type { CloudFetch, Notification, NotificationPage } from '@a3s/cloud-client';
+import type {
+  CloudFetch,
+  Notification,
+  NotificationPage,
+  OutboundNotificationSubscription,
+} from '@a3s/cloud-client';
 import { runCli } from '../src/cli';
 
 const ORGANIZATION_ID = '019c0000-0000-7000-8000-000000000001';
 const NOTIFICATION_ID = '019c0000-0000-7000-8000-000000000002';
 const REQUEST_ID = '019c0000-0000-7000-8000-000000000003';
+const SUBSCRIPTION_ID = '019c0000-0000-7000-8000-000000000006';
 
 const NOTIFICATION: Notification = {
   id: NOTIFICATION_ID,
@@ -25,6 +31,25 @@ const NOTIFICATION: Notification = {
 const PAGE: NotificationPage = {
   notifications: [NOTIFICATION],
   nextCursor: `v1:1786678923000000:${NOTIFICATION_ID}`,
+};
+
+const SUBSCRIPTION: OutboundNotificationSubscription = {
+  organizationId: ORGANIZATION_ID,
+  subscriptionId: SUBSCRIPTION_ID,
+  channel: 'signed_webhook',
+  minimumSeverity: 'warning',
+  connectorProjectId: '019c0000-0000-7000-8000-000000000007',
+  connectorEnvironmentId: '019c0000-0000-7000-8000-000000000008',
+  connectorProfileId: '019c0000-0000-7000-8000-000000000009',
+  connectorRevisionId: '019c0000-0000-7000-8000-00000000000a',
+  definitionSchema: 'cloud.notification.outbound-subscription.v1',
+  definitionAcl: 'schema = "cloud.notification.outbound-subscription.v1"\n',
+  definitionDigest: `sha256:${'a'.repeat(64)}`,
+  state: 'active',
+  aggregateVersion: 1,
+  createdBy: '019c0000-0000-7000-8000-00000000000b',
+  createdAt: '2026-08-14T01:02:03Z',
+  revokedAt: null,
 };
 
 function envelope(data: unknown): Response {
@@ -128,6 +153,74 @@ describe('notification commands', () => {
     expect(output.stdout()).toContain('"aggregateVersion": 2');
     expect(output.stdout()).toContain('"replayed": false');
     expect(output.stderr()).toBe('');
+  });
+
+  it('creates an ACL-native outbound subscription and revokes it through the same authority', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const acl = new TextEncoder().encode(SUBSCRIPTION.definitionAcl);
+    const exitCode = await runCli(
+      [
+        'notification-subscriptions',
+        'create',
+        '--file=subscription.acl',
+        '--idempotency-key=cli:notification-subscription:create',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: environment(),
+        readFile: async () => acl,
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({ subscription: SUBSCRIPTION, replayed: false });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(calls[0]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/notification-outbound-subscriptions`
+    );
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/vnd.a3s.acl',
+          'Idempotency-Key': 'cli:notification-subscription:create',
+        }),
+        body: SUBSCRIPTION.definitionAcl,
+      })
+    );
+    expect(output.stdout()).toContain(`"subscriptionId": "${SUBSCRIPTION_ID}"`);
+
+    const revokeOutput = capture();
+    const revokeExitCode = await runCli(
+      [
+        'notification-subscriptions',
+        'revoke',
+        SUBSCRIPTION_ID,
+        '--expected-version=1',
+        '--idempotency-key=cli:notification-subscription:revoke',
+      ],
+      {
+        ...revokeOutput.runtime,
+        environment: environment(),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({
+            subscription: { ...SUBSCRIPTION, state: 'revoked', aggregateVersion: 2 },
+            replayed: false,
+          });
+        },
+      }
+    );
+    expect(revokeExitCode).toBe(0);
+    expect(calls[1]?.[0]).toBe(
+      `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/notification-outbound-subscriptions/${SUBSCRIPTION_ID}/revoke`
+    );
+    expect(calls[1]?.[1]).toEqual(expect.objectContaining({ body: JSON.stringify({ expectedVersion: 1 }) }));
+    expect(revokeOutput.stdout()).toContain('revoked');
   });
 
   it.each([

@@ -1697,6 +1697,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         )
         .map_err(BootError::Internal)?,
     );
+    let notification_repository = notifications.unwrap_or_else(|| {
+        Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new())
+    });
+    let notifications: Arc<dyn INotificationRepository> = notification_repository.clone();
+    let outbound_notifications: Arc<dyn IOutboundNotificationRepository> = notification_repository;
     build_application_with_health(
         config(),
         ApplicationDependencies {
@@ -1725,9 +1730,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             search,
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),
-            notifications: notifications.unwrap_or_else(|| {
-                Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new())
-            }),
+            notifications,
+            outbound_notifications,
             connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),

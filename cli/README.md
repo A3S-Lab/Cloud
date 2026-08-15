@@ -87,6 +87,15 @@ the Notifications application boundary. The CLI has no local inbox, event
 projector, delivery queue, provider/template/subscription policy, scheduler, or
 notification configuration.
 
+`notification-subscriptions list [--cursor=<cursor>] [--limit=<1..200>]` and
+`notification-subscriptions get <subscription-id>` read only the authenticated
+Principal's currently authorized subscriptions. `notification-subscriptions
+create --file=<subscription.acl>` requires `--idempotency-key`; revoke requires
+the exact ID, `--expected-version`, and `--idempotency-key`. Cloud alone parses
+the canonical ACL, checks the exact Connector revision and Resource Grant, and
+owns persistence, Outbox, audit, and replay. The CLI never resolves endpoints,
+Secrets, credentials, delivery evidence, or retry state.
+
 `ontologies revise` also requires a positive `--expected-version`. A breaking
 object, relation, or rule change additionally requires
 `--migration-rule=<target-rule-id>` naming an exact rule of kind `migration`
@@ -228,6 +237,10 @@ audit-records list
 notifications list [--unread-only] [--cursor=<cursor>] [--limit=<1..200>]
 notifications get <notification-id>
 notifications read <notification-id> --expected-version=<version>
+notification-subscriptions list [--cursor=<cursor>] [--limit=<1..200>]
+notification-subscriptions get <subscription-id>
+notification-subscriptions create --file=<subscription.acl>
+notification-subscriptions revoke <subscription-id> --expected-version=<version>
 environments list
 environments create <name>
 connector-profiles list

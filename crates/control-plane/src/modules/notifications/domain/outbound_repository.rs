@@ -1,6 +1,6 @@
 use super::{
     OutboundNotificationDelivery, OutboundNotificationSubscription,
-    OutboundNotificationTerminalReceipt,
+    OutboundNotificationSubscriptionCursor, OutboundNotificationTerminalReceipt,
 };
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, NotificationSubscriptionId, OrganizationId, PrincipalId,
@@ -186,10 +186,13 @@ pub trait IOutboundNotificationRepository: IOutboundNotificationDeliveryReposito
         subscription_id: NotificationSubscriptionId,
     ) -> Result<Option<OutboundNotificationSubscription>, RepositoryError>;
 
-    async fn list_subscriptions(
+    /// Returns one raw recipient page ordered by creation time and subscription ID descending.
+    async fn list_subscription_page(
         &self,
         organization_id: OrganizationId,
         recipient_principal_id: PrincipalId,
+        after: Option<OutboundNotificationSubscriptionCursor>,
+        limit: usize,
     ) -> Result<Vec<OutboundNotificationSubscription>, RepositoryError>;
 }
 

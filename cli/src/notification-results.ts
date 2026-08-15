@@ -1,4 +1,11 @@
-import type { Notification, NotificationMutationResult, NotificationPage } from '@a3s/cloud-client';
+import type {
+  Notification,
+  NotificationMutationResult,
+  NotificationPage,
+  OutboundNotificationSubscription,
+  OutboundNotificationSubscriptionMutationResult,
+  OutboundNotificationSubscriptionPage,
+} from '@a3s/cloud-client';
 import { renderTable, sanitizeCell, type TableColumn } from './output';
 import type { CommandResult } from './results';
 
@@ -30,6 +37,47 @@ export function notificationMutationResult(result: NotificationMutationResult): 
     table: renderTable(
       [{ ...result.notification, replayed: result.replayed }],
       [...NOTIFICATION_COLUMNS, { header: 'REPLAYED', value: (row) => row.replayed }]
+    ),
+  };
+}
+
+const OUTBOUND_SUBSCRIPTION_COLUMNS: readonly TableColumn<OutboundNotificationSubscription>[] = [
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+  { header: 'CHANNEL', value: (row) => row.channel },
+  { header: 'MIN SEVERITY', value: (row) => row.minimumSeverity },
+  { header: 'STATE', value: (row) => row.state },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'SUBSCRIPTION ID', value: (row) => row.subscriptionId },
+  { header: 'CONNECTOR REVISION', value: (row) => row.connectorRevisionId },
+];
+
+export function outboundNotificationSubscriptionsResult(
+  page: OutboundNotificationSubscriptionPage
+): CommandResult {
+  const table = renderTable(page.subscriptions, OUTBOUND_SUBSCRIPTION_COLUMNS);
+  return {
+    json: page,
+    table: page.nextCursor ? `${table}Next cursor: ${sanitizeCell(page.nextCursor)}\n` : table,
+  };
+}
+
+export function outboundNotificationSubscriptionResult(
+  subscription: OutboundNotificationSubscription
+): CommandResult {
+  return {
+    json: subscription,
+    table: renderTable([subscription], OUTBOUND_SUBSCRIPTION_COLUMNS),
+  };
+}
+
+export function outboundNotificationSubscriptionMutationResult(
+  result: OutboundNotificationSubscriptionMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable(
+      [{ ...result.subscription, replayed: result.replayed }],
+      [...OUTBOUND_SUBSCRIPTION_COLUMNS, { header: 'REPLAYED', value: (row) => row.replayed }]
     ),
   };
 }

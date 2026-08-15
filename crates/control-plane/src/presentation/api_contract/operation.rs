@@ -6,6 +6,10 @@ use crate::modules::connectors::{
 };
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::notifications::{
+    DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
+    OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+};
 use crate::modules::projects::domain::value_objects::{
     BUSINESS_OWNER_REFERENCE_MAX_CHARS, COST_ATTRIBUTION_CODE_MAX_CHARS,
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
@@ -359,6 +363,25 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             upsert_parameter(parameters, parameter);
         }
     }
+    if method == "get" && is_notification_outbound_subscription_collection_path(path) {
+        for parameter in [
+            json!({
+                "name": "cursor", "in": "query", "required": false,
+                "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+            }),
+            json!({
+                "name": "limit", "in": "query", "required": false,
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_NOTIFICATION_LIMIT,
+                    "default": DEFAULT_NOTIFICATION_LIMIT
+                }
+            }),
+        ] {
+            upsert_parameter(parameters, parameter);
+        }
+    }
     if method == "get" && path.ends_with("/human-tasks") {
         upsert_parameter(
             parameters,
@@ -681,6 +704,31 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
             })
         };
         content.insert("application/json".into(), json!({"schema": schema}));
+    } else if is_notification_outbound_subscription_collection_path(path) {
+        content.insert(
+            "application/vnd.a3s.acl".into(),
+            json!({
+                "schema": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
+                }
+            }),
+        );
+    } else if is_notification_outbound_subscription_revoke_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["expectedVersion"],
+                    "properties": {
+                        "expectedVersion": {"type": "integer", "minimum": 1}
+                    }
+                }
+            }),
+        );
     } else if is_notification_read_path(path) {
         content.insert(
             "application/json".into(),
@@ -929,7 +977,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_human_task_submission_path(path)
                 || is_form_draft_mutation_path(path)
                 || is_mcp_service_profile_path(path)
-                || is_mcp_route_policy_mutation_path(path)))
+                || is_mcp_route_policy_mutation_path(path)
+                || is_notification_outbound_subscription_collection_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -1069,7 +1118,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Operations"
     } else if path.contains("audit-records") {
         "Audit"
-    } else if path.contains("notifications") {
+    } else if path.contains("notifications") || path.contains("notification-outbound-subscriptions")
+    {
         "Notifications"
     } else if path.contains("plugin-registries") {
         "Plugins"
@@ -1206,6 +1256,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/mcp-route-policies")
         || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
         || is_connector_profile_mutation_path(path)
+        || is_notification_outbound_subscription_collection_path(path)
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
         || path.ends_with("/source-revisions")
@@ -1236,6 +1287,14 @@ fn is_membership_invitation_version_path(path: &str) -> bool {
 
 fn is_notification_read_path(path: &str) -> bool {
     path.ends_with("/notifications/{notification_id}/read")
+}
+
+fn is_notification_outbound_subscription_collection_path(path: &str) -> bool {
+    path.ends_with("/notification-outbound-subscriptions")
+}
+
+fn is_notification_outbound_subscription_revoke_path(path: &str) -> bool {
+    path.ends_with("/notification-outbound-subscriptions/{subscription_id}/revoke")
 }
 
 fn is_connector_profile_mutation_path(path: &str) -> bool {

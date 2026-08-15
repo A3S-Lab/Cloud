@@ -17,12 +17,20 @@ import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import {
   encodeNotificationQuery,
+  encodeOutboundNotificationSubscriptionQuery,
   type Notification,
   type NotificationMutationResult,
   type NotificationPage,
   type NotificationQuery,
+  type OutboundNotificationSubscription,
+  type OutboundNotificationSubscriptionMutationResult,
+  type OutboundNotificationSubscriptionPage,
+  type OutboundNotificationSubscriptionQuery,
   validateExpectedNotificationVersion,
+  validateExpectedOutboundNotificationSubscriptionVersion,
   validateNotificationId,
+  validateOutboundNotificationSubscriptionAcl,
+  validateOutboundNotificationSubscriptionId,
 } from './notifications';
 import { readHealthResponse, readResponse } from './response';
 import { DEFAULT_SEARCH_LIMIT, validateSearchRequest } from './search';
@@ -213,7 +221,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.36.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.37.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1659,6 +1667,65 @@ export class CloudApi {
     validateExpectedNotificationVersion(expectedVersion);
     return this.postJson(
       `/organizations/${encodeURIComponent(organizationId)}/notifications/${encodeURIComponent(notificationId)}/read`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  listOutboundNotificationSubscriptions(
+    organizationId: string,
+    query: OutboundNotificationSubscriptionQuery = {},
+    signal?: AbortSignal
+  ): Promise<OutboundNotificationSubscriptionPage> {
+    const parameters = encodeOutboundNotificationSubscriptionQuery(query);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/notification-outbound-subscriptions?${parameters.toString()}`,
+      signal
+    );
+  }
+
+  getOutboundNotificationSubscription(
+    organizationId: string,
+    subscriptionId: string,
+    signal?: AbortSignal
+  ): Promise<OutboundNotificationSubscription> {
+    validateOutboundNotificationSubscriptionId(subscriptionId);
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/notification-outbound-subscriptions/${encodeURIComponent(subscriptionId)}`,
+      signal
+    );
+  }
+
+  createOutboundNotificationSubscription(
+    organizationId: string,
+    definitionAcl: string,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OutboundNotificationSubscriptionMutationResult> {
+    validateOutboundNotificationSubscriptionAcl(definitionAcl);
+    return this.postAcl(
+      `/organizations/${encodeURIComponent(organizationId)}/notification-outbound-subscriptions`,
+      idempotencyKey,
+      definitionAcl,
+      signal
+    );
+  }
+
+  revokeOutboundNotificationSubscription(
+    organizationId: string,
+    subscriptionId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<OutboundNotificationSubscriptionMutationResult> {
+    validateOutboundNotificationSubscriptionId(subscriptionId);
+    validateExpectedOutboundNotificationSubscriptionVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/notification-outbound-subscriptions/${encodeURIComponent(subscriptionId)}/revoke`,
       idempotencyKey,
       { expectedVersion },
       signal

@@ -3,7 +3,8 @@ use crate::modules::notifications::domain::{
     IOutboundNotificationDeliveryRepository, IOutboundNotificationRepository,
     MarkNotificationReadWrite, Notification, NotificationCursor, OutboundNotificationDelivery,
     OutboundNotificationDeliveryAdmission, OutboundNotificationSubscription,
-    OutboundNotificationTerminalReceipt, RevokeOutboundNotificationSubscriptionWrite,
+    OutboundNotificationSubscriptionCursor, OutboundNotificationTerminalReceipt,
+    RevokeOutboundNotificationSubscriptionWrite,
 };
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, NotificationId, NotificationSubscriptionId,
@@ -406,10 +407,12 @@ impl IOutboundNotificationRepository for InMemoryNotificationRepository {
             .cloned())
     }
 
-    async fn list_subscriptions(
+    async fn list_subscription_page(
         &self,
         organization_id: OrganizationId,
         recipient_principal_id: PrincipalId,
+        after: Option<OutboundNotificationSubscriptionCursor>,
+        limit: usize,
     ) -> Result<Vec<OutboundNotificationSubscription>, RepositoryError> {
         let mut subscriptions = self
             .state
@@ -420,6 +423,11 @@ impl IOutboundNotificationRepository for InMemoryNotificationRepository {
             .filter(|subscription| {
                 subscription.organization_id == organization_id
                     && subscription.recipient_principal_id == recipient_principal_id
+                    && after.is_none_or(|cursor| {
+                        subscription.created_at < cursor.created_at
+                            || (subscription.created_at == cursor.created_at
+                                && subscription.id < cursor.subscription_id)
+                    })
             })
             .cloned()
             .collect::<Vec<_>>();
@@ -429,6 +437,7 @@ impl IOutboundNotificationRepository for InMemoryNotificationRepository {
                 .cmp(&left.created_at)
                 .then_with(|| right.id.cmp(&left.id))
         });
+        subscriptions.truncate(limit);
         Ok(subscriptions)
     }
 }

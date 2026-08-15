@@ -54,6 +54,50 @@ fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<(
     Ok(())
 }
 
+#[test]
+fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounded() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let collection =
+        &document["paths"]["/organizations/{organization_id}/notification-outbound-subscriptions"];
+    assert_eq!(collection["get"]["tags"], json!(["Notifications"]));
+    assert_eq!(collection["post"]["tags"], json!(["Notifications"]));
+    assert_eq!(
+        collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
+        crate::modules::notifications::OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
+    );
+    assert!(collection["post"]["requestBody"]["content"]
+        .get("application/json")
+        .is_none());
+    assert!(collection["post"]["responses"]["201"].is_object());
+    assert!(collection["post"]["responses"]["413"].is_object());
+    assert!(collection["post"]["responses"]["415"].is_object());
+    let limit = collection["get"]["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("subscription list limit is missing".into()))?;
+    assert_eq!(limit["schema"]["default"], 50);
+    assert_eq!(limit["schema"]["maximum"], 200);
+
+    let revoke = &document["paths"]
+        ["/organizations/{organization_id}/notification-outbound-subscriptions/{subscription_id}/revoke"]
+        ["post"];
+    assert_eq!(
+        revoke["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion"])
+    );
+    assert_eq!(
+        revoke["requestBody"]["content"]["application/json"]["schema"]["additionalProperties"],
+        false
+    );
+    Ok(())
+}
+
 #[tokio::test]
 async fn openapi_contract_is_public_raw_and_versioned() -> Result<()> {
     let app = contract_test_application()?;

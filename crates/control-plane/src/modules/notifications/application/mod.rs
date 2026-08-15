@@ -3,6 +3,7 @@ mod list_notifications;
 mod mark_notification_read;
 mod outbound_dispatch;
 mod outbound_subscription;
+mod outbound_subscription_queries;
 
 pub use get_notification::{GetNotification, GetNotificationHandler};
 pub use list_notifications::{
@@ -20,4 +21,8 @@ pub use outbound_subscription::{
     CreateOutboundNotificationSubscription, CreateOutboundNotificationSubscriptionHandler,
     OutboundNotificationSubscriptionMutationResult, RevokeOutboundNotificationSubscription,
     RevokeOutboundNotificationSubscriptionHandler,
+};
+pub use outbound_subscription_queries::{
+    GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
+    ListOutboundNotificationSubscriptions, ListOutboundNotificationSubscriptionsHandler,
 };

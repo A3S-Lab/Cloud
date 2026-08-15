@@ -1,10 +1,14 @@
 import {
-  DEFAULT_NOTIFICATION_LIMIT,
-  MAX_NOTIFICATION_LIMIT,
   type CloudApi,
-  type NotificationQuery,
+  DEFAULT_NOTIFICATION_LIMIT,
   encodeNotificationQuery,
+  encodeOutboundNotificationSubscriptionQuery,
+  MAX_NOTIFICATION_LIMIT,
+  MAX_OUTBOUND_NOTIFICATION_SUBSCRIPTION_ACL_BYTES,
+  type NotificationQuery,
+  type OutboundNotificationSubscriptionQuery,
 } from '@a3s/cloud-client';
+import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import type { ParsedArguments } from './arguments';
 import {
   positionalUuid,
@@ -18,7 +22,14 @@ import {
 import type { CloudContext } from './context';
 import { requireOrganization } from './context';
 import { usageError } from './errors';
-import { notificationMutationResult, notificationResult, notificationsResult } from './notification-results';
+import {
+  notificationMutationResult,
+  notificationResult,
+  notificationsResult,
+  outboundNotificationSubscriptionMutationResult,
+  outboundNotificationSubscriptionResult,
+  outboundNotificationSubscriptionsResult,
+} from './notification-results';
 import type { CommandResult } from './results';
 
 const NOTIFICATION_LIST_COMMAND = 'notifications list';
@@ -27,9 +38,10 @@ export async function executeNotificationCommand(
   command: string,
   arguments_: ParsedArguments,
   context: CloudContext,
-  cloudApi: () => CloudApi
+  cloudApi: () => CloudApi,
+  dependencies: { readFile?: (path: string) => Promise<Uint8Array> } = {}
 ): Promise<CommandResult | undefined> {
-  if (!command.startsWith('notifications ')) {
+  if (!command.startsWith('notifications ') && !command.startsWith('notification-subscriptions ')) {
     return undefined;
   }
   const organizationId = requireOrganization(context);
@@ -45,7 +57,7 @@ export async function executeNotificationCommand(
       const query: NotificationQuery = {
         unreadOnly: arguments_.unreadOnly,
         cursor: arguments_.cursor,
-        limit: notificationLimit(arguments_.limit),
+        limit: boundedLimit(arguments_.limit, 'notification'),
       };
       try {
         encodeNotificationQuery(query);
@@ -66,6 +78,72 @@ export async function executeNotificationCommand(
         await cloudApi().getNotification(
           organizationId,
           positionalUuid(arguments_.positionals, 2, 'notification ID')
+        )
+      );
+    }
+    case 'notification-subscriptions list': {
+      requireArity(arguments_.positionals, 2, 'notification-subscriptions list');
+      rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      if (arguments_.expectedVersion !== undefined || arguments_.stream !== undefined) {
+        throw usageError('--expected-version and --stream are not valid for notification-subscriptions list');
+      }
+      const query: OutboundNotificationSubscriptionQuery = {
+        cursor: arguments_.cursor,
+        limit: boundedLimit(arguments_.limit, 'outbound notification subscription'),
+      };
+      try {
+        encodeOutboundNotificationSubscriptionQuery(query);
+      } catch (error) {
+        if (error instanceof TypeError || error instanceof RangeError) {
+          throw usageError(error.message);
+        }
+        throw error;
+      }
+      return outboundNotificationSubscriptionsResult(
+        await cloudApi().listOutboundNotificationSubscriptions(organizationId, query)
+      );
+    }
+    case 'notification-subscriptions get':
+      requireReadCommand(arguments_, 'notification-subscriptions get <subscription-id>');
+      return outboundNotificationSubscriptionResult(
+        await cloudApi().getOutboundNotificationSubscription(
+          organizationId,
+          positionalUuid(arguments_.positionals, 2, 'outbound notification subscription ID')
+        )
+      );
+    case 'notification-subscriptions create': {
+      const mutation = requireAclMutationCommand(arguments_, 2, 'notification-subscriptions create');
+      const definitionAcl = await readAclDocument(
+        mutation.file,
+        {
+          label: 'outbound notification subscription ACL',
+          maximumBytes: MAX_OUTBOUND_NOTIFICATION_SUBSCRIPTION_ACL_BYTES,
+        },
+        dependencies.readFile
+      );
+      return outboundNotificationSubscriptionMutationResult(
+        await cloudApi().createOutboundNotificationSubscription(
+          organizationId,
+          definitionAcl,
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'notification-subscriptions revoke': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        3,
+        'notification-subscriptions revoke <subscription-id>',
+        'outbound notification subscription'
+      );
+      return outboundNotificationSubscriptionMutationResult(
+        await cloudApi().revokeOutboundNotificationSubscription(
+          organizationId,
+          positionalUuid(arguments_.positionals, 2, 'outbound notification subscription ID'),
+          mutation.expectedVersion,
+          mutation.idempotencyKey
         )
       );
     }
@@ -99,16 +177,16 @@ export function rejectMisplacedNotificationOptions(command: string, arguments_: 
   }
 }
 
-function notificationLimit(value: string | undefined): number {
+function boundedLimit(value: string | undefined, label: string): number {
   if (value === undefined) {
     return DEFAULT_NOTIFICATION_LIMIT;
   }
   if (!/^[0-9]+$/u.test(value)) {
-    throw usageError('notification limit must be an integer');
+    throw usageError(`${label} limit must be an integer`);
   }
   const limit = Number(value);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_NOTIFICATION_LIMIT) {
-    throw usageError(`notification limit must be between 1 and ${MAX_NOTIFICATION_LIMIT}`);
+    throw usageError(`${label} limit must be between 1 and ${MAX_NOTIFICATION_LIMIT}`);
   }
   return limit;
 }

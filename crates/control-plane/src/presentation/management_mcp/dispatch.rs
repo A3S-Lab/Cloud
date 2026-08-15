@@ -26,7 +26,9 @@ use super::identity::{
     RevokeMembershipArguments, RevokeResourceGrantArguments,
 };
 use super::notifications::{
-    MarkNotificationReadArguments, NotificationArguments, NotificationListArguments,
+    CreateOutboundNotificationSubscriptionArguments, MarkNotificationReadArguments,
+    NotificationArguments, NotificationListArguments, OutboundNotificationSubscriptionArguments,
+    OutboundNotificationSubscriptionListArguments, RevokeOutboundNotificationSubscriptionArguments,
 };
 use super::ontology::{
     CreateOntologyArguments, ListOntologiesArguments, OntologyArguments, OntologyDiffArguments,
@@ -873,6 +875,61 @@ pub async fn execute(
         ManagementTool::NotificationsRead => {
             let arguments = arguments::parse::<MarkNotificationReadArguments>(arguments).ok()?;
             notifications::mark_read(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationOutboundSubscriptionsList => {
+            let arguments =
+                arguments::parse::<OutboundNotificationSubscriptionListArguments>(arguments)
+                    .ok()?;
+            notifications::list_outbound_subscriptions(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationOutboundSubscriptionsGet => {
+            let arguments =
+                arguments::parse::<OutboundNotificationSubscriptionArguments>(arguments).ok()?;
+            notifications::get_outbound_subscription(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationOutboundSubscriptionsCreate => {
+            let arguments =
+                arguments::parse::<CreateOutboundNotificationSubscriptionArguments>(arguments)
+                    .ok()?;
+            notifications::create_outbound_subscription(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::NotificationOutboundSubscriptionsRevoke => {
+            let arguments =
+                arguments::parse::<RevokeOutboundNotificationSubscriptionArguments>(arguments)
+                    .ok()?;
+            notifications::revoke_outbound_subscription(
                 command_bus,
                 organization_id,
                 actor_principal_id,

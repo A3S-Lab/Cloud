@@ -124,6 +124,10 @@ Commands:
   notifications list    List the authenticated Principal's authorized in-app inbox
   notifications get ID  Get one authorized in-app notification
   notifications read ID Mark one notification read with optimistic concurrency
+  notification-subscriptions list List my authorized outbound notification subscriptions
+  notification-subscriptions get ID Get one exact outbound notification subscription
+  notification-subscriptions create Create one outbound subscription from A3S ACL
+  notification-subscriptions revoke ID Revoke one subscription with optimistic concurrency
   search resources QUERY Search authorized resources in the selected organization
   plugin-registries list List trusted A3S Use Registry references
   plugin-registries get ID Get one trusted A3S Use Registry reference
@@ -186,8 +190,8 @@ Global options:
   --environment <uuid>    Environment context
   --output <table|json>   Output format (default: table)
   --timeout <ms>          Request timeout from 1 to 300000
-  --cursor <cursor>       Opaque cursor for a log, Agent event, audit, or notification command
-  --limit <n>             Search, log, Agent event, audit, or notification page limit
+  --cursor <cursor>       Opaque cursor for a log, Agent event, audit, notification, or subscription command
+  --limit <n>             Search, log, Agent event, audit, notification, or subscription page limit
   --unread-only           Filter notifications list to unread records
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation

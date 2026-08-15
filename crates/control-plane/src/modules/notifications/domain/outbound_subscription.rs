@@ -12,6 +12,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::notification::{encode_descending_cursor, parse_descending_cursor};
+
 pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA: &str =
     "cloud.notification.outbound-subscription.v1";
 pub const OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES: usize = 16 * 1024;
@@ -219,6 +221,40 @@ impl OutboundNotificationSubscription {
             && self.recipient_principal_id == notification.recipient_principal_id
             && self.definition.matches(notification)
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutboundNotificationSubscriptionCursor {
+    pub created_at: DateTime<Utc>,
+    pub subscription_id: NotificationSubscriptionId,
+}
+
+impl OutboundNotificationSubscriptionCursor {
+    pub fn after(subscription: &OutboundNotificationSubscription) -> Self {
+        Self {
+            created_at: subscription.created_at,
+            subscription_id: subscription.id,
+        }
+    }
+
+    pub fn encode(self) -> String {
+        encode_descending_cursor(self.created_at, self.subscription_id.as_uuid())
+    }
+
+    pub fn parse(value: &str) -> Result<Self, String> {
+        let (created_at, subscription_id) =
+            parse_descending_cursor(value, "outbound notification subscription")?;
+        Ok(Self {
+            created_at,
+            subscription_id: NotificationSubscriptionId::from_uuid(subscription_id),
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutboundNotificationSubscriptionPage {
+    pub subscriptions: Vec<OutboundNotificationSubscription>,
+    pub next_cursor: Option<String>,
 }
 
 fn validate_spec(spec: OutboundNotificationSubscriptionSpec) -> Result<(), String> {

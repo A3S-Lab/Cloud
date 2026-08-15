@@ -395,6 +395,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_audit_records_list",
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
+            "a3s_cloud_notification_outbound_subscriptions_list",
+            "a3s_cloud_notification_outbound_subscriptions_get",
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
             "a3s_cloud_workload_logs_get",
@@ -530,6 +532,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
             "a3s_cloud_notifications_read",
+            "a3s_cloud_notification_outbound_subscriptions_create",
+            "a3s_cloud_notification_outbound_subscriptions_list",
+            "a3s_cloud_notification_outbound_subscriptions_get",
+            "a3s_cloud_notification_outbound_subscriptions_revoke",
             "a3s_cloud_workloads_list",
             "a3s_cloud_workloads_get",
             "a3s_cloud_workload_logs_get",
@@ -623,6 +629,34 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
     );
     assert_eq!(list_connector_profiles["annotations"]["readOnlyHint"], true);
+    let create_outbound_subscription = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_notification_outbound_subscriptions_create",
+    )?;
+    assert_eq!(
+        create_outbound_subscription["inputSchema"]["properties"]["definitionAcl"]["maxLength"],
+        crate::modules::notifications::OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        create_outbound_subscription["inputSchema"]["required"],
+        json!(["definitionAcl", "idempotencyKey"])
+    );
+    assert_eq!(
+        create_outbound_subscription["annotations"]["readOnlyHint"],
+        false
+    );
+    let list_outbound_subscriptions = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_notification_outbound_subscriptions_list",
+    )?;
+    assert_eq!(
+        list_outbound_subscriptions["inputSchema"]["properties"]["limit"],
+        json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
+    );
+    assert_eq!(
+        list_outbound_subscriptions["annotations"]["readOnlyHint"],
+        true
+    );
     let create_workflow_definition = listed_tool(
         &administrator_tools,
         "a3s_cloud_workflow_definitions_create",
@@ -1513,6 +1547,8 @@ async fn management_mcp_form_tools_follow_current_membership_role() -> Result<()
             "a3s_cloud_my_membership_invitations_list",
             "a3s_cloud_notifications_list",
             "a3s_cloud_notifications_get",
+            "a3s_cloud_notification_outbound_subscriptions_list",
+            "a3s_cloud_notification_outbound_subscriptions_get",
         ]
     );
     let denied = app

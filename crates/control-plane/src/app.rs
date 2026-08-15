@@ -121,11 +121,13 @@ use crate::modules::integration_events::{
     PostgresOutboxRepository,
 };
 use crate::modules::notifications::{
-    A3sEventOutboundNotificationConsumer, GetNotificationHandler, INotificationRepository,
+    A3sEventOutboundNotificationConsumer, CreateOutboundNotificationSubscriptionHandler,
+    GetNotificationHandler, GetOutboundNotificationSubscriptionHandler, INotificationRepository,
     IOutboundNotificationDeliveryRepository, IOutboundNotificationDispatcher,
-    ListNotificationsHandler, MarkNotificationReadHandler, NotificationsModule,
+    IOutboundNotificationRepository, ListNotificationsHandler,
+    ListOutboundNotificationSubscriptionsHandler, MarkNotificationReadHandler, NotificationsModule,
     OutboundNotificationDispatcher, OutboxNotificationProjector, PostgresNotificationRepository,
-    OUTBOUND_NOTIFICATION_EVENT_KEY,
+    RevokeOutboundNotificationSubscriptionHandler, OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
@@ -368,6 +370,8 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         Arc::new(PostgresAuditRecordRepository::new(executor.clone()));
     let notification_repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
     let notifications: Arc<dyn INotificationRepository> = notification_repository.clone();
+    let outbound_notifications: Arc<dyn IOutboundNotificationRepository> =
+        notification_repository.clone();
     let outbound_notification_deliveries: Arc<dyn IOutboundNotificationDeliveryRepository> =
         notification_repository;
     let plugin_repository = Arc::new(PostgresPluginRegistryRepository::new(executor.clone()));
@@ -1096,6 +1100,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             search,
             audit_records,
             notifications,
+            outbound_notifications,
             connector_profiles,
             plugin_registries,
             plugin_enrollment_authorizer,
@@ -1204,6 +1209,7 @@ struct ApplicationDependencies {
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
     notifications: Arc<dyn INotificationRepository>,
+    outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
@@ -1274,6 +1280,7 @@ fn build_application_with_health(
         search,
         audit_records,
         notifications,
+        outbound_notifications,
         connector_profiles,
         plugin_registries,
         plugin_enrollment_authorizer,
@@ -1326,7 +1333,12 @@ fn build_application_with_health(
     let list_notifications = Arc::clone(&notifications);
     let get_notifications = Arc::clone(&notifications);
     let mark_notifications_read = notifications;
+    let create_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
+    let revoke_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
+    let list_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
+    let get_outbound_notification_subscriptions = outbound_notifications;
     let create_connector_environments = Arc::clone(&environments);
+    let outbound_notification_connector_profiles = Arc::clone(&connector_profiles);
     let create_connector_profiles = Arc::clone(&connector_profiles);
     let revise_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_profiles = Arc::clone(&connector_profiles);
@@ -1710,6 +1722,23 @@ fn build_application_with_health(
                 )
                 .command_handler::<crate::modules::notifications::MarkNotificationRead, _>(
                     MarkNotificationReadHandler::new(mark_notifications_read),
+                )
+                .command_handler::<
+                    crate::modules::notifications::CreateOutboundNotificationSubscription,
+                    _,
+                >(
+                    CreateOutboundNotificationSubscriptionHandler::new(
+                        create_outbound_notification_subscriptions,
+                        outbound_notification_connector_profiles,
+                    ),
+                )
+                .command_handler::<
+                    crate::modules::notifications::RevokeOutboundNotificationSubscription,
+                    _,
+                >(
+                    RevokeOutboundNotificationSubscriptionHandler::new(
+                        revoke_outbound_notification_subscriptions,
+                    ),
                 )
                 .command_handler::<crate::modules::connectors::CreateConnectorProfile, _>(
                     CreateConnectorProfileHandler::new(
@@ -2192,6 +2221,22 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::notifications::GetNotification, _>(
                     GetNotificationHandler::new(get_notifications),
+                )
+                .query_handler::<
+                    crate::modules::notifications::ListOutboundNotificationSubscriptions,
+                    _,
+                >(
+                    ListOutboundNotificationSubscriptionsHandler::new(
+                        list_outbound_notification_subscriptions,
+                    ),
+                )
+                .query_handler::<
+                    crate::modules::notifications::GetOutboundNotificationSubscription,
+                    _,
+                >(
+                    GetOutboundNotificationSubscriptionHandler::new(
+                        get_outbound_notification_subscriptions,
+                    ),
                 )
                 .query_handler::<crate::modules::connectors::ListConnectorProfiles, _>(
                     ListConnectorProfilesHandler::new(list_connector_profiles),

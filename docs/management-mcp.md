@@ -164,6 +164,10 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_notifications_list` | Principal self-query | `cloud:read`; exact authenticated Principal and Resource Grant filtering apply in Notifications |
 | `a3s_cloud_notifications_get` | Principal self-query | `cloud:read`; denied and missing notification IDs share one `404` contract |
 | `a3s_cloud_notifications_read` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
+| `a3s_cloud_notification_outbound_subscriptions_create` | Principal self-command | `notification:write`; canonical A3S ACL, exact Connector revision, Resource Grant, and idempotency required |
+| `a3s_cloud_notification_outbound_subscriptions_list` | Principal self-query | `cloud:read`; bounded keyset page filtered by current Resource Grants |
+| `a3s_cloud_notification_outbound_subscriptions_get` | Principal self-query | `cloud:read`; denied and missing subscription IDs share one `404` contract |
+| `a3s_cloud_notification_outbound_subscriptions_revoke` | Principal self-command | `notification:write`; exact Principal, Resource Grant, optimistic concurrency, and idempotency required |
 | `a3s_cloud_ontologies_list` | Query | None |
 | `a3s_cloud_ontologies_get` | Query | None |
 | `a3s_cloud_ontology_revisions_list` | Query | None |
@@ -278,6 +282,23 @@ recipient selector: recipient identity always comes from the authenticated
 credential. They do not project source events or introduce an MCP-specific
 store, queue, delivery provider, template/subscription model, scheduler, or
 configuration document.
+
+## Personal outbound notification subscriptions
+
+The four `a3s_cloud_notification_outbound_subscriptions_*` tools reuse the
+same Notifications commands and queries as REST, the maintained client, and
+CLI. Create accepts one canonical bounded
+`cloud.notification.outbound-subscription.v1` A3S ACL and binds the
+authenticated Principal to an exact Connector revision. List and exact get
+apply current Resource Grants; list keyset-pages past invisible records, while
+denied and missing exact IDs both return `404`. Revoke uses the current
+aggregate version and caller-owned idempotency key.
+
+The response contains the canonical subscription ACL/digest and exact
+Connector identifiers. It never resolves the Connector endpoint, Secret,
+credential, provider body, attempt/evidence, delivery receipt, or retry state.
+The MCP adapter adds no recipient selector, repository, configuration parser,
+queue, scheduler, retry counter, or delivery mechanism.
 
 ## Client flow
 

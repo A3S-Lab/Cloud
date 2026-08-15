@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.36.0" src="https://img.shields.io/badge/REST_contract-1.36.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.37.0" src="https://img.shields.io/badge/REST_contract-1.37.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -118,8 +118,8 @@ failure, recovery, cleanup, and release evidence passes.
 | Area | Current foundation | Availability boundary |
 | --- | --- | --- |
 | Durable control | A3S Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, PostgreSQL queue, Operations, Outbox, and replay | `F0` verified |
-| Management | REST/OpenAPI `1.36.0`, maintained TypeScript client, CLI, Management MCP, retained Web projection | Broader enterprise `C0` gates remain |
-| Identity | Principals, Memberships, invitations, grants, tokens, OIDC link/login flows, audit, project attribution, in-app notifications, immutable personal outbound-subscription ACLs, transactional delivery facts, fixed provider-attempt termination, and monotonic terminal receipts around the fenced Connector path | User-configured suppression/delivery budgets, SMTP, supported outbound-subscription management surfaces, retained production evidence, and broader enterprise surfaces remain |
+| Management | REST/OpenAPI `1.37.0`, maintained TypeScript client, CLI, Management MCP, retained Web projection | Broader enterprise `C0` gates remain |
+| Identity | Principals, Memberships, invitations, grants, tokens, OIDC link/login flows, audit, project attribution, in-app notifications, immutable personal outbound-subscription ACLs with non-Web management surfaces, transactional delivery facts, fixed provider-attempt termination, and monotonic terminal receipts around the fenced Connector path | User-configured suppression/delivery budgets, SMTP, retained production evidence, the intentionally deferred Web surface, and broader enterprise surfaces remain |
 | Compute and delivery | Immutable sources/assets, builds, Executions, Workloads, Fleet, Node Agent, Edge snapshot publication, Gateway apply | Box-only recertification and clean-host provider gates remain |
 | Workflow | Ontologies, immutable definitions/revisions/goals, Plan v2, WorkflowRun, Forms/HumanTasks, finite Execution, typed variables/defaults, inspection, node discovery, and immutable composite-region policy | Public Workflow, composite execution, remaining providers, compensation, and production evidence remain |
 | Plugins | Exact A3S Use compatibility plus trusted Registry/catalog reads | Tenant assignments and complete `U0` gate remain |
@@ -140,8 +140,11 @@ call. Retryable C6 evidence defers later generations until its exact
 eighth immutable evidence record without a ninth Provider call. A3S Event remains
 the only waiting/redelivery mechanism; no Notification retry table, mutable
 counter, token bucket, timer, queue, or scheduler is introduced. User-configured
-alert suppression/delivery budgets, SMTP, supported outbound-subscription management surfaces,
-Workflow ports, retained NATS evidence, and production availability remain gated.
+alert suppression/delivery budgets, SMTP, Workflow ports, retained NATS evidence,
+the intentionally deferred Web surface, and production availability remain gated.
+REST/OpenAPI, the maintained client, CLI, and four Management MCP tools expose
+recipient-bound create/list/get/revoke through the same Notifications CQRS,
+Resource Grant, idempotency, Outbox, audit, and PostgreSQL repository authority.
 
 ### Latest Workflow contract slice
 
@@ -220,7 +223,7 @@ curl http://127.0.0.1:8080/api/v1/openapi.json
 ```
 
 The committed [`openapi/v1.json`](openapi/v1.json) snapshot is REST major
-version 1, contract `1.36.0`.
+version 1, contract `1.37.0`.
 
 ### Bootstrap the first organization
 

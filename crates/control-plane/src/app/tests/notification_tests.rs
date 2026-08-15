@@ -3,6 +3,11 @@
 use super::*;
 use crate::modules::notifications::{
     INotificationRepository, Notification, NotificationScope, NotificationSeverity,
+    OutboundNotificationChannel, OutboundNotificationConnectorTarget,
+    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
+};
+use crate::modules::shared_kernel::domain::{
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
 };
 
 const NOTIFICATION_MEMBER_TOKEN: &str =
@@ -351,6 +356,281 @@ async fn restricted_inbox_reuses_resource_grants_for_rest_and_mcp() -> Result<()
     assert!(mcp_text.contains(&granted.id.to_string()));
     assert!(!mcp_text.contains(&hidden.id.to_string()));
     Ok(())
+}
+
+#[tokio::test]
+async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cross_surface(
+) -> Result<()> {
+    let notifications =
+        Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new());
+    let app = build_test_application_with_notifications(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        Arc::clone(&notifications),
+    )?;
+    let organization =
+        bootstrap_organization(&app, "notification-outbound-bootstrap", "Outbound").await?;
+    create_api_token(
+        &app,
+        &organization,
+        "notification-outbound-writer",
+        "Outbound writer",
+        NOTIFICATION_MEMBER_TOKEN,
+        &[ApiTokenScope::NOTIFICATION_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "notification-outbound-reader",
+        "Outbound reader",
+        PROJECT_TOKEN,
+        &[ApiTokenScope::CLOUD_READ],
+        None,
+    )
+    .await?;
+
+    let project = create_project(
+        &app,
+        &organization,
+        "notification-outbound-project",
+        "Outbound project",
+    )
+    .await?;
+    let environment = crate::app::tests::connector_tests::create_connector_environment(
+        &app,
+        &organization,
+        &project,
+        "notification-outbound-environment",
+    )
+    .await?;
+    let connector_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/connector-profiles"
+    );
+    let connector_acl = crate::app::tests::connector_tests::connector_acl(1_000)?;
+    let connector = app
+        .call(post_json(
+            &connector_path,
+            "notification-outbound-connector",
+            json!({"name": "Outbound webhook", "definitionAcl": connector_acl}),
+        ))
+        .await?;
+    assert_eq!(connector.status(), 201);
+    let connector = response_json(&connector)?;
+    let profile_id = connector["data"]["record"]["profile"]["profileId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("outbound Connector profile ID is missing".into()))?;
+    let revision_id = connector["data"]["record"]["revision"]["revisionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("outbound Connector revision ID is missing".into()))?;
+    let signed_acl = outbound_subscription_acl(
+        &project,
+        &environment,
+        profile_id,
+        revision_id,
+        OutboundNotificationChannel::SignedWebhook,
+    )?;
+    let slack_acl = outbound_subscription_acl(
+        &project,
+        &environment,
+        profile_id,
+        revision_id,
+        OutboundNotificationChannel::SlackCompatible,
+    )?;
+    let root = format!("/api/v1/organizations/{organization}/notification-outbound-subscriptions");
+
+    assert_eq!(
+        app.call(post_acl_as(
+            &root,
+            "notification-outbound-read-denied",
+            signed_acl.clone(),
+            PROJECT_TOKEN,
+        ))
+        .await?
+        .status(),
+        403
+    );
+    let created = app
+        .call(post_acl_as(
+            &root,
+            "notification-outbound-create",
+            signed_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created = response_json(&created)?;
+    assert_eq!(created["data"]["replayed"], false);
+    assert_eq!(created["data"]["subscription"]["state"], "active");
+    assert_eq!(created["data"]["subscription"]["definitionAcl"], signed_acl);
+    assert!(created["data"]["subscription"]
+        .get("recipientPrincipalId")
+        .is_none());
+    assert!(!created.to_string().contains("hooks.example.test"));
+    let subscription_id = created["data"]["subscription"]["subscriptionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("outbound subscription ID is missing".into()))?
+        .to_owned();
+
+    let replay = app
+        .call(post_acl_as(
+            &root,
+            "notification-outbound-create",
+            signed_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(response_json(&replay)?["data"]["replayed"], true);
+    assert_eq!(
+        app.call(post_acl_as(
+            &root,
+            "notification-outbound-create",
+            slack_acl.clone(),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?
+        .status(),
+        409
+    );
+    assert_eq!(
+        app.call(get_as(&root, NOTIFICATION_MEMBER_TOKEN))
+            .await?
+            .status(),
+        403
+    );
+
+    let mcp_create = app
+        .call(mcp_tool_call_as(
+            3,
+            "a3s_cloud_notification_outbound_subscriptions_create",
+            json!({
+                "definitionAcl": slack_acl,
+                "idempotencyKey": "notification-outbound-mcp-create"
+            }),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    let mcp_create = response_json(&mcp_create)?;
+    assert_eq!(mcp_create["result"]["isError"], false);
+    let second_subscription_id = mcp_create["result"]["structuredContent"]["data"]["subscription"]
+        ["subscriptionId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("MCP outbound subscription ID is missing".into()))?
+        .to_owned();
+
+    let first_page = app
+        .call(get_as(format!("{root}?limit=1"), PROJECT_TOKEN))
+        .await?;
+    assert_eq!(first_page.status(), 200);
+    let first_page = response_json(&first_page)?;
+    assert_eq!(
+        first_page["data"]["subscriptions"].as_array().map(Vec::len),
+        Some(1)
+    );
+    let cursor = first_page["data"]["nextCursor"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("outbound subscription cursor is missing".into()))?;
+    let second_page = app
+        .call(get_as(
+            format!("{root}?limit=1&cursor={cursor}"),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    assert_eq!(second_page.status(), 200);
+    assert_eq!(
+        response_json(&second_page)?["data"]["subscriptions"]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        app.call(get_as(format!("{root}?limit=201"), PROJECT_TOKEN))
+            .await?
+            .status(),
+        400
+    );
+    let exact = app
+        .call(get_as(format!("{root}/{subscription_id}"), PROJECT_TOKEN))
+        .await?;
+    assert_eq!(exact.status(), 200);
+    assert_eq!(
+        response_json(&exact)?["data"]["connectorRevisionId"],
+        revision_id
+    );
+
+    let mcp_get = app
+        .call(mcp_tool_call_as(
+            4,
+            "a3s_cloud_notification_outbound_subscriptions_get",
+            json!({"subscriptionId": second_subscription_id.clone()}),
+            PROJECT_TOKEN,
+        ))
+        .await?;
+    let mcp_get = response_json(&mcp_get)?;
+    assert_eq!(mcp_get["result"]["isError"], false);
+    assert!(!mcp_get.to_string().contains("hooks.example.test"));
+
+    let revoke = || {
+        post_json_as(
+            format!("{root}/{subscription_id}/revoke"),
+            "notification-outbound-revoke",
+            json!({"expectedVersion": 1}),
+            NOTIFICATION_MEMBER_TOKEN,
+        )
+    };
+    let revoked = app.call(revoke()).await?;
+    assert_eq!(revoked.status(), 200);
+    assert_eq!(
+        response_json(&revoked)?["data"]["subscription"]["state"],
+        "revoked"
+    );
+    assert_eq!(
+        response_json(&app.call(revoke()).await?)?["data"]["replayed"],
+        true
+    );
+
+    let mcp_revoke = app
+        .call(mcp_tool_call_as(
+            5,
+            "a3s_cloud_notification_outbound_subscriptions_revoke",
+            json!({
+                "subscriptionId": second_subscription_id,
+                "expectedVersion": 1,
+                "idempotencyKey": "notification-outbound-mcp-revoke"
+            }),
+            NOTIFICATION_MEMBER_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response_json(&mcp_revoke)?["result"]["isError"], false);
+    Ok(())
+}
+
+fn outbound_subscription_acl(
+    project_id: &str,
+    environment_id: &str,
+    profile_id: &str,
+    revision_id: &str,
+    channel: OutboundNotificationChannel,
+) -> Result<String> {
+    let parse = |value: &str, label: &str| {
+        Uuid::parse_str(value)
+            .map_err(|error| BootError::Internal(format!("invalid {label}: {error}")))
+    };
+    OutboundNotificationSubscriptionDefinition::from_spec(OutboundNotificationSubscriptionSpec {
+        channel,
+        minimum_severity: NotificationSeverity::Warning,
+        target: OutboundNotificationConnectorTarget::new(
+            ProjectId::from_uuid(parse(project_id, "project ID")?),
+            EnvironmentId::from_uuid(parse(environment_id, "environment ID")?),
+            ConnectorProfileId::from_uuid(parse(profile_id, "Connector profile ID")?),
+            ConnectorRevisionId::from_uuid(parse(revision_id, "Connector revision ID")?),
+        )
+        .map_err(BootError::Internal)?,
+    })
+    .map(|definition| definition.canonical_acl().to_owned())
+    .map_err(BootError::Internal)
 }
 
 fn projected_notification(

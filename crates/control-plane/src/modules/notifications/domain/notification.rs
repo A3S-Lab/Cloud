@@ -249,38 +249,46 @@ impl NotificationCursor {
     }
 
     pub fn encode(self) -> String {
-        format!(
-            "{CURSOR_VERSION}:{}:{}",
-            self.occurred_at.timestamp_micros(),
-            self.notification_id
-        )
+        encode_descending_cursor(self.occurred_at, self.notification_id.as_uuid())
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        if value.is_empty() || value.len() > 128 || value.contains(['\0', '\r', '\n']) {
-            return Err("notification cursor is invalid".into());
-        }
-        let mut parts = value.split(':');
-        let version = parts.next();
-        let timestamp = parts.next();
-        let notification_id = parts.next();
-        if version != Some(CURSOR_VERSION) || parts.next().is_some() {
-            return Err("notification cursor is invalid".into());
-        }
-        let occurred_at = timestamp
-            .and_then(|value| value.parse::<i64>().ok())
-            .and_then(DateTime::<Utc>::from_timestamp_micros)
-            .ok_or_else(|| "notification cursor is invalid".to_owned())?;
-        let notification_id = notification_id
-            .and_then(|value| Uuid::parse_str(value).ok())
-            .filter(|value| !value.is_nil())
-            .map(NotificationId::from_uuid)
-            .ok_or_else(|| "notification cursor is invalid".to_owned())?;
+        let (occurred_at, notification_id) = parse_descending_cursor(value, "notification")?;
         Ok(Self {
             occurred_at,
-            notification_id,
+            notification_id: NotificationId::from_uuid(notification_id),
         })
     }
+}
+
+pub(super) fn encode_descending_cursor(occurred_at: DateTime<Utc>, id: Uuid) -> String {
+    format!("{CURSOR_VERSION}:{}:{id}", occurred_at.timestamp_micros())
+}
+
+pub(super) fn parse_descending_cursor(
+    value: &str,
+    label: &str,
+) -> Result<(DateTime<Utc>, Uuid), String> {
+    let invalid = || format!("{label} cursor is invalid");
+    if value.is_empty() || value.len() > 128 || value.contains(['\0', '\r', '\n']) {
+        return Err(invalid());
+    }
+    let mut parts = value.split(':');
+    let version = parts.next();
+    let timestamp = parts.next();
+    let id = parts.next();
+    if version != Some(CURSOR_VERSION) || parts.next().is_some() {
+        return Err(invalid());
+    }
+    let occurred_at = timestamp
+        .and_then(|value| value.parse::<i64>().ok())
+        .and_then(DateTime::<Utc>::from_timestamp_micros)
+        .ok_or_else(invalid)?;
+    let id = id
+        .and_then(|value| Uuid::parse_str(value).ok())
+        .filter(|value| !value.is_nil())
+        .ok_or_else(invalid)?;
+    Ok((occurred_at, id))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

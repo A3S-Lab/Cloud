@@ -241,6 +241,17 @@ digest lineage, Outbox, audit, and persistence. The client never resolves a
 Secret or projects endpoint, credential, provider body, attempt/evidence, or
 retry state.
 
+`listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
+`createOutboundNotificationSubscription`, and
+`revokeOutboundNotificationSubscription` expose the recipient-bound lifecycle
+added by REST contract `1.37.0`. Create sends one bounded canonical A3S ACL as
+`application/vnd.a3s.acl`; revoke carries one positive expected aggregate
+version. Lists use the shared opaque cursor and 50/200 bounds. Notifications
+remains authoritative for recipient identity, Resource Grants, exact Connector
+revision admission, idempotency, Outbox, audit, and persistence. The client has
+no ACL parser and never resolves endpoints, Secrets, credentials, provider
+bodies, delivery evidence, receipts, or retry state.
+
 `listAgentConversations`, `getAgentConversation`, and
 `createAgentConversation` expose the `A1.1` conversation lifecycle.
 `listAgentExecutions`, `getAgentExecution`, and `startAgentExecution` bind one

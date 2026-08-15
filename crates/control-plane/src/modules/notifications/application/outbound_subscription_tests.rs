@@ -8,7 +8,9 @@ use crate::modules::connectors::{
 };
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::{
-    INotificationRepository, InMemoryNotificationRepository, Notification, NotificationScope,
+    GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
+    INotificationRepository, InMemoryNotificationRepository, ListOutboundNotificationSubscriptions,
+    ListOutboundNotificationSubscriptionsHandler, Notification, NotificationScope,
     NotificationSeverity, OutboundNotificationChannel, OutboundNotificationConnectorTarget,
     OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
 };
@@ -16,7 +18,7 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, ResourceName,
 };
-use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 
 struct Fixture {
     organization_id: OrganizationId,
@@ -216,6 +218,132 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
         .await
         .expect("project after revoke");
     assert_eq!(fixture.notifications.outbound_deliveries().await.len(), 1);
+}
+
+#[tokio::test]
+async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visible_records() {
+    let fixture = fixture().await;
+    let access = ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+        project_id: fixture.project_id,
+        environment_id: fixture.environment_id,
+    }]);
+    let first = fixture
+        .create
+        .execute(
+            CreateOutboundNotificationSubscription {
+                organization_id: fixture.organization_id,
+                definition_acl: fixture.definition_acl.clone(),
+                actor_principal_id: fixture.actor,
+                resource_access: access.clone(),
+                idempotency_key: "query-first".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("command framework")
+        .expect("first subscription")
+        .subscription;
+    let first_target = first.definition.spec().target;
+    let second_acl = OutboundNotificationSubscriptionDefinition::from_spec(
+        OutboundNotificationSubscriptionSpec {
+            channel: OutboundNotificationChannel::SignedWebhook,
+            minimum_severity: NotificationSeverity::Warning,
+            target: first_target,
+        },
+    )
+    .expect("second definition")
+    .canonical_acl()
+    .to_owned();
+    let second = fixture
+        .create
+        .execute(
+            CreateOutboundNotificationSubscription {
+                organization_id: fixture.organization_id,
+                definition_acl: second_acl,
+                actor_principal_id: fixture.actor,
+                resource_access: access.clone(),
+                idempotency_key: "query-second".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("command framework")
+        .expect("second subscription")
+        .subscription;
+    let repository: Arc<dyn IOutboundNotificationRepository> = fixture.notifications.clone();
+    let list = ListOutboundNotificationSubscriptionsHandler::new(repository.clone());
+    let get = GetOutboundNotificationSubscriptionHandler::new(repository);
+
+    let first_page = list
+        .execute(
+            ListOutboundNotificationSubscriptions {
+                organization_id: fixture.organization_id,
+                actor_principal_id: fixture.actor,
+                resource_access: access.clone(),
+                cursor: None,
+                limit: 1,
+            },
+            context(),
+        )
+        .await
+        .expect("query framework")
+        .expect("first page");
+    assert_eq!(first_page.subscriptions.len(), 1);
+    assert!(first_page.next_cursor.is_some());
+    let second_page = list
+        .execute(
+            ListOutboundNotificationSubscriptions {
+                organization_id: fixture.organization_id,
+                actor_principal_id: fixture.actor,
+                resource_access: access.clone(),
+                cursor: first_page.next_cursor,
+                limit: 1,
+            },
+            context(),
+        )
+        .await
+        .expect("query framework")
+        .expect("second page");
+    assert_eq!(second_page.subscriptions.len(), 1);
+    assert!(second_page.next_cursor.is_none());
+    assert_ne!(
+        first_page.subscriptions[0].id,
+        second_page.subscriptions[0].id
+    );
+
+    let foreign = get
+        .execute(
+            GetOutboundNotificationSubscription {
+                organization_id: fixture.organization_id,
+                subscription_id: first.id,
+                actor_principal_id: PrincipalId::new(),
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            context(),
+        )
+        .await
+        .expect("query framework");
+    assert!(matches!(foreign, Err(ApplicationError::NotFound(_))));
+    let denied = get
+        .execute(
+            GetOutboundNotificationSubscription {
+                organization_id: fixture.organization_id,
+                subscription_id: second.id,
+                actor_principal_id: fixture.actor,
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Environment {
+                        project_id: fixture.project_id,
+                        environment_id: EnvironmentId::new(),
+                    },
+                ]),
+            },
+            context(),
+        )
+        .await
+        .expect("query framework");
+    assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
 }
 
 fn notification(fixture: &Fixture, source_event_id: Uuid) -> Notification {
