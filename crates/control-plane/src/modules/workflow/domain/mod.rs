@@ -98,8 +98,10 @@ pub use workflow_node_catalog::{
 pub use workflow_payload::{
     WorkflowBranchRoute, WorkflowDataField, WorkflowDataSchema, WorkflowDataType, WorkflowPayload,
     WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPolicy, WorkflowPolicyCandidate,
-    WorkflowPolicyMode, WorkflowStepConfiguration, WORKFLOW_CONFIGURATION_SCHEMA,
-    WORKFLOW_DATA_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES, WORKFLOW_POLICY_SCHEMA,
+    WorkflowPolicyMode, WorkflowRetryPolicy, WorkflowStepConfiguration,
+    WORKFLOW_CONFIGURATION_SCHEMA, WORKFLOW_DATA_SCHEMA, WORKFLOW_PAYLOAD_MAX_ACL_BYTES,
+    WORKFLOW_POLICY_SCHEMA, WORKFLOW_POLICY_SCHEMA_V2, WORKFLOW_RETRY_MAXIMUM_ATTEMPTS,
+    WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS,
 };
 pub use workflow_revision_semantic_contracts::{
     WorkflowRevisionSemanticContractKind, WorkflowRevisionSemanticContractRef,

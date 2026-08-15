@@ -12,7 +12,10 @@ use std::collections::BTreeSet;
 pub const WORKFLOW_CONFIGURATION_SCHEMA: &str = "cloud.workflow.configuration.v1";
 pub const WORKFLOW_DATA_SCHEMA: &str = "cloud.workflow.data-schema.v1";
 pub const WORKFLOW_POLICY_SCHEMA: &str = "cloud.workflow.policy.v1";
+pub const WORKFLOW_POLICY_SCHEMA_V2: &str = "cloud.workflow.policy.v2";
 pub const WORKFLOW_PAYLOAD_MAX_ACL_BYTES: usize = 256 * 1024;
+pub const WORKFLOW_RETRY_MAXIMUM_ATTEMPTS: u32 = 32;
+pub const WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS: u64 = 24 * 60 * 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -298,12 +301,42 @@ pub struct WorkflowPolicyCandidate {
     pub digest: Sha256Digest,
 }
 
+/// An immutable provider-attempt budget interpreted by the owning Workflow
+/// runtime. A provider may return a more specific bounded Retry-After; this
+/// delay is used only when no provider deadline exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowRetryPolicy {
+    pub maximum_attempts: u32,
+    pub default_delay_seconds: u64,
+}
+
+impl WorkflowRetryPolicy {
+    pub fn validate(self) -> Result<(), String> {
+        if self.maximum_attempts == 0 || self.maximum_attempts > WORKFLOW_RETRY_MAXIMUM_ATTEMPTS {
+            return Err(format!(
+                "Workflow retry policy must permit between 1 and {WORKFLOW_RETRY_MAXIMUM_ATTEMPTS} attempts"
+            ));
+        }
+        if self.default_delay_seconds == 0
+            || self.default_delay_seconds > WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS
+        {
+            return Err(format!(
+                "Workflow retry policy default delay must be between 1 and {WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS} seconds"
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowPolicy {
     pub mode: WorkflowPolicyMode,
     pub expression: Option<String>,
     pub candidates: Vec<WorkflowPolicyCandidate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry: Option<WorkflowRetryPolicy>,
 }
 
 impl WorkflowPolicy {
@@ -312,9 +345,17 @@ impl WorkflowPolicy {
             WorkflowPolicyMode::Static
                 if self.expression.is_none() && self.candidates.is_empty() =>
             {
+                if let Some(retry) = self.retry {
+                    retry.validate()?;
+                }
                 Ok(())
             }
             WorkflowPolicyMode::RecordedChoice => {
+                if self.retry.is_some() {
+                    return Err(
+                        "Workflow recorded-choice policy cannot also own provider retries".into(),
+                    );
+                }
                 validate_text(
                     "Workflow recorded-choice expression",
                     self.expression.as_deref().ok_or_else(|| {
@@ -372,19 +413,13 @@ impl WorkflowPayload {
         }
         let document =
             parse_acl(acl).map_err(|error| format!("Workflow payload ACL is invalid: {error}"))?;
-        let schema = payload_schema(kind)?;
-        validate_closed_schema(&document, &schema)?;
         let root = document
             .blocks
             .first()
             .ok_or_else(|| "Workflow payload block is missing".to_owned())?;
         let declared_schema = required_string(root, "schema")?;
-        if declared_schema != schema_name(kind) {
-            return Err(format!(
-                "Workflow {} payload schema is unsupported",
-                kind.as_str()
-            ));
-        }
+        let schema = payload_schema(kind, &declared_schema)?;
+        validate_closed_schema(&document, &schema)?;
         let content = match kind {
             WorkflowPayloadKind::Configuration => {
                 WorkflowPayloadContent::Configuration(parse_configuration(root)?)
@@ -392,7 +427,10 @@ impl WorkflowPayload {
             WorkflowPayloadKind::DataSchema => {
                 WorkflowPayloadContent::DataSchema(parse_data_schema(root)?)
             }
-            WorkflowPayloadKind::Policy => WorkflowPayloadContent::Policy(parse_policy(root)?),
+            WorkflowPayloadKind::Policy => WorkflowPayloadContent::Policy(parse_policy(
+                root,
+                declared_schema == WORKFLOW_POLICY_SCHEMA_V2,
+            )?),
         };
         Self::from_content(content)
     }
@@ -400,7 +438,8 @@ impl WorkflowPayload {
     pub fn from_content(content: WorkflowPayloadContent) -> Result<Self, String> {
         validate_content(&content)?;
         let kind = content_kind(&content);
-        let schema = payload_schema(kind)?;
+        let schema_name = content_schema_name(&content);
+        let schema = payload_schema(kind, schema_name)?;
         let document = payload_document(&content);
         let canonical_acl = generate_acl(&document);
         let reparsed = parse_acl(&canonical_acl)
@@ -412,7 +451,7 @@ impl WorkflowPayload {
         )?;
         Ok(Self {
             kind,
-            schema: schema_name(kind).to_owned(),
+            schema: schema_name.to_owned(),
             canonical_acl,
             digest,
             content,
@@ -468,11 +507,12 @@ const fn content_kind(content: &WorkflowPayloadContent) -> WorkflowPayloadKind {
     }
 }
 
-const fn schema_name(kind: WorkflowPayloadKind) -> &'static str {
-    match kind {
-        WorkflowPayloadKind::Configuration => WORKFLOW_CONFIGURATION_SCHEMA,
-        WorkflowPayloadKind::DataSchema => WORKFLOW_DATA_SCHEMA,
-        WorkflowPayloadKind::Policy => WORKFLOW_POLICY_SCHEMA,
+const fn content_schema_name(content: &WorkflowPayloadContent) -> &'static str {
+    match content {
+        WorkflowPayloadContent::Configuration(_) => WORKFLOW_CONFIGURATION_SCHEMA,
+        WorkflowPayloadContent::DataSchema(_) => WORKFLOW_DATA_SCHEMA,
+        WorkflowPayloadContent::Policy(value) if value.retry.is_some() => WORKFLOW_POLICY_SCHEMA_V2,
+        WorkflowPayloadContent::Policy(_) => WORKFLOW_POLICY_SCHEMA,
     }
 }
 
@@ -501,11 +541,18 @@ fn validate_selector(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn payload_schema(kind: WorkflowPayloadKind) -> Result<Schema, String> {
-    match kind {
-        WorkflowPayloadKind::Configuration => configuration_schema(),
-        WorkflowPayloadKind::DataSchema => data_schema_schema(),
-        WorkflowPayloadKind::Policy => policy_schema(),
+fn payload_schema(kind: WorkflowPayloadKind, declared_schema: &str) -> Result<Schema, String> {
+    match (kind, declared_schema) {
+        (WorkflowPayloadKind::Configuration, WORKFLOW_CONFIGURATION_SCHEMA) => {
+            configuration_schema()
+        }
+        (WorkflowPayloadKind::DataSchema, WORKFLOW_DATA_SCHEMA) => data_schema_schema(),
+        (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA) => policy_schema(false),
+        (WorkflowPayloadKind::Policy, WORKFLOW_POLICY_SCHEMA_V2) => policy_schema(true),
+        _ => Err(format!(
+            "Workflow {} payload schema is unsupported",
+            kind.as_str()
+        )),
     }
 }
 
@@ -574,10 +621,10 @@ fn data_schema_schema() -> Result<Schema, String> {
     ))
 }
 
-fn policy_schema() -> Result<Schema, String> {
+fn policy_schema(with_retry: bool) -> Result<Schema, String> {
     let candidate =
         Schema::new().attribute("digest", AttributeSchema::required(ValueSchema::string()));
-    let root = Schema::new()
+    let mut root = Schema::new()
         .attribute("schema", AttributeSchema::required(ValueSchema::string()))
         .attribute("mode", AttributeSchema::required(ValueSchema::string()))
         .attribute(
@@ -593,6 +640,21 @@ fn policy_schema() -> Result<Schema, String> {
                 .labels(Cardinality::exactly(1))
                 .unordered(true),
         );
+    if with_retry {
+        let retry = Schema::new()
+            .attribute(
+                "maximum_attempts",
+                AttributeSchema::required(ValueSchema::number()),
+            )
+            .attribute(
+                "default_delay_seconds",
+                AttributeSchema::required(ValueSchema::number()),
+            );
+        root = root.block(
+            "retry",
+            BlockSchema::new(retry).occurrences(Cardinality::exactly(1)),
+        );
+    }
     Ok(Schema::new().block(
         "policy",
         BlockSchema::new(root).occurrences(Cardinality::exactly(1)),
@@ -668,7 +730,7 @@ fn parse_data_schema(root: &Block) -> Result<WorkflowDataSchema, String> {
     Ok(value)
 }
 
-fn parse_policy(root: &Block) -> Result<WorkflowPolicy, String> {
+fn parse_policy(root: &Block, with_retry: bool) -> Result<WorkflowPolicy, String> {
     let mut candidates = root
         .blocks
         .iter()
@@ -681,10 +743,31 @@ fn parse_policy(root: &Block) -> Result<WorkflowPolicy, String> {
         })
         .collect::<Result<Vec<_>, String>>()?;
     candidates.sort_by(|left, right| left.id.cmp(&right.id));
+    let retry = if with_retry {
+        let retry = root
+            .blocks
+            .iter()
+            .find(|block| block.name == "retry")
+            .ok_or_else(|| "Workflow policy v2 retry block is missing".to_owned())?;
+        Some(WorkflowRetryPolicy {
+            maximum_attempts: u32::try_from(positive_integer(required_number(
+                retry,
+                "maximum_attempts",
+            )?)?)
+            .map_err(|_| "Workflow retry maximum_attempts exceeds u32".to_owned())?,
+            default_delay_seconds: positive_integer(required_number(
+                retry,
+                "default_delay_seconds",
+            )?)?,
+        })
+    } else {
+        None
+    };
     let value = WorkflowPolicy {
         mode: WorkflowPolicyMode::parse(&required_string(root, "mode")?)?,
         expression: optional_string(root, "expression")?,
         candidates,
+        retry,
     };
     value.validate()?;
     Ok(value)
@@ -737,7 +820,7 @@ fn payload_document(content: &WorkflowPayloadContent) -> Document {
         }
         WorkflowPayloadContent::Policy(value) => {
             let mut root = BlockBuilder::new("policy")
-                .attr("schema", string(WORKFLOW_POLICY_SCHEMA))
+                .attr("schema", string(content_schema_name(content)))
                 .attr("mode", string(value.mode.as_str()));
             if let Some(expression) = &value.expression {
                 root = root.attr("expression", string(expression));
@@ -747,6 +830,20 @@ fn payload_document(content: &WorkflowPayloadContent) -> Document {
                     BlockBuilder::new("candidate")
                         .label(&candidate.id)
                         .attr("digest", string(candidate.digest.as_str()))
+                        .build(),
+                );
+            }
+            if let Some(retry) = value.retry {
+                root = root.nested_block(
+                    BlockBuilder::new("retry")
+                        .attr(
+                            "maximum_attempts",
+                            number(f64::from(retry.maximum_attempts)),
+                        )
+                        .attr(
+                            "default_delay_seconds",
+                            number(retry.default_delay_seconds as f64),
+                        )
                         .build(),
                 );
             }
@@ -787,6 +884,10 @@ fn required_bool(block: &Block, name: &str) -> Result<bool, String> {
         .get(name)
         .and_then(|value| value.as_bool())
         .ok_or_else(|| format!("{name} must be a boolean"))
+}
+
+fn required_number(block: &Block, name: &str) -> Result<f64, String> {
+    optional_number(block, name)?.ok_or_else(|| format!("{name} is missing"))
 }
 
 fn optional_number(block: &Block, name: &str) -> Result<Option<f64>, String> {
@@ -897,9 +998,117 @@ configuration {
                         .expect("digest"),
                 },
             ],
+            retry: None,
         };
         let payload =
             WorkflowPayload::from_content(WorkflowPayloadContent::Policy(policy)).expect("policy");
         assert_eq!(payload.schema(), WORKFLOW_POLICY_SCHEMA);
+    }
+
+    #[test]
+    fn policy_v2_freezes_a_bounded_provider_retry_budget_without_changing_v1() {
+        let legacy = WorkflowPolicy {
+            mode: WorkflowPolicyMode::Static,
+            expression: None,
+            candidates: Vec::new(),
+            retry: None,
+        };
+        let legacy_payload =
+            WorkflowPayload::from_content(WorkflowPayloadContent::Policy(legacy.clone()))
+                .expect("legacy policy");
+        assert_eq!(legacy_payload.schema(), WORKFLOW_POLICY_SCHEMA);
+        assert!(!legacy_payload.canonical_acl().contains("retry"));
+        assert!(!serde_json::to_value(legacy)
+            .expect("legacy policy JSON")
+            .as_object()
+            .expect("legacy policy object")
+            .contains_key("retry"));
+
+        let policy = WorkflowPolicy {
+            mode: WorkflowPolicyMode::Static,
+            expression: None,
+            candidates: Vec::new(),
+            retry: Some(WorkflowRetryPolicy {
+                maximum_attempts: 4,
+                default_delay_seconds: 15,
+            }),
+        };
+        let payload = WorkflowPayload::from_content(WorkflowPayloadContent::Policy(policy.clone()))
+            .expect("retry policy");
+        assert_eq!(payload.schema(), WORKFLOW_POLICY_SCHEMA_V2);
+        assert!(payload
+            .canonical_acl()
+            .contains("schema = \"cloud.workflow.policy.v2\""));
+        assert!(payload.canonical_acl().contains("maximum_attempts = 4"));
+        assert!(payload
+            .canonical_acl()
+            .contains("default_delay_seconds = 15"));
+        assert_eq!(
+            WorkflowPayload::restore(
+                WorkflowPayloadKind::Policy,
+                payload.canonical_acl(),
+                payload.digest().as_str(),
+            )
+            .expect("restore retry policy")
+            .content(),
+            &WorkflowPayloadContent::Policy(policy)
+        );
+
+        let v1_with_retry = payload
+            .canonical_acl()
+            .replace(WORKFLOW_POLICY_SCHEMA_V2, WORKFLOW_POLICY_SCHEMA);
+        assert!(WorkflowPayload::parse_acl(WorkflowPayloadKind::Policy, &v1_with_retry).is_err());
+        let v2_without_retry = legacy_payload
+            .canonical_acl()
+            .replace(WORKFLOW_POLICY_SCHEMA, WORKFLOW_POLICY_SCHEMA_V2);
+        assert!(
+            WorkflowPayload::parse_acl(WorkflowPayloadKind::Policy, &v2_without_retry).is_err()
+        );
+    }
+
+    #[test]
+    fn provider_retry_budget_rejects_unbounded_or_choice_semantics() {
+        for retry in [
+            WorkflowRetryPolicy {
+                maximum_attempts: 0,
+                default_delay_seconds: 1,
+            },
+            WorkflowRetryPolicy {
+                maximum_attempts: WORKFLOW_RETRY_MAXIMUM_ATTEMPTS + 1,
+                default_delay_seconds: 1,
+            },
+            WorkflowRetryPolicy {
+                maximum_attempts: 1,
+                default_delay_seconds: 0,
+            },
+            WorkflowRetryPolicy {
+                maximum_attempts: 1,
+                default_delay_seconds: WORKFLOW_RETRY_MAXIMUM_DEFAULT_DELAY_SECONDS + 1,
+            },
+        ] {
+            assert!(retry.validate().is_err());
+        }
+
+        let choice_with_retry = WorkflowPolicy {
+            mode: WorkflowPolicyMode::RecordedChoice,
+            expression: Some("input.priority".into()),
+            candidates: vec![
+                WorkflowPolicyCandidate {
+                    id: "normal".into(),
+                    digest: Sha256Digest::parse(format!("sha256:{}", "a".repeat(64)))
+                        .expect("digest"),
+                },
+                WorkflowPolicyCandidate {
+                    id: "urgent".into(),
+                    digest: Sha256Digest::parse(format!("sha256:{}", "b".repeat(64)))
+                        .expect("digest"),
+                },
+            ],
+            retry: Some(WorkflowRetryPolicy {
+                maximum_attempts: 2,
+                default_delay_seconds: 1,
+            }),
+        };
+        assert!(choice_with_retry.validate().is_err());
     }
 }

@@ -717,6 +717,20 @@ owner and requires an exact non-nil revision UUID plus `connector.http`.
 Flow scheduling, retry/wait interpretation, and a shared immutable response-
 object authority remain required before the HTTP Request node is available.
 
+The component-only `AUT0.5-C9` prerequisite freezes that missing retry budget
+without adding another policy authority. `cloud.workflow.policy.v2` extends the
+existing per-step Workflow policy payload with `maximum_attempts` and an
+explicit fallback delay used only when the provider supplies no bounded
+`Retry-After`. Its canonical ACL and digest already participate in the
+WorkflowRevision payload set, Plan step, and immutable WorkflowRun input.
+ConnectorRevision steps must carry the v2 material; a retry budget on any
+provider runtime not yet admitted fails closed. Descriptor validation keeps
+the classification with the Connectors-owned `connector.http` semantic
+profile. Policy v1 bytes remain unchanged, and no policy table, semantic
+child, retry counter, timer worker, queue, scheduler, or second configuration
+language is introduced. Flow interpretation and immutable response-object
+composition remain open.
+
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
 
@@ -878,10 +892,10 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C8` profile/revision, authorized application,
+`AUT0.5-C2` through `C9` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
 fencing, conservative indeterminate recovery, atomic immutable terminal
-evidence, the Workflow exact-attempt adapter, and the first Notification
+evidence, the Workflow exact-attempt adapter and retry-budget contract, and the first Notification
 Event-consumer-to-C6 composition now exist. `AUT0.5` must still add general
 provider wiring, revocation/recovery operations, retained integration evidence,
 and Workflow Flow scheduling plus immutable response-object composition over

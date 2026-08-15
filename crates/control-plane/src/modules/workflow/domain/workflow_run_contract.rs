@@ -1,13 +1,13 @@
 use super::entities::digest_payload_set;
 use super::{
-    WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec, WorkflowPayload,
-    WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep, WorkflowPolicy,
-    WorkflowPolicyMode, WorkflowStepConfiguration, WorkflowStepKind, WorkflowVariableContract,
-    WorkflowVariableDefaults, WorkflowVariableMutationMode, WorkflowVariableReadMode,
-    WorkflowVariableScope, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_INPUT_BYTES,
-    WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA, WORKFLOW_PLAN_SCHEMA_V2,
-    WORKFLOW_REVISION_MAX_PAYLOAD_BYTES, WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES,
-    WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
+    CapabilityType, WorkflowCompositeRegions, WorkflowDataSchema, WorkflowEdgeSpec,
+    WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind, WorkflowPlan, WorkflowPlanStep,
+    WorkflowPolicy, WorkflowPolicyMode, WorkflowStepConfiguration, WorkflowStepKind,
+    WorkflowVariableContract, WorkflowVariableDefaults, WorkflowVariableMutationMode,
+    WorkflowVariableReadMode, WorkflowVariableScope, WORKFLOW_COMPOSITE_REGIONS_MAX_ACL_BYTES,
+    WORKFLOW_GOAL_MAX_INPUT_BYTES, WORKFLOW_PLAN_MAX_BYTES, WORKFLOW_PLAN_SCHEMA,
+    WORKFLOW_PLAN_SCHEMA_V2, WORKFLOW_REVISION_MAX_PAYLOAD_BYTES,
+    WORKFLOW_VARIABLE_CONTRACT_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, sha256_digest, EnvironmentId, ExecutionId,
@@ -735,6 +735,7 @@ impl WorkflowRunInput {
             validate_typed_projection_configurations(contract, &resolved)?;
         }
         for step in &resolved {
+            validate_runtime_retry_policy(step)?;
             if !matches!(
                 step.plan.kind,
                 WorkflowStepKind::Input
@@ -784,6 +785,28 @@ impl WorkflowRunInput {
             restored.push(payload.restore()?);
         }
         Ok(restored)
+    }
+}
+
+pub(super) fn validate_runtime_retry_policy(step: &ResolvedWorkflowRunStep) -> Result<(), String> {
+    let connector =
+        step.plan.capability.as_ref().is_some_and(|capability| {
+            capability.capability_type == CapabilityType::ConnectorRevision
+        });
+    let retry = step
+        .policy
+        .as_ref()
+        .and_then(|policy| policy.retry.as_ref());
+    match (connector, retry) {
+        (true, Some(_)) | (false, None) => Ok(()),
+        (true, None) => Err(format!(
+            "WorkflowRun Connector step {:?} lost its immutable retry budget",
+            step.plan.id
+        )),
+        (false, Some(_)) => Err(format!(
+            "WorkflowRun step {:?} has a retry budget without an admitted provider runtime",
+            step.plan.id
+        )),
     }
 }
 

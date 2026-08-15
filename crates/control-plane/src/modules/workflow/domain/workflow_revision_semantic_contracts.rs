@@ -1,11 +1,12 @@
 use super::workflow_composite_regions::is_exact_child_workflow_revision;
 use super::{
-    WorkflowCompositeRegions, WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind,
+    CapabilityType, WorkflowCompositeRegions, WorkflowPlan, WorkflowSpec, WorkflowStepBindingKind,
     WorkflowStepDescriptorBindings, WorkflowStepDescriptorRegistry, WorkflowStepExecutionClass,
-    WorkflowStepOwner, WorkflowVariableContract, WorkflowVariableDefaults,
-    WORKFLOW_COMPOSITE_REGIONS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA,
-    WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA, WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
-    WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
+    WorkflowStepOwner, WorkflowStepRetryClassification, WorkflowVariableContract,
+    WorkflowVariableDefaults, WORKFLOW_COMPOSITE_REGIONS_SCHEMA,
+    WORKFLOW_STEP_DESCRIPTOR_BINDINGS_SCHEMA, WORKFLOW_STEP_DESCRIPTOR_REGISTRY_SCHEMA,
+    WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION, WORKFLOW_VARIABLE_CONTRACT_SCHEMA,
+    WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use serde::Serialize;
@@ -279,6 +280,7 @@ impl WorkflowRevisionSemanticContracts {
             }
             validate_supported_bindings(step, descriptor.spec())?;
             validate_capability_binding(step, descriptor.spec())?;
+            validate_connector_retry_authority(step, descriptor.spec())?;
             descriptors_by_step.insert(step.id.as_str(), descriptor.spec());
             referenced_descriptors.insert((descriptor.id(), descriptor.revision()));
             if descriptor.spec().owner == WorkflowStepOwner::Applications {
@@ -476,6 +478,30 @@ impl WorkflowRevisionSemanticContracts {
     }
 }
 
+fn validate_connector_retry_authority(
+    step: &super::WorkflowStepSpec,
+    descriptor: &super::WorkflowStepDescriptorSpec,
+) -> Result<(), String> {
+    let connector = step
+        .capability
+        .as_ref()
+        .is_some_and(|capability| capability.capability_type == CapabilityType::ConnectorRevision);
+    if !connector {
+        return Ok(());
+    }
+    if descriptor.owner != WorkflowStepOwner::Connectors
+        || descriptor.semantic_profile != "connector.http"
+        || descriptor.failure.retry_classification
+            != WorkflowStepRetryClassification::OwnerClassified
+    {
+        return Err(format!(
+            "Workflow Connector step {:?} lacks Connectors-owned retry classification",
+            step.id
+        ));
+    }
+    Ok(())
+}
+
 fn validate_variable_read_ports(
     variables: &super::WorkflowVariableContractSpec,
     descriptors: &BTreeMap<&str, &super::WorkflowStepDescriptorSpec>,
@@ -598,5 +624,89 @@ fn validate_default_material(
         (false, Some(_)) => {
             Err("Workflow variable defaults are present without digest-backed declarations".into())
         }
+    }
+}
+
+#[cfg(test)]
+mod connector_retry_authority_tests {
+    use super::*;
+    use crate::modules::workflow::domain::{
+        CapabilityOwner, CapabilityReference, WorkflowStepDescriptorAdmission,
+        WorkflowStepFailureContract, WorkflowStepFallbackMode, WorkflowStepKind,
+        WorkflowStepPresentationSpec,
+    };
+    use uuid::Uuid;
+
+    fn digest(character: char) -> Sha256Digest {
+        Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64))).expect("digest")
+    }
+
+    fn step() -> super::super::WorkflowStepSpec {
+        super::super::WorkflowStepSpec {
+            id: "invoke".into(),
+            label: "Invoke".into(),
+            kind: WorkflowStepKind::Service,
+            configuration_digest: digest('a'),
+            input_schema_digest: digest('b'),
+            output_schema_digest: digest('c'),
+            policy_digest: Some(digest('d')),
+            capability: Some(CapabilityReference {
+                owner: CapabilityOwner::Connectors,
+                capability_type: CapabilityType::ConnectorRevision,
+                resource_id: Uuid::now_v7(),
+                revision: Uuid::now_v7().to_string(),
+                digest: digest('e'),
+                capability: "connector.http".into(),
+            }),
+        }
+    }
+
+    fn descriptor() -> super::super::WorkflowStepDescriptorSpec {
+        super::super::WorkflowStepDescriptorSpec {
+            id: "connector.http".into(),
+            revision: "1.0.0".into(),
+            owner: WorkflowStepOwner::Connectors,
+            kind: Some(WorkflowStepKind::Service),
+            semantic_profile: "connector.http".into(),
+            execution_class: WorkflowStepExecutionClass::OwningApplicationPort,
+            input_ports: Vec::new(),
+            output_ports: Vec::new(),
+            configuration_schema_digest: digest('a'),
+            default_policy_digest: None,
+            required_bindings: vec![WorkflowStepBindingKind::CapabilityReference],
+            allowed_capability_types: vec![CapabilityType::ConnectorRevision],
+            failure: WorkflowStepFailureContract {
+                error_output: None,
+                retry_classification: WorkflowStepRetryClassification::OwnerClassified,
+                fallback: WorkflowStepFallbackMode::Unsupported,
+                failure_branch: false,
+            },
+            minimum_compiler_schema_version: 2,
+            maximum_compiler_schema_version: 2,
+            admission: WorkflowStepDescriptorAdmission::Admitted,
+            unavailable_reason: None,
+            presentation: WorkflowStepPresentationSpec {
+                label: "HTTP Request".into(),
+                summary: "Calls one exact Connector revision".into(),
+                icon_key: "connector.http".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn connector_retry_classification_stays_with_the_connectors_owner() {
+        let step = step();
+        let descriptor = descriptor();
+        validate_connector_retry_authority(&step, &descriptor).expect("connector authority");
+
+        let mut drifted = descriptor.clone();
+        drifted.owner = WorkflowStepOwner::Workflow;
+        assert!(validate_connector_retry_authority(&step, &drifted).is_err());
+        drifted = descriptor.clone();
+        drifted.semantic_profile = "service.http".into();
+        assert!(validate_connector_retry_authority(&step, &drifted).is_err());
+        drifted = descriptor;
+        drifted.failure.retry_classification = WorkflowStepRetryClassification::FlowRetryable;
+        assert!(validate_connector_retry_authority(&step, &drifted).is_err());
     }
 }

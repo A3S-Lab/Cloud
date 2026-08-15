@@ -3,8 +3,9 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind,
-    WorkflowRevisionSemanticContracts, WorkflowStepKind, WORKFLOW_DEFINITION_SCHEMA,
+    CapabilityType, WorkflowContract, WorkflowPayload, WorkflowPayloadContent, WorkflowPayloadKind,
+    WorkflowPolicy, WorkflowRevisionSemanticContracts, WorkflowStepKind, WorkflowStepSpec,
+    WORKFLOW_DEFINITION_SCHEMA,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -341,10 +342,20 @@ fn validate_payload_bindings(
             )?;
             referenced.insert(digest.clone());
         }
-        if let Some(digest) = &step.policy_digest {
-            require_payload(&by_digest, digest, WorkflowPayloadKind::Policy, &step.id)?;
-            referenced.insert(digest.clone());
-        }
+        let policy = step
+            .policy_digest
+            .as_ref()
+            .map(|digest| {
+                let payload =
+                    require_payload(&by_digest, digest, WorkflowPayloadKind::Policy, &step.id)?;
+                let WorkflowPayloadContent::Policy(policy) = payload.content() else {
+                    return Err("Workflow policy payload content has the wrong kind".into());
+                };
+                referenced.insert(digest.clone());
+                Ok::<&WorkflowPolicy, String>(policy)
+            })
+            .transpose()?;
+        validate_retry_policy_binding(step, policy)?;
         if step.kind == WorkflowStepKind::Branch {
             validate_branch_handles(contract, &step.id, configuration)?;
         }
@@ -359,6 +370,28 @@ fn validate_payload_bindings(
         );
     }
     Ok(())
+}
+
+fn validate_retry_policy_binding(
+    step: &WorkflowStepSpec,
+    policy: Option<&WorkflowPolicy>,
+) -> Result<(), String> {
+    let connector = step
+        .capability
+        .as_ref()
+        .is_some_and(|capability| capability.capability_type == CapabilityType::ConnectorRevision);
+    let retry = policy.and_then(|policy| policy.retry.as_ref());
+    match (connector, retry) {
+        (true, Some(_)) | (false, None) => Ok(()),
+        (true, None) => Err(format!(
+            "Workflow Connector step {:?} requires an exact policy v2 retry budget",
+            step.id
+        )),
+        (false, Some(_)) => Err(format!(
+            "Workflow step {:?} cannot use provider retry policy before its owning runtime is admitted",
+            step.id
+        )),
+    }
 }
 
 fn require_payload<'a>(
@@ -437,4 +470,59 @@ pub(crate) fn digest_payload_set(payloads: &[WorkflowPayload]) -> Result<Sha256D
     let encoded = serde_json::to_vec(&entries)
         .map_err(|error| format!("could not encode Workflow payload set: {error}"))?;
     Sha256Digest::parse(format!("sha256:{:x}", Sha256::digest(encoded)))
+}
+
+#[cfg(test)]
+mod retry_policy_tests {
+    use super::*;
+    use crate::modules::workflow::domain::{
+        CapabilityOwner, CapabilityReference, WorkflowPolicyMode, WorkflowRetryPolicy,
+    };
+    use uuid::Uuid;
+
+    fn digest(character: char) -> Sha256Digest {
+        Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64))).expect("digest")
+    }
+
+    fn step(connector: bool) -> WorkflowStepSpec {
+        WorkflowStepSpec {
+            id: "invoke".into(),
+            label: "Invoke".into(),
+            kind: WorkflowStepKind::Service,
+            configuration_digest: digest('a'),
+            input_schema_digest: digest('b'),
+            output_schema_digest: digest('c'),
+            policy_digest: Some(digest('d')),
+            capability: connector.then(|| CapabilityReference {
+                owner: CapabilityOwner::Connectors,
+                capability_type: CapabilityType::ConnectorRevision,
+                resource_id: Uuid::now_v7(),
+                revision: Uuid::now_v7().to_string(),
+                digest: digest('e'),
+                capability: "connector.http".into(),
+            }),
+        }
+    }
+
+    fn policy(retry: Option<WorkflowRetryPolicy>) -> WorkflowPolicy {
+        WorkflowPolicy {
+            mode: WorkflowPolicyMode::Static,
+            expression: None,
+            candidates: Vec::new(),
+            retry,
+        }
+    }
+
+    #[test]
+    fn exact_retry_budget_is_required_only_for_connector_steps() {
+        let retry = WorkflowRetryPolicy {
+            maximum_attempts: 3,
+            default_delay_seconds: 5,
+        };
+        assert!(validate_retry_policy_binding(&step(true), Some(&policy(Some(retry)))).is_ok());
+        assert!(validate_retry_policy_binding(&step(true), None).is_err());
+        assert!(validate_retry_policy_binding(&step(true), Some(&policy(None))).is_err());
+        assert!(validate_retry_policy_binding(&step(false), Some(&policy(Some(retry)))).is_err());
+        assert!(validate_retry_policy_binding(&step(false), Some(&policy(None))).is_ok());
+    }
 }

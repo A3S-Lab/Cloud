@@ -6,6 +6,40 @@ use crate::modules::workflow::test_support::{
 };
 
 #[test]
+fn run_input_retry_budget_remains_bound_to_an_exact_connector_revision() {
+    let input = workflow_run_input().expect("run input");
+    let mut step = input
+        .resolved_steps()
+        .expect("resolved steps")
+        .into_iter()
+        .next()
+        .expect("step");
+    step.policy = Some(WorkflowPolicy {
+        mode: WorkflowPolicyMode::Static,
+        expression: None,
+        candidates: Vec::new(),
+        retry: Some(WorkflowRetryPolicy {
+            maximum_attempts: 3,
+            default_delay_seconds: 5,
+        }),
+    });
+    assert!(super::workflow_run_contract::validate_runtime_retry_policy(&step).is_err());
+
+    step.plan.capability = Some(CapabilityReference {
+        owner: CapabilityOwner::Connectors,
+        capability_type: CapabilityType::ConnectorRevision,
+        resource_id: uuid::Uuid::now_v7(),
+        revision: uuid::Uuid::now_v7().to_string(),
+        digest: Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("digest"),
+        capability: "connector.http".into(),
+    });
+    super::workflow_run_contract::validate_runtime_retry_policy(&step)
+        .expect("connector retry budget");
+    step.policy.as_mut().expect("policy").retry = None;
+    assert!(super::workflow_run_contract::validate_runtime_retry_policy(&step).is_err());
+}
+
+#[test]
 fn immutable_run_input_rejects_plan_input_payload_and_branch_drift() {
     let input = workflow_run_input().expect("valid WorkflowRun input");
     input.validate().expect("valid input");
