@@ -868,9 +868,10 @@ fencing, conservative indeterminate recovery, atomic immutable terminal
 evidence, and the first Notification Event-consumer-to-C6 composition now
 exist. `AUT0.5` must still add general provider wiring,
 revocation/recovery operations, retained integration evidence, and Workflow
-ports over those same authorities. Notifications still needs retained NATS
-evidence, plus separate versioned semantics before any user-configured
-suppression or delivery budget is admitted. Provider outage
+ports over those same authorities. Notifications now retains PostgreSQL 17 plus
+real NATS evidence for its first Event-consumer-to-C6 composition, but still
+needs separate versioned semantics before any user-configured suppression or
+delivery budget is admitted. Provider outage
 never runs inside the source Outbox projector
 or blocks unrelated integration-event publication. Logical deduplication and
 receipts key off the deterministic delivery ID. External SMTP remains

@@ -2107,22 +2107,24 @@ node.
   Notifications repository authorities. Responses do not resolve endpoints,
   Secrets, credentials, provider bodies, attempts, receipts, or retry state;
   no Web work, table, migration, parser, queue, scheduler, or counter is added.
-- Implemented as `C0.3-N2g`, with retained CI evidence pending: the existing
-  PostgreSQL notification fixture optionally publishes through a real
-  digest-pinned NATS JetStream and the production exact-subject A3S Event
-  durable/manual-ack consumer. It proves terminal receipt persistence before
-  ACK, durable-consumer restart, and ACK-only replay without another dispatcher
-  call while reusing the same Outbox relay and Notifications repository. This
-  is an evidence gate only; it adds no product queue, retry mechanism, table,
-  repository, parser, or configuration format.
+- Verified as `C0.3-N2g` by the retained
+  [PostgreSQL 17 plus NATS H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/31881826576/job/95005391069):
+  the existing notification fixture publishes through a real, checksum-pinned
+  NATS JetStream and the production exact-subject A3S Event durable/manual-ack
+  consumer. It persists the exact C6 attempt/evidence and terminal receipt
+  before ACK, restarts the durable consumer, and proves ACK-only replay without
+  another dispatcher call while reusing the same Outbox relay and Notifications
+  repository. This is an evidence gate only; it adds no product queue, retry
+  mechanism, table, repository, parser, or configuration format.
 - Workflow ports, provider/Event-consumer wiring, revocation/recovery
   operations, and retained PostgreSQL/end-to-end evidence
   remain open in `AUT0.5`; these components create no product availability
   claim.
-- Complete outbound delivery product availability by retaining the NATS
-  production-evidence gate and the intentionally deferred Web projection. The
-  immutable Notification-owned subscription ACL is already exposed through
-  REST, the maintained client, CLI, and Management MCP. Any future
+- Outbound delivery product availability remains gated by the intentionally
+  deferred Web projection and the broader Connector/Workflow provider work; the
+  retained NATS production-evidence gate is complete. The immutable
+  Notification-owned subscription ACL is already exposed through REST, the
+  maintained client, CLI, and Management MCP. Any future
   user-configured suppression or delivery budget must be a versioned semantic
   extension over the same delivery, C6 evidence, A3S Event `AckWait`, and receipt
   authorities; it may not introduce another counter, timer, queue, scheduler,

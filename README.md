@@ -140,8 +140,10 @@ call. Retryable C6 evidence defers later generations until its exact
 eighth immutable evidence record without a ninth Provider call. A3S Event remains
 the only waiting/redelivery mechanism; no Notification retry table, mutable
 counter, token bucket, timer, queue, or scheduler is introduced. User-configured
-alert suppression/delivery budgets, SMTP, Workflow ports, retained NATS evidence,
-the intentionally deferred Web surface, and production availability remain gated.
+alert suppression/delivery budgets, SMTP, Workflow ports, the intentionally
+deferred Web surface, and production availability remain gated. A retained
+PostgreSQL 17 plus real NATS gate verifies terminal C6 evidence before ACK and
+ACK-only replay after durable-consumer restart.
 REST/OpenAPI, the maintained client, CLI, and four Management MCP tools expose
 recipient-bound create/list/get/revoke through the same Notifications CQRS,
 Resource Grant, idempotency, Outbox, audit, and PostgreSQL repository authority.
