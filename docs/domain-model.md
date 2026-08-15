@@ -778,7 +778,7 @@ Primary record:
 
 - `Notification`
 
-### 3.19 Outbound notification delivery (`C0.3-N2a` / `C0.3-N2b`)
+### 3.19 Outbound notification delivery (`C0.3-N2a` through `C0.3-N2e`)
 
 The first outbound component boundary derives one immutable
 `OutboundNotificationDelivery` from an existing personal notification, one
@@ -809,6 +809,29 @@ unacknowledged for provider-owned `AckWait`; Cloud does not call `nak`, sleep,
 schedule, or persist a retry counter. The production composition enables this
 consumer only for NATS, never the non-durable memory provider.
 
+`N2c` adds one immutable personal
+`cloud.notification.outbound-subscription.v1` A3S ACL. It binds the exact
+recipient Principal, channel, minimum severity, and Connector revision; a new
+configuration creates a new subscription and the only mutation is
+active-to-revoked. Migration `114` persists that authority and atomically commits
+each matching inbox projection, deterministic delivery authorization, and
+`notification.delivery.requested` Outbox fact. The consumer admits only the
+persisted exact fact and commits one monotonic Delivered, Rejected, or
+Indeterminate receipt referencing its exact C6 attempt before ACK. A committed
+receipt makes later transport replay ACK-only, including receipt-commit/ACK
+loss.
+
+`N2d` reads the bounded `Retry-After` on replayed immutable C6 `retryable`
+evidence and refuses to advance to a later generation before the exact
+completion-plus-delay deadline. A3S Event `AckWait` supplies the only clock and
+redelivery. `N2e` then fixes the provider-attempt budget at eight deterministic
+generations. A freshly settled eighth retryable attempt remains unacknowledged;
+its next replay creates one Exhausted terminal receipt from that exact C6
+evidence and ACKs without a ninth Provider call. Migration `115` only expands
+the existing receipt constraint and validates the same attempt/evidence/budget
+relationship. Neither slice adds a retry table, mutable counter, rate bucket,
+timer, queue, scheduler, or provider-response authority.
+
 The component-only Connector executor materializes one fixed resolved revision
 and performs exactly one external attempt. Connectors owns the endpoint and
 method, production HTTPS requirement, redirect rejection, request/response/time
@@ -824,18 +847,19 @@ authority.
 This component is not production Connector or delivery availability. The
 `AUT0.5-C2` through `C6` profile/revision, authorized application,
 just-in-time Secret materialization, public-Internet egress, durable attempt
-fencing, conservative indeterminate recovery, and atomic immutable
-terminal-evidence foundations and the first Notification Event-consumer-to-C6
-composition now exist, but `AUT0.5` must still add supported management surfaces,
-general provider wiring, revocation/recovery operations, and Workflow ports over
-these same authorities. Notification still must add ACL-native subscription
-state, atomically persist each deterministic delivery fact through the existing
-transactional Outbox, and persist logical terminal receipts before this path is
-available. Provider outage must never run inside the source Outbox projector or
-block unrelated integration-event publication. Logical deduplication and receipts
-key off the deterministic delivery ID. External SMTP remains unavailable until Identity
-owns an exact verified recipient contact reference; an adapter may never infer
-an address from an OIDC claim, display name, or provider payload.
+fencing, conservative indeterminate recovery, atomic immutable terminal
+evidence, and the first Notification Event-consumer-to-C6 composition now
+exist. `AUT0.5` must still add supported management surfaces, general provider
+wiring, revocation/recovery operations, and Workflow ports over those same
+authorities. Notifications still needs supported subscription management
+surfaces, retained NATS/PostgreSQL evidence for the final budget migration, and
+separate versioned semantics before any user-configured suppression or delivery
+budget is admitted. Provider outage never runs inside the source Outbox projector
+or blocks unrelated integration-event publication. Logical deduplication and
+receipts key off the deterministic delivery ID. External SMTP remains
+unavailable until Identity owns an exact verified recipient contact reference;
+an adapter may never infer an address from an OIDC claim, display name, or
+provider payload.
 
 ## 4. Aggregate invariants
 

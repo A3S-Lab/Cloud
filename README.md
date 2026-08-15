@@ -119,7 +119,7 @@ failure, recovery, cleanup, and release evidence passes.
 | --- | --- | --- |
 | Durable control | A3S Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, PostgreSQL queue, Operations, Outbox, and replay | `F0` verified |
 | Management | REST/OpenAPI `1.35.0`, maintained TypeScript client, CLI, Management MCP, retained Web projection | Broader enterprise `C0` gates remain |
-| Identity | Principals, Memberships, invitations, grants, tokens, OIDC link/login flows, audit, project attribution, in-app notifications, immutable personal outbound-subscription ACLs, transactional delivery facts, and monotonic terminal receipts around the fenced Connector path | Rate policy, SMTP, supported management surfaces, retained production evidence, and broader enterprise surfaces remain |
+| Identity | Principals, Memberships, invitations, grants, tokens, OIDC link/login flows, audit, project attribution, in-app notifications, immutable personal outbound-subscription ACLs, transactional delivery facts, fixed provider-attempt termination, and monotonic terminal receipts around the fenced Connector path | User-configured suppression/delivery budgets, SMTP, supported management surfaces, retained production evidence, and broader enterprise surfaces remain |
 | Compute and delivery | Immutable sources/assets, builds, Executions, Workloads, Fleet, Node Agent, Edge snapshot publication, Gateway apply | Box-only recertification and clean-host provider gates remain |
 | Workflow | Ontologies, immutable definitions/revisions/goals, Plan v2, WorkflowRun, Forms/HumanTasks, finite Execution, typed variables/defaults, inspection, node discovery, and immutable composite-region policy | Public Workflow, composite execution, remaining providers, compensation, and production evidence remain |
 | Plugins | Exact A3S Use compatibility plus trusted Registry/catalog reads | Tenant assignments and complete `U0` gate remain |
@@ -133,11 +133,14 @@ outbound subscriptions authored as canonical A3S ACL, and transactional
 Slack-compatible builders feed a NATS-only durable/manual-ack A3S Event consumer
 through the fenced Connector application service. The consumer validates the
 persisted delivery authorization and commits one monotonic Delivered, Rejected,
-or Indeterminate receipt before ACK. Redelivery replays durable C6 evidence, and
-receipt-commit/ACK loss becomes ACK-only without another Provider call. Rate
-limited C6 evidence also defers later generations until its exact `Retry-After`
-deadline while A3S Event remains the only waiting/redelivery mechanism. User
-configured alert suppression/budgets, SMTP, supported management surfaces,
+Indeterminate, or Exhausted receipt before ACK. Redelivery replays durable C6
+evidence, and receipt-commit/ACK loss becomes ACK-only without another Provider
+call. Retryable C6 evidence defers later generations until its exact
+`Retry-After` deadline, then a fixed eight-attempt budget terminates from the
+eighth immutable evidence record without a ninth Provider call. A3S Event remains
+the only waiting/redelivery mechanism; no Notification retry table, mutable
+counter, token bucket, timer, queue, or scheduler is introduced. User-configured
+alert suppression/delivery budgets, SMTP, supported management surfaces,
 Workflow ports, retained NATS evidence, and production availability remain gated.
 
 ### Latest Workflow contract slice
