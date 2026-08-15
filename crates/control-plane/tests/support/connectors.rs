@@ -1,18 +1,23 @@
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_control_plane::modules::connectors::{
-    ConnectorDefinition, ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor,
-    ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpAuthentication,
-    ConnectorHttpDefinition, ConnectorHttpDefinitionSpec, ConnectorHttpDestination,
-    ConnectorHttpMethod, ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy,
-    ConnectorProfile, ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished,
-    ConnectorSecretReference, CreateConnectorProfile, CreateConnectorProfileHandler,
-    CreateConnectorProfileWrite, GetConnectorProfile, GetConnectorProfileHandler,
+    BeginConnectorExecutionDispatch, ConnectorDefinition, ConnectorExecutionAttemptBinding,
+    ConnectorExecutionAttemptCursor, ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor,
+    ConnectorExecutionReceipt, ConnectorExecutionRecoveryState, ConnectorExecutionRequest,
+    ConnectorExecutionReservation, ConnectorHttpAuthentication, ConnectorHttpDefinition,
+    ConnectorHttpDefinitionSpec, ConnectorHttpDestination, ConnectorHttpMethod,
+    ConnectorHttpRevisionMaterializer, ConnectorHttpStatusPolicy, ConnectorProfile,
+    ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished, ConnectorSecretReference,
+    CreateConnectorProfile, CreateConnectorProfileHandler, CreateConnectorProfileWrite,
+    GetConnectorExecutionAttempt, GetConnectorExecutionAttemptHandler, GetConnectorProfile,
+    GetConnectorProfileHandler, IConnectorExecutionAttemptRepository,
     IConnectorExecutionEvidenceRepository, IConnectorProfileRepository,
     ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler, ListConnectorRevisions,
-    ListConnectorRevisionsHandler, PostgresConnectorExecutionEvidenceRepository,
-    PostgresConnectorProfileRepository, ReviseConnectorProfile, ReviseConnectorProfileHandler,
-    ReviseConnectorProfileWrite,
+    ListConnectorRevisionsHandler, ListUnresolvedConnectorExecutionAttempts,
+    ListUnresolvedConnectorExecutionAttemptsHandler, PostgresConnectorExecutionAttemptRepository,
+    PostgresConnectorExecutionEvidenceRepository, PostgresConnectorProfileRepository,
+    ReserveConnectorExecutionAttempt, ReviseConnectorProfile, ReviseConnectorProfileHandler,
+    ReviseConnectorProfileWrite, SettleConnectorExecutionAttempt,
 };
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -763,12 +768,12 @@ pub(super) async fn exercise_connector_execution_evidence(
             sql_query::<(i64, String)>(
                 "select count(*), max(name) from a3s_orm_migrations where version = ",
             )
-            .bind("112"),
+            .bind("113"),
         )
         .await?;
     assert_eq!(
         migration_state,
-        (1, "immutable Connector execution evidence".into())
+        (1, "fenced Connector execution attempts".into())
     );
 
     let organization_id = OrganizationId::new();
@@ -865,6 +870,9 @@ pub(super) async fn exercise_connector_execution_evidence(
     let evidence = Arc::new(PostgresConnectorExecutionEvidenceRepository::new(
         executor.clone(),
     ));
+    let attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
+        executor.clone(),
+    ));
     let accepted_request = ConnectorExecutionRequest::new(
         revision.id,
         Uuid::now_v7(),
@@ -887,29 +895,35 @@ pub(super) async fn exercise_connector_execution_evidence(
         &accepted_receipt,
         created_at + Duration::seconds(2),
     )?;
+    let accepted_settlement = prepare_connector_settlement(
+        attempts.as_ref(),
+        &revision,
+        &accepted_request,
+        accepted.clone(),
+    )
+    .await?;
     let (left, right) = tokio::join!(
-        evidence.record(accepted.clone()),
-        evidence.record(accepted.clone())
+        attempts.settle(accepted_settlement.clone()),
+        attempts.settle(accepted_settlement.clone())
     );
     let mut replayed = [left?.replayed, right?.replayed];
     replayed.sort_unstable();
     assert_eq!(replayed, [false, true]);
 
-    let changed_request = ConnectorExecutionRequest::new(
-        revision.id,
-        accepted.attempt_id(),
-        "application/json",
-        b"different request".to_vec(),
-    )?;
     let changed = ConnectorExecutionEvidence::rejected(
         &revision,
-        &changed_request,
+        &accepted_request,
         Some(400),
         accepted.started_at(),
         accepted.completed_at(),
     )?;
     assert!(matches!(
-        evidence.record(changed).await,
+        attempts
+            .settle(SettleConnectorExecutionAttempt::new(
+                accepted_settlement.fence,
+                changed,
+            )?)
+            .await,
         Err(RepositoryError::Conflict(_))
     ));
 
@@ -927,7 +941,17 @@ pub(super) async fn exercise_connector_execution_evidence(
         created_at + Duration::seconds(4),
         created_at + Duration::seconds(5),
     )?;
-    evidence.record(retryable.clone()).await?;
+    attempts
+        .settle(
+            prepare_connector_settlement(
+                attempts.as_ref(),
+                &revision,
+                &retryable_request,
+                retryable.clone(),
+            )
+            .await?,
+        )
+        .await?;
     let rejected_request = ConnectorExecutionRequest::new(
         revision.id,
         Uuid::now_v7(),
@@ -941,9 +965,20 @@ pub(super) async fn exercise_connector_execution_evidence(
         created_at + Duration::seconds(6),
         created_at + Duration::seconds(7),
     )?;
-    evidence.record(rejected.clone()).await?;
+    attempts
+        .settle(
+            prepare_connector_settlement(
+                attempts.as_ref(),
+                &revision,
+                &rejected_request,
+                rejected.clone(),
+            )
+            .await?,
+        )
+        .await?;
 
-    let list_handler = ListConnectorExecutionEvidenceHandler::new(profiles, evidence.clone());
+    let list_handler =
+        ListConnectorExecutionEvidenceHandler::new(profiles.clone(), evidence.clone());
     let list = ListConnectorExecutionEvidence {
         organization_id,
         project_id,
@@ -1012,27 +1047,279 @@ pub(super) async fn exercise_connector_execution_evidence(
         .await?
         .is_none());
 
-    let wrong_environment = ConnectorExecutionEvidence::restore(
-        organization_id,
-        project_id,
-        EnvironmentId::new(),
-        profile_id,
+    let concurrent_request = ConnectorExecutionRequest::new(
         revision.id,
         Uuid::now_v7(),
-        accepted.request_digest().clone(),
-        accepted.request_body_bytes(),
-        accepted.outcome(),
-        accepted.response_status(),
-        accepted.response_digest().cloned(),
-        accepted.response_body_bytes(),
-        accepted.retry_after().map(|value| value.as_secs()),
-        accepted.started_at(),
-        accepted.completed_at(),
+        "application/json",
+        b"one concurrent reservation winner".to_vec(),
     )?;
+    let concurrent_reserved_at = created_at + Duration::seconds(6);
+    let concurrent_binding =
+        ConnectorExecutionAttemptBinding::from_exact(&revision, &concurrent_request)?;
+    let concurrent_left = ReserveConnectorExecutionAttempt::new(
+        concurrent_binding.clone(),
+        Uuid::now_v7(),
+        concurrent_reserved_at,
+        concurrent_reserved_at + Duration::seconds(30),
+    )?;
+    let concurrent_right = ReserveConnectorExecutionAttempt::new(
+        concurrent_binding,
+        Uuid::now_v7(),
+        concurrent_reserved_at,
+        concurrent_reserved_at + Duration::seconds(30),
+    )?;
+    let (concurrent_left, concurrent_right) = tokio::join!(
+        attempts.reserve(concurrent_left),
+        attempts.reserve(concurrent_right)
+    );
+    let concurrent_outcomes = [concurrent_left?, concurrent_right?];
     assert_eq!(
-        evidence.record(wrong_environment).await,
+        concurrent_outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, ConnectorExecutionReservation::Acquired { .. }))
+            .count(),
+        1
+    );
+    assert_eq!(
+        concurrent_outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, ConnectorExecutionReservation::Busy(_)))
+            .count(),
+        1
+    );
+
+    let takeover_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"expired pre-dispatch takeover".to_vec(),
+    )?;
+    let takeover_first_at = created_at + Duration::seconds(7);
+    let takeover_first_fence = match attempts
+        .reserve(ReserveConnectorExecutionAttempt::new(
+            ConnectorExecutionAttemptBinding::from_exact(&revision, &takeover_request)?,
+            Uuid::now_v7(),
+            takeover_first_at,
+            takeover_first_at + Duration::seconds(1),
+        )?)
+        .await?
+    {
+        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+        other => return Err(format!("unexpected initial takeover reservation: {other:?}").into()),
+    };
+    let takeover_second_at = takeover_first_fence.lease_expires_at();
+    let takeover_second_fence = match attempts
+        .reserve(ReserveConnectorExecutionAttempt::new(
+            ConnectorExecutionAttemptBinding::from_exact(&revision, &takeover_request)?,
+            Uuid::now_v7(),
+            takeover_second_at,
+            takeover_second_at + Duration::seconds(30),
+        )?)
+        .await?
+    {
+        ConnectorExecutionReservation::Acquired { fence, replayed } => {
+            assert!(!replayed);
+            fence
+        }
+        other => return Err(format!("unexpected expired reservation takeover: {other:?}").into()),
+    };
+    assert_eq!(takeover_second_fence.generation(), 2);
+    assert!(matches!(
+        attempts
+            .begin_dispatch(BeginConnectorExecutionDispatch::new(
+                takeover_first_fence,
+                takeover_first_at + Duration::milliseconds(500),
+                takeover_first_at + Duration::milliseconds(900),
+            )?)
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let foreign_reserved_at = created_at + Duration::seconds(8);
+    assert_eq!(
+        attempts
+            .reserve(ReserveConnectorExecutionAttempt::new(
+                ConnectorExecutionAttemptBinding::restore(
+                    organization_id,
+                    project_id,
+                    EnvironmentId::new(),
+                    profile_id,
+                    revision.id,
+                    Uuid::now_v7(),
+                    accepted.request_digest().clone(),
+                    accepted.request_body_bytes(),
+                )?,
+                Uuid::now_v7(),
+                foreign_reserved_at,
+                foreign_reserved_at + Duration::seconds(30),
+            )?)
+            .await,
         Err(RepositoryError::NotFound)
     );
+
+    let reserved_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"safe pre-dispatch reservation".to_vec(),
+    )?;
+    let reserved_at = created_at + Duration::seconds(8);
+    let reserved = ReserveConnectorExecutionAttempt::new(
+        ConnectorExecutionAttemptBinding::from_exact(&revision, &reserved_request)?,
+        Uuid::now_v7(),
+        reserved_at,
+        reserved_at + Duration::seconds(30),
+    )?;
+    let reserved_fence = match attempts.reserve(reserved.clone()).await? {
+        ConnectorExecutionReservation::Acquired { fence, replayed } => {
+            assert!(!replayed);
+            fence
+        }
+        other => return Err(format!("unexpected reservation: {other:?}").into()),
+    };
+    assert!(matches!(
+        attempts.reserve(reserved).await?,
+        ConnectorExecutionReservation::Acquired { replayed: true, .. }
+    ));
+
+    let uncertain_request = ConnectorExecutionRequest::new(
+        revision.id,
+        Uuid::now_v7(),
+        "application/json",
+        b"provider outcome unknown".to_vec(),
+    )?;
+    let uncertain_reserved_at = created_at + Duration::seconds(9);
+    let uncertain_fence = match attempts
+        .reserve(ReserveConnectorExecutionAttempt::new(
+            ConnectorExecutionAttemptBinding::from_exact(&revision, &uncertain_request)?,
+            Uuid::now_v7(),
+            uncertain_reserved_at,
+            uncertain_reserved_at + Duration::seconds(30),
+        )?)
+        .await?
+    {
+        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+        other => return Err(format!("unexpected uncertain reservation: {other:?}").into()),
+    };
+    let uncertain_started_at = created_at + Duration::seconds(10);
+    let uncertain_deadline_at = created_at + Duration::seconds(11);
+    attempts
+        .begin_dispatch(BeginConnectorExecutionDispatch::new(
+            uncertain_fence,
+            uncertain_started_at,
+            uncertain_deadline_at,
+        )?)
+        .await?;
+    assert!(matches!(
+        attempts
+            .reserve(ReserveConnectorExecutionAttempt::new(
+                ConnectorExecutionAttemptBinding::from_exact(&revision, &uncertain_request)?,
+                Uuid::now_v7(),
+                created_at + Duration::seconds(12),
+                created_at + Duration::seconds(30),
+            )?)
+            .await?,
+        ConnectorExecutionReservation::Indeterminate(_)
+    ));
+
+    let attempt_get = GetConnectorExecutionAttemptHandler::new(attempts.clone())
+        .execute(
+            GetConnectorExecutionAttempt {
+                organization_id,
+                project_id,
+                environment_id,
+                profile_id,
+                revision_id: revision.id,
+                attempt_id: reserved_request.attempt_id(),
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+            },
+            connector_context(),
+        )
+        .await??;
+    assert_eq!(attempt_get.attempt.fence(), reserved_fence);
+    assert_eq!(
+        attempt_get
+            .attempt
+            .recovery_state(reserved_at + Duration::seconds(1)),
+        ConnectorExecutionRecoveryState::Reserved
+    );
+    let attempt_list_handler =
+        ListUnresolvedConnectorExecutionAttemptsHandler::new(profiles.clone(), attempts.clone());
+    let unresolved = ListUnresolvedConnectorExecutionAttempts {
+        organization_id,
+        project_id,
+        environment_id,
+        profile_id,
+        revision_id: revision.id,
+        after: None,
+        limit: 1,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+    };
+    let unresolved_first = attempt_list_handler
+        .execute(unresolved.clone(), connector_context())
+        .await??;
+    assert_eq!(unresolved_first.attempts.len(), 1);
+    assert_eq!(
+        unresolved_first.attempts[0].attempt.binding().attempt_id(),
+        uncertain_request.attempt_id()
+    );
+    assert_eq!(
+        unresolved_first.attempts[0]
+            .attempt
+            .recovery_state(created_at + Duration::seconds(12)),
+        ConnectorExecutionRecoveryState::Indeterminate
+    );
+    assert_eq!(
+        unresolved_first.next_cursor,
+        Some(ConnectorExecutionAttemptCursor::after(
+            &unresolved_first.attempts[0].attempt,
+        ))
+    );
+    let unresolved_second = attempt_list_handler
+        .execute(
+            ListUnresolvedConnectorExecutionAttempts {
+                after: unresolved_first.next_cursor,
+                ..unresolved.clone()
+            },
+            connector_context(),
+        )
+        .await??;
+    assert_eq!(unresolved_second.attempts.len(), 1);
+    assert_eq!(
+        unresolved_second.attempts[0].attempt.binding().attempt_id(),
+        reserved_request.attempt_id()
+    );
+    let denied_attempts = attempt_list_handler
+        .execute(
+            ListUnresolvedConnectorExecutionAttempts {
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    },
+                ]),
+                ..unresolved
+            },
+            connector_context(),
+        )
+        .await?;
+    assert!(matches!(
+        denied_attempts,
+        Err(ApplicationError::NotFound(_))
+    ));
+
+    let recovered_attempt = PostgresConnectorExecutionAttemptRepository::new(executor.clone())
+        .find(
+            organization_id,
+            project_id,
+            environment_id,
+            profile_id,
+            revision.id,
+            accepted.attempt_id(),
+        )
+        .await?
+        .ok_or("recovered terminal Connector attempt is missing")?;
+    assert_eq!(recovered_attempt.evidence, Some(accepted.clone()));
 
     assert_rejected(
         database
@@ -1058,14 +1345,121 @@ pub(super) async fn exercise_connector_execution_evidence(
             .await,
         "deleting immutable Connector execution evidence",
     );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("update connector_execution_attempts set request_digest = ")
+                    .bind(rejected.request_digest().as_str())
+                    .append(" where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and attempt_id = ")
+                    .bind(accepted.attempt_id()),
+            )
+            .await,
+        "mutating immutable Connector attempt binding",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>(
+                    "delete from connector_execution_attempts where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and attempt_id = ")
+                .bind(accepted.attempt_id()),
+            )
+            .await,
+        "deleting terminal Connector execution attempt",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("insert into connector_execution_evidence (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at) select organization_id, project_id, environment_id, profile_id, revision_id, ")
+                    .bind(Uuid::now_v7())
+                    .append(", request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at from connector_execution_evidence where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and attempt_id = ")
+                    .bind(accepted.attempt_id()),
+            )
+            .await,
+        "recording Connector evidence without an exact attempt",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("insert into connector_execution_attempts (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, state, fence_generation, fence_token, reserved_at, lease_expires_at, dispatch_started_at, outcome_deadline_at, terminal_at, created_at) select organization_id, project_id, environment_id, profile_id, revision_id, ")
+                    .bind(Uuid::now_v7())
+                    .append(", request_digest, request_body_bytes, 'terminal', fence_generation, ")
+                    .bind(Uuid::now_v7())
+                    .append(", reserved_at, lease_expires_at, dispatch_started_at, outcome_deadline_at, terminal_at, created_at from connector_execution_attempts where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and attempt_id = ")
+                    .bind(accepted.attempt_id()),
+            )
+            .await,
+        "committing a terminal Connector attempt without evidence",
+    );
+    let forged_preflight_attempt_id = Uuid::now_v7();
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("with inserted_attempt as (insert into connector_execution_attempts (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, state, fence_generation, fence_token, reserved_at, lease_expires_at, dispatch_started_at, outcome_deadline_at, terminal_at, created_at) select organization_id, project_id, environment_id, profile_id, revision_id, ")
+                    .bind(forged_preflight_attempt_id)
+                    .append(", request_digest, request_body_bytes, 'terminal', 1, ")
+                    .bind(Uuid::now_v7())
+                    .append(", started_at, started_at + interval '30 seconds', null, null, completed_at, started_at from connector_execution_evidence where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and attempt_id = ")
+                    .bind(accepted.attempt_id())
+                    .append(" returning organization_id, project_id, environment_id, profile_id, revision_id, attempt_id) insert into connector_execution_evidence (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at) select inserted_attempt.organization_id, inserted_attempt.project_id, inserted_attempt.environment_id, inserted_attempt.profile_id, inserted_attempt.revision_id, inserted_attempt.attempt_id, evidence.request_digest, evidence.request_body_bytes, evidence.outcome, evidence.response_status, evidence.response_digest, evidence.response_body_bytes, evidence.retry_after_seconds, evidence.started_at, evidence.completed_at from inserted_attempt cross join connector_execution_evidence evidence where evidence.organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and evidence.attempt_id = ")
+                    .bind(accepted.attempt_id()),
+            )
+            .await,
+        "claiming an accepted provider response before dispatch",
+    );
     let stored = database
         .fetch_one_as(
-            sql_query::<(i64, i64)>("select count(*), count(*) filter (where request_digest like 'sha256:%' and (response_digest is null or response_digest like 'sha256:%')) from connector_execution_evidence where organization_id = ")
+            sql_query::<(i64, i64, i64, i64)>("select count(*), count(*) filter (where request_digest like 'sha256:%' and (response_digest is null or response_digest like 'sha256:%')), (select count(*) from connector_execution_attempts where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append("), (select count(*) from connector_execution_attempts where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and state = 'terminal') from connector_execution_evidence where organization_id = ")
                 .bind(organization_id.as_uuid()),
         )
         .await?;
-    assert_eq!(stored, (3, 3));
+    assert_eq!(stored, (3, 3, 7, 3));
     Ok(())
+}
+
+async fn prepare_connector_settlement(
+    attempts: &PostgresConnectorExecutionAttemptRepository,
+    revision: &ConnectorRevision,
+    request: &ConnectorExecutionRequest,
+    evidence: ConnectorExecutionEvidence,
+) -> Result<SettleConnectorExecutionAttempt, Box<dyn std::error::Error>> {
+    let reserved_at = evidence.started_at() - Duration::milliseconds(1);
+    let fence = match attempts
+        .reserve(ReserveConnectorExecutionAttempt::new(
+            ConnectorExecutionAttemptBinding::from_exact(revision, request)?,
+            Uuid::now_v7(),
+            reserved_at,
+            reserved_at + Duration::seconds(30),
+        )?)
+        .await?
+    {
+        ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+        other => return Err(format!("unexpected Connector reservation: {other:?}").into()),
+    };
+    attempts
+        .begin_dispatch(BeginConnectorExecutionDispatch::new(
+            fence.clone(),
+            evidence.started_at(),
+            evidence.started_at() + Duration::seconds(60),
+        )?)
+        .await?;
+    Ok(SettleConnectorExecutionAttempt::new(fence, evidence)?)
 }
 
 fn connector_context() -> CqrsContext {

@@ -120,11 +120,11 @@ jobs:
           postgres_connector_application_is_authorized_and_materializes_exact_secrets
           -- --exact --nocapture --test-threads=1
 
-      - name: Certify immutable Connector execution evidence
+      - name: Certify fenced Connector attempts and atomic evidence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
           --test postgres_integration
-          postgres_connector_execution_evidence_is_exact_replay_safe_and_immutable
+          postgres_connector_attempts_are_fenced_and_settle_evidence_atomically
           -- --exact --nocapture --test-threads=1
 
       - name: Certify Workflow finite Execution persistence

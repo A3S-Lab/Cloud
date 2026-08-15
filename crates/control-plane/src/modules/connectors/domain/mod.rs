@@ -1,3 +1,5 @@
+mod attempt;
+mod attempt_repository;
 mod events;
 mod evidence;
 mod evidence_repository;
@@ -14,6 +16,19 @@ pub use evidence::{
 };
 pub use evidence_repository::IConnectorExecutionEvidenceRepository;
 
+pub use attempt::{
+    ConnectorExecutionAttempt, ConnectorExecutionAttemptBinding, ConnectorExecutionAttemptCursor,
+    ConnectorExecutionAttemptPage, ConnectorExecutionAttemptRecord, ConnectorExecutionAttemptState,
+    ConnectorExecutionFence, ConnectorExecutionRecoveryState,
+    MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE, MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS,
+    MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
+};
+pub(crate) use attempt_repository::reservation_record;
+pub use attempt_repository::{
+    BeginConnectorExecutionDispatch, ConnectorExecutionReservation,
+    IConnectorExecutionAttemptRepository, ReserveConnectorExecutionAttempt,
+    SettleConnectorExecutionAttempt,
+};
 pub(crate) use execution::{
     validate_connector_content_type, validate_connector_signature_metadata,
     MAXIMUM_AUTHORIZED_CONNECTOR_ADDRESSES, MAXIMUM_CONNECTOR_BODY_BYTES,
@@ -21,6 +36,7 @@ pub(crate) use execution::{
 pub use execution::{
     AuthorizedConnectorDestination, ConnectorExecutionError, ConnectorExecutionReceipt,
     ConnectorExecutionRequest, IConnectorEgressAuthorizer, IConnectorExecutionPort,
+    IConnectorExecutionPreparationPort, IPreparedConnectorExecution,
 };
 #[cfg(test)]
 pub(crate) use http_definition::MINIMUM_SIGNING_SECRET_BYTES;

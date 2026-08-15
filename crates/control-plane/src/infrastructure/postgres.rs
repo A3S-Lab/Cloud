@@ -973,6 +973,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/112_connector_execution_evidence.sql"
             )),
         ),
+        Migration::new(
+            "113",
+            "fenced Connector execution attempts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/113_connector_execution_attempts.sql"
+            )),
+        ),
     ]
 }
 
@@ -1546,6 +1554,51 @@ mod connector_execution_evidence_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 112 must not add another execution mechanism: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod connector_execution_attempt_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/113_connector_execution_attempts.sql"
+    ));
+
+    #[test]
+    fn migration_113_adds_one_fenced_attempt_boundary_without_retry_authority() {
+        for expected in [
+            "create table connector_execution_attempts",
+            "state in ('reserved', 'dispatching', 'terminal')",
+            "lease_expires_at <= reserved_at + interval '30 seconds'",
+            "outcome_deadline_at <= dispatch_started_at + interval '120 seconds'",
+            "Connector execution reservation takeover is not fenced",
+            "Terminal Connector execution attempt requires exact evidence",
+            "Connector execution evidence requires its exact terminal attempt",
+            "paired_dispatch_started_at is null",
+            "new.outcome = 'accepted'",
+            "dispatching is never reacquired",
+            "not a queue, retry schedule, Flow history, provider receipt store, or acknowledgement authority",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 113 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "attempt_count",
+            "retry_count",
+            "next_attempt_at",
+            "available_at",
+            "create table connector_queue",
+            "create table connector_retries",
+            "create table connector_responses",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 113 must not add retry, queue, or response authority: {forbidden}"
             );
         }
     }

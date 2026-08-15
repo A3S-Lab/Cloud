@@ -32,3 +32,7 @@ pub(super) fn revision_not_found() -> ApplicationError {
 pub(super) fn evidence_not_found() -> ApplicationError {
     ApplicationError::NotFound("Connector execution evidence not found".into())
 }
+
+pub(super) fn attempt_not_found() -> ApplicationError {
+    ApplicationError::NotFound("Connector execution attempt not found".into())
+}

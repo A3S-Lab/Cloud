@@ -4,9 +4,11 @@ use crate::modules::connectors::domain::{
     validate_resolved_connector_endpoint, AuthorizedConnectorDestination, ConnectorExecutionError,
     ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorHttpMethod,
     ConnectorHttpStatusPolicy, ConnectorStatusDisposition, IConnectorEgressAuthorizer,
-    IConnectorExecutionPort,
+    IConnectorExecutionPort, IPreparedConnectorExecution,
 };
-use crate::modules::shared_kernel::domain::{canonical_timestamp, ConnectorRevisionId};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, ConnectorRevisionId, Sha256Digest,
+};
 use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use base64::Engine;
@@ -20,6 +22,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
 use url::Url;
+use uuid::Uuid;
 use zeroize::Zeroizing;
 
 #[cfg(test)]
@@ -210,6 +213,20 @@ impl BoundedHttpConnectorExecutor {
     ) -> Self {
         Self { revision, egress }
     }
+
+    pub(super) async fn prepare(
+        self,
+        request: &ConnectorExecutionRequest,
+    ) -> Result<PreparedBoundedHttpConnectorExecution, ConnectorExecutionError> {
+        let endpoint = validate_request(&self.revision, request)?;
+        let authorized = self.egress.authorize(self.revision.id, &endpoint).await?;
+        Ok(PreparedBoundedHttpConnectorExecution {
+            revision: self.revision,
+            authorized,
+            attempt_id: request.attempt_id(),
+            request_digest: request.evidence_digest(),
+        })
+    }
 }
 
 impl fmt::Debug for BoundedHttpConnectorExecutor {
@@ -227,54 +244,107 @@ impl IConnectorExecutionPort for BoundedHttpConnectorExecutor {
         &self,
         request: &ConnectorExecutionRequest,
     ) -> Result<ConnectorExecutionReceipt, ConnectorExecutionError> {
-        request
-            .validate()
-            .map_err(|_| ConnectorExecutionError::Rejected)?;
-        if request.connector_revision_id() != self.revision.id
-            || request.content_type() != self.revision.request_content_type
-            || request.body().len() > self.revision.maximum_request_bytes
+        let endpoint = validate_request(&self.revision, request)?;
+        let authorized = self.egress.authorize(self.revision.id, &endpoint).await?;
+        execute_authorized(&self.revision, &authorized, request).await
+    }
+}
+
+pub(super) struct PreparedBoundedHttpConnectorExecution {
+    revision: ResolvedConnectorHttpRevision,
+    authorized: AuthorizedConnectorDestination,
+    attempt_id: Uuid,
+    request_digest: Sha256Digest,
+}
+
+impl fmt::Debug for PreparedBoundedHttpConnectorExecution {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("PreparedBoundedHttpConnectorExecution")
+            .field("revision_id", &self.revision.id)
+            .field("attempt_id", &self.attempt_id)
+            .field("outcome_timeout", &self.revision.timeout)
+            .field("request", &"redacted")
+            .field("destination", &"redacted")
+            .finish()
+    }
+}
+
+#[async_trait]
+impl IPreparedConnectorExecution for PreparedBoundedHttpConnectorExecution {
+    fn outcome_timeout(&self) -> Duration {
+        self.revision.timeout
+    }
+
+    async fn dispatch(
+        self: Box<Self>,
+        request: &ConnectorExecutionRequest,
+    ) -> Result<ConnectorExecutionReceipt, ConnectorExecutionError> {
+        if request.attempt_id() != self.attempt_id
+            || request.evidence_digest() != self.request_digest
         {
             return Err(ConnectorExecutionError::Rejected);
         }
-        let endpoint = Url::parse(self.revision.endpoint.as_str())
-            .map_err(|_| ConnectorExecutionError::Rejected)?;
-        let authorized = self.egress.authorize(self.revision.id, &endpoint).await?;
-        let client = attempt_http_client(&self.revision, &endpoint, &authorized)?;
-
-        let mut headers = request_headers(request)?;
-        apply_authentication(&self.revision.authentication, request, &mut headers)?;
-        let response = client
-            .request(http_method(self.revision.method), endpoint)
-            .headers(headers)
-            .body(request.body().to_vec())
-            .send()
-            .await
-            .map_err(|_| ConnectorExecutionError::Retryable { retry_after: None })?;
-        let status = response.status().as_u16();
-        match self.revision.status_policy.classify(status) {
-            ConnectorStatusDisposition::Retryable => {
-                return Err(ConnectorExecutionError::Retryable {
-                    retry_after: retry_after(response.headers()),
-                });
-            }
-            ConnectorStatusDisposition::Rejected => {
-                return Err(ConnectorExecutionError::Rejected);
-            }
-            ConnectorStatusDisposition::Accepted => {}
-        }
-
-        let response_content_type = response_content_type(response.headers())?;
-        let response_body =
-            bounded_response_body(response, self.revision.maximum_response_bytes).await?;
-        ConnectorExecutionReceipt::accepted(
-            self.revision.id,
-            request.attempt_id(),
-            canonical_timestamp(Utc::now()),
-            status,
-            response_content_type,
-            response_body,
-        )
+        execute_authorized(&self.revision, &self.authorized, request).await
     }
+}
+
+fn validate_request(
+    revision: &ResolvedConnectorHttpRevision,
+    request: &ConnectorExecutionRequest,
+) -> Result<Url, ConnectorExecutionError> {
+    request
+        .validate()
+        .map_err(|_| ConnectorExecutionError::Rejected)?;
+    if request.connector_revision_id() != revision.id
+        || request.content_type() != revision.request_content_type
+        || request.body().len() > revision.maximum_request_bytes
+    {
+        return Err(ConnectorExecutionError::Rejected);
+    }
+    Url::parse(revision.endpoint.as_str()).map_err(|_| ConnectorExecutionError::Rejected)
+}
+
+async fn execute_authorized(
+    revision: &ResolvedConnectorHttpRevision,
+    authorized: &AuthorizedConnectorDestination,
+    request: &ConnectorExecutionRequest,
+) -> Result<ConnectorExecutionReceipt, ConnectorExecutionError> {
+    let endpoint = validate_request(revision, request)?;
+    let client = attempt_http_client(revision, &endpoint, authorized)?;
+
+    let mut headers = request_headers(request)?;
+    apply_authentication(&revision.authentication, request, &mut headers)?;
+    let response = client
+        .request(http_method(revision.method), endpoint)
+        .headers(headers)
+        .body(request.body().to_vec())
+        .send()
+        .await
+        .map_err(|_| ConnectorExecutionError::Retryable { retry_after: None })?;
+    let status = response.status().as_u16();
+    match revision.status_policy.classify(status) {
+        ConnectorStatusDisposition::Retryable => {
+            return Err(ConnectorExecutionError::Retryable {
+                retry_after: retry_after(response.headers()),
+            });
+        }
+        ConnectorStatusDisposition::Rejected => {
+            return Err(ConnectorExecutionError::Rejected);
+        }
+        ConnectorStatusDisposition::Accepted => {}
+    }
+
+    let response_content_type = response_content_type(response.headers())?;
+    let response_body = bounded_response_body(response, revision.maximum_response_bytes).await?;
+    ConnectorExecutionReceipt::accepted(
+        revision.id,
+        request.attempt_id(),
+        canonical_timestamp(Utc::now()),
+        status,
+        response_content_type,
+        response_body,
+    )
 }
 
 fn attempt_http_client(

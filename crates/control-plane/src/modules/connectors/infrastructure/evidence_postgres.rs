@@ -1,13 +1,10 @@
-use crate::infrastructure::{
-    execute, fetch_optional, is_foreign_key_violation, transaction_error, PostgresPersistenceError,
-};
 use crate::modules::connectors::domain::{
     ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor, ConnectorExecutionOutcome,
     IConnectorExecutionEvidenceRepository, MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
 };
 use crate::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotentWrite, OrganizationId,
-    ProjectId, RepositoryError, Sha256Digest,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
+    RepositoryError, Sha256Digest,
 };
 use a3s_orm::{
     sql_query, Database, DecodeError, FromRow, FromValue, PostgresDialect, PostgresExecutor, Row,
@@ -16,7 +13,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_EVIDENCE: &str = "select organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at from connector_execution_evidence";
+pub(super) const SELECT_EVIDENCE: &str = "select organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at from connector_execution_evidence";
 
 #[derive(Clone)]
 pub struct PostgresConnectorExecutionEvidenceRepository {
@@ -31,94 +28,6 @@ impl PostgresConnectorExecutionEvidenceRepository {
 
 #[async_trait]
 impl IConnectorExecutionEvidenceRepository for PostgresConnectorExecutionEvidenceRepository {
-    async fn record(
-        &self,
-        evidence: ConnectorExecutionEvidence,
-    ) -> Result<IdempotentWrite<ConnectorExecutionEvidence>, RepositoryError> {
-        self.executor
-            .transaction(move |transaction| {
-                Box::pin(async move {
-                    evidence
-                        .validate()
-                        .map_err(PostgresPersistenceError::Invariant)?;
-                    let insertion = execute(
-                        transaction,
-                        sql_query::<()>("insert into connector_execution_evidence (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at) values (")
-                            .bind(evidence.organization_id().as_uuid())
-                            .append(", ")
-                            .bind(evidence.project_id().as_uuid())
-                            .append(", ")
-                            .bind(evidence.environment_id().as_uuid())
-                            .append(", ")
-                            .bind(evidence.profile_id().as_uuid())
-                            .append(", ")
-                            .bind(evidence.revision_id().as_uuid())
-                            .append(", ")
-                            .bind(evidence.attempt_id())
-                            .append(", ")
-                            .bind(evidence.request_digest().as_str())
-                            .append(", ")
-                            .bind(evidence.request_body_bytes())
-                            .append(", ")
-                            .bind(evidence.outcome().as_str())
-                            .append(", ")
-                            .bind(evidence.response_status().map(i32::from))
-                            .append(", ")
-                            .bind(evidence.response_digest().map(Sha256Digest::as_str))
-                            .append(", ")
-                            .bind(evidence.response_body_bytes())
-                            .append(", ")
-                            .bind(evidence.retry_after().map(|value| value.as_secs()))
-                            .append(", ")
-                            .bind(evidence.started_at())
-                            .append(", ")
-                            .bind(evidence.completed_at())
-                            .append(") on conflict (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id) do nothing"),
-                    )
-                    .await;
-                    let inserted = match insertion {
-                        Ok(rows) => rows,
-                        Err(error) if is_foreign_key_violation(&error) => {
-                            return Err(RepositoryError::NotFound.into())
-                        }
-                        Err(error) => return Err(error),
-                    };
-                    match inserted {
-                        1 => Ok(IdempotentWrite {
-                            value: evidence,
-                            replayed: false,
-                        }),
-                        0 => {
-                            let existing = fetch_optional::<ConnectorExecutionEvidenceRow, _>(
-                                transaction,
-                                exact_evidence_select(&evidence),
-                            )
-                            .await?
-                            .map(decode_evidence)
-                            .transpose()?
-                            .ok_or_else(|| {
-                                PostgresPersistenceError::Invariant(
-                                    "conflicting Connector execution evidence is missing".into(),
-                                )
-                            })?;
-                            if existing != evidence {
-                                return Err(evidence_conflict().into());
-                            }
-                            Ok(IdempotentWrite {
-                                value: existing,
-                                replayed: true,
-                            })
-                        }
-                        rows => Err(PostgresPersistenceError::Invariant(format!(
-                            "recording Connector execution evidence affected {rows} rows"
-                        ))),
-                    }
-                })
-            })
-            .await
-            .map_err(transaction_error)
-    }
-
     async fn find(
         &self,
         organization_id: OrganizationId,
@@ -200,7 +109,7 @@ impl IConnectorExecutionEvidenceRepository for PostgresConnectorExecutionEvidenc
     }
 }
 
-struct ConnectorExecutionEvidenceRow {
+pub(super) struct ConnectorExecutionEvidenceRow {
     organization_id: Uuid,
     project_id: Uuid,
     environment_id: Uuid,
@@ -240,29 +149,11 @@ impl FromRow for ConnectorExecutionEvidenceRow {
     }
 }
 
-fn evidence_select() -> a3s_orm::SqlQuery<ConnectorExecutionEvidenceRow> {
+pub(super) fn evidence_select() -> a3s_orm::SqlQuery<ConnectorExecutionEvidenceRow> {
     sql_query::<ConnectorExecutionEvidenceRow>(SELECT_EVIDENCE)
 }
 
-fn exact_evidence_select(
-    evidence: &ConnectorExecutionEvidence,
-) -> a3s_orm::SqlQuery<ConnectorExecutionEvidenceRow> {
-    evidence_select()
-        .append(" where organization_id = ")
-        .bind(evidence.organization_id().as_uuid())
-        .append(" and project_id = ")
-        .bind(evidence.project_id().as_uuid())
-        .append(" and environment_id = ")
-        .bind(evidence.environment_id().as_uuid())
-        .append(" and profile_id = ")
-        .bind(evidence.profile_id().as_uuid())
-        .append(" and revision_id = ")
-        .bind(evidence.revision_id().as_uuid())
-        .append(" and attempt_id = ")
-        .bind(evidence.attempt_id())
-}
-
-fn decode_evidence(
+pub(super) fn decode_evidence(
     row: ConnectorExecutionEvidenceRow,
 ) -> Result<ConnectorExecutionEvidence, RepositoryError> {
     let response_status = row
@@ -310,17 +201,47 @@ fn decode_evidence(
     })
 }
 
+pub(super) fn insert_evidence_query(
+    evidence: &ConnectorExecutionEvidence,
+) -> a3s_orm::SqlQuery<()> {
+    sql_query::<()>("insert into connector_execution_evidence (organization_id, project_id, environment_id, profile_id, revision_id, attempt_id, request_digest, request_body_bytes, outcome, response_status, response_digest, response_body_bytes, retry_after_seconds, started_at, completed_at) values (")
+        .bind(evidence.organization_id().as_uuid())
+        .append(", ")
+        .bind(evidence.project_id().as_uuid())
+        .append(", ")
+        .bind(evidence.environment_id().as_uuid())
+        .append(", ")
+        .bind(evidence.profile_id().as_uuid())
+        .append(", ")
+        .bind(evidence.revision_id().as_uuid())
+        .append(", ")
+        .bind(evidence.attempt_id())
+        .append(", ")
+        .bind(evidence.request_digest().as_str())
+        .append(", ")
+        .bind(evidence.request_body_bytes())
+        .append(", ")
+        .bind(evidence.outcome().as_str())
+        .append(", ")
+        .bind(evidence.response_status().map(i32::from))
+        .append(", ")
+        .bind(evidence.response_digest().map(Sha256Digest::as_str))
+        .append(", ")
+        .bind(evidence.response_body_bytes())
+        .append(", ")
+        .bind(evidence.retry_after().map(|value| value.as_secs()))
+        .append(", ")
+        .bind(evidence.started_at())
+        .append(", ")
+        .bind(evidence.completed_at())
+        .append(")")
+}
+
 fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
     T::from_value(
         row.value(index)
             .ok_or(DecodeError::MissingColumn { index })?,
         index,
-    )
-}
-
-fn evidence_conflict() -> RepositoryError {
-    RepositoryError::Conflict(
-        "Connector execution attempt already records a different terminal fact".into(),
     )
 }
 

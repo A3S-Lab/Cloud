@@ -1,20 +1,15 @@
 use super::{ConnectorExecutionEvidence, ConnectorExecutionEvidenceCursor};
 use crate::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotentWrite, OrganizationId,
-    ProjectId, RepositoryError,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
+    RepositoryError,
 };
 use async_trait::async_trait;
 use uuid::Uuid;
 
 #[async_trait]
 pub trait IConnectorExecutionEvidenceRepository: Send + Sync {
-    /// Appends one terminal fact. Replaying the identical fact is idempotent;
-    /// reusing the same exact attempt identity for different content conflicts.
-    async fn record(
-        &self,
-        evidence: ConnectorExecutionEvidence,
-    ) -> Result<IdempotentWrite<ConnectorExecutionEvidence>, RepositoryError>;
-
+    /// Evidence writes are owned exclusively by the attempt repository's
+    /// atomic `settle` transition. This port is intentionally read-only.
     #[allow(clippy::too_many_arguments)]
     async fn find(
         &self,

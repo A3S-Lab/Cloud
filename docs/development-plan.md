@@ -341,7 +341,7 @@ for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
 ### 3.1 Verified delivery status
 
-Status as of 2026-08-14:
+Status as of 2026-08-15:
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -359,7 +359,7 @@ Status as of 2026-08-14:
 | W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology foundation and `W0.2` verifies immutable Ontology revisions, deterministic migration policy, and authorized Search. `W0.3` includes immutable definitions and Goals, native Forms, Goal/Plan-bound WorkflowRuns, HumanTasks, reachable-Output aggregation, finite Execution, Flow-derived authorized variable inspection, deterministic project-authorized 23-node discovery, and the immutable composite-region policy/binding foundation. Migration `103` persists three mandatory semantic children; migration `107` permits optional exact variable-default material; migration `108` permits optional `cloud.workflow.composite-regions.v1` material without adding a table and requires new composite publication to exactly cover Iteration/Loop descriptors and child WorkflowRevision bindings. Compiler schema 2 emits Plan v2 with exact descriptor, semantic, variable, and optional composite-region digest pins, prevents authority downgrade, and preserves Plan v1 byte shape. WorkflowRun input/runtime/Flow v2 freezes exact variable/default/composite material and reconstructs the supported variable subset from immutable input plus existing Flow history; migrations `105`, `107`, and `108` only expand that immutable input's bound. REST/OpenAPI `1.35.0`, client, CLI, MCP, focused domain/REST/replay/catalog/default/inspection/composite tests, and PostgreSQL migration/replay/rollback/immutability plus reconnect gates cover the foundation. Variable inspection and composite binding add no table, cache, event log, worker, scheduler, queue, or Flow mechanism; the catalog has no persistence or write path and cannot admit descriptors or claim public parity. Composite frames/exports and Flow-backed Iteration/Loop dispatch, Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded provider conformance, `W0.4`-`W0.5`, and public availability remain planned. |
 | APP0 | Planned; unavailable | Applications, immutable releases, six authoring/delivery projections including classic/New Agent, sessions, publishing, monitoring, and enterprise completion are specified in `ai-application-platform-plan.md`. Full public parity is a composite `APP0.6` claim and no application-platform availability exists yet. |
 | K0 | Planned; unavailable | Files, Knowledge Bases/documents/chunks, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval, external Knowledge, and Flow-backed Knowledge Pipelines are specified in `ai-application-platform-plan.md`; no Knowledge product availability exists yet. |
-| AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`. Component-only `AUT0.5-C1` supplies the exact-revision execution port and bounded HTTP executor; verified `C2` adds canonical HTTP A3S ACL admission plus immutable environment-scoped profile/revision persistence and exact Secret-version bindings; verified `C3` adds Resource Grant-aware application contracts and Secrets-owned just-in-time materialization; verified `C4` adds public-Internet DNS/SSRF evaluation and exact address pinning; local `C5` adds immutable exact-attempt terminal evidence through migration `112` and authorized bounded reads. Durable reservation/fencing, internal execution authorization, indeterminate-outcome recovery, Workflow ports, supported management surfaces, provider wiring, and all Automations/Connectors product availability remain open. |
+| AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`. Component-only `AUT0.5-C1` supplies the exact-revision execution port and bounded HTTP executor; verified `C2` adds canonical HTTP A3S ACL admission plus immutable environment-scoped profile/revision persistence and exact Secret-version bindings; verified `C3` adds Resource Grant-aware application contracts and Secrets-owned just-in-time materialization; verified `C4` adds public-Internet DNS/SSRF evaluation and exact address pinning; verified `C5` adds immutable exact-attempt terminal evidence through migration `112` and authorized bounded reads; local `C6` adds durable pre-dispatch fencing, conservative indeterminate recovery, authorized one-shot composition, and atomic attempt/evidence settlement through migration `113`. Workflow ports, supported non-Web management surfaces, provider/Event-consumer wiring, revocation/recovery operations, retained C6 PostgreSQL evidence, and all Automations/Connectors product availability remain open. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
 | U0 | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads and Search verified | Verified `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The root compatibility lock pins the same immutable Use revision and all ten consumed host schemas. Verified `U0.2` adds the `PluginRegistry` domain, migration 084 persistence, migration 085 integration with the sole authorized global Search view, one typed trust-root adapter over the shared immutable-object client, one published `a3s-use-extension` adapter for public-network refresh and online/cached catalog search/inspection, application enrollment plus tenant queries, REST `1.15.0`, the maintained client, CLI, and six read-only Management MCP tools. Cloud adds no TUF, catalog, query, cursor, cache, Search store/worker, object-storage, authorization, or cleanup mechanism. Stable CI verifies both the production public-HTTPS provider against the metadata-only fixture at the exact pinned Use revision and a strict `12/12` PostgreSQL 17 transaction, replay, tenancy, Search, fail-closed, and migration gate. Assignments and complete Manager mutation composition remain open; no assignment capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
@@ -1996,7 +1996,7 @@ node.
   pinning, proxy bypass, redirect rejection, and redaction. This adds no egress
   ACL/configuration, cache, retry rail, scheduler, evidence store, provider
   wiring, or product surface.
-- Implemented locally as component-only `AUT0.5-C5`: one immutable exact-scope
+- Verified as component-only `AUT0.5-C5`: one immutable exact-scope
   `ConnectorExecutionEvidence` terminal fact stores only the complete request
   digest/body byte count, closed outcome, optional status, accepted response
   digest/body byte count, bounded `Retry-After`, and canonical times. Migration
@@ -2005,19 +2005,27 @@ node.
   converge through the natural attempt identity and changed replays conflict;
   Resource Grant-aware get/list queries are bounded and add no presentation
   surface. No headers, bodies, signing input, endpoint/address/credential,
-  provider text, shared idempotency record, Outbox/audit fact, lease, retry
-  counter, queue, or scheduler is copied.
-- Complete `AUT0.5-C6` before execution wiring: persist one durable attempt
-  reservation/fence and define indeterminate-outcome recovery, then compose
-  internal authorization, exact revision loading, just-in-time Secret
-  materialization, egress admission, one network attempt, and terminal
-  evidence. A network side effect and database commit are not atomic, so an
-  evidence-write failure or process death must never trigger blind provider
-  retry. Flow or the owning durable A3S Event consumer remains retry/backoff,
+  provider text, shared idempotency record, Outbox/audit fact, retry counter,
+  queue, or scheduler is copied. The PostgreSQL 17 gate passed in the
+  [successful CI job](https://github.com/A3S-Lab/Cloud/actions/runs/31857834202/job/94945770009).
+- Implemented locally as component-only `AUT0.5-C6`: migration `113` persists
+  one exact request as `reserved`, `dispatching`, or `terminal`. Only an
+  expired pre-dispatch reservation may rotate generation/token; a durable
+  dispatch is never reacquired and becomes an indeterminate observation after
+  its bounded deadline. The authorized application service composes exact
+  revision load, just-in-time Secret materialization, egress admission, a
+  non-replayable dispatch intent, one consumed network handle, and atomic
+  terminal-attempt/evidence settlement. A known outcome whose commit is
+  uncertain yields settlement-only recovery, so full execution replay cannot
+  call the provider again. In-memory fault/concurrency coverage and the
+  migration `113` PostgreSQL 17 gate cover this boundary without adding a
+  queue, scheduler, retry counter, second HTTP client, audit, or Outbox path.
+  Flow or the owning durable A3S Event consumer remains retry/backoff,
   cancellation, and acknowledgement authority.
-- Internal execution authorization, Workflow ports, supported management
-  surfaces, and provider wiring remain open in `AUT0.5`; these components
-  create no product availability claim.
+- Workflow ports, supported non-Web management surfaces, provider/Event-consumer
+  wiring, revocation/recovery operations, and retained C6 PostgreSQL evidence
+  remain open in `AUT0.5`; these components create no product availability
+  claim.
 - Complete outbound delivery by emitting a Notification-owned transactional
   Outbox fact and consuming it through the existing A3S Event durable
   subscription/manual-ack path. Add logical delivery receipts, rate policy,

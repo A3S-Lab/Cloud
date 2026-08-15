@@ -665,20 +665,31 @@ state are not evidence fields.
 
 Migration `112` binds every fact to the existing exact immutable Connector
 revision, rejects update/delete, and indexes the revision-local
-`(completed_at, attempt_id)` keyset. The exact attempt identity is also the
-repository replay identity: a concurrent identical terminal fact converges on
-one row, while different content for that identity conflicts. It deliberately
-does not allocate a second shared command-idempotency entry, Outbox event,
-audit actor, queue, or retry mechanism. Resource Grant-aware get/list queries
-authorize the exact environment before storage access and return bounded
-pages; they are component contracts, not REST, CLI, MCP, or Web availability.
+`(completed_at, attempt_id)` keyset. With migration `113`, C6 makes the evidence
+port read-only and makes the attempt repository's atomic settlement the only
+write path. It deliberately allocates no second shared command-idempotency entry,
+Outbox event, audit actor, queue, or retry mechanism. Resource Grant-aware
+get/list queries authorize the exact environment before storage access and
+return bounded pages; they are component contracts, not REST, CLI, MCP, or Web
+availability.
 
-An external network effect and a PostgreSQL commit cannot be one atomic
-transaction. Therefore `C5` does not wrap the current executor and then retry
-when evidence persistence fails: that would risk duplicating a provider side
-effect. `AUT0.5-C6` must first add one durable reservation/fencing and
-indeterminate-outcome recovery boundary. Flow or the owning durable A3S Event
-consumer still owns retry, backoff, cancellation, and acknowledgement.
+The component-only `AUT0.5-C6` recovery boundary persists one exact request
+binding as `reserved`, `dispatching`, or `terminal`, with a bounded reservation
+lease, monotonic generation, and opaque fence token. Only an expired
+pre-provider `reserved` row may rotate its fence. `dispatching` is a durable,
+deliberately non-replayable provider-call intent: before its outcome deadline
+it is observed as in flight and afterwards as indeterminate, never as retry
+permission. A terminal transition and its C5 evidence insert commit in one
+PostgreSQL transaction, and deferred constraints require the pair in both
+directions.
+
+The authorized application service loads the exact revision, prepares the
+existing just-in-time Secret materializer and egress-authorized HTTP executor,
+commits `dispatching`, then consumes a one-shot execution handle. If the
+provider outcome is known but settlement is uncertain, it returns only a
+settlement command; full execution replay observes the durable dispatch and
+cannot call the provider again. Flow or the owning durable A3S Event consumer
+still owns retry, backoff, cancellation, and acknowledgement.
 
 Detailed invariants, sub-gates, and node ownership are defined in the
 [AI application platform plan](ai-application-platform-plan.md).
@@ -799,15 +810,15 @@ consumer remains the only retry, backoff, cancellation, and acknowledgement
 authority.
 
 This component is not production Connector or delivery availability. The
-`AUT0.5-C2` through `C5` profile/revision, authorized application,
-just-in-time Secret materialization, public-Internet egress, and immutable
-terminal-evidence foundations now exist, but `AUT0.5` must still add durable
-attempt fencing, internal execution authorization, indeterminate-outcome
-recovery, supported management surfaces, provider wiring, and Workflow ports
-over these same authorities. The production notification dispatcher must
-publish a
-Notification-owned fact through the existing transactional Outbox and consume
-it with the existing A3S Event durable subscription/manual-ack path. Provider
+`AUT0.5-C2` through `C6` profile/revision, authorized application,
+just-in-time Secret materialization, public-Internet egress, durable attempt
+fencing, conservative indeterminate recovery, and atomic immutable
+terminal-evidence foundations now exist, but `AUT0.5` must still add supported
+management surfaces, provider/Event-consumer wiring, revocation/recovery
+operations, and Workflow ports over these same authorities. The production
+notification dispatcher must publish a Notification-owned fact through the
+existing transactional Outbox and consume it with the existing A3S Event
+durable subscription/manual-ack path. Provider
 outage must never run inside the source Outbox projector or block unrelated
 integration-event publication. Logical deduplication and receipts key off the
 deterministic delivery ID. External SMTP remains unavailable until Identity

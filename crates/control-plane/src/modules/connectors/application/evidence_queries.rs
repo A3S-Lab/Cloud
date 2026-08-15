@@ -217,11 +217,13 @@ fn authorize_and_validate(
 mod tests {
     use super::*;
     use crate::modules::connectors::domain::{
-        ConnectorDefinition, ConnectorExecutionReceipt, ConnectorExecutionRequest,
+        BeginConnectorExecutionDispatch, ConnectorDefinition, ConnectorExecutionAttemptBinding,
+        ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorExecutionReservation,
         ConnectorHttpAuthentication, ConnectorHttpDefinition, ConnectorHttpDefinitionSpec,
         ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy, ConnectorProfile,
         ConnectorRecord, ConnectorRevision, ConnectorRevisionPublished,
-        CreateConnectorProfileWrite,
+        CreateConnectorProfileWrite, IConnectorExecutionAttemptRepository,
+        ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
     };
     use crate::modules::connectors::infrastructure::{
         InMemoryConnectorExecutionEvidenceRepository, InMemoryConnectorProfileRepository,
@@ -320,7 +322,42 @@ mod tests {
                 completed_at - Duration::milliseconds(5),
             )
             .expect("evidence");
-            evidence.record(value.clone()).await.expect("record");
+            let dispatch_started_at = value.started_at();
+            let reserved_at = dispatch_started_at - Duration::milliseconds(1);
+            let fence = match evidence
+                .reserve(
+                    ReserveConnectorExecutionAttempt::new(
+                        ConnectorExecutionAttemptBinding::from_exact(&revision, &request)
+                            .expect("binding"),
+                        Uuid::now_v7(),
+                        reserved_at,
+                        reserved_at + Duration::seconds(30),
+                    )
+                    .expect("reservation"),
+                )
+                .await
+                .expect("reserve")
+            {
+                ConnectorExecutionReservation::Acquired { fence, .. } => fence,
+                other => panic!("unexpected reservation: {other:?}"),
+            };
+            evidence
+                .begin_dispatch(
+                    BeginConnectorExecutionDispatch::new(
+                        fence.clone(),
+                        dispatch_started_at,
+                        dispatch_started_at + Duration::seconds(10),
+                    )
+                    .expect("dispatch"),
+                )
+                .await
+                .expect("begin dispatch");
+            evidence
+                .settle(
+                    SettleConnectorExecutionAttempt::new(fence, value.clone()).expect("settlement"),
+                )
+                .await
+                .expect("settle");
             expected.push(value);
         }
         expected.sort_by(|left, right| {

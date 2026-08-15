@@ -1,3 +1,4 @@
+use super::ConnectorRevision;
 use crate::modules::shared_kernel::domain::{ConnectorRevisionId, Sha256Digest};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -365,6 +366,31 @@ pub trait IConnectorExecutionPort: Send + Sync {
         &self,
         request: &ConnectorExecutionRequest,
     ) -> Result<ConnectorExecutionReceipt, ConnectorExecutionError>;
+}
+
+/// A one-shot, transient execution handle produced after exact revision
+/// materialization and egress admission. Consuming `dispatch` is the only
+/// operation that may cross the provider side-effect boundary.
+#[async_trait]
+pub trait IPreparedConnectorExecution: Send {
+    fn outcome_timeout(&self) -> Duration;
+
+    async fn dispatch(
+        self: Box<Self>,
+        request: &ConnectorExecutionRequest,
+    ) -> Result<ConnectorExecutionReceipt, ConnectorExecutionError>;
+}
+
+/// Prepares the existing provider-neutral execution port without issuing the
+/// external request. The durable attempt coordinator commits `dispatching`
+/// after this method succeeds and before consuming the returned one-shot handle.
+#[async_trait]
+pub trait IConnectorExecutionPreparationPort: Send + Sync {
+    async fn prepare(
+        &self,
+        revision: &ConnectorRevision,
+        request: &ConnectorExecutionRequest,
+    ) -> Result<Box<dyn IPreparedConnectorExecution>, ConnectorExecutionError>;
 }
 
 fn validate_header(name: &str, value: &str) -> Result<(), String> {
