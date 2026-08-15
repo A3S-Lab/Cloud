@@ -19,10 +19,11 @@ use super::{
     validate_sha256, validate_single_line, validate_uuid, GatewaySnapshot,
     GatewaySnapshotObservationRequest, NodeBoxBuildCancelResult, NodeBoxBuildInspection,
     NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult,
-    NodeCodeAgentRuntimeBindingV1, NodeGatewayAck, NodeGatewaySnapshotObservation,
+    NodeCodeAgentRuntimeBindingV1, NodeDurableCellOperatorBindingV1,
+    NodeDurableCellOperatorObservationV1, NodeGatewayAck, NodeGatewaySnapshotObservation,
     NodePluginHostCapabilitiesRequest, NodeResourceClaimBinding, NodeResourceClaimPrepare,
     NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
-    NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
+    NODE_CODE_AGENT_COMMAND_SCHEMA_V1, NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +46,9 @@ pub enum NodeCommandPayload {
     },
     RuntimeRemove {
         request: RuntimeActionRequest,
+    },
+    DurableCellOperatorObserve {
+        binding: Box<NodeDurableCellOperatorBindingV1>,
     },
     CodeAgentCommand {
         binding: Box<NodeCodeAgentRuntimeBindingV1>,
@@ -108,6 +112,7 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { .. } => "runtime_inspect",
             Self::RuntimeStop { .. } => "runtime_stop",
             Self::RuntimeRemove { .. } => "runtime_remove",
+            Self::DurableCellOperatorObserve { .. } => "durable_cell_operator_observe",
             Self::CodeAgentCommand { .. } => "code_agent_command",
             Self::BoxBuildStart { .. } => "box_build_start",
             Self::BoxBuildInspect { .. } => "box_build_inspect",
@@ -138,6 +143,7 @@ impl NodeCommandPayload {
             Self::RuntimeInspect { .. } => "a3s.runtime.inspect-request.v1",
             Self::RuntimeStop { .. } => "a3s.runtime.stop-request.v1",
             Self::RuntimeRemove { .. } => "a3s.runtime.remove-request.v1",
+            Self::DurableCellOperatorObserve { .. } => NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
             Self::CodeAgentCommand { .. } => NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
             Self::BoxBuildStart { .. } => "a3s.cloud.box-build-start.v1",
             Self::BoxBuildInspect { .. } => "a3s.cloud.box-build-inspect.v1",
@@ -160,6 +166,7 @@ impl NodeCommandPayload {
             Self::RuntimeApply { request, .. } => request.spec.generation,
             Self::RuntimeInspect { generation, .. } => *generation,
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.generation,
+            Self::DurableCellOperatorObserve { binding } => binding.runtime_generation,
             Self::CodeAgentCommand { binding, .. } => binding.runtime_generation,
             Self::BoxBuildStart { request }
             | Self::BoxBuildInspect { request }
@@ -200,6 +207,7 @@ impl NodeCommandPayload {
                 Ok(())
             }
             Self::RuntimeStop { request } | Self::RuntimeRemove { request } => request.validate(),
+            Self::DurableCellOperatorObserve { binding } => binding.validate(),
             Self::CodeAgentCommand { binding, command } => binding.validate_command(command),
             Self::BoxBuildStart { request }
             | Self::BoxBuildInspect { request }
@@ -348,6 +356,13 @@ impl NodeCommandEnvelope {
             {
                 return Err("Code Agent command aggregate does not match its execution".into());
             }
+            NodeCommandPayload::DurableCellOperatorObserve { binding }
+                if self.aggregate_id != binding.application_id =>
+            {
+                return Err(
+                    "Durable Cell operator command aggregate does not match its application".into(),
+                );
+            }
             NodeCommandPayload::RuntimeApply {
                 resource_claim: None,
                 ..
@@ -355,6 +370,7 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::DurableCellOperatorObserve { .. }
             | NodeCommandPayload::CodeAgentCommand { .. }
             | NodeCommandPayload::BoxBuildStart { .. }
             | NodeCommandPayload::BoxBuildInspect { .. }
@@ -403,6 +419,9 @@ pub enum NodeCommandResult {
     },
     RuntimeRemoved {
         removal: RuntimeRemoval,
+    },
+    DurableCellOperatorObserved {
+        observation: NodeDurableCellOperatorObservationV1,
     },
     CodeAgentCommandAccepted {
         receipt: Box<AgentProtocolCommandReceiptV1>,
@@ -458,6 +477,7 @@ impl NodeCommandResult {
                 inspection.validate()
             }
             Self::RuntimeRemoved { removal } => removal.validate(),
+            Self::DurableCellOperatorObserved { observation } => observation.validate(),
             Self::CodeAgentCommandAccepted { receipt } => receipt
                 .validate()
                 .map_err(|error| format!("invalid A3S Code command receipt ({})", error.code())),
@@ -565,6 +585,10 @@ impl NodeCommandResult {
             (NodeCommandPayload::RuntimeRemove { .. }, Self::RuntimeRemoved { .. }) => {
                 Err("node command result identity does not match its payload".into())
             }
+            (
+                NodeCommandPayload::DurableCellOperatorObserve { binding },
+                Self::DurableCellOperatorObserved { observation },
+            ) => observation.validate_for(binding),
             (
                 NodeCommandPayload::CodeAgentCommand { binding, command },
                 Self::CodeAgentCommandAccepted { receipt },
@@ -674,6 +698,15 @@ fn code_agent_timestamp(milliseconds: u64) -> Result<DateTime<Utc>, String> {
         .map_err(|_| "A3S Code receipt time exceeds supported bounds".to_string())?;
     DateTime::from_timestamp_millis(milliseconds)
         .ok_or_else(|| "A3S Code receipt time exceeds supported bounds".to_string())
+}
+
+fn durable_cell_operator_timestamp(milliseconds: u64) -> Result<DateTime<Utc>, String> {
+    let milliseconds = i64::try_from(milliseconds).map_err(|_| {
+        "Durable Cell operator observation time exceeds supported bounds".to_string()
+    })?;
+    DateTime::from_timestamp_millis(milliseconds).ok_or_else(|| {
+        "Durable Cell operator observation time exceeds supported bounds".to_string()
+    })
 }
 
 fn validate_inspection_identity(
@@ -820,6 +853,10 @@ impl NodeCommandAck {
                     code_agent_timestamp(receipt.observed_at_ms)?,
                     receipt.replayed,
                 )),
+                NodeCommandResult::DurableCellOperatorObserved { observation } => Some((
+                    durable_cell_operator_timestamp(observation.observed_at_ms)?,
+                    false,
+                )),
                 NodeCommandResult::RuntimeApplied { .. }
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
@@ -845,6 +882,7 @@ impl NodeCommandAck {
                         resource_claim: Some(_),
                         ..
                     }
+                    | NodeCommandPayload::DurableCellOperatorObserve { .. }
                     | NodeCommandPayload::CodeAgentCommand { .. }
                     | NodeCommandPayload::BoxBuildStart { .. }
                     | NodeCommandPayload::BoxBuildInspect { .. }

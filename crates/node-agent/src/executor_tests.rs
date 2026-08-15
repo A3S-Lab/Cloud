@@ -1,14 +1,17 @@
 use super::*;
 use crate::code_harness::CodeHarnessTransport;
+use crate::durable_cell_operator::{
+    DurableCellOperatorCounters, DurableCellOperatorError, DurableCellOperatorTransport,
+};
 use a3s_cloud_contracts::{
     AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
     AgentProtocolEventPageRequestV1, AgentProtocolEventPageV1, AgentProtocolRunIdentityV1,
     AgentProtocolRunStartV1, AgentProtocolRunStateV1, AppliedGatewaySnapshot, GatewaySnapshot,
     GatewaySnapshotObservationRequest, GatewaySnapshotObservationState,
     NodeCodeAgentRuntimeBindingV1, NodeCommandMetadata, NodeCommandPayload,
-    NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimRelease,
-    NodeResourceInventory, NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceSlotBinding,
-    ResourceUnit, AGENT_PROTOCOL_V1,
+    NodeDurableCellOperatorBindingV1, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodeResourceClaimRelease, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
+    ResourceKind, ResourceSlotBinding, ResourceUnit, AGENT_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -62,6 +65,12 @@ struct CodeHarnessRuntime {
 struct RecordingCodeHarness {
     calls: AtomicUsize,
     expected_endpoint: RuntimeServiceEndpoint,
+}
+
+struct RecordingDurableCellOperator {
+    calls: AtomicUsize,
+    expected_endpoint: RuntimeServiceEndpoint,
+    counters: DurableCellOperatorCounters,
 }
 
 #[async_trait]
@@ -190,6 +199,20 @@ impl CodeHarnessTransport for RecordingCodeHarness {
         Err(CodeHarnessError::Invalid(
             "unexpected Code event page request".into(),
         ))
+    }
+}
+
+#[async_trait]
+impl DurableCellOperatorTransport for RecordingDurableCellOperator {
+    async fn observe(
+        &self,
+        endpoint: &RuntimeServiceEndpoint,
+        timeout: std::time::Duration,
+    ) -> Result<DurableCellOperatorCounters, DurableCellOperatorError> {
+        assert_eq!(endpoint, &self.expected_endpoint);
+        assert!(!timeout.is_zero());
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        Ok(self.counters)
     }
 }
 
@@ -1129,4 +1152,129 @@ async fn code_commands_are_forwarded_to_the_bound_a3s_code_harness_once() {
     assert_eq!(replayed.outcome, acknowledgement.outcome);
     assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
     assert_eq!(harness.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn durable_cell_operator_observation_is_sanitized_and_journaled_once() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let application_id = Uuid::now_v7();
+    let runtime_spec_digest = format!("sha256:{}", "a".repeat(64));
+    let service_profile_digest = format!("sha256:{}", "b".repeat(64));
+    let binding = NodeDurableCellOperatorBindingV1 {
+        schema: NodeDurableCellOperatorBindingV1::SCHEMA.into(),
+        application_id,
+        application_revision_id: Uuid::now_v7(),
+        application_revision_number: 7,
+        workload_id: Uuid::now_v7(),
+        workload_revision_id: Uuid::now_v7(),
+        runtime_unit_id: "durable-cell-workload:revision:7".into(),
+        runtime_generation: 7,
+        runtime_spec_digest: runtime_spec_digest.clone(),
+        service_profile_digest: service_profile_digest.clone(),
+        service_template_digest: format!("sha256:{}", "c".repeat(64)),
+        provider_artifact_digest: format!("sha256:{}", "d".repeat(64)),
+        internal_service_port_name: "cell-internal".into(),
+    };
+    let endpoint = RuntimeServiceEndpoint::node_local_tcp("cell-internal", 49_153)
+        .expect("node-local Durable Cell operator endpoint");
+    let mut claims = BTreeMap::new();
+    endpoint
+        .insert_claim(&mut claims)
+        .expect("Runtime endpoint claim");
+    let now_ms = u64::try_from(Utc::now().timestamp_millis()).expect("current timestamp");
+    let observation = RuntimeObservation {
+        schema: RuntimeObservation::SCHEMA.into(),
+        unit_id: binding.runtime_unit_id.clone(),
+        generation: binding.runtime_generation,
+        spec_digest: runtime_spec_digest.clone(),
+        class: RuntimeUnitClass::Service,
+        state: RuntimeUnitState::Running,
+        provider_resource_id: Some("provider-durable-cell-service".into()),
+        provider_build: Some("a3s-box-test".into()),
+        observed_at_ms: now_ms,
+        started_at_ms: Some(now_ms.saturating_sub(1)),
+        finished_at_ms: None,
+        health: Some(a3s_runtime::contract::RuntimeHealthObservation {
+            state: a3s_runtime::contract::RuntimeHealthState::Healthy,
+            checked_at_ms: now_ms,
+            message: None,
+        }),
+        outputs: Vec::new(),
+        usage: None,
+        evidence: Some(RuntimeEvidence {
+            provider_build: "a3s-box-test".into(),
+            spec_digest: runtime_spec_digest,
+            semantics_profile_digest: Some(service_profile_digest),
+            claims,
+        }),
+        provider_attestation: None,
+        failure: None,
+    };
+    observation.validate().expect("valid Runtime observation");
+    let envelope = claim_command(
+        node_id,
+        application_id,
+        1,
+        binding.runtime_generation,
+        NodeCommandPayload::DurableCellOperatorObserve {
+            binding: Box::new(binding.clone()),
+        },
+    );
+    let runtime = Arc::new(CodeHarnessRuntime {
+        calls: AtomicUsize::new(0),
+        observation,
+    });
+    let operator = Arc::new(RecordingDurableCellOperator {
+        calls: AtomicUsize::new(0),
+        expected_endpoint: endpoint,
+        counters: DurableCellOperatorCounters {
+            occupied: 3,
+            evicting: 1,
+            restoring: 2,
+            activating: 4,
+            activation_waiting: 5,
+            capacity_waiting: 6,
+        },
+    });
+    let transport: Arc<dyn DurableCellOperatorTransport> = operator.clone();
+    let executor = CommandExecutor::runtime_only(
+        FileCommandJournal::new(directory.path(), node_id).expect("journal"),
+        runtime.clone(),
+    )
+    .with_durable_cell_operator(transport);
+
+    let acknowledgement = executor
+        .execute(envelope.clone())
+        .await
+        .expect("observe Durable Cell operator");
+    acknowledgement
+        .validate_against(&envelope)
+        .expect("exact Durable Cell operator acknowledgement");
+    let NodeCommandOutcome::Succeeded { result } = &acknowledgement.outcome else {
+        panic!("Durable Cell operator observation must succeed");
+    };
+    let NodeCommandResult::DurableCellOperatorObserved { observation } = result.as_ref() else {
+        panic!("Durable Cell operator returned another result kind");
+    };
+    observation
+        .validate_for(&binding)
+        .expect("exact sanitized operator observation");
+    assert_eq!(observation.occupied, 3);
+    assert_eq!(observation.capacity_waiting, 6);
+    let encoded = serde_json::to_string(observation).expect("operator observation JSON");
+    assert!(!encoded.contains("residents"));
+    assert!(!encoded.contains("published"));
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(operator.calls.load(Ordering::SeqCst), 1);
+
+    let mut redelivered = envelope;
+    redelivered.lease_id = Uuid::now_v7();
+    let replayed = executor
+        .execute(redelivered)
+        .await
+        .expect("replay Durable Cell operator command");
+    assert_eq!(replayed.outcome, acknowledgement.outcome);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(operator.calls.load(Ordering::SeqCst), 1);
 }

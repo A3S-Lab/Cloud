@@ -112,6 +112,7 @@ impl NodeCommand {
                 | NodeCommandResult::RuntimeInspected { .. }
                 | NodeCommandResult::RuntimeStopped { .. }
                 | NodeCommandResult::RuntimeRemoved { .. }
+                | NodeCommandResult::DurableCellOperatorObserved { .. }
                 | NodeCommandResult::BoxBuildStarted { .. }
                 | NodeCommandResult::BoxBuildInspected { .. }
                 | NodeCommandResult::BoxBuildCancelled { .. }

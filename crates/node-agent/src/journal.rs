@@ -615,7 +615,8 @@ fn state_mutation_digest(
         // run idempotency and permits start/cancel/recover commands for the
         // same Runtime generation, so it must not gain a second generation
         // fence here.
-        NodeCommandPayload::CodeAgentCommand { .. } => Ok(None),
+        NodeCommandPayload::CodeAgentCommand { .. }
+        | NodeCommandPayload::DurableCellOperatorObserve { .. } => Ok(None),
         // Fleet journals remote delivery and exact command replay. The shared
         // A3S Use Manager owns assignment-generation fencing and its nested
         // package-plan/enablement-plan/apply saga. One assignment generation can therefore
@@ -676,6 +677,7 @@ impl ResourceClaimJournalProjection {
             | NodeCommandPayload::RuntimeInspect { .. }
             | NodeCommandPayload::RuntimeStop { .. }
             | NodeCommandPayload::RuntimeRemove { .. }
+            | NodeCommandPayload::DurableCellOperatorObserve { .. }
             | NodeCommandPayload::CodeAgentCommand { .. }
             | NodeCommandPayload::BoxBuildStart { .. }
             | NodeCommandPayload::BoxBuildInspect { .. }

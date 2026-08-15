@@ -149,6 +149,7 @@ fn artifact_binding_digest(payload: &NodeCommandPayload) -> Result<Option<String
         | NodeCommandPayload::RuntimeInspect { .. }
         | NodeCommandPayload::RuntimeStop { .. }
         | NodeCommandPayload::RuntimeRemove { .. }
+        | NodeCommandPayload::DurableCellOperatorObserve { .. }
         | NodeCommandPayload::CodeAgentCommand { .. }
         | NodeCommandPayload::BoxBuildCancel { .. }
         | NodeCommandPayload::BoxBuildRemove { .. }

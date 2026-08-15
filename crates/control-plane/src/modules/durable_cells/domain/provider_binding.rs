@@ -216,7 +216,9 @@ mod tests {
         DurableCellStateSchema,
     };
     use crate::modules::durable_cells::infrastructure::{
-        admit_durable_cell_runtime_apply, project_durable_cell_runtime_spec,
+        admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
+        admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,
+        project_durable_cell_operator_binding, project_durable_cell_runtime_spec,
     };
     use crate::modules::shared_kernel::domain::{
         BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
@@ -227,12 +229,12 @@ mod tests {
     };
     use a3s_cloud_contracts::{
         NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
-        NodeCommandPayload, NodeCommandResult,
+        NodeCommandPayload, NodeCommandResult, NodeDurableCellOperatorObservationV1,
     };
     use a3s_runtime::contract::{
-        RuntimeApplyRequest, RuntimeEvidence, RuntimeHealthObservation, RuntimeHealthState,
-        RuntimeObservation, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitSpec,
-        RuntimeUnitState,
+        RuntimeActionRequest, RuntimeApplyRequest, RuntimeEvidence, RuntimeHealthObservation,
+        RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeRemoval,
+        RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState,
     };
     use chrono::{Duration, Utc};
     use std::collections::{BTreeMap, BTreeSet};
@@ -567,6 +569,276 @@ mod tests {
             &unhealthy_ack,
         )
         .is_err());
+    }
+
+    #[test]
+    fn operator_observation_adopts_only_the_exact_healthy_runtime() {
+        let fixture = fixture();
+        let binding = binding(&fixture);
+        let spec = project_durable_cell_runtime_spec(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+        )
+        .expect("Runtime Service");
+        let apply_observation = healthy_observation(&spec, RuntimeHealthState::Healthy);
+        let (apply_command, apply_acknowledgement) =
+            runtime_apply_receipt(spec.clone(), apply_observation);
+        let operator_binding = project_durable_cell_operator_binding(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+        )
+        .expect("operator binding");
+        assert_eq!(
+            operator_binding.runtime_spec_digest,
+            spec.digest().expect("digest")
+        );
+        assert_eq!(
+            operator_binding.internal_service_port_name,
+            fixture.profile.spec().internal_runtime_port
+        );
+
+        let issued_at = apply_acknowledgement.completed_at + Duration::milliseconds(1);
+        let mut metadata = command_metadata(binding.application_id.as_uuid(), 2, issued_at);
+        metadata.node_id = apply_command.node_id;
+        let operator_command = NodeCommandEnvelope::new(
+            metadata,
+            NodeCommandPayload::DurableCellOperatorObserve {
+                binding: Box::new(operator_binding.clone()),
+            },
+        )
+        .expect("operator command");
+        let observed_at_ms =
+            u64::try_from(issued_at.timestamp_millis() + 1).expect("observation time");
+        let observation = NodeDurableCellOperatorObservationV1 {
+            schema: NodeDurableCellOperatorObservationV1::SCHEMA.into(),
+            binding_digest: operator_binding.digest().expect("operator binding digest"),
+            runtime_unit_id: operator_binding.runtime_unit_id.clone(),
+            runtime_generation: operator_binding.runtime_generation,
+            runtime_spec_digest: operator_binding.runtime_spec_digest.clone(),
+            occupied: 3,
+            evicting: 1,
+            restoring: 2,
+            activating: 1,
+            activation_waiting: 4,
+            capacity_waiting: 5,
+            observed_at_ms,
+        };
+        let operator_acknowledgement = NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: operator_command.command_id,
+            lease_id: operator_command.lease_id,
+            node_id: operator_command.node_id,
+            sequence: operator_command.sequence,
+            payload_digest: operator_command.payload_digest.clone(),
+            completed_at: issued_at + Duration::milliseconds(2),
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::DurableCellOperatorObserved {
+                    observation: observation.clone(),
+                }),
+            },
+        };
+        let admitted = admit_durable_cell_operator_observation(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+            &apply_command,
+            &apply_acknowledgement,
+            &operator_command,
+            &operator_acknowledgement,
+        )
+        .expect("admitted operator observation");
+        assert_eq!(admitted, observation);
+
+        let foreign_node_id = Uuid::now_v7();
+        let mut cross_node_command = operator_command.clone();
+        cross_node_command.node_id = foreign_node_id;
+        let mut cross_node_acknowledgement = operator_acknowledgement.clone();
+        cross_node_acknowledgement.node_id = foreign_node_id;
+        assert!(admit_durable_cell_operator_observation(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+            &apply_command,
+            &apply_acknowledgement,
+            &cross_node_command,
+            &cross_node_acknowledgement,
+        )
+        .is_err());
+
+        let mut forged = operator_acknowledgement;
+        let NodeCommandOutcome::Succeeded { result } = &mut forged.outcome else {
+            unreachable!()
+        };
+        let NodeCommandResult::DurableCellOperatorObserved { observation } = result.as_mut() else {
+            unreachable!()
+        };
+        observation.runtime_spec_digest = digest('f').to_string();
+        assert!(admit_durable_cell_operator_observation(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+            &apply_command,
+            &apply_acknowledgement,
+            &operator_command,
+            &forged,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn drain_and_cleanup_admit_only_existing_runtime_receipts() {
+        let fixture = fixture();
+        let binding = binding(&fixture);
+        let spec = project_durable_cell_runtime_spec(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+        )
+        .expect("Runtime Service");
+
+        let (stop_command, stop_acknowledgement) = runtime_stop_receipt(&spec);
+        assert_eq!(stop_command.payload.kind(), "runtime_stop");
+        admit_durable_cell_runtime_stop(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+            &stop_command,
+            &stop_acknowledgement,
+        )
+        .expect("Runtime stop evidence");
+
+        let (remove_command, remove_acknowledgement) = runtime_remove_receipt(&spec);
+        assert_eq!(remove_command.payload.kind(), "runtime_remove");
+        admit_durable_cell_runtime_remove(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+            &remove_command,
+            &remove_acknowledgement,
+        )
+        .expect("Runtime removal evidence");
+
+        let mut stale = remove_acknowledgement;
+        stale.schema = NodeCommandAck::LEGACY_SCHEMA.into();
+        assert!(admit_durable_cell_runtime_remove(
+            &binding,
+            &fixture.profile,
+            &fixture.workload_revision,
+            &remove_command,
+            &stale,
+        )
+        .is_err());
+    }
+
+    fn command_metadata(
+        aggregate_id: Uuid,
+        sequence: u64,
+        issued_at: chrono::DateTime<Utc>,
+    ) -> NodeCommandMetadata {
+        NodeCommandMetadata {
+            command_id: Uuid::now_v7(),
+            lease_id: Uuid::now_v7(),
+            node_id: Uuid::now_v7(),
+            sequence,
+            aggregate_id,
+            issued_at,
+            not_after: issued_at + Duration::minutes(1),
+            correlation_id: Uuid::now_v7(),
+        }
+    }
+
+    fn runtime_stop_receipt(spec: &RuntimeUnitSpec) -> (NodeCommandEnvelope, NodeCommandAck) {
+        let issued_at = Utc::now();
+        let observed_at_ms = u64::try_from(issued_at.timestamp_millis() + 1).expect("stop time");
+        let mut observation = healthy_observation(spec, RuntimeHealthState::Healthy);
+        observation.clear_service_endpoints();
+        observation.state = RuntimeUnitState::Stopped;
+        observation.observed_at_ms = observed_at_ms;
+        observation.started_at_ms = Some(observed_at_ms.saturating_sub(1));
+        observation.finished_at_ms = Some(observed_at_ms);
+        observation
+            .validate_against(spec)
+            .expect("stopped observation");
+        let command = NodeCommandEnvelope::new(
+            command_metadata(Uuid::now_v7(), 3, issued_at),
+            NodeCommandPayload::RuntimeStop {
+                request: RuntimeActionRequest {
+                    schema: RuntimeActionRequest::SCHEMA.into(),
+                    request_id: format!("durable-cell-stop:{}", Uuid::now_v7()),
+                    unit_id: spec.unit_id.clone(),
+                    generation: spec.generation,
+                    deadline_at_ms: None,
+                },
+            },
+        )
+        .expect("RuntimeStop command");
+        let acknowledgement = NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: command.command_id,
+            lease_id: command.lease_id,
+            node_id: command.node_id,
+            sequence: command.sequence,
+            payload_digest: command.payload_digest.clone(),
+            completed_at: issued_at + Duration::milliseconds(2),
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeStopped {
+                    inspection: RuntimeInspection::Found {
+                        schema: RuntimeInspection::SCHEMA.into(),
+                        observation: Box::new(observation),
+                    },
+                }),
+            },
+        };
+        acknowledgement
+            .validate_against(&command)
+            .expect("RuntimeStop acknowledgement");
+        (command, acknowledgement)
+    }
+
+    fn runtime_remove_receipt(spec: &RuntimeUnitSpec) -> (NodeCommandEnvelope, NodeCommandAck) {
+        let issued_at = Utc::now();
+        let removed_at_ms = u64::try_from(issued_at.timestamp_millis() + 1).expect("removal time");
+        let request = RuntimeActionRequest {
+            schema: RuntimeActionRequest::SCHEMA.into(),
+            request_id: format!("durable-cell-remove:{}", Uuid::now_v7()),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            deadline_at_ms: None,
+        };
+        let command = NodeCommandEnvelope::new(
+            command_metadata(Uuid::now_v7(), 4, issued_at),
+            NodeCommandPayload::RuntimeRemove {
+                request: request.clone(),
+            },
+        )
+        .expect("RuntimeRemove command");
+        let acknowledgement = NodeCommandAck {
+            schema: NodeCommandAck::SCHEMA.into(),
+            command_id: command.command_id,
+            lease_id: command.lease_id,
+            node_id: command.node_id,
+            sequence: command.sequence,
+            payload_digest: command.payload_digest.clone(),
+            completed_at: issued_at + Duration::milliseconds(2),
+            outcome: NodeCommandOutcome::Succeeded {
+                result: Box::new(NodeCommandResult::RuntimeRemoved {
+                    removal: RuntimeRemoval {
+                        schema: RuntimeRemoval::SCHEMA.into(),
+                        request_id: request.request_id,
+                        unit_id: request.unit_id,
+                        generation: request.generation,
+                        removed_at_ms,
+                        already_absent: false,
+                    },
+                }),
+            },
+        };
+        acknowledgement
+            .validate_against(&command)
+            .expect("RuntimeRemove acknowledgement");
+        (command, acknowledgement)
     }
 
     fn healthy_observation(

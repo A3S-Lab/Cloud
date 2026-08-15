@@ -1,5 +1,8 @@
 use crate::box_build::{NodeBoxBuildError, NodeBoxBuildExecutor};
 use crate::code_harness::{self, CodeHarnessError, SharedCodeHarnessTransport};
+use crate::durable_cell_operator::{
+    self, DurableCellOperatorError, SharedDurableCellOperatorTransport,
+};
 use crate::plugin_host;
 use crate::resource_claim::{self, ResourceClaimExecutionError};
 use crate::{
@@ -9,8 +12,8 @@ use crate::{
 };
 use a3s_cloud_contracts::{
     GatewayAckState, NodeCommandAck, NodeCommandEnvelope, NodeCommandFailure, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, NodeGatewayAck, NodeGatewaySnapshotObservation,
-    NodeResourceClaimPrepared, NodeResourceClaimReleased,
+    NodeCommandPayload, NodeCommandResult, NodeDurableCellOperatorObservationV1, NodeGatewayAck,
+    NodeGatewaySnapshotObservation, NodeResourceClaimPrepared, NodeResourceClaimReleased,
 };
 use a3s_runtime::contract::RuntimeInspection;
 use a3s_runtime::{RuntimeClient, RuntimeError};
@@ -27,6 +30,7 @@ pub struct CommandExecutor {
     resource_inventory: Option<Arc<dyn NodeResourceInventoryAuthority>>,
     plugin_host: Option<Arc<dyn PluginHostManager>>,
     code_harness: Option<SharedCodeHarnessTransport>,
+    durable_cell_operator: Option<SharedDurableCellOperatorTransport>,
 }
 
 impl CommandExecutor {
@@ -48,6 +52,7 @@ impl CommandExecutor {
             resource_inventory: None,
             plugin_host: None,
             code_harness: None,
+            durable_cell_operator: None,
         }
     }
 
@@ -77,6 +82,14 @@ impl CommandExecutor {
 
     pub(crate) fn with_code_harness(mut self, code_harness: SharedCodeHarnessTransport) -> Self {
         self.code_harness = Some(code_harness);
+        self
+    }
+
+    pub(crate) fn with_durable_cell_operator(
+        mut self,
+        transport: SharedDurableCellOperatorTransport,
+    ) -> Self {
+        self.durable_cell_operator = Some(transport);
         self
     }
 
@@ -210,6 +223,51 @@ impl CommandExecutor {
             NodeCommandPayload::RuntimeRemove { request } => {
                 let removal = self.runtime.remove(request).await?;
                 Ok(NodeCommandResult::RuntimeRemoved { removal })
+            }
+            NodeCommandPayload::DurableCellOperatorObserve { binding } => {
+                binding
+                    .validate()
+                    .map_err(DurableCellOperatorError::Invalid)?;
+                let endpoint =
+                    durable_cell_operator::resolve_runtime_endpoint(self.runtime.as_ref(), binding)
+                        .await?;
+                let transport = self.durable_cell_operator.as_deref().ok_or_else(|| {
+                    DurableCellOperatorError::Unavailable(
+                        "the node-local Durable Cell operator transport is not configured".into(),
+                    )
+                })?;
+                let timeout = envelope
+                    .not_after
+                    .signed_duration_since(Utc::now())
+                    .to_std()
+                    .map_err(|_| {
+                        DurableCellOperatorError::Invalid(
+                            "node command deadline elapsed before Durable Cell observation".into(),
+                        )
+                    })?;
+                let counters = transport.observe(&endpoint, timeout).await?;
+                let observed_at_ms = u64::try_from(command_timestamp(envelope).timestamp_millis())
+                    .map_err(|error| DurableCellOperatorError::Protocol(error.to_string()))?;
+                let observation = NodeDurableCellOperatorObservationV1 {
+                    schema: NodeDurableCellOperatorObservationV1::SCHEMA.into(),
+                    binding_digest: binding
+                        .digest()
+                        .map_err(DurableCellOperatorError::Invalid)?,
+                    runtime_unit_id: binding.runtime_unit_id.clone(),
+                    runtime_generation: binding.runtime_generation,
+                    runtime_spec_digest: binding.runtime_spec_digest.clone(),
+                    occupied: counters.occupied,
+                    evicting: counters.evicting,
+                    restoring: counters.restoring,
+                    activating: counters.activating,
+                    activation_waiting: counters.activation_waiting,
+                    capacity_waiting: counters.capacity_waiting,
+                    observed_at_ms,
+                };
+                observation
+                    .validate_for(binding)
+                    .map_err(DurableCellOperatorError::Protocol)?;
+                Ok(NodeCommandResult::DurableCellOperatorObserved { observation })
             }
             NodeCommandPayload::CodeAgentCommand { binding, command } => {
                 binding
@@ -405,6 +463,11 @@ fn completion_timestamp(
                     .ok()
                     .and_then(DateTime::from_timestamp_millis)
             }
+            NodeCommandResult::DurableCellOperatorObserved { observation } => {
+                i64::try_from(observation.observed_at_ms)
+                    .ok()
+                    .and_then(DateTime::from_timestamp_millis)
+            }
             NodeCommandResult::RuntimeApplied { .. }
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
@@ -450,6 +513,7 @@ enum DispatchError {
     PluginHost(UseError),
     PluginHostUnavailable,
     CodeHarness(CodeHarnessError),
+    DurableCellOperator(DurableCellOperatorError),
 }
 
 impl From<RuntimeError> for DispatchError {
@@ -497,6 +561,12 @@ impl From<UseError> for DispatchError {
 impl From<CodeHarnessError> for DispatchError {
     fn from(error: CodeHarnessError) -> Self {
         Self::CodeHarness(error)
+    }
+}
+
+impl From<DurableCellOperatorError> for DispatchError {
+    fn from(error: DurableCellOperatorError) -> Self {
+        Self::DurableCellOperator(error)
     }
 }
 
@@ -607,6 +677,18 @@ fn dispatch_failure(error: DispatchError) -> NodeCommandOutcome {
             "A3S Use Plugin Manager is not configured on this node",
         ),
         DispatchError::CodeHarness(error) => {
+            let failure = NodeCommandFailure {
+                code: error.code().into(),
+                message: sanitize_error(&error.to_string()),
+                retryable: error.retryable(),
+            };
+            if error.retryable() {
+                NodeCommandOutcome::Failed { failure }
+            } else {
+                NodeCommandOutcome::Rejected { failure }
+            }
+        }
+        DispatchError::DurableCellOperator(error) => {
             let failure = NodeCommandFailure {
                 code: error.code().into(),
                 message: sanitize_error(&error.to_string()),

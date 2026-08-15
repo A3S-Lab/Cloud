@@ -698,6 +698,7 @@ fn acknowledgement_observation(acknowledgement: &NodeCommandAck) -> Option<Runti
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::DurableCellOperatorObserved { .. }
             | NodeCommandResult::ResourceClaimPrepared { .. }
             | NodeCommandResult::ResourceClaimReleased { .. }
             | NodeCommandResult::GatewaySnapshotInstalled { .. }

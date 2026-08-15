@@ -9,6 +9,7 @@ mod code_event_shipper;
 mod code_harness;
 mod config;
 mod control_plane;
+mod durable_cell_operator;
 mod executor;
 mod gateway;
 mod gateway_certificate;

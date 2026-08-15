@@ -704,5 +704,6 @@ fn node_protocol_errors_are_versioned_and_strict() {
 }
 
 mod code_agent_tests;
+mod durable_cell_tests;
 mod gateway_tests;
 mod plugin_host_tests;

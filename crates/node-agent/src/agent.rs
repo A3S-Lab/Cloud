@@ -4,6 +4,9 @@ use crate::box_build::BoxBuildCommandExecutor;
 use crate::code_event_shipper::CodeEventShipper;
 use crate::code_harness::{HttpCodeHarnessTransport, SharedCodeHarnessTransport};
 use crate::control_plane::{CertificateReloadError, ReloadableNodeControlClient};
+use crate::durable_cell_operator::{
+    HttpDurableCellOperatorTransport, SharedDurableCellOperatorTransport,
+};
 use crate::log_shipper::LogShipper;
 use crate::resource_inventory::ResourceInventoryManager;
 use crate::state_file::{self, StateLock};
@@ -218,6 +221,10 @@ impl NodeAgentSession {
             HttpCodeHarnessTransport::new()
                 .map_err(|error| NodeAgentError::Invalid(error.to_string()))?,
         );
+        let durable_cell_operator: SharedDurableCellOperatorTransport = Arc::new(
+            HttpDurableCellOperatorTransport::new()
+                .map_err(|error| NodeAgentError::Invalid(error.to_string()))?,
+        );
         let code_event_shipper = CodeEventShipper::new(
             identity.response.node_id,
             Arc::clone(&runtime),
@@ -230,7 +237,8 @@ impl NodeAgentSession {
             transport,
             executor: CommandExecutor::new(journal, runtime, gateway)
                 .with_resource_inventory(resource_inventory.clone())
-                .with_code_harness(code_harness),
+                .with_code_harness(code_harness)
+                .with_durable_cell_operator(durable_cell_operator),
             log_shipper,
             code_event_shipper,
             identity,
@@ -513,6 +521,7 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::DurableCellOperatorObserved { .. }
             | NodeCommandResult::BoxBuildStarted { .. }
             | NodeCommandResult::BoxBuildInspected { .. }
             | NodeCommandResult::BoxBuildCancelled { .. }
@@ -550,6 +559,7 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::RuntimeInspected { .. }
             | NodeCommandResult::RuntimeStopped { .. }
             | NodeCommandResult::RuntimeRemoved { .. }
+            | NodeCommandResult::DurableCellOperatorObserved { .. }
             | NodeCommandResult::BoxBuildStarted { .. }
             | NodeCommandResult::BoxBuildInspected { .. }
             | NodeCommandResult::BoxBuildCancelled { .. }

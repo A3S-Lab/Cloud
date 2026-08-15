@@ -2,6 +2,7 @@ mod artifact;
 mod box_build;
 mod code_agent;
 mod command;
+mod durable_cell;
 mod enrollment;
 mod error;
 mod gateway;
@@ -32,6 +33,10 @@ pub use command::{
     NodeCommandAck, NodeCommandAckReceipt, NodeCommandEnvelope, NodeCommandFailure,
     NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeCommandMetadata, NodeCommandOutcome,
     NodeCommandPayload, NodeCommandResult,
+};
+pub use durable_cell::{
+    NodeDurableCellOperatorBindingV1, NodeDurableCellOperatorObservationV1,
+    NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
 };
 pub use enrollment::{
     NodeCertificate, NodeCertificateRotationRequest, NodeCertificateRotationResponse,

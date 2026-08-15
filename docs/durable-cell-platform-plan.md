@@ -256,8 +256,19 @@ sets only Runtime's existing opaque semantics-profile digest. Readiness consumes
 the existing Fleet `RuntimeApply` command acknowledgement, validates it through
 the shared command/receipt contract, and returns the two existing typed Runtime
 endpoints. C1 adds no Runtime class, provider configuration, endpoint registry,
-command table, deployment state, or product-specific receipt store. Typed
-operator drain/adoption/cleanup dispatch and real provider certification remain
+command table, deployment state, or product-specific receipt store.
+
+Component-only `CELL0.3-C2` adds one `DurableCellOperatorObserve` payload to
+Fleet's existing node-command journal. Node Agent resolves the exact healthy
+internal Runtime endpoint, performs a bounded non-redirecting `GET /state`, and
+keeps only six bounded anonymous counters and erases the bounded raw buffer. Provider-native ownership names,
+dynamic phases, Cell names, resident/published sets, memory values, and raw
+bytes never enter the command receipt. Adoption requires both the exact C1
+healthy `RuntimeApply` receipt and this digest-bound observation. Graceful drain
+still uses the ordinary Runtime `SIGTERM` path and exact `RuntimeStop` receipt;
+process cleanup still uses `RuntimeRemove`. C2 therefore adds no provider
+shutdown command, rollout/adoption state machine, cleanup worker, journal, or
+receipt store. Real Box/provider execution and retained certification remain
 open.
 
 ## 8. Rollout and recovery
@@ -287,7 +298,7 @@ drain and rejects rolling coexistence.
 | --- | --- | --- | --- |
 | `CELL0.1` | Implemented | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile, `C2` canonical application definition/revision aggregate, and `C3` digest-locked shared ACL fixtures plus deterministic existing-owner projection identities are implemented; this is a contract gate, not service availability |
 | `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `C1` implements the sole-client CAS port/probe and exact credential/storage bindings. `C2` implements exact active Secret/JIT materialization and digest-locked recovery, retention, restore, and deletion contracts. `C3` checks in the shared HTTPS S3-compatible gate, secret-safe retained-evidence script, and manual workflow while removing a duplicate raw test client. A retained provider pass, recovery/deletion execution, and fault evidence remain |
-| `CELL0.3` | In progress | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | Component-only `C1` binds and projects the exact provider through the shared Workloads Service path and admits only an exact healthy Fleet `RuntimeApply` receipt. Typed operator dispatch, drain/adoption/cleanup, real Box/provider execution, provenance, and retained certification remain; no new Runtime class or journal |
+| `CELL0.3` | In progress | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | Component-only `C1` binds and projects the exact provider through the shared Workloads Service path and admits only an exact healthy Fleet `RuntimeApply` receipt. `C2` adds one bounded, Cell-name-free operator observation through Fleet's existing journal; adoption combines it with C1 evidence, and drain/cleanup validate the existing `RuntimeStop`/`RuntimeRemove` receipts. Real Box/provider execution, provenance, and retained certification remain; no new Runtime class, lifecycle, or journal |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, `H0.2` |
 | `CELL0.5` | Planned | Pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Exact Cloud/Runtime/Box/Gateway/S0/provider revisions and retained fault evidence |
 | `CELL0.6` | Planned | Pass multi-node ownership, forwarding, takeover, node loss, partition, pressure shedding, graceful handoff, rolling provider upgrade, and stale-node return without split brain | `CELL0.5`, `H0.3`, production S0 provider and private networking |
