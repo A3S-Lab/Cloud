@@ -135,8 +135,10 @@ through the fenced Connector application service. The consumer validates the
 persisted delivery authorization and commits one monotonic Delivered, Rejected,
 or Indeterminate receipt before ACK. Redelivery replays durable C6 evidence, and
 receipt-commit/ACK loss becomes ACK-only without another Provider call. Rate
-policy, SMTP, supported management surfaces, Workflow ports, retained PostgreSQL
-and NATS evidence, and production availability remain gated.
+limited C6 evidence also defers later generations until its exact `Retry-After`
+deadline while A3S Event remains the only waiting/redelivery mechanism. User
+configured alert suppression/budgets, SMTP, supported management surfaces,
+Workflow ports, retained NATS evidence, and production availability remain gated.
 
 ### Latest Workflow contract slice
 

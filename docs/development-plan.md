@@ -1993,6 +1993,16 @@ node.
   schedule/counter, provider body/response authority, Secret/contact copy,
   scheduler, or second event rail. Rate policy, SMTP, alert policy, and supported
   management surfaces remain later gates.
+- Implemented as component-only `C0.3-N2d`: a replayed C6 `retryable` evidence
+  record with bounded `Retry-After` defers every later deterministic Connector
+  generation until the exact evidence completion-plus-delay deadline. Before
+  that deadline the consumer remains unacknowledged and A3S Event `AckWait`
+  remains the only clock/redelivery mechanism; at the deadline the existing C6
+  generation walk resumes. Focused tests prove no second Provider call, no
+  terminal receipt, no ACK/NAK, and the exact deadline boundary while deferred.
+  This adds no token bucket, rate table, mutable counter, timer worker, sleep,
+  queue, scheduler, or second retry policy. User-configured notification
+  suppression and delivery budgets remain a separate later semantic gate.
 - Implemented as component-only `AUT0.5-C2`: one environment-scoped
   `ConnectorProfile` head advances through immutable `ConnectorRevision`
   lineage. The owner parser accepts and emits canonical
