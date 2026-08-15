@@ -401,10 +401,19 @@ source re-observation and restored-state verification, bounded retention, and
 writer-fence/retention receipts plus a positive deletion grace before exact
 namespace cleanup evidence.
 
+Component-only `S0.1-C3` centralizes disposable real-S3 construction in one
+test-only fixture that returns the production `ImmutableObjectClient`. Both
+the immutable-log provider test and the typed S0 namespace probe reuse it; the
+former raw S3 test client is removed. The checked-in HTTPS gate retains the
+exact Cloud revision, seven-check CAS/cleanup marker, secret-scanned log, and
+evidence hashes. It is a provider conformance gate, not a new client, domain
+port, credential parser, or lifecycle.
+
 Managed database/volume/backup aggregates, persistence, production provider
-certification, executable backup/restore/deletion, and retained fault evidence
-remain planned. This boundary prevents stateful behavior from being hidden in
-workload metadata or provider-specific configuration.
+certification through a retained `S0.1-C3` pass, executable
+backup/restore/deletion, and retained fault evidence remain planned. This
+boundary prevents stateful behavior from being hidden in workload metadata or
+provider-specific configuration.
 
 ### 3.11 Inference platform (planned I0)
 
@@ -1024,6 +1033,11 @@ against its exact namespace, provider-profile, and retention-policy digests.
 Durable Cells does not execute or persist these S0 lifecycles and does not
 materialize credentials itself; the shared S0 application service delegates
 that work to Secrets immediately before provider use.
+
+Component-only `CELL0.2-C3` consumes S0's shared real-provider fixture only in
+the retained conformance gate. It does not add a Durable Cells S3 adapter or
+provider client. The gate is checked in but has no retained operator-owned pass,
+so it changes no product availability claim.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2424,7 +2438,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` supply the application foundation and component-only `CELL0.2-C1/C2` add exact S0 credential/storage/recovery-policy correlation without persistence or plaintext |
+| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | PostgreSQL Durable Cells tables through A3S ORM after `CELL0.4`; `CELL0.1-C1/C2/C3` and component-only `CELL0.2-C1/C2` supply application and exact S0 correlation, while `CELL0.2-C3` supplies only the shared unexecuted provider gate |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
@@ -2463,7 +2477,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
-| Durable Cell object-store namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the shared CAS port/probe, exact active Secret path, and plaintext-free credential, sealed recovery, isolated restore, retention, deletion, and storage-correlation contracts, with no second object client, backup engine, or provider-native mutable Cloud configuration |
+| Durable Cell object-store namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, and `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, with no second object client, backup engine, or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |

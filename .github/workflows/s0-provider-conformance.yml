@@ -1,0 +1,49 @@
+name: S0 object namespace provider conformance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: s0-provider-conformance-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  s3-compatible-namespace:
+    name: HTTPS S3-compatible CAS and cleanup
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EVIDENCE_DIR: /tmp/a3s-cloud-s0-provider-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+      A3S_CLOUD_TEST_S3_ENDPOINT: ${{ secrets.S0_S3_ENDPOINT }}
+      A3S_CLOUD_TEST_S3_REGION: ${{ secrets.S0_S3_REGION }}
+      A3S_CLOUD_TEST_S3_BUCKET: ${{ secrets.S0_S3_BUCKET }}
+      A3S_CLOUD_TEST_S3_ACCESS_KEY_ID: ${{ secrets.S0_S3_ACCESS_KEY_ID }}
+      A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY: ${{ secrets.S0_S3_SECRET_ACCESS_KEY }}
+      A3S_CLOUD_TEST_S3_SESSION_TOKEN: ${{ secrets.S0_S3_SESSION_TOKEN }}
+      A3S_CLOUD_TEST_S3_VIRTUAL_HOSTED_STYLE: ${{ vars.S0_S3_VIRTUAL_HOSTED_STYLE || 'false' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Cloud
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Run shared S0 namespace provider gate
+        run: |
+          bash tools/s0-conformance/run_s3_namespace_gate.sh "$EVIDENCE_DIR"
+
+      - name: Upload public S0 provider evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: s0-object-namespace-provider-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 30

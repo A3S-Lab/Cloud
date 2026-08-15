@@ -1,5 +1,7 @@
 mod local;
 mod s3;
+#[cfg(test)]
+mod s3_test;
 mod stream;
 
 #[cfg(test)]
@@ -13,6 +15,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub(crate) use s3::S3ImmutableObjectOptions;
+#[cfg(test)]
+pub(crate) use s3_test::DisposableS3TestContext;
 pub(crate) use stream::{
     ImmutableObjectOpenResult, ImmutableObjectReader, ImmutableObjectVerification,
 };
@@ -374,6 +378,29 @@ impl ImmutableObjectClient {
                 Err(error) => Err(remote_error("delete immutable object", error)),
             },
         }
+    }
+
+    /// Test-only corruption hook over the same already-built remote client.
+    ///
+    /// Real-provider tests use this to prove typed immutable readers reject an
+    /// out-of-band overwrite without constructing a second S3 client.
+    #[cfg(test)]
+    pub(crate) async fn overwrite_remote_for_test(
+        &self,
+        object_key: &str,
+        body: Vec<u8>,
+    ) -> Result<(), ImmutableObjectError> {
+        let scoped_key = self.scoped_key(object_key)?;
+        let Backend::Remote(objects) = self.backend.as_ref() else {
+            return Err(ImmutableObjectError::Invalid(
+                "test overwrite requires the shared remote object client".into(),
+            ));
+        };
+        objects
+            .put(&remote_path(&scoped_key)?, body.into())
+            .await
+            .map(|_| ())
+            .map_err(|error| remote_error("overwrite test object", error))
     }
 
     pub(crate) async fn health(&self) -> Result<bool, ImmutableObjectError> {

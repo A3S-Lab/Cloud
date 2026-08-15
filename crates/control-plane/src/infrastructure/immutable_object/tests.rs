@@ -262,3 +262,28 @@ fn plugin_trust_root_adapter_cannot_reimplement_low_level_object_storage() {
         );
     }
 }
+
+#[test]
+fn real_s3_consumer_gates_share_the_one_test_fixture_and_production_client() {
+    let consumers = [
+        include_str!("../../modules/fleet/infrastructure/s3_log_chunk_store_tests.rs"),
+        include_str!("../../modules/data/infrastructure/shared_object_namespace.rs"),
+    ];
+    for source in consumers {
+        assert!(source.contains("DisposableS3TestContext"));
+        for forbidden in [
+            "use object_store::aws::AmazonS3Builder",
+            "AmazonS3Builder::new",
+            "A3S_CLOUD_TEST_S3_ENDPOINT",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "real S3 consumer gates must use the shared fixture; found {forbidden}"
+            );
+        }
+    }
+
+    let fixture = include_str!("s3_test.rs");
+    assert_eq!(fixture.matches("ImmutableObjectClient::s3").count(), 1);
+    assert!(!fixture.contains("AmazonS3Builder"));
+}

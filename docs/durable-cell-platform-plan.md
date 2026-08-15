@@ -2,7 +2,7 @@
 
 ## 1. Authority and status
 
-**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3` and component-only `CELL0.2-C1/C2` are implemented; the product is unavailable.**
+**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3` and component-only `CELL0.2-C1/C2` are implemented; the `CELL0.2-C3` provider gate is checked in but has no retained real-provider pass; the product is unavailable.**
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
@@ -233,6 +233,18 @@ backup engine, deletion worker, Secret store, object client, Operation, or Flow.
 Real provider execution, retained fault evidence, and certification remain
 open.
 
+Component-only `CELL0.2-C3` checks in the retained HTTPS S3-compatible
+conditional-write gate without another client. One test-only fixture constructs
+the production `ImmutableObjectClient::s3`; both the existing immutable-log
+provider test and S0's typed namespace probe consume it. The old log test no
+longer constructs an extra raw S3 client. The S0 gate emits a machine-checked
+marker only after all seven CAS/read/cleanup checks pass over HTTPS, scans the
+retained log for every supplied credential, records the Cloud revision and
+evidence hashes, and is exposed by one manual workflow. A retained
+operator-owned pass is still required, and no provider is certified by this
+checked-in gate alone. Operator inputs and evidence rules are documented in the
+[S0 object namespace conformance guide](../tools/s0-conformance/README.md).
+
 ## 8. Rollout and recovery
 
 A rollout follows the existing Workload generation lifecycle:
@@ -259,7 +271,7 @@ drain and rejects rolling coexistence.
 | Gate | State | Outcome | Required evidence/dependencies |
 | --- | --- | --- | --- |
 | `CELL0.1` | Implemented | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile, `C2` canonical application definition/revision aggregate, and `C3` digest-locked shared ACL fixtures plus deterministic existing-owner projection identities are implemented; this is a contract gate, not service availability |
-| `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | Component-only `C1` implements the sole-client CAS port/probe and exact credential/storage bindings. Component-only `C2` implements exact active Secret admission/JIT materialization and digest-locked sealed-lineage, retention, isolated-restore, and safe-deletion contracts with focused scope, redaction, lineage, drift, isolation, grace, and cross-namespace tests. Real-provider execution, fault evidence, and certification remain |
+| `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `C1` implements the sole-client CAS port/probe and exact credential/storage bindings. `C2` implements exact active Secret/JIT materialization and digest-locked recovery, retention, restore, and deletion contracts. `C3` checks in the shared HTTPS S3-compatible gate, secret-safe retained-evidence script, and manual workflow while removing a duplicate raw test client. A retained provider pass, recovery/deletion execution, and fault evidence remain |
 | `CELL0.3` | Planned | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | `BX0`, Runtime Service, Fleet journal, provider adapter; no new Runtime class |
 | `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, `H0.2` |
 | `CELL0.5` | Planned | Pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Exact Cloud/Runtime/Box/Gateway/S0/provider revisions and retained fault evidence |

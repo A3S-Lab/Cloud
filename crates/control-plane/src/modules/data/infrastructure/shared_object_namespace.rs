@@ -110,6 +110,7 @@ fn map_immutable_error(error: ImmutableObjectError) -> ObjectNamespaceError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infrastructure::DisposableS3TestContext;
     use crate::modules::data::ObjectNamespaceConformanceProbe;
     use crate::modules::shared_kernel::domain::StorageNamespaceId;
     use object_store::memory::InMemory;
@@ -152,6 +153,27 @@ mod tests {
             .await,
             Err(ObjectNamespaceError::Unsupported(_))
         ));
+    }
+
+    #[tokio::test]
+    #[ignore = "requires an explicitly configured disposable S3-compatible bucket"]
+    async fn real_s3_compatible_namespace_passes_destructive_cas_conformance() {
+        let context = DisposableS3TestContext::from_environment("s0-cas")
+            .expect("disposable S3 test context");
+        assert!(
+            context.uses_secure_transport(),
+            "S0 provider certification requires an HTTPS S3-compatible endpoint"
+        );
+        let namespace: Arc<dyn IObjectNamespace> = Arc::new(context.client());
+        let evidence = ObjectNamespaceConformanceProbe::new(namespace, 1024)
+            .expect("probe")
+            .run(StorageNamespaceId::new())
+            .await
+            .expect("real S3 CAS conformance");
+        evidence.validate().expect("complete conformance evidence");
+        println!(
+            "A3S_CLOUD_S0_NAMESPACE_PROVIDER_CERTIFIED provider=s3-compatible protocol=a3s.s0.object-namespace.v1 checks=7/7 cleanup=verified"
+        );
     }
 
     #[test]

@@ -13,6 +13,8 @@ pub use flow::{
     connect_flow, FlowCoordinatorError, FlowCoordinatorReport, FlowInfrastructure,
     FlowInfrastructureError, FlowOperationCoordinator, FlowRuntimeRouter,
 };
+#[cfg(test)]
+pub(crate) use immutable_object::DisposableS3TestContext;
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 
 pub(crate) use git::{GitCommandError, GitCommandRunner};
