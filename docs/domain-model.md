@@ -1100,11 +1100,15 @@ then calls the existing Workloads creation transaction for the managed Workload
 revision, Deployment, Operation request, and Outbox event consumed by Fleet.
 Workloads owns the only managed-owner handoff; owner revisions may skip
 undeployed application revisions while placement generations remain contiguous.
-The [retained PostgreSQL 17 C6a gate](https://github.com/A3S-Lab/Cloud/actions/runs/31935793202/job/95137381473)
+The [retained PostgreSQL 17 C6a/C6b gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600)
 kills a real child after this correlation commits while the existing Workloads
 insert is lock-blocked, then fresh production repositories reconstruct the same
 Workload, revision, Deployment, Operation, Outbox, and managed replica exactly
-once. This recovery adds no second controller or event rail.
+once. It also persists a stopped application intent before the Workloads
+transaction, reconstructs fresh production repositories, retires the managed
+replica through Workloads' existing cleanup authority, and reactivates the same
+deterministic replica exactly once. This recovery adds no second controller,
+cleanup worker, lifecycle table, or event rail.
 
 Component-only `CELL0.4-C4` adds no aggregate or persistence. Its internal
 command authorizes the exact environment before any replay, loads the immutable
@@ -1132,9 +1136,10 @@ OCI resolver, S0 contracts, and C3/C4 handlers, with no interface repository,
 configuration parser, lifecycle, or authorization mechanism. Client and CLI
 reuse their existing bounded ACL readers and Edge hostname/path validators;
 MCP dispatches the same buses with the same `cloud:read`, `workload:write`, and
-`route:write` permissions. Web remains deliberately deferred. C6 stop/restart
-and cleanup evidence remains open after the retained C6a projection-recovery
-pass, and real S0 namespace/application behavior remains unclaimed.
+`route:write` permissions. Web remains deliberately deferred. The retained
+C6a/C6b gate closes control-plane projection, stop, undispatched cleanup, and
+restart recovery. Real provider Runtime stop/remove and real S0
+namespace/application behavior remain unclaimed.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
