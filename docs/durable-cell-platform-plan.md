@@ -2,7 +2,7 @@
 
 ## 1. Authority and status
 
-**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3` and component-only `CELL0.2-C1/C2` are implemented; the `CELL0.2-C3` storage gate and `CELL0.3-C3` runtime-only provider gate are checked in but have no retained real-provider passes; the product is unavailable.**
+**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3`, component-only `CELL0.2-C1/C2`, `CELL0.3-C1/C2`, and `CELL0.4-C1` are implemented; the `CELL0.2-C3` storage gate, `CELL0.3-C3` runtime-only provider gate, and `CELL0.4-C1` PostgreSQL gate are checked in but have no retained passes; the product is unavailable.**
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
@@ -282,6 +282,26 @@ marker require `storage=not-certified`; no S0 durability, Worker application,
 Cell behavior, Gateway publication, or fault claim follows. A successful
 retained run is still required.
 
+## 7.1 Cloud orchestration delivery (`CELL0.4`)
+
+`CELL0.4` is split so persistence and each existing-owner composition can be
+verified without creating a second control plane:
+
+| Sub-gate | Outcome | Explicit non-authority |
+| --- | --- | --- |
+| `C1` | Migration `116` persists the application head and immutable canonical-ACL revisions through the sole A3S ORM Migrator. One repository transaction reuses shared idempotency, Outbox, and audit records; exact tenant BuildRun, linear revision, optimistic aggregate, and desired-state/revision fences are enforced | No deployment row, per-Cell table, migration runner, event log, scheduler, queue, Runtime state, or provider receipt |
+| `C2` | Authorized idempotent create/revise/start/stop commands plus tenant-bounded get/list/revision queries | No interface-specific repository or client-side authorization |
+| `C3` | Persist only `DurableCellDeployment` correlation, then compose the existing S0 namespace, managed Workload/Deployment, Fleet receipt, and Operation authorities | No deployment identity, rollout controller, object client, Fleet channel, or Operation engine |
+| `C4` | Publish and reconcile only the healthy public Runtime endpoint through existing Edge/Gateway scope and snapshot authority | No Cell-owner lookup, internal endpoint publication, or Gateway retry after dispatch |
+| `C5` | REST/OpenAPI, maintained client, CLI, and Management MCP reuse C2-C4; Web remains deferred by the active freeze | No presentation-owned state or configuration format |
+| `C6` | Retain PostgreSQL replay, process-death, projection recovery, stop/restart, and cleanup evidence for the exact composed revisions | No product availability claim; `CELL0.5` still owns real storage-backed application behavior |
+
+Component-only `C1` is implemented. Its PostgreSQL fixture verifies migration
+registration, exact historic idempotency replay, immutable revision/state
+fences, atomic Outbox/audit evidence, compact references rather than duplicated
+ACL bodies, and absence of Cell/deployment/queue tables. A retained run and
+`C2` through `C6` remain.
+
 ## 8. Rollout and recovery
 
 A rollout follows the existing Workload generation lifecycle:
@@ -310,7 +330,7 @@ drain and rejects rolling coexistence.
 | `CELL0.1` | Implemented | Freeze ownership, ACL, identities, revision/projection boundaries, errors, bounds, and compatibility vocabulary | `C1` canonical Service profile, `C2` canonical application definition/revision aggregate, and `C3` digest-locked shared ACL fixtures plus deterministic existing-owner projection identities are implemented; this is a contract gate, not service availability |
 | `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `C1` implements the sole-client CAS port/probe and exact credential/storage bindings. `C2` implements exact active Secret/JIT materialization and digest-locked recovery, retention, restore, and deletion contracts. `C3` checks in the shared HTTPS S3-compatible gate, secret-safe retained-evidence script, and manual workflow while removing a duplicate raw test client. A retained provider pass, recovery/deletion execution, and fault evidence remain |
 | `CELL0.3` | In progress | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | Component-only `C1` binds and projects the exact provider through the shared Workloads Service path and admits only an exact healthy Fleet `RuntimeApply` receipt. `C2` adds one bounded, Cell-name-free operator observation through Fleet's existing journal; adoption combines it with C1 evidence, and drain/cleanup validate the existing `RuntimeStop`/`RuntimeRemove` receipts. `C3` pins celld v0.2.1 provenance and composes a real Box runtime-only gate into the existing provider workflow. Its retained pass and every storage/application/fault gate remain; no new Runtime class, lifecycle, journal, runner, or receipt store |
-| `CELL0.4` | Planned | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, `H0.2` |
+| `CELL0.4` | In progress | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | Component-only `C1` implements migration `116`, typed in-memory/PostgreSQL repositories, compact exact replay, immutable revision/state fences, and shared Outbox/audit writes without deployment or per-Cell state. Its retained PostgreSQL pass and `C2`-`C6` remain; dependencies stay `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, and `H0.2` |
 | `CELL0.5` | Planned | Pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Exact Cloud/Runtime/Box/Gateway/S0/provider revisions and retained fault evidence |
 | `CELL0.6` | Planned | Pass multi-node ownership, forwarding, takeover, node loss, partition, pressure shedding, graceful handoff, rolling provider upgrade, and stale-node return without split brain | `CELL0.5`, `H0.3`, production S0 provider and private networking |
 | `CELL0.7` | Planned | Publish a capability-tested Workers/Durable Objects compatibility matrix, bounded import/deploy workflow, quotas, observability, disaster recovery, and hostile-tenant isolation posture | `P0`, `H0.4`/`H0.5`, relevant `C0.5`; no blanket compatibility claim |

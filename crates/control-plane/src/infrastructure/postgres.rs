@@ -997,6 +997,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/115_notification_outbound_attempt_budget.sql"
             )),
         ),
+        Migration::new(
+            "116",
+            "immutable Durable Cell applications and revisions",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/116_durable_cell_applications.sql"
+            )),
+        ),
     ]
 }
 
@@ -1708,6 +1716,50 @@ mod notification_outbound_attempt_budget_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 115 must not add another rate/retry authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod durable_cell_application_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/116_durable_cell_applications.sql"
+    ));
+
+    #[test]
+    fn migration_116_persists_only_the_revisioned_application_authority() {
+        for expected in [
+            "create table durable_cell_applications",
+            "create table durable_cell_application_revisions",
+            "cloud.durable-cell.application.v1",
+            "references build_runs",
+            "deferrable initially deferred",
+            "validate_durable_cell_revision_lineage",
+            "reject_durable_cell_revision_mutation",
+            "validate_durable_cell_application_update",
+            "Durable Cell desired-state update changed revision authority or was a no-op",
+            "not a deployment pointer or provider receipt",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 116 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table cells ",
+            "create table durable_cell_deployments",
+            "create table cell_ownership",
+            "create table cell_state",
+            "create table durable_cell_queue",
+            "create table durable_cell_scheduler",
+            "create table durable_cell_provider_receipts",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 116 must not add per-Cell, deployment, queue, scheduler, or provider-receipt authority: {forbidden}"
             );
         }
     }

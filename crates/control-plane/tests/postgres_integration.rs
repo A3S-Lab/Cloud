@@ -70,6 +70,8 @@ mod cancellation_support;
 mod connectors_support;
 #[path = "support/deployment_flow.rs"]
 mod deployment_flow_support;
+#[path = "support/durable_cells.rs"]
+mod durable_cells_support;
 #[path = "support/edge_certificate_lifecycle.rs"]
 mod edge_certificate_lifecycle_support;
 #[path = "support/edge.rs"]
@@ -278,6 +280,19 @@ async fn postgres_connector_profiles_are_exact_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL Connector profile authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_durable_cell_applications_are_atomic_replay_safe_and_immutable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        durable_cells_support::exercise_durable_cell_application_persistence,
+    )
+    .await
+    .expect("PostgreSQL Durable Cell application authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -575,7 +590,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (115, "115".into()));
+    assert_eq!(migration_state, (116, "116".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
