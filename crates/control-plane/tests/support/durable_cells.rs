@@ -1555,7 +1555,9 @@ async fn seed_durable_cell_tenant(
         project_id: ProjectId::new(),
         environment_id: EnvironmentId::new(),
         actor: PrincipalId::new(),
-        created_at: Utc::now(),
+        // Keep successor fixture timestamps behind the wall clock so fast CI
+        // execution cannot make a legitimate state request look regressive.
+        created_at: Utc::now() - Duration::seconds(5),
     };
     database
         .execute(
