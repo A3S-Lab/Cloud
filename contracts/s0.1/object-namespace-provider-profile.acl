@@ -1,0 +1,8 @@
+object_namespace_provider "s3_compatible" {
+  bucket = "a3s-durable-cells"
+  endpoint = "https://s3.example.com"
+  prefix = "a3s/durable-cells"
+  region = "us-east-1"
+  schema = "cloud.object-namespace.provider-profile.v1"
+  virtual_hosted_style = false
+}

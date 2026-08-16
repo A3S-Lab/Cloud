@@ -1,3 +1,4 @@
+use super::ObjectNamespaceProviderProfile;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, EnvironmentId, OrganizationId, ProjectId, SecretVersionReference,
     Sha256Digest, StorageNamespaceId,
@@ -137,6 +138,20 @@ impl ObjectNamespaceCredentialBinding {
         Ok(())
     }
 
+    pub fn validate_provider_profile(
+        &self,
+        profile: &ObjectNamespaceProviderProfile,
+    ) -> Result<(), String> {
+        self.validate()?;
+        profile.validate()?;
+        if &self.spec.provider_profile_digest != profile.digest() {
+            return Err(
+                "object namespace credential binding and provider profile digests differ".into(),
+            );
+        }
+        Ok(())
+    }
+
     pub fn spec(&self) -> &ObjectNamespaceCredentialBindingSpec {
         &self.spec
     }
@@ -225,5 +240,30 @@ mod tests {
         skipped.access_key_id = reference();
         let skipped = ObjectNamespaceCredentialBinding::from_spec(skipped).expect("binding");
         assert!(skipped.validate_successor_of(&next).is_err());
+    }
+
+    #[test]
+    fn binding_requires_the_exact_non_secret_provider_profile() {
+        let profile = ObjectNamespaceProviderProfile::from_spec(
+            super::super::ObjectNamespaceProviderProfileSpec {
+                endpoint: "https://s3.example.com".into(),
+                region: "us-east-1".into(),
+                bucket: "a3s-durable-cells".into(),
+                prefix: "a3s/durable-cells".into(),
+                virtual_hosted_style: false,
+            },
+        )
+        .expect("profile");
+        let mut exact = spec();
+        exact.provider_profile_digest = profile.digest().clone();
+        ObjectNamespaceCredentialBinding::from_spec(exact)
+            .expect("binding")
+            .validate_provider_profile(&profile)
+            .expect("exact provider profile");
+
+        assert!(ObjectNamespaceCredentialBinding::from_spec(spec())
+            .expect("foreign binding")
+            .validate_provider_profile(&profile)
+            .is_err());
     }
 }

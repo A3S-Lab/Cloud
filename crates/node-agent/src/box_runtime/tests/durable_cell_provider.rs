@@ -13,7 +13,6 @@ use a3s_runtime::contract::{
     RuntimeInspection, RuntimeNetworkSpec, RuntimePort, RuntimeProcessSpec, RuntimeServiceEndpoint,
     RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, TransportProtocol,
 };
-use a3s_runtime::RuntimeClient;
 use chrono::{Duration as ChronoDuration, Utc};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -345,7 +344,10 @@ fn celld_runtime_spec(image: &str, service_profile_digest: &str) -> GateResult<R
             cpu_millis: 1_000,
             memory_bytes: 512 * 1024 * 1024,
             pids: 256,
-            ephemeral_storage_bytes: Some(512 * 1024 * 1024),
+            // This runtime-only gate must request only capabilities advertised
+            // by the ordinary Box provider. S0 and storage certification stay
+            // in their own retained gates.
+            ephemeral_storage_bytes: None,
             execution_timeout_ms: None,
         },
         isolation: IsolationLevel::Sandbox,

@@ -374,6 +374,7 @@ Implemented component-only `S0.1-C1/C2` value/port foundation:
 - `ObjectNamespaceVersion`
 - `IObjectNamespace`
 - `ObjectNamespaceProbeEvidence`
+- `ObjectNamespaceProviderProfile`
 - `ObjectNamespaceCredentialBinding`
 - `ObjectNamespaceRetentionPolicy`
 - `ObjectNamespaceRecoveryPoint`
@@ -400,6 +401,15 @@ contract requires monotonic sealed lineage, a distinct restore namespace,
 source re-observation and restored-state verification, bounded retention, and
 writer-fence/retention receipts plus a positive deletion grace before exact
 namespace cleanup evidence.
+
+Component-only `CELL0.5-C1` makes the previously opaque provider-profile
+digest resolvable to one canonical, non-secret
+`cloud.object-namespace.provider-profile.v1` ACL. The value freezes an HTTPS
+origin, region, bucket, namespace prefix, and addressing mode, derives the
+exact prefix for an existing `StorageNamespaceId`, and validates the credential
+binding against its digest. It contains no Secret reference or material and
+adds no provider client, environment lookup, repository, registration API, or
+namespace lifecycle.
 
 Component-only `S0.1-C3` centralizes disposable real-S3 construction in one
 test-only fixture that returns the production `ImmutableObjectClient`. Both
@@ -964,7 +974,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2/C3/C4/C5` implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1` implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -1069,6 +1079,16 @@ same RuntimeApply/operator-observe/RuntimeStop/RuntimeRemove commands and Fleet
 journal, and proves restart-safe process absence. Its evidence explicitly says
 `storage=not-certified`; no application deployment, S0 behavior, Cell state,
 Gateway route, or provider-native configuration becomes Cloud authority.
+
+Component-only `CELL0.5-C1` adds no Durable Cells aggregate. S0 now parses and
+generates the canonical non-secret provider profile only through `a3s-acl`,
+locks its shared fixture digest, derives one namespace prefix, and requires an
+`ObjectNamespaceCredentialBinding` to carry that exact profile digest. This is
+the first single-node delivery prerequisite, not provider registration,
+persistence, storage certification, bundle publication, or application
+availability. `CELL0.5-C2/C3` must extend the existing Artifacts `BuildRun`
+output and artifact-bound Runtime Task paths before any provider publication;
+`C4/C5` retain the real application and lifecycle/fault evidence.
 
 Component-only `CELL0.4-C1` persists `DurableCellApplication` heads and
 immutable `DurableCellApplicationRevision` canonical ACL through migration
@@ -2579,7 +2599,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
-| Durable Cell object-store namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, and `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, with no second object client, backup engine, or provider-native mutable Cloud configuration |
+| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, and `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, with no second object client, provider registry, backup engine, or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |

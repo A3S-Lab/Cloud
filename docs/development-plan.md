@@ -3765,9 +3765,17 @@ Runtime class, node channel, object client, or per-Cell desired-state store.
   retry loop, lifecycle table, or cleanup worker is added. Real provider
   Runtime stop/remove remains part of `CELL0.3` and the `CELL0.5` application
   gate rather than this control-plane evidence.
-- `CELL0.5` is the first availability gate: one real single-node application
-  proves named state, alarms, WebSockets, idle recovery, RPO=0 process death,
-  rollout/rollback, restore, stop, deletion, and exact cleanup.
+- `CELL0.5` is the first availability gate. Component-only C1 implements S0's
+  canonical non-secret `cloud.object-namespace.provider-profile.v1` ACL/digest,
+  HTTPS origin/bucket/prefix semantics, exact namespace derivation, and exact
+  credential-profile binding without a provider client, repository, or Secret
+  material. C2 must extend the existing successful Artifacts `BuildRun` output
+  with the exact typed Cell bundle; C3 must publish it through the existing
+  artifact-bound Runtime Task and Operations/Flow path. C4/C5 then make one
+  real single-node application prove named state, alarms, WebSockets, idle
+  recovery, RPO=0 process death, rollout/rollback, restore, stop, deletion, and
+  exact cleanup. No duplicate build, artifact, Secret, object-store, task,
+  scheduler, Workload, route, or lifecycle mechanism is permitted.
 - `CELL0.6` adds multi-node acquisition, peer forwarding, takeover, partition,
   pressure shedding, graceful handoff, upgrade, and stale-node return.
 - `CELL0.7` publishes only a capability-tested Workers/Durable Objects matrix

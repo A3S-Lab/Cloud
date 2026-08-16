@@ -2,7 +2,7 @@
 
 ## 1. Authority and status
 
-**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3`, component-only `CELL0.2-C1/C2`, `CELL0.3-C1/C2`, and `CELL0.4-C1/C2/C3/C4/C5/C6` are implemented; the [`CELL0.4` PostgreSQL 17 C6a/C6b recovery and lifecycle gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600) has a retained pass, while the `CELL0.2-C3` storage provider pass, the `CELL0.3-C3` real Runtime stop/remove pass, and the real storage-backed `CELL0.5` application gate remain open; the product is unavailable.**
+**Status as of 2026-08-16: `CELL0.1-C1` through `CELL0.1-C3`, component-only `CELL0.2-C1/C2`, `CELL0.3-C1/C2`, `CELL0.4-C1/C2/C3/C4/C5/C6`, and `CELL0.5-C1` are implemented; the [`CELL0.4` PostgreSQL 17 C6a/C6b recovery and lifecycle gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600) has a retained pass, while the `CELL0.2-C3` storage provider pass, the `CELL0.3-C3` real Runtime stop/remove pass, and `CELL0.5-C2` through `C5` remain open; the product is unavailable.**
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
@@ -234,6 +234,16 @@ backup engine, deletion worker, Secret store, object client, Operation, or Flow.
 Real provider execution, retained fault evidence, and certification remain
 open.
 
+Component-only `CELL0.5-C1` adds S0's canonical, non-secret
+`cloud.object-namespace.provider-profile.v1` ACL contract. It freezes one HTTPS
+origin, region, bucket, namespace prefix, and addressing mode, derives the
+application namespace prefix from the existing `StorageNamespaceId`, and binds
+the existing credential generation by exact profile digest. Unknown fields,
+ambiguous origins, traversal, non-canonical stored ACL, and digest drift fail
+closed. Credentials remain exact Secrets references; this contract adds no
+provider client, environment-variable reader, credential materializer,
+repository, or registration API.
+
 Component-only `CELL0.2-C3` checks in the retained HTTPS S3-compatible
 conditional-write gate without another client. One test-only fixture constructs
 the production `ImmutableObjectClient::s3`; both the existing immutable-log
@@ -324,20 +334,46 @@ retirement, and reactivates the same replica with one scale-to-one event and
 exact replay. Retained real-provider Runtime stop/remove and storage-backed
 application evidence remain outside this control-plane gate.
 
+## 7.2 Single-node provider delivery and behavior (`CELL0.5`)
+
+`CELL0.5` joins the already-owned components through one Operations/Flow path.
+It does not introduce a Durable Cells build system, artifact downloader, Secret
+injector, object client, task engine, scheduler, Service lifecycle, or route
+controller:
+
+| Sub-gate | Outcome | Explicit non-authority |
+| --- | --- | --- |
+| `C1` | Implemented component-only: S0 defines the canonical non-secret `cloud.object-namespace.provider-profile.v1` ACL and digest, validates HTTPS provider semantics, derives the exact application namespace prefix, and requires the existing credential binding to carry that exact digest | No credential value, provider client, environment lookup, persistence, registration surface, namespace lifecycle, or application availability |
+| `C2` | Pending: Artifacts extends its existing successful `BuildRun` output/provenance model with one typed `application/vnd.a3s.durable-cell.bundle.v1+tar` artifact whose digest and size exactly match the application revision. Existing artifact storage, node transport, and `INodeArtifactStore` deliver it | No Durable Cells bundle table, publisher, downloader, cache, build runner, or false equivalence between a bundle digest and an OCI manifest digest |
+| `C3` | Pending: Operations/Flow dispatches an existing generic Runtime `Task` through Fleet. Node Agent mounts the C2 artifact through the shared artifact path, materializes only the exact Runtime Secret references, and invokes the pinned provider adapter to publish the bundle into the exact C1 S0 namespace before the existing Workload Service starts or advances | No provider-native product configuration authority, long-lived credential cache, direct Control Plane object-store write, Durable Cells task worker, command queue, or deploy state machine |
+| `C4` | Pending: the existing Workloads Service and Edge route composition serves one real named Cell and proves SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, and RPO=0 provider-process death against the exact C1-C3 identities | No per-Cell Cloud row, owner lookup, Gateway affinity, provider scheduler, alarm timer, WebSocket store, or new Runtime class |
+| `C5` | Pending: retained evidence covers rollout, compatible rollback or forward-only rejection, stop, isolated restore, writer-fenced/grace-delayed deletion, interruption replay, cleanup, and cross-namespace negative cases | No second rollout/restore/delete lifecycle, backup engine, cleanup worker, evidence store, or product availability claim before every check passes |
+
+The C2/C3 boundary is deliberate. A `BuildRun` must be terminally successful
+and expose a typed published bundle before a deployment may consume it; merely
+finding a tenant-scoped BuildRun is insufficient. Provider publication is then
+an ordinary artifact-bound Runtime Task whose completion is observed by the
+existing Operations/Flow rail. The long-running provider remains the ordinary
+Workloads-managed Runtime Service and Edge remains the only public route
+authority.
+
 ## 8. Rollout and recovery
 
 A rollout follows the existing Workload generation lifecycle:
 
-1. admit one immutable application revision and exact bundle digest;
-2. validate its state migration and rollback declaration;
-3. project one managed Workload revision using a reviewed Cell provider image;
-4. reserve Claims and apply new Runtime Service replicas through Fleet;
-5. require each replica to pass provider protocol, object-store, peer, restore,
+1. admit one immutable application revision and exact successful typed bundle;
+2. validate its state migration, rollback declaration, exact S0 provider
+   profile, credential generation, and namespace prefix;
+3. publish that bundle through the existing artifact-bound Runtime Task and
+   Operations/Flow rail;
+4. project one managed Workload revision using a reviewed Cell provider image;
+5. reserve Claims and apply new Runtime Service replicas through Fleet;
+6. require each replica to pass provider protocol, object-store, peer, restore,
    and health probes;
-6. publish the complete Gateway target set only after exact acknowledgements;
-7. drain the previous generation, hand off resident Cells, and fence it before
+7. publish the complete Gateway target set only after exact acknowledgements;
+8. drain the previous generation, hand off resident Cells, and fence it before
    Claims or Secrets are released; and
-8. retain the previous immutable revision for an explicitly compatible
+9. retain the previous immutable revision for an explicitly compatible
    rollback, otherwise require a forward repair revision.
 
 Provider binary upgrades and application code rollouts are distinct revisions.
@@ -353,7 +389,7 @@ drain and rejects rolling coexistence.
 | `CELL0.2` | In progress | Add S0 object-namespace and credential bindings plus a destructive conditional-write/startup probe and sealed backup/restore contract | `C1` implements the sole-client CAS port/probe and exact credential/storage bindings. `C2` implements exact active Secret/JIT materialization and digest-locked recovery, retention, restore, and deletion contracts. `C3` checks in the shared HTTPS S3-compatible gate, secret-safe retained-evidence script, and manual workflow while removing a duplicate raw test client. A retained provider pass, recovery/deletion execution, and fault evidence remain |
 | `CELL0.3` | In progress | Certify one digest-pinned Cell provider as an ordinary Box-hosted Runtime Service with public/internal endpoints, typed health/operator receipts, graceful drain, adoption, and cleanup | Component-only `C1` binds and projects the exact provider through the shared Workloads Service path and admits only an exact healthy Fleet `RuntimeApply` receipt. `C2` adds one bounded, Cell-name-free operator observation through Fleet's existing journal; adoption combines it with C1 evidence, and drain/cleanup validate the existing `RuntimeStop`/`RuntimeRemove` receipts. `C3` pins celld v0.2.1 provenance and composes a real Box runtime-only gate into the existing provider workflow. Its retained pass and every storage/application/fault gate remain; no new Runtime class, lifecycle, journal, runner, or receipt store |
 | `CELL0.4` | In progress | Persist the frozen aggregates through A3S ORM, then add idempotent commands/queries, managed Workload projection, Gateway publication, Operations, audit, REST/client/CLI/Management MCP; Web stays deferred | Component-only `C1` implements migration `116`, application/revision repositories, compact exact replay, immutable fences, and shared Outbox/audit writes. `C2` registers authorization-before-replay mutation and bounded current/history CQRS. `C3` implements migration `117`, immutable intent-first Workload/S0/Operation correlation, the sole Workloads-owned managed-owner handoff, and process-death recovery through the existing Workload/Operation/Fleet path without another lifecycle. `C4` composes the exact correlation and ACL-derived public port into Edge's sole healthy-target/snapshot publication path; later revisions use the existing Workloads route updater. `C5` exposes this authority through bounded REST/OpenAPI `1.38.0`, the maintained TypeScript client, CLI, and ten Management MCP tools plus the canonical `cloud.durable-cell.deployment.v1` ACL without another state or authorization mechanism. The retained C1-C3 PostgreSQL 17 and C6a/C6b projection/stop/undispatched-cleanup/restart gates pass. Real provider Runtime stop/remove and real S0 application evidence remain. Dependencies stay `CELL0.1`-`CELL0.3`, `E0`, `C0.3`, and `H0.2` |
-| `CELL0.5` | Planned | Pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Exact Cloud/Runtime/Box/Gateway/S0/provider revisions and retained fault evidence |
+| `CELL0.5` | In progress; unavailable | Publish one exact typed bundle through the existing artifact/Task/Flow path and pass one real single-node application gate covering named SQLite state, alarms, hibernatable WebSockets, idle eviction/reactivation, RPO=0 process death, rollout, rollback, stop, restore, and deletion | Component-only `C1` implements the canonical non-secret S0 provider-profile ACL/digest and exact credential binding without a client or persistence. C2-C5 retain typed successful BuildRun output, existing artifact-bound Runtime Task publication, real Workloads/Edge behavior, and lifecycle/fault evidence. Exact Cloud/Runtime/Box/Gateway/S0/provider revisions are mandatory |
 | `CELL0.6` | Planned | Pass multi-node ownership, forwarding, takeover, node loss, partition, pressure shedding, graceful handoff, rolling provider upgrade, and stale-node return without split brain | `CELL0.5`, `H0.3`, production S0 provider and private networking |
 | `CELL0.7` | Planned | Publish a capability-tested Workers/Durable Objects compatibility matrix, bounded import/deploy workflow, quotas, observability, disaster recovery, and hostile-tenant isolation posture | `P0`, `H0.4`/`H0.5`, relevant `C0.5`; no blanket compatibility claim |
 
