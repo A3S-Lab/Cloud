@@ -313,6 +313,7 @@ pub(super) struct CompleteStepOutput {
     pub status: BuildRunStatus,
     pub output: Option<ValidatedOciBuildOutput>,
     pub published_artifact: Option<PublishedOciArtifact>,
+    pub published_output: Option<BuildArtifact>,
     pub failure: Option<String>,
     pub finished_at: DateTime<Utc>,
 }

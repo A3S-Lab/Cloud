@@ -114,18 +114,25 @@ pub(super) fn evidence_for(
         ],
     };
     let sbom_digest = sha256_digest(&canonical_json(&sbom)?);
+    let mut provenance_subjects = vec![
+        InTotoSubject {
+            name: artifact.uri.clone(),
+            digest: BTreeMap::from([("sha256".into(), artifact_digest.into())]),
+        },
+        InTotoSubject {
+            name: sbom.document_namespace.clone(),
+            digest: BTreeMap::from([("sha256".into(), digest_hex(&sbom_digest)?.into())]),
+        },
+    ];
+    if let Some(output) = &build.published_output {
+        provenance_subjects.push(InTotoSubject {
+            name: output.uri.clone(),
+            digest: BTreeMap::from([("sha256".into(), digest_hex(&output.digest)?.into())]),
+        });
+    }
     let provenance = SlsaProvenanceStatement {
         statement_type: IN_TOTO_STATEMENT_TYPE.into(),
-        subject: vec![
-            InTotoSubject {
-                name: artifact.uri.clone(),
-                digest: BTreeMap::from([("sha256".into(), artifact_digest.into())]),
-            },
-            InTotoSubject {
-                name: sbom.document_namespace.clone(),
-                digest: BTreeMap::from([("sha256".into(), digest_hex(&sbom_digest)?.into())]),
-            },
-        ],
+        subject: provenance_subjects,
         predicate_type: SLSA_PROVENANCE_PREDICATE_TYPE.into(),
         predicate: SlsaProvenancePredicate {
             build_definition: SlsaBuildDefinition {
@@ -145,6 +152,7 @@ pub(super) fn evidence_for(
                     subject: BuildEvidenceSubject::from_build_subject(build.subject),
                     attempt: build.attempt,
                     build_request_digest: build_request_digest.clone(),
+                    published_output: build.published_output.clone(),
                 },
                 resolved_dependencies: vec![SlsaResourceDescriptor {
                     uri: repository.clone(),

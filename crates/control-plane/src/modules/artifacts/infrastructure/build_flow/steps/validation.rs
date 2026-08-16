@@ -177,6 +177,7 @@ pub(super) async fn complete(
         status: build.status,
         output: build.output,
         published_artifact: build.published_artifact,
+        published_output: build.published_output,
         failure: build.failure,
         finished_at: build
             .finished_at

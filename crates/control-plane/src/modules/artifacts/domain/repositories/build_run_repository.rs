@@ -178,6 +178,11 @@ pub(crate) fn validate_build_run_transition(
                 candidate.record_published_artifact(artifact.clone(), at)
             })
         })
+        || next.published_output.as_ref().is_some_and(|output| {
+            matches_transition(existing, next, |candidate| {
+                candidate.record_published_output(output.clone(), at)
+            })
+        })
         || matches_transition(existing, next, |candidate| candidate.begin_attestation(at))
         || next.evidence.as_ref().is_some_and(|evidence| {
             matches_transition(existing, next, |candidate| {

@@ -1,4 +1,4 @@
-use super::build_artifact::validate_sha256;
+use super::build_artifact::{validate_sha256, BuildArtifact};
 use super::oci_publication::PublishedOciArtifact;
 use super::BuildSubject;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest as digest};
@@ -245,6 +245,24 @@ impl BuildEvidence {
     fn validate_provenance_binding(&self) -> Result<(), String> {
         let artifact_digest = digest_hex(&self.artifact.digest)?;
         let sbom_digest = digest_hex(&self.sbom_digest)?;
+        let internal = &self
+            .provenance
+            .predicate
+            .build_definition
+            .internal_parameters;
+        let output_subject_is_exact = match &internal.published_output {
+            Some(output) => {
+                self.provenance.subject.len() == 3
+                    && self.provenance.subject.iter().any(|subject| {
+                        subject.matches(
+                            &output.uri,
+                            "sha256",
+                            output.digest.trim_start_matches("sha256:"),
+                        )
+                    })
+            }
+            None => self.provenance.subject.len() == 2,
+        };
         if !self
             .provenance
             .subject
@@ -253,6 +271,7 @@ impl BuildEvidence {
             || !self.provenance.subject.iter().any(|subject| {
                 subject.matches(&self.sbom.document_namespace, "sha256", sbom_digest)
             })
+            || !output_subject_is_exact
         {
             return Err(
                 "build evidence provenance subjects are not artifact and SBOM bound".into(),
@@ -583,9 +602,15 @@ pub struct SlsaProvenanceStatement {
 
 impl SlsaProvenanceStatement {
     pub fn validate(&self) -> Result<(), String> {
+        let unique_subject_names = self
+            .subject
+            .iter()
+            .map(|subject| subject.name.as_str())
+            .collect::<BTreeSet<_>>();
         if self.statement_type != IN_TOTO_STATEMENT_TYPE
             || self.predicate_type != SLSA_PROVENANCE_PREDICATE_TYPE
-            || self.subject.len() != 2
+            || !(2..=3).contains(&self.subject.len())
+            || unique_subject_names.len() != self.subject.len()
             || self
                 .subject
                 .iter()
@@ -617,7 +642,7 @@ impl InTotoSubject {
         Ok(())
     }
 
-    fn matches(&self, name: &str, algorithm: &str, digest: &str) -> bool {
+    pub(super) fn matches(&self, name: &str, algorithm: &str, digest: &str) -> bool {
         self.name == name
             && self
                 .digest
@@ -670,6 +695,9 @@ impl SlsaBuildDefinition {
             &self.internal_parameters.build_request_digest,
             "SLSA Box build request digest",
         )?;
+        if let Some(output) = &self.internal_parameters.published_output {
+            output.validate()?;
+        }
         self.internal_parameters.subject.validate()?;
         if let Some(manifest_digest) = &self.external_parameters.manifest_digest {
             validate_sha256(manifest_digest, "SLSA Asset manifest digest")?;
@@ -710,6 +738,8 @@ pub struct SlsaInternalParameters {
     pub subject: BuildEvidenceSubject,
     pub attempt: u32,
     pub build_request_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published_output: Option<BuildArtifact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

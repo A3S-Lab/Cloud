@@ -16,7 +16,8 @@ mod tests;
 
 pub use artifact::{
     artifact_uri, validate_cloud_artifact, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
-    NodeArtifactUploadRequest, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
+    NodeArtifactUploadRequest, DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    SKILL_BUNDLE_MEDIA_TYPE,
 };
 pub use box_build::{
     NodeBoxBuildCacheInput, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,

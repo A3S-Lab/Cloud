@@ -1,9 +1,8 @@
 use super::*;
-use crate::modules::artifacts::BuildRun;
 use crate::modules::search::{SearchResourceKind, SearchResult};
 use crate::modules::shared_kernel::domain::{
-    OntologyId, OntologyRevisionId, OrganizationId, Sha256Digest, SourceRevisionId,
-    WorkflowDefinitionId, WorkflowRevisionId,
+    OntologyId, OntologyRevisionId, OrganizationId, Sha256Digest, WorkflowDefinitionId,
+    WorkflowRevisionId,
 };
 use crate::modules::workflow::{WorkflowGoalContract, WorkflowGoalSpec};
 use a3s_use_extension::{
@@ -2676,15 +2675,22 @@ async fn management_mcp_reuses_the_durable_cell_application_projection_lifecycle
         &environment,
         "environment",
     )?);
-    let build = BuildRun::reserve(
+    let build_run_id = super::durable_cell_tests::seed_cell_build(
+        builds.as_ref(),
         organization_id,
         project_id,
         environment_id,
-        SourceRevisionId::new(),
-        Utc::now(),
-    );
-    let build_run_id = build.id;
-    builds.seed_build(build).await;
+        'a',
+    )
+    .await?;
+    let revised_build_run_id = super::durable_cell_tests::seed_cell_build(
+        builds.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        'b',
+    )
+    .await?;
     let access_key = super::durable_cell_tests::store_cell_secret(
         secrets.as_ref(),
         organization_id,
@@ -2834,7 +2840,7 @@ async fn management_mcp_reuses_the_durable_cell_application_projection_lifecycle
     }
 
     let revised_definition =
-        super::durable_cell_tests::application_definition(build_run_id, &profile, 'b')?;
+        super::durable_cell_tests::application_definition(revised_build_run_id, &profile, 'b')?;
     let revised = app
         .call(mcp_request(
             Some(ADMIN_TOKEN),

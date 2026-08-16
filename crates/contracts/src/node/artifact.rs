@@ -6,6 +6,7 @@ use super::{validate_lower_sha256, validate_single_line, validate_uuid};
 
 pub const NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.a3s.directory.v1+tar";
 pub const SKILL_BUNDLE_MEDIA_TYPE: &str = "application/vnd.a3s.skill.bundle.v1+tar";
+pub const DURABLE_CELL_BUNDLE_MEDIA_TYPE: &str = "application/vnd.a3s.durable-cell.bundle.v1+tar";
 const ARTIFACT_URI_PREFIX: &str = "a3s-cloud-artifact://sha256/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,7 +201,9 @@ fn validate_supported_media_type(value: &str) -> Result<(), String> {
     validate_single_line("artifact media type", value, 255)?;
     if !matches!(
         value,
-        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE | SKILL_BUNDLE_MEDIA_TYPE
+        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
+            | SKILL_BUNDLE_MEDIA_TYPE
+            | DURABLE_CELL_BUNDLE_MEDIA_TYPE
     ) {
         return Err("node artifact transport does not support this media type".into());
     }
@@ -327,6 +330,32 @@ mod tests {
             "skill-output",
             digest('a'),
             SKILL_BUNDLE_MEDIA_TYPE,
+            1,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn durable_cell_bundles_are_mountable_inputs_but_never_runtime_outputs() {
+        let mut bundle = artifact('a');
+        bundle.media_type = DURABLE_CELL_BUNDLE_MEDIA_TYPE.into();
+        let request = NodeArtifactDownloadRequest::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            digest('b'),
+            "durable-cell-bundle",
+            &bundle,
+        )
+        .expect("Durable Cell bundle download");
+        request.validate().expect("mountable Durable Cell bundle");
+
+        assert!(NodeArtifactUploadRequest::new(
+            Uuid::now_v7(),
+            Uuid::now_v7(),
+            digest('b'),
+            "durable-cell-output",
+            digest('a'),
+            DURABLE_CELL_BUNDLE_MEDIA_TYPE,
             1,
         )
         .is_err());

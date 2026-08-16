@@ -3,7 +3,7 @@ use crate::build_evidence_support::evidence_for;
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
     NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::modules::artifacts::application::{
     BuildRunReconciler, BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION,
@@ -297,6 +297,35 @@ pub async fn exercise_build_run_persistence(
         publishing.updated_at + Duration::milliseconds(1),
     )?;
     let published = builds.save(published, publishing.aggregate_version).await?;
+    let bundle_digest = format!("sha256:{}", "f".repeat(64));
+    let bundle = BuildArtifact::new(
+        artifact_uri(&bundle_digest)?,
+        bundle_digest,
+        DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+        4_096,
+    )?;
+    let mut with_output = published.clone();
+    with_output.record_published_output(
+        bundle.clone(),
+        published.updated_at + Duration::milliseconds(1),
+    )?;
+    let published = builds
+        .save(with_output, published.aggregate_version)
+        .await?;
+    assert_eq!(published.published_output.as_ref(), Some(&bundle));
+    assert_eq!(
+        database
+            .fetch_one_as(
+                sql_query::<serde_json::Value>(
+                    "select published_output from build_runs where organization_id = ",
+                )
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(build_id.as_uuid()),
+            )
+            .await?,
+        serde_json::to_value(&bundle)?
+    );
     let published = Box::pin(attest_and_complete_published_build(
         &builds,
         executor,
@@ -1466,7 +1495,7 @@ async fn attest_and_complete_published_build(
         .ok_or_else(|| "succeeded build omitted its published artifact".into())
 }
 
-fn build_artifact(
+pub(super) fn build_artifact(
     digest_character: char,
     size_bytes: u64,
 ) -> Result<BuildArtifact, Box<dyn std::error::Error>> {
@@ -1479,7 +1508,7 @@ fn build_artifact(
     )?)
 }
 
-fn box_output(
+pub(super) fn box_output(
     output: &BuildArtifact,
     source: &BuildArtifact,
 ) -> Result<NodeBoxBuildOutput, Box<dyn std::error::Error>> {

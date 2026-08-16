@@ -1013,6 +1013,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/117_durable_cell_deployments.sql"
             )),
         ),
+        Migration::new(
+            "118",
+            "typed BuildRun published outputs",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/118_typed_build_outputs.sql"
+            )),
+        ),
     ]
 }
 
@@ -1813,6 +1821,48 @@ mod durable_cell_deployment_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 117 added another lifecycle authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod typed_build_output_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/118_typed_build_outputs.sql"
+    ));
+
+    #[test]
+    fn migration_118_extends_the_existing_build_authority_only() {
+        for expected in [
+            "add column published_output jsonb",
+            "application/vnd.a3s.durable-cell.bundle.v1+tar",
+            "a3s-cloud-artifact://sha256/",
+            "published_output - array['uri', 'digest', 'mediaType', 'sizeBytes']",
+            "published_output ->> 'digest' <> published_artifact ->> 'digest'",
+            "jsonb_array_length(evidence #> '{provenance,subject}') = 3",
+            "internalParameters,publishedOutput}'",
+            "not an OCI manifest alias or a Durable Cells lifecycle authority",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 118 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table",
+            "create index",
+            "bundle_cache",
+            "bundle_publisher",
+            "bundle_downloader",
+            "durable_cell_build",
+            "jsonb_object_length",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 118 added another build, artifact, or Durable Cells authority: {forbidden}"
             );
         }
     }

@@ -10,7 +10,8 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::sources::domain::BuildPlatform;
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
-    NodeBoxBuildOutput, NodeBoxBuildPlatform, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use base64::engine::general_purpose::STANDARD;
@@ -246,6 +247,116 @@ fn build_run_records_a_completed_publication_across_cancellation() {
         .begin_cleanup(NodeCommandId::new(), now + Duration::milliseconds(10))
         .is_err());
     BuildRun::restore(build).expect("restore cancelling published build");
+}
+
+#[test]
+fn build_run_publishes_one_distinct_typed_output_bound_to_signed_provenance() {
+    let now = Utc::now();
+    let mut build = publishing_build(now);
+    let target = build
+        .publication_target
+        .clone()
+        .expect("publication target");
+    let bundle_digest = format!("sha256:{}", "f".repeat(64));
+    let bundle = BuildArtifact::new(
+        artifact_uri(&bundle_digest).expect("bundle Artifact URI"),
+        bundle_digest,
+        DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+        4_096,
+    )
+    .expect("typed bundle");
+
+    assert!(build
+        .record_published_output(bundle.clone(), now + Duration::milliseconds(8))
+        .is_err());
+    build
+        .record_published_artifact(
+            PublishedOciArtifact::from_target(&target),
+            now + Duration::milliseconds(8),
+        )
+        .expect("published OCI artifact");
+    build
+        .record_published_output(bundle.clone(), now + Duration::milliseconds(9))
+        .expect("published typed output");
+    let published = build.clone();
+    build
+        .record_published_output(bundle.clone(), now + Duration::milliseconds(10))
+        .expect("published output replay");
+    assert_eq!(build, published);
+
+    let mut replacement = bundle.clone();
+    replacement.size_bytes += 1;
+    assert!(build
+        .record_published_output(replacement, now + Duration::milliseconds(10))
+        .is_err());
+    build
+        .begin_attestation(now + Duration::milliseconds(10))
+        .expect("begin attestation");
+    let evidence = evidence_for(&build, now + Duration::milliseconds(11));
+    assert_eq!(evidence.provenance.subject.len(), 3);
+    assert!(evidence.provenance.subject.iter().any(|subject| {
+        subject.name == bundle.uri
+            && subject.digest.get("sha256")
+                == Some(&bundle.digest.trim_start_matches("sha256:").to_owned())
+    }));
+    assert_eq!(
+        evidence
+            .provenance
+            .predicate
+            .build_definition
+            .internal_parameters
+            .published_output
+            .as_ref(),
+        Some(&bundle)
+    );
+    let mut changed_descriptor = build.clone();
+    changed_descriptor
+        .published_output
+        .as_mut()
+        .expect("published output")
+        .size_bytes += 1;
+    assert!(changed_descriptor
+        .record_evidence(evidence.clone(), now + Duration::milliseconds(11))
+        .is_err());
+    build
+        .record_evidence(evidence, now + Duration::milliseconds(11))
+        .expect("record bundle-bound evidence");
+    build
+        .begin_cleanup(NodeCommandId::new(), now + Duration::milliseconds(12))
+        .expect("begin cleanup");
+    build
+        .complete(now + Duration::milliseconds(13))
+        .expect("complete build");
+    assert_eq!(build.status, BuildRunStatus::Succeeded);
+    assert_eq!(build.published_output, Some(bundle));
+    BuildRun::restore(build).expect("restore bundle-producing build");
+}
+
+#[test]
+fn build_run_rejects_an_oci_manifest_alias_as_a_typed_output() {
+    let now = Utc::now();
+    let mut build = publishing_build(now);
+    let target = build
+        .publication_target
+        .clone()
+        .expect("publication target");
+    let published = PublishedOciArtifact::from_target(&target);
+    build
+        .record_published_artifact(published.clone(), now + Duration::milliseconds(8))
+        .expect("published OCI artifact");
+    let aliased = BuildArtifact::new(
+        artifact_uri(&published.digest).expect("alias Artifact URI"),
+        published.digest,
+        DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+        4_096,
+    )
+    .expect("syntactically valid alias");
+    assert_eq!(
+        build
+            .record_published_output(aliased, now + Duration::milliseconds(9))
+            .expect_err("OCI alias must fail closed"),
+        "published build output cannot reuse the OCI manifest digest"
+    );
 }
 
 #[test]

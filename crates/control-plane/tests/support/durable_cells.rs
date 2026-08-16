@@ -1,6 +1,11 @@
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use a3s_cloud_control_plane::modules::artifacts::{BuildRun, PostgresBuildRunRepository};
+use a3s_cloud_contracts::{artifact_uri, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
+use a3s_cloud_control_plane::modules::artifacts::{
+    BuildArtifact, BuildRun, BuildRunFinalization, IBuildRunRepository, OciDescriptor,
+    OciPublicationTarget, PostgresBuildRunRepository, PublishedOciArtifact,
+    ValidatedOciBuildOutput,
+};
 use a3s_cloud_control_plane::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
     ObjectNamespaceRetentionPolicy, ObjectNamespaceRetentionPolicySpec,
@@ -27,6 +32,7 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
 use a3s_cloud_control_plane::modules::durable_cells::{
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -38,9 +44,11 @@ use a3s_cloud_control_plane::modules::secrets::{
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
-    IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
-    SecretId, SecretVersionReference, Sha256Digest, SourceRevisionId, StorageNamespaceId,
+    IdempotencyRequest, NodeCommandId, NodeId, OrganizationId, PrincipalId, ProjectId,
+    RepositoryError, ResourceName, SecretId, SecretVersionReference, Sha256Digest,
+    SourceRevisionId, StorageNamespaceId,
 };
+use a3s_cloud_control_plane::modules::sources::domain::BuildPlatform;
 use a3s_cloud_control_plane::modules::workloads::{
     HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadRepository, OciArtifact,
     PostgresWorkloadRepository, ReplicaRetirementCompletion, SecretBinding, SecretBindingTarget,
@@ -138,8 +146,9 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         created_at,
     } = seed_durable_cell_tenant(&database).await?;
 
-    let initial_build_run_id = insert_queued_build_run(
+    let initial_build_run_id = insert_typed_build_run(
         &database,
+        &executor,
         organization_id,
         project_id,
         environment_id,
@@ -147,8 +156,9 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         created_at,
     )
     .await?;
-    let successor_build_run_id = insert_queued_build_run(
+    let successor_build_run_id = insert_typed_build_run(
         &database,
+        &executor,
         organization_id,
         project_id,
         environment_id,
@@ -459,8 +469,9 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         .await?;
     assert_eq!(deployment_evidence, (1, 1, 1));
 
-    let cqrs_initial_build_run_id = insert_queued_build_run(
+    let cqrs_initial_build_run_id = insert_typed_build_run(
         &database,
+        &executor,
         organization_id,
         project_id,
         environment_id,
@@ -468,8 +479,9 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         created_at + Duration::milliseconds(2),
     )
     .await?;
-    let cqrs_successor_build_run_id = insert_queued_build_run(
+    let cqrs_successor_build_run_id = insert_typed_build_run(
         &database,
+        &executor,
         organization_id,
         project_id,
         environment_id,
@@ -718,12 +730,13 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
     let database = Database::new(PostgresDialect, executor.clone());
     let tenant = seed_durable_cell_tenant(&database).await?;
     let profile = DurableCellServiceProfile::parse_acl(DURABLE_CELL_SERVICE_PROFILE_ACL)?;
-    let build_run_id = insert_queued_build_run(
+    let build_run_id = insert_typed_build_run(
         &database,
+        &executor,
         tenant.organization_id,
         tenant.project_id,
         tenant.environment_id,
-        'e',
+        '6',
         tenant.created_at,
     )
     .await?;
@@ -734,7 +747,7 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
         tenant.environment_id,
         application_id,
         DurableCellApplicationRevisionId::new(),
-        definition_with_service_profile(build_run_id, 'e', 1, profile.digest().clone())?,
+        definition_with_service_profile(build_run_id, '6', 1, profile.digest().clone())?,
         tenant.actor,
         tenant.created_at + Duration::seconds(1),
     )?;
@@ -1610,8 +1623,9 @@ async fn seed_durable_cell_tenant(
     Ok(fixture)
 }
 
-async fn insert_queued_build_run(
+async fn insert_typed_build_run(
     database: &Database<PostgresDialect, PostgresExecutor>,
+    executor: &PostgresExecutor,
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
@@ -1687,6 +1701,181 @@ async fn insert_queued_build_run(
                 .append(")"),
         )
         .await?;
+
+    let node_id = NodeId::new();
+    let apply_command_id = NodeCommandId::new();
+    let cleanup_command_id = NodeCommandId::new();
+    let capabilities = NodeCapabilities::new(
+        "durable-cell-build-runtime",
+        "durable-cell-build-runtime-1",
+        serde_json::json!({}),
+    )?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(node_id.as_uuid())
+            .append(", ")
+            .bind(format!("Durable Cell build {}", build.id))
+            .append(", ")
+            .bind(format!("durable-cell-build-{}", build.id))
+            .append(", 'ready', ")
+            .bind(Uuid::now_v7())
+            .append(", 'test', 'durable-cell-build-runtime', 'durable-cell-build-runtime-1', ")
+            .bind(capabilities.digest())
+            .append(", ")
+            .bind(capabilities.document().clone())
+            .append(", ")
+            .bind(build.requested_at)
+            .append(", ")
+            .bind(build.requested_at)
+            .append(", 2, 1)"),
+        )
+        .await?;
+    for (command_id, sequence, kind) in [
+        (apply_command_id, 1_i64, "box_build_start"),
+        (cleanup_command_id, 2_i64, "box_build_remove"),
+    ] {
+        database
+            .execute(
+                sql_query::<()>(
+                    "insert into node_commands (id, node_id, sequence, aggregate_id, generation, command_kind, payload_schema, payload_digest, payload, issued_at, not_after, correlation_id) values (",
+                )
+                .bind(command_id.as_uuid())
+                .append(", ")
+                .bind(node_id.as_uuid())
+                .append(", ")
+                .bind(sequence)
+                .append(", ")
+                .bind(build.id.as_uuid())
+                .append(", 1, ")
+                .bind(kind)
+                .append(", 'test.command.v1', ")
+                .bind(format!("sha256:{}", "9".repeat(64)))
+                .append(", ")
+                .bind(serde_json::json!({}))
+                .append(", ")
+                .bind(build.requested_at)
+                .append(", ")
+                .bind(build.requested_at + Duration::minutes(1))
+                .append(", ")
+                .bind(build.id.as_uuid())
+                .append(")"),
+            )
+            .await?;
+    }
+
+    let builds = PostgresBuildRunRepository::new(executor.clone());
+    let mut build = builds.find(organization_id, build.id).await?;
+    let mut at = build.updated_at;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_preparation(at)?;
+    let mut build = builds.save(build, expected).await?;
+
+    let input = super::build_runs_support::build_artifact('7', 1_024)?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_input(format!("sha256:{}", "2".repeat(64)), input.clone(), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.schedule(node_id, format!("sha256:{}", "3".repeat(64)), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.dispatch(apply_command_id, at)?;
+    build = builds.save(build, expected).await?;
+
+    let runtime_output = super::build_runs_support::build_artifact('8', 8_192)?;
+    let box_output = super::build_runs_support::box_output(&runtime_output, &input)?;
+    let descriptor = OciDescriptor::new(
+        box_output.descriptor.media_type.clone(),
+        box_output.descriptor.digest.clone(),
+        box_output.descriptor.size,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_validation(box_output, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_validated_output(
+        ValidatedOciBuildOutput {
+            artifact: runtime_output,
+            descriptor: descriptor.clone(),
+            platforms: vec![BuildPlatform::parse("linux/amd64")?],
+            content_bytes: 2_048,
+            blob_count: 3,
+        },
+        at,
+    )?;
+    build = builds.save(build, expected).await?;
+
+    let target = OciPublicationTarget::new(
+        "registry.example.test",
+        format!("a3s/durable-cell-builds/{}", build.id),
+        descriptor,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_publication(target.clone(), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_published_artifact(PublishedOciArtifact::from_target(&target), at)?;
+    build = builds.save(build, expected).await?;
+
+    let bundle_digest = format!("sha256:{}", marker_text.repeat(64));
+    let bundle = BuildArtifact::new(
+        artifact_uri(&bundle_digest)?,
+        bundle_digest,
+        DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+        1_024,
+    )?;
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.record_published_output(bundle.clone(), at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_attestation(at)?;
+    build = builds.save(build, expected).await?;
+
+    at += Duration::milliseconds(1);
+    let evidence = crate::build_evidence_support::evidence_for(
+        &build,
+        at,
+        &format!("https://github.com/a3s-lab/cell-fixture-{marker}"),
+        &marker_text.repeat(40),
+        None,
+    )?;
+    let expected = build.aggregate_version;
+    build.record_evidence(evidence, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.begin_cleanup(cleanup_command_id, at)?;
+    build = builds.save(build, expected).await?;
+
+    let expected = build.aggregate_version;
+    at += Duration::milliseconds(1);
+    build.complete(at)?;
+    let BuildRunFinalization::Completed(build) = builds.finalize(build, expected).await? else {
+        return Err("Durable Cell BuildRun finalization was unexpectedly rejected".into());
+    };
+    if build.published_output.as_ref() != Some(&bundle) {
+        return Err("Durable Cell BuildRun lost its typed bundle output".into());
+    }
     Ok(build.id)
 }
 

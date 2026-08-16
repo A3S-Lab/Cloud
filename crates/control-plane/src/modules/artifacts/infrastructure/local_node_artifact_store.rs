@@ -275,7 +275,8 @@ fn map_object_error(error: ImmutableObjectError) -> NodeArtifactStoreError {
 mod tests {
     use super::*;
     use a3s_cloud_contracts::{
-        artifact_uri, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
+        artifact_uri, DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+        SKILL_BUNDLE_MEDIA_TYPE,
     };
     use sha2::{Digest, Sha256};
     use std::io::Cursor;
@@ -369,6 +370,42 @@ mod tests {
             .read_to_end(&mut actual)
             .await
             .expect("read Skill bundle");
+        assert_eq!(actual, bytes);
+        assert_eq!(opened.descriptor, descriptor);
+    }
+
+    #[tokio::test]
+    async fn durable_cell_bundle_reuses_the_same_exact_artifact_store() {
+        let directory = tempfile::tempdir().expect("artifact directory");
+        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let bytes = b"deterministic Durable Cell bundle tar";
+        let descriptor = descriptor_with_media_type(bytes, DURABLE_CELL_BUNDLE_MEDIA_TYPE);
+
+        assert!(
+            !store
+                .put(&descriptor, reader(bytes))
+                .await
+                .expect("first Durable Cell bundle write")
+                .replayed
+        );
+        assert!(
+            store
+                .put(&descriptor, reader(bytes))
+                .await
+                .expect("replayed Durable Cell bundle write")
+                .replayed
+        );
+
+        let mut opened = store
+            .open(&descriptor.artifact)
+            .await
+            .expect("open Durable Cell bundle");
+        let mut actual = Vec::new();
+        opened
+            .reader
+            .read_to_end(&mut actual)
+            .await
+            .expect("read Durable Cell bundle");
         assert_eq!(actual, bytes);
         assert_eq!(opened.descriptor, descriptor);
     }

@@ -611,7 +611,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (117, "117".into()));
+    assert_eq!(migration_state, (118, "118".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1518,6 +1518,30 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         ))
         .await?;
     assert_eq!(evidence_column, ("jsonb".into(), "YES".into(), None));
+    let published_output_column = database
+        .fetch_one_as(sql_query::<(String, String, Option<String>)>(
+            "select data_type, is_nullable, column_default from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name = 'published_output'",
+        ))
+        .await?;
+    assert_eq!(
+        published_output_column,
+        ("jsonb".into(), "YES".into(), None)
+    );
+    let published_output_constraints = database
+        .fetch_all_as(sql_query::<(String, String)>(
+            "select conname, pg_get_constraintdef(oid) from pg_constraint where conrelid = 'build_runs'::regclass and conname in ('build_runs_published_output_check', 'build_runs_published_output_evidence_check') order by conname",
+        ))
+        .await?;
+    assert_eq!(published_output_constraints.rows.len(), 2);
+    let published_output_contract = published_output_constraints
+        .rows
+        .iter()
+        .map(|(_, definition)| definition.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(published_output_contract.contains("application/vnd.a3s.durable-cell.bundle.v1+tar"));
+    assert!(published_output_contract.contains("a3s-cloud-artifact://sha256/"));
+    assert!(published_output_contract.contains("jsonb_array_length"));
     let retired_build_columns = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'build_runs' and column_name in ('runtime_spec_digest', 'runtime_output_artifact', 'cache_required', 'cache')",

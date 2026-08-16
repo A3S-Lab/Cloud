@@ -28,7 +28,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_BUILDS: &str = "select b.organization_id, b.subject_kind, b.project_id, b.environment_id, b.source_revision_id, b.asset_id, b.asset_release_id, b.id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.build_request_digest, b.box_build_output, b.output, b.publication_target, b.published_artifact, b.evidence_required, b.evidence, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
+const SELECT_BUILDS: &str = "select b.organization_id, b.subject_kind, b.project_id, b.environment_id, b.source_revision_id, b.asset_id, b.asset_release_id, b.id, b.attempt, b.retry_of_build_run_id, b.operation_id, b.status, b.source_content_digest, b.input_artifact, b.node_id, b.command_id, b.cleanup_command_id, b.build_request_digest, b.box_build_output, b.output, b.publication_target, b.published_artifact, b.published_output, b.evidence_required, b.evidence, b.failure, b.aggregate_version, b.requested_at, b.updated_at, b.started_at, b.cancellation_requested_at, b.finished_at from build_runs b";
 
 type PendingRevisionRow = (Uuid, Uuid, Uuid, Uuid, DateTime<Utc>);
 type PendingAssetReleaseRow = (Uuid, Uuid, Uuid, DateTime<Utc>);
@@ -537,6 +537,7 @@ async fn persist_build(
     let output = json_value(build_run.output.as_ref())?;
     let publication_target = json_value(build_run.publication_target.as_ref())?;
     let published_artifact = json_value(build_run.published_artifact.as_ref())?;
+    let published_output = json_value(build_run.published_output.as_ref())?;
     let evidence = json_value(build_run.evidence.as_ref())?;
     let updated = execute(
         transaction,
@@ -562,6 +563,8 @@ async fn persist_build(
             .bind(publication_target)
             .append(", published_artifact = ")
             .bind(published_artifact)
+            .append(", published_output = ")
+            .bind(published_output)
             .append(", evidence_required = ")
             .bind(build_run.evidence_required)
             .append(", evidence = ")
@@ -730,6 +733,7 @@ struct BuildRunRow {
     output: Option<Value>,
     publication_target: Option<Value>,
     published_artifact: Option<Value>,
+    published_output: Option<Value>,
     evidence_required: bool,
     evidence: Option<Value>,
     failure: Option<String>,
@@ -766,15 +770,16 @@ impl FromRow for BuildRunRow {
             output: decode(row, 19)?,
             publication_target: decode(row, 20)?,
             published_artifact: decode(row, 21)?,
-            evidence_required: decode(row, 22)?,
-            evidence: decode(row, 23)?,
-            failure: decode(row, 24)?,
-            aggregate_version: decode(row, 25)?,
-            requested_at: decode(row, 26)?,
-            updated_at: decode(row, 27)?,
-            started_at: decode(row, 28)?,
-            cancellation_requested_at: decode(row, 29)?,
-            finished_at: decode(row, 30)?,
+            published_output: decode(row, 22)?,
+            evidence_required: decode(row, 23)?,
+            evidence: decode(row, 24)?,
+            failure: decode(row, 25)?,
+            aggregate_version: decode(row, 26)?,
+            requested_at: decode(row, 27)?,
+            updated_at: decode(row, 28)?,
+            started_at: decode(row, 29)?,
+            cancellation_requested_at: decode(row, 30)?,
+            finished_at: decode(row, 31)?,
         })
     }
 }
@@ -796,6 +801,7 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         decode_json::<OciPublicationTarget>(row.publication_target, "publication target")?;
     let published_artifact =
         decode_json::<PublishedOciArtifact>(row.published_artifact, "published artifact")?;
+    let published_output = decode_json::<BuildArtifact>(row.published_output, "published output")?;
     let evidence =
         decode_json::<BuildEvidence>(row.evidence, "supply-chain evidence")?.map(Box::new);
     let subject = match (
@@ -845,6 +851,7 @@ fn map_row(row: BuildRunRow) -> Result<BuildRun, RepositoryError> {
         output,
         publication_target,
         published_artifact,
+        published_output,
         evidence_required: row.evidence_required,
         evidence,
         failure: row.failure,

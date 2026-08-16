@@ -1,10 +1,13 @@
 use super::*;
-use crate::modules::artifacts::BuildRun;
+use crate::modules::artifacts::domain::test_support::{
+    succeeded_external_build_with_output, typed_build_output,
+};
 use crate::modules::data::ObjectNamespaceRetentionPolicySpec;
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
     DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellRollbackPolicy,
     DurableCellServiceProfile, DurableCellServiceProfileSpec, DurableCellStateSchema,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::secrets::domain::{CreateSecretWrite, Secret, SecretChanged};
 use crate::modules::shared_kernel::domain::{
@@ -67,15 +70,22 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
         OrganizationId::from_uuid(parse_cell_uuid(&organization, "organization")?);
     let project_id = ProjectId::from_uuid(parse_cell_uuid(&project, "project")?);
     let environment_id = EnvironmentId::from_uuid(parse_cell_uuid(&environment, "environment")?);
-    let build = BuildRun::reserve(
+    let build_run_id = seed_cell_build(
+        builds.as_ref(),
         organization_id,
         project_id,
         environment_id,
-        SourceRevisionId::new(),
-        Utc::now(),
-    );
-    let build_run_id = build.id;
-    builds.seed_build(build).await;
+        'a',
+    )
+    .await?;
+    let revised_build_run_id = seed_cell_build(
+        builds.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        'b',
+    )
+    .await?;
     let access_key = store_cell_secret(
         secrets.as_ref(),
         organization_id,
@@ -200,7 +210,7 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
     );
 
     let revisions_path = format!("{application_path}/revisions");
-    let revised_definition = application_definition(build_run_id, &profile, 'b')?;
+    let revised_definition = application_definition(revised_build_run_id, &profile, 'b')?;
     let revised = app
         .call(post_json_as(
             &revisions_path,
@@ -302,6 +312,30 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
         .await?;
     assert_eq!(unpinned.status(), 422);
     Ok(())
+}
+
+pub(super) async fn seed_cell_build(
+    builds: &InMemoryBuildRunRepository,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    marker: char,
+) -> Result<BuildRunId> {
+    let build = succeeded_external_build_with_output(
+        organization_id,
+        project_id,
+        environment_id,
+        SourceRevisionId::new(),
+        typed_build_output(
+            digest(marker)?.as_str(),
+            DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+            4096,
+        ),
+        Utc::now(),
+    );
+    let id = build.id;
+    builds.seed_build(build).await;
+    Ok(id)
 }
 
 pub(super) fn application_definition(

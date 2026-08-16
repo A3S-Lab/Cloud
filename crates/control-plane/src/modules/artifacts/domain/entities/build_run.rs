@@ -6,7 +6,10 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, NodeCommandId, NodeId,
     OperationId, OrganizationId, ProjectId, SourceRevisionId,
 };
-use a3s_cloud_contracts::NodeBoxBuildOutput;
+use a3s_cloud_contracts::{
+    validate_cloud_artifact, NodeBoxBuildOutput, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+use a3s_runtime::contract::ArtifactRef;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -96,6 +99,7 @@ pub struct BuildRun {
     pub output: Option<ValidatedOciBuildOutput>,
     pub publication_target: Option<OciPublicationTarget>,
     pub published_artifact: Option<PublishedOciArtifact>,
+    pub published_output: Option<BuildArtifact>,
     pub evidence_required: bool,
     pub evidence: Option<Box<BuildEvidence>>,
     pub failure: Option<String>,
@@ -231,6 +235,7 @@ impl BuildRun {
             output: None,
             publication_target: None,
             published_artifact: None,
+            published_output: None,
             evidence_required: true,
             evidence: None,
             failure: None,
@@ -278,6 +283,7 @@ impl BuildRun {
             output: None,
             publication_target: None,
             published_artifact: None,
+            published_output: None,
             evidence_required: true,
             evidence: None,
             failure: None,
@@ -489,6 +495,37 @@ impl BuildRun {
             return self.observe_time(at);
         }
         self.published_artifact = Some(artifact);
+        self.aggregate_version += 1;
+        self.updated_at = at;
+        Ok(())
+    }
+
+    pub fn record_published_output(
+        &mut self,
+        output: BuildArtifact,
+        at: DateTime<Utc>,
+    ) -> Result<(), String> {
+        validate_published_output(&output)?;
+        if !matches!(
+            self.status,
+            BuildRunStatus::Publishing | BuildRunStatus::Cancelling
+        ) {
+            return Err("published build output requires a publishing or cancelling build".into());
+        }
+        let published_artifact = self.published_artifact.as_ref().ok_or_else(|| {
+            "published build output requires the distinct published OCI artifact".to_owned()
+        })?;
+        if output.digest == published_artifact.digest {
+            return Err("published build output cannot reuse the OCI manifest digest".into());
+        }
+        let at = self.canonical_time(at)?;
+        if let Some(existing) = &self.published_output {
+            if existing != &output {
+                return Err("published build output cannot change".into());
+            }
+            return self.observe_time(at);
+        }
+        self.published_output = Some(output);
         self.aggregate_version += 1;
         self.updated_at = at;
         Ok(())
@@ -759,6 +796,15 @@ impl BuildRun {
                 return Err("stored published OCI artifact is missing its target".into())
             }
         }
+        if let Some(output) = &self.published_output {
+            validate_published_output(output)?;
+            let published_artifact = self.published_artifact.as_ref().ok_or_else(|| {
+                "stored published build output is missing its distinct OCI artifact".to_owned()
+            })?;
+            if output.digest == published_artifact.digest {
+                return Err("stored published build output reused the OCI manifest digest".into());
+            }
+        }
         if let Some(reason) = &self.failure {
             validate_reason(reason)?;
         }
@@ -926,6 +972,19 @@ impl BuildRun {
     }
 
     fn validate_evidence_binding(&self, evidence: &BuildEvidence) -> Result<(), String> {
+        let output_subject_is_exact = match &self.published_output {
+            Some(output) => {
+                evidence.provenance.subject.len() == 3
+                    && evidence.provenance.subject.iter().any(|subject| {
+                        subject.matches(
+                            &output.uri,
+                            "sha256",
+                            output.digest.trim_start_matches("sha256:"),
+                        )
+                    })
+            }
+            None => evidence.provenance.subject.len() == 2,
+        };
         if !self.evidence_required
             || evidence.build_run_id != self.id
             || evidence.operation_id != self.operation_id
@@ -935,6 +994,15 @@ impl BuildRun {
                 != self.source_content_digest.as_deref()
             || Some(evidence.build_request_digest.as_str()) != self.build_request_digest.as_deref()
             || Some(&evidence.artifact) != self.published_artifact.as_ref()
+            || evidence
+                .provenance
+                .predicate
+                .build_definition
+                .internal_parameters
+                .published_output
+                .as_ref()
+                != self.published_output.as_ref()
+            || !output_subject_is_exact
             || self
                 .output
                 .as_ref()
@@ -979,6 +1047,20 @@ impl BuildRun {
         }
         Ok(at)
     }
+}
+
+fn validate_published_output(output: &BuildArtifact) -> Result<(), String> {
+    output.validate()?;
+    let artifact = ArtifactRef {
+        uri: output.uri.clone(),
+        digest: output.digest.clone(),
+        media_type: output.media_type.clone(),
+    };
+    validate_cloud_artifact(&artifact)?;
+    if output.media_type == NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
+        return Err("published build output requires a typed immutable bundle".into());
+    }
+    Ok(())
 }
 
 fn box_output_artifact(output: &NodeBoxBuildOutput) -> Result<BuildArtifact, String> {

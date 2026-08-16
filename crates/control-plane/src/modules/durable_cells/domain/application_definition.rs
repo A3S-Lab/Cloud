@@ -2,6 +2,7 @@ use super::DurableCellServiceProfile;
 use crate::modules::shared_kernel::domain::{BuildRunId, Sha256Digest};
 use a3s_acl::builder::{integer, list, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
+pub use a3s_cloud_contracts::DURABLE_CELL_BUNDLE_MEDIA_TYPE;
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -29,7 +30,6 @@ const CELL_CLASS_ATTRIBUTES: [&str; 3] = [
 ];
 
 pub const DURABLE_CELL_APPLICATION_SCHEMA: &str = "cloud.durable-cell.application.v1";
-pub const DURABLE_CELL_BUNDLE_MEDIA_TYPE: &str = "application/vnd.a3s.durable-cell.bundle.v1+tar";
 pub const DURABLE_CELL_APPLICATION_MAX_ACL_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

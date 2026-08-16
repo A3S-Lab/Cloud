@@ -1,10 +1,13 @@
 use super::*;
-use crate::modules::artifacts::domain::IBuildRunRepository;
+use crate::modules::artifacts::domain::test_support::{
+    succeeded_external_build_with_output, typed_build_output,
+};
+use crate::modules::artifacts::domain::{BuildArtifact, BuildRun};
 use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
     DurableCellApplicationDesiredState, DurableCellClassSpec, DurableCellRollbackPolicy,
-    DurableCellStateSchema,
+    DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::durable_cells::infrastructure::InMemoryDurableCellApplicationRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
@@ -21,6 +24,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
+use a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE;
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -55,28 +59,58 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     .expect("store environment");
 
     let builds = Arc::new(InMemoryBuildRunRepository::new());
-    let initial_build_run_id = reserve_build(
+    let initial_build_run_id = seed_successful_build(
         builds.as_ref(),
         organization_id,
         project_id,
         environment_id,
+        'a',
         now,
     )
     .await;
-    let successor_build_run_id = reserve_build(
+    let successor_build_run_id = seed_successful_build(
         builds.as_ref(),
         organization_id,
         project_id,
         environment_id,
+        'b',
         now + Duration::milliseconds(1),
     )
     .await;
-    let foreign_build_run_id = reserve_build(
+    let foreign_build_run_id = seed_successful_build(
         builds.as_ref(),
         organization_id,
         project_id,
         EnvironmentId::new(),
+        'c',
         now + Duration::milliseconds(2),
+    )
+    .await;
+    let queued = BuildRun::reserve(
+        organization_id,
+        project_id,
+        environment_id,
+        SourceRevisionId::new(),
+        now + Duration::milliseconds(3),
+    );
+    let queued_build_run_id = queued.id;
+    builds.seed_build(queued).await;
+    let wrong_media_build_run_id = seed_successful_build_as(
+        builds.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        typed_build_output(digest('4').as_str(), SKILL_BUNDLE_MEDIA_TYPE, 1024),
+        now + Duration::milliseconds(4),
+    )
+    .await;
+    let wrong_size_build_run_id = seed_successful_build_as(
+        builds.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        typed_build_output(digest('5').as_str(), DURABLE_CELL_BUNDLE_MEDIA_TYPE, 2048),
+        now + Duration::milliseconds(5),
     )
     .await;
 
@@ -148,6 +182,84 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         .await
         .expect("command framework");
     assert!(matches!(foreign_build, Err(ApplicationError::NotFound(_))));
+
+    let unfinished_build = create_handler
+        .execute(
+            CreateDurableCellApplication {
+                organization_id,
+                project_id,
+                environment_id,
+                name: "Unfinished build".into(),
+                definition_acl: definition(queued_build_run_id, 'd', 1),
+                actor_principal_id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                idempotency_key: "unfinished-build".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("command framework");
+    assert!(matches!(
+        unfinished_build,
+        Err(ApplicationError::Invalid(_))
+    ));
+
+    let mismatched_bundle = create_handler
+        .execute(
+            CreateDurableCellApplication {
+                organization_id,
+                project_id,
+                environment_id,
+                name: "Mismatched bundle".into(),
+                definition_acl: definition(initial_build_run_id, '9', 1),
+                actor_principal_id,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                idempotency_key: "mismatched-bundle".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("command framework");
+    assert!(matches!(
+        mismatched_bundle,
+        Err(ApplicationError::Invalid(_))
+    ));
+
+    for (name, build_run_id, marker, idempotency_key) in [
+        (
+            "Wrong bundle media",
+            wrong_media_build_run_id,
+            '4',
+            "wrong-bundle-media",
+        ),
+        (
+            "Wrong bundle size",
+            wrong_size_build_run_id,
+            '5',
+            "wrong-bundle-size",
+        ),
+    ] {
+        let rejected = create_handler
+            .execute(
+                CreateDurableCellApplication {
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    name: name.into(),
+                    definition_acl: definition(build_run_id, marker, 1),
+                    actor_principal_id,
+                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    idempotency_key: idempotency_key.into(),
+                    request_id: Uuid::now_v7(),
+                },
+                context(),
+            )
+            .await
+            .expect("command framework");
+        assert!(matches!(rejected, Err(ApplicationError::Invalid(_))));
+    }
 
     let revise_handler =
         ReviseDurableCellApplicationHandler::new(applications.clone(), builds.clone());
@@ -381,30 +493,48 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     );
 }
 
-async fn reserve_build(
+async fn seed_successful_build(
     builds: &InMemoryBuildRunRepository,
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    marker: char,
     accepted_at: chrono::DateTime<Utc>,
 ) -> BuildRunId {
-    builds
-        .add_source_revision(
-            organization_id,
-            project_id,
-            environment_id,
-            SourceRevisionId::new(),
-            accepted_at,
-        )
-        .await;
-    builds
-        .reserve_pending(1, accepted_at)
-        .await
-        .expect("reserve BuildRun")
-        .into_iter()
-        .next()
-        .expect("reserved BuildRun")
-        .id
+    seed_successful_build_as(
+        builds,
+        organization_id,
+        project_id,
+        environment_id,
+        typed_build_output(
+            digest(marker).as_str(),
+            DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+            1024,
+        ),
+        accepted_at,
+    )
+    .await
+}
+
+async fn seed_successful_build_as(
+    builds: &InMemoryBuildRunRepository,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    published_output: BuildArtifact,
+    accepted_at: chrono::DateTime<Utc>,
+) -> BuildRunId {
+    let build = succeeded_external_build_with_output(
+        organization_id,
+        project_id,
+        environment_id,
+        SourceRevisionId::new(),
+        published_output,
+        accepted_at,
+    );
+    let id = build.id;
+    builds.seed_build(build).await;
+    id
 }
 
 fn definition(build_run_id: BuildRunId, marker: char, write_version: u64) -> String {

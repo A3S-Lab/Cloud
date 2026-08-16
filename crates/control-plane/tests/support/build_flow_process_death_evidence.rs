@@ -161,6 +161,7 @@ impl IBuildEvidenceGenerator for PersistentEvidenceGenerator {
                         subject: BuildEvidenceSubject::from_build_subject(build.subject),
                         attempt: build.attempt,
                         build_request_digest: build_request_digest.clone(),
+                        published_output: build.published_output.clone(),
                     },
                     resolved_dependencies: vec![SlsaResourceDescriptor {
                         uri: source.repository.clone(),

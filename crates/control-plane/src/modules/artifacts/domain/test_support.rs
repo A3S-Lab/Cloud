@@ -10,7 +10,8 @@ use super::{
     SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, NodeCommandId, NodeId, OrganizationId,
+    canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId,
+    OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::domain::{BuildPlatform, BuildRecipe};
 use a3s_cloud_contracts::{
@@ -126,18 +127,25 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
         ],
     };
     let sbom_digest = sha256_digest(&canonical_json(&sbom).expect("canonical SPDX"));
+    let mut provenance_subjects = vec![
+        InTotoSubject {
+            name: artifact.uri.clone(),
+            digest: BTreeMap::from([("sha256".into(), artifact_digest.into())]),
+        },
+        InTotoSubject {
+            name: sbom.document_namespace.clone(),
+            digest: BTreeMap::from([("sha256".into(), digest_hex(&sbom_digest).into())]),
+        },
+    ];
+    if let Some(output) = &build.published_output {
+        provenance_subjects.push(InTotoSubject {
+            name: output.uri.clone(),
+            digest: BTreeMap::from([("sha256".into(), digest_hex(&output.digest).into())]),
+        });
+    }
     let provenance = SlsaProvenanceStatement {
         statement_type: IN_TOTO_STATEMENT_TYPE.into(),
-        subject: vec![
-            InTotoSubject {
-                name: artifact.uri.clone(),
-                digest: BTreeMap::from([("sha256".into(), artifact_digest.into())]),
-            },
-            InTotoSubject {
-                name: sbom.document_namespace.clone(),
-                digest: BTreeMap::from([("sha256".into(), digest_hex(&sbom_digest).into())]),
-            },
-        ],
+        subject: provenance_subjects,
         predicate_type: SLSA_PROVENANCE_PREDICATE_TYPE.into(),
         predicate: SlsaProvenancePredicate {
             build_definition: SlsaBuildDefinition {
@@ -157,6 +165,7 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
                     subject: BuildEvidenceSubject::from_build_subject(build.subject),
                     attempt: build.attempt,
                     build_request_digest: build_request_digest.clone(),
+                    published_output: build.published_output.clone(),
                 },
                 resolved_dependencies: vec![SlsaResourceDescriptor {
                     uri: repository.clone(),
@@ -339,6 +348,118 @@ pub(crate) fn succeeded_hosted_build(
         .complete(requested_at + Duration::milliseconds(12))
         .expect("complete hosted build");
     build
+}
+
+pub(crate) fn succeeded_external_build_with_output(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    source_revision_id: SourceRevisionId,
+    published_output: BuildArtifact,
+    requested_at: DateTime<Utc>,
+) -> BuildRun {
+    let mut build = BuildRun::reserve(
+        organization_id,
+        project_id,
+        environment_id,
+        source_revision_id,
+        requested_at,
+    );
+    build
+        .begin_preparation(requested_at + Duration::milliseconds(1))
+        .expect("begin external preparation");
+    let input = test_artifact('1', 1_024);
+    build
+        .record_input(
+            format!("sha256:{}", "2".repeat(64)),
+            input.clone(),
+            requested_at + Duration::milliseconds(2),
+        )
+        .expect("record external input");
+    build
+        .schedule(
+            NodeId::new(),
+            format!("sha256:{}", "3".repeat(64)),
+            requested_at + Duration::milliseconds(3),
+        )
+        .expect("schedule external build");
+    build
+        .dispatch(
+            NodeCommandId::new(),
+            requested_at + Duration::milliseconds(4),
+        )
+        .expect("dispatch external build");
+    let box_output = test_box_output(&input);
+    let output_artifact = BuildArtifact::new(
+        box_output.artifact.artifact.uri.clone(),
+        box_output.artifact.artifact.digest.clone(),
+        box_output.artifact.artifact.media_type.clone(),
+        box_output.artifact.size_bytes,
+    )
+    .expect("external output Artifact");
+    build
+        .begin_validation(box_output, requested_at + Duration::milliseconds(5))
+        .expect("begin external validation");
+    let output = ValidatedOciBuildOutput {
+        artifact: output_artifact,
+        descriptor: OciDescriptor::new(
+            "application/vnd.oci.image.manifest.v1+json",
+            format!("sha256:{}", "e".repeat(64)),
+            123,
+        )
+        .expect("external OCI descriptor"),
+        platforms: vec![BuildPlatform::parse("linux/amd64").expect("external platform")],
+        content_bytes: 456,
+        blob_count: 3,
+    };
+    build
+        .record_validated_output(output.clone(), requested_at + Duration::milliseconds(6))
+        .expect("record external output");
+    let target = OciPublicationTarget::new(
+        "registry.example",
+        format!("a3s-cloud/builds/{}", build.id),
+        output.descriptor,
+    )
+    .expect("external publication target");
+    build
+        .begin_publication(target.clone(), requested_at + Duration::milliseconds(7))
+        .expect("begin external publication");
+    build
+        .record_published_artifact(
+            PublishedOciArtifact::from_target(&target),
+            requested_at + Duration::milliseconds(8),
+        )
+        .expect("record external OCI publication");
+    build
+        .record_published_output(published_output, requested_at + Duration::milliseconds(9))
+        .expect("record typed build output");
+    build
+        .begin_attestation(requested_at + Duration::milliseconds(10))
+        .expect("begin external attestation");
+    let evidence = evidence_for(&build, requested_at + Duration::milliseconds(11));
+    build
+        .record_evidence(evidence, requested_at + Duration::milliseconds(11))
+        .expect("record external evidence");
+    build
+        .begin_cleanup(
+            NodeCommandId::new(),
+            requested_at + Duration::milliseconds(12),
+        )
+        .expect("begin external cleanup");
+    build
+        .complete(requested_at + Duration::milliseconds(13))
+        .expect("complete external build");
+    build
+}
+
+pub(crate) fn typed_build_output(digest: &str, media_type: &str, size_bytes: u64) -> BuildArtifact {
+    BuildArtifact::new(
+        artifact_uri(digest).expect("typed output Artifact URI"),
+        digest,
+        media_type,
+        size_bytes,
+    )
+    .expect("typed build output")
 }
 
 fn test_artifact(fill: char, size_bytes: u64) -> BuildArtifact {
