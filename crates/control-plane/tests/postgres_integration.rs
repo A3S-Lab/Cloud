@@ -191,6 +191,14 @@ async fn workflow_run_postgres_process_death_probe() {
         .expect("run WorkflowRun process-death probe");
 }
 
+#[tokio::test]
+#[ignore = "private subprocess used only by the Durable Cell projection process-death gate"]
+async fn durable_cell_projection_process_death_probe() {
+    durable_cells_support::run_durable_cell_projection_crash_probe()
+        .await
+        .expect("run Durable Cell projection process-death probe");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_build_flow_survives_process_death_at_every_fleet_completion_boundary() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -293,6 +301,19 @@ async fn postgres_durable_cell_authorities_are_atomic_replay_safe_and_immutable(
     )
     .await
     .expect("PostgreSQL Durable Cell application and deployment-correlation authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn postgres_durable_cell_projection_survives_process_death() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        durable_cells_support::exercise_durable_cell_projection_process_death,
+    )
+    .await
+    .expect("PostgreSQL Durable Cell projection process-death gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
