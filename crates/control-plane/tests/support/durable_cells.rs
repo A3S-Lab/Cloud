@@ -1,6 +1,6 @@
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use a3s_cloud_control_plane::modules::artifacts::PostgresBuildRunRepository;
+use a3s_cloud_control_plane::modules::artifacts::{BuildRun, PostgresBuildRunRepository};
 use a3s_cloud_control_plane::modules::durable_cells::application::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler, GetDurableCellApplication,
     GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
@@ -29,7 +29,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationErr
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
-    Sha256Digest,
+    Sha256Digest, SourceRevisionId,
 };
 use chrono::Duration;
 
@@ -698,7 +698,7 @@ async fn insert_queued_build_run(
     marker: char,
     accepted_at: chrono::DateTime<Utc>,
 ) -> Result<BuildRunId, Box<dyn std::error::Error>> {
-    let source_revision_id = Uuid::now_v7();
+    let source_revision_id = SourceRevisionId::new();
     let marker_text = marker.to_string();
     let recipe = serde_json::json!({
         "schema": "a3s.cloud.build-recipe.v1",
@@ -717,7 +717,7 @@ async fn insert_queued_build_run(
                 .append(", ")
                 .bind(environment_id.as_uuid())
                 .append(", ")
-                .bind(source_revision_id)
+                .bind(source_revision_id.as_uuid())
                 .append(", 'github', ")
                 .bind(format!("https://github.com/a3s-lab/cell-fixture-{marker}"))
                 .append(", ")
@@ -733,7 +733,13 @@ async fn insert_queued_build_run(
                 .append(")"),
         )
         .await?;
-    let build_run_id = BuildRunId::new();
+    let build = BuildRun::reserve(
+        organization_id,
+        project_id,
+        environment_id,
+        source_revision_id,
+        accepted_at,
+    );
     database
         .execute(
             sql_query::<()>("insert into build_runs (organization_id, subject_kind, project_id, environment_id, source_revision_id, id, attempt, retry_of_build_run_id, operation_id, status, evidence_required, aggregate_version, requested_at, updated_at) values (")
@@ -743,19 +749,25 @@ async fn insert_queued_build_run(
                 .append(", ")
                 .bind(environment_id.as_uuid())
                 .append(", ")
-                .bind(source_revision_id)
+                .bind(source_revision_id.as_uuid())
                 .append(", ")
-                .bind(build_run_id.as_uuid())
+                .bind(build.id.as_uuid())
                 .append(", 1, null, ")
-                .bind(build_run_id.as_uuid())
-                .append(", 'queued', true, 1, ")
-                .bind(accepted_at)
+                .bind(build.operation_id.as_uuid())
                 .append(", ")
-                .bind(accepted_at)
+                .bind(build.status.as_str())
+                .append(", ")
+                .bind(build.evidence_required)
+                .append(", ")
+                .bind(build.aggregate_version)
+                .append(", ")
+                .bind(build.requested_at)
+                .append(", ")
+                .bind(build.updated_at)
                 .append(")"),
         )
         .await?;
-    Ok(build_run_id)
+    Ok(build.id)
 }
 
 fn definition(
