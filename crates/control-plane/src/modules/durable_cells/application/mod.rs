@@ -1,5 +1,6 @@
 mod build_run_access;
 mod commands;
+mod deployment;
 mod queries;
 mod resource_access;
 mod result;
@@ -9,6 +10,10 @@ pub use commands::{
     ReviseDurableCellApplication, ReviseDurableCellApplicationHandler, StartDurableCellApplication,
     StartDurableCellApplicationHandler, StopDurableCellApplication,
     StopDurableCellApplicationHandler,
+};
+pub use deployment::{
+    DeployDurableCellApplication, DeployDurableCellApplicationHandler,
+    DurableCellDeploymentMutationResult,
 };
 pub use queries::{
     GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,

@@ -236,11 +236,16 @@ pub(super) async fn record_generation(
     }
     let (replica, member) =
         match control_in_transaction(transaction, workload.organization_id, workload.id).await? {
-            Some(control) => {
+            Some(mut control) => {
                 control.validate_against(workload).map_err(invariant)?;
-                control
-                    .require_authority(control_spec)
-                    .map_err(RepositoryError::Conflict)?;
+                let previous_control_version = control.aggregate_version;
+                if control
+                    .authorize_deployment(control_spec, revision.created_at)
+                    .map_err(RepositoryError::Conflict)?
+                {
+                    persist_control_authority(transaction, &control, previous_control_version)
+                        .await?;
+                }
                 let replica_id =
                     WorkloadReplica::deterministic_id(workload.id, 0).map_err(invariant)?;
                 let mut replica = replica_in_transaction(
@@ -848,6 +853,59 @@ async fn insert_control(
     )
     .await?;
     require_one_row("Workload control", rows)
+}
+
+async fn persist_control_authority(
+    transaction: &PostgresTransaction,
+    control: &WorkloadControl,
+    previous_version: u64,
+) -> Result<(), PostgresPersistenceError> {
+    let owner = control
+        .spec
+        .managed_owner
+        .as_ref()
+        .ok_or_else(|| invariant("managed Workload authority handoff omitted its owner"))?;
+    require_one_row(
+        "managed Workload authority",
+        execute(
+            transaction,
+            update_table::<WorkloadControls>()
+                .set(
+                    WorkloadControls::managed_owner_kind(),
+                    Some(owner.kind().as_str().to_owned()),
+                )
+                .set(WorkloadControls::managed_owner_id(), Some(owner.owner_id()))
+                .set(
+                    WorkloadControls::managed_owner_generation(),
+                    Some(owner.owner_generation()),
+                )
+                .set(
+                    WorkloadControls::managed_owner_spec_digest(),
+                    Some(owner.owner_spec_digest().to_owned()),
+                )
+                .set(
+                    WorkloadControls::placement_policy(),
+                    control
+                        .spec
+                        .placement_policy
+                        .document()
+                        .map_err(invariant)?,
+                )
+                .set(
+                    WorkloadControls::placement_policy_digest(),
+                    control.spec.placement_policy.digest(),
+                )
+                .set(
+                    WorkloadControls::aggregate_version(),
+                    control.aggregate_version,
+                )
+                .set(WorkloadControls::updated_at(), control.updated_at)
+                .filter(WorkloadControls::workload_id().eq(control.workload_id.as_uuid()))
+                .filter(WorkloadControls::organization_id().eq(control.organization_id.as_uuid()))
+                .filter(WorkloadControls::aggregate_version().eq(previous_version)),
+        )
+        .await?,
+    )
 }
 
 pub(super) async fn insert_replica(

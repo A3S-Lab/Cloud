@@ -136,6 +136,67 @@ fn managed_owner_and_effective_placement_are_closed_and_digest_bound() {
 }
 
 #[test]
+fn managed_workload_authority_advances_once_without_a_second_product_controller() {
+    let now = Utc::now();
+    let owner_id = uuid::Uuid::now_v7();
+    let owner = |generation: u64, marker: char| {
+        ManagedOwnerReference::new(
+            ManagedOwnerKind::parse("durable-cell.application").expect("owner kind"),
+            owner_id,
+            generation,
+            format!("sha256:{}", marker.to_string().repeat(64)),
+        )
+        .expect("owner")
+    };
+    let workload = Workload::create(
+        WorkloadId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("managed fixture").expect("name"),
+        now,
+    );
+    let initial =
+        WorkloadControlSpec::managed_replica_set(owner(3, 'a'), 1, 1).expect("initial control");
+    let mut control = WorkloadControl::create(&workload, initial).expect("control");
+    let next = WorkloadControlSpec::managed_replica_set(owner(4, 'b'), 2, 1).expect("next control");
+    assert!(control
+        .authorize_deployment(&next, now + Duration::milliseconds(1))
+        .expect("authority handoff"));
+    assert_eq!(control.aggregate_version, 2);
+    assert_eq!(control.spec, next);
+    assert!(!control
+        .authorize_deployment(&next, now + Duration::milliseconds(1))
+        .expect("exact replay"));
+
+    let skipped = WorkloadControlSpec::managed_replica_set(owner(6, 'c'), 3, 1)
+        .expect("skipped application revision control");
+    assert!(control
+        .authorize_deployment(&skipped, now + Duration::milliseconds(2))
+        .expect("undeployed owner revisions may be skipped"));
+    assert_eq!(control.aggregate_version, 3);
+    assert!(!control
+        .authorize_deployment(&skipped, now + Duration::milliseconds(2))
+        .expect("skipped revision replay"));
+
+    let stale =
+        WorkloadControlSpec::managed_replica_set(owner(5, 'd'), 4, 1).expect("stale control");
+    assert!(control
+        .authorize_deployment(&stale, now + Duration::milliseconds(3))
+        .is_err());
+    let changed_pool = WorkloadControlSpec::managed_replica_set_in_pool(
+        owner(7, 'e'),
+        4,
+        1,
+        Some(NodePoolId::new()),
+    )
+    .expect("changed pool");
+    assert!(control
+        .authorize_deployment(&changed_pool, now + Duration::milliseconds(3))
+        .is_err());
+}
+
+#[test]
 fn replica_set_policy_is_bounded_and_digest_bound() {
     let scale_to_zero = EffectivePlacementPolicy::replica_set(3, 0).expect("scale-to-zero policy");
     assert_eq!(scale_to_zero.generation(), 3);

@@ -283,7 +283,7 @@ async fn postgres_connector_profiles_are_exact_replay_safe_and_immutable() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn postgres_durable_cell_applications_are_atomic_replay_safe_and_immutable() {
+async fn postgres_durable_cell_authorities_are_atomic_replay_safe_and_immutable() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
     };
@@ -292,7 +292,7 @@ async fn postgres_durable_cell_applications_are_atomic_replay_safe_and_immutable
         durable_cells_support::exercise_durable_cell_application_persistence,
     )
     .await
-    .expect("PostgreSQL Durable Cell application authority gate");
+    .expect("PostgreSQL Durable Cell application and deployment-correlation authority gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -590,7 +590,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (116, "116".into()));
+    assert_eq!(migration_state, (117, "117".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1318,7 +1318,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 98);
+    assert_eq!(applied, 99);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",

@@ -446,6 +446,60 @@ impl WorkloadControl {
         Ok(())
     }
 
+    /// Advances an existing managed Workload to a newer exact owner generation
+    /// while preserving its placement shape. Owner aggregates may legitimately
+    /// skip revisions that were never deployed, while the Workloads-owned
+    /// placement generation remains contiguous. This is the sole handoff used
+    /// by product aggregates; unmanaged and stale managed generations remain
+    /// rejected.
+    pub fn authorize_deployment(
+        &mut self,
+        requested: &WorkloadControlSpec,
+        at: DateTime<Utc>,
+    ) -> Result<bool, String> {
+        requested.validate()?;
+        if &self.spec == requested {
+            return Ok(false);
+        }
+        let (Some(current_owner), Some(requested_owner)) = (
+            self.spec.managed_owner.as_ref(),
+            requested.managed_owner.as_ref(),
+        ) else {
+            return Err(
+                "managed Workload deployment cannot change direct ownership authority".into(),
+            );
+        };
+        let current_policy = &self.spec.placement_policy;
+        let requested_policy = &requested.placement_policy;
+        if current_owner.kind() != requested_owner.kind()
+            || current_owner.owner_id() != requested_owner.owner_id()
+            || requested_owner.owner_generation() <= current_owner.owner_generation()
+            || current_owner.owner_spec_digest() == requested_owner.owner_spec_digest()
+            || current_policy.generation().checked_add(1) != Some(requested_policy.generation())
+            || current_policy.desired_replicas() != requested_policy.desired_replicas()
+            || current_policy.members_per_replica() != requested_policy.members_per_replica()
+            || current_policy.topology() != requested_policy.topology()
+            || current_policy.replica_anti_affinity() != requested_policy.replica_anti_affinity()
+            || current_policy.node_pool_id() != requested_policy.node_pool_id()
+        {
+            return Err(
+                "managed Workload deployment requires a newer exact owner and the next placement generation"
+                    .into(),
+            );
+        }
+        let at = canonical_timestamp(at);
+        if at < self.updated_at {
+            return Err("managed Workload authority handoff time regressed".into());
+        }
+        self.spec = requested.clone();
+        self.aggregate_version = self
+            .aggregate_version
+            .checked_add(1)
+            .ok_or_else(|| "workload control version overflowed".to_owned())?;
+        self.updated_at = at;
+        Ok(true)
+    }
+
     pub fn require_direct_mutation(&self) -> Result<(), String> {
         if self.spec.managed_owner.is_some() {
             return Err("managed Workload rejects direct mutation".into());

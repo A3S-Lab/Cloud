@@ -964,7 +964,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2` foundations implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2/C3` foundations implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -980,7 +980,7 @@ Implemented projection value object:
 
 - `DurableCellProjectionIdentity`
 
-Planned persisted correlation resource (`CELL0.4`):
+Implemented immutable correlation resource (component-only `CELL0.4-C3`):
 
 - `DurableCellDeployment`
 
@@ -1088,8 +1088,19 @@ indistinguishable. New writes validate the ACL-bound BuildRun through the
 existing tenant-scoped Artifacts repository, while exact historical replay
 does not re-evaluate later BuildRun state. Lists are bounded and no REST,
 client, deployment, scheduler, queue, or authorization store is introduced.
-C3-C6 still own deployment correlation and orchestration, Gateway publication,
-interfaces, and retained recovery evidence.
+
+Component-only `CELL0.4-C3` adds migration `117` and persists one immutable
+`DurableCellDeployment` correlation for an exact application revision. It has
+no status, retry, receipt, or mutable lifecycle fields. The internal command
+authorizes before replay, parses the exact profile through `a3s-acl`, validates
+the current running revision and S0/Secrets/node-pool bindings, persists intent,
+then calls the existing Workloads creation transaction for the managed Workload
+revision, Deployment, Operation request, and Outbox event consumed by Fleet.
+Workloads owns the only managed-owner handoff; owner revisions may skip
+undeployed application revisions while placement generations remain contiguous.
+Exact replay and process-death recovery add no second controller or event rail.
+`C4-C6` still own Gateway publication, interfaces, and retained recovery
+evidence; real S0 namespace/application behavior also remains unclaimed.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2490,7 +2501,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | Migration `116` and the existing A3S ORM Migrator persist the `CELL0.4-C1` application head plus immutable canonical-ACL revisions through the shared idempotency/Outbox/audit transaction; `C2` adds only authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. Deployment correlation remains unpersisted until C3. `CELL0.1-C1/C2/C3` and component-only `CELL0.2-C1/C2` supply application and exact S0 correlation, `CELL0.2-C3` supplies the shared unexecuted storage-provider gate, and `CELL0.3-C1/C2/C3` supply the exact provider/ordinary Runtime Service binding, anonymous operator and existing Runtime lifecycle receipts, plus a pinned unexecuted real-Box runtime-only gate |
+| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and planned Gateway publication | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates; Gateway publication and real storage-backed application evidence remain open |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |

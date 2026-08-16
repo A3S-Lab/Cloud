@@ -1,5 +1,7 @@
 mod application;
 mod application_definition;
+mod deployment;
+mod deployment_repository;
 mod events;
 mod projection_identity;
 mod provider_binding;
@@ -14,6 +16,10 @@ pub use application_definition::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
     DurableCellRollbackPolicy, DurableCellStateSchema, DURABLE_CELL_APPLICATION_MAX_ACL_BYTES,
     DURABLE_CELL_APPLICATION_SCHEMA, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+};
+pub use deployment::DurableCellDeployment;
+pub use deployment_repository::{
+    CreateDurableCellDeploymentWrite, IDurableCellDeploymentRepository,
 };
 pub use events::DurableCellApplicationChanged;
 pub use projection_identity::{DurableCellProjectionIdentity, DURABLE_CELL_MANAGED_OWNER_KIND};

@@ -6,7 +6,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::domain::entities::WorkloadControlSpec;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 
-pub(in crate::modules::workloads::application) async fn validate_node_pool_selection(
+pub(crate) async fn validate_node_pool_selection(
     node_pools: &dyn INodePoolRepository,
     organization_id: OrganizationId,
     node_pool_id: Option<NodePoolId>,

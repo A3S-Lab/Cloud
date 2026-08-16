@@ -1736,6 +1736,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             durable_cell_applications: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
             ),
+            durable_cell_deployments: Arc::new(
+                crate::modules::durable_cells::InMemoryDurableCellDeploymentRepository::new(),
+            ),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
             plugin_trust_roots: Arc::new(

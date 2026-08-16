@@ -149,7 +149,6 @@ fn validate_workload_projection(
 ) -> Result<(), String> {
     if workload_revision.workload_id != projection.workload_id
         || workload_revision.id != projection.workload_revision_id
-        || workload_revision.generation != application_revision.revision_number
         || application_revision
             .definition
             .spec()
@@ -160,6 +159,10 @@ fn validate_workload_projection(
             "Durable Cell provider Workload does not match the exact application projection".into(),
         );
     }
+    // Application revisions can be admitted without immediately reaching a
+    // deployable state. Workloads therefore owns its own contiguous
+    // generation sequence; the deterministic revision identity and both
+    // recorded generation numbers preserve the exact cross-owner mapping.
     validate_service_template(workload_revision.resolved_template()?, service_profile)
 }
 

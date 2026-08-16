@@ -304,7 +304,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             ));
         }
         let is_new_workload = !state.workloads.contains_key(&request.workload.id);
-        let (workload, control, replicas, members) = if let Some(existing) =
+        let (workload, control, replicas, members, control_changed) = if let Some(existing) =
             state.workloads.get(&request.workload.id)
         {
             if existing != &request.workload {
@@ -319,11 +319,11 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                     "workload already has a nonterminal deployment".into(),
                 ));
             }
-            let control = state.controls.get(&existing.id).cloned().ok_or_else(|| {
+            let mut control = state.controls.get(&existing.id).cloned().ok_or_else(|| {
                 RepositoryError::Storage("Workload is missing its durable control record".into())
             })?;
-            control
-                .require_authority(&request.control)
+            let control_changed = control
+                .authorize_deployment(&request.control, request.revision.created_at)
                 .map_err(RepositoryError::Conflict)?;
             let replica_id = WorkloadReplica::deterministic_id(existing.id, 0)
                 .map_err(RepositoryError::Storage)?;
@@ -343,7 +343,13 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                         "Workload is missing its canonical replica member".into(),
                     )
                 })?;
-            (existing.clone(), control, vec![replica], vec![member])
+            (
+                existing.clone(),
+                control,
+                vec![replica],
+                vec![member],
+                control_changed,
+            )
         } else {
             let name_key = (
                 request.workload.organization_id,
@@ -368,7 +374,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 members.push(member);
                 replicas.push(replica);
             }
-            (request.workload.clone(), control, replicas, members)
+            (request.workload.clone(), control, replicas, members, false)
         };
         let next_generation = state
             .revisions
@@ -423,6 +429,8 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             for member in members {
                 state.replica_members.insert(member.id, member);
             }
+        } else if control_changed {
+            state.controls.insert(request.workload.id, control);
         }
         for replica in replicas {
             state.replicas.insert(replica.id, replica);

@@ -1005,6 +1005,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/116_durable_cell_applications.sql"
             )),
         ),
+        Migration::new(
+            "117",
+            "immutable Durable Cell deployment correlations",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/117_durable_cell_deployments.sql"
+            )),
+        ),
     ]
 }
 
@@ -1760,6 +1768,51 @@ mod durable_cell_application_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 116 must not add per-Cell, deployment, queue, scheduler, or provider-receipt authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod durable_cell_deployment_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/117_durable_cell_deployments.sql"
+    ));
+
+    #[test]
+    fn migration_117_persists_only_immutable_existing_owner_correlation() {
+        for expected in [
+            "create table durable_cell_deployments",
+            "references durable_cell_application_revisions",
+            "reject_durable_cell_deployment_mutation",
+            "Workloads owns Deployment",
+            "Operations owns execution",
+            "Fleet owns receipts",
+            "S0 owns namespace behavior",
+            "not a second deployment authority",
+            "not a namespace lifecycle record",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 117 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "deployment_status",
+            "rollout_status",
+            "retry_count",
+            "next_attempt",
+            "provider_receipt",
+            "cell_name",
+            "create table durable_cell_operations",
+            "create table durable_cell_commands",
+            "create table durable_cell_namespaces",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 117 added another lifecycle authority: {forbidden}"
             );
         }
     }

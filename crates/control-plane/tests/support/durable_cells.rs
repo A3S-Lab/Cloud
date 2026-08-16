@@ -10,14 +10,18 @@ use a3s_cloud_control_plane::modules::durable_cells::application::{
     StopDurableCellApplicationHandler,
 };
 use a3s_cloud_control_plane::modules::durable_cells::domain::{
-    CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
-    DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
-    DurableCellApplicationDesiredState, DurableCellApplicationRecord,
-    DurableCellApplicationRevision, DurableCellClassSpec, DurableCellRollbackPolicy,
-    DurableCellStateSchema, IDurableCellApplicationRepository,
+    CreateDurableCellApplicationWrite, CreateDurableCellDeploymentWrite, DurableCellApplication,
+    DurableCellApplicationChanged, DurableCellApplicationDefinition,
+    DurableCellApplicationDefinitionSpec, DurableCellApplicationDesiredState,
+    DurableCellApplicationRecord, DurableCellApplicationRevision, DurableCellClassSpec,
+    DurableCellDeployment, DurableCellProjectionIdentity, DurableCellProviderBinding,
+    DurableCellRollbackPolicy, DurableCellStateSchema, DurableCellStorageBinding,
+    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
     RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
 };
-use a3s_cloud_control_plane::modules::durable_cells::PostgresDurableCellApplicationRepository;
+use a3s_cloud_control_plane::modules::durable_cells::{
+    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+};
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
@@ -48,6 +52,18 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             1,
             "immutable Durable Cell applications and revisions".into()
         )
+    );
+    let deployment_migration_state = database
+        .fetch_one_as(
+            sql_query::<(i64, String)>(
+                "select count(*), max(name) from a3s_orm_migrations where version = ",
+            )
+            .bind("117"),
+        )
+        .await?;
+    assert_eq!(
+        deployment_migration_state,
+        (1, "immutable Durable Cell deployment correlations".into())
     );
 
     let organization_id = OrganizationId::new();
@@ -263,6 +279,167 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             .await?,
         vec![successor.clone(), initial.clone()]
     );
+
+    let projection = DurableCellProjectionIdentity::for_current_revision(&revised, &successor)?;
+    let deployment_request_id = Uuid::now_v7();
+    let deployment = DurableCellDeployment::bind(
+        projection.clone(),
+        DurableCellStorageBinding {
+            organization_id,
+            project_id,
+            environment_id,
+            application_id,
+            application_revision_id: successor.id,
+            application_revision_number: successor.revision_number,
+            application_definition_digest: successor.definition.digest().clone(),
+            storage_namespace_id: projection.storage_namespace_id,
+            credential_binding_generation: 1,
+            credential_binding_digest: digest('1'),
+            provider_profile_digest: digest('2'),
+            retention_policy_digest: digest('3'),
+        },
+        DurableCellProviderBinding {
+            application_id,
+            application_revision_id: successor.id,
+            application_revision_number: successor.revision_number,
+            application_definition_digest: successor.definition.digest().clone(),
+            workload_id: projection.workload_id,
+            workload_revision_id: projection.workload_revision_id,
+            workload_generation: 1,
+            service_profile_digest: successor.definition.spec().service_profile_digest.clone(),
+            service_template_digest: digest('4'),
+            provider_artifact_digest: digest('5'),
+        },
+        digest('6'),
+        actor,
+        deployment_request_id,
+        successor.created_at + Duration::seconds(1),
+    )?;
+    let deployment_idempotency = IdempotencyRequest::new(
+        format!(
+            "organizations/{organization_id}/durable-cell-applications/{application_id}/revisions/{}/deployment",
+            successor.id
+        ),
+        "durable-cell-deployment-correlation",
+        b"exact Durable Cell deployment correlation",
+    )?;
+    let deployment_repository = PostgresDurableCellDeploymentRepository::new(executor.clone());
+    assert!(deployment_repository
+        .replay(&deployment_idempotency)
+        .await?
+        .is_none());
+    let deployment_write = CreateDurableCellDeploymentWrite {
+        deployment: deployment.clone(),
+        idempotency: deployment_idempotency.clone(),
+    };
+    assert!(
+        !deployment_repository
+            .create(deployment_write.clone())
+            .await?
+            .replayed
+    );
+    let deployment_replay = deployment_repository.create(deployment_write).await?;
+    assert!(deployment_replay.replayed);
+    assert_eq!(deployment_replay.value, deployment);
+    assert_eq!(
+        deployment_repository
+            .replay(&deployment_idempotency)
+            .await?,
+        Some(deployment.clone())
+    );
+    assert_eq!(
+        deployment_repository
+            .find(
+                organization_id,
+                project_id,
+                environment_id,
+                application_id,
+                successor.id,
+            )
+            .await?,
+        Some(deployment.clone())
+    );
+    assert!(deployment_repository
+        .find(
+            organization_id,
+            project_id,
+            EnvironmentId::new(),
+            application_id,
+            successor.id,
+        )
+        .await?
+        .is_none());
+    assert_eq!(
+        deployment_repository
+            .create(CreateDurableCellDeploymentWrite {
+                deployment: deployment.clone(),
+                idempotency: IdempotencyRequest::new(
+                    deployment_idempotency.scope.clone(),
+                    deployment_idempotency.key.clone(),
+                    b"different Durable Cell deployment correlation",
+                )?,
+            })
+            .await,
+        Err(RepositoryError::IdempotencyConflict)
+    );
+    assert!(matches!(
+        deployment_repository
+            .create(CreateDurableCellDeploymentWrite {
+                deployment: deployment.clone(),
+                idempotency: IdempotencyRequest::new(
+                    deployment_idempotency.scope.clone(),
+                    "another Durable Cell deployment request",
+                    b"exact Durable Cell deployment correlation",
+                )?,
+            })
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("update durable_cell_deployments set requested_at = requested_at + interval '1 second' where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and application_id = ")
+                    .bind(application_id.as_uuid())
+                    .append(" and application_revision_id = ")
+                    .bind(successor.id.as_uuid()),
+            )
+            .await,
+        "mutating an immutable Durable Cell deployment correlation",
+    );
+    assert_rejected(
+        database
+            .execute(
+                sql_query::<()>("delete from durable_cell_deployments where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and application_id = ")
+                    .bind(application_id.as_uuid())
+                    .append(" and application_revision_id = ")
+                    .bind(successor.id.as_uuid()),
+            )
+            .await,
+        "deleting an immutable Durable Cell deployment correlation",
+    );
+    let deployment_evidence = database
+        .fetch_one_as(
+            sql_query::<(i64, i64, i64)>("select (select count(*) from durable_cell_deployments where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and application_id = ")
+                .bind(application_id.as_uuid())
+                .append("), (select count(*) from audit_records where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and aggregate_id = ")
+                .bind(application_id.as_uuid())
+                .append(" and action = 'durable-cell.deployment.requested'), (select count(*) from idempotency_records where scope_key = ")
+                .bind(deployment_idempotency.scope.clone())
+                .append(" and idempotency_key = ")
+                .bind(deployment_idempotency.key.clone())
+                .append(")"),
+        )
+        .await?;
+    assert_eq!(deployment_evidence, (1, 1, 1));
 
     let cqrs_initial_build_run_id = insert_queued_build_run(
         &database,
@@ -495,7 +672,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                 .append(")"),
         )
         .await?;
-    assert_eq!(evidence, (2, 4, 7, 7, 7));
+    assert_eq!(evidence, (2, 4, 7, 7, 8));
     let duplicated_authority = database
         .fetch_one_as(
             sql_query::<i64>(
@@ -506,7 +683,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     assert_eq!(duplicated_authority, 0);
     let forbidden_tables = database
         .fetch_one_as(sql_query::<i64>(
-            "select count(*) from (values (to_regclass('public.cells')), (to_regclass('public.durable_cell_deployments')), (to_regclass('public.cell_ownership')), (to_regclass('public.durable_cell_queue'))) as forbidden(relation) where relation is not null",
+            "select count(*) from (values (to_regclass('public.cells')), (to_regclass('public.cell_ownership')), (to_regclass('public.durable_cell_queue'))) as forbidden(relation) where relation is not null",
         ))
         .await?;
     assert_eq!(forbidden_tables, 0);
