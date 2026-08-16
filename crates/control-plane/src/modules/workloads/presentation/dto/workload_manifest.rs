@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 const MANIFEST_VERSION: u64 = 1;
-const MANIFEST_MAX_BYTES: usize = 64 * 1024;
+pub(crate) const WORKLOAD_MANIFEST_MAX_BYTES: usize = 64 * 1024;
 const MANIFEST_MAX_NESTING_DEPTH: usize = 16;
 const MANIFEST_MAX_COLLECTION_ITEMS: usize = 512;
 const MANIFEST_MAX_TOKEN_BYTES: usize = 16 * 1024;
@@ -144,7 +144,7 @@ fn parse_manifest(source: &[u8], artifact_policy: ArtifactPolicy) -> Result<Pars
 
 fn manifest_limits() -> ParseLimits {
     ParseLimits {
-        max_document_bytes: MANIFEST_MAX_BYTES,
+        max_document_bytes: WORKLOAD_MANIFEST_MAX_BYTES,
         max_nesting_depth: MANIFEST_MAX_NESTING_DEPTH,
         max_collection_items: MANIFEST_MAX_COLLECTION_ITEMS,
         max_token_bytes: MANIFEST_MAX_TOKEN_BYTES,

@@ -4,6 +4,13 @@ use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
+use crate::modules::durable_cells::domain::{
+    DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
+    DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
+};
+use crate::modules::durable_cells::{
+    DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+};
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::notifications::{
@@ -15,6 +22,7 @@ use crate::modules::projects::domain::value_objects::{
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
 };
+use crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES;
 use a3s_boot::{BootError, Result};
 use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
@@ -295,9 +303,20 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
             || path.ends_with("/workflow-runs")
             || path.ends_with("/human-tasks")
             || is_connector_profile_collection_path(path)
-            || is_connector_revision_collection_path(path))
+            || is_connector_revision_collection_path(path)
+            || is_durable_cell_application_collection_path(path)
+            || is_durable_cell_revision_collection_path(path))
     {
-        let schema = if path.ends_with("/audit-records")
+        let schema = if is_durable_cell_application_collection_path(path)
+            || is_durable_cell_revision_collection_path(path)
+        {
+            json!({
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+                "default": DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT
+            })
+        } else if path.ends_with("/audit-records")
             || is_connector_profile_collection_path(path)
             || is_connector_revision_collection_path(path)
         {
@@ -673,6 +692,11 @@ fn describe_request_body(operation: &mut Map<String, Value>, method: &str, path:
                 }
             }),
         );
+    } else if is_durable_cell_mutation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({"schema": durable_cell_request_schema(path)}),
+        );
     } else if is_connector_profile_mutation_path(path) {
         let schema = if is_connector_revision_collection_path(path) {
             json!({
@@ -966,6 +990,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_form_draft_mutation_path(path)
                 || is_mcp_service_profile_path(path)
                 || is_mcp_route_policy_mutation_path(path)
+                || is_durable_cell_mutation_path(path)
                 || is_notification_outbound_subscription_collection_path(path)))
     {
         error_statuses.extend([413, 415]);
@@ -997,6 +1022,17 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     }
     if method == "get" {
         return vec![200];
+    }
+    if method == "post" && is_durable_cell_state_mutation_path(path) {
+        return vec![200];
+    }
+    if method == "post"
+        && (is_durable_cell_application_collection_path(path)
+            || is_durable_cell_revision_collection_path(path)
+            || is_durable_cell_deployment_path(path)
+            || is_durable_cell_route_path(path))
+    {
+        return vec![200, 201];
     }
     if method == "delete"
         && (path.contains("/deployments/")
@@ -1082,6 +1118,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Sources"
     } else if path.contains("secrets") {
         "Secrets"
+    } else if path.contains("durable-cell-applications") {
+        "Durable Cells"
     } else if path.contains("routes")
         || path.contains("domain-claims")
         || path.contains("gateway-")
@@ -1171,7 +1209,7 @@ fn accepts_acl(path: &str) -> bool {
 }
 
 fn request_has_no_body(path: &str) -> bool {
-    path.ends_with("/stop")
+    (path.ends_with("/stop") && !is_durable_cell_state_mutation_path(path))
         || path.ends_with("/retry")
         || path.ends_with("/archive")
         || path.ends_with("/yank")
@@ -1244,6 +1282,8 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/mcp-route-policies")
         || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
         || is_connector_profile_mutation_path(path)
+        || is_durable_cell_application_collection_path(path)
+        || is_durable_cell_revision_collection_path(path)
         || is_notification_outbound_subscription_collection_path(path)
         || path.ends_with("/secrets")
         || path.ends_with("/versions")
@@ -1295,6 +1335,103 @@ fn is_connector_profile_collection_path(path: &str) -> bool {
 
 fn is_connector_revision_collection_path(path: &str) -> bool {
     path.contains("/connector-profiles/{profile_id}/") && path.ends_with("/revisions")
+}
+
+fn is_durable_cell_mutation_path(path: &str) -> bool {
+    is_durable_cell_application_collection_path(path)
+        || is_durable_cell_revision_collection_path(path)
+        || is_durable_cell_state_mutation_path(path)
+        || is_durable_cell_deployment_path(path)
+        || is_durable_cell_route_path(path)
+}
+
+fn is_durable_cell_application_collection_path(path: &str) -> bool {
+    path.ends_with("/durable-cell-applications")
+}
+
+fn is_durable_cell_revision_collection_path(path: &str) -> bool {
+    path.contains("/durable-cell-applications/{application_id}/") && path.ends_with("/revisions")
+}
+
+fn is_durable_cell_state_mutation_path(path: &str) -> bool {
+    path.contains("/durable-cell-applications/{application_id}/")
+        && (path.ends_with("/start") || path.ends_with("/stop"))
+}
+
+fn is_durable_cell_deployment_path(path: &str) -> bool {
+    path.contains("/durable-cell-applications/{application_id}/revisions/{revision_id}/deployments")
+}
+
+fn is_durable_cell_route_path(path: &str) -> bool {
+    path.contains("/durable-cell-applications/{application_id}/revisions/{revision_id}/routes")
+}
+
+fn durable_cell_request_schema(path: &str) -> Value {
+    let acl = |maximum: usize| {
+        json!({
+            "type": "string",
+            "minLength": 1,
+            "maxLength": maximum
+        })
+    };
+    if is_durable_cell_application_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "definitionAcl"],
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 63},
+                "definitionAcl": acl(DURABLE_CELL_APPLICATION_MAX_ACL_BYTES)
+            }
+        });
+    }
+    if is_durable_cell_revision_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion", "definitionAcl"],
+            "properties": {
+                "expectedVersion": {"type": "integer", "minimum": 1},
+                "definitionAcl": acl(DURABLE_CELL_APPLICATION_MAX_ACL_BYTES)
+            }
+        });
+    }
+    if is_durable_cell_state_mutation_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion"],
+            "properties": {
+                "expectedVersion": {"type": "integer", "minimum": 1}
+            }
+        });
+    }
+    if is_durable_cell_deployment_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["serviceProfileAcl", "providerWorkloadAcl", "storageBindingAcl"],
+            "properties": {
+                "serviceProfileAcl": acl(DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES),
+                "providerWorkloadAcl": acl(WORKLOAD_MANIFEST_MAX_BYTES),
+                "storageBindingAcl": acl(DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES)
+            }
+        });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "serviceProfileAcl", "gatewayScopeId", "domainClaimId", "hostname", "pathPrefix"
+        ],
+        "properties": {
+            "serviceProfileAcl": acl(DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES),
+            "gatewayScopeId": {"type": "string", "format": "uuid"},
+            "domainClaimId": {"type": "string", "format": "uuid"},
+            "hostname": {"type": "string", "minLength": 1, "maxLength": 253},
+            "pathPrefix": {"type": "string", "minLength": 1, "maxLength": 2048}
+        }
+    })
 }
 
 fn is_resource_grant_revocation_path(path: &str) -> bool {

@@ -3,7 +3,7 @@ use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId};
 
-pub(super) fn environment(
+pub(crate) fn environment(
     project_id: ProjectId,
     environment_id: EnvironmentId,
     evaluator: &ResourceAccessEvaluator,

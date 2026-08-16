@@ -43,13 +43,14 @@ use crate::modules::connectors::{
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
 };
 use crate::modules::durable_cells::{
-    CreateDurableCellApplicationHandler, DeployDurableCellApplicationHandler,
-    GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
-    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
-    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
-    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
-    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
-    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
+    CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
+    DeployDurableCellApplicationHandler, DurableCellsModule, GetDurableCellApplicationHandler,
+    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
+    IDurableCellDeploymentRepository, ListDurableCellApplicationRevisionsHandler,
+    ListDurableCellApplicationsHandler, PostgresDurableCellApplicationRepository,
+    PostgresDurableCellDeploymentRepository, PublishDurableCellApplicationRouteHandler,
+    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
@@ -807,6 +808,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         .map_err(ControlPlaneStartupError::Registry)?
         .with_registry_secret_material(Arc::clone(&secrets), Arc::clone(&key_encryption)),
     );
+    let durable_cell_artifacts = Arc::clone(&artifacts);
     let deployment_flow_config = DeploymentFlowConfig::from_milliseconds(
         config.deployments.command_ttl_ms,
         config.deployments.runtime_apply_timeout_ms,
@@ -1119,6 +1121,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             connector_profiles,
             durable_cell_applications,
             durable_cell_deployments,
+            oci_artifacts: durable_cell_artifacts,
             plugin_registries,
             plugin_enrollment_authorizer,
             plugin_trust_roots,
@@ -1230,6 +1233,7 @@ struct ApplicationDependencies {
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
     durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
+    oci_artifacts: Arc<dyn IOciArtifactResolver>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
@@ -1303,6 +1307,7 @@ fn build_application_with_health(
         connector_profiles,
         durable_cell_applications,
         durable_cell_deployments,
+        oci_artifacts,
         plugin_registries,
         plugin_enrollment_authorizer,
         plugin_trust_roots,
@@ -1385,6 +1390,17 @@ fn build_application_with_health(
     let deploy_durable_cell_applications = Arc::clone(&get_durable_cell_applications);
     let create_durable_cell_builds = Arc::clone(&builds);
     let revise_durable_cell_builds = Arc::clone(&builds);
+    let deploy_durable_cell_handler = DeployDurableCellApplicationHandler::new(
+        deploy_durable_cell_applications,
+        deploy_durable_cell_deployments,
+        deploy_durable_cell_workloads,
+        deploy_durable_cell_secrets,
+        deploy_durable_cell_node_pools,
+    );
+    let deploy_durable_cell_from_acl_handler = DeployDurableCellApplicationFromAclHandler::new(
+        oci_artifacts,
+        deploy_durable_cell_handler.clone(),
+    );
     let project_organizations = Arc::clone(&organizations);
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
@@ -1811,13 +1827,13 @@ fn build_application_with_health(
                     StopDurableCellApplicationHandler::new(stop_durable_cell_applications),
                 )
                 .command_handler::<crate::modules::durable_cells::DeployDurableCellApplication, _>(
-                    DeployDurableCellApplicationHandler::new(
-                        deploy_durable_cell_applications,
-                        deploy_durable_cell_deployments,
-                        deploy_durable_cell_workloads,
-                        deploy_durable_cell_secrets,
-                        deploy_durable_cell_node_pools,
-                    ),
+                    deploy_durable_cell_handler,
+                )
+                .command_handler::<
+                    crate::modules::durable_cells::DeployDurableCellApplicationFromAcl,
+                    _,
+                >(
+                    deploy_durable_cell_from_acl_handler,
                 )
                 .command_handler::<
                     crate::modules::durable_cells::PublishDurableCellApplicationRoute,
@@ -2544,6 +2560,7 @@ fn build_application_with_health(
         .import(AuditModule)
         .import(NotificationsModule)
         .import(ConnectorsModule)
+        .import(DurableCellsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))
         .import(AssetsModule::new(config.assets.max_rpc_body_bytes)?)

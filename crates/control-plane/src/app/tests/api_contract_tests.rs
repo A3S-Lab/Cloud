@@ -12,6 +12,82 @@ use std::collections::BTreeSet;
 const OPENAPI_SOURCE_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../openapi/v1.json");
 
 #[test]
+fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let base = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/durable-cell-applications";
+    let collection = &document["paths"][base];
+    assert_eq!(collection["get"]["tags"], json!(["Durable Cells"]));
+    assert_eq!(collection["post"]["tags"], json!(["Durable Cells"]));
+    assert_eq!(
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["definitionAcl"]["maxLength"],
+        crate::modules::durable_cells::domain::DURABLE_CELL_APPLICATION_MAX_ACL_BYTES
+    );
+    let list_limit = collection["get"]["parameters"]
+        .as_array()
+        .and_then(|parameters| {
+            parameters
+                .iter()
+                .find(|parameter| parameter["name"] == "limit")
+        })
+        .ok_or_else(|| BootError::Internal("Durable Cell list limit is missing".into()))?;
+    assert_eq!(list_limit["schema"]["default"], 50);
+    assert_eq!(list_limit["schema"]["maximum"], 200);
+
+    let revisions = &document["paths"][format!("{base}/{{application_id}}/revisions")];
+    assert_eq!(
+        revisions["post"]["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion", "definitionAcl"])
+    );
+    let stop = &document["paths"][format!("{base}/{{application_id}}/stop")]["post"];
+    assert_eq!(
+        stop["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedVersion"])
+    );
+    assert!(stop["responses"]["200"].is_object());
+    assert!(stop["responses"]["202"].is_null());
+
+    let deployment = &document["paths"]
+        [format!("{base}/{{application_id}}/revisions/{{revision_id}}/deployments")]["post"];
+    let deployment_schema = &deployment["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        deployment_schema["required"],
+        json!([
+            "serviceProfileAcl",
+            "providerWorkloadAcl",
+            "storageBindingAcl"
+        ])
+    );
+    assert_eq!(
+        deployment_schema["properties"]["serviceProfileAcl"]["maxLength"],
+        crate::modules::durable_cells::domain::DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        deployment_schema["properties"]["providerWorkloadAcl"]["maxLength"],
+        crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES
+    );
+    assert_eq!(
+        deployment_schema["properties"]["storageBindingAcl"]["maxLength"],
+        crate::modules::durable_cells::domain::DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES
+    );
+    assert!(deployment["responses"]["201"].is_object());
+    assert!(deployment["responses"]["413"].is_object());
+    assert!(deployment["responses"]["415"].is_object());
+
+    let route = &document["paths"]
+        [format!("{base}/{{application_id}}/revisions/{{revision_id}}/routes")]["post"];
+    assert_eq!(route["tags"], json!(["Durable Cells"]));
+    assert_eq!(
+        route["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["gatewayScopeId"]["format"],
+        "uuid"
+    );
+    assert!(route["responses"]["201"].is_object());
+    Ok(())
+}
+
+#[test]
 fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;

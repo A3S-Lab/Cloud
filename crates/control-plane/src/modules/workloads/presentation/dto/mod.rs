@@ -12,4 +12,7 @@ pub use response::{
     WorkloadResponse, WorkloadStopResponse,
 };
 pub use service_template::{ServiceTemplateDto, SourceWorkloadTemplateDto};
-pub(crate) use workload_manifest::{parse_source_workload_manifest, parse_workload_manifest};
+pub(crate) use workload_manifest::{
+    parse_source_workload_manifest, parse_workload_manifest, WorkloadManifest,
+    WORKLOAD_MANIFEST_MAX_BYTES,
+};

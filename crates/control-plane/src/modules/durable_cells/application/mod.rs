@@ -23,6 +23,7 @@ pub use queries::{
     ListDurableCellApplicationsHandler, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
     MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
+pub(crate) use resource_access::environment as require_environment_access;
 pub use result::DurableCellApplicationMutationResult;
 pub use route_publication::{
     DurableCellRoutePublicationResult, PublishDurableCellApplicationRoute,

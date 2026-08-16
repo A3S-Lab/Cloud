@@ -1,6 +1,7 @@
 mod application;
 mod application_definition;
 mod deployment;
+mod deployment_binding;
 mod deployment_repository;
 mod events;
 mod projection_identity;
@@ -18,6 +19,10 @@ pub use application_definition::{
     DURABLE_CELL_APPLICATION_SCHEMA, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 pub use deployment::DurableCellDeployment;
+pub use deployment_binding::{
+    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec,
+    DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_SCHEMA,
+};
 pub use deployment_repository::{
     CreateDurableCellDeploymentWrite, IDurableCellDeploymentRepository,
 };

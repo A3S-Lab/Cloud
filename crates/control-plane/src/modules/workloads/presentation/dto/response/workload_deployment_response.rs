@@ -61,7 +61,10 @@ impl From<UpdateWorkloadDeploymentResult> for WorkloadDeploymentResponse {
 }
 
 impl WorkloadDeploymentResponse {
-    fn from_bundle(bundle: DeploymentBundle, rollback_source_revision_id: Option<Uuid>) -> Self {
+    pub(crate) fn from_bundle(
+        bundle: DeploymentBundle,
+        rollback_source_revision_id: Option<Uuid>,
+    ) -> Self {
         let external_source_revision_id = bundle
             .revision
             .external_build

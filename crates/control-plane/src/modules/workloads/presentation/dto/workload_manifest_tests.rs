@@ -176,7 +176,7 @@ fn rejects_invalid_versions_targets_numbers_and_utf8() {
 
 #[test]
 fn enforces_manifest_resource_limits() {
-    let oversized = "#".repeat(MANIFEST_MAX_BYTES + 1);
+    let oversized = "#".repeat(WORKLOAD_MANIFEST_MAX_BYTES + 1);
     assert!(parse_workload_manifest(oversized.as_bytes())
         .expect_err("oversized manifest must be rejected")
         .to_string()

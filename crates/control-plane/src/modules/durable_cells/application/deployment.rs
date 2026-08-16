@@ -67,6 +67,7 @@ pub struct DurableCellDeploymentMutationResult {
     pub replayed: bool,
 }
 
+#[derive(Clone)]
 pub struct DeployDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,

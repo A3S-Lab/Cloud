@@ -41,6 +41,21 @@ pub struct DurableCellProjectionIdentity {
 }
 
 impl DurableCellProjectionIdentity {
+    pub fn storage_namespace_id_for_application(
+        application_id: DurableCellApplicationId,
+    ) -> StorageNamespaceId {
+        StorageNamespaceId::from_uuid(derived_id(
+            application_id.as_uuid(),
+            STORAGE_NAMESPACE_ID_NAME,
+        ))
+    }
+
+    pub fn workload_revision_id_for_application_revision(
+        revision_id: DurableCellApplicationRevisionId,
+    ) -> WorkloadRevisionId {
+        WorkloadRevisionId::from_uuid(derived_id(revision_id.as_uuid(), WORKLOAD_REVISION_ID_NAME))
+    }
+
     pub fn for_current_revision(
         application: &DurableCellApplication,
         revision: &DurableCellApplicationRevision,
@@ -67,18 +82,12 @@ impl DurableCellProjectionIdentity {
             application_revision_id: revision.id,
             application_revision_number: revision.revision_number,
             application_definition_digest: revision.definition.digest().clone(),
-            storage_namespace_id: StorageNamespaceId::from_uuid(derived_id(
-                application.id.as_uuid(),
-                STORAGE_NAMESPACE_ID_NAME,
-            )),
+            storage_namespace_id: Self::storage_namespace_id_for_application(application.id),
             workload_id: WorkloadId::from_uuid(derived_id(
                 application.id.as_uuid(),
                 WORKLOAD_ID_NAME,
             )),
-            workload_revision_id: WorkloadRevisionId::from_uuid(derived_id(
-                revision.id.as_uuid(),
-                WORKLOAD_REVISION_ID_NAME,
-            )),
+            workload_revision_id: Self::workload_revision_id_for_application_revision(revision.id),
             deployment_id: DeploymentId::from_uuid(derived_id(
                 revision.id.as_uuid(),
                 DEPLOYMENT_ID_NAME,
@@ -124,15 +133,12 @@ impl DurableCellProjectionIdentity {
             || self.application_revision_number == 0
             || Sha256Digest::parse(self.application_definition_digest.as_str())?
                 != self.application_definition_digest
-            || self.storage_namespace_id.as_uuid()
-                != derived_id(self.application_id.as_uuid(), STORAGE_NAMESPACE_ID_NAME)
+            || self.storage_namespace_id
+                != Self::storage_namespace_id_for_application(self.application_id)
             || self.workload_id.as_uuid()
                 != derived_id(self.application_id.as_uuid(), WORKLOAD_ID_NAME)
-            || self.workload_revision_id.as_uuid()
-                != derived_id(
-                    self.application_revision_id.as_uuid(),
-                    WORKLOAD_REVISION_ID_NAME,
-                )
+            || self.workload_revision_id
+                != Self::workload_revision_id_for_application_revision(self.application_revision_id)
             || self.deployment_id.as_uuid()
                 != derived_id(self.application_revision_id.as_uuid(), DEPLOYMENT_ID_NAME)
             || self.operation_id.as_uuid()

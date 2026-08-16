@@ -964,7 +964,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2/C3/C4` foundations implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4`, and the first `C5` interface slice implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -991,6 +991,7 @@ Implemented value objects:
 - `DurableCellClassSpec`
 - `DurableCellStateSchema`
 - `DurableCellProviderBinding`
+- `DurableCellDeploymentBinding`
 
 The implemented `cloud.durable-cell.service.v1` ACL requires the
 `a3s.durable-cell-provider.v1` protocol, a dedicated application fleet,
@@ -1113,7 +1114,18 @@ The existing Workloads deployment route updater remains the sole later-revision
 cutover mechanism. Focused recovery proves that failure after the atomic Edge
 commit replays that Route without target re-resolution or duplicate route
 creation; revoked authorization and profile drift fail before Edge replay.
-`C5-C6` still own interfaces and retained recovery evidence; real S0
+The first `CELL0.4-C5` slice exposes the same C2-C4 command/query authority
+through bounded REST/OpenAPI `1.38.0`. Its plaintext-free
+`cloud.durable-cell.deployment.v1` ACL carries exact Secret versions,
+credential generation, provider-profile digest, and retention policy only;
+the authenticated URL plus application identity derive tenant and namespace
+scope. Deployment additionally requires a digest-pinned OCI provider Workload
+ACL and returns only existing-owner references and digests. It reuses
+`cloud:read`, `workload:write`, and `route:write`, the existing buses, Workloads
+OCI resolver, S0 contracts, and C3/C4 handlers, with no interface repository,
+configuration parser, lifecycle, or authorization mechanism. The maintained
+client, CLI, and Management MCP remainder of `C5` and all of `C6` still own the
+remaining interfaces and retained recovery evidence; real S0
 namespace/application behavior also remains unclaimed.
 
 The selected provider, not this context, activates and evicts Cells, serializes

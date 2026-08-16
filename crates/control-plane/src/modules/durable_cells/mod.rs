@@ -1,6 +1,7 @@
 pub mod application;
 pub mod domain;
 pub mod infrastructure;
+pub mod presentation;
 
 pub use application::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler,
@@ -13,7 +14,8 @@ pub use application::{
     PublishDurableCellApplicationRoute, PublishDurableCellApplicationRouteHandler,
     ReviseDurableCellApplication, ReviseDurableCellApplicationHandler, StartDurableCellApplication,
     StartDurableCellApplicationHandler, StopDurableCellApplication,
-    StopDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+    MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
 pub use domain::{IDurableCellApplicationRepository, IDurableCellDeploymentRepository};
 pub use infrastructure::{
@@ -23,4 +25,8 @@ pub use infrastructure::{
     DurableCellRuntimeEndpoints, InMemoryDurableCellApplicationRepository,
     InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
     PostgresDurableCellDeploymentRepository,
+};
+pub use presentation::{
+    DeployDurableCellApplicationFromAcl, DeployDurableCellApplicationFromAclHandler,
+    DurableCellsModule,
 };

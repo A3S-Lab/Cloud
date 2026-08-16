@@ -56,7 +56,10 @@ use crate::modules::workflow::{
     InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository, WorkflowDecisionOutcome,
     WorkflowRunHistoryPage, WorkflowRunRecord, WorkflowRunVariableInspection,
 };
-use crate::modules::workloads::InMemoryWorkloadRepository;
+use crate::modules::workloads::{
+    IOciArtifactResolver, InMemoryWorkloadRepository, OciArtifact, OciArtifactReference,
+    OciArtifactResolutionError, OciRegistryCredentialReference,
+};
 use a3s_boot::{BootError, BootRequest, BootResponse, HttpMethod};
 use a3s_use_core::PluginReleaseChannel;
 use a3s_use_extension::{
@@ -78,6 +81,7 @@ mod asset_git_tests;
 mod audit_tests;
 mod build_tests;
 mod connector_tests;
+mod durable_cell_tests;
 mod execution_tests;
 mod forms_tests;
 mod management_mcp_tests;
@@ -125,9 +129,45 @@ struct TestSecretEncryption;
 
 struct TestSourceResolver;
 
+struct TestOciArtifactResolver;
+
 struct TestGithubAppAuthorization;
 
 struct UnavailableMcpRoutePolicyRepository;
+
+#[async_trait::async_trait]
+impl IOciArtifactResolver for TestOciArtifactResolver {
+    async fn resolve(
+        &self,
+        reference: &OciArtifactReference,
+        _registry_credential: Option<&OciRegistryCredentialReference>,
+    ) -> std::result::Result<OciArtifact, OciArtifactResolutionError> {
+        reference
+            .validate()
+            .map_err(OciArtifactResolutionError::InvalidReference)?;
+        let repository = reference
+            .repository()
+            .map_err(OciArtifactResolutionError::InvalidReference)?;
+        let digest = reference
+            .expected_digest
+            .clone()
+            .or_else(|| reference.bound_digest().ok().flatten().map(str::to_owned))
+            .ok_or_else(|| {
+                OciArtifactResolutionError::InvalidReference(
+                    "test OCI reference must pin a digest".into(),
+                )
+            })?;
+        let artifact = OciArtifact {
+            uri: format!("oci://{repository}@{digest}"),
+            digest,
+            media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+        };
+        artifact
+            .validate()
+            .map_err(OciArtifactResolutionError::Protocol)?;
+        Ok(artifact)
+    }
+}
 
 struct EmptyWorkflowRunHistoryReader;
 
@@ -1739,6 +1779,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             durable_cell_deployments: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellDeploymentRepository::new(),
             ),
+            oci_artifacts: Arc::new(TestOciArtifactResolver),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
             plugin_trust_roots: Arc::new(
