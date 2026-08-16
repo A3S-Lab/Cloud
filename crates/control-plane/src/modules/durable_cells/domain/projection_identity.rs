@@ -50,6 +50,10 @@ impl DurableCellProjectionIdentity {
         ))
     }
 
+    pub fn workload_id_for_application(application_id: DurableCellApplicationId) -> WorkloadId {
+        WorkloadId::from_uuid(derived_id(application_id.as_uuid(), WORKLOAD_ID_NAME))
+    }
+
     pub fn workload_revision_id_for_application_revision(
         revision_id: DurableCellApplicationRevisionId,
     ) -> WorkloadRevisionId {
@@ -83,10 +87,7 @@ impl DurableCellProjectionIdentity {
             application_revision_number: revision.revision_number,
             application_definition_digest: revision.definition.digest().clone(),
             storage_namespace_id: Self::storage_namespace_id_for_application(application.id),
-            workload_id: WorkloadId::from_uuid(derived_id(
-                application.id.as_uuid(),
-                WORKLOAD_ID_NAME,
-            )),
+            workload_id: Self::workload_id_for_application(application.id),
             workload_revision_id: Self::workload_revision_id_for_application_revision(revision.id),
             deployment_id: DeploymentId::from_uuid(derived_id(
                 revision.id.as_uuid(),
@@ -135,8 +136,7 @@ impl DurableCellProjectionIdentity {
                 != self.application_definition_digest
             || self.storage_namespace_id
                 != Self::storage_namespace_id_for_application(self.application_id)
-            || self.workload_id.as_uuid()
-                != derived_id(self.application_id.as_uuid(), WORKLOAD_ID_NAME)
+            || self.workload_id != Self::workload_id_for_application(self.application_id)
             || self.workload_revision_id
                 != Self::workload_revision_id_for_application_revision(self.application_revision_id)
             || self.deployment_id.as_uuid()

@@ -1,4 +1,5 @@
 use super::build_run_access::validate_definition_build_run;
+use super::managed_replica_lifecycle::converge_current_managed_replicas;
 use super::resource_access::{application_not_found, environment, environment_not_found};
 use super::DurableCellApplicationMutationResult;
 use crate::modules::artifacts::domain::IBuildRunRepository;
@@ -16,6 +17,7 @@ use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
     OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
 };
+use crate::modules::workloads::IWorkloadRepository;
 use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde::Serialize;
@@ -403,11 +405,18 @@ impl Command for StartDurableCellApplication {
 
 pub struct StartDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
+    workloads: Arc<dyn IWorkloadRepository>,
 }
 
 impl StartDurableCellApplicationHandler {
-    pub fn new(applications: Arc<dyn IDurableCellApplicationRepository>) -> Self {
-        Self { applications }
+    pub fn new(
+        applications: Arc<dyn IDurableCellApplicationRepository>,
+        workloads: Arc<dyn IWorkloadRepository>,
+    ) -> Self {
+        Self {
+            applications,
+            workloads,
+        }
     }
 }
 
@@ -422,6 +431,7 @@ impl CommandHandler<StartDurableCellApplication> for StartDurableCellApplication
     > {
         execute_state(
             Arc::clone(&self.applications),
+            Arc::clone(&self.workloads),
             DurableCellStateCommand {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
@@ -457,11 +467,18 @@ impl Command for StopDurableCellApplication {
 
 pub struct StopDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
+    workloads: Arc<dyn IWorkloadRepository>,
 }
 
 impl StopDurableCellApplicationHandler {
-    pub fn new(applications: Arc<dyn IDurableCellApplicationRepository>) -> Self {
-        Self { applications }
+    pub fn new(
+        applications: Arc<dyn IDurableCellApplicationRepository>,
+        workloads: Arc<dyn IWorkloadRepository>,
+    ) -> Self {
+        Self {
+            applications,
+            workloads,
+        }
     }
 }
 
@@ -476,6 +493,7 @@ impl CommandHandler<StopDurableCellApplication> for StopDurableCellApplicationHa
     > {
         execute_state(
             Arc::clone(&self.applications),
+            Arc::clone(&self.workloads),
             DurableCellStateCommand {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
@@ -506,6 +524,7 @@ struct DurableCellStateCommand {
 
 fn execute_state(
     applications: Arc<dyn IDurableCellApplicationRepository>,
+    workloads: Arc<dyn IWorkloadRepository>,
     command: DurableCellStateCommand,
     desired_state: DurableCellApplicationDesiredState,
 ) -> a3s_boot::BoxFuture<
@@ -563,10 +582,23 @@ fn execute_state(
                         "Durable Cell state replay reference is inconsistent".into(),
                     ));
                 }
-                return Ok(Ok(DurableCellApplicationMutationResult {
+                let mutation = DurableCellApplicationMutationResult {
                     record,
                     replayed: true,
-                }));
+                };
+                if let Err(error) = converge_current_managed_replicas(
+                    applications.as_ref(),
+                    workloads.as_ref(),
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.application_id,
+                )
+                .await
+                {
+                    return Ok(Err(error));
+                }
+                return Ok(Ok(mutation));
             }
             Ok(None) => {}
             Err(error) => return Ok(Err(error.into())),
@@ -623,10 +655,25 @@ fn execute_state(
             })
             .await
         {
-            Ok(result) => Ok(Ok(DurableCellApplicationMutationResult {
-                record: result.value,
-                replayed: result.replayed,
-            })),
+            Ok(result) => {
+                let mutation = DurableCellApplicationMutationResult {
+                    record: result.value,
+                    replayed: result.replayed,
+                };
+                if let Err(error) = converge_current_managed_replicas(
+                    applications.as_ref(),
+                    workloads.as_ref(),
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.application_id,
+                )
+                .await
+                {
+                    return Ok(Err(error));
+                }
+                Ok(Ok(mutation))
+            }
             Err(error) => Ok(Err(error.into())),
         }
     })

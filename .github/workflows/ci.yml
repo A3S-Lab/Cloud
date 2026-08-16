@@ -158,7 +158,7 @@ jobs:
           postgres_connector_profiles_are_exact_replay_safe_and_immutable
           -- --exact --nocapture --test-threads=1
 
-      - name: Certify Durable Cell PostgreSQL authorities and projection crash recovery
+      - name: Certify Durable Cell PostgreSQL authorities, crash recovery, and lifecycle
         env:
           RUST_BACKTRACE: "1"
         run: |

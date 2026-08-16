@@ -1,6 +1,7 @@
 mod build_run_access;
 mod commands;
 mod deployment;
+mod managed_replica_lifecycle;
 mod queries;
 mod resource_access;
 mod result;

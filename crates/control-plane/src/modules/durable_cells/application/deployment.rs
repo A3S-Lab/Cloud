@@ -1,3 +1,4 @@
+use super::managed_replica_lifecycle::converge_current_managed_replicas;
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
@@ -178,6 +179,18 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                     ) {
                         return Err(BootError::Internal(error));
                     }
+                    if let Err(error) = converge_current_managed_replicas(
+                        applications.as_ref(),
+                        workloads.as_ref(),
+                        command.organization_id,
+                        command.project_id,
+                        command.environment_id,
+                        command.application_id,
+                    )
+                    .await
+                    {
+                        return Ok(Err(error));
+                    }
                     return Ok(Ok(DurableCellDeploymentMutationResult {
                         correlation,
                         workload: bundle,
@@ -211,6 +224,18 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
+            if let Err(error) = converge_current_managed_replicas(
+                applications.as_ref(),
+                workloads.as_ref(),
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+                command.application_id,
+            )
+            .await
+            {
+                return Ok(Err(error));
+            }
             Ok(Ok(DurableCellDeploymentMutationResult {
                 correlation,
                 workload: bundle,
@@ -696,6 +721,10 @@ fn require_storage_credentials_in_template(
 
 #[cfg(test)]
 mod tests {
+    use super::super::commands::{
+        StartDurableCellApplication, StartDurableCellApplicationHandler,
+        StopDurableCellApplication, StopDurableCellApplicationHandler,
+    };
     use super::*;
     use crate::modules::data::{
         ObjectNamespaceCredentialBindingSpec, ObjectNamespaceRetentionPolicySpec,
@@ -704,7 +733,8 @@ mod tests {
         CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
         DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
         DurableCellApplicationRevision, DurableCellClassSpec, DurableCellRollbackPolicy,
-        DurableCellStateSchema, ReviseDurableCellApplicationWrite,
+        DurableCellStateSchema, RequestDurableCellApplicationStateWrite,
+        ReviseDurableCellApplicationWrite,
     };
     use crate::modules::durable_cells::infrastructure::{
         InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
@@ -720,15 +750,17 @@ mod tests {
     };
     use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
     use crate::modules::workloads::{
-        HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceProcess, ServiceResources,
+        HttpHealthCheck, IWorkloadReplicaRetirementRepository, OciArtifact,
+        ReplicaRetirementCompletion, SecretBinding, SecretBindingTarget, ServicePort,
+        ServiceProcess, ServiceResources, WorkloadReplicaLifecycle,
     };
     use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+    use serde::Serialize;
     use std::collections::BTreeMap;
 
     #[tokio::test]
-    async fn persisted_intent_recovers_through_the_existing_managed_workload_bundle() {
-        let now = Utc::now();
+    async fn persisted_intents_recover_through_the_existing_managed_workload_lifecycle() {
+        let now = Utc::now() - chrono::Duration::seconds(5);
         let organization_id = OrganizationId::new();
         let project_id = ProjectId::new();
         let environment_id = EnvironmentId::new();
@@ -999,6 +1031,192 @@ mod tests {
         assert_eq!(advanced_control.spec.placement_policy.generation(), 2);
         assert_eq!(advanced_control.aggregate_version, 2);
 
+        // Model process death after the Durable Cell desired-state transaction
+        // commits but before the Workloads-owned replica transaction begins.
+        let stop_key = "stop-deployed-counters";
+        let stop_request_id = Uuid::now_v7();
+        let current_application = applications
+            .find(
+                organization_id,
+                project_id,
+                environment_id,
+                record.application.id,
+            )
+            .await
+            .expect("current application query")
+            .expect("current application");
+        assert_eq!(current_application.aggregate_version, 3);
+        let stopped_application = current_application
+            .request_state(
+                current_application.aggregate_version,
+                DurableCellApplicationDesiredState::Stopped,
+                Utc::now(),
+            )
+            .expect("stopped application intent");
+        let stopped_record =
+            DurableCellApplicationRecord::new(stopped_application.clone(), third_revision.clone())
+                .expect("stopped record");
+        let stop_idempotency = state_idempotency(
+            &stopped_record,
+            current_application.aggregate_version,
+            stop_key,
+        );
+        applications
+            .request_state(RequestDurableCellApplicationStateWrite {
+                event: DurableCellApplicationChanged::state_requested(
+                    &stopped_application,
+                    &third_revision,
+                    stop_request_id,
+                )
+                .expect("stop event"),
+                record: stopped_record.clone(),
+                expected_version: current_application.aggregate_version,
+                actor_principal_id,
+                request_id: stop_request_id,
+                idempotency: stop_idempotency,
+            })
+            .await
+            .expect("persist stopped intent");
+        assert_eq!(
+            workloads
+                .find_workload_control(organization_id, projection.workload_id)
+                .await
+                .expect("control before recovery")
+                .spec
+                .placement_policy
+                .desired_replicas(),
+            1
+        );
+        assert_eq!(workloads.outbox_events().await.len(), 2);
+
+        let stop_command = StopDurableCellApplication {
+            organization_id,
+            project_id,
+            environment_id,
+            application_id: record.application.id,
+            expected_version: current_application.aggregate_version,
+            actor_principal_id,
+            resource_access: ResourceAccessEvaluator::organization_wide(),
+            idempotency_key: stop_key.into(),
+            request_id: stop_request_id,
+        };
+        let stop_handler =
+            StopDurableCellApplicationHandler::new(applications.clone(), workloads.clone());
+        let recovered_stop = stop_handler
+            .execute(stop_command.clone(), CqrsContext::new(ModuleRef::new()))
+            .await
+            .expect("command framework")
+            .expect("recover stopped replica intent");
+        assert!(recovered_stop.replayed);
+        assert_eq!(recovered_stop.record, stopped_record);
+        let stopped_control = workloads
+            .find_workload_control(organization_id, projection.workload_id)
+            .await
+            .expect("stopped control");
+        assert_eq!(stopped_control.spec.placement_policy.desired_replicas(), 0);
+        let stopped_replicas = workloads
+            .list_workload_replicas(organization_id, projection.workload_id)
+            .await
+            .expect("stopped replicas");
+        assert_eq!(stopped_replicas.len(), 1);
+        assert_eq!(
+            stopped_replicas[0].lifecycle,
+            WorkloadReplicaLifecycle::Retiring
+        );
+        assert_eq!(workloads.outbox_events().await.len(), 3);
+        assert!(
+            stop_handler
+                .execute(stop_command, CqrsContext::new(ModuleRef::new()),)
+                .await
+                .expect("command framework")
+                .expect("exact stop replay")
+                .replayed
+        );
+        assert_eq!(workloads.outbox_events().await.len(), 3);
+
+        // The existing Workloads retirement authority performs cleanup. Once
+        // that exact cleanup is terminal, start reactivates the same replica;
+        // Durable Cells does not create a cleanup worker or a second rollout.
+        let mut retirements = workloads
+            .pending_replica_retirements(10)
+            .await
+            .expect("pending retirement");
+        assert_eq!(retirements.len(), 1);
+        let retirement = retirements.remove(0);
+        assert!(retirement.member.node_id.is_none());
+        assert!(retirement
+            .deployment
+            .as_ref()
+            .is_some_and(|deployment| deployment.command_id.is_none()));
+        let retired = workloads
+            .complete_replica_retirement(ReplicaRetirementCompletion {
+                organization_id,
+                workload_id: projection.workload_id,
+                replica_id: retirement.replica.id,
+                replica_generation: retirement.replica.generation,
+                expected_replica_version: retirement.replica.aggregate_version,
+                member_id: retirement.member.id,
+                expected_member_version: retirement.member.aggregate_version,
+                fenced_node_id: None,
+                completed_at: Utc::now(),
+                correlation_id: Uuid::now_v7(),
+            })
+            .await
+            .expect("complete existing Workloads retirement");
+        assert_eq!(retired.value.lifecycle, WorkloadReplicaLifecycle::Retired);
+        assert_eq!(workloads.outbox_events().await.len(), 4);
+
+        let start_command = StartDurableCellApplication {
+            organization_id,
+            project_id,
+            environment_id,
+            application_id: record.application.id,
+            expected_version: stopped_application.aggregate_version,
+            actor_principal_id,
+            resource_access: ResourceAccessEvaluator::organization_wide(),
+            idempotency_key: "restart-deployed-counters".into(),
+            request_id: Uuid::now_v7(),
+        };
+        let start_handler =
+            StartDurableCellApplicationHandler::new(applications.clone(), workloads.clone());
+        let restarted = start_handler
+            .execute(start_command.clone(), CqrsContext::new(ModuleRef::new()))
+            .await
+            .expect("command framework")
+            .expect("restart retired replica");
+        assert!(!restarted.replayed);
+        assert_eq!(
+            restarted.record.application.desired_state,
+            DurableCellApplicationDesiredState::Running
+        );
+        let restarted_control = workloads
+            .find_workload_control(organization_id, projection.workload_id)
+            .await
+            .expect("restarted control");
+        assert_eq!(
+            restarted_control.spec.placement_policy.desired_replicas(),
+            1
+        );
+        let restarted_replicas = workloads
+            .list_workload_replicas(organization_id, projection.workload_id)
+            .await
+            .expect("restarted replicas");
+        assert_eq!(restarted_replicas.len(), 1);
+        assert_eq!(
+            restarted_replicas[0].lifecycle,
+            WorkloadReplicaLifecycle::Desired
+        );
+        assert_eq!(workloads.outbox_events().await.len(), 5);
+        assert!(
+            start_handler
+                .execute(start_command, CqrsContext::new(ModuleRef::new()),)
+                .await
+                .expect("command framework")
+                .expect("exact start replay")
+                .replayed
+        );
+        assert_eq!(workloads.outbox_events().await.len(), 5);
+
         let denied = handler
             .execute(
                 DeployDurableCellApplication {
@@ -1015,6 +1233,46 @@ mod tests {
             .await
             .expect("command framework");
         assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
+    }
+
+    fn state_idempotency(
+        record: &DurableCellApplicationRecord,
+        expected_version: u64,
+        key: &str,
+    ) -> IdempotencyRequest {
+        let application = &record.application;
+        let canonical = serde_json::to_vec(&CanonicalStateRequest {
+            organization_id: application.organization_id,
+            project_id: application.project_id,
+            environment_id: application.environment_id,
+            application_id: application.id,
+            expected_version,
+            desired_state: application.desired_state.as_str(),
+        })
+        .expect("canonical state request");
+        IdempotencyRequest::new(
+            format!(
+                "organizations/{}/projects/{}/environments/{}/durable-cell-applications/{}/desired-state",
+                application.organization_id,
+                application.project_id,
+                application.environment_id,
+                application.id
+            ),
+            key,
+            &canonical,
+        )
+        .expect("state idempotency")
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct CanonicalStateRequest<'a> {
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        application_id: DurableCellApplicationId,
+        expected_version: u64,
+        desired_state: &'a str,
     }
 
     async fn store_application_revision(

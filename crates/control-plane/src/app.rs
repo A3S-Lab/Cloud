@@ -1378,6 +1378,8 @@ fn build_application_with_health(
     let revise_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let start_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let stop_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let start_durable_cell_workloads = Arc::clone(&workloads);
+    let stop_durable_cell_workloads = Arc::clone(&workloads);
     let list_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let get_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let list_durable_cell_revisions = Arc::clone(&durable_cell_applications);
@@ -1821,10 +1823,16 @@ fn build_application_with_health(
                     ),
                 )
                 .command_handler::<crate::modules::durable_cells::StartDurableCellApplication, _>(
-                    StartDurableCellApplicationHandler::new(start_durable_cell_applications),
+                    StartDurableCellApplicationHandler::new(
+                        start_durable_cell_applications,
+                        start_durable_cell_workloads,
+                    ),
                 )
                 .command_handler::<crate::modules::durable_cells::StopDurableCellApplication, _>(
-                    StopDurableCellApplicationHandler::new(stop_durable_cell_applications),
+                    StopDurableCellApplicationHandler::new(
+                        stop_durable_cell_applications,
+                        stop_durable_cell_workloads,
+                    ),
                 )
                 .command_handler::<crate::modules::durable_cells::DeployDurableCellApplication, _>(
                     deploy_durable_cell_handler,

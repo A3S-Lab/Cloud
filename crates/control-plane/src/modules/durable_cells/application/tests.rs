@@ -19,6 +19,7 @@ use crate::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId,
     Sha256Digest, SourceRevisionId,
 };
+use crate::modules::workloads::InMemoryWorkloadRepository;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use chrono::{Duration, Utc};
 use std::sync::Arc;
@@ -80,6 +81,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     .await;
 
     let applications = Arc::new(InMemoryDurableCellApplicationRepository::new());
+    let workloads = Arc::new(InMemoryWorkloadRepository::default());
     let create_handler =
         CreateDurableCellApplicationHandler::new(projects, applications.clone(), builds.clone());
     let create = CreateDurableCellApplication {
@@ -177,7 +179,8 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
             .replayed
     );
 
-    let stop_handler = StopDurableCellApplicationHandler::new(applications.clone());
+    let stop_handler =
+        StopDurableCellApplicationHandler::new(applications.clone(), workloads.clone());
     let stop = StopDurableCellApplication {
         organization_id,
         project_id,
@@ -229,7 +232,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         .expect("command framework");
     assert!(matches!(no_op_stop, Err(ApplicationError::Conflict(_))));
 
-    let start_handler = StartDurableCellApplicationHandler::new(applications.clone());
+    let start_handler = StartDurableCellApplicationHandler::new(applications.clone(), workloads);
     let started = start_handler
         .execute(
             StartDurableCellApplication {
