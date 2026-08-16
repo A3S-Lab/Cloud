@@ -964,7 +964,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1` foundations implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2` foundations implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -1078,9 +1078,18 @@ schema binds each revision to its exact tenant-scoped existing `BuildRun` and
 rejects revision mutation, forks, no-op revisions, stale aggregate versions,
 and state changes that alter revision authority. It creates no per-Cell,
 deployment, Runtime, queue, scheduler, ownership, or provider-receipt table.
-The PostgreSQL gate is checked in but has no retained pass; C2-C6 still own
-authorization/CQRS, deployment correlation and orchestration, Gateway
-publication, interfaces, and retained recovery evidence.
+The PostgreSQL gate is checked in but has no retained pass.
+
+Component-only `CELL0.4-C2` registers create, revise, start, stop, get, list,
+and revision-history handlers on the existing command/query buses. Every
+boundary evaluates the exact environment grant before idempotency replay, so
+revocation applies immediately and denied/missing resources remain
+indistinguishable. New writes validate the ACL-bound BuildRun through the
+existing tenant-scoped Artifacts repository, while exact historical replay
+does not re-evaluate later BuildRun state. Lists are bounded and no REST,
+client, deployment, scheduler, queue, or authorization store is introduced.
+C3-C6 still own deployment correlation and orchestration, Gateway publication,
+interfaces, and retained recovery evidence.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2481,7 +2490,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | Migration `116` and the existing A3S ORM Migrator persist the `CELL0.4-C1` application head plus immutable canonical-ACL revisions through the shared idempotency/Outbox/audit transaction; deployment correlation remains unpersisted until C3. `CELL0.1-C1/C2/C3` and component-only `CELL0.2-C1/C2` supply application and exact S0 correlation, `CELL0.2-C3` supplies the shared unexecuted storage-provider gate, and `CELL0.3-C1/C2/C3` supply the exact provider/ordinary Runtime Service binding, anonymous operator and existing Runtime lifecycle receipts, plus a pinned unexecuted real-Box runtime-only gate |
+| Durable Cell application identity, immutable revision/profile/retention policy, and exact Workload/S0/Gateway deployment correlation | Migration `116` and the existing A3S ORM Migrator persist the `CELL0.4-C1` application head plus immutable canonical-ACL revisions through the shared idempotency/Outbox/audit transaction; `C2` adds only authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. Deployment correlation remains unpersisted until C3. `CELL0.1-C1/C2/C3` and component-only `CELL0.2-C1/C2` supply application and exact S0 correlation, `CELL0.2-C3` supplies the shared unexecuted storage-provider gate, and `CELL0.3-C1/C2/C3` supply the exact provider/ordinary Runtime Service binding, anonymous operator and existing Runtime lifecycle receipts, plus a pinned unexecuted real-Box runtime-only gate |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |

@@ -1,6 +1,19 @@
+pub mod application;
 pub mod domain;
 pub mod infrastructure;
 
+pub use application::{
+    CreateDurableCellApplication, CreateDurableCellApplicationHandler,
+    DurableCellApplicationMutationResult, GetDurableCellApplication,
+    GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
+    GetDurableCellApplicationRevisionHandler, ListDurableCellApplicationRevisions,
+    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplications,
+    ListDurableCellApplicationsHandler, ReviseDurableCellApplication,
+    ReviseDurableCellApplicationHandler, StartDurableCellApplication,
+    StartDurableCellApplicationHandler, StopDurableCellApplication,
+    StopDurableCellApplicationHandler,
+};
+pub use domain::IDurableCellApplicationRepository;
 pub use infrastructure::{
     admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
     admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,

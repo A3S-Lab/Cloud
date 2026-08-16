@@ -42,6 +42,13 @@ use crate::modules::connectors::{
     PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
 };
+use crate::modules::durable_cells::{
+    CreateDurableCellApplicationHandler, GetDurableCellApplicationHandler,
+    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
+    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
+    PostgresDurableCellApplicationRepository, ReviseDurableCellApplicationHandler,
+    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
+};
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
 };
@@ -485,6 +492,9 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let connector_profiles: Arc<dyn IConnectorProfileRepository> =
         Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
+    let durable_cell_applications: Arc<dyn IDurableCellApplicationRepository> = Arc::new(
+        PostgresDurableCellApplicationRepository::new(executor.clone()),
+    );
     let outbound_notification_consumer = if config.events.provider == EventProviderKind::Nats {
         let connector_attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
             executor.clone(),
@@ -1102,6 +1112,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             notifications,
             outbound_notifications,
             connector_profiles,
+            durable_cell_applications,
             plugin_registries,
             plugin_enrollment_authorizer,
             plugin_trust_roots,
@@ -1211,6 +1222,7 @@ struct ApplicationDependencies {
     notifications: Arc<dyn INotificationRepository>,
     outbound_notifications: Arc<dyn IOutboundNotificationRepository>,
     connector_profiles: Arc<dyn IConnectorProfileRepository>,
+    durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
@@ -1282,6 +1294,7 @@ fn build_application_with_health(
         notifications,
         outbound_notifications,
         connector_profiles,
+        durable_cell_applications,
         plugin_registries,
         plugin_enrollment_authorizer,
         plugin_trust_roots,
@@ -1347,6 +1360,17 @@ fn build_application_with_health(
     let get_connector_revisions = connector_profiles;
     let create_connector_secrets = Arc::clone(&secrets);
     let revise_connector_secrets = Arc::clone(&secrets);
+    let create_durable_cell_environments = Arc::clone(&environments);
+    let create_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let revise_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let start_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let stop_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let list_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let get_durable_cell_applications = Arc::clone(&durable_cell_applications);
+    let list_durable_cell_revisions = Arc::clone(&durable_cell_applications);
+    let get_durable_cell_revisions = durable_cell_applications;
+    let create_durable_cell_builds = Arc::clone(&builds);
+    let revise_durable_cell_builds = Arc::clone(&builds);
     let project_organizations = Arc::clone(&organizations);
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
@@ -1752,6 +1776,25 @@ fn build_application_with_health(
                         revise_connector_profiles,
                         revise_connector_secrets,
                     ),
+                )
+                .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
+                    CreateDurableCellApplicationHandler::new(
+                        create_durable_cell_environments,
+                        create_durable_cell_applications,
+                        create_durable_cell_builds,
+                    ),
+                )
+                .command_handler::<crate::modules::durable_cells::ReviseDurableCellApplication, _>(
+                    ReviseDurableCellApplicationHandler::new(
+                        revise_durable_cell_applications,
+                        revise_durable_cell_builds,
+                    ),
+                )
+                .command_handler::<crate::modules::durable_cells::StartDurableCellApplication, _>(
+                    StartDurableCellApplicationHandler::new(start_durable_cell_applications),
+                )
+                .command_handler::<crate::modules::durable_cells::StopDurableCellApplication, _>(
+                    StopDurableCellApplicationHandler::new(stop_durable_cell_applications),
                 )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
@@ -2249,6 +2292,26 @@ fn build_application_with_health(
                 )
                 .query_handler::<crate::modules::connectors::GetConnectorRevision, _>(
                     GetConnectorRevisionHandler::new(get_connector_revisions),
+                )
+                .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
+                    ListDurableCellApplicationsHandler::new(list_durable_cell_applications),
+                )
+                .query_handler::<crate::modules::durable_cells::GetDurableCellApplication, _>(
+                    GetDurableCellApplicationHandler::new(get_durable_cell_applications),
+                )
+                .query_handler::<
+                    crate::modules::durable_cells::ListDurableCellApplicationRevisions,
+                    _,
+                >(
+                    ListDurableCellApplicationRevisionsHandler::new(
+                        list_durable_cell_revisions,
+                    ),
+                )
+                .query_handler::<
+                    crate::modules::durable_cells::GetDurableCellApplicationRevision,
+                    _,
+                >(
+                    GetDurableCellApplicationRevisionHandler::new(get_durable_cell_revisions),
                 )
                 .query_handler::<crate::modules::assets::ListAssets, _>(
                     ListAssetsHandler::new(list_assets),

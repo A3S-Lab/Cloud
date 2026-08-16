@@ -1,4 +1,14 @@
 use super::*;
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
+use a3s_cloud_control_plane::modules::artifacts::PostgresBuildRunRepository;
+use a3s_cloud_control_plane::modules::durable_cells::application::{
+    CreateDurableCellApplication, CreateDurableCellApplicationHandler, GetDurableCellApplication,
+    GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
+    ListDurableCellApplicationRevisionsHandler, ReviseDurableCellApplication,
+    ReviseDurableCellApplicationHandler, StartDurableCellApplication,
+    StartDurableCellApplicationHandler, StopDurableCellApplication,
+    StopDurableCellApplicationHandler,
+};
 use a3s_cloud_control_plane::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
@@ -8,6 +18,10 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
     RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
 };
 use a3s_cloud_control_plane::modules::durable_cells::PostgresDurableCellApplicationRepository;
+use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
+use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
+use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
@@ -109,7 +123,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     )
     .await?;
 
-    let repository = PostgresDurableCellApplicationRepository::new(executor);
+    let repository = PostgresDurableCellApplicationRepository::new(executor.clone());
     let application_id = DurableCellApplicationId::new();
     let initial = DurableCellApplicationRevision::initial(
         organization_id,
@@ -250,6 +264,165 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         vec![successor.clone(), initial.clone()]
     );
 
+    let cqrs_initial_build_run_id = insert_queued_build_run(
+        &database,
+        organization_id,
+        project_id,
+        environment_id,
+        'c',
+        created_at + Duration::milliseconds(2),
+    )
+    .await?;
+    let cqrs_successor_build_run_id = insert_queued_build_run(
+        &database,
+        organization_id,
+        project_id,
+        environment_id,
+        'd',
+        created_at + Duration::milliseconds(3),
+    )
+    .await?;
+    let cqrs_repository = Arc::new(PostgresDurableCellApplicationRepository::new(
+        executor.clone(),
+    ));
+    let cqrs_builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let cqrs_projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let create_handler = CreateDurableCellApplicationHandler::new(
+        cqrs_projects,
+        cqrs_repository.clone(),
+        cqrs_builds.clone(),
+    );
+    let create_command = CreateDurableCellApplication {
+        organization_id,
+        project_id,
+        environment_id,
+        name: "CQRS counters".into(),
+        definition_acl: definition(cqrs_initial_build_run_id, 'c', 1)?
+            .canonical_acl()
+            .to_owned(),
+        actor_principal_id: actor,
+        resource_access: ResourceAccessEvaluator::organization_wide(),
+        idempotency_key: "durable-cell-cqrs-create".into(),
+        request_id: Uuid::now_v7(),
+    };
+    let cqrs_created = create_handler
+        .execute(create_command.clone(), cqrs_context())
+        .await??;
+    assert!(!cqrs_created.replayed);
+    let denied_replay = create_handler
+        .execute(
+            CreateDurableCellApplication {
+                resource_access: ResourceAccessEvaluator::restricted([
+                    ResourceGrantScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    },
+                ]),
+                ..create_command.clone()
+            },
+            cqrs_context(),
+        )
+        .await?;
+    assert!(matches!(denied_replay, Err(ApplicationError::NotFound(_))));
+    assert!(
+        create_handler
+            .execute(create_command, cqrs_context())
+            .await??
+            .replayed
+    );
+
+    let revise_handler =
+        ReviseDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_builds);
+    let cqrs_revised = revise_handler
+        .execute(
+            ReviseDurableCellApplication {
+                organization_id,
+                project_id,
+                environment_id,
+                application_id: cqrs_created.record.application.id,
+                expected_version: 1,
+                definition_acl: definition(cqrs_successor_build_run_id, 'd', 2)?
+                    .canonical_acl()
+                    .to_owned(),
+                actor_principal_id: actor,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                idempotency_key: "durable-cell-cqrs-revise".into(),
+                request_id: Uuid::now_v7(),
+            },
+            cqrs_context(),
+        )
+        .await??;
+    let stop_handler = StopDurableCellApplicationHandler::new(cqrs_repository.clone());
+    let cqrs_stopped = stop_handler
+        .execute(
+            StopDurableCellApplication {
+                organization_id,
+                project_id,
+                environment_id,
+                application_id: cqrs_created.record.application.id,
+                expected_version: 2,
+                actor_principal_id: actor,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                idempotency_key: "durable-cell-cqrs-stop".into(),
+                request_id: Uuid::now_v7(),
+            },
+            cqrs_context(),
+        )
+        .await??;
+    assert_eq!(
+        cqrs_stopped.record.application.desired_state,
+        DurableCellApplicationDesiredState::Stopped
+    );
+    let start_handler = StartDurableCellApplicationHandler::new(cqrs_repository.clone());
+    let cqrs_started = start_handler
+        .execute(
+            StartDurableCellApplication {
+                organization_id,
+                project_id,
+                environment_id,
+                application_id: cqrs_created.record.application.id,
+                expected_version: 3,
+                actor_principal_id: actor,
+                resource_access: ResourceAccessEvaluator::organization_wide(),
+                idempotency_key: "durable-cell-cqrs-start".into(),
+                request_id: Uuid::now_v7(),
+            },
+            cqrs_context(),
+        )
+        .await??;
+    assert_eq!(cqrs_started.record.application.aggregate_version, 4);
+    assert_eq!(
+        GetDurableCellApplicationHandler::new(cqrs_repository.clone())
+            .execute(
+                GetDurableCellApplication {
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    application_id: cqrs_created.record.application.id,
+                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                },
+                cqrs_context(),
+            )
+            .await??,
+        cqrs_started.record
+    );
+    assert_eq!(
+        ListDurableCellApplicationRevisionsHandler::new(cqrs_repository)
+            .execute(
+                ListDurableCellApplicationRevisions {
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    application_id: cqrs_created.record.application.id,
+                    limit: 10,
+                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                },
+                cqrs_context(),
+            )
+            .await??,
+        vec![cqrs_revised.record.revision, cqrs_created.record.revision]
+    );
+
     assert_rejected(
         database
             .execute(
@@ -322,7 +495,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                 .append(")"),
         )
         .await?;
-    assert_eq!(evidence, (1, 2, 3, 3, 3));
+    assert_eq!(evidence, (2, 4, 7, 7, 7));
     let duplicated_authority = database
         .fetch_one_as(
             sql_query::<i64>(
@@ -439,4 +612,8 @@ fn digest(marker: char) -> Sha256Digest {
 
 fn assert_rejected<T, E: std::fmt::Debug>(result: Result<T, E>, label: &str) {
     assert!(result.is_err(), "PostgreSQL accepted {label}");
+}
+
+fn cqrs_context() -> CqrsContext {
+    CqrsContext::new(ModuleRef::new())
 }

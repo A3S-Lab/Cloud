@@ -1733,6 +1733,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             notifications,
             outbound_notifications,
             connector_profiles: Arc::new(InMemoryConnectorProfileRepository::new()),
+            durable_cell_applications: Arc::new(
+                crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
+            ),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
             plugin_trust_roots: Arc::new(
