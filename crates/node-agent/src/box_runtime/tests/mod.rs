@@ -23,6 +23,8 @@ use uuid::Uuid;
 
 #[path = "artifact_storage.rs"]
 mod artifact_storage;
+#[path = "durable_cell_provider.rs"]
+mod durable_cell_provider;
 #[path = "private_registry.rs"]
 mod private_registry;
 

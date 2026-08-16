@@ -374,8 +374,14 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../contracts/cell0.1/service-profile.acl"
     ));
+    const CELLD_V021_SERVICE_PROFILE_FIXTURE: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/cell0.3/celld-v0.2.1-service-profile.acl"
+    ));
     const SERVICE_PROFILE_FIXTURE_DIGEST: &str =
         "sha256:55422ee8bc0028a10e09aef7487e321511cbcc05545d693338b5cc086d43b303";
+    const CELLD_V021_SERVICE_PROFILE_FIXTURE_DIGEST: &str =
+        "sha256:0389b20dc544c0441b611df52e8dadf8b94a48db41454777f2f140acc007df15";
 
     fn fixture_spec() -> DurableCellServiceProfileSpec {
         DurableCellServiceProfileSpec {
@@ -411,6 +417,21 @@ mod tests {
             SERVICE_PROFILE_FIXTURE.replace("\r\n", "\n")
         );
         assert_eq!(profile.digest().as_str(), SERVICE_PROFILE_FIXTURE_DIGEST);
+    }
+
+    #[test]
+    fn celld_v021_adapter_profile_is_canonical_and_digest_locked() {
+        let profile = DurableCellServiceProfile::parse_acl(CELLD_V021_SERVICE_PROFILE_FIXTURE)
+            .expect("celld adapter profile");
+        assert_eq!(
+            format!("{}\n", profile.canonical_acl()),
+            CELLD_V021_SERVICE_PROFILE_FIXTURE.replace("\r\n", "\n")
+        );
+        assert_eq!(
+            profile.digest().as_str(),
+            CELLD_V021_SERVICE_PROFILE_FIXTURE_DIGEST
+        );
+        assert_eq!(profile.spec().health_path, "/__celld/health");
     }
 
     #[test]

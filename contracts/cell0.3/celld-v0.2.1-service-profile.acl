@@ -1,0 +1,21 @@
+durable_cell_service_profile {
+  dedicated_application_fleet = true
+  epoch_fencing = true
+  health_path = "/__celld/health"
+  hibernatable_websockets = true
+  idle_eviction = true
+  internal_runtime_port = "cell-internal"
+  max_cell_name_bytes = 512
+  max_request_bytes = 16777216
+  max_response_bytes = 67108864
+  max_websocket_message_bytes = 1048576
+  provider_protocol = "a3s.durable-cell-provider.v1"
+  public_runtime_port = "cell-public"
+  replicate_before_acknowledgement = true
+  required_handlers = ["alarm", "fetch", "websocket"]
+  required_storage_guarantees = ["conditional_create", "conditional_overwrite", "read_after_write"]
+  schema = "cloud.durable-cell.service.v1"
+  single_threaded_event_turns = true
+  single_writer = true
+  sqlite_per_cell = true
+}

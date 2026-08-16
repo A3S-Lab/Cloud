@@ -321,13 +321,13 @@ fn validate_runtime_spec(
             port,
             path,
             expected_statuses,
-        } if port == &profile.internal_runtime_port
+        } if port == &profile.public_runtime_port
             && path == &profile.health_path
             && expected_statuses.as_slice() == [200] =>
         {
             Ok(())
         }
-        _ => Err("Durable Cell Runtime Service changed its internal HTTP health probe".into()),
+        _ => Err("Durable Cell Runtime Service changed its public HTTP readiness probe".into()),
     }
 }
 

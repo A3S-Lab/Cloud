@@ -8,25 +8,31 @@ on:
       - .github/workflows/box-conformance.yml
       - Cargo.lock
       - Cargo.toml
+      - contracts/cell0.3/**
       - crates/contracts/**
       - crates/control-plane/**
       - crates/node-agent/**
       - tools/box-conformance/**
+      - tools/cell-conformance/**
   pull_request:
     paths:
       - .github/workflows/box-conformance.yml
       - Cargo.lock
       - Cargo.toml
+      - contracts/cell0.3/**
       - crates/contracts/**
       - crates/control-plane/**
       - crates/node-agent/**
       - tools/box-conformance/**
+      - tools/cell-conformance/**
   schedule:
     - cron: "23 3 * * *"
   workflow_dispatch:
 
 permissions:
+  attestations: read
   contents: read
+  packages: read
 
 concurrency:
   group: box-provider-conformance-${{ github.event.pull_request.number || github.ref }}
@@ -381,6 +387,125 @@ jobs:
             "$EVIDENCE_DIR/cloud-artifact-volume-output.log" \
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
+
+      - name: Verify the pinned celld release supply chain
+        working-directory: apps/cloud
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tools/cell-conformance/verify_celld_release.sh "$EVIDENCE_DIR"
+
+      - name: Certify celld as one ordinary Box Runtime Service
+        env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_TEST_CELL_PROVIDER: "1"
+          A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          image=$(<apps/cloud/tools/cell-conformance/celld-image)
+          revision=$(<apps/cloud/tools/cell-conformance/celld-revision)
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          box_revision=$(<apps/cloud/tools/box-conformance/box-revision)
+          install -d -m 0755 "$EVIDENCE_DIR"
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            A3S_HOME="$A3S_HOME" \
+            crates/box/src/target/debug/a3s-box pull "$image"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          set +e
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_CLOUD_TEST_CELL_PROVIDER="$A3S_CLOUD_TEST_CELL_PROVIDER" \
+            A3S_CLOUD_TEST_CELL_PROVIDER_IMAGE="$image" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-node-agent --lib \
+              box_runtime::tests::durable_cell_provider::real_celld_release_uses_the_existing_box_runtime_and_fleet_journal \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/durable-cell-provider-runtime.log"
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          if (( gate_status != 0 )); then
+            exit "$gate_status"
+          fi
+          grep --fixed-strings \
+            'A3S_CLOUD_CELL0_3_PROVIDER_RUNTIME_CERTIFIED provider=celld ' \
+            "$EVIDENCE_DIR/durable-cell-provider-runtime.log" \
+            >"$EVIDENCE_DIR/durable-cell-provider-runtime-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/durable-cell-provider-runtime-certification.txt")" -eq 1
+          profile_digest=$(sed -nE \
+            's/.* profile_digest=(sha256:[0-9a-f]{64}) .*/\1/p' \
+            "$EVIDENCE_DIR/durable-cell-provider-runtime-certification.txt")
+          [[ $profile_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          jq -n \
+            --arg cloud "$cloud_revision" \
+            --arg box "$box_revision" \
+            --arg providerRevision "$revision" \
+            --arg image "$image" \
+            --arg profileDigest "$profile_digest" \
+            --rawfile certification "$EVIDENCE_DIR/durable-cell-provider-runtime-certification.txt" \
+            '{
+              schema: "a3s.cloud.cell0.3-provider-runtime-evidence.v1",
+              cloudRevision: $cloud,
+              boxRevision: $box,
+              provider: "celld",
+              providerRevision: $providerRevision,
+              image: $image,
+              serviceProfileDigest: $profileDigest,
+              certification: ($certification | rtrimstr("\n")),
+              checks: {
+                healthyApply: true,
+                distinctRuntimeEndpoints: true,
+                sanitizedOperatorObservation: true,
+                exactFleetReplay: true,
+                gracefulRuntimeStop: true,
+                exactRuntimeRemove: true,
+                restartSafeAbsence: true
+              },
+              scope: {
+                runtimeCertified: true,
+                storageCertified: false,
+                applicationBehaviorCertified: false,
+                gatewayCertified: false
+              }
+            }' >"$EVIDENCE_DIR/durable-cell-provider-runtime.json"
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$box_revision" \
+            --arg revision "$revision" \
+            --arg image "$image" \
+            '.cloudRevision == $cloud
+             and .boxRevision == $box
+             and .providerRevision == $revision
+             and .image == $image
+             and ([.checks[]] | all)
+             and .scope.runtimeCertified == true
+             and .scope.storageCertified == false
+             and .scope.applicationBehaviorCertified == false
+             and .scope.gatewayCertified == false' \
+            "$EVIDENCE_DIR/durable-cell-provider-runtime.json" >/dev/null
+          (
+            cd "$EVIDENCE_DIR"
+            sha256sum \
+              durable-cell-provider-runtime.log \
+              durable-cell-provider-runtime-certification.txt \
+              durable-cell-provider-runtime.json \
+              >durable-cell-provider-runtime-sha256.txt
+          )
 
       - name: Certify Fleet and Flow build-command event-loss replay
         env:

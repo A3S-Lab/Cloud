@@ -198,9 +198,9 @@ fn validate_service_template(
         .health
         .as_ref()
         .ok_or_else(|| "Durable Cell provider Service requires an HTTP health check".to_owned())?;
-    if health.port_name != profile.internal_runtime_port || health.path != profile.health_path {
+    if health.port_name != profile.public_runtime_port || health.path != profile.health_path {
         return Err(
-            "Durable Cell provider health check must use the exact internal profile endpoint"
+            "Durable Cell provider health check must use the exact public readiness endpoint"
                 .into(),
         );
     }
@@ -300,7 +300,7 @@ mod tests {
                 },
             ],
             health: Some(HttpHealthCheck {
-                port_name: profile.spec().internal_runtime_port.clone(),
+                port_name: profile.spec().public_runtime_port.clone(),
                 path: profile.spec().health_path.clone(),
                 interval_ms: 5_000,
                 timeout_ms: 1_000,
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_template_rejects_extra_surface_shared_socket_or_public_health() {
+    fn provider_template_rejects_extra_surface_shared_socket_or_internal_health() {
         let extra = fixture_with_template(|profile| {
             let mut template = service_template(profile);
             template.ports.push(ServicePort {
@@ -467,18 +467,18 @@ mod tests {
         )
         .is_err());
 
-        let public_health = fixture_with_template(|profile| {
+        let internal_health = fixture_with_template(|profile| {
             let mut template = service_template(profile);
             template.health.as_mut().expect("health").port_name =
-                profile.spec().public_runtime_port.clone();
+                profile.spec().internal_runtime_port.clone();
             template
         });
         assert!(DurableCellProviderBinding::for_current_revision(
-            &public_health.application,
-            &public_health.application_revision,
-            &public_health.projection,
-            &public_health.profile,
-            &public_health.workload_revision,
+            &internal_health.application,
+            &internal_health.application_revision,
+            &internal_health.projection,
+            &internal_health.profile,
+            &internal_health.workload_revision,
         )
         .is_err());
     }

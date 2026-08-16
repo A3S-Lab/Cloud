@@ -456,6 +456,7 @@ jobs:
       - name: Validate shell syntax
         run: |
           bash -n tools/box-conformance/install_box_release.sh
+          bash -n tools/cell-conformance/verify_celld_release.sh
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
           bash -n tools/dev/run_cloud.sh
           bash -n tools/dev/test_run_cloud.sh
@@ -520,7 +521,7 @@ jobs:
           removed_client='boll'"ard"
           forbidden_paths=$(git ls-files \
             .github justfile deploy tools/box-conformance tools/c0-conformance \
-            tools/dev tools/g0-conformance tools/runtime-conformance |
+            tools/cell-conformance tools/dev tools/g0-conformance tools/runtime-conformance |
             grep -E -i "(^|/)($removed_provider|$removed_builder|$removed_client)([^/]*)(/|$)" || true)
           if [[ -n $forbidden_paths ]]; then
             printf '%s\n' "$forbidden_paths"
@@ -529,7 +530,7 @@ jobs:
           removed_runtime_pattern="(^|[;&|[:space:]])$removed_provider([[:space:]]|$)|/var/run/$removed_provider\\.sock|$removed_client|$removed_builder"
           if git grep -I -n -E "$removed_runtime_pattern" -- \
             .github justfile deploy tools/box-conformance tools/c0-conformance \
-            tools/dev tools/g0-conformance tools/runtime-conformance; then
+            tools/cell-conformance tools/dev tools/g0-conformance tools/runtime-conformance; then
             exit 1
           fi
 
