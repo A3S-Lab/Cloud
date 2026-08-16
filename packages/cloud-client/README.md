@@ -241,6 +241,20 @@ digest lineage, Outbox, audit, and persistence. The client never resolves a
 Secret or projects endpoint, credential, provider body, attempt/evidence, or
 retry state.
 
+`listDurableCellApplications`, `getDurableCellApplication`,
+`createDurableCellApplication`, `reviseDurableCellApplication`,
+`startDurableCellApplication`, `stopDurableCellApplication`,
+`listDurableCellApplicationRevisions`, `getDurableCellApplicationRevision`,
+`deployDurableCellApplication`, and `publishDurableCellApplicationRoute`
+expose the non-Web `CELL0.4-C5` surface added by REST contract `1.38.0`.
+Application definitions, Service profiles, provider Workloads, and
+plaintext-free storage bindings remain bounded canonical A3S ACL strings; the
+client validates transport bounds and delegates parsing to Cloud. Deployment
+reuses the existing Workload ACL bound and returns only existing-owner
+references and digests. Route publication selects no port locally and sends
+the Service profile to the existing Edge-backed server command. The client
+adds no ACL parser, OCI/DNS validator, S0 lifecycle, scheduler, or state store.
+
 `listOutboundNotificationSubscriptions`, `getOutboundNotificationSubscription`,
 `createOutboundNotificationSubscription`, and
 `revokeOutboundNotificationSubscription` expose the recipient-bound lifecycle

@@ -249,6 +249,16 @@ connector-profiles create <name> --file=<connector.acl>
 connector-profiles revise <profile-id> --file=<connector.acl> --expected-version=<version>
 connector-revisions list <profile-id>
 connector-revisions get <profile-id> <revision-id>
+durable-cell-applications list
+durable-cell-applications get <application-id>
+durable-cell-applications create <name> --file=<application.acl>
+durable-cell-applications revise <application-id> --file=<application.acl> --expected-version=<version>
+durable-cell-applications start <application-id> --expected-version=<version>
+durable-cell-applications stop <application-id> --expected-version=<version>
+durable-cell-revisions list <application-id>
+durable-cell-revisions get <application-id> <revision-id>
+durable-cell-deployments create <application-id> <revision-id> --service-profile-file=<profile.acl> --provider-workload-file=<workload.acl> --storage-binding-file=<storage.acl>
+durable-cell-routes publish <application-id> <revision-id> <gateway-scope-id> <domain-claim-id> <hostname> <path-prefix> --service-profile-file=<profile.acl>
 ontologies list
 ontologies get <ontology-id>
 ontologies create --file=<path>
@@ -465,6 +475,18 @@ Secret-version references, authorizes the environment, and commits lineage,
 Outbox, audit, and idempotency through the shared repository. The CLI never
 resolves a Secret, stores profile state, contacts a provider, or exposes an
 endpoint, credential, provider body, attempt/evidence, or retry state.
+
+`durable-cell-applications` creates, revises, starts, stops, lists, and reads
+environment-scoped application heads and immutable canonical-ACL revisions.
+`durable-cell-deployments create` reads exactly three bounded `.acl` files for
+the Service profile, digest-pinned provider Workload, and plaintext-free S0
+storage binding. `durable-cell-routes publish` reads the same Service profile
+and reuses the CLI's existing Edge hostname/path validation; Cloud alone
+selects the ACL public port and authorizes the Gateway scope and DomainClaim.
+All writes use the normal caller-owned idempotency key, and versioned
+application mutations require the positive current aggregate version. The CLI
+adds no ACL parser, OCI/DNS validator, Secret materializer, scheduler,
+repository, Workload controller, or Edge publication path.
 
 `forms` creates, revises, lists, and reads project-scoped canonical native Form
 drafts. `form-releases` publishes, lists, and reads immutable releases carrying

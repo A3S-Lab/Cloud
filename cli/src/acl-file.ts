@@ -68,13 +68,16 @@ async function readLocalFile(path: string): Promise<Uint8Array> {
   return Bun.file(path).bytes();
 }
 
-function requireAclFile(arguments_: ParsedArguments): string {
-  const file = arguments_.file;
-  if (file === undefined) {
-    throw usageError('--file is required for ACL desired-state mutations');
+export function requireAclFilePath(path: string | undefined, option = '--file'): string {
+  if (path === undefined) {
+    throw usageError(`${option} is required for ACL desired-state mutations`);
   }
-  if (file.length > 4_096 || /[\0\r\n]/.test(file)) {
+  if (path.length > 4_096 || /[\0\r\n]/.test(path)) {
     throw usageError('ACL file path is invalid');
   }
-  return file;
+  return path;
+}
+
+function requireAclFile(arguments_: ParsedArguments): string {
+  return requireAclFilePath(arguments_.file);
 }

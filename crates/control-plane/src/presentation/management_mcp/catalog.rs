@@ -3,6 +3,13 @@ use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
+use crate::modules::durable_cells::domain::{
+    DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
+    DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
+};
+use crate::modules::durable_cells::{
+    DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+};
 use crate::modules::executions::EXECUTION_TEMPLATE_MAX_ACL_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
@@ -17,6 +24,7 @@ use crate::modules::projects::domain::value_objects::{
     PROJECT_ATTRIBUTION_LABEL_KEY_MAX_CHARS, PROJECT_ATTRIBUTION_LABEL_MAX_COUNT,
     PROJECT_ATTRIBUTION_LABEL_VALUE_MAX_CHARS,
 };
+use crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES;
 use a3s_boot::AuthPrincipal;
 use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
@@ -40,6 +48,16 @@ pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
 pub const CONNECTOR_PROFILES_GET: &str = "a3s_cloud_connector_profiles_get";
 pub const CONNECTOR_REVISIONS_LIST: &str = "a3s_cloud_connector_revisions_list";
 pub const CONNECTOR_REVISIONS_GET: &str = "a3s_cloud_connector_revisions_get";
+pub const DURABLE_CELL_APPLICATIONS_CREATE: &str = "a3s_cloud_durable_cell_applications_create";
+pub const DURABLE_CELL_APPLICATIONS_REVISE: &str = "a3s_cloud_durable_cell_applications_revise";
+pub const DURABLE_CELL_APPLICATIONS_START: &str = "a3s_cloud_durable_cell_applications_start";
+pub const DURABLE_CELL_APPLICATIONS_STOP: &str = "a3s_cloud_durable_cell_applications_stop";
+pub const DURABLE_CELL_APPLICATIONS_LIST: &str = "a3s_cloud_durable_cell_applications_list";
+pub const DURABLE_CELL_APPLICATIONS_GET: &str = "a3s_cloud_durable_cell_applications_get";
+pub const DURABLE_CELL_REVISIONS_LIST: &str = "a3s_cloud_durable_cell_revisions_list";
+pub const DURABLE_CELL_REVISIONS_GET: &str = "a3s_cloud_durable_cell_revisions_get";
+pub const DURABLE_CELL_DEPLOYMENTS_CREATE: &str = "a3s_cloud_durable_cell_deployments_create";
+pub const DURABLE_CELL_ROUTES_PUBLISH: &str = "a3s_cloud_durable_cell_routes_publish";
 pub const EXECUTION_TEMPLATES_CREATE: &str = "a3s_cloud_execution_templates_create";
 pub const EXECUTION_TEMPLATES_GET: &str = "a3s_cloud_execution_templates_get";
 pub const EXECUTION_TEMPLATES_LIST: &str = "a3s_cloud_execution_templates_list";
@@ -140,6 +158,16 @@ pub enum ManagementTool {
     ConnectorProfilesGet,
     ConnectorRevisionsList,
     ConnectorRevisionsGet,
+    DurableCellApplicationsCreate,
+    DurableCellApplicationsRevise,
+    DurableCellApplicationsStart,
+    DurableCellApplicationsStop,
+    DurableCellApplicationsList,
+    DurableCellApplicationsGet,
+    DurableCellRevisionsList,
+    DurableCellRevisionsGet,
+    DurableCellDeploymentsCreate,
+    DurableCellRoutesPublish,
     ExecutionTemplatesCreate,
     ExecutionTemplatesGet,
     ExecutionTemplatesList,
@@ -250,7 +278,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 101] = [
+    const ALL: [Self; 111] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ConnectorProfilesCreate,
@@ -259,6 +287,16 @@ impl ManagementTool {
         Self::ConnectorProfilesGet,
         Self::ConnectorRevisionsList,
         Self::ConnectorRevisionsGet,
+        Self::DurableCellApplicationsCreate,
+        Self::DurableCellApplicationsRevise,
+        Self::DurableCellApplicationsStart,
+        Self::DurableCellApplicationsStop,
+        Self::DurableCellApplicationsList,
+        Self::DurableCellApplicationsGet,
+        Self::DurableCellRevisionsList,
+        Self::DurableCellRevisionsGet,
+        Self::DurableCellDeploymentsCreate,
+        Self::DurableCellRoutesPublish,
         Self::ExecutionTemplatesCreate,
         Self::ExecutionTemplatesGet,
         Self::ExecutionTemplatesList,
@@ -388,6 +426,16 @@ impl ManagementTool {
             Self::ConnectorProfilesGet => CONNECTOR_PROFILES_GET,
             Self::ConnectorRevisionsList => CONNECTOR_REVISIONS_LIST,
             Self::ConnectorRevisionsGet => CONNECTOR_REVISIONS_GET,
+            Self::DurableCellApplicationsCreate => DURABLE_CELL_APPLICATIONS_CREATE,
+            Self::DurableCellApplicationsRevise => DURABLE_CELL_APPLICATIONS_REVISE,
+            Self::DurableCellApplicationsStart => DURABLE_CELL_APPLICATIONS_START,
+            Self::DurableCellApplicationsStop => DURABLE_CELL_APPLICATIONS_STOP,
+            Self::DurableCellApplicationsList => DURABLE_CELL_APPLICATIONS_LIST,
+            Self::DurableCellApplicationsGet => DURABLE_CELL_APPLICATIONS_GET,
+            Self::DurableCellRevisionsList => DURABLE_CELL_REVISIONS_LIST,
+            Self::DurableCellRevisionsGet => DURABLE_CELL_REVISIONS_GET,
+            Self::DurableCellDeploymentsCreate => DURABLE_CELL_DEPLOYMENTS_CREATE,
+            Self::DurableCellRoutesPublish => DURABLE_CELL_ROUTES_PUBLISH,
             Self::ExecutionTemplatesCreate => EXECUTION_TEMPLATES_CREATE,
             Self::ExecutionTemplatesGet => EXECUTION_TEMPLATES_GET,
             Self::ExecutionTemplatesList => EXECUTION_TEMPLATES_LIST,
@@ -494,6 +542,12 @@ impl ManagementTool {
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
+            Self::DurableCellApplicationsCreate
+            | Self::DurableCellApplicationsRevise
+            | Self::DurableCellApplicationsStart
+            | Self::DurableCellApplicationsStop
+            | Self::DurableCellDeploymentsCreate => Some(ApiTokenScope::WORKLOAD_WRITE),
+            Self::DurableCellRoutesPublish => Some(ApiTokenScope::ROUTE_WRITE),
             Self::ExecutionTemplatesCreate => Some(ApiTokenScope::EXECUTION_WRITE),
             Self::MembershipsList
             | Self::MembershipsGet
@@ -536,7 +590,11 @@ impl ManagementTool {
             | Self::ConnectorProfilesList
             | Self::ConnectorProfilesGet
             | Self::ConnectorRevisionsList
-            | Self::ConnectorRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::ConnectorRevisionsGet
+            | Self::DurableCellApplicationsList
+            | Self::DurableCellApplicationsGet
+            | Self::DurableCellRevisionsList
+            | Self::DurableCellRevisionsGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationOutboundSubscriptionsCreate
             | Self::NotificationOutboundSubscriptionsRevoke => {
@@ -642,6 +700,16 @@ impl ManagementTool {
             | Self::ConnectorProfilesGet
             | Self::ConnectorRevisionsList
             | Self::ConnectorRevisionsGet
+            | Self::DurableCellApplicationsCreate
+            | Self::DurableCellApplicationsRevise
+            | Self::DurableCellApplicationsStart
+            | Self::DurableCellApplicationsStop
+            | Self::DurableCellApplicationsList
+            | Self::DurableCellApplicationsGet
+            | Self::DurableCellRevisionsList
+            | Self::DurableCellRevisionsGet
+            | Self::DurableCellDeploymentsCreate
+            | Self::DurableCellRoutesPublish
             | Self::WorkloadsList
             | Self::RoutesList
             | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
@@ -783,6 +851,66 @@ impl ManagementTool {
                 "Get one exact immutable Connector revision and canonical A3S ACL without resolving referenced Secrets.",
                 connector_revision_schema(),
                 true,
+            ),
+            Self::DurableCellApplicationsCreate => (
+                "Create Durable Cell application",
+                "Create one environment-scoped Durable Cell application and immutable revision from canonical A3S ACL through the existing application authority.",
+                create_durable_cell_application_schema(),
+                false,
+            ),
+            Self::DurableCellApplicationsRevise => (
+                "Revise Durable Cell application",
+                "Publish one immutable Durable Cell application revision with optimistic concurrency and explicit idempotency.",
+                revise_durable_cell_application_schema(),
+                false,
+            ),
+            Self::DurableCellApplicationsStart => (
+                "Start Durable Cell application",
+                "Set one Durable Cell application to running through its existing optimistic-concurrency command.",
+                durable_cell_application_state_schema(),
+                false,
+            ),
+            Self::DurableCellApplicationsStop => (
+                "Stop Durable Cell application",
+                "Set one Durable Cell application to stopped while leaving provider-owned state under its retention policy.",
+                durable_cell_application_state_schema(),
+                false,
+            ),
+            Self::DurableCellApplicationsList => (
+                "List Durable Cell applications",
+                "List a bounded set of Durable Cell application heads in one tenant-authorized environment.",
+                list_durable_cell_applications_schema(),
+                true,
+            ),
+            Self::DurableCellApplicationsGet => (
+                "Get Durable Cell application",
+                "Get one exact Durable Cell application and its current immutable canonical-ACL revision.",
+                durable_cell_application_schema(),
+                true,
+            ),
+            Self::DurableCellRevisionsList => (
+                "List Durable Cell revisions",
+                "List a bounded set of immutable revisions for one tenant-authorized Durable Cell application.",
+                list_durable_cell_revisions_schema(),
+                true,
+            ),
+            Self::DurableCellRevisionsGet => (
+                "Get Durable Cell revision",
+                "Get one exact immutable Durable Cell application revision and its canonical A3S ACL.",
+                durable_cell_revision_schema(),
+                true,
+            ),
+            Self::DurableCellDeploymentsCreate => (
+                "Deploy Durable Cell revision",
+                "Project one exact running revision through the existing S0, Secrets, Workloads, Operation, Outbox, and Fleet authorities from bounded canonical A3S ACL inputs.",
+                deploy_durable_cell_application_schema(),
+                false,
+            ),
+            Self::DurableCellRoutesPublish => (
+                "Publish Durable Cell route",
+                "Publish only the Service-profile-selected public port of one exact deployed revision through Edge's existing verified route authority.",
+                publish_durable_cell_route_schema(),
+                false,
             ),
             Self::ExecutionTemplatesCreate => (
                 "Create ExecutionTemplate",
@@ -1836,6 +1964,217 @@ fn connector_revision_schema() -> Value {
             "revisionId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId", "environmentId", "profileId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn create_durable_cell_application_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "name": {"type": "string", "minLength": 1, "maxLength": 63},
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": DURABLE_CELL_APPLICATION_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "name",
+            "definitionAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn revise_durable_cell_application_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "definitionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": DURABLE_CELL_APPLICATION_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "applicationId",
+            "expectedVersion",
+            "definitionAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn durable_cell_application_state_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "applicationId",
+            "expectedVersion",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn list_durable_cell_applications_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+                "default": DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT
+            }
+        },
+        "required": ["projectId", "environmentId"],
+        "additionalProperties": false
+    })
+}
+
+fn durable_cell_application_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "environmentId", "applicationId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_durable_cell_revisions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+                "default": DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT
+            }
+        },
+        "required": ["projectId", "environmentId", "applicationId"],
+        "additionalProperties": false
+    })
+}
+
+fn durable_cell_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "environmentId", "applicationId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn deploy_durable_cell_application_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"},
+            "serviceProfileAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
+            },
+            "providerWorkloadAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": WORKLOAD_MANIFEST_MAX_BYTES
+            },
+            "storageBindingAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "applicationId",
+            "revisionId",
+            "serviceProfileAcl",
+            "providerWorkloadAcl",
+            "storageBindingAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn publish_durable_cell_route_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"},
+            "serviceProfileAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
+            },
+            "gatewayScopeId": {"type": "string", "format": "uuid"},
+            "domainClaimId": {"type": "string", "format": "uuid"},
+            "hostname": {"type": "string", "minLength": 1, "maxLength": 253},
+            "pathPrefix": {"type": "string", "minLength": 1, "maxLength": 2048},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "applicationId",
+            "revisionId",
+            "serviceProfileAcl",
+            "gatewayScopeId",
+            "domainClaimId",
+            "hostname",
+            "pathPrefix",
+            "idempotencyKey"
+        ],
         "additionalProperties": false
     })
 }

@@ -13,6 +13,25 @@ import {
   validateConnectorProfileName,
 } from './connectors';
 import type { CloudDiagnostics, CloudHealthReport, CloudPlatformInfo } from './diagnostics';
+import {
+  type CreateDurableCellApplicationInput,
+  DEFAULT_DURABLE_CELL_LIST_LIMIT,
+  type DeployDurableCellApplicationInput,
+  type DurableCellApplication,
+  type DurableCellApplicationMutationResult,
+  type DurableCellApplicationRecord,
+  type DurableCellApplicationRevision,
+  type DurableCellDeploymentResult,
+  type DurableCellRoutePublicationResult,
+  type PublishDurableCellApplicationRouteInput,
+  type ReviseDurableCellApplicationInput,
+  validateDeployDurableCellApplicationInput,
+  validateDurableCellApplicationAcl,
+  validateDurableCellApplicationName,
+  validateDurableCellExpectedVersion,
+  validateDurableCellListLimit,
+  validatePublishDurableCellApplicationRouteInput,
+} from './durable-cells';
 import { CloudApiError } from './error';
 import { type CloudLogQuery, encodeLogQuery } from './log-query';
 import {
@@ -221,7 +240,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.37.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.38.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -1936,6 +1955,183 @@ export class CloudApi {
     );
   }
 
+  listDurableCellApplications(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    limit = DEFAULT_DURABLE_CELL_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplication[]> {
+    validateDurableCellListLimit(limit);
+    return this.get(
+      `${this.durableCellApplicationsPath(organizationId, projectId, environmentId)}?limit=${limit}`,
+      signal
+    );
+  }
+
+  getDurableCellApplication(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationRecord> {
+    return this.get(
+      this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId),
+      signal
+    );
+  }
+
+  listDurableCellApplicationRevisions(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    limit = DEFAULT_DURABLE_CELL_LIST_LIMIT,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationRevision[]> {
+    validateDurableCellListLimit(limit);
+    return this.get(
+      `${this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId)}` +
+        `/revisions?limit=${limit}`,
+      signal
+    );
+  }
+
+  getDurableCellApplicationRevision(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationRevision> {
+    return this.get(
+      `${this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
+  createDurableCellApplication(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateDurableCellApplicationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationMutationResult> {
+    validateDurableCellApplicationName(input.name);
+    validateDurableCellApplicationAcl(input.definitionAcl);
+    return this.postJson(
+      this.durableCellApplicationsPath(organizationId, projectId, environmentId),
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  reviseDurableCellApplication(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    input: ReviseDurableCellApplicationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationMutationResult> {
+    validateDurableCellExpectedVersion(input.expectedVersion);
+    validateDurableCellApplicationAcl(input.definitionAcl);
+    return this.postJson(
+      `${this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId)}/revisions`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  startDurableCellApplication(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationMutationResult> {
+    return this.changeDurableCellApplicationState(
+      organizationId,
+      projectId,
+      environmentId,
+      applicationId,
+      'start',
+      expectedVersion,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  stopDurableCellApplication(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationMutationResult> {
+    return this.changeDurableCellApplicationState(
+      organizationId,
+      projectId,
+      environmentId,
+      applicationId,
+      'stop',
+      expectedVersion,
+      idempotencyKey,
+      signal
+    );
+  }
+
+  deployDurableCellApplication(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    revisionId: string,
+    input: DeployDurableCellApplicationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellDeploymentResult> {
+    validateDeployDurableCellApplicationInput(input);
+    return this.postJson(
+      `${this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}/deployments`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  publishDurableCellApplicationRoute(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    revisionId: string,
+    input: PublishDurableCellApplicationRouteInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellRoutePublicationResult> {
+    validatePublishDurableCellApplicationRouteInput(input);
+    return this.postJson(
+      `${this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId)}` +
+        `/revisions/${encodeURIComponent(revisionId)}/routes`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
   createExecution(
     organizationId: string,
     projectId: string,
@@ -2920,6 +3116,49 @@ export class CloudApi {
       `/projects/${encodeURIComponent(projectId)}` +
       `/environments/${encodeURIComponent(environmentId)}` +
       `/connector-profiles/${encodeURIComponent(profileId)}`
+    );
+  }
+
+  private durableCellApplicationsPath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string
+  ): string {
+    return (
+      `/organizations/${encodeURIComponent(organizationId)}` +
+      `/projects/${encodeURIComponent(projectId)}` +
+      `/environments/${encodeURIComponent(environmentId)}/durable-cell-applications`
+    );
+  }
+
+  private durableCellApplicationPath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string
+  ): string {
+    return (
+      this.durableCellApplicationsPath(organizationId, projectId, environmentId) +
+      `/${encodeURIComponent(applicationId)}`
+    );
+  }
+
+  private changeDurableCellApplicationState(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    applicationId: string,
+    action: 'start' | 'stop',
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DurableCellApplicationMutationResult> {
+    validateDurableCellExpectedVersion(expectedVersion);
+    return this.postJson(
+      `${this.durableCellApplicationPath(organizationId, projectId, environmentId, applicationId)}/${action}`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
     );
   }
 

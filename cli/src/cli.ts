@@ -83,6 +83,16 @@ Commands:
   connector-profiles revise ID Revise a Connector profile from A3S ACL
   connector-revisions list PROFILE List immutable revisions for one Connector profile
   connector-revisions get PROFILE REV Get one exact immutable Connector revision
+  durable-cell-applications list List Durable Cell applications in the selected environment
+  durable-cell-applications get ID Get one application and its current immutable revision
+  durable-cell-applications create NAME Create a Durable Cell application from A3S ACL
+  durable-cell-applications revise ID Revise a Durable Cell application from A3S ACL
+  durable-cell-applications start ID Set one application to running with optimistic concurrency
+  durable-cell-applications stop ID Set one application to stopped with optimistic concurrency
+  durable-cell-revisions list APP List immutable revisions for one Durable Cell application
+  durable-cell-revisions get APP REV Get one exact Durable Cell application revision
+  durable-cell-deployments create APP REV Project one revision through S0 and Workloads
+  durable-cell-routes publish APP REV SCOPE CLAIM HOST PATH Publish its ACL-selected public port
   forms list            List Form drafts in the selected project
   forms get ID          Get one Form draft
   forms create          Create a Form draft from native Form JSON

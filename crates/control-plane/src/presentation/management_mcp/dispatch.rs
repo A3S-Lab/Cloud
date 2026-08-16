@@ -11,6 +11,13 @@ use super::connectors::{
     ListConnectorProfilesArguments, ListConnectorRevisionsArguments,
     ReviseConnectorProfileArguments,
 };
+use super::durable_cells::{
+    CreateDurableCellApplicationArguments, DeployDurableCellApplicationArguments,
+    DurableCellApplicationArguments, DurableCellApplicationRevisionArguments,
+    ListDurableCellApplicationRevisionsArguments, ListDurableCellApplicationsArguments,
+    PublishDurableCellApplicationRouteArguments, ReviseDurableCellApplicationArguments,
+    SetDurableCellApplicationStateArguments,
+};
 use super::execution_templates::{
     CreateExecutionTemplateArguments, GetExecutionTemplateArguments,
     ListExecutionTemplatesArguments,
@@ -54,8 +61,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    artifacts, audit, connectors, edge, execution_templates, forms, identity, nodes, notifications,
-    ontology, operations, plugins, projects, search, workflow, workloads,
+    artifacts, audit, connectors, durable_cells, edge, execution_templates, forms, identity, nodes,
+    notifications, ontology, operations, plugins, projects, search, workflow, workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -206,6 +213,132 @@ pub async fn execute(
             let arguments = arguments::parse::<ConnectorRevisionArguments>(arguments).ok()?;
             connectors::get_revision(
                 query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellApplicationsCreate => {
+            let arguments =
+                arguments::parse::<CreateDurableCellApplicationArguments>(arguments).ok()?;
+            durable_cells::create_application(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellApplicationsRevise => {
+            let arguments =
+                arguments::parse::<ReviseDurableCellApplicationArguments>(arguments).ok()?;
+            durable_cells::revise_application(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellApplicationsStart => {
+            let arguments =
+                arguments::parse::<SetDurableCellApplicationStateArguments>(arguments).ok()?;
+            durable_cells::set_application_state(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+                true,
+            )
+            .await
+        }
+        ManagementTool::DurableCellApplicationsStop => {
+            let arguments =
+                arguments::parse::<SetDurableCellApplicationStateArguments>(arguments).ok()?;
+            durable_cells::set_application_state(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+                false,
+            )
+            .await
+        }
+        ManagementTool::DurableCellApplicationsList => {
+            let arguments =
+                arguments::parse::<ListDurableCellApplicationsArguments>(arguments).ok()?;
+            durable_cells::list_applications(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellApplicationsGet => {
+            let arguments = arguments::parse::<DurableCellApplicationArguments>(arguments).ok()?;
+            durable_cells::get_application(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellRevisionsList => {
+            let arguments =
+                arguments::parse::<ListDurableCellApplicationRevisionsArguments>(arguments).ok()?;
+            durable_cells::list_revisions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellRevisionsGet => {
+            let arguments =
+                arguments::parse::<DurableCellApplicationRevisionArguments>(arguments).ok()?;
+            durable_cells::get_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellDeploymentsCreate => {
+            let arguments =
+                arguments::parse::<DeployDurableCellApplicationArguments>(arguments).ok()?;
+            durable_cells::deploy_application(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DurableCellRoutesPublish => {
+            let arguments =
+                arguments::parse::<PublishDurableCellApplicationRouteArguments>(arguments).ok()?;
+            durable_cells::publish_route(
+                command_bus,
                 organization_id,
                 arguments,
                 resource_access,

@@ -368,7 +368,7 @@ function canonicalDomainPattern(value: string | undefined): string {
   return normalized;
 }
 
-function canonicalHostname(value: string | undefined, label: string): string {
+export function canonicalHostname(value: string | undefined, label: string): string {
   const normalized = value?.trim().toLowerCase();
   if (
     !normalized ||
@@ -390,7 +390,7 @@ function canonicalHostname(value: string | undefined, label: string): string {
   return normalized;
 }
 
-function canonicalRoutePath(value: string | undefined): string {
+export function canonicalRoutePath(value: string | undefined): string {
   if (
     !value ||
     value.length > 2_048 ||

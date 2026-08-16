@@ -13,6 +13,9 @@ export interface ParsedArguments {
   stream?: string;
   idempotencyKey?: string;
   file?: string;
+  serviceProfileFile?: string;
+  providerWorkloadFile?: string;
+  storageBindingFile?: string;
   expectedVersion?: string;
   costAttributionCode?: string;
   projectAttributionLabels: string[];
@@ -70,6 +73,9 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--stream': 'stream',
   '--idempotency-key': 'idempotencyKey',
   '--file': 'file',
+  '--service-profile-file': 'serviceProfileFile',
+  '--provider-workload-file': 'providerWorkloadFile',
+  '--storage-binding-file': 'storageBindingFile',
   '--expected-version': 'expectedVersion',
   '--cost-attribution-code': 'costAttributionCode',
   '--migration-rule': 'migrationRuleId',

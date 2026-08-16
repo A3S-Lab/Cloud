@@ -42,6 +42,7 @@ export {
 export * from './audit';
 export * from './connectors';
 export * from './diagnostics';
+export * from './durable-cells';
 export * from './notifications';
 export * from './search';
 export * from './types';

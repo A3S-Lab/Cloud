@@ -28,6 +28,7 @@ import {
   requireProject,
   requireToken,
 } from './context';
+import { executeDurableCellCommand, rejectMisplacedDurableCellOptions } from './durable-cell-commands';
 import { executeEdgeCommand } from './edge-commands';
 import { usageError } from './errors';
 import { executeExecutionTemplateCommand } from './execution-template-commands';
@@ -98,6 +99,7 @@ export async function executeCommand(
   rejectMisplacedAuditOptions(command, arguments_);
   rejectMisplacedNotificationOptions(command, arguments_);
   rejectMisplacedProjectAttributionOptions(command, arguments_);
+  rejectMisplacedDurableCellOptions(command, arguments_);
   if (command === 'context show') {
     requireArity(positionals, 2, 'context show');
     rejectLogOptions(arguments_);
@@ -176,6 +178,12 @@ export async function executeCommand(
   });
   if (connectorResult !== undefined) {
     return connectorResult;
+  }
+  const durableCellResult = await executeDurableCellCommand(command, arguments_, context, cloudApi, {
+    readFile: dependencies.readFile,
+  });
+  if (durableCellResult !== undefined) {
+    return durableCellResult;
   }
   const edgeResult = await executeEdgeCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

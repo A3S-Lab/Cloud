@@ -4,6 +4,7 @@ mod audit;
 mod catalog;
 mod connectors;
 mod dispatch;
+mod durable_cells;
 mod edge;
 mod execution_templates;
 mod forms;

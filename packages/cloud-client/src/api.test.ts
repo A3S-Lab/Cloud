@@ -24,6 +24,7 @@ import {
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 import { MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES } from './connectors';
+import { MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES } from './durable-cells';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(
@@ -41,7 +42,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.37.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.38.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1353,6 +1354,176 @@ describe('CloudApi', () => {
       'Connector list limit must be between 1 and 200'
     );
     expect(calls).toHaveLength(6);
+  });
+
+  it('reuses the Durable Cells REST authority with bounded ACL-native inputs', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const applicationAcl = 'durable_cell_application { schema = "cloud.durable-cell.application.v1" }\n';
+    const serviceProfileAcl = 'durable_cell_service { schema = "cloud.durable-cell.service.v1" }\n';
+    const providerWorkloadAcl = 'version = 1\nworkload "durable-cell-provider" {}\n';
+    const storageBindingAcl = 'durable_cell_deployment { schema = "cloud.durable-cell.deployment.v1" }\n';
+    const base =
+      '/api/v1/organizations/organization%20%2F%20one/projects/project/environments/environment' +
+      '/durable-cell-applications';
+    const application = `${base}/application%20%2F%20one`;
+    const revision = `${application}/revisions/revision%20%2F%20one`;
+
+    await api.listDurableCellApplications('organization / one', 'project', 'environment', 25);
+    await api.getDurableCellApplication('organization / one', 'project', 'environment', 'application / one');
+    await api.listDurableCellApplicationRevisions(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      30
+    );
+    await api.getDurableCellApplicationRevision(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      'revision / one'
+    );
+    await api.createDurableCellApplication(
+      'organization / one',
+      'project',
+      'environment',
+      { name: 'Counter cells', definitionAcl: applicationAcl },
+      'durable-cell:create'
+    );
+    await api.reviseDurableCellApplication(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      { expectedVersion: 2, definitionAcl: applicationAcl },
+      'durable-cell:revise'
+    );
+    await api.startDurableCellApplication(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      3,
+      'durable-cell:start'
+    );
+    await api.stopDurableCellApplication(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      4,
+      'durable-cell:stop'
+    );
+    await api.deployDurableCellApplication(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      'revision / one',
+      { serviceProfileAcl, providerWorkloadAcl, storageBindingAcl },
+      'durable-cell:deploy'
+    );
+    await api.publishDurableCellApplicationRoute(
+      'organization / one',
+      'project',
+      'environment',
+      'application / one',
+      'revision / one',
+      {
+        serviceProfileAcl,
+        gatewayScopeId: '019c0000-0000-7000-8000-000000000071',
+        domainClaimId: '019c0000-0000-7000-8000-000000000072',
+        hostname: 'cells.example.test',
+        pathPrefix: '/',
+      },
+      'durable-cell:route'
+    );
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [`${base}?limit=25`, 'GET'],
+      [application, 'GET'],
+      [`${application}/revisions?limit=30`, 'GET'],
+      [revision, 'GET'],
+      [base, 'POST'],
+      [`${application}/revisions`, 'POST'],
+      [`${application}/start`, 'POST'],
+      [`${application}/stop`, 'POST'],
+      [`${revision}/deployments`, 'POST'],
+      [`${revision}/routes`, 'POST'],
+    ]);
+    expect(calls[4]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'durable-cell:create' }),
+        body: JSON.stringify({ name: 'Counter cells', definitionAcl: applicationAcl }),
+      })
+    );
+    expect(calls[8]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'durable-cell:deploy' }),
+        body: JSON.stringify({ serviceProfileAcl, providerWorkloadAcl, storageBindingAcl }),
+      })
+    );
+    expect(calls[9]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'durable-cell:route' }),
+      })
+    );
+
+    expect(() => api.listDurableCellApplications('organization', 'project', 'environment', 201)).toThrow(
+      'Durable Cell list limit must be between 1 and 200'
+    );
+    expect(() =>
+      api.createDurableCellApplication(
+        'organization',
+        'project',
+        'environment',
+        { name: '   ', definitionAcl: applicationAcl },
+        'durable-cell:invalid-name'
+      )
+    ).toThrow('Durable Cell application name must contain');
+    expect(() =>
+      api.reviseDurableCellApplication(
+        'organization',
+        'project',
+        'environment',
+        'application',
+        { expectedVersion: 0, definitionAcl: applicationAcl },
+        'durable-cell:invalid-version'
+      )
+    ).toThrow('expected Durable Cell application version must be a positive safe integer');
+    expect(() =>
+      api.deployDurableCellApplication(
+        'organization',
+        'project',
+        'environment',
+        'application',
+        'revision',
+        { serviceProfileAcl, providerWorkloadAcl: '', storageBindingAcl },
+        'durable-cell:invalid-provider'
+      )
+    ).toThrow('workload ACL must contain between');
+    expect(() =>
+      api.deployDurableCellApplication(
+        'organization',
+        'project',
+        'environment',
+        'application',
+        'revision',
+        {
+          serviceProfileAcl,
+          providerWorkloadAcl,
+          storageBindingAcl: '界'.repeat(MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES),
+        },
+        'durable-cell:invalid-storage'
+      )
+    ).toThrow('Durable Cell storage-binding ACL must contain between');
+    expect(calls).toHaveLength(10);
   });
 
   it('exposes Agent conversations, executions, and resumable semantic events', async () => {

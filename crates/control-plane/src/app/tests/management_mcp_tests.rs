@@ -1,8 +1,9 @@
 use super::*;
+use crate::modules::artifacts::BuildRun;
 use crate::modules::search::{SearchResourceKind, SearchResult};
 use crate::modules::shared_kernel::domain::{
-    OntologyId, OntologyRevisionId, OrganizationId, Sha256Digest, WorkflowDefinitionId,
-    WorkflowRevisionId,
+    OntologyId, OntologyRevisionId, OrganizationId, Sha256Digest, SourceRevisionId,
+    WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::{WorkflowGoalContract, WorkflowGoalSpec};
 use a3s_use_extension::{
@@ -17,6 +18,8 @@ const MCP_WORKLOAD_TOKEN: &str =
 const MCP_BUILD_TOKEN: &str =
     "a3s_2222222222222222222222222222222222222222222222222222222222222222";
 const MCP_FORM_TOKEN: &str = "a3s_3333333333333333333333333333333333333333333333333333333333333333";
+const MCP_ROUTE_TOKEN: &str =
+    "a3s_6666666666666666666666666666666666666666666666666666666666666666";
 const MCP_FORM_MEMBER_TOKEN: &str =
     "a3s_4444444444444444444444444444444444444444444444444444444444444444";
 const MCP_INVITEE_TOKEN: &str =
@@ -311,6 +314,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     create_api_token(
         &app,
         &organization,
+        "mcp-route-writer",
+        "MCP route writer",
+        MCP_ROUTE_TOKEN,
+        &[ApiTokenScope::ROUTE_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
         "mcp-form-writer",
         "MCP Form writer",
         MCP_FORM_TOKEN,
@@ -352,6 +365,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_connector_profiles_get",
             "a3s_cloud_connector_revisions_list",
             "a3s_cloud_connector_revisions_get",
+            "a3s_cloud_durable_cell_applications_list",
+            "a3s_cloud_durable_cell_applications_get",
+            "a3s_cloud_durable_cell_revisions_list",
+            "a3s_cloud_durable_cell_revisions_get",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
             "a3s_cloud_my_membership_invitations_list",
@@ -425,18 +442,27 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         "a3s_cloud_workloads_stop",
         "a3s_cloud_workloads_rollback",
         "a3s_cloud_deployments_cancel",
+        "a3s_cloud_durable_cell_applications_create",
+        "a3s_cloud_durable_cell_applications_revise",
+        "a3s_cloud_durable_cell_applications_start",
+        "a3s_cloud_durable_cell_applications_stop",
+        "a3s_cloud_durable_cell_deployments_create",
     ] {
         assert!(tool_names(&workload_writer_tools).contains(&name), "{name}");
     }
     assert!(!tool_names(&workload_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
     assert!(!tool_names(&workload_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
 
-    let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 4).await?;
+    let route_writer_tools = list_tools(&app, MCP_ROUTE_TOKEN, 4).await?;
+    assert!(tool_names(&route_writer_tools).contains(&"a3s_cloud_durable_cell_routes_publish"));
+    assert!(!tool_names(&route_writer_tools).contains(&"a3s_cloud_durable_cell_deployments_create"));
+
+    let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 5).await?;
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_cancel"));
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_runs_retry"));
     assert!(!tool_names(&build_writer_tools).contains(&"a3s_cloud_workloads_stop"));
 
-    let form_writer_tools = list_tools(&app, MCP_FORM_TOKEN, 5).await?;
+    let form_writer_tools = list_tools(&app, MCP_FORM_TOKEN, 6).await?;
     for name in [
         "a3s_cloud_forms_create",
         "a3s_cloud_forms_revise",
@@ -446,7 +472,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
     }
     assert!(!tool_names(&form_writer_tools).contains(&"a3s_cloud_ontologies_create"));
 
-    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 6).await?;
+    let administrator_tools = list_tools(&app, ADMIN_TOKEN, 7).await?;
     assert_eq!(
         tool_names(&administrator_tools),
         vec![
@@ -458,6 +484,16 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_connector_profiles_get",
             "a3s_cloud_connector_revisions_list",
             "a3s_cloud_connector_revisions_get",
+            "a3s_cloud_durable_cell_applications_create",
+            "a3s_cloud_durable_cell_applications_revise",
+            "a3s_cloud_durable_cell_applications_start",
+            "a3s_cloud_durable_cell_applications_stop",
+            "a3s_cloud_durable_cell_applications_list",
+            "a3s_cloud_durable_cell_applications_get",
+            "a3s_cloud_durable_cell_revisions_list",
+            "a3s_cloud_durable_cell_revisions_get",
+            "a3s_cloud_durable_cell_deployments_create",
+            "a3s_cloud_durable_cell_routes_publish",
             "a3s_cloud_execution_templates_create",
             "a3s_cloud_execution_templates_get",
             "a3s_cloud_execution_templates_list",
@@ -629,6 +665,61 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
     );
     assert_eq!(list_connector_profiles["annotations"]["readOnlyHint"], true);
+    let deploy_durable_cell = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_durable_cell_deployments_create",
+    )?;
+    assert_eq!(
+        deploy_durable_cell["inputSchema"]["required"],
+        json!([
+            "projectId",
+            "environmentId",
+            "applicationId",
+            "revisionId",
+            "serviceProfileAcl",
+            "providerWorkloadAcl",
+            "storageBindingAcl",
+            "idempotencyKey"
+        ])
+    );
+    assert_eq!(
+        deploy_durable_cell["inputSchema"]["properties"]["serviceProfileAcl"]["maxLength"],
+        crate::modules::durable_cells::domain::DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        deploy_durable_cell["inputSchema"]["properties"]["providerWorkloadAcl"]["maxLength"],
+        crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES
+    );
+    assert_eq!(
+        deploy_durable_cell["inputSchema"]["properties"]["storageBindingAcl"]["maxLength"],
+        crate::modules::durable_cells::domain::DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES
+    );
+    assert_eq!(
+        deploy_durable_cell["inputSchema"]["additionalProperties"],
+        false
+    );
+    assert_eq!(deploy_durable_cell["annotations"]["readOnlyHint"], false);
+    let list_durable_cells = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_durable_cell_applications_list",
+    )?;
+    assert_eq!(
+        list_durable_cells["inputSchema"]["properties"]["limit"],
+        json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
+    );
+    assert_eq!(list_durable_cells["annotations"]["readOnlyHint"], true);
+    let publish_durable_cell_route = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_durable_cell_routes_publish",
+    )?;
+    assert_eq!(
+        publish_durable_cell_route["annotations"]["readOnlyHint"],
+        false
+    );
+    assert_eq!(
+        publish_durable_cell_route["inputSchema"]["additionalProperties"],
+        false
+    );
     let create_outbound_subscription = listed_tool(
         &administrator_tools,
         "a3s_cloud_notification_outbound_subscriptions_create",
@@ -2534,6 +2625,406 @@ async fn management_mcp_reuses_the_connector_profile_revision_lifecycle() -> Res
                 "environmentId": environment,
                 "profileId": profile_id,
                 "organizationId": organization
+            }),
+        ),
+    ] {
+        let rejected = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(id, name, arguments),
+            ))
+            .await?;
+        assert_eq!(response_json(&rejected)?["error"]["code"], -32602, "{name}");
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn management_mcp_reuses_the_durable_cell_application_projection_lifecycle() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let secrets = Arc::new(InMemorySecretRepository::new());
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let builds = Arc::new(InMemoryBuildRunRepository::new());
+    let app = build_test_application_with_external_builds(
+        identity,
+        projects,
+        Arc::clone(&secrets),
+        workloads,
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::clone(&builds),
+    )?;
+    let organization = bootstrap_organization(&app, "mcp-cells", "Durable Cells").await?;
+    let project = create_project(&app, &organization, "mcp-cells-project", "Cells project").await?;
+    let environment = super::durable_cell_tests::create_cell_environment(
+        &app,
+        &organization,
+        &project,
+        "mcp-cells-environment",
+        "Production",
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(super::durable_cell_tests::parse_cell_uuid(
+        &organization,
+        "organization",
+    )?);
+    let project_id = ProjectId::from_uuid(super::durable_cell_tests::parse_cell_uuid(
+        &project, "project",
+    )?);
+    let environment_id = EnvironmentId::from_uuid(super::durable_cell_tests::parse_cell_uuid(
+        &environment,
+        "environment",
+    )?);
+    let build = BuildRun::reserve(
+        organization_id,
+        project_id,
+        environment_id,
+        SourceRevisionId::new(),
+        Utc::now(),
+    );
+    let build_run_id = build.id;
+    builds.seed_build(build).await;
+    let access_key = super::durable_cell_tests::store_cell_secret(
+        secrets.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        "MCP S0 access key",
+    )
+    .await?;
+    let secret_key = super::durable_cell_tests::store_cell_secret(
+        secrets.as_ref(),
+        organization_id,
+        project_id,
+        environment_id,
+        "MCP S0 secret key",
+    )
+    .await?;
+
+    let profile = super::durable_cell_tests::service_profile()?;
+    let initial_definition =
+        super::durable_cell_tests::application_definition(build_run_id, &profile, 'a')?;
+    let create_arguments = json!({
+        "projectId": project,
+        "environmentId": environment,
+        "name": "Tenant counters",
+        "definitionAcl": initial_definition.canonical_acl(),
+        "idempotencyKey": "mcp-cell-create"
+    });
+    let created = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                1,
+                "a3s_cloud_durable_cell_applications_create",
+                create_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let created = response_json(&created)?;
+    assert_eq!(created["result"]["structuredContent"]["code"], 201);
+    let record = &created["result"]["structuredContent"]["data"]["record"];
+    assert_eq!(record["application"]["aggregateVersion"], 1);
+    assert_eq!(
+        record["revision"]["definitionAcl"],
+        initial_definition.canonical_acl()
+    );
+    let application_id = super::durable_cell_tests::required_cell_string(
+        &record["application"]["applicationId"],
+        "MCP application ID",
+    )?;
+    let initial_revision_id = super::durable_cell_tests::required_cell_string(
+        &record["revision"]["revisionId"],
+        "initial MCP revision ID",
+    )?;
+
+    let replayed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                2,
+                "a3s_cloud_durable_cell_applications_create",
+                create_arguments,
+            ),
+        ))
+        .await?;
+    let replayed = response_json(&replayed)?;
+    assert_eq!(replayed["result"]["structuredContent"]["code"], 200);
+    assert_eq!(
+        replayed["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let listed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                3,
+                "a3s_cloud_durable_cell_applications_list",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "limit": 1
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&listed)?["result"]["structuredContent"]["data"][0]["applicationId"],
+        application_id
+    );
+    let fetched = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                4,
+                "a3s_cloud_durable_cell_applications_get",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "applicationId": application_id
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&fetched)?["result"]["structuredContent"]["data"]["revision"]["revisionId"],
+        initial_revision_id
+    );
+
+    for (id, name, expected_version, idempotency_key, desired_state) in [
+        (
+            5,
+            "a3s_cloud_durable_cell_applications_stop",
+            1,
+            "mcp-cell-stop",
+            "stopped",
+        ),
+        (
+            6,
+            "a3s_cloud_durable_cell_applications_start",
+            2,
+            "mcp-cell-start",
+            "running",
+        ),
+    ] {
+        let changed = app
+            .call(mcp_request(
+                Some(ADMIN_TOKEN),
+                tool_call(
+                    id,
+                    name,
+                    json!({
+                        "projectId": project,
+                        "environmentId": environment,
+                        "applicationId": application_id,
+                        "expectedVersion": expected_version,
+                        "idempotencyKey": idempotency_key
+                    }),
+                ),
+            ))
+            .await?;
+        let changed = response_json(&changed)?;
+        assert_eq!(changed["result"]["structuredContent"]["code"], 200);
+        assert_eq!(
+            changed["result"]["structuredContent"]["data"]["record"]["application"]["desiredState"],
+            desired_state
+        );
+    }
+
+    let revised_definition =
+        super::durable_cell_tests::application_definition(build_run_id, &profile, 'b')?;
+    let revised = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                7,
+                "a3s_cloud_durable_cell_applications_revise",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "applicationId": application_id,
+                    "expectedVersion": 3,
+                    "definitionAcl": revised_definition.canonical_acl(),
+                    "idempotencyKey": "mcp-cell-revise"
+                }),
+            ),
+        ))
+        .await?;
+    let revised = response_json(&revised)?;
+    assert_eq!(revised["result"]["structuredContent"]["code"], 201);
+    let revised_record = &revised["result"]["structuredContent"]["data"]["record"];
+    assert_eq!(
+        revised_record["revision"]["parentRevisionId"],
+        initial_revision_id
+    );
+    let revision_id = super::durable_cell_tests::required_cell_string(
+        &revised_record["revision"]["revisionId"],
+        "revised MCP revision ID",
+    )?;
+
+    let revisions = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                8,
+                "a3s_cloud_durable_cell_revisions_list",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "applicationId": application_id
+                }),
+            ),
+        ))
+        .await?;
+    let revisions = response_json(&revisions)?;
+    assert_eq!(
+        revisions["result"]["structuredContent"]["data"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+    let initial_revision = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                9,
+                "a3s_cloud_durable_cell_revisions_get",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "applicationId": application_id,
+                    "revisionId": initial_revision_id
+                }),
+            ),
+        ))
+        .await?;
+    assert_eq!(
+        response_json(&initial_revision)?["result"]["structuredContent"]["data"]["revisionNumber"],
+        1
+    );
+
+    let storage = super::durable_cell_tests::deployment_binding(access_key, secret_key)?;
+    let provider_acl =
+        super::durable_cell_tests::provider_workload_acl(&profile, access_key, secret_key, true);
+    let deployment_arguments = json!({
+        "projectId": project,
+        "environmentId": environment,
+        "applicationId": application_id,
+        "revisionId": revision_id,
+        "serviceProfileAcl": profile.canonical_acl(),
+        "providerWorkloadAcl": provider_acl,
+        "storageBindingAcl": storage.canonical_acl(),
+        "idempotencyKey": "mcp-cell-deploy"
+    });
+    let deployed = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                10,
+                "a3s_cloud_durable_cell_deployments_create",
+                deployment_arguments.clone(),
+            ),
+        ))
+        .await?;
+    let deployed = response_json(&deployed)?;
+    assert_eq!(deployed["result"]["structuredContent"]["code"], 201);
+    let deployment = &deployed["result"]["structuredContent"]["data"];
+    assert_eq!(deployment["replayed"], false);
+    assert_eq!(
+        deployment["correlation"]["applicationRevisionId"],
+        revision_id
+    );
+    assert_eq!(
+        deployment["correlation"]["serviceProfileDigest"],
+        profile.digest().as_str()
+    );
+    let serialized = serde_json::to_string(deployment)
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    assert!(!serialized.contains("ciphertext-"));
+    assert!(!serialized.contains("S0_ACCESS_KEY_ID"));
+    assert!(!serialized.contains("S0_SECRET_ACCESS_KEY"));
+    assert!(!serialized.contains(&access_key.secret_id.to_string()));
+    assert!(!serialized.contains(&secret_key.secret_id.to_string()));
+
+    let replayed_deployment = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                11,
+                "a3s_cloud_durable_cell_deployments_create",
+                deployment_arguments,
+            ),
+        ))
+        .await?;
+    let replayed_deployment = response_json(&replayed_deployment)?;
+    assert_eq!(
+        replayed_deployment["result"]["structuredContent"]["code"],
+        200
+    );
+    assert_eq!(
+        replayed_deployment["result"]["structuredContent"]["data"]["replayed"],
+        true
+    );
+
+    let missing_route_scope = app
+        .call(mcp_request(
+            Some(ADMIN_TOKEN),
+            tool_call(
+                12,
+                "a3s_cloud_durable_cell_routes_publish",
+                json!({
+                    "projectId": project,
+                    "environmentId": environment,
+                    "applicationId": application_id,
+                    "revisionId": revision_id,
+                    "serviceProfileAcl": profile.canonical_acl(),
+                    "gatewayScopeId": Uuid::now_v7(),
+                    "domainClaimId": Uuid::now_v7(),
+                    "hostname": "cells.example.com",
+                    "pathPrefix": "/counters",
+                    "idempotencyKey": "mcp-cell-route"
+                }),
+            ),
+        ))
+        .await?;
+    let missing_route_scope = response_json(&missing_route_scope)?;
+    assert_eq!(missing_route_scope["result"]["isError"], true);
+    assert_eq!(
+        missing_route_scope["result"]["structuredContent"]["code"],
+        404
+    );
+
+    for (id, name, arguments) in [
+        (
+            13,
+            "a3s_cloud_durable_cell_applications_list",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "limit": 201
+            }),
+        ),
+        (
+            14,
+            "a3s_cloud_durable_cell_applications_get",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "applicationId": application_id,
+                "organizationId": organization
+            }),
+        ),
+        (
+            15,
+            "a3s_cloud_durable_cell_applications_stop",
+            json!({
+                "projectId": project,
+                "environmentId": environment,
+                "applicationId": application_id,
+                "expectedVersion": 0,
+                "idempotencyKey": "mcp-cell-invalid-version"
             }),
         ),
     ] {

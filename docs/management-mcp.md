@@ -48,6 +48,15 @@ idempotency, Outbox, and audit path used by REST, the maintained client, and
 CLI. MCP owns no Connector parser, Secret resolver, profile store, retry rail,
 provider client, or execution path, and never exposes resolved endpoint or
 credential material.
+The Durable Cell slice adds ten application, immutable-revision, deployment,
+and route tools over the same `CELL0.4-C2/C3/C4` command/query buses and DTOs
+used by REST, the maintained client, and CLI. Its four reads require
+`cloud:read`; application/deployment mutations require `workload:write`; route
+publication requires `route:write`. Deployment accepts only the same bounded
+canonical Service-profile, provider-Workload, and plaintext-free
+storage-binding A3S ACL strings and returns references/digests rather than
+Secret material. MCP owns no ACL parser, OCI/DNS validator, Cell scheduler,
+Workload/Edge controller, S0 lifecycle, repository, or authorization path.
 The project-attribution slice adds one current-or-exact immutable read tool and
 one optimistic, replay-safe update tool. Both reuse the Projects CQRS,
 project-qualified Resource Grant evaluator, A3S ORM repository, shared audit,
@@ -579,8 +588,10 @@ JSON-RPC invalid parameters before command dispatch.
 The adapter derives the organization from the authenticated principal, adds
 the request ID and current timestamp where the existing command requires them,
 and dispatches through `CommandBus`. It does not read a repository, SQL, Redis,
-an object store, or a node. Initial accepted commands return code `202`; exact
-replays return code `200` and `replayed: true` in the standard envelope.
+an object store, or a node. Command status mirrors the reused application
+handler (`201` for created resources, `202` for accepted operations, or `200`
+for synchronous transitions); exact replays return `200` and `replayed: true`
+where the underlying contract is replayable.
 
 ## Conformance
 
@@ -591,7 +602,7 @@ PostgreSQL 17. It first proves `server/discover`, per-request version and
 client metadata, exact transport-header matching, legacy initialization
 removal, and unsupported-version errors. The verified pre-extension evidence
 proved the exact 23-tool administrator and 16-tool `cloud:read` catalogs. The
-current focused source runner requires exact 101-tool administrator and 60-tool
+current focused source runner requires exact 111-tool administrator and 64-tool
 `cloud:read` catalogs and their read-only, destructive, idempotent, and
 closed-world annotations; denies a hidden mutation without a database write;
 replays one REST Project command through MCP using the same durable idempotency
@@ -620,7 +631,8 @@ The expanded focused catalog, permission, Ontology migration, Workflow
 definition/Goal/Plan lifecycle, built-in node-catalog cross-surface equality,
 native Form lifecycle, minimal WorkflowRun,
 protected HumanTask read/claim/release/privacy, tenant/role boundary, deterministic-plan,
-immutable Connector profile/revision lifecycle, strict-boundary, and replay
+immutable Connector profile/revision lifecycle, Durable Cell application and
+deployment lifecycle with Secret-free responses, strict-boundary, and replay
 tests pass. The updated clean PostgreSQL/A3S Box
 scenario and its Ontology, Workflow, Form, and WorkflowRun
 persistence/idempotency assertions must pass before these slices are verified.

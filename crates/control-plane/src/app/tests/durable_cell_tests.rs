@@ -304,7 +304,7 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
     Ok(())
 }
 
-fn application_definition(
+pub(super) fn application_definition(
     build_run_id: BuildRunId,
     profile: &DurableCellServiceProfile,
     marker: char,
@@ -330,7 +330,7 @@ fn application_definition(
     .map_err(BootError::Internal)
 }
 
-fn service_profile() -> Result<DurableCellServiceProfile> {
+pub(super) fn service_profile() -> Result<DurableCellServiceProfile> {
     DurableCellServiceProfile::from_spec(DurableCellServiceProfileSpec {
         public_runtime_port: "cell-public".into(),
         internal_runtime_port: "cell-internal".into(),
@@ -343,7 +343,7 @@ fn service_profile() -> Result<DurableCellServiceProfile> {
     .map_err(BootError::Internal)
 }
 
-fn deployment_binding(
+pub(super) fn deployment_binding(
     access_key: SecretVersionReference,
     secret_key: SecretVersionReference,
 ) -> Result<DurableCellDeploymentBinding> {
@@ -363,7 +363,7 @@ fn deployment_binding(
     .map_err(BootError::Internal)
 }
 
-fn provider_workload_acl(
+pub(super) fn provider_workload_acl(
     profile: &DurableCellServiceProfile,
     access_key: SecretVersionReference,
     secret_key: SecretVersionReference,
@@ -440,7 +440,7 @@ workload "celld-provider" {{
     )
 }
 
-async fn store_cell_secret(
+pub(super) async fn store_cell_secret(
     secrets: &InMemorySecretRepository,
     organization_id: OrganizationId,
     project_id: ProjectId,
@@ -483,14 +483,14 @@ fn digest(marker: char) -> Result<Sha256Digest> {
         .map_err(BootError::Internal)
 }
 
-fn required_cell_string(value: &Value, label: &str) -> Result<String> {
+pub(super) fn required_cell_string(value: &Value, label: &str) -> Result<String> {
     value
         .as_str()
         .map(str::to_owned)
         .ok_or_else(|| BootError::Internal(format!("Durable Cell response has no {label}")))
 }
 
-async fn create_cell_environment(
+pub(super) async fn create_cell_environment(
     app: &BootApplication,
     organization: &str,
     project: &str,
@@ -513,7 +513,7 @@ async fn create_cell_environment(
     response_id(&response)
 }
 
-fn parse_cell_uuid(value: &str, label: &str) -> Result<Uuid> {
+pub(super) fn parse_cell_uuid(value: &str, label: &str) -> Result<Uuid> {
     Uuid::parse_str(value)
         .map_err(|error| BootError::Internal(format!("invalid {label} ID: {error}")))
 }
