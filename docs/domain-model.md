@@ -1069,8 +1069,8 @@ names, phase labels, Cell names, resident/published sets, memory values, or raw
 operator bytes. Adoption requires both the exact healthy apply receipt and the
 operator observation. Drain and cleanup validate only the existing Runtime
 stop and remove receipts, so this context adds no shutdown command, rollout or
-adoption state machine, cleanup lifecycle, journal, or receipt store. Real
-provider certification remains open.
+adoption state machine, cleanup lifecycle, journal, or receipt store. C2 alone
+makes no real-provider certification claim.
 
 Component-only `CELL0.3-C3` pins the upstream celld v0.2.1 tag, revision, OCI
 index, Linux manifest/config, and GitHub Actions provenance, then composes one
@@ -1078,7 +1078,9 @@ real process gate into the existing Box conformance workflow. The gate uses the
 same RuntimeApply/operator-observe/RuntimeStop/RuntimeRemove commands and Fleet
 journal, and proves restart-safe process absence. Its evidence explicitly says
 `storage=not-certified`; no application deployment, S0 behavior, Cell state,
-Gateway route, or provider-native configuration becomes Cloud authority.
+Gateway route, or provider-native configuration becomes Cloud authority. The
+[retained real-Box gate](https://github.com/A3S-Lab/Cloud/actions/runs/31946279906/job/95162662254)
+passes this runtime-only boundary.
 
 Component-only `CELL0.5-C1` adds no Durable Cells aggregate. S0 now parses and
 generates the canonical non-secret provider profile only through `a3s-acl`,
@@ -1158,8 +1160,8 @@ reuse their existing bounded ACL readers and Edge hostname/path validators;
 MCP dispatches the same buses with the same `cloud:read`, `workload:write`, and
 `route:write` permissions. Web remains deliberately deferred. The retained
 C6a/C6b gate closes control-plane projection, stop, undispatched cleanup, and
-restart recovery. Real provider Runtime stop/remove and real S0
-namespace/application behavior remain unclaimed.
+restart recovery, while the retained `CELL0.3` gate closes runtime-only provider
+stop/remove. Real S0 namespace/application behavior remains unclaimed.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2560,7 +2562,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `C5` exposes the same authority through REST/OpenAPI `1.38.0`, maintained client, CLI, and Management MCP without another parser, state, or authorization path. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates; retained recovery and real storage-backed application evidence remain open, while Web is deferred |
+| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `C5` exposes the same authority through REST/OpenAPI `1.38.0`, maintained client, CLI, and Management MCP without another parser, state, or authorization path. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates; the real-Box runtime-only gate is retained, while real storage recovery/application evidence remains open and Web is deferred |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
