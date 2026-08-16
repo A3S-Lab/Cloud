@@ -1079,7 +1079,8 @@ schema binds each revision to its exact tenant-scoped existing `BuildRun` and
 rejects revision mutation, forks, no-op revisions, stale aggregate versions,
 and state changes that alter revision authority. It creates no per-Cell,
 deployment, Runtime, queue, scheduler, ownership, or provider-receipt table.
-The PostgreSQL gate is checked in but has no retained pass.
+The [retained PostgreSQL 17 H0 gate](https://github.com/A3S-Lab/Cloud/actions/runs/31934571002/job/95134413816)
+passes the C1-C3 authority, replay, and negative-scope fixture.
 
 Component-only `CELL0.4-C2` registers create, revise, start, stop, get, list,
 and revision-history handlers on the existing command/query buses. Every
