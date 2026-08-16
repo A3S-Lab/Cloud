@@ -159,11 +159,22 @@ jobs:
           -- --exact --nocapture --test-threads=1
 
       - name: Certify Durable Cell application and projection persistence
-        run: >-
-          cargo test --locked -p a3s-cloud-control-plane
-          --test postgres_integration
-          postgres_durable_cell_authorities_are_atomic_replay_safe_and_immutable
-          -- --exact --nocapture --test-threads=1
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          log="$RUNNER_TEMP/durable-cell-postgres.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_durable_cell_authorities_are_atomic_replay_safe_and_immutable \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -n 80 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Durable Cell PostgreSQL gate failed::$detail"
+          exit 1
 
       - name: Certify authorized Connector application and Secret materialization
         run: >-
