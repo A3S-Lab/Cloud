@@ -964,7 +964,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2/C3` foundations implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, and `CELL0.4-C1/C2/C3/C4` foundations implemented)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -1099,8 +1099,22 @@ revision, Deployment, Operation request, and Outbox event consumed by Fleet.
 Workloads owns the only managed-owner handoff; owner revisions may skip
 undeployed application revisions while placement generations remain contiguous.
 Exact replay and process-death recovery add no second controller or event rail.
-`C4-C6` still own Gateway publication, interfaces, and retained recovery
-evidence; real S0 namespace/application behavior also remains unclaimed.
+
+Component-only `CELL0.4-C4` adds no aggregate or persistence. Its internal
+command authorizes the exact environment before any replay, loads the immutable
+C3 correlation, parses the exact Service profile through `a3s-acl`, and derives
+only `public_runtime_port`; callers cannot select the internal provider port.
+It delegates the correlated Workload revision, environment-selected Gateway
+scope, verified DomainClaim, hostname, and path to the existing Edge
+`PublishRouteHandler`. Edge remains the sole Route, certificate, complete
+snapshot, publication-idempotency, and Fleet-dispatch authority and resolves
+only the exact active Workload revision from fresh healthy Runtime evidence.
+The existing Workloads deployment route updater remains the sole later-revision
+cutover mechanism. Focused recovery proves that failure after the atomic Edge
+commit replays that Route without target re-resolution or duplicate route
+creation; revoked authorization and profile drift fail before Edge replay.
+`C5-C6` still own interfaces and retained recovery evidence; real S0
+namespace/application behavior also remains unclaimed.
 
 The selected provider, not this context, activates and evicts Cells, serializes
 their events, maintains SQLite/ownership/seal records, forwards to current
@@ -2501,7 +2515,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and planned Gateway publication | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates; Gateway publication and real storage-backed application evidence remain open |
+| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates; interfaces, retained recovery, and real storage-backed application evidence remain open |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |

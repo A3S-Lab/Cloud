@@ -17,6 +17,7 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::Duration;
 use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct PublishRouteHandler {
     routes: Arc<dyn IEdgeRepository>,
     commands: Arc<dyn IGatewayCommandQueue>,

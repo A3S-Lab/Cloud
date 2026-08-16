@@ -48,8 +48,8 @@ use crate::modules::durable_cells::{
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
     ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
-    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
-    StopDurableCellApplicationHandler,
+    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
+    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
@@ -1377,6 +1377,7 @@ fn build_application_with_health(
     let get_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let list_durable_cell_revisions = Arc::clone(&durable_cell_applications);
     let get_durable_cell_revisions = durable_cell_applications;
+    let publish_durable_cell_deployments = Arc::clone(&durable_cell_deployments);
     let deploy_durable_cell_deployments = durable_cell_deployments;
     let deploy_durable_cell_workloads = Arc::clone(&workloads);
     let deploy_durable_cell_secrets = Arc::clone(&secrets);
@@ -1818,6 +1819,13 @@ fn build_application_with_health(
                         deploy_durable_cell_node_pools,
                     ),
                 )
+                .command_handler::<
+                    crate::modules::durable_cells::PublishDurableCellApplicationRoute,
+                    _,
+                >(PublishDurableCellApplicationRouteHandler::new(
+                    publish_durable_cell_deployments,
+                    publish_route_handler.clone(),
+                ))
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
                 )
