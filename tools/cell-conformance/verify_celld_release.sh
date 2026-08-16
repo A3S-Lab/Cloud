@@ -39,7 +39,7 @@ token=$(curl --fail --silent --show-error --get \
 authorization="Authorization: Bearer $token"
 image_digest=${image##*@}
 index_file="$evidence_directory/celld-index.json"
-curl --fail --silent --show-error \
+curl --fail --location --silent --show-error \
   --header "$authorization" \
   --header 'Accept: application/vnd.oci.image.index.v1+json' \
   "https://ghcr.io/v2/denoland/celld/manifests/$image_digest" \
@@ -78,7 +78,7 @@ manifest_digest=$(jq -er '
   )] | if length == 1 then .[0].digest else error("missing exact amd64 manifest") end
 ' "$index_file")
 manifest_file="$evidence_directory/celld-amd64-manifest.json"
-curl --fail --silent --show-error \
+curl --fail --location --silent --show-error \
   --header "$authorization" \
   --header 'Accept: application/vnd.oci.image.manifest.v1+json' \
   "https://ghcr.io/v2/denoland/celld/manifests/$manifest_digest" \
@@ -90,7 +90,7 @@ config_digest=$(jq -er \
   '.config.digest | select(startswith("sha256:") and length == 71)' \
   "$manifest_file")
 config_file="$evidence_directory/celld-amd64-config.json"
-curl --fail --silent --show-error \
+curl --fail --location --silent --show-error \
   --header "$authorization" \
   "https://ghcr.io/v2/denoland/celld/blobs/$config_digest" \
   >"$config_file"
