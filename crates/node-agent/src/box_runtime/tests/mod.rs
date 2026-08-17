@@ -242,14 +242,10 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
     let provider = build_box_runtime_provider(&config, runtime_state.path())
         .map_err(|error| secret_gate_error("build initial provider", &secret_root, error))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
-    provider
-        .bind_secret_transport(binding)
-        .await
-        .map_err(|error| secret_gate_error("bind initial transport", &secret_root, error))?;
     let runtime = provider
-        .into_artifact_bound_client(artifacts.clone())
+        .into_bound_client(binding, artifacts.clone())
         .await
-        .map_err(|error| secret_gate_error("bind initial Artifact manager", &secret_root, error))?;
+        .map_err(|error| secret_gate_error("bind initial transports", &secret_root, error))?;
     let spec = secret_service_spec(
         environment_reference,
         file_reference,
@@ -285,16 +281,10 @@ async fn real_box_materializes_cloud_secrets_redacts_logs_and_cleans_tmpfs(
     let recovered_provider = build_box_runtime_provider(&config, runtime_state.path())
         .map_err(|error| secret_gate_error("build recovered provider", &secret_root, error))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
-    recovered_provider
-        .bind_secret_transport(binding)
-        .await
-        .map_err(|error| secret_gate_error("bind recovered transport", &secret_root, error))?;
     let recovered = recovered_provider
-        .into_artifact_bound_client(artifacts)
+        .into_bound_client(binding, artifacts)
         .await
-        .map_err(|error| {
-            secret_gate_error("bind recovered Artifact manager", &secret_root, error)
-        })?;
+        .map_err(|error| secret_gate_error("bind recovered transports", &secret_root, error))?;
     let calls_before_inspection = (
         transport.calls(environment_reference),
         transport.calls(file_reference),
@@ -502,12 +492,11 @@ async fn exercise_private_registry(
     };
     let provider = build_box_runtime_provider(&config, private_home.path().join("runtime-state"))?;
     let binding: Arc<dyn NodeSecretTransport> = transport.clone();
-    provider.bind_secret_transport(binding).await?;
     let runtime = provider
-        .into_artifact_bound_client(artifact_manager(
-            private_home.path().join("node-state"),
-            Uuid::now_v7(),
-        )?)
+        .into_bound_client(
+            binding,
+            artifact_manager(private_home.path().join("node-state"), Uuid::now_v7())?,
+        )
         .await?;
     let calls_before_pull = transport.calls(registry_reference);
     let first = private_registry_service_spec(&registry, registry_reference)?;

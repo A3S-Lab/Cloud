@@ -1,4 +1,5 @@
 use super::managed_replica_lifecycle::converge_current_managed_replicas;
+use super::provider_workload::validate_publisher_storage_credentials;
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
@@ -452,6 +453,7 @@ async fn admit_external_bindings(
     require_storage_credentials_in_template(
         &command.storage_credentials,
         &command.workload_template,
+        command.storage_provider_profile_acl.is_some(),
     )?;
     validate_node_pool_selection(node_pools, command.organization_id, command.node_pool_id).await?;
     Ok(())
@@ -725,6 +727,7 @@ fn managed_workload_name(
 fn require_storage_credentials_in_template(
     credentials: &ObjectNamespaceCredentialBinding,
     template: &ServiceTemplate,
+    require_publisher_contract: bool,
 ) -> ApplicationResult<()> {
     if credentials.spec().references().iter().any(|reference| {
         !template.secrets.iter().any(|binding| {
@@ -734,6 +737,12 @@ fn require_storage_credentials_in_template(
         return Err(ApplicationError::Invalid(
             "Durable Cell provider template omitted an exact S0 credential binding".into(),
         ));
+    }
+    if require_publisher_contract {
+        let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()
+            .map_err(ApplicationError::Internal)?;
+        validate_publisher_storage_credentials(credentials, template, &publisher)
+            .map_err(ApplicationError::Invalid)?;
     }
     Ok(())
 }
@@ -1425,7 +1434,7 @@ mod tests {
                     secret_id: access_key_id.secret_id,
                     version: access_key_id.version,
                     target: SecretBindingTarget::Environment {
-                        variable: "S0_ACCESS_KEY_ID".into(),
+                        variable: "AWS_ACCESS_KEY_ID".into(),
                     },
                 },
                 SecretBinding {
@@ -1433,7 +1442,7 @@ mod tests {
                     secret_id: secret_access_key.secret_id,
                     version: secret_access_key.version,
                     target: SecretBindingTarget::Environment {
-                        variable: "S0_SECRET_ACCESS_KEY".into(),
+                        variable: "AWS_SECRET_ACCESS_KEY".into(),
                     },
                 },
             ],

@@ -468,14 +468,14 @@ workload "celld-provider" {{
     secret_id = "{}"
     version = {}
     environment {{
-      variable = "S0_ACCESS_KEY_ID"
+      variable = "AWS_ACCESS_KEY_ID"
     }}
   }}
   secret "s0-secret-access-key" {{
     secret_id = "{}"
     version = {}
     environment {{
-      variable = "S0_SECRET_ACCESS_KEY"
+      variable = "AWS_SECRET_ACCESS_KEY"
     }}
   }}
 }}

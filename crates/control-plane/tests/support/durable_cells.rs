@@ -1269,7 +1269,7 @@ fn durable_cell_service_template(
                 secret_id: access_key_id.secret_id,
                 version: access_key_id.version,
                 target: SecretBindingTarget::Environment {
-                    variable: "S0_ACCESS_KEY_ID".into(),
+                    variable: "AWS_ACCESS_KEY_ID".into(),
                 },
             },
             SecretBinding {
@@ -1277,7 +1277,7 @@ fn durable_cell_service_template(
                 secret_id: secret_access_key.secret_id,
                 version: secret_access_key.version,
                 target: SecretBindingTarget::Environment {
-                    variable: "S0_SECRET_ACCESS_KEY".into(),
+                    variable: "AWS_SECRET_ACCESS_KEY".into(),
                 },
             },
         ],

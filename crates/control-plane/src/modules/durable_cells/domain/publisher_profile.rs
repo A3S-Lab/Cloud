@@ -3,7 +3,8 @@ use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value}
 
 const PROFILE_BLOCK: &str = "durable_cell_publisher_profile";
 const PROFILE_LABEL: &str = "celld_v0_2_1";
-const PROFILE_FIELDS: [&str; 11] = [
+const PROFILE_FIELDS: [&str; 14] = [
+    "access_key_environment",
     "adapter_protocol",
     "bundle_mount",
     "command",
@@ -14,6 +15,8 @@ const PROFILE_FIELDS: [&str; 11] = [
     "memory_bytes",
     "pids",
     "schema",
+    "secret_access_key_environment",
+    "session_token_environment",
     "timeout_ms",
 ];
 
@@ -37,6 +40,9 @@ pub struct DurableCellPublisherProfile {
     pids: u32,
     ephemeral_storage_bytes: u64,
     timeout_ms: u64,
+    access_key_environment: String,
+    secret_access_key_environment: String,
+    session_token_environment: String,
 }
 
 impl DurableCellPublisherProfile {
@@ -106,6 +112,21 @@ impl DurableCellPublisherProfile {
                 .map_err(|_| "Durable Cell publisher pids exceed u32".to_owned())?,
             ephemeral_storage_bytes: required_u64(block, "ephemeral_storage_bytes")?,
             timeout_ms: required_u64(block, "timeout_ms")?,
+            access_key_environment: require_adapter_environment(
+                block,
+                "access_key_environment",
+                "AWS_ACCESS_KEY_ID",
+            )?,
+            secret_access_key_environment: require_adapter_environment(
+                block,
+                "secret_access_key_environment",
+                "AWS_SECRET_ACCESS_KEY",
+            )?,
+            session_token_environment: require_adapter_environment(
+                block,
+                "session_token_environment",
+                "AWS_SESSION_TOKEN",
+            )?,
         };
         profile.validate_fields()?;
         Ok(profile)
@@ -173,6 +194,18 @@ impl DurableCellPublisherProfile {
 
     pub const fn timeout_ms(&self) -> u64 {
         self.timeout_ms
+    }
+
+    pub fn access_key_environment(&self) -> &str {
+        &self.access_key_environment
+    }
+
+    pub fn secret_access_key_environment(&self) -> &str {
+        &self.secret_access_key_environment
+    }
+
+    pub fn session_token_environment(&self) -> &str {
+        &self.session_token_environment
     }
 }
 
@@ -249,6 +282,15 @@ fn require_exact(block: &Block, field: &str, expected: &str) -> Result<(), Strin
     Ok(())
 }
 
+fn require_adapter_environment(
+    block: &Block,
+    field: &str,
+    expected: &str,
+) -> Result<String, String> {
+    require_exact(block, field, expected)?;
+    Ok(expected.into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +304,12 @@ mod tests {
             .image_uri()
             .ends_with(profile.image_digest().as_str()));
         assert_eq!(profile.command(), ["/usr/local/bin/celld"]);
+        assert_eq!(profile.access_key_environment(), "AWS_ACCESS_KEY_ID");
+        assert_eq!(
+            profile.secret_access_key_environment(),
+            "AWS_SECRET_ACCESS_KEY"
+        );
+        assert_eq!(profile.session_token_environment(), "AWS_SESSION_TOKEN");
         assert!(profile
             .canonical_acl()
             .contains(DURABLE_CELL_PUBLISHER_PROFILE_SCHEMA));

@@ -3,6 +3,7 @@ mod bundle_publication;
 mod commands;
 mod deployment;
 mod managed_replica_lifecycle;
+mod provider_workload;
 mod queries;
 mod resource_access;
 mod result;

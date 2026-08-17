@@ -1,4 +1,5 @@
 durable_cell_publisher_profile "celld_v0_2_1" {
+  access_key_environment = "AWS_ACCESS_KEY_ID"
   adapter_protocol = "celld.deploy.v0.2.1"
   bundle_mount = "/a3s/durable-cell/application"
   command = ["/usr/local/bin/celld"]
@@ -9,5 +10,7 @@ durable_cell_publisher_profile "celld_v0_2_1" {
   memory_bytes = 536870912
   pids = 256
   schema = "cloud.durable-cell.publisher-profile.v1"
+  secret_access_key_environment = "AWS_SECRET_ACCESS_KEY"
+  session_token_environment = "AWS_SESSION_TOKEN"
   timeout_ms = 600000
 }

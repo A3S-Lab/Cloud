@@ -32,3 +32,28 @@ application deployment, named SQLite state, alarms, WebSockets, Gateway
 publication, rolling handoff, or any failure boundary. Those remain the joint
 `CELL0.2`, `CELL0.5`, and `CELL0.6` retained gates. A green component run must
 not be used to advertise the Durable Cell product as available.
+
+## CELL0.5 bundle publication gate
+
+`run_bundle_publication_gate.sh` is the joint C3 gate. It composes the pinned
+publisher ACL, the existing node-bound Execution projection, the existing Box
+Task Runtime, the Cloud Artifact and Secret adapters, and the production S0
+object-namespace client. The fixture is a deterministic typed Durable Cell
+bundle containing a pre-bundled Worker and one SQLite-backed `Counter` class;
+it does not install esbuild or create another publication path.
+
+The test requires the same disposable S3-compatible provider variables as the
+S0 gate, plus an installed real Box runner. It writes below a unique
+`a3s-cloud-tests/cell-bundle-publication/<storage-namespace-id>` prefix. A pass
+requires the Task to finish, Fleet redelivery to replay exactly, the S0 adapter
+to read and validate both current pointers, the manifest, and exact module
+bytes, and the shared test context to delete and re-list the whole prefix as
+empty. The retained log is scanned byte-for-byte for every supplied credential
+before evidence is accepted.
+
+The manual `Durable Cell bundle publication conformance` workflow is restricted
+to `main` and calls the existing Box provider workflow so Box installation,
+celld supply-chain verification, image pulling, process cleanup, and evidence
+retention stay single-sourced. Its evidence deliberately keeps
+`applicationBehaviorCertified`, `gatewayCertified`, and
+`faultMatrixCertified` false; those remain C4/C5 work.

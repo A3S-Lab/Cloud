@@ -6,9 +6,12 @@ on:
       - main
     paths:
       - .github/workflows/box-conformance.yml
+      - .github/workflows/cell-bundle-publication-conformance.yml
       - Cargo.lock
       - Cargo.toml
       - contracts/cell0.3/**
+      - contracts/cell0.5/**
+      - contracts/s0.1/**
       - crates/contracts/**
       - crates/control-plane/**
       - crates/node-agent/**
@@ -17,9 +20,12 @@ on:
   pull_request:
     paths:
       - .github/workflows/box-conformance.yml
+      - .github/workflows/cell-bundle-publication-conformance.yml
       - Cargo.lock
       - Cargo.toml
       - contracts/cell0.3/**
+      - contracts/cell0.5/**
+      - contracts/s0.1/**
       - crates/contracts/**
       - crates/control-plane/**
       - crates/node-agent/**
@@ -28,6 +34,31 @@ on:
   schedule:
     - cron: "23 3 * * *"
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      run_cell_bundle_publication:
+        description: Run the credentialed CELL0.5 bundle publication gate
+        required: false
+        default: false
+        type: boolean
+      evidence_artifact_prefix:
+        description: Retained evidence artifact name prefix
+        required: false
+        default: box-provider-conformance
+        type: string
+    secrets:
+      S0_S3_ENDPOINT:
+        required: false
+      S0_S3_REGION:
+        required: false
+      S0_S3_BUCKET:
+        required: false
+      S0_S3_ACCESS_KEY_ID:
+        required: false
+      S0_S3_SECRET_ACCESS_KEY:
+        required: false
+      S0_S3_SESSION_TOKEN:
+        required: false
 
 permissions:
   attestations: read
@@ -35,7 +66,7 @@ permissions:
   packages: read
 
 concurrency:
-  group: box-provider-conformance-${{ github.event.pull_request.number || github.ref }}
+  group: box-provider-conformance-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -507,6 +538,25 @@ jobs:
               >durable-cell-provider-runtime-sha256.txt
           )
 
+      - name: Certify real Durable Cell bundle publication through Box and S0
+        if: ${{ inputs.run_cell_bundle_publication == true }}
+        working-directory: apps/cloud
+        env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_CLOUD_TEST_S3_ENDPOINT: ${{ secrets.S0_S3_ENDPOINT }}
+          A3S_CLOUD_TEST_S3_REGION: ${{ secrets.S0_S3_REGION }}
+          A3S_CLOUD_TEST_S3_BUCKET: ${{ secrets.S0_S3_BUCKET }}
+          A3S_CLOUD_TEST_S3_ACCESS_KEY_ID: ${{ secrets.S0_S3_ACCESS_KEY_ID }}
+          A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY: ${{ secrets.S0_S3_SECRET_ACCESS_KEY }}
+          A3S_CLOUD_TEST_S3_SESSION_TOKEN: ${{ secrets.S0_S3_SESSION_TOKEN }}
+          A3S_CLOUD_TEST_S3_VIRTUAL_HOSTED_STYLE: "false"
+          A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          bash tools/cell-conformance/run_bundle_publication_gate.sh "$EVIDENCE_DIR"
+
       - name: Certify Fleet and Flow build-command event-loss replay
         env:
           A3S_CLOUD_TEST_G0_EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
@@ -759,7 +809,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: box-provider-conformance-${{ github.run_id }}-${{ github.run_attempt }}
+          name: ${{ inputs.evidence_artifact_prefix || 'box-provider-conformance' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/a3s-box-provider-evidence
           if-no-files-found: error
           retention-days: 30

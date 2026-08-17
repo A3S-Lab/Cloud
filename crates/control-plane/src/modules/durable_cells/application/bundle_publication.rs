@@ -1,5 +1,7 @@
 use super::build_run_access::require_definition_build_output;
+use super::provider_workload::validate_publisher_secret_targets;
 use crate::modules::artifacts::domain::{BuildArtifact, IBuildRunRepository};
+use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::domain::{
     DurableCellDeployment, DurableCellPublisherProfile, IDurableCellApplicationRepository,
     IDurableCellDeploymentRepository, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
@@ -14,14 +16,14 @@ use crate::modules::executions::domain::{
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    ExecutionId, RepositoryError, Sha256Digest, WorkloadRevisionId,
+    ExecutionId, NodeId, RepositoryError, Sha256Digest, StorageNamespaceId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
     IWorkloadPrestartGate, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_secrets;
-use a3s_runtime::contract::{ArtifactRef, RuntimeMount, RuntimeMountSource};
+use a3s_runtime::contract::{ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -183,14 +185,8 @@ impl DurableCellBundlePublicationGate {
         let provider_profile = correlation
             .require_storage_provider_profile()
             .map_err(CompositionError::failed)?;
-        if provider_profile.spec().virtual_hosted_style {
-            return Err(CompositionError::failed(
-                "celld v0.2.1 publication requires path-style S0 addressing",
-            ));
-        }
         let publisher =
             DurableCellPublisherProfile::pinned_celld_v0_2_1().map_err(CompositionError::failed)?;
-        publisher.validate().map_err(CompositionError::failed)?;
 
         let application_revision = self
             .applications
@@ -266,90 +262,52 @@ impl DurableCellBundlePublicationGate {
                 "Durable Cell provider Workload is not the exact pinned celld publisher image",
             ));
         }
-
-        let namespace_prefix = provider_profile
-            .namespace_prefix(correlation.storage.storage_namespace_id)
+        validate_publisher_secret_targets(service_template, &publisher)
             .map_err(CompositionError::failed)?;
-        let bucket = format!(
-            "s3://{}/{}",
-            provider_profile.spec().bucket,
-            namespace_prefix
-        );
+
         let authority_digest =
             publication_authority_digest(correlation, request.node_id, &bundle, &publisher)
                 .map_err(CompositionError::failed)?;
         let secrets =
             project_runtime_secrets(&workload_revision).map_err(CompositionError::failed)?;
-        let template = ExecutionTemplate {
-            artifact: ExecutionArtifact {
-                uri: publisher.image_uri().into(),
-                digest: publisher.image_digest().to_string(),
-                media_type: service_template.artifact.media_type.clone(),
-            },
-            process: ExecutionProcess {
-                command: publisher.command().to_vec(),
-                args: vec![
-                    "deploy".into(),
-                    publisher.bundle_mount().into(),
-                    "--bucket".into(),
-                    bucket,
-                    "--endpoint".into(),
-                    provider_profile.spec().endpoint.clone(),
-                    "--region".into(),
-                    provider_profile.spec().region.clone(),
-                ],
-                working_directory: Some(publisher.bundle_mount().into()),
-                environment: BTreeMap::new(),
-            },
-            input: serde_json::json!({
+        let definition = build_publication_task_definition(
+            &provider_profile,
+            &publisher,
+            PublicationTaskDefinitionInput {
+                node_id: request.node_id,
+                storage_namespace_id: correlation.storage.storage_namespace_id,
+                image_media_type: service_template.artifact.media_type.clone(),
+                bundle: ArtifactRef {
+                    uri: bundle.uri,
+                    digest: bundle.digest,
+                    media_type: bundle.media_type,
+                },
+                secrets,
+                authority: ExecutionTaskAuthority {
+                    kind: PUBLICATION_AUTHORITY_KIND.into(),
+                    subject_id: request.workload_revision_id.as_uuid(),
+                    digest: authority_digest,
+                },
+                input: serde_json::json!({
                 "schema": PUBLICATION_INPUT_SCHEMA,
                 "applicationRevisionId": correlation.projection.application_revision_id,
                 "applicationDefinitionDigest": correlation.projection.application_definition_digest,
-                "bundleDigest": bundle.digest,
+                "bundleDigest": application_revision.definition.spec().bundle_digest,
                 "storageNamespaceId": correlation.storage.storage_namespace_id,
                 "storageProviderProfileDigest": correlation.storage.provider_profile_digest,
                 "publisherProfileDigest": publisher.digest(),
             }),
-            resources: ExecutionResources {
-                cpu_millis: publisher.cpu_millis(),
-                memory_bytes: publisher.memory_bytes(),
-                pids: publisher.pids(),
-                ephemeral_storage_bytes: Some(publisher.ephemeral_storage_bytes()),
-                timeout_ms: publisher.timeout_ms(),
             },
-        };
-        let task_policy = ExecutionTaskPolicy {
-            authority: ExecutionTaskAuthority {
-                kind: PUBLICATION_AUTHORITY_KIND.into(),
-                subject_id: request.workload_revision_id.as_uuid(),
-                digest: authority_digest,
-            },
-            mounts: vec![RuntimeMount {
-                name: "durable-cell-application".into(),
-                source: RuntimeMountSource::Artifact {
-                    artifact: ArtifactRef {
-                        uri: bundle.uri,
-                        digest: bundle.digest,
-                        media_type: bundle.media_type,
-                    },
-                },
-                target: publisher.bundle_mount().into(),
-                read_only: true,
-            }],
-            secrets,
-            semantics_profile_digest: publisher.digest().clone(),
-        };
-        task_policy
-            .validate(request.node_id, &template)
-            .map_err(CompositionError::failed)?;
+        )
+        .map_err(CompositionError::failed)?;
         Ok(BoundExecutionCreation {
             organization_id: correlation.projection.organization_id,
             project_id: correlation.projection.project_id,
             environment_id: correlation.projection.environment_id,
             execution_id,
-            template,
+            template: definition.template,
             target_node_id: request.node_id,
-            task_policy,
+            task_policy: definition.task_policy,
             idempotency_key: format!("durable-cell-publication:{execution_id}"),
             request_id: Uuid::new_v5(
                 &request.workload_revision_id.as_uuid(),
@@ -358,6 +316,100 @@ impl DurableCellBundlePublicationGate {
             requested_at: correlation.requested_at,
         })
     }
+}
+
+struct PublicationTaskDefinitionInput {
+    node_id: NodeId,
+    storage_namespace_id: StorageNamespaceId,
+    image_media_type: String,
+    bundle: ArtifactRef,
+    secrets: Vec<SecretReference>,
+    authority: ExecutionTaskAuthority,
+    input: serde_json::Value,
+}
+
+struct PublicationTaskDefinition {
+    template: ExecutionTemplate,
+    task_policy: ExecutionTaskPolicy,
+}
+
+/// The sole provider-adapter translation from Cloud-owned publication intent
+/// into one ordinary Execution Task. Both the Workload pre-start gate and the
+/// retained real-provider test use this constructor so command, S0 namespace,
+/// mount, Secret, resource, and network semantics cannot drift independently.
+fn build_publication_task_definition(
+    provider_profile: &ObjectNamespaceProviderProfile,
+    publisher: &DurableCellPublisherProfile,
+    definition: PublicationTaskDefinitionInput,
+) -> Result<PublicationTaskDefinition, String> {
+    provider_profile.validate()?;
+    publisher.validate()?;
+    if provider_profile.spec().virtual_hosted_style {
+        return Err("celld v0.2.1 publication requires path-style S0 addressing".into());
+    }
+    if !matches!(
+        definition.image_media_type.as_str(),
+        OCI_IMAGE_MANIFEST_MEDIA_TYPE | OCI_IMAGE_INDEX_MEDIA_TYPE
+    ) {
+        return Err("Durable Cell publisher image media type is not OCI".into());
+    }
+    a3s_cloud_contracts::validate_cloud_artifact(&definition.bundle)?;
+    if definition.bundle.media_type != DURABLE_CELL_BUNDLE_MEDIA_TYPE {
+        return Err("Durable Cell publisher input is not the typed bundle artifact".into());
+    }
+    let namespace_prefix = provider_profile.namespace_prefix(definition.storage_namespace_id)?;
+    let template = ExecutionTemplate {
+        artifact: ExecutionArtifact {
+            uri: publisher.image_uri().into(),
+            digest: publisher.image_digest().to_string(),
+            media_type: definition.image_media_type,
+        },
+        process: ExecutionProcess {
+            command: publisher.command().to_vec(),
+            args: vec![
+                "deploy".into(),
+                publisher.bundle_mount().into(),
+                "--bucket".into(),
+                format!(
+                    "s3://{}/{}",
+                    provider_profile.spec().bucket,
+                    namespace_prefix
+                ),
+                "--endpoint".into(),
+                provider_profile.spec().endpoint.clone(),
+                "--region".into(),
+                provider_profile.spec().region.clone(),
+            ],
+            working_directory: Some(publisher.bundle_mount().into()),
+            environment: BTreeMap::new(),
+        },
+        input: definition.input,
+        resources: ExecutionResources {
+            cpu_millis: publisher.cpu_millis(),
+            memory_bytes: publisher.memory_bytes(),
+            pids: publisher.pids(),
+            ephemeral_storage_bytes: Some(publisher.ephemeral_storage_bytes()),
+            timeout_ms: publisher.timeout_ms(),
+        },
+    };
+    let task_policy = ExecutionTaskPolicy {
+        authority: definition.authority,
+        mounts: vec![RuntimeMount {
+            name: "durable-cell-application".into(),
+            source: RuntimeMountSource::Artifact {
+                artifact: definition.bundle,
+            },
+            target: publisher.bundle_mount().into(),
+            read_only: true,
+        }],
+        secrets: definition.secrets,
+        semantics_profile_digest: publisher.digest().clone(),
+    };
+    task_policy.validate(definition.node_id, &template)?;
+    Ok(PublicationTaskDefinition {
+        template,
+        task_policy,
+    })
 }
 
 #[async_trait]
@@ -552,6 +604,10 @@ impl CompositionError {
         }
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "bundle_publication/real_conformance.rs"]
+mod real_conformance;
 
 #[cfg(test)]
 mod tests {
@@ -992,7 +1048,7 @@ mod tests {
                     secret_id: access_key.secret_id,
                     version: access_key.version,
                     target: SecretBindingTarget::Environment {
-                        variable: "S0_ACCESS_KEY_ID".into(),
+                        variable: "AWS_ACCESS_KEY_ID".into(),
                     },
                 },
                 SecretBinding {
@@ -1000,7 +1056,7 @@ mod tests {
                     secret_id: secret_access_key.secret_id,
                     version: secret_access_key.version,
                     target: SecretBindingTarget::Environment {
-                        variable: "S0_SECRET_ACCESS_KEY".into(),
+                        variable: "AWS_SECRET_ACCESS_KEY".into(),
                     },
                 },
             ],

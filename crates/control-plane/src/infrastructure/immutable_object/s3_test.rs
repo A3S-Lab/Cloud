@@ -1,4 +1,6 @@
-use super::{ImmutableObjectClient, S3ImmutableObjectOptions};
+use super::{Backend, ImmutableObjectClient, S3ImmutableObjectOptions};
+use futures_util::TryStreamExt;
+use object_store::path::Path as ObjectPath;
 use std::time::Duration;
 use url::Url;
 use uuid::Uuid;
@@ -15,19 +17,34 @@ const VIRTUAL_HOSTED_STYLE_ENV: &str = "A3S_CLOUD_TEST_S3_VIRTUAL_HOSTED_STYLE";
 ///
 /// It deliberately returns the production `ImmutableObjectClient`; consumers
 /// cannot obtain the raw provider client or introduce another S3 builder.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) struct DisposableS3TestContext {
     client: ImmutableObjectClient,
     secure_transport: bool,
+    endpoint: String,
+    region: String,
+    bucket: String,
+    prefix: String,
+    virtual_hosted_style: bool,
 }
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 impl DisposableS3TestContext {
     pub(crate) fn from_environment(suite: &str) -> Result<Self, String> {
+        Self::from_environment_with_id(suite, Uuid::now_v7())
+    }
+
+    pub(crate) fn from_environment_with_id(suite: &str, id: Uuid) -> Result<Self, String> {
         validate_suite(suite)?;
-        let endpoint = required_environment(ENDPOINT_ENV)?;
-        let endpoint_url = Url::parse(&endpoint)
+        if id.is_nil() {
+            return Err("disposable S3 test namespace ID must not be nil".into());
+        }
+        let configured_endpoint = required_environment(ENDPOINT_ENV)?;
+        let endpoint_url = Url::parse(&configured_endpoint)
             .map_err(|_| format!("{ENDPOINT_ENV} must be an absolute HTTP(S) URL"))?;
         if !matches!(endpoint_url.scheme(), "http" | "https")
             || endpoint_url.host_str().is_none()
+            || endpoint_url.path() != "/"
             || !endpoint_url.username().is_empty()
             || endpoint_url.password().is_some()
             || endpoint_url.query().is_some()
@@ -37,6 +54,7 @@ impl DisposableS3TestContext {
                 "{ENDPOINT_ENV} must be a credential-free HTTP(S) origin"
             ));
         }
+        let endpoint = endpoint_url.origin().ascii_serialization();
         let region = std::env::var(REGION_ENV)
             .ok()
             .filter(|value| !value.is_empty())
@@ -46,13 +64,13 @@ impl DisposableS3TestContext {
         let secret_access_key = required_environment(SECRET_KEY_ENV)?;
         let session_token = optional_environment(SESSION_TOKEN_ENV)?;
         let virtual_hosted_style = optional_boolean(VIRTUAL_HOSTED_STYLE_ENV)?;
-        let prefix = format!("a3s-cloud-tests/{suite}/{}", Uuid::now_v7());
+        let prefix = format!("a3s-cloud-tests/{suite}/{id}");
         let secure_transport = endpoint_url.scheme() == "https";
         let client = ImmutableObjectClient::s3(S3ImmutableObjectOptions {
-            endpoint: Some(endpoint),
-            region,
-            bucket,
-            prefix,
+            endpoint: Some(endpoint.clone()),
+            region: region.clone(),
+            bucket: bucket.clone(),
+            prefix: prefix.clone(),
             access_key_id,
             secret_access_key,
             session_token,
@@ -67,6 +85,11 @@ impl DisposableS3TestContext {
         Ok(Self {
             client,
             secure_transport,
+            endpoint,
+            region,
+            bucket,
+            prefix,
+            virtual_hosted_style,
         })
     }
 
@@ -76,6 +99,61 @@ impl DisposableS3TestContext {
 
     pub(crate) fn uses_secure_transport(&self) -> bool {
         self.secure_transport
+    }
+
+    pub(crate) fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+
+    pub(crate) fn region(&self) -> &str {
+        &self.region
+    }
+
+    pub(crate) fn bucket(&self) -> &str {
+        &self.bucket
+    }
+
+    pub(crate) fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    pub(crate) fn virtual_hosted_style(&self) -> bool {
+        self.virtual_hosted_style
+    }
+
+    /// Removes and then re-lists the unique disposable namespace. This is
+    /// deliberately test-only and reaches the same production object-store
+    /// handle used by `IObjectNamespace`; it does not construct another S3
+    /// client or create a product-level list/delete lifecycle.
+    pub(crate) async fn remove_all(&self) -> Result<usize, String> {
+        let Backend::Remote(objects) = self.client.backend.as_ref() else {
+            return Err("disposable S3 cleanup requires the remote backend".into());
+        };
+        let prefix = ObjectPath::from(self.prefix.clone());
+        let locations = objects
+            .list(Some(&prefix))
+            .map_ok(|metadata| metadata.location)
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|error| format!("list disposable S3 namespace for cleanup: {error}"))?;
+        for location in &locations {
+            if !location.as_ref().starts_with(&format!("{}/", self.prefix)) {
+                return Err("disposable S3 cleanup escaped its exact namespace".into());
+            }
+            objects
+                .delete(location)
+                .await
+                .map_err(|error| format!("delete disposable S3 object: {error}"))?;
+        }
+        let remaining = objects
+            .list(Some(&prefix))
+            .try_collect::<Vec<_>>()
+            .await
+            .map_err(|error| format!("verify disposable S3 namespace cleanup: {error}"))?;
+        if !remaining.is_empty() {
+            return Err("disposable S3 namespace cleanup retained objects".into());
+        }
+        Ok(locations.len())
     }
 }
 

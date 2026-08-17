@@ -61,8 +61,6 @@ pub async fn run_node_agent(
     else {
         return Ok(());
     };
-    let secret_transport: Arc<dyn NodeSecretTransport> = transport.clone();
-    runtime.bind_secret_transport(secret_transport).await?;
     let certificate_transport: Arc<dyn crate::GatewayCertificateSigningTransport> =
         transport.clone();
     let gateway: Arc<dyn GatewaySnapshotInstaller> =
@@ -86,8 +84,9 @@ pub async fn run_node_agent(
         BoxBuildCommandExecutor::new(&config.box_runtime, Arc::clone(&artifact_manager))
             .map_err(|error| NodeAgentError::State(error.to_string()))?,
     );
+    let secret_transport: Arc<dyn NodeSecretTransport> = transport.clone();
     let runtime = runtime
-        .into_artifact_bound_client(artifact_manager.clone())
+        .into_bound_client(secret_transport, artifact_manager.clone())
         .await?;
     let session_transport: Arc<dyn NodeControlTransport> = transport.clone();
     let session = NodeAgentSession::new(
@@ -140,11 +139,18 @@ impl NodeRuntimeProvider {
         self.client.capabilities().await
     }
 
-    pub(crate) async fn bind_secret_transport(
-        &self,
-        transport: Arc<dyn NodeSecretTransport>,
-    ) -> a3s_runtime::RuntimeResult<()> {
-        self.secret_materializer.bind_transport(transport).await
+    /// Bind the sole enrolled Secret transport and Artifact manager, then
+    /// consume this provider into the Runtime client that may receive node
+    /// commands. Embedders use this composition point instead of wiring Box
+    /// materializers or artifact ports independently.
+    pub async fn into_bound_client(
+        self,
+        secrets: Arc<dyn NodeSecretTransport>,
+        artifacts: Arc<NodeArtifactManager>,
+    ) -> a3s_runtime::RuntimeResult<Arc<dyn RuntimeClient>> {
+        self.secret_materializer.bind_transport(secrets).await?;
+        self.artifact_port.bind_manager(artifacts).await?;
+        Ok(self.client)
     }
 
     /// Bind the one enrolled Artifact manager and consume this provider into

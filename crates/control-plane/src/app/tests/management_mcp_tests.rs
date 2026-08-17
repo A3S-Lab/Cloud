@@ -2958,8 +2958,8 @@ async fn management_mcp_reuses_the_durable_cell_application_projection_lifecycle
     let serialized = serde_json::to_string(deployment)
         .map_err(|error| BootError::Internal(error.to_string()))?;
     assert!(!serialized.contains("ciphertext-"));
-    assert!(!serialized.contains("S0_ACCESS_KEY_ID"));
-    assert!(!serialized.contains("S0_SECRET_ACCESS_KEY"));
+    assert!(!serialized.contains("AWS_ACCESS_KEY_ID"));
+    assert!(!serialized.contains("AWS_SECRET_ACCESS_KEY"));
     assert!(!serialized.contains(&access_key.secret_id.to_string()));
     assert!(!serialized.contains(&secret_key.secret_id.to_string()));
 
