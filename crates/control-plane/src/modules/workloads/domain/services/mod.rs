@@ -1,6 +1,7 @@
 mod deployment_route_updater;
 mod oci_artifact_resolver;
 mod replica_set_reconfiguration;
+mod workload_prestart_gate;
 
 pub use deployment_route_updater::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
@@ -11,4 +12,8 @@ pub use oci_artifact_resolver::{
 };
 pub use replica_set_reconfiguration::{
     plan_replica_set_reconfiguration, ReplicaSetReconfiguration, ReplicaSetReconfigurationError,
+};
+pub use workload_prestart_gate::{
+    IWorkloadPrestartGate, UnrestrictedWorkloadPrestartGate, WorkloadPrestartGateRequest,
+    WorkloadPrestartGateStatus,
 };

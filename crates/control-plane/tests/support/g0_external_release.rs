@@ -491,7 +491,7 @@ async fn create_workload_handoff(
     if external.source_revision_id != inputs.source.revision.id
         || external.build_run_id != inputs.source.build_run_id
         || first.bundle.operation.workflow.name() != "cloud.deployment"
-        || first.bundle.operation.workflow.version() != "3"
+        || first.bundle.operation.workflow.version() != "4"
     {
         return Err(test_error(
             "published Workload changed its BuildRun or deployment workflow identity",

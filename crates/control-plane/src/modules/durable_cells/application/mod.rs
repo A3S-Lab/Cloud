@@ -1,4 +1,5 @@
 mod build_run_access;
+mod bundle_publication;
 mod commands;
 mod deployment;
 mod managed_replica_lifecycle;
@@ -7,6 +8,7 @@ mod resource_access;
 mod result;
 mod route_publication;
 
+pub(crate) use bundle_publication::DurableCellBundlePublicationGate;
 pub use commands::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler,
     ReviseDurableCellApplication, ReviseDurableCellApplicationHandler, StartDurableCellApplication,

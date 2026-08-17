@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-const SELECT_DEPLOYMENTS: &str = "select organization_id, project_id, environment_id, application_id, application_revision_id, application_revision_number, application_definition_digest, storage_namespace_id, credential_binding_generation, credential_binding_digest, storage_provider_profile_digest, retention_policy_digest, workload_id, workload_revision_id, workload_generation, service_profile_digest, service_template_digest, provider_artifact_digest, deployment_id, operation_id, placement_policy_digest, requested_by, request_id, requested_at from durable_cell_deployments";
+const SELECT_DEPLOYMENTS: &str = "select organization_id, project_id, environment_id, application_id, application_revision_id, application_revision_number, application_definition_digest, storage_namespace_id, credential_binding_generation, credential_binding_digest, storage_provider_profile_digest, storage_provider_profile_acl, retention_policy_digest, workload_id, workload_revision_id, workload_generation, service_profile_digest, service_template_digest, provider_artifact_digest, deployment_id, operation_id, placement_policy_digest, requested_by, request_id, requested_at from durable_cell_deployments";
 
 #[derive(Clone)]
 pub struct PostgresDurableCellDeploymentRepository {
@@ -79,7 +79,7 @@ impl IDurableCellDeploymentRepository for PostgresDurableCellDeploymentRepositor
                     let provider = &deployment.provider;
                     let inserted = execute(
                         transaction,
-                        sql_query::<()>("insert into durable_cell_deployments (organization_id, project_id, environment_id, application_id, application_revision_id, application_revision_number, application_definition_digest, storage_namespace_id, credential_binding_generation, credential_binding_digest, storage_provider_profile_digest, retention_policy_digest, workload_id, workload_revision_id, workload_generation, service_profile_digest, service_template_digest, provider_artifact_digest, deployment_id, operation_id, placement_policy_digest, requested_by, request_id, requested_at) values (")
+                        sql_query::<()>("insert into durable_cell_deployments (organization_id, project_id, environment_id, application_id, application_revision_id, application_revision_number, application_definition_digest, storage_namespace_id, credential_binding_generation, credential_binding_digest, storage_provider_profile_digest, storage_provider_profile_acl, retention_policy_digest, workload_id, workload_revision_id, workload_generation, service_profile_digest, service_template_digest, provider_artifact_digest, deployment_id, operation_id, placement_policy_digest, requested_by, request_id, requested_at) values (")
                             .bind(projection.organization_id.as_uuid())
                             .append(", ")
                             .bind(projection.project_id.as_uuid())
@@ -101,6 +101,8 @@ impl IDurableCellDeploymentRepository for PostgresDurableCellDeploymentRepositor
                             .bind(storage.credential_binding_digest.as_str())
                             .append(", ")
                             .bind(storage.provider_profile_digest.as_str())
+                            .append(", ")
+                            .bind(deployment.storage_provider_profile_acl.as_deref())
                             .append(", ")
                             .bind(storage.retention_policy_digest.as_str())
                             .append(", ")
@@ -210,6 +212,25 @@ impl IDurableCellDeploymentRepository for PostgresDurableCellDeploymentRepositor
             .map(decode_deployment)
             .transpose()
     }
+
+    async fn find_by_workload_revision(
+        &self,
+        organization_id: OrganizationId,
+        workload_revision_id: WorkloadRevisionId,
+    ) -> Result<Option<DurableCellDeployment>, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                deployment_select()
+                    .append(" where organization_id = ")
+                    .bind(organization_id.as_uuid())
+                    .append(" and workload_revision_id = ")
+                    .bind(workload_revision_id.as_uuid()),
+            )
+            .await
+            .map_err(storage_error)?
+            .map(decode_deployment)
+            .transpose()
+    }
 }
 
 struct DurableCellDeploymentRow {
@@ -224,6 +245,7 @@ struct DurableCellDeploymentRow {
     credential_binding_generation: u64,
     credential_binding_digest: String,
     storage_provider_profile_digest: String,
+    storage_provider_profile_acl: Option<String>,
     retention_policy_digest: String,
     workload_id: Uuid,
     workload_revision_id: Uuid,
@@ -253,19 +275,20 @@ impl FromRow for DurableCellDeploymentRow {
             credential_binding_generation: decode(row, 8)?,
             credential_binding_digest: decode(row, 9)?,
             storage_provider_profile_digest: decode(row, 10)?,
-            retention_policy_digest: decode(row, 11)?,
-            workload_id: decode(row, 12)?,
-            workload_revision_id: decode(row, 13)?,
-            workload_generation: decode(row, 14)?,
-            service_profile_digest: decode(row, 15)?,
-            service_template_digest: decode(row, 16)?,
-            provider_artifact_digest: decode(row, 17)?,
-            deployment_id: decode(row, 18)?,
-            operation_id: decode(row, 19)?,
-            placement_policy_digest: decode(row, 20)?,
-            requested_by: decode(row, 21)?,
-            request_id: decode(row, 22)?,
-            requested_at: decode(row, 23)?,
+            storage_provider_profile_acl: decode(row, 11)?,
+            retention_policy_digest: decode(row, 12)?,
+            workload_id: decode(row, 13)?,
+            workload_revision_id: decode(row, 14)?,
+            workload_generation: decode(row, 15)?,
+            service_profile_digest: decode(row, 16)?,
+            service_template_digest: decode(row, 17)?,
+            provider_artifact_digest: decode(row, 18)?,
+            deployment_id: decode(row, 19)?,
+            operation_id: decode(row, 20)?,
+            placement_policy_digest: decode(row, 21)?,
+            requested_by: decode(row, 22)?,
+            request_id: decode(row, 23)?,
+            requested_at: decode(row, 24)?,
         })
     }
 }
@@ -323,6 +346,7 @@ fn decode_deployment(
                 "Durable Cell retention policy digest",
             )?,
         },
+        storage_provider_profile_acl: row.storage_provider_profile_acl,
         provider: DurableCellProviderBinding {
             application_id: DurableCellApplicationId::from_uuid(row.application_id),
             application_revision_id: DurableCellApplicationRevisionId::from_uuid(

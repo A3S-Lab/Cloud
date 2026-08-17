@@ -6,6 +6,7 @@ mod deployment_repository;
 mod events;
 mod projection_identity;
 mod provider_binding;
+mod publisher_profile;
 mod repository;
 mod service_profile;
 mod storage_binding;
@@ -18,7 +19,7 @@ pub use application_definition::{
     DurableCellRollbackPolicy, DurableCellStateSchema, DURABLE_CELL_APPLICATION_MAX_ACL_BYTES,
     DURABLE_CELL_APPLICATION_SCHEMA, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
-pub use deployment::DurableCellDeployment;
+pub use deployment::{DurableCellDeployment, DurableCellDeploymentRequest};
 pub use deployment_binding::{
     DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec,
     DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_SCHEMA,
@@ -29,6 +30,10 @@ pub use deployment_repository::{
 pub use events::DurableCellApplicationChanged;
 pub use projection_identity::{DurableCellProjectionIdentity, DURABLE_CELL_MANAGED_OWNER_KIND};
 pub use provider_binding::DurableCellProviderBinding;
+pub use publisher_profile::{
+    DurableCellPublisherProfile, DURABLE_CELL_PUBLISHER_ADAPTER_PROTOCOL,
+    DURABLE_CELL_PUBLISHER_PROFILE_MAX_ACL_BYTES, DURABLE_CELL_PUBLISHER_PROFILE_SCHEMA,
+};
 pub(crate) use repository::DurableCellWriteReference;
 pub use repository::{
     CreateDurableCellApplicationWrite, DurableCellApplicationRecord,

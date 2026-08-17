@@ -64,6 +64,14 @@ fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Res
         crate::modules::durable_cells::domain::DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
     );
     assert_eq!(
+        deployment_schema["properties"]["storageProviderProfileAcl"]["maxLength"],
+        crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES
+    );
+    assert!(!deployment_schema["required"]
+        .as_array()
+        .expect("required deployment fields")
+        .contains(&json!("storageProviderProfileAcl")));
+    assert_eq!(
         deployment_schema["properties"]["providerWorkloadAcl"]["maxLength"],
         crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES
     );

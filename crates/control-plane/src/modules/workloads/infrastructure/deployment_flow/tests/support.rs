@@ -19,6 +19,22 @@ pub(super) fn runtime_with_resource_claims(
     resource_claims: Arc<dyn IResourceClaimRepository>,
     convergence_timeout: Duration,
 ) -> Result<DeploymentFlowRuntime, String> {
+    runtime_with_prestart_gate(
+        workloads,
+        nodes,
+        resource_claims,
+        Arc::new(crate::modules::workloads::domain::services::UnrestrictedWorkloadPrestartGate),
+        convergence_timeout,
+    )
+}
+
+pub(super) fn runtime_with_prestart_gate(
+    workloads: &Arc<InMemoryWorkloadRepository>,
+    nodes: &Arc<InMemoryNodeRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    prestart_gate: Arc<dyn crate::modules::workloads::domain::services::IWorkloadPrestartGate>,
+    convergence_timeout: Duration,
+) -> Result<DeploymentFlowRuntime, String> {
     let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -33,7 +49,8 @@ pub(super) fn runtime_with_resource_claims(
             node_port,
             control_port,
             Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
-        ),
+        )
+        .with_prestart_gate(prestart_gate),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(
             milliseconds,
@@ -546,7 +563,7 @@ pub(super) fn deployment_bundle_with_template(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "3")?,
+        WorkflowIdentity::new("cloud.deployment", "4")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -592,7 +609,7 @@ pub(super) fn rollback_deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "3")?,
+        WorkflowIdentity::new("cloud.deployment", "4")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -663,7 +680,7 @@ pub(super) fn requested_deployment_bundle_with_secrets(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "3")?,
+        WorkflowIdentity::new("cloud.deployment", "4")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,
@@ -1085,6 +1102,10 @@ pub(super) fn template(digest_character: char) -> ServiceTemplate {
 }
 
 pub(super) fn workflow_spec() -> WorkflowSpec {
+    WorkflowSpec::rust_embedded("cloud.deployment", "4", "a3s-cloud", "main")
+}
+
+pub(super) fn resource_claim_workflow_spec() -> WorkflowSpec {
     WorkflowSpec::rust_embedded("cloud.deployment", "3", "a3s-cloud", "main")
 }
 

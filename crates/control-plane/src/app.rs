@@ -44,13 +44,13 @@ use crate::modules::connectors::{
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
-    DeployDurableCellApplicationHandler, DurableCellsModule, GetDurableCellApplicationHandler,
-    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
-    IDurableCellDeploymentRepository, ListDurableCellApplicationRevisionsHandler,
-    ListDurableCellApplicationsHandler, PostgresDurableCellApplicationRepository,
-    PostgresDurableCellDeploymentRepository, PublishDurableCellApplicationRouteHandler,
-    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
-    StopDurableCellApplicationHandler,
+    DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate, DurableCellsModule,
+    GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
+    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
+    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
+    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpRoutePolicyRepository,
@@ -212,7 +212,9 @@ use crate::modules::workloads::domain::repositories::IWorkloadReplicaEvacuationR
 use crate::modules::workloads::domain::repositories::IWorkloadReplicaRetirementRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
-use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
+use crate::modules::workloads::domain::services::{
+    IDeploymentRouteUpdater, IOciArtifactResolver, IWorkloadPrestartGate,
+};
 use crate::modules::workloads::{
     BindSkillWorkloadDeploymentHandler, CancelDeploymentHandler,
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
@@ -819,6 +821,15 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         config.deployments.cleanup_timeout_ms,
     )
     .map_err(ControlPlaneStartupError::NodeControl)?;
+    let workload_prestart_gate: Arc<dyn IWorkloadPrestartGate> =
+        Arc::new(DurableCellBundlePublicationGate::new(
+            Arc::clone(&durable_cell_applications),
+            Arc::clone(&durable_cell_deployments),
+            Arc::clone(&builds),
+            Arc::clone(&workloads),
+            projects.clone(),
+            Arc::clone(&executions),
+        ));
     let deployment_runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
             deployment_workloads,
@@ -827,7 +838,8 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             scheduling_nodes,
             Arc::clone(&node_control),
             deployment_route_updates,
-        ),
+        )
+        .with_prestart_gate(workload_prestart_gate),
         chrono_duration(config.fleet.heartbeat_timeout_ms)
             .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         deployment_flow_config,

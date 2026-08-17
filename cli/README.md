@@ -257,7 +257,7 @@ durable-cell-applications start <application-id> --expected-version=<version>
 durable-cell-applications stop <application-id> --expected-version=<version>
 durable-cell-revisions list <application-id>
 durable-cell-revisions get <application-id> <revision-id>
-durable-cell-deployments create <application-id> <revision-id> --service-profile-file=<profile.acl> --provider-workload-file=<workload.acl> --storage-binding-file=<storage.acl>
+durable-cell-deployments create <application-id> <revision-id> --service-profile-file=<profile.acl> --storage-provider-profile-file=<s0-provider.acl> --provider-workload-file=<workload.acl> --storage-binding-file=<storage.acl>
 durable-cell-routes publish <application-id> <revision-id> <gateway-scope-id> <domain-claim-id> <hostname> <path-prefix> --service-profile-file=<profile.acl>
 ontologies list
 ontologies get <ontology-id>
@@ -478,9 +478,9 @@ endpoint, credential, provider body, attempt/evidence, or retry state.
 
 `durable-cell-applications` creates, revises, starts, stops, lists, and reads
 environment-scoped application heads and immutable canonical-ACL revisions.
-`durable-cell-deployments create` reads exactly three bounded `.acl` files for
-the Service profile, digest-pinned provider Workload, and plaintext-free S0
-storage binding. `durable-cell-routes publish` reads the same Service profile
+`durable-cell-deployments create` reads exactly four bounded `.acl` files for
+the Service profile, non-secret S0 provider profile, digest-pinned provider
+Workload, and plaintext-free S0 storage binding. `durable-cell-routes publish` reads the same Service profile
 and reuses the CLI's existing Edge hostname/path validation; Cloud alone
 selects the ACL public port and authorizes the Gateway scope and DomainClaim.
 All writes use the normal caller-owned idempotency key, and versioned

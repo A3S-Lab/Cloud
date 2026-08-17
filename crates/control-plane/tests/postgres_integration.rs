@@ -624,7 +624,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (119, "119".into()));
+    assert_eq!(migration_state, (120, "120".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1352,7 +1352,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 119);
+    assert_eq!(applied, 120);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",

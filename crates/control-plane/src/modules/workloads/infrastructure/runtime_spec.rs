@@ -130,39 +130,7 @@ fn project_runtime_spec_from_template(
                 })
             })
             .collect::<Result<Vec<_>, String>>()?,
-        secrets: template
-            .secrets
-            .iter()
-            .map(|binding| {
-                let reference = CloudSecretReference::new(
-                    revision.id.as_uuid(),
-                    binding.secret_id.as_uuid(),
-                    binding.version,
-                )?;
-                let target = match &binding.target {
-                    crate::modules::workloads::domain::entities::SecretBindingTarget::Environment {
-                        variable,
-                    } => SecretTarget::Environment {
-                        variable: variable.clone(),
-                    },
-                    crate::modules::workloads::domain::entities::SecretBindingTarget::File {
-                        path,
-                        mode,
-                    } => SecretTarget::File {
-                        path: path.clone(),
-                        mode: *mode,
-                    },
-                    crate::modules::workloads::domain::entities::SecretBindingTarget::RegistryCredential => {
-                        SecretTarget::RegistryCredential
-                    }
-                };
-                Ok(SecretReference {
-                    name: binding.name.clone(),
-                    reference: reference.to_string(),
-                    target,
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?,
+        secrets: project_runtime_secrets(revision)?,
         network: RuntimeNetworkSpec {
             mode: if template.ports.is_empty() {
                 NetworkMode::None
@@ -205,6 +173,48 @@ fn project_runtime_spec_from_template(
     };
     spec.validate()?;
     Ok(spec)
+}
+
+/// Project the sole Workloads-owned Secret bindings into exact Runtime
+/// references. Internal owner-composed Tasks reuse this function so they
+/// cannot drift into a second Secret-reference format or subject identity.
+pub(crate) fn project_runtime_secrets(
+    revision: &WorkloadRevision,
+) -> Result<Vec<SecretReference>, String> {
+    let template = revision.resolved_template()?;
+    template
+        .secrets
+        .iter()
+        .map(|binding| {
+            let reference = CloudSecretReference::new(
+                revision.id.as_uuid(),
+                binding.secret_id.as_uuid(),
+                binding.version,
+            )?;
+            let target = match &binding.target {
+                crate::modules::workloads::domain::entities::SecretBindingTarget::Environment {
+                    variable,
+                } => SecretTarget::Environment {
+                    variable: variable.clone(),
+                },
+                crate::modules::workloads::domain::entities::SecretBindingTarget::File {
+                    path,
+                    mode,
+                } => SecretTarget::File {
+                    path: path.clone(),
+                    mode: *mode,
+                },
+                crate::modules::workloads::domain::entities::SecretBindingTarget::RegistryCredential => {
+                    SecretTarget::RegistryCredential
+                }
+            };
+            Ok(SecretReference {
+                name: binding.name.clone(),
+                reference: reference.to_string(),
+                target,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

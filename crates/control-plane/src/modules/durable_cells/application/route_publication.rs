@@ -184,6 +184,7 @@ fn validate_public_route(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::data::ObjectNamespaceProviderProfile;
     use crate::modules::durable_cells::domain::{
         CreateDurableCellDeploymentWrite, DurableCellApplication, DurableCellApplicationDefinition,
         DurableCellApplicationDefinitionSpec, DurableCellApplicationRevision, DurableCellClassSpec,
@@ -679,17 +680,34 @@ mod tests {
             storage_namespace_id: projection.storage_namespace_id,
             credential_binding_generation: 1,
             credential_binding_digest: digest('d'),
-            provider_profile_digest: digest('e'),
+            provider_profile_digest: ObjectNamespaceProviderProfile::parse_acl(include_str!(
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/../../contracts/s0.1/object-namespace-provider-profile.acl"
+                )
+            ))
+            .expect("storage provider profile")
+            .digest()
+            .clone(),
             retention_policy_digest: digest('f'),
         };
+        let storage_provider_profile =
+            ObjectNamespaceProviderProfile::parse_acl(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../contracts/s0.1/object-namespace-provider-profile.acl"
+            )))
+            .expect("storage provider profile");
         DurableCellDeployment::bind(
             projection,
             storage,
+            Some(&storage_provider_profile),
             provider,
             digest('1'),
-            PrincipalId::new(),
-            Uuid::now_v7(),
-            now,
+            crate::modules::durable_cells::domain::DurableCellDeploymentRequest {
+                requested_by: PrincipalId::new(),
+                request_id: Uuid::now_v7(),
+                requested_at: now,
+            },
         )
         .expect("deployment correlation")
     }

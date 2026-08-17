@@ -57,8 +57,9 @@ pub use domain::repositories::{
 pub use domain::services::{
     DeploymentGatewayPublication, DeploymentRouteObservation, DeploymentRouteStage,
     DeploymentRouteUpdateRequest, IDeploymentRouteUpdater, IOciArtifactResolver,
-    OciArtifactResolutionError, OciRegistryCredentialReference, ReplicaSetReconfiguration,
-    ReplicaSetReconfigurationError, UnroutedDeploymentRouteUpdater,
+    IWorkloadPrestartGate, OciArtifactResolutionError, OciRegistryCredentialReference,
+    ReplicaSetReconfiguration, ReplicaSetReconfigurationError, UnrestrictedWorkloadPrestartGate,
+    UnroutedDeploymentRouteUpdater, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 pub use infrastructure::{
     project_replica_runtime_spec, project_runtime_spec, DeploymentFlowConfig,
@@ -73,5 +74,6 @@ pub use infrastructure::{
     WorkloadRuntimeReconciler, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
     PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+    RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION,
 };
 pub use presentation::WorkloadsModule;

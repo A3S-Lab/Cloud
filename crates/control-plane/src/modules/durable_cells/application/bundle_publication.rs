@@ -1,0 +1,1038 @@
+use super::build_run_access::require_definition_build_output;
+use crate::modules::artifacts::domain::{BuildArtifact, IBuildRunRepository};
+use crate::modules::durable_cells::domain::{
+    DurableCellDeployment, DurableCellPublisherProfile, IDurableCellApplicationRepository,
+    IDurableCellDeploymentRepository, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+};
+use crate::modules::executions::application::{
+    BoundExecutionCreation, ExecutionCancellation, ExecutionCancellationService, ExecutionCreator,
+};
+use crate::modules::executions::domain::{
+    Execution, ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionStatus,
+    ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTemplate, IExecutionRepository,
+};
+use crate::modules::projects::domain::repositories::IEnvironmentRepository;
+use crate::modules::shared_kernel::application::ApplicationError;
+use crate::modules::shared_kernel::domain::{
+    ExecutionId, RepositoryError, Sha256Digest, WorkloadRevisionId,
+};
+use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use crate::modules::workloads::domain::services::{
+    IWorkloadPrestartGate, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
+};
+use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_secrets;
+use a3s_runtime::contract::{ArtifactRef, RuntimeMount, RuntimeMountSource};
+use async_trait::async_trait;
+use serde::Serialize;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use uuid::Uuid;
+
+const PUBLICATION_EXECUTION_NAME: &[u8] = b"a3s-cloud:durable-cell:bundle-publication-execution:v1";
+const PUBLICATION_REQUEST_NAME: &[u8] = b"a3s-cloud:durable-cell:bundle-publication-request:v1";
+const PUBLICATION_CANCELLATION_REQUEST_NAME: &[u8] =
+    b"a3s-cloud:durable-cell:bundle-publication-cancellation-request:v1";
+const PUBLICATION_AUTHORITY_KIND: &str = "durable-cell.bundle-publication";
+const PUBLICATION_INPUT_SCHEMA: &str = "cloud.durable-cell.bundle-publication.v1";
+const OCI_IMAGE_MANIFEST_MEDIA_TYPE: &str = "application/vnd.oci.image.manifest.v1+json";
+const OCI_IMAGE_INDEX_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
+
+/// Durable Cell adapter for the generic Workloads pre-start gate. It composes
+/// one deterministic, node-bound Execution and observes the existing
+/// Execution lifecycle; it owns no queue, worker, or publication state.
+#[derive(Clone)]
+pub(crate) struct DurableCellBundlePublicationGate {
+    applications: Arc<dyn IDurableCellApplicationRepository>,
+    deployments: Arc<dyn IDurableCellDeploymentRepository>,
+    builds: Arc<dyn IBuildRunRepository>,
+    workloads: Arc<dyn IWorkloadRepository>,
+    executions: Arc<dyn IExecutionRepository>,
+    creator: ExecutionCreator,
+    cancellations: ExecutionCancellationService,
+}
+
+impl DurableCellBundlePublicationGate {
+    pub(crate) fn new(
+        applications: Arc<dyn IDurableCellApplicationRepository>,
+        deployments: Arc<dyn IDurableCellDeploymentRepository>,
+        builds: Arc<dyn IBuildRunRepository>,
+        workloads: Arc<dyn IWorkloadRepository>,
+        environments: Arc<dyn IEnvironmentRepository>,
+        executions: Arc<dyn IExecutionRepository>,
+    ) -> Self {
+        Self {
+            applications,
+            deployments,
+            builds,
+            workloads,
+            executions: Arc::clone(&executions),
+            creator: ExecutionCreator::new(environments, Arc::clone(&executions)),
+            cancellations: ExecutionCancellationService::new(executions),
+        }
+    }
+
+    async fn find_correlation(
+        &self,
+        request: &WorkloadPrestartGateRequest,
+    ) -> Result<Option<DurableCellDeployment>, RepositoryError> {
+        let correlation = match self
+            .deployments
+            .find_by_workload_revision(request.organization_id, request.workload_revision_id)
+            .await
+        {
+            Ok(value) => value,
+            Err(RepositoryError::NotFound) => None,
+            Err(error) => return Err(error),
+        };
+        let Some(correlation) = correlation else {
+            return Ok(None);
+        };
+        correlation.validate().map_err(|error| {
+            RepositoryError::Conflict(format!(
+                "Durable Cell deployment correlation is invalid: {error}"
+            ))
+        })?;
+        if correlation.projection.organization_id != request.organization_id
+            || correlation.projection.deployment_id != request.deployment_id
+            || correlation.projection.operation_id != request.operation_id
+            || correlation.projection.workload_id != request.workload_id
+            || correlation.projection.workload_revision_id != request.workload_revision_id
+        {
+            return Err(RepositoryError::Conflict(
+                "Durable Cell pre-start request changed its projection identity".into(),
+            ));
+        }
+        Ok(Some(correlation))
+    }
+
+    async fn reconcile_publication(
+        &self,
+        request: &WorkloadPrestartGateRequest,
+        correlation: &DurableCellDeployment,
+    ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
+        let execution_id = publication_execution_id(request.workload_revision_id);
+        if request.cancellation_requested {
+            return self
+                .reconcile_cancellation(request, correlation, execution_id)
+                .await;
+        }
+
+        let creation = match self.compose(request, correlation, execution_id).await {
+            Ok(creation) => creation,
+            Err(CompositionError::Failed(reason)) => {
+                return Ok(WorkloadPrestartGateStatus::Failed { reason })
+            }
+            Err(CompositionError::Repository(error)) => return Err(error),
+        };
+        let execution = match self.creator.create_bound_task(creation).await {
+            Ok(result) => result.execution,
+            Err(error) => return application_error(error),
+        };
+        publication_status(&execution)
+    }
+
+    async fn reconcile_cancellation(
+        &self,
+        request: &WorkloadPrestartGateRequest,
+        correlation: &DurableCellDeployment,
+        execution_id: ExecutionId,
+    ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
+        let Some(execution) = self
+            .executions
+            .find(request.organization_id, execution_id)
+            .await?
+        else {
+            return Ok(WorkloadPrestartGateStatus::CancellationReady {
+                completed_at: request.now,
+            });
+        };
+        validate_publication_execution(request, correlation, &execution)?;
+        if execution.status.is_terminal() {
+            return Ok(WorkloadPrestartGateStatus::CancellationReady {
+                completed_at: execution.finished_at.unwrap_or(request.now),
+            });
+        }
+        if !matches!(
+            execution.status,
+            ExecutionStatus::Cancelling | ExecutionStatus::CleanupPending
+        ) {
+            self.cancellations
+                .cancel(ExecutionCancellation {
+                    execution,
+                    idempotency_key: format!("durable-cell-publication-cancel:{execution_id}"),
+                    request_id: Uuid::new_v5(
+                        &request.workload_revision_id.as_uuid(),
+                        PUBLICATION_CANCELLATION_REQUEST_NAME,
+                    ),
+                    requested_at: request.now,
+                })
+                .await
+                .map_err(application_repository_error)?;
+        }
+        Ok(WorkloadPrestartGateStatus::Pending {
+            reason: "Durable Cell bundle publication Execution is cancelling".into(),
+        })
+    }
+
+    async fn compose(
+        &self,
+        request: &WorkloadPrestartGateRequest,
+        correlation: &DurableCellDeployment,
+        execution_id: ExecutionId,
+    ) -> Result<BoundExecutionCreation, CompositionError> {
+        let provider_profile = correlation
+            .require_storage_provider_profile()
+            .map_err(CompositionError::failed)?;
+        if provider_profile.spec().virtual_hosted_style {
+            return Err(CompositionError::failed(
+                "celld v0.2.1 publication requires path-style S0 addressing",
+            ));
+        }
+        let publisher =
+            DurableCellPublisherProfile::pinned_celld_v0_2_1().map_err(CompositionError::failed)?;
+        publisher.validate().map_err(CompositionError::failed)?;
+
+        let application_revision = self
+            .applications
+            .find_revision(
+                correlation.projection.organization_id,
+                correlation.projection.project_id,
+                correlation.projection.environment_id,
+                correlation.projection.application_id,
+                correlation.projection.application_revision_id,
+            )
+            .await
+            .map_err(CompositionError::Repository)?
+            .ok_or_else(|| {
+                CompositionError::failed("Durable Cell application revision was not found")
+            })?;
+        application_revision
+            .validate()
+            .map_err(CompositionError::failed)?;
+        if application_revision.id != correlation.projection.application_revision_id
+            || application_revision.application_id != correlation.projection.application_id
+            || application_revision.revision_number
+                != correlation.projection.application_revision_number
+            || application_revision.definition.digest()
+                != &correlation.projection.application_definition_digest
+        {
+            return Err(CompositionError::failed(
+                "Durable Cell application revision changed from its deployment correlation",
+            ));
+        }
+        let bundle = require_definition_build_output(
+            self.builds.as_ref(),
+            correlation.projection.organization_id,
+            correlation.projection.project_id,
+            correlation.projection.environment_id,
+            &application_revision.definition,
+        )
+        .await
+        .map_err(CompositionError::application)?;
+        validate_bundle(
+            &bundle,
+            &application_revision.definition.spec().bundle_digest,
+        )
+        .map_err(CompositionError::failed)?;
+
+        let workload_revision = self
+            .workloads
+            .find_revision(request.organization_id, request.workload_revision_id)
+            .await
+            .map_err(CompositionError::Repository)?;
+        let service_template = workload_revision
+            .resolved_template()
+            .map_err(CompositionError::failed)?;
+        let service_template_digest = Sha256Digest::parse(
+            service_template
+                .digest()
+                .map_err(CompositionError::failed)?,
+        )
+        .map_err(CompositionError::failed)?;
+        if workload_revision.workload_id != correlation.provider.workload_id
+            || workload_revision.id != correlation.provider.workload_revision_id
+            || workload_revision.generation != correlation.provider.workload_generation
+            || service_template_digest != correlation.provider.service_template_digest
+            || service_template.artifact.digest
+                != correlation.provider.provider_artifact_digest.as_str()
+            || service_template.artifact.uri != publisher.image_uri()
+            || service_template.artifact.digest != publisher.image_digest().as_str()
+            || !matches!(
+                service_template.artifact.media_type.as_str(),
+                OCI_IMAGE_MANIFEST_MEDIA_TYPE | OCI_IMAGE_INDEX_MEDIA_TYPE
+            )
+        {
+            return Err(CompositionError::failed(
+                "Durable Cell provider Workload is not the exact pinned celld publisher image",
+            ));
+        }
+
+        let namespace_prefix = provider_profile
+            .namespace_prefix(correlation.storage.storage_namespace_id)
+            .map_err(CompositionError::failed)?;
+        let bucket = format!(
+            "s3://{}/{}",
+            provider_profile.spec().bucket,
+            namespace_prefix
+        );
+        let authority_digest =
+            publication_authority_digest(correlation, request.node_id, &bundle, &publisher)
+                .map_err(CompositionError::failed)?;
+        let secrets =
+            project_runtime_secrets(&workload_revision).map_err(CompositionError::failed)?;
+        let template = ExecutionTemplate {
+            artifact: ExecutionArtifact {
+                uri: publisher.image_uri().into(),
+                digest: publisher.image_digest().to_string(),
+                media_type: service_template.artifact.media_type.clone(),
+            },
+            process: ExecutionProcess {
+                command: publisher.command().to_vec(),
+                args: vec![
+                    "deploy".into(),
+                    publisher.bundle_mount().into(),
+                    "--bucket".into(),
+                    bucket,
+                    "--endpoint".into(),
+                    provider_profile.spec().endpoint.clone(),
+                    "--region".into(),
+                    provider_profile.spec().region.clone(),
+                ],
+                working_directory: Some(publisher.bundle_mount().into()),
+                environment: BTreeMap::new(),
+            },
+            input: serde_json::json!({
+                "schema": PUBLICATION_INPUT_SCHEMA,
+                "applicationRevisionId": correlation.projection.application_revision_id,
+                "applicationDefinitionDigest": correlation.projection.application_definition_digest,
+                "bundleDigest": bundle.digest,
+                "storageNamespaceId": correlation.storage.storage_namespace_id,
+                "storageProviderProfileDigest": correlation.storage.provider_profile_digest,
+                "publisherProfileDigest": publisher.digest(),
+            }),
+            resources: ExecutionResources {
+                cpu_millis: publisher.cpu_millis(),
+                memory_bytes: publisher.memory_bytes(),
+                pids: publisher.pids(),
+                ephemeral_storage_bytes: Some(publisher.ephemeral_storage_bytes()),
+                timeout_ms: publisher.timeout_ms(),
+            },
+        };
+        let task_policy = ExecutionTaskPolicy {
+            authority: ExecutionTaskAuthority {
+                kind: PUBLICATION_AUTHORITY_KIND.into(),
+                subject_id: request.workload_revision_id.as_uuid(),
+                digest: authority_digest,
+            },
+            mounts: vec![RuntimeMount {
+                name: "durable-cell-application".into(),
+                source: RuntimeMountSource::Artifact {
+                    artifact: ArtifactRef {
+                        uri: bundle.uri,
+                        digest: bundle.digest,
+                        media_type: bundle.media_type,
+                    },
+                },
+                target: publisher.bundle_mount().into(),
+                read_only: true,
+            }],
+            secrets,
+            semantics_profile_digest: publisher.digest().clone(),
+        };
+        task_policy
+            .validate(request.node_id, &template)
+            .map_err(CompositionError::failed)?;
+        Ok(BoundExecutionCreation {
+            organization_id: correlation.projection.organization_id,
+            project_id: correlation.projection.project_id,
+            environment_id: correlation.projection.environment_id,
+            execution_id,
+            template,
+            target_node_id: request.node_id,
+            task_policy,
+            idempotency_key: format!("durable-cell-publication:{execution_id}"),
+            request_id: Uuid::new_v5(
+                &request.workload_revision_id.as_uuid(),
+                PUBLICATION_REQUEST_NAME,
+            ),
+            requested_at: correlation.requested_at,
+        })
+    }
+}
+
+#[async_trait]
+impl IWorkloadPrestartGate for DurableCellBundlePublicationGate {
+    async fn reconcile(
+        &self,
+        request: &WorkloadPrestartGateRequest,
+    ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
+        let Some(correlation) = self.find_correlation(request).await? else {
+            return Ok(if request.cancellation_requested {
+                WorkloadPrestartGateStatus::CancellationReady {
+                    completed_at: request.now,
+                }
+            } else {
+                WorkloadPrestartGateStatus::Ready {
+                    completed_at: request.now,
+                }
+            });
+        };
+        if correlation.storage_provider_profile_acl.is_none() {
+            return Ok(if request.cancellation_requested {
+                WorkloadPrestartGateStatus::CancellationReady {
+                    completed_at: request.now,
+                }
+            } else {
+                WorkloadPrestartGateStatus::Ready {
+                    completed_at: request.now,
+                }
+            });
+        }
+        self.reconcile_publication(request, &correlation).await
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PublicationAuthorityIdentity<'a> {
+    deployment_id: crate::modules::shared_kernel::domain::DeploymentId,
+    workload_revision_id: WorkloadRevisionId,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    application_definition_digest: &'a str,
+    bundle_digest: &'a str,
+    storage_namespace_id: crate::modules::shared_kernel::domain::StorageNamespaceId,
+    storage_provider_profile_digest: &'a str,
+    credential_binding_digest: &'a str,
+    publisher_profile_digest: &'a str,
+}
+
+fn publication_authority_digest(
+    correlation: &DurableCellDeployment,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+    bundle: &BuildArtifact,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<Sha256Digest, String> {
+    let bytes = serde_json::to_vec(&PublicationAuthorityIdentity {
+        deployment_id: correlation.projection.deployment_id,
+        workload_revision_id: correlation.projection.workload_revision_id,
+        node_id,
+        application_definition_digest: correlation
+            .projection
+            .application_definition_digest
+            .as_str(),
+        bundle_digest: &bundle.digest,
+        storage_namespace_id: correlation.storage.storage_namespace_id,
+        storage_provider_profile_digest: correlation.storage.provider_profile_digest.as_str(),
+        credential_binding_digest: correlation.storage.credential_binding_digest.as_str(),
+        publisher_profile_digest: publisher.digest().as_str(),
+    })
+    .map_err(|error| format!("could not encode Durable Cell publication authority: {error}"))?;
+    Ok(Sha256Digest::from_bytes(&bytes))
+}
+
+fn publication_execution_id(revision_id: WorkloadRevisionId) -> ExecutionId {
+    ExecutionId::from_uuid(Uuid::new_v5(
+        &revision_id.as_uuid(),
+        PUBLICATION_EXECUTION_NAME,
+    ))
+}
+
+fn validate_bundle(bundle: &BuildArtifact, expected: &Sha256Digest) -> Result<(), String> {
+    bundle.validate()?;
+    let artifact = ArtifactRef {
+        uri: bundle.uri.clone(),
+        digest: bundle.digest.clone(),
+        media_type: bundle.media_type.clone(),
+    };
+    a3s_cloud_contracts::validate_cloud_artifact(&artifact)?;
+    if bundle.digest != expected.as_str() || bundle.media_type != DURABLE_CELL_BUNDLE_MEDIA_TYPE {
+        return Err("Durable Cell bundle artifact changed from its application definition".into());
+    }
+    Ok(())
+}
+
+fn validate_publication_execution(
+    request: &WorkloadPrestartGateRequest,
+    correlation: &DurableCellDeployment,
+    execution: &Execution,
+) -> Result<(), RepositoryError> {
+    let task_policy = execution.task_policy.as_ref();
+    if execution.organization_id != correlation.projection.organization_id
+        || execution.project_id != correlation.projection.project_id
+        || execution.environment_id != correlation.projection.environment_id
+        || execution.id != publication_execution_id(request.workload_revision_id)
+        || execution.target_node_id != Some(request.node_id)
+        || execution.workflow.is_some()
+        || task_policy.is_none_or(|policy| {
+            policy.authority.kind != PUBLICATION_AUTHORITY_KIND
+                || policy.authority.subject_id != request.workload_revision_id.as_uuid()
+        })
+    {
+        return Err(RepositoryError::Conflict(
+            "Durable Cell publication Execution changed its immutable identity".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn publication_status(
+    execution: &Execution,
+) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
+    match execution.status {
+        ExecutionStatus::Succeeded => Ok(WorkloadPrestartGateStatus::Ready {
+            completed_at: execution.finished_at.ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "successful Durable Cell publication omitted its completion time".into(),
+                )
+            })?,
+        }),
+        ExecutionStatus::Failed => Ok(WorkloadPrestartGateStatus::Failed {
+            reason: format!(
+                "Durable Cell bundle publication Execution {} failed",
+                execution.id
+            ),
+        }),
+        ExecutionStatus::Cancelled => Ok(WorkloadPrestartGateStatus::Failed {
+            reason: format!(
+                "Durable Cell bundle publication Execution {} was cancelled",
+                execution.id
+            ),
+        }),
+        status => Ok(WorkloadPrestartGateStatus::Pending {
+            reason: format!(
+                "Durable Cell bundle publication Execution {} is {}",
+                execution.id,
+                status.as_str()
+            ),
+        }),
+    }
+}
+
+fn application_error(
+    error: ApplicationError,
+) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
+    match error {
+        ApplicationError::Internal(reason) | ApplicationError::Unavailable(reason) => {
+            Err(RepositoryError::Storage(reason))
+        }
+        error => Ok(WorkloadPrestartGateStatus::Failed {
+            reason: format!("Durable Cell publication admission failed: {error}"),
+        }),
+    }
+}
+
+fn application_repository_error(error: ApplicationError) -> RepositoryError {
+    match error {
+        ApplicationError::Internal(reason) | ApplicationError::Unavailable(reason) => {
+            RepositoryError::Storage(reason)
+        }
+        ApplicationError::NotFound(reason) => RepositoryError::Conflict(reason),
+        ApplicationError::Invalid(reason)
+        | ApplicationError::Conflict(reason)
+        | ApplicationError::Forbidden(reason) => RepositoryError::Conflict(reason),
+    }
+}
+
+enum CompositionError {
+    Failed(String),
+    Repository(RepositoryError),
+}
+
+impl CompositionError {
+    fn failed(error: impl ToString) -> Self {
+        Self::Failed(error.to_string())
+    }
+
+    fn application(error: ApplicationError) -> Self {
+        match error {
+            ApplicationError::Internal(reason) | ApplicationError::Unavailable(reason) => {
+                Self::Repository(RepositoryError::Storage(reason))
+            }
+            error => Self::Failed(error.to_string()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::artifacts::domain::test_support::{
+        succeeded_external_build_with_output, typed_build_output,
+    };
+    use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
+    use crate::modules::data::{
+        ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+        ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
+        ObjectNamespaceRetentionPolicySpec,
+    };
+    use crate::modules::durable_cells::domain::{
+        CreateDurableCellApplicationWrite, CreateDurableCellDeploymentWrite,
+        DurableCellApplication, DurableCellApplicationChanged, DurableCellApplicationDefinition,
+        DurableCellApplicationDefinitionSpec, DurableCellApplicationRecord,
+        DurableCellApplicationRevision, DurableCellClassSpec, DurableCellDeploymentRequest,
+        DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellRollbackPolicy,
+        DurableCellServiceProfile, DurableCellServiceProfileSpec, DurableCellStateSchema,
+        DurableCellStorageBinding,
+    };
+    use crate::modules::durable_cells::infrastructure::{
+        InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    };
+    use crate::modules::executions::InMemoryExecutionRepository;
+    use crate::modules::operations::domain::entities::OperationRequest;
+    use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
+    use crate::modules::projects::domain::entities::Environment;
+    use crate::modules::projects::domain::events::EnvironmentCreated;
+    use crate::modules::projects::domain::repositories::IEnvironmentRepository;
+    use crate::modules::projects::domain::value_objects::EnvironmentName;
+    use crate::modules::projects::InMemoryProjectsRepository;
+    use crate::modules::shared_kernel::domain::{
+        BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
+        IdempotencyRequest, NodeId, OrganizationId, PrincipalId, ProjectId, ResourceName, SecretId,
+        SecretVersionReference, SourceRevisionId,
+    };
+    use crate::modules::workloads::{
+        CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck,
+        InMemoryWorkloadRepository, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
+        ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec,
+        WorkloadRevision,
+    };
+    use chrono::{Duration, Utc};
+
+    #[tokio::test]
+    async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let at = Utc::now() - Duration::seconds(2);
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let actor = PrincipalId::new();
+        let node_id = NodeId::new();
+
+        let projects = Arc::new(InMemoryProjectsRepository::new());
+        let environment = Environment::create(
+            organization_id,
+            project_id,
+            environment_id,
+            EnvironmentName::parse("Publication fixture")?,
+            at,
+        );
+        IEnvironmentRepository::create(
+            projects.as_ref(),
+            environment.clone(),
+            EnvironmentCreated::envelope(&environment, Uuid::now_v7())?,
+            IdempotencyRequest::new(
+                "durable-cell-publication-test/environment",
+                "create",
+                environment_id.as_uuid().as_bytes(),
+            )?,
+        )
+        .await?;
+
+        let bundle_digest = digest('b')?;
+        let bundle =
+            typed_build_output(bundle_digest.as_str(), DURABLE_CELL_BUNDLE_MEDIA_TYPE, 4096);
+        let build = succeeded_external_build_with_output(
+            organization_id,
+            project_id,
+            environment_id,
+            SourceRevisionId::new(),
+            bundle.clone(),
+            at,
+        );
+        let build_run_id = build.id;
+        let builds = Arc::new(InMemoryBuildRunRepository::new());
+        builds.seed_build(build).await;
+
+        let service_profile =
+            DurableCellServiceProfile::from_spec(DurableCellServiceProfileSpec {
+                public_runtime_port: "cell-public".into(),
+                internal_runtime_port: "cell-internal".into(),
+                health_path: "/__celld/health".into(),
+                max_cell_name_bytes: 512,
+                max_request_bytes: 16 * 1024 * 1024,
+                max_response_bytes: 64 * 1024 * 1024,
+                max_websocket_message_bytes: 1024 * 1024,
+            })?;
+        let application_id = DurableCellApplicationId::new();
+        let definition = definition(
+            build_run_id,
+            bundle_digest,
+            service_profile.digest().clone(),
+        )?;
+        let application_revision = DurableCellApplicationRevision::initial(
+            organization_id,
+            project_id,
+            environment_id,
+            application_id,
+            DurableCellApplicationRevisionId::new(),
+            definition,
+            actor,
+            at,
+        )?;
+        let application = DurableCellApplication::create(
+            application_id,
+            ResourceName::parse("Publication fixture")?,
+            &application_revision,
+        )?;
+        let application_record =
+            DurableCellApplicationRecord::new(application.clone(), application_revision.clone())?;
+        let applications = Arc::new(InMemoryDurableCellApplicationRepository::new());
+        let application_request_id = Uuid::now_v7();
+        applications
+            .create(CreateDurableCellApplicationWrite {
+                record: application_record,
+                event: DurableCellApplicationChanged::created(
+                    &application,
+                    &application_revision,
+                    application_request_id,
+                )?,
+                actor_principal_id: actor,
+                request_id: application_request_id,
+                idempotency: IdempotencyRequest::new(
+                    "durable-cell-publication-test/application",
+                    "create",
+                    application_id.as_uuid().as_bytes(),
+                )?,
+            })
+            .await?;
+
+        let projection = DurableCellProjectionIdentity::for_current_revision(
+            &application,
+            &application_revision,
+        )?;
+        let storage_profile = ObjectNamespaceProviderProfile::parse_acl(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/s0.1/object-namespace-provider-profile.acl"
+        )))?;
+        let access_key = SecretVersionReference::new(SecretId::new(), 1)?;
+        let secret_access_key = SecretVersionReference::new(SecretId::new(), 2)?;
+        let credentials =
+            ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
+                organization_id,
+                project_id,
+                environment_id,
+                namespace_id: projection.storage_namespace_id,
+                generation: 1,
+                provider_profile_digest: storage_profile.digest().clone(),
+                access_key_id: access_key,
+                secret_access_key,
+                session_token: None,
+            })?;
+        let retention =
+            ObjectNamespaceRetentionPolicy::from_spec(ObjectNamespaceRetentionPolicySpec {
+                minimum_sealed_recovery_points: 2,
+                maximum_sealed_recovery_points: 24,
+                maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,
+                deletion_grace_period_seconds: 24 * 60 * 60,
+            })?;
+        let storage = DurableCellStorageBinding::for_current_revision(
+            &application,
+            &application_revision,
+            &projection,
+            &credentials,
+            &retention,
+        )?;
+        let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1()?;
+        let service_template =
+            service_template(&publisher, &service_profile, access_key, secret_access_key);
+        let workload_revision = WorkloadRevision::create(
+            projection.workload_revision_id,
+            projection.workload_id,
+            1,
+            service_template,
+            at + Duration::milliseconds(1),
+        )?;
+        let provider = DurableCellProviderBinding::for_current_revision(
+            &application,
+            &application_revision,
+            &projection,
+            &service_profile,
+            &workload_revision,
+        )?;
+        let control = WorkloadControlSpec::managed_replica_set_in_pool(
+            projection.managed_owner_reference()?,
+            1,
+            1,
+            None,
+        )?;
+        let correlation = DurableCellDeployment::bind(
+            projection.clone(),
+            storage,
+            Some(&storage_profile),
+            provider,
+            Sha256Digest::parse(control.placement_policy.digest())?,
+            DurableCellDeploymentRequest {
+                requested_by: actor,
+                request_id: Uuid::now_v7(),
+                requested_at: at + Duration::milliseconds(2),
+            },
+        )?;
+        let deployments = Arc::new(InMemoryDurableCellDeploymentRepository::new());
+        deployments
+            .create(CreateDurableCellDeploymentWrite {
+                deployment: correlation.clone(),
+                idempotency: IdempotencyRequest::new(
+                    "durable-cell-publication-test/correlation",
+                    "create",
+                    projection.application_revision_id.as_uuid().as_bytes(),
+                )?,
+            })
+            .await?;
+
+        let workloads = Arc::new(InMemoryWorkloadRepository::new());
+        let workload = Workload::create(
+            projection.workload_id,
+            organization_id,
+            project_id,
+            environment_id,
+            ResourceName::parse("Durable Cell provider")?,
+            at,
+        );
+        let deployment = Deployment::create(
+            projection.deployment_id,
+            organization_id,
+            projection.workload_id,
+            projection.workload_revision_id,
+            projection.operation_id,
+            correlation.requested_at,
+        );
+        let operation = OperationRequest::new(
+            projection.operation_id,
+            organization_id,
+            OperationSubject::new("deployment", projection.deployment_id.as_uuid())?,
+            WorkflowIdentity::new("cloud.deployment", "4")?,
+            serde_json::json!({
+                "deploymentId": projection.deployment_id,
+                "organizationId": organization_id,
+                "revisionId": projection.workload_revision_id,
+                "workloadId": projection.workload_id,
+            }),
+            correlation.requested_at,
+        );
+        let deployment_event =
+            DeploymentRequested::envelope(&deployment, &workload_revision, Uuid::now_v7())?;
+        workloads
+            .create_deployment(CreateDeploymentBundle {
+                workload,
+                control,
+                revision: workload_revision.clone(),
+                deployment,
+                operation,
+                idempotency: IdempotencyRequest::new(
+                    "durable-cell-publication-test/workload",
+                    "create",
+                    projection.workload_revision_id.as_uuid().as_bytes(),
+                )?,
+                event: deployment_event,
+            })
+            .await?;
+
+        let executions = Arc::new(InMemoryExecutionRepository::new());
+        let gate = DurableCellBundlePublicationGate::new(
+            applications.clone(),
+            deployments,
+            builds.clone(),
+            workloads.clone(),
+            projects.clone(),
+            executions.clone(),
+        );
+        let request = WorkloadPrestartGateRequest {
+            organization_id,
+            deployment_id: projection.deployment_id,
+            operation_id: projection.operation_id,
+            workload_id: projection.workload_id,
+            workload_revision_id: projection.workload_revision_id,
+            node_id,
+            cancellation_requested: false,
+            deadline_at: Utc::now() + Duration::minutes(10),
+            now: Utc::now(),
+        };
+
+        let first = gate.reconcile(&request).await?;
+        assert!(matches!(first, WorkloadPrestartGateStatus::Pending { .. }));
+        let execution_id = publication_execution_id(projection.workload_revision_id);
+        let execution = executions
+            .find(organization_id, execution_id)
+            .await?
+            .ok_or("publication Execution")?;
+        assert_eq!(execution.status, ExecutionStatus::Queued);
+        assert_eq!(execution.target_node_id, Some(node_id));
+        assert_eq!(execution.template.artifact.uri, publisher.image_uri());
+        assert_eq!(
+            execution.template.process.args,
+            vec![
+                "deploy".to_owned(),
+                publisher.bundle_mount().to_owned(),
+                "--bucket".to_owned(),
+                format!(
+                    "s3://{}/{}/{}",
+                    storage_profile.spec().bucket,
+                    storage_profile.spec().prefix,
+                    projection.storage_namespace_id
+                ),
+                "--endpoint".to_owned(),
+                storage_profile.spec().endpoint.clone(),
+                "--region".to_owned(),
+                storage_profile.spec().region.clone(),
+            ]
+        );
+        let policy = execution.task_policy.as_ref().ok_or("publication policy")?;
+        assert_eq!(policy.secrets, project_runtime_secrets(&workload_revision)?);
+        assert_eq!(policy.mounts.len(), 1);
+        assert_eq!(policy.mounts[0].target, publisher.bundle_mount());
+        assert!(policy.mounts[0].read_only);
+        let RuntimeMountSource::Artifact { artifact } = &policy.mounts[0].source else {
+            return Err("publication mount must use the built bundle".into());
+        };
+        assert_eq!(artifact.uri, bundle.uri);
+        assert_eq!(artifact.digest, bundle.digest);
+        assert_eq!(artifact.media_type, DURABLE_CELL_BUNDLE_MEDIA_TYPE);
+        assert_eq!(policy.semantics_profile_digest, *publisher.digest());
+        assert_eq!(
+            policy.authority.digest,
+            publication_authority_digest(&correlation, node_id, &bundle, &publisher)?
+        );
+
+        let replay = gate.reconcile(&request).await?;
+        assert_eq!(replay, first);
+        assert_eq!(executions.outbox_events().await.len(), 1);
+        assert_eq!(
+            executions
+                .find(organization_id, execution_id)
+                .await?
+                .ok_or("replayed publication Execution")?,
+            execution
+        );
+
+        let mut legacy_correlation = correlation;
+        legacy_correlation.storage_provider_profile_acl = None;
+        legacy_correlation.validate()?;
+        let legacy_deployments = Arc::new(InMemoryDurableCellDeploymentRepository::new());
+        legacy_deployments
+            .create(CreateDurableCellDeploymentWrite {
+                deployment: legacy_correlation,
+                idempotency: IdempotencyRequest::new(
+                    "durable-cell-publication-test/legacy-correlation",
+                    "create",
+                    projection.application_revision_id.as_uuid().as_bytes(),
+                )?,
+            })
+            .await?;
+        let legacy_executions = Arc::new(InMemoryExecutionRepository::new());
+        let legacy_gate = DurableCellBundlePublicationGate::new(
+            applications,
+            legacy_deployments,
+            builds,
+            workloads,
+            projects,
+            legacy_executions.clone(),
+        );
+        assert!(matches!(
+            legacy_gate.reconcile(&request).await?,
+            WorkloadPrestartGateStatus::Ready { .. }
+        ));
+        assert!(legacy_executions
+            .find(organization_id, execution_id)
+            .await?
+            .is_none());
+        Ok(())
+    }
+
+    fn definition(
+        build_run_id: BuildRunId,
+        bundle_digest: Sha256Digest,
+        service_profile_digest: Sha256Digest,
+    ) -> Result<DurableCellApplicationDefinition, String> {
+        DurableCellApplicationDefinition::from_spec(DurableCellApplicationDefinitionSpec {
+            build_run_id,
+            bundle_digest,
+            bundle_size_bytes: 4096,
+            main_module: "worker.mjs".into(),
+            compatibility_date: "2026-08-16".into(),
+            compatibility_flags: Vec::new(),
+            cell_classes: vec![DurableCellClassSpec {
+                name: "Counter".into(),
+                state_schema: DurableCellStateSchema {
+                    minimum_readable_version: 1,
+                    maximum_readable_version: 1,
+                    write_version: 1,
+                },
+            }],
+            service_profile_digest,
+            rollback_policy: DurableCellRollbackPolicy::Compatible,
+        })
+    }
+
+    fn service_template(
+        publisher: &DurableCellPublisherProfile,
+        profile: &DurableCellServiceProfile,
+        access_key: SecretVersionReference,
+        secret_access_key: SecretVersionReference,
+    ) -> ServiceTemplate {
+        ServiceTemplate {
+            artifact: OciArtifact {
+                uri: publisher.image_uri().into(),
+                digest: publisher.image_digest().to_string(),
+                media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
+            },
+            process: ServiceProcess {
+                command: publisher.command().to_vec(),
+                args: vec![
+                    "--listen".into(),
+                    "0.0.0.0:8080".into(),
+                    "--internal-listen".into(),
+                    "0.0.0.0:8081".into(),
+                ],
+                working_directory: Some("/".into()),
+                environment: BTreeMap::new(),
+            },
+            secrets: vec![
+                SecretBinding {
+                    name: "s0-access-key-id".into(),
+                    secret_id: access_key.secret_id,
+                    version: access_key.version,
+                    target: SecretBindingTarget::Environment {
+                        variable: "S0_ACCESS_KEY_ID".into(),
+                    },
+                },
+                SecretBinding {
+                    name: "s0-secret-access-key".into(),
+                    secret_id: secret_access_key.secret_id,
+                    version: secret_access_key.version,
+                    target: SecretBindingTarget::Environment {
+                        variable: "S0_SECRET_ACCESS_KEY".into(),
+                    },
+                },
+            ],
+            resources: ServiceResources {
+                cpu_millis: 1000,
+                memory_bytes: 512 * 1024 * 1024,
+                pids: 256,
+                ephemeral_storage_bytes: Some(512 * 1024 * 1024),
+            },
+            ports: vec![
+                ServicePort {
+                    name: profile.spec().public_runtime_port.clone(),
+                    container_port: 8080,
+                },
+                ServicePort {
+                    name: profile.spec().internal_runtime_port.clone(),
+                    container_port: 8081,
+                },
+            ],
+            health: Some(HttpHealthCheck {
+                port_name: profile.spec().public_runtime_port.clone(),
+                path: profile.spec().health_path.clone(),
+                interval_ms: 1000,
+                timeout_ms: 500,
+                healthy_threshold: 1,
+                unhealthy_threshold: 3,
+                stabilization_window_ms: 5000,
+            }),
+        }
+    }
+
+    fn digest(marker: char) -> Result<Sha256Digest, String> {
+        Sha256Digest::parse(format!("sha256:{}", marker.to_string().repeat(64)))
+    }
+}

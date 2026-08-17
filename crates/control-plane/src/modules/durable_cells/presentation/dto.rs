@@ -36,6 +36,7 @@ pub struct SetDurableCellApplicationStateRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeployDurableCellApplicationRequest {
     pub service_profile_acl: String,
+    pub storage_provider_profile_acl: Option<String>,
     pub provider_workload_acl: String,
     pub storage_binding_acl: String,
 }
@@ -48,6 +49,24 @@ pub struct PublishDurableCellApplicationRouteRequest {
     pub domain_claim_id: Uuid,
     pub hostname: String,
     pub path_prefix: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deployment_request_preserves_the_pre_c3b_payload_shape() {
+        let request: DeployDurableCellApplicationRequest =
+            serde_json::from_value(serde_json::json!({
+                "serviceProfileAcl": "service",
+                "providerWorkloadAcl": "workload",
+                "storageBindingAcl": "storage"
+            }))
+            .expect("legacy Durable Cell deployment request");
+
+        assert!(request.storage_provider_profile_acl.is_none());
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

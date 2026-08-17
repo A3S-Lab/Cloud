@@ -4,6 +4,7 @@ import { validateWorkloadAcl } from './validation';
 
 export const MAX_DURABLE_CELL_APPLICATION_ACL_BYTES = 256 * 1024;
 export const MAX_DURABLE_CELL_SERVICE_PROFILE_ACL_BYTES = 64 * 1024;
+export const MAX_OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL_BYTES = 16 * 1024;
 export const MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES = 16 * 1024;
 export const DEFAULT_DURABLE_CELL_LIST_LIMIT = 50;
 export const MAX_DURABLE_CELL_LIST_LIMIT = 200;
@@ -101,6 +102,7 @@ export interface ReviseDurableCellApplicationInput {
 
 export interface DeployDurableCellApplicationInput {
   serviceProfileAcl: string;
+  storageProviderProfileAcl?: string;
   providerWorkloadAcl: string;
   storageBindingAcl: string;
 }
@@ -138,6 +140,14 @@ export function validateDurableCellStorageBindingAcl(acl: string): void {
   validateAclBytes(acl, MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES, 'Durable Cell storage-binding ACL');
 }
 
+export function validateObjectNamespaceProviderProfileAcl(acl: string): void {
+  validateAclBytes(
+    acl,
+    MAX_OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL_BYTES,
+    'object namespace provider-profile ACL'
+  );
+}
+
 export function validateDurableCellExpectedVersion(expectedVersion: number): void {
   if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
     throw new RangeError('expected Durable Cell application version must be a positive safe integer');
@@ -152,6 +162,9 @@ export function validateDurableCellListLimit(limit: number): void {
 
 export function validateDeployDurableCellApplicationInput(input: DeployDurableCellApplicationInput): void {
   validateDurableCellServiceProfileAcl(input.serviceProfileAcl);
+  if (input.storageProviderProfileAcl !== undefined) {
+    validateObjectNamespaceProviderProfileAcl(input.storageProviderProfileAcl);
+  }
   validateWorkloadAcl(input.providerWorkloadAcl);
   validateDurableCellStorageBindingAcl(input.storageBindingAcl);
 }

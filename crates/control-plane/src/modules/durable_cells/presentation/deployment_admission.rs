@@ -1,3 +1,4 @@
+use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::application::require_environment_access;
 use crate::modules::durable_cells::domain::{
     DurableCellDeploymentBinding, DurableCellProjectionIdentity, DurableCellServiceProfile,
@@ -32,6 +33,7 @@ pub struct DeployDurableCellApplicationFromAcl {
     pub application_id: DurableCellApplicationId,
     pub application_revision_id: DurableCellApplicationRevisionId,
     pub service_profile_acl: String,
+    pub storage_provider_profile_acl: Option<String>,
     pub provider_workload_acl: String,
     pub storage_binding_acl: String,
     pub actor_principal_id: PrincipalId,
@@ -89,6 +91,15 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                     Ok(value) => value,
                     Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
                 };
+            let storage_provider_profile = match command
+                .storage_provider_profile_acl
+                .as_deref()
+                .map(ObjectNamespaceProviderProfile::parse_acl)
+                .transpose()
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
             let storage =
                 match DurableCellDeploymentBinding::parse_acl(&command.storage_binding_acl) {
                     Ok(value) => value,
@@ -155,6 +166,13 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
+            if storage_provider_profile.as_ref().is_some_and(|profile| {
+                profile.digest() != &storage_credentials.spec().provider_profile_digest
+            }) {
+                return Ok(Err(ApplicationError::Invalid(
+                    "Durable Cell deployment S0 profile and binding digests differ".into(),
+                )));
+            }
 
             deployment
                 .execute(
@@ -165,6 +183,8 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                         application_id: command.application_id,
                         application_revision_id: command.application_revision_id,
                         service_profile_acl: service_profile.canonical_acl().into(),
+                        storage_provider_profile_acl: storage_provider_profile
+                            .map(|profile| profile.canonical_acl().into()),
                         workload_template,
                         storage_credentials,
                         retention_policy,

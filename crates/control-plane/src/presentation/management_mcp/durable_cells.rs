@@ -108,6 +108,7 @@ pub struct DeployDurableCellApplicationArguments {
     application_id: Uuid,
     revision_id: Uuid,
     service_profile_acl: String,
+    storage_provider_profile_acl: Option<String>,
     provider_workload_acl: String,
     storage_binding_acl: String,
     #[serde(deserialize_with = "super::arguments::deserialize_idempotency_key")]
@@ -372,6 +373,7 @@ pub async fn deploy_application(
                 arguments.revision_id,
             ),
             service_profile_acl: arguments.service_profile_acl,
+            storage_provider_profile_acl: arguments.storage_provider_profile_acl,
             provider_workload_acl: arguments.provider_workload_acl,
             storage_binding_acl: arguments.storage_binding_acl,
             actor_principal_id,

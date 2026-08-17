@@ -4,6 +4,7 @@ use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
+use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::durable_cells::domain::{
     DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
     DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
@@ -1410,9 +1411,12 @@ fn durable_cell_request_schema(path: &str) -> Value {
         return json!({
             "type": "object",
             "additionalProperties": false,
-            "required": ["serviceProfileAcl", "providerWorkloadAcl", "storageBindingAcl"],
+            "required": [
+                "serviceProfileAcl", "providerWorkloadAcl", "storageBindingAcl"
+            ],
             "properties": {
                 "serviceProfileAcl": acl(DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES),
+                "storageProviderProfileAcl": acl(OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES),
                 "providerWorkloadAcl": acl(WORKLOAD_MANIFEST_MAX_BYTES),
                 "storageBindingAcl": acl(DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES)
             }

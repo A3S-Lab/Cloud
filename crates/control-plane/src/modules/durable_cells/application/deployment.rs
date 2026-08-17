@@ -2,13 +2,13 @@ use super::managed_replica_lifecycle::converge_current_managed_replicas;
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
-    ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
-    DurableCellApplicationRecord, DurableCellDeployment, DurableCellProjectionIdentity,
-    DurableCellProviderBinding, DurableCellServiceProfile, DurableCellStorageBinding,
-    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    DurableCellApplicationRecord, DurableCellDeployment, DurableCellDeploymentRequest,
+    DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellServiceProfile,
+    DurableCellStorageBinding, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
 use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
@@ -45,6 +45,7 @@ pub struct DeployDurableCellApplication {
     pub application_id: DurableCellApplicationId,
     pub application_revision_id: DurableCellApplicationRevisionId,
     pub service_profile_acl: String,
+    pub storage_provider_profile_acl: Option<String>,
     /// Internal, already-resolved adapter projection. C5 must expose this
     /// through canonical A3S ACL rather than serializing this Rust value.
     pub workload_template: ServiceTemplate,
@@ -252,6 +253,7 @@ struct PreparedDeployment {
     application_id: DurableCellApplicationId,
     application_revision_id: DurableCellApplicationRevisionId,
     service_profile: DurableCellServiceProfile,
+    storage_provider_profile: Option<ObjectNamespaceProviderProfile>,
     service_template_digest: Sha256Digest,
     provider_artifact_digest: Sha256Digest,
     credential_binding_digest: Sha256Digest,
@@ -264,9 +266,21 @@ struct PreparedDeployment {
 impl PreparedDeployment {
     fn new(command: &DeployDurableCellApplication) -> Result<Self, String> {
         let service_profile = DurableCellServiceProfile::parse_acl(&command.service_profile_acl)?;
+        let storage_provider_profile = command
+            .storage_provider_profile_acl
+            .as_deref()
+            .map(ObjectNamespaceProviderProfile::parse_acl)
+            .transpose()?;
         command.workload_template.validate()?;
         command.storage_credentials.validate()?;
         command.retention_policy.validate()?;
+        if storage_provider_profile.as_ref().is_some_and(|profile| {
+            profile.digest() != &command.storage_credentials.spec().provider_profile_digest
+        }) {
+            return Err(
+                "Durable Cell deployment S0 profile and credential binding digests differ".into(),
+            );
+        }
         let service_template_digest = Sha256Digest::parse(command.workload_template.digest()?)?;
         let provider_artifact_digest =
             Sha256Digest::parse(&command.workload_template.artifact.digest)?;
@@ -290,6 +304,7 @@ impl PreparedDeployment {
             application_id: command.application_id,
             application_revision_id: command.application_revision_id,
             service_profile,
+            storage_provider_profile,
             service_template_digest,
             provider_artifact_digest,
             credential_binding_digest: command.storage_credentials.digest().clone(),
@@ -338,6 +353,7 @@ impl PreparedDeployment {
             || projection.application_revision_id != self.application_revision_id
             || correlation.storage.credential_binding_digest != self.credential_binding_digest
             || correlation.storage.provider_profile_digest != self.storage_provider_profile_digest
+            || correlation.storage_provider_profile()? != self.storage_provider_profile
             || correlation.storage.retention_policy_digest != self.retention_policy_digest
             || correlation.provider.service_profile_digest != *self.service_profile.digest()
             || correlation.provider.service_template_digest != self.service_template_digest
@@ -491,12 +507,15 @@ async fn prepare_correlation(
     DurableCellDeployment::bind(
         projection,
         storage,
+        prepared.storage_provider_profile.as_ref(),
         provider,
         Sha256Digest::parse(control.placement_policy.digest())
             .map_err(ApplicationError::Internal)?,
-        command.actor_principal_id,
-        command.request_id,
-        Utc::now(),
+        DurableCellDeploymentRequest {
+            requested_by: command.actor_principal_id,
+            request_id: command.request_id,
+            requested_at: Utc::now(),
+        },
     )
     .map_err(ApplicationError::Internal)
 }
@@ -821,6 +840,12 @@ mod tests {
             now,
         )
         .await;
+        let storage_provider_profile =
+            ObjectNamespaceProviderProfile::parse_acl(include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../contracts/s0.1/object-namespace-provider-profile.acl"
+            )))
+            .expect("storage provider profile");
         let storage_credentials =
             ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
                 organization_id,
@@ -828,7 +853,7 @@ mod tests {
                 environment_id,
                 namespace_id: projection.storage_namespace_id,
                 generation: 1,
-                provider_profile_digest: digest('c'),
+                provider_profile_digest: storage_provider_profile.digest().clone(),
                 access_key_id,
                 secret_access_key,
                 session_token: None,
@@ -849,6 +874,7 @@ mod tests {
             application_id: record.application.id,
             application_revision_id: record.revision.id,
             service_profile_acl: profile.canonical_acl().into(),
+            storage_provider_profile_acl: Some(storage_provider_profile.canonical_acl().into()),
             workload_template: service_template(&profile, access_key_id, secret_access_key),
             storage_credentials,
             retention_policy,
@@ -1373,10 +1399,12 @@ mod tests {
         access_key_id: SecretVersionReference,
         secret_access_key: SecretVersionReference,
     ) -> ServiceTemplate {
-        let artifact_digest = digest('d');
+        let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()
+            .expect("pinned celld publisher profile");
+        let artifact_digest = publisher.image_digest().clone();
         ServiceTemplate {
             artifact: OciArtifact {
-                uri: format!("oci://ghcr.io/denoland/celld@{}", artifact_digest.as_str()),
+                uri: publisher.image_uri().into(),
                 digest: artifact_digest.to_string(),
                 media_type: "application/vnd.oci.image.index.v1+json".into(),
             },

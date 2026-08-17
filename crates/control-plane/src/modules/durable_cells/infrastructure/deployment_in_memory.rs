@@ -3,7 +3,7 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
-    IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    IdempotentWrite, OrganizationId, ProjectId, RepositoryError, WorkloadRevisionId,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -115,6 +115,24 @@ impl IDurableCellDeploymentRepository for InMemoryDurableCellDeploymentRepositor
             .filter(|deployment| {
                 deployment.projection.project_id == project_id
                     && deployment.projection.environment_id == environment_id
+            })
+            .cloned())
+    }
+
+    async fn find_by_workload_revision(
+        &self,
+        organization_id: OrganizationId,
+        workload_revision_id: WorkloadRevisionId,
+    ) -> Result<Option<DurableCellDeployment>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .deployments
+            .values()
+            .find(|deployment| {
+                deployment.projection.organization_id == organization_id
+                    && deployment.projection.workload_revision_id == workload_revision_id
             })
             .cloned())
     }

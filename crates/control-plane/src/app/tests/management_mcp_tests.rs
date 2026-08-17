@@ -686,6 +686,14 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         crate::modules::durable_cells::domain::DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
     );
     assert_eq!(
+        deploy_durable_cell["inputSchema"]["properties"]["storageProviderProfileAcl"]["maxLength"],
+        crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES
+    );
+    assert!(!deploy_durable_cell["inputSchema"]["required"]
+        .as_array()
+        .expect("required Durable Cell deployment fields")
+        .contains(&json!("storageProviderProfileAcl")));
+    assert_eq!(
         deploy_durable_cell["inputSchema"]["properties"]["providerWorkloadAcl"]["maxLength"],
         crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES
     );
@@ -2920,6 +2928,7 @@ async fn management_mcp_reuses_the_durable_cell_application_projection_lifecycle
         "applicationId": application_id,
         "revisionId": revision_id,
         "serviceProfileAcl": profile.canonical_acl(),
+        "storageProviderProfileAcl": super::durable_cell_tests::storage_provider_profile_acl(),
         "providerWorkloadAcl": provider_acl,
         "storageBindingAcl": storage.canonical_acl(),
         "idempotencyKey": "mcp-cell-deploy"

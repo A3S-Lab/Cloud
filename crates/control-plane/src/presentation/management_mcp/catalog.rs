@@ -3,6 +3,7 @@ use crate::modules::connectors::{
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
+use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::durable_cells::domain::{
     DURABLE_CELL_APPLICATION_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES,
     DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
@@ -2117,6 +2118,11 @@ fn deploy_durable_cell_application_schema() -> Value {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES
+            },
+            "storageProviderProfileAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES
             },
             "providerWorkloadAcl": {
                 "type": "string",

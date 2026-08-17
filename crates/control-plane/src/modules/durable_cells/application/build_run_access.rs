@@ -1,5 +1,5 @@
 use super::resource_access::build_run_not_found;
-use crate::modules::artifacts::domain::{BuildRunStatus, IBuildRunRepository};
+use crate::modules::artifacts::domain::{BuildArtifact, BuildRunStatus, IBuildRunRepository};
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
@@ -15,6 +15,24 @@ pub(super) async fn validate_definition_build_run(
     environment_id: EnvironmentId,
     definition: &DurableCellApplicationDefinition,
 ) -> ApplicationResult<()> {
+    require_definition_build_output(
+        builds,
+        organization_id,
+        project_id,
+        environment_id,
+        definition,
+    )
+    .await
+    .map(drop)
+}
+
+pub(super) async fn require_definition_build_output(
+    builds: &dyn IBuildRunRepository,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    definition: &DurableCellApplicationDefinition,
+) -> ApplicationResult<BuildArtifact> {
     let build_run_id = definition.spec().build_run_id;
     match builds.find(organization_id, build_run_id).await {
         Ok(build)
@@ -48,7 +66,7 @@ pub(super) async fn validate_definition_build_run(
                         .into(),
                 ));
             }
-            Ok(())
+            Ok(output.clone())
         }
         Ok(_) | Err(RepositoryError::NotFound) => Err(build_run_not_found()),
         Err(error) => Err(error.into()),

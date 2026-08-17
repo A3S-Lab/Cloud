@@ -14,6 +14,7 @@ export interface ParsedArguments {
   idempotencyKey?: string;
   file?: string;
   serviceProfileFile?: string;
+  storageProviderProfileFile?: string;
   providerWorkloadFile?: string;
   storageBindingFile?: string;
   expectedVersion?: string;
@@ -74,6 +75,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--idempotency-key': 'idempotencyKey',
   '--file': 'file',
   '--service-profile-file': 'serviceProfileFile',
+  '--storage-provider-profile-file': 'storageProviderProfileFile',
   '--provider-workload-file': 'providerWorkloadFile',
   '--storage-binding-file': 'storageBindingFile',
   '--expected-version': 'expectedVersion',

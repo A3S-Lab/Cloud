@@ -250,6 +250,11 @@ expose the non-Web `CELL0.4-C5` surface added by REST contract `1.38.0`.
 Application definitions, Service profiles, provider Workloads, and
 plaintext-free storage bindings remain bounded canonical A3S ACL strings; the
 client validates transport bounds and delegates parsing to Cloud. Deployment
+contract `1.39.0` additionally accepts optional `storageProviderProfileAcl`;
+supplying it activates the exact C3b publication gate while omission preserves
+the earlier v1 request behavior. The client validates the optional ACL with
+the existing S0 profile bound and adds no parser.
+Deployment
 reuses the existing Workload ACL bound and returns only existing-owner
 references and digests. Route publication selects no port locally and sends
 the Service profile to the existing Edge-backed server command. The client

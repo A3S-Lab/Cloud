@@ -7,6 +7,9 @@ mod execution_reconciler;
 pub(crate) mod resource_access;
 mod workflow_execution_port;
 
+pub(crate) use execution_cancellation::{ExecutionCancellation, ExecutionCancellationService};
+pub(crate) use execution_creator::{BoundExecutionCreation, ExecutionCreator};
+
 pub use commands::{
     CancelExecution, CancelExecutionHandler, CancelExecutionResult, CreateExecutionCommand,
     CreateExecutionHandler, CreateExecutionResult, CreateExecutionTemplateCommand,

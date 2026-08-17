@@ -48,7 +48,8 @@ use crate::modules::workloads::domain::repositories::{
 };
 use crate::modules::workloads::domain::services::{
     DeploymentRouteStage, DeploymentRouteUpdateRequest, IDeploymentRouteUpdater,
-    IOciArtifactResolver, OciArtifactResolutionError,
+    IOciArtifactResolver, IWorkloadPrestartGate, OciArtifactResolutionError,
+    WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 use crate::modules::workloads::infrastructure::{
     project_replica_runtime_spec, project_runtime_spec, InMemoryResourceClaimRepository,
@@ -73,7 +74,7 @@ use async_trait::async_trait;
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use uuid::Uuid;
 
 mod box_cancellation;
@@ -81,6 +82,56 @@ mod routed_update;
 mod support;
 
 use support::*;
+
+struct ScriptedPrestartGate {
+    normal: Mutex<WorkloadPrestartGateStatus>,
+    cancellation: Mutex<WorkloadPrestartGateStatus>,
+    calls: Mutex<Vec<WorkloadPrestartGateRequest>>,
+}
+
+impl ScriptedPrestartGate {
+    fn new(normal: WorkloadPrestartGateStatus, cancellation: WorkloadPrestartGateStatus) -> Self {
+        Self {
+            normal: Mutex::new(normal),
+            cancellation: Mutex::new(cancellation),
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn calls(&self) -> Vec<WorkloadPrestartGateRequest> {
+        self.calls.lock().expect("pre-start calls").clone()
+    }
+
+    fn set_normal(&self, status: WorkloadPrestartGateStatus) {
+        *self.normal.lock().expect("normal pre-start status") = status;
+    }
+
+    fn set_cancellation(&self, status: WorkloadPrestartGateStatus) {
+        *self
+            .cancellation
+            .lock()
+            .expect("cancellation pre-start status") = status;
+    }
+}
+
+#[async_trait]
+impl IWorkloadPrestartGate for ScriptedPrestartGate {
+    async fn reconcile(
+        &self,
+        request: &WorkloadPrestartGateRequest,
+    ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
+        self.calls
+            .lock()
+            .expect("pre-start calls")
+            .push(request.clone());
+        let statuses = if request.cancellation_requested {
+            &self.cancellation
+        } else {
+            &self.normal
+        };
+        Ok(statuses.lock().expect("pre-start status").clone())
+    }
+}
 
 #[tokio::test]
 async fn placement_group_deployment_flow_waits_without_partial_dispatch_and_cancels_cleanly(
@@ -1193,6 +1244,311 @@ fn standalone_placement_binding(
 }
 
 #[tokio::test]
+async fn v4_waits_for_the_prestart_gate_before_dispatching_runtime_apply(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id, _) = ready_node(&nodes, organization_id, base).await?;
+    let gate = Arc::new(ScriptedPrestartGate::new(
+        WorkloadPrestartGateStatus::Pending {
+            reason: "bundle publication is still running".into(),
+        },
+        WorkloadPrestartGateStatus::CancellationReady {
+            completed_at: Utc::now(),
+        },
+    ));
+    let runtime = runtime_with_prestart_gate(
+        &workloads,
+        &nodes,
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        gate.clone(),
+        Duration::seconds(10),
+    )?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let bundle = deployment_bundle(
+        Workload::create(
+            WorkloadId::new(),
+            organization_id,
+            ProjectId::new(),
+            EnvironmentId::new(),
+            ResourceName::parse("pre-start gate fixture")?,
+            base,
+        ),
+        1,
+        '4',
+        base,
+        "pre-start-gate-v4",
+    )?;
+    let deployment = bundle.deployment.clone();
+    let operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+
+    engine
+        .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
+        .await?;
+    let preparation_lease = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let preparation = preparation_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                NodeCommandPayload::ResourceClaimPrepare { .. }
+            )
+        })
+        .ok_or("resource preparation command")?;
+    acknowledge_resource_claim(&nodes, preparation).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+
+    let blocked_lease = lease(&nodes, node_id, agent_instance_id, preparation.sequence).await?;
+    assert!(blocked_lease.commands.is_empty());
+    let calls = gate.calls();
+    let first_call = calls.first().ok_or("pre-start gate call")?;
+    assert_eq!(first_call.organization_id, organization_id);
+    assert_eq!(first_call.deployment_id, deployment.id);
+    assert_eq!(first_call.operation_id, operation.id);
+    assert_eq!(first_call.workload_id, deployment.workload_id);
+    assert_eq!(first_call.workload_revision_id, deployment.revision_id);
+    assert_eq!(first_call.node_id, node_id);
+    assert!(!first_call.cancellation_requested);
+
+    gate.set_normal(WorkloadPrestartGateStatus::Ready {
+        completed_at: Utc::now(),
+    });
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let apply_lease = lease(&nodes, node_id, agent_instance_id, preparation.sequence).await?;
+    let apply = apply_lease
+        .commands
+        .iter()
+        .find(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. }))
+        .ok_or("Runtime apply after pre-start completion")?;
+    assert_eq!(apply.command_id, deployment.id.as_uuid());
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Applying
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn persisted_v3_deployment_replay_does_not_adopt_the_v4_prestart_gate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id, _) = ready_node(&nodes, organization_id, base).await?;
+    let gate = Arc::new(ScriptedPrestartGate::new(
+        WorkloadPrestartGateStatus::Failed {
+            reason: "v3 must never consult this gate".into(),
+        },
+        WorkloadPrestartGateStatus::Failed {
+            reason: "v3 must never consult this gate".into(),
+        },
+    ));
+    let runtime = runtime_with_prestart_gate(
+        &workloads,
+        &nodes,
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        gate.clone(),
+        Duration::seconds(10),
+    )?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let bundle = deployment_bundle(
+        Workload::create(
+            WorkloadId::new(),
+            organization_id,
+            ProjectId::new(),
+            EnvironmentId::new(),
+            ResourceName::parse("resource claim workflow fixture")?,
+            base,
+        ),
+        1,
+        '3',
+        base,
+        "resource-claim-workflow-v3",
+    )?;
+    let deployment = bundle.deployment.clone();
+    let operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+
+    engine
+        .start_with_id(
+            operation.id.to_string(),
+            resource_claim_workflow_spec(),
+            operation.input,
+        )
+        .await?;
+    let apply_lease =
+        prepare_and_lease_apply(&engine, &nodes, node_id, agent_instance_id, 0).await?;
+    assert!(apply_lease
+        .commands
+        .iter()
+        .any(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. })));
+    assert!(gate.calls().is_empty());
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Applying
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn cancellation_waits_for_prestart_cleanup_before_releasing_the_resource_claim(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = Utc::now() - Duration::seconds(1);
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let (node_id, agent_instance_id, _) = ready_node(&nodes, organization_id, base).await?;
+    let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
+    let gate = Arc::new(ScriptedPrestartGate::new(
+        WorkloadPrestartGateStatus::Pending {
+            reason: "bundle publication is still running".into(),
+        },
+        WorkloadPrestartGateStatus::Pending {
+            reason: "bundle publication cancellation is still running".into(),
+        },
+    ));
+    let runtime = runtime_with_prestart_gate(
+        &workloads,
+        &nodes,
+        resource_claims.clone(),
+        gate.clone(),
+        Duration::seconds(10),
+    )?;
+    let engine = FlowEngine::in_memory(Arc::new(runtime));
+    let bundle = deployment_bundle(
+        Workload::create(
+            WorkloadId::new(),
+            organization_id,
+            ProjectId::new(),
+            EnvironmentId::new(),
+            ResourceName::parse("pre-start cancellation fixture")?,
+            base,
+        ),
+        1,
+        'c',
+        base,
+        "pre-start-gate-cancellation",
+    )?;
+    let deployment = bundle.deployment.clone();
+    let operation = bundle.operation.clone();
+    workloads.create_deployment(bundle).await?;
+
+    engine
+        .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
+        .await?;
+    let preparation_lease = lease(&nodes, node_id, agent_instance_id, 0).await?;
+    let preparation = preparation_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                NodeCommandPayload::ResourceClaimPrepare { .. }
+            )
+        })
+        .ok_or("resource preparation command")?;
+    acknowledge_resource_claim(&nodes, preparation).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    assert!(
+        lease(&nodes, node_id, agent_instance_id, preparation.sequence)
+            .await?
+            .commands
+            .is_empty()
+    );
+
+    let scheduled = workloads
+        .find_deployment(organization_id, deployment.id)
+        .await?;
+    assert_eq!(scheduled.status, DeploymentStatus::Scheduled);
+    workloads
+        .mark_cancellation_requested(
+            deployment.id,
+            scheduled.aggregate_version,
+            Utc::now().max(scheduled.updated_at),
+        )
+        .await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    assert!(gate
+        .calls()
+        .iter()
+        .any(|request| request.cancellation_requested));
+    assert!(
+        lease(&nodes, node_id, agent_instance_id, preparation.sequence)
+            .await?
+            .commands
+            .is_empty()
+    );
+
+    gate.set_cancellation(WorkloadPrestartGateStatus::CancellationReady {
+        completed_at: Utc::now(),
+    });
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(1))
+        .await?;
+    let release_lease = lease(&nodes, node_id, agent_instance_id, preparation.sequence).await?;
+    assert!(!release_lease
+        .commands
+        .iter()
+        .any(|command| matches!(command.payload, NodeCommandPayload::RuntimeApply { .. })));
+    let release = release_lease
+        .commands
+        .iter()
+        .find(|command| {
+            matches!(
+                command.payload,
+                NodeCommandPayload::ResourceClaimRelease { .. }
+            )
+        })
+        .ok_or("resource release after pre-start cancellation")?;
+    acknowledge_resource_claim(&nodes, release).await?;
+    engine
+        .resume_due_waits(Utc::now() + Duration::seconds(2))
+        .await?;
+
+    assert_eq!(
+        engine.snapshot(&operation.id.to_string()).await?.status,
+        WorkflowRunStatus::Completed
+    );
+    assert_eq!(
+        workloads
+            .find_deployment(organization_id, deployment.id)
+            .await?
+            .status,
+        DeploymentStatus::Cancelled
+    );
+    assert_eq!(
+        resource_claims
+            .find(
+                organization_id,
+                ResourceClaimId::from_uuid(deployment.id.as_uuid()),
+            )
+            .await?
+            .state,
+        ResourceClaimState::Released
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn legacy_deployment_workflow_remains_executable_for_persisted_v1_runs(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base = Utc::now() - Duration::seconds(1);
@@ -1825,7 +2181,7 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
 }
 
 #[tokio::test]
-async fn healthy_v3_update_retires_the_previous_runtime_before_releasing_its_claim(
+async fn healthy_v4_update_retires_the_previous_runtime_before_releasing_its_claim(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let base = Utc::now() - Duration::seconds(1);
     let organization_id = OrganizationId::new();

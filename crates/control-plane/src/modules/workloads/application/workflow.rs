@@ -1,5 +1,6 @@
 pub const DEPLOYMENT_WORKFLOW_NAME: &str = "cloud.deployment";
-pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "3";
+pub const DEPLOYMENT_WORKFLOW_VERSION: &str = "4";
+pub const RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION: &str = "3";
 pub const PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME: &str = "cloud.placement-group-deployment";
 pub const PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION: &str = "2";
 pub const PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION: &str = "1";

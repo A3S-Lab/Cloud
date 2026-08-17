@@ -1,7 +1,7 @@
 use super::DurableCellDeployment;
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
-    IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    IdempotentWrite, OrganizationId, ProjectId, RepositoryError, WorkloadRevisionId,
 };
 use async_trait::async_trait;
 
@@ -37,5 +37,11 @@ pub trait IDurableCellDeploymentRepository: Send + Sync {
         environment_id: EnvironmentId,
         application_id: DurableCellApplicationId,
         application_revision_id: DurableCellApplicationRevisionId,
+    ) -> Result<Option<DurableCellDeployment>, RepositoryError>;
+
+    async fn find_by_workload_revision(
+        &self,
+        organization_id: OrganizationId,
+        workload_revision_id: WorkloadRevisionId,
     ) -> Result<Option<DurableCellDeployment>, RepositoryError>;
 }

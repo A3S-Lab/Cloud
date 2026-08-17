@@ -3,6 +3,7 @@ import {
   MAX_DURABLE_CELL_APPLICATION_ACL_BYTES,
   MAX_DURABLE_CELL_SERVICE_PROFILE_ACL_BYTES,
   MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES,
+  MAX_OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL_BYTES,
   MAX_WORKLOAD_ACL_BYTES,
 } from '@a3s/cloud-client';
 import {
@@ -51,11 +52,13 @@ export function rejectMisplacedDurableCellOptions(command: string, arguments_: P
     throw usageError('--service-profile-file is valid only for Durable Cell deployment or route publication');
   }
   if (
-    (arguments_.providerWorkloadFile !== undefined || arguments_.storageBindingFile !== undefined) &&
+    (arguments_.storageProviderProfileFile !== undefined ||
+      arguments_.providerWorkloadFile !== undefined ||
+      arguments_.storageBindingFile !== undefined) &&
     !deployment
   ) {
     throw usageError(
-      '--provider-workload-file and --storage-binding-file are valid only for Durable Cell deployment'
+      '--storage-provider-profile-file, --provider-workload-file, and --storage-binding-file are valid only for Durable Cell deployment'
     );
   }
 }
@@ -187,29 +190,38 @@ export async function executeDurableCellCommand(
       );
     case 'durable-cell-deployments create': {
       const mutation = requireDeploymentMutation(arguments_);
-      const [serviceProfileAcl, providerWorkloadAcl, storageBindingAcl] = await Promise.all([
-        readAclDocument(
-          mutation.serviceProfileFile,
-          {
-            label: 'Durable Cell Service-profile ACL',
-            maximumBytes: MAX_DURABLE_CELL_SERVICE_PROFILE_ACL_BYTES,
-          },
-          dependencies.readFile
-        ),
-        readAclDocument(
-          mutation.providerWorkloadFile,
-          { label: 'Durable Cell provider Workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
-          dependencies.readFile
-        ),
-        readAclDocument(
-          mutation.storageBindingFile,
-          {
-            label: 'Durable Cell storage-binding ACL',
-            maximumBytes: MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES,
-          },
-          dependencies.readFile
-        ),
-      ]);
+      const [serviceProfileAcl, storageProviderProfileAcl, providerWorkloadAcl, storageBindingAcl] =
+        await Promise.all([
+          readAclDocument(
+            mutation.serviceProfileFile,
+            {
+              label: 'Durable Cell Service-profile ACL',
+              maximumBytes: MAX_DURABLE_CELL_SERVICE_PROFILE_ACL_BYTES,
+            },
+            dependencies.readFile
+          ),
+          readAclDocument(
+            mutation.storageProviderProfileFile,
+            {
+              label: 'object namespace provider-profile ACL',
+              maximumBytes: MAX_OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL_BYTES,
+            },
+            dependencies.readFile
+          ),
+          readAclDocument(
+            mutation.providerWorkloadFile,
+            { label: 'Durable Cell provider Workload ACL', maximumBytes: MAX_WORKLOAD_ACL_BYTES },
+            dependencies.readFile
+          ),
+          readAclDocument(
+            mutation.storageBindingFile,
+            {
+              label: 'Durable Cell storage-binding ACL',
+              maximumBytes: MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES,
+            },
+            dependencies.readFile
+          ),
+        ]);
       return durableCellDeploymentResult(
         await cloudApi().deployDurableCellApplication(
           organizationId(),
@@ -217,7 +229,7 @@ export async function executeDurableCellCommand(
           environmentId(),
           positionalUuid(positionals, 2, 'Durable Cell application ID'),
           positionalUuid(positionals, 3, 'Durable Cell application revision ID'),
-          { serviceProfileAcl, providerWorkloadAcl, storageBindingAcl },
+          { serviceProfileAcl, storageProviderProfileAcl, providerWorkloadAcl, storageBindingAcl },
           mutation.idempotencyKey
         )
       );
@@ -258,6 +270,7 @@ export async function executeDurableCellCommand(
 function requireDeploymentMutation(arguments_: ParsedArguments): {
   idempotencyKey: string;
   serviceProfileFile: string;
+  storageProviderProfileFile: string;
   providerWorkloadFile: string;
   storageBindingFile: string;
 } {
@@ -269,6 +282,10 @@ function requireDeploymentMutation(arguments_: ParsedArguments): {
   return {
     idempotencyKey: requireIdempotencyKey(arguments_),
     serviceProfileFile: requireAclFilePath(arguments_.serviceProfileFile, '--service-profile-file'),
+    storageProviderProfileFile: requireAclFilePath(
+      arguments_.storageProviderProfileFile,
+      '--storage-provider-profile-file'
+    ),
     providerWorkloadFile: requireAclFilePath(arguments_.providerWorkloadFile, '--provider-workload-file'),
     storageBindingFile: requireAclFilePath(arguments_.storageBindingFile, '--storage-binding-file'),
   };

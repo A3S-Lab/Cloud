@@ -1016,7 +1016,7 @@ fn deployment_bundle(
         deployment.operation_id,
         workload.organization_id,
         OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "3")?,
+        WorkflowIdentity::new("cloud.deployment", "4")?,
         serde_json::json!({
             "deploymentId": deployment.id,
             "organizationId": workload.organization_id,

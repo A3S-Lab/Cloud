@@ -5,11 +5,11 @@ use super::types::{
     DispatchStepInput, DispatchStepOutput, DispatchedCleanup, DispatchedRetirement,
     DispatchedRuntime, FailStepInput, FailStepOutput, ObserveGatewayStepInput,
     ObserveGatewayStepOutput, ObserveStepInput, ObserveStepOutput, PrepareClaimStepInput,
-    PrepareClaimStepOutput, ReleaseClaimStepInput, ReleaseClaimStepOutput, ResolveStepOutput,
-    ResolveStepResult, RetirementDispatchStepInput, RetirementDispatchStepOutput,
-    RetirementObserveStepInput, RetirementObserveStepOutput, RouteGate, ScheduleStepInput,
-    ScheduleStepOutput, StageGatewayStepInput, StageGatewayStepOutput, VerifyStepInput,
-    VerifyStepOutput,
+    PrepareClaimStepOutput, PrestartGateStepInput, PrestartGateStepOutput, ReleaseClaimStepInput,
+    ReleaseClaimStepOutput, ResolveStepOutput, ResolveStepResult, RetirementDispatchStepInput,
+    RetirementDispatchStepOutput, RetirementObserveStepInput, RetirementObserveStepOutput,
+    RouteGate, ScheduleStepInput, ScheduleStepOutput, StageGatewayStepInput,
+    StageGatewayStepOutput, VerifyStepInput, VerifyStepOutput,
 };
 use super::DeploymentFlowConfig;
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
@@ -26,20 +26,28 @@ pub(super) fn replay(
     config: &DeploymentFlowConfig,
     invocation: WorkflowInvocation,
 ) -> a3s_flow::Result<RuntimeCommand> {
-    replay_version(config, invocation, true)
+    replay_version(config, invocation, true, true)
+}
+
+pub(super) fn replay_resource_claims(
+    config: &DeploymentFlowConfig,
+    invocation: WorkflowInvocation,
+) -> a3s_flow::Result<RuntimeCommand> {
+    replay_version(config, invocation, true, false)
 }
 
 pub(super) fn replay_previous(
     config: &DeploymentFlowConfig,
     invocation: WorkflowInvocation,
 ) -> a3s_flow::Result<RuntimeCommand> {
-    replay_version(config, invocation, false)
+    replay_version(config, invocation, false, false)
 }
 
 fn replay_version(
     config: &DeploymentFlowConfig,
     invocation: WorkflowInvocation,
     resource_claim_protocol: bool,
+    prestart_gate_protocol: bool,
 ) -> a3s_flow::Result<RuntimeCommand> {
     let context = invocation.context();
     let input = context.input_as::<DeploymentFlowInput>()?;
@@ -75,6 +83,21 @@ fn replay_version(
     };
     if resource_claim_protocol {
         match prepare_claim(config, &context, &input, &resolved, node_id)? {
+            Progress::Ready(()) => {}
+            Progress::Cancellation => {
+                return cancel_deployment(
+                    config,
+                    &context,
+                    &input,
+                    &resolved,
+                    resource_claim_protocol,
+                )
+            }
+            Progress::Command(command) => return Ok(command),
+        }
+    }
+    if prestart_gate_protocol {
+        match prestart_gate(config, &context, &input, &resolved, node_id)? {
             Progress::Ready(()) => {}
             Progress::Cancellation => {
                 return cancel_deployment(
@@ -240,6 +263,67 @@ fn replay_version(
                 retired_at,
             },
         ),
+    }
+}
+
+fn prestart_gate(
+    config: &DeploymentFlowConfig,
+    context: &WorkflowContext<'_>,
+    flow_input: &DeploymentFlowInput,
+    resolved: &ResolveStepOutput,
+    node_id: crate::modules::shared_kernel::domain::NodeId,
+) -> a3s_flow::Result<Progress<()>> {
+    let mut attempt = 1_u32;
+    loop {
+        let step_id = format!("prestart-gate-{attempt}");
+        match context.step_output_as::<PrestartGateStepOutput>(&step_id)? {
+            Some(PrestartGateStepOutput::Ready {
+                node_id: gated_node,
+                ..
+            }) if gated_node == node_id => return Ok(Progress::Ready(())),
+            Some(PrestartGateStepOutput::Ready { .. }) => {
+                return Err(FlowError::Runtime(
+                    "Workload pre-start gate changed its scheduled node".into(),
+                ))
+            }
+            Some(PrestartGateStepOutput::Failed { reason }) => {
+                return fail_candidate(config, context, flow_input, resolved, reason)
+                    .map(Progress::Command)
+            }
+            Some(PrestartGateStepOutput::CancellationRequested { .. }) => {
+                return Ok(Progress::Cancellation)
+            }
+            Some(PrestartGateStepOutput::Pending {
+                next_poll_at,
+                deadline_at,
+                ..
+            }) => {
+                validate_poll(
+                    next_poll_at,
+                    deadline_at,
+                    "Workload pre-start gate poll exceeds its deadline",
+                )?;
+                let wait_id = format!("prestart-gate-wait-{attempt}");
+                if !context.wait_completed(&wait_id) {
+                    return Ok(Progress::Command(context.wait_until(wait_id, next_poll_at)));
+                }
+                attempt = next_attempt(attempt, "Workload pre-start gate attempt overflowed")?;
+            }
+            None => {
+                return stage_or_failure(
+                    config,
+                    context,
+                    flow_input,
+                    &step_id,
+                    "reconcile_workload_prestart_gate",
+                    &PrestartGateStepInput {
+                        resolved: resolved.clone(),
+                        node_id,
+                    },
+                )
+                .map(Progress::Command)
+            }
+        }
     }
 }
 

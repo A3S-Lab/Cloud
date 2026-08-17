@@ -1029,6 +1029,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/119_bound_execution_tasks.sql"
             )),
         ),
+        Migration::new(
+            "120",
+            "exact Durable Cell S0 provider profiles",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/120_durable_cell_provider_profiles.sql"
+            )),
+        ),
     ]
 }
 
@@ -1915,6 +1923,43 @@ mod bound_execution_task_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 119 added another execution, publisher, or Secret authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod durable_cell_provider_profile_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/120_durable_cell_provider_profiles.sql"
+    ));
+
+    #[test]
+    fn migration_120_extends_only_the_existing_correlation() {
+        for expected in [
+            "alter table durable_cell_deployments",
+            "add column storage_provider_profile_acl text",
+            "octet_length(storage_provider_profile_acl) between 1 and 16384",
+            "without CELL0.5-C3b''s backwards-compatible optional profile input",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 120 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table",
+            "create index",
+            "publisher_queue",
+            "publisher_state",
+            "secret_value",
+            "retry_count",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 120 added another publication or Secret authority: {forbidden}"
             );
         }
     }

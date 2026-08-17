@@ -8,7 +8,8 @@ use a3s_cloud_control_plane::modules::artifacts::{
 };
 use a3s_cloud_control_plane::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
-    ObjectNamespaceRetentionPolicy, ObjectNamespaceRetentionPolicySpec,
+    ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceRetentionPolicySpec,
 };
 use a3s_cloud_control_plane::modules::durable_cells::application::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler,
@@ -24,10 +25,11 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
     DurableCellApplicationChanged, DurableCellApplicationDefinition,
     DurableCellApplicationDefinitionSpec, DurableCellApplicationDesiredState,
     DurableCellApplicationRecord, DurableCellApplicationRevision, DurableCellClassSpec,
-    DurableCellDeployment, DurableCellProjectionIdentity, DurableCellProviderBinding,
-    DurableCellRollbackPolicy, DurableCellServiceProfile, DurableCellStateSchema,
-    DurableCellStorageBinding, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
-    RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
+    DurableCellDeployment, DurableCellDeploymentRequest, DurableCellProjectionIdentity,
+    DurableCellProviderBinding, DurableCellRollbackPolicy, DurableCellServiceProfile,
+    DurableCellStateSchema, DurableCellStorageBinding, IDurableCellApplicationRepository,
+    IDurableCellDeploymentRepository, RequestDurableCellApplicationStateWrite,
+    ReviseDurableCellApplicationWrite,
 };
 use a3s_cloud_control_plane::modules::durable_cells::{
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
@@ -62,6 +64,10 @@ use std::time::Duration as StdDuration;
 const DURABLE_CELL_SERVICE_PROFILE_ACL: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/cell0.3/celld-v0.2.1-service-profile.acl"
+));
+const OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/s0.1/object-namespace-provider-profile.acl"
 ));
 const PROJECTION_CRASH_PROBE_TEST: &str = "durable_cell_projection_process_death_probe";
 const PROJECTION_CRASH_PARENT_ENV: &str = "A3S_CLOUD_DURABLE_CELL_PROJECTION_CRASH_PARENT";
@@ -309,6 +315,8 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     );
 
     let projection = DurableCellProjectionIdentity::for_current_revision(&revised, &successor)?;
+    let storage_provider_profile =
+        ObjectNamespaceProviderProfile::parse_acl(OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL)?;
     let deployment_request_id = Uuid::now_v7();
     let deployment = DurableCellDeployment::bind(
         projection.clone(),
@@ -323,9 +331,10 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             storage_namespace_id: projection.storage_namespace_id,
             credential_binding_generation: 1,
             credential_binding_digest: digest('1'),
-            provider_profile_digest: digest('2'),
+            provider_profile_digest: storage_provider_profile.digest().clone(),
             retention_policy_digest: digest('3'),
         },
+        Some(&storage_provider_profile),
         DurableCellProviderBinding {
             application_id,
             application_revision_id: successor.id,
@@ -339,9 +348,11 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             provider_artifact_digest: digest('5'),
         },
         digest('6'),
-        actor,
-        deployment_request_id,
-        successor.created_at + Duration::seconds(1),
+        DurableCellDeploymentRequest {
+            requested_by: actor,
+            request_id: deployment_request_id,
+            requested_at: successor.created_at + Duration::seconds(1),
+        },
     )?;
     let deployment_idempotency = IdempotencyRequest::new(
         format!(
@@ -1147,6 +1158,8 @@ fn projection_deployment_command(
     input: &ProjectionCrashInput,
 ) -> Result<DeployDurableCellApplication, Box<dyn std::error::Error>> {
     let profile = DurableCellServiceProfile::parse_acl(DURABLE_CELL_SERVICE_PROFILE_ACL)?;
+    let storage_provider_profile =
+        ObjectNamespaceProviderProfile::parse_acl(OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL)?;
     let storage_credentials =
         ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
             organization_id: input.organization_id,
@@ -1154,7 +1167,7 @@ fn projection_deployment_command(
             environment_id: input.environment_id,
             namespace_id: input.storage_namespace_id,
             generation: 1,
-            provider_profile_digest: digest('c'),
+            provider_profile_digest: storage_provider_profile.digest().clone(),
             access_key_id: input.access_key_id,
             secret_access_key: input.secret_access_key,
             session_token: None,
@@ -1173,6 +1186,7 @@ fn projection_deployment_command(
         application_id: input.application_id,
         application_revision_id: input.application_revision_id,
         service_profile_acl: DURABLE_CELL_SERVICE_PROFILE_ACL.into(),
+        storage_provider_profile_acl: Some(storage_provider_profile.canonical_acl().into()),
         workload_template: durable_cell_service_template(
             &profile,
             input.access_key_id,

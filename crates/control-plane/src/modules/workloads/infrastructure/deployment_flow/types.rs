@@ -104,6 +104,33 @@ pub(super) enum PrepareClaimStepOutput {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct PrestartGateStepInput {
+    pub resolved: ResolveStepOutput,
+    pub node_id: NodeId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(super) enum PrestartGateStepOutput {
+    Ready {
+        node_id: NodeId,
+        completed_at: DateTime<Utc>,
+    },
+    Pending {
+        reason: String,
+        next_poll_at: DateTime<Utc>,
+        deadline_at: DateTime<Utc>,
+    },
+    Failed {
+        reason: String,
+    },
+    CancellationRequested {
+        completed_at: DateTime<Utc>,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct DispatchStepInput {
     pub resolved: ResolveStepOutput,
     pub node_id: NodeId,

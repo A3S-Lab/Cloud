@@ -24,7 +24,10 @@ import {
   MAX_WORKLOAD_ACL_BYTES,
 } from './api';
 import { MAX_CONNECTOR_HTTP_DEFINITION_ACL_BYTES } from './connectors';
-import { MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES } from './durable-cells';
+import {
+  MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES,
+  validateDeployDurableCellApplicationInput,
+} from './durable-cells';
 
 function jsonResponse(data: unknown, status = 200): Response {
   return new Response(
@@ -42,7 +45,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.38.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.39.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -1365,6 +1368,8 @@ describe('CloudApi', () => {
     const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
     const applicationAcl = 'durable_cell_application { schema = "cloud.durable-cell.application.v1" }\n';
     const serviceProfileAcl = 'durable_cell_service { schema = "cloud.durable-cell.service.v1" }\n';
+    const storageProviderProfileAcl =
+      'object_namespace_provider "s3_compatible" { schema = "cloud.object-namespace.provider-profile.v1" }\n';
     const providerWorkloadAcl = 'version = 1\nworkload "durable-cell-provider" {}\n';
     const storageBindingAcl = 'durable_cell_deployment { schema = "cloud.durable-cell.deployment.v1" }\n';
     const base =
@@ -1426,7 +1431,7 @@ describe('CloudApi', () => {
       'environment',
       'application / one',
       'revision / one',
-      { serviceProfileAcl, providerWorkloadAcl, storageBindingAcl },
+      { serviceProfileAcl, storageProviderProfileAcl, providerWorkloadAcl, storageBindingAcl },
       'durable-cell:deploy'
     );
     await api.publishDurableCellApplicationRoute(
@@ -1466,7 +1471,12 @@ describe('CloudApi', () => {
     expect(calls[8]?.[1]).toEqual(
       expect.objectContaining({
         headers: expect.objectContaining({ 'Idempotency-Key': 'durable-cell:deploy' }),
-        body: JSON.stringify({ serviceProfileAcl, providerWorkloadAcl, storageBindingAcl }),
+        body: JSON.stringify({
+          serviceProfileAcl,
+          storageProviderProfileAcl,
+          providerWorkloadAcl,
+          storageBindingAcl,
+        }),
       })
     );
     expect(calls[9]?.[1]).toEqual(
@@ -1504,7 +1514,7 @@ describe('CloudApi', () => {
         'environment',
         'application',
         'revision',
-        { serviceProfileAcl, providerWorkloadAcl: '', storageBindingAcl },
+        { serviceProfileAcl, storageProviderProfileAcl, providerWorkloadAcl: '', storageBindingAcl },
         'durable-cell:invalid-provider'
       )
     ).toThrow('workload ACL must contain between');
@@ -1517,12 +1527,20 @@ describe('CloudApi', () => {
         'revision',
         {
           serviceProfileAcl,
+          storageProviderProfileAcl,
           providerWorkloadAcl,
           storageBindingAcl: '界'.repeat(MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES),
         },
         'durable-cell:invalid-storage'
       )
     ).toThrow('Durable Cell storage-binding ACL must contain between');
+    expect(() =>
+      validateDeployDurableCellApplicationInput({
+        serviceProfileAcl,
+        providerWorkloadAcl,
+        storageBindingAcl,
+      })
+    ).not.toThrow();
     expect(calls).toHaveLength(10);
   });
 

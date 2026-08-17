@@ -146,6 +146,7 @@ pub fn durable_cell_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                             application_id: application_id(&request)?,
                             application_revision_id: revision_id(&request)?,
                             service_profile_acl: body.service_profile_acl,
+                            storage_provider_profile_acl: body.storage_provider_profile_acl,
                             provider_workload_acl: body.provider_workload_acl,
                             storage_binding_acl: body.storage_binding_acl,
                             actor_principal_id: actor_principal_id(&request)?,

@@ -166,7 +166,7 @@ pub async fn exercise_bound_execution_persistence(url: String) -> TestResult {
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (119, "119".into()));
+    assert_eq!(migration_state, (120, "120".into()));
 
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();

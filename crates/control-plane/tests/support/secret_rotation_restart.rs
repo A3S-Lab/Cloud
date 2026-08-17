@@ -143,7 +143,7 @@ pub async fn exercise_secret_rotation_restart(
                 .bind(operation_id.as_uuid()),
             )
             .await?,
-        ("cloud.deployment".into(), "3".into()),
+        ("cloud.deployment".into(), "4".into()),
         "Secret rotation must derive new deployments with the current workflow"
     );
 

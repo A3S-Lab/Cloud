@@ -6,9 +6,9 @@ mod retirement;
 use super::types::{
     ActivateStepInput, ActivateStepOutput, DeploymentFlowInput, DispatchStepInput,
     DispatchStepOutput, DispatchedRuntime, FailStepInput, FailStepOutput, ObserveStepInput,
-    ObserveStepOutput, PreviousRuntime, ResolveCancellationOutput, ResolveStepOutput,
-    ResolveStepResult, RouteGate, ScheduleStepInput, ScheduleStepOutput, VerifyStepInput,
-    VerifyStepOutput,
+    ObserveStepOutput, PrestartGateStepInput, PrestartGateStepOutput, PreviousRuntime,
+    ResolveCancellationOutput, ResolveStepOutput, ResolveStepResult, RouteGate, ScheduleStepInput,
+    ScheduleStepOutput, VerifyStepInput, VerifyStepOutput,
 };
 use super::DeploymentFlowRuntime;
 use super::{flow_error, resource_claim_id};
@@ -24,6 +24,9 @@ use crate::modules::workloads::domain::repositories::{
     is_capacity_unavailable, is_placement_unavailable,
 };
 use crate::modules::workloads::domain::services::OciRegistryCredentialReference;
+use crate::modules::workloads::domain::services::{
+    WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
+};
 use crate::modules::workloads::infrastructure::project_replica_runtime_spec;
 use crate::modules::workloads::infrastructure::runtime_spec::project_bound_runtime_spec;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeResourceClaimBinding};
@@ -46,6 +49,9 @@ pub(super) async fn execute(
         "schedule_deployment" => encode(schedule(runtime, invocation.input_as()?).await?),
         "prepare_resource_claim" => {
             encode(resource_claims::prepare(runtime, invocation.input_as()?).await?)
+        }
+        "reconcile_workload_prestart_gate" => {
+            encode(reconcile_prestart_gate(runtime, invocation.input_as()?).await?)
         }
         "dispatch_runtime_apply" => encode(dispatch(runtime, invocation.input_as()?).await?),
         "dispatch_resource_bound_runtime_apply" => {
@@ -101,6 +107,134 @@ pub(super) async fn execute(
             "Cloud deployment workflow has no step {step:?}"
         ))),
     }
+}
+
+async fn reconcile_prestart_gate(
+    runtime: &DeploymentFlowRuntime,
+    input: PrestartGateStepInput,
+) -> a3s_flow::Result<PrestartGateStepOutput> {
+    let deployment = runtime
+        .workloads
+        .find_deployment(input.resolved.organization_id, input.resolved.deployment_id)
+        .await
+        .map_err(|error| flow_error("could not load deployment for its pre-start gate", error))?;
+    validate_resolved_deployment(&input.resolved, &deployment)?;
+    if deployment.node_id != Some(input.node_id) {
+        return Err(FlowError::Runtime(
+            "Workload pre-start gate does not own the scheduled node".into(),
+        ));
+    }
+    if matches!(
+        deployment.status,
+        DeploymentStatus::Failed | DeploymentStatus::Orphaned
+    ) {
+        return Ok(PrestartGateStepOutput::Failed {
+            reason: deployment
+                .failure
+                .unwrap_or_else(|| "deployment failed before its pre-start gate".into()),
+        });
+    }
+    let cancellation_requested = matches!(
+        deployment.status,
+        DeploymentStatus::Cancelling
+            | DeploymentStatus::CleanupPending
+            | DeploymentStatus::Cancelled
+    );
+    if !cancellation_requested && deployment.status != DeploymentStatus::Scheduled {
+        return Err(FlowError::Runtime(format!(
+            "deployment cannot run its pre-start gate from {}",
+            deployment.status.as_str()
+        )));
+    }
+    let deadline_at = if cancellation_requested {
+        deployment
+            .cancellation_requested_at
+            .ok_or_else(|| {
+                FlowError::Runtime(
+                    "cancelling deployment omitted its cancellation request time".into(),
+                )
+            })?
+            .checked_add_signed(runtime.config.cleanup_timeout)
+            .ok_or_else(|| {
+                FlowError::Runtime("pre-start cancellation deadline overflowed".into())
+            })?
+    } else {
+        input.resolved.convergence_deadline
+    };
+    let now = Utc::now().max(deployment.updated_at);
+    let status = runtime
+        .prestart_gate
+        .reconcile(&WorkloadPrestartGateRequest {
+            organization_id: deployment.organization_id,
+            deployment_id: deployment.id,
+            operation_id: deployment.operation_id,
+            workload_id: deployment.workload_id,
+            workload_revision_id: deployment.revision_id,
+            node_id: input.node_id,
+            cancellation_requested,
+            deadline_at,
+            now,
+        })
+        .await
+        .map_err(|error| flow_error("could not reconcile Workload pre-start gate", error))?;
+    match status {
+        WorkloadPrestartGateStatus::Ready { completed_at } => {
+            if cancellation_requested {
+                return Err(FlowError::Runtime(
+                    "cancelling Workload pre-start gate returned ready".into(),
+                ));
+            }
+            if completed_at < deployment.requested_at || completed_at > now {
+                return Err(FlowError::Runtime(
+                    "Workload pre-start completion time is invalid".into(),
+                ));
+            }
+            Ok(PrestartGateStepOutput::Ready {
+                node_id: input.node_id,
+                completed_at,
+            })
+        }
+        WorkloadPrestartGateStatus::CancellationReady { completed_at } => {
+            if !cancellation_requested
+                || completed_at < deployment.requested_at
+                || completed_at > now
+            {
+                return Err(FlowError::Runtime(
+                    "Workload pre-start cancellation completion is invalid".into(),
+                ));
+            }
+            Ok(PrestartGateStepOutput::CancellationRequested { completed_at })
+        }
+        WorkloadPrestartGateStatus::Failed { reason } => Ok(PrestartGateStepOutput::Failed {
+            reason: bounded_prestart_reason(reason)?,
+        }),
+        WorkloadPrestartGateStatus::Pending { reason } => {
+            let reason = bounded_prestart_reason(reason)?;
+            if now >= deadline_at {
+                return Ok(PrestartGateStepOutput::Failed {
+                    reason: format!("Workload pre-start gate exceeded its deadline: {reason}"),
+                });
+            }
+            let next_poll_at = now
+                .checked_add_signed(runtime.config.observation_poll)
+                .ok_or_else(|| FlowError::Runtime("pre-start gate poll time overflowed".into()))?
+                .min(deadline_at);
+            Ok(PrestartGateStepOutput::Pending {
+                reason,
+                next_poll_at,
+                deadline_at,
+            })
+        }
+    }
+}
+
+fn bounded_prestart_reason(reason: String) -> a3s_flow::Result<String> {
+    if reason.is_empty() || reason.len() > 16 * 1024 || reason.contains(['\0', '\r', '\n']) {
+        return Err(FlowError::Runtime(
+            "Workload pre-start gate returned an invalid reason".into(),
+        ));
+    }
+    Ok(reason)
 }
 
 async fn resolve(

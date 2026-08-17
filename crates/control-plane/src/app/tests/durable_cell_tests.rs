@@ -2,12 +2,12 @@ use super::*;
 use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
 };
-use crate::modules::data::ObjectNamespaceRetentionPolicySpec;
+use crate::modules::data::{ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicySpec};
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
-    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellRollbackPolicy,
-    DurableCellServiceProfile, DurableCellServiceProfileSpec, DurableCellStateSchema,
-    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellPublisherProfile,
+    DurableCellRollbackPolicy, DurableCellServiceProfile, DurableCellServiceProfileSpec,
+    DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::secrets::domain::{CreateSecretWrite, Secret, SecretChanged};
 use crate::modules::shared_kernel::domain::{
@@ -244,6 +244,7 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
     let provider_acl = provider_workload_acl(&profile, access_key, secret_key, true);
     let deployment_body = json!({
         "serviceProfileAcl": profile.canonical_acl(),
+        "storageProviderProfileAcl": storage_provider_profile_acl(),
         "providerWorkloadAcl": provider_acl,
         "storageBindingAcl": storage.canonical_acl(),
     });
@@ -299,6 +300,7 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
             "cells-deploy-unpinned",
             json!({
                 "serviceProfileAcl": profile.canonical_acl(),
+                "storageProviderProfileAcl": storage_provider_profile_acl(),
                 "providerWorkloadAcl": provider_workload_acl(
                     &profile,
                     access_key,
@@ -312,6 +314,13 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
         .await?;
     assert_eq!(unpinned.status(), 422);
     Ok(())
+}
+
+pub(super) fn storage_provider_profile_acl() -> &'static str {
+    include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../contracts/s0.1/object-namespace-provider-profile.acl"
+    ))
 }
 
 pub(super) async fn seed_cell_build(
@@ -383,7 +392,12 @@ pub(super) fn deployment_binding(
 ) -> Result<DurableCellDeploymentBinding> {
     DurableCellDeploymentBinding::from_spec(DurableCellDeploymentBindingSpec {
         credential_generation: 1,
-        provider_profile_digest: digest('c')?,
+        provider_profile_digest: ObjectNamespaceProviderProfile::parse_acl(
+            storage_provider_profile_acl(),
+        )
+        .map_err(BootError::Internal)?
+        .digest()
+        .clone(),
         access_key_id: access_key,
         secret_access_key: secret_key,
         session_token: None,
@@ -403,7 +417,10 @@ pub(super) fn provider_workload_acl(
     secret_key: SecretVersionReference,
     pinned: bool,
 ) -> String {
-    let artifact_digest = format!("sha256:{}", "d".repeat(64));
+    let artifact_digest = DurableCellPublisherProfile::pinned_celld_v0_2_1()
+        .expect("pinned celld publisher profile")
+        .image_digest()
+        .to_string();
     let artifact_uri = if pinned {
         format!("oci://ghcr.io/denoland/celld@{artifact_digest}")
     } else {

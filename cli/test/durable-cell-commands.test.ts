@@ -18,6 +18,8 @@ const PRINCIPAL_ID = '019c0000-0000-7000-8000-00000000000c';
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 const APPLICATION_ACL = 'durable_cell_application { schema = "cloud.durable-cell.application.v1" }\n';
 const SERVICE_PROFILE_ACL = 'durable_cell_service { schema = "cloud.durable-cell.service.v1" }\n';
+const STORAGE_PROVIDER_PROFILE_ACL =
+  'object_namespace_provider "s3_compatible" { schema = "cloud.object-namespace.provider-profile.v1" }\n';
 const PROVIDER_WORKLOAD_ACL = 'version = 1\nworkload "durable-cell-provider" {}\n';
 const STORAGE_BINDING_ACL = 'durable_cell_deployment { schema = "cloud.durable-cell.deployment.v1" }\n';
 const BASE =
@@ -136,12 +138,13 @@ describe('a3s-cloud Durable Cell commands', () => {
     expect(output.stderr()).toBe('');
   });
 
-  it('deploys one exact revision from three bounded ACL files', async () => {
+  it('deploys one exact revision from four bounded ACL files', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const readPaths: string[] = [];
     const output = capture();
     const files = new Map([
       ['service.acl', SERVICE_PROFILE_ACL],
+      ['storage-provider.acl', STORAGE_PROVIDER_PROFILE_ACL],
       ['provider.acl', PROVIDER_WORKLOAD_ACL],
       ['storage.acl', STORAGE_BINDING_ACL],
     ]);
@@ -152,6 +155,7 @@ describe('a3s-cloud Durable Cell commands', () => {
         APPLICATION_ID,
         REVISION_ID,
         '--service-profile-file=service.acl',
+        '--storage-provider-profile-file=storage-provider.acl',
         '--provider-workload-file=provider.acl',
         '--storage-binding-file=storage.acl',
         '--idempotency-key=cli:durable-cell:deploy',
@@ -172,7 +176,7 @@ describe('a3s-cloud Durable Cell commands', () => {
     );
 
     expect(exitCode).toBe(ExitCode.Success);
-    expect(readPaths.sort()).toEqual(['provider.acl', 'service.acl', 'storage.acl']);
+    expect(readPaths.sort()).toEqual(['provider.acl', 'service.acl', 'storage-provider.acl', 'storage.acl']);
     expect(calls[0]?.[0]).toBe(
       `http://127.0.0.1:8080/api/v1${BASE}/${APPLICATION_ID}/revisions/${REVISION_ID}/deployments`
     );
@@ -181,6 +185,7 @@ describe('a3s-cloud Durable Cell commands', () => {
         method: 'POST',
         body: JSON.stringify({
           serviceProfileAcl: SERVICE_PROFILE_ACL,
+          storageProviderProfileAcl: STORAGE_PROVIDER_PROFILE_ACL,
           providerWorkloadAcl: PROVIDER_WORKLOAD_ACL,
           storageBindingAcl: STORAGE_BINDING_ACL,
         }),
@@ -260,6 +265,7 @@ describe('a3s-cloud Durable Cell commands', () => {
           APPLICATION_ID,
           REVISION_ID,
           '--service-profile-file=service.acl',
+          '--storage-provider-profile-file=storage-provider.acl',
           '--provider-workload-file=provider.acl',
           '--idempotency-key=cli:durable-cell:missing-storage',
         ],
@@ -276,6 +282,7 @@ describe('a3s-cloud Durable Cell commands', () => {
           APPLICATION_ID,
           REVISION_ID,
           '--service-profile-file=service.acl',
+          '--storage-provider-profile-file=storage-provider.acl',
           '--provider-workload-file=provider.acl',
           '--storage-binding-file=storage.acl',
           '--idempotency-key=cli:durable-cell:oversized',
@@ -286,7 +293,11 @@ describe('a3s-cloud Durable Cell commands', () => {
             path === 'storage.acl'
               ? new Uint8Array(MAX_DURABLE_CELL_STORAGE_BINDING_ACL_BYTES + 1)
               : new TextEncoder().encode(
-                  path === 'service.acl' ? SERVICE_PROFILE_ACL : PROVIDER_WORKLOAD_ACL
+                  path === 'service.acl'
+                    ? SERVICE_PROFILE_ACL
+                    : path === 'storage-provider.acl'
+                      ? STORAGE_PROVIDER_PROFILE_ACL
+                      : PROVIDER_WORKLOAD_ACL
                 ),
         }
       )

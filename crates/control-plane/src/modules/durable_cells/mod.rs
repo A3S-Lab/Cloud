@@ -3,6 +3,7 @@ pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
 
+pub(crate) use application::DurableCellBundlePublicationGate;
 pub use application::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler,
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,

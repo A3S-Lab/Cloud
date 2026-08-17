@@ -19,13 +19,16 @@ pub use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
     PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
-    STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+    RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::ResourceClaimState;
 use crate::modules::workloads::domain::repositories::{
     IDeploymentFlowWorkloadRepository, IResourceClaimRepository,
 };
-use crate::modules::workloads::domain::services::{IDeploymentRouteUpdater, IOciArtifactResolver};
+use crate::modules::workloads::domain::services::{
+    IDeploymentRouteUpdater, IOciArtifactResolver, IWorkloadPrestartGate,
+    UnrestrictedWorkloadPrestartGate,
+};
 use a3s_flow::{FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowInvocation};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -102,6 +105,7 @@ pub struct DeploymentFlowRuntime {
     pub(super) nodes: Arc<dyn INodeSchedulingRepository>,
     pub(super) node_control: Arc<dyn INodeControlRepository>,
     pub(super) route_updates: Arc<dyn IDeploymentRouteUpdater>,
+    pub(super) prestart_gate: Arc<dyn IWorkloadPrestartGate>,
     pub(super) heartbeat_timeout: chrono::Duration,
     pub(super) config: DeploymentFlowConfig,
 }
@@ -114,6 +118,7 @@ pub struct DeploymentFlowDependencies {
     nodes: Arc<dyn INodeSchedulingRepository>,
     node_control: Arc<dyn INodeControlRepository>,
     route_updates: Arc<dyn IDeploymentRouteUpdater>,
+    prestart_gate: Arc<dyn IWorkloadPrestartGate>,
 }
 
 impl DeploymentFlowDependencies {
@@ -132,7 +137,13 @@ impl DeploymentFlowDependencies {
             nodes,
             node_control,
             route_updates,
+            prestart_gate: Arc::new(UnrestrictedWorkloadPrestartGate),
         }
+    }
+
+    pub fn with_prestart_gate(mut self, prestart_gate: Arc<dyn IWorkloadPrestartGate>) -> Self {
+        self.prestart_gate = prestart_gate;
+        self
     }
 }
 
@@ -152,6 +163,7 @@ impl DeploymentFlowRuntime {
             nodes: dependencies.nodes,
             node_control: dependencies.node_control,
             route_updates: dependencies.route_updates,
+            prestart_gate: dependencies.prestart_gate,
             heartbeat_timeout,
             config,
         })
@@ -170,6 +182,9 @@ impl FlowRuntime for DeploymentFlowRuntime {
         ) {
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION) => {
                 workflow::replay(&self.config, invocation)
+            }
+            (DEPLOYMENT_WORKFLOW_NAME, RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION) => {
+                workflow::replay_resource_claims(&self.config, invocation)
             }
             (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION) => {
                 previous_workflow::replay(&self.config, invocation)
