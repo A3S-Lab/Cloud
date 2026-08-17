@@ -60,8 +60,15 @@ client, Fleet journal, Secret materializer, and S0 namespace, and verifies that
 one named SQLite counter advances, its alarm fires exactly once, an accepted
 WebSocket persists its message count across provider-managed hibernation, the
 Cell becomes inactive under the sole fixed 30-second idle policy, and both
-request and WebSocket delivery resume with their next values. The retained log
-is scanned byte-for-byte for every supplied credential before evidence is
+request and WebSocket delivery resume with their next values. It then uses the
+generic Runtime exec boundary only as a test fault injector to send `SIGKILL`
+to the exact celld primary process. Box's existing `RestartPolicy::Always`
+must advance its execution-generation evidence exactly once, the existing
+Fleet `RuntimeInspect` command must journal and exactly replay the recovered
+healthy generation, and the counter, alarm, and WebSocket message state must
+continue at values 4, 1, and 3. Secret material must be freshly authorized for
+the restart and removed again during ordinary `RuntimeRemove`. The retained
+log is scanned byte-for-byte for every supplied credential before evidence is
 accepted.
 
 The manual `Durable Cell single-node conformance` workflow is restricted to
@@ -69,7 +76,7 @@ The manual `Durable Cell single-node conformance` workflow is restricted to
 supply-chain verification, image pulling, process cleanup, and evidence
 retention stay single-sourced. Once the Box prerequisite passes, the component
 evidence certifies named SQLite state, exact alarm delivery, hibernatable
-WebSockets, and idle eviction/reactivation. No such retained behavior evidence
-exists yet. It deliberately keeps provider-process-death, Gateway, complete
-application behavior, and fault-matrix claims false; those remain C4/C5 work
-until their own checks pass in this same gate.
+WebSockets, idle eviction/reactivation, and RPO=0 provider-process-death
+recovery. No such retained behavior evidence exists yet. It deliberately keeps
+Gateway, complete application behavior, and the full fault-matrix claims
+false; those remain C4/C5 work until their own checks pass in this same gate.

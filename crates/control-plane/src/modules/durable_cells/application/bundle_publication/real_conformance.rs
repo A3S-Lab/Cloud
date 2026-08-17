@@ -29,9 +29,11 @@ use a3s_cloud_node_agent::{
     NodeArtifactTransport, NodeControlClientError, NodeSecretTransport, SecretMaterial,
 };
 use a3s_runtime::contract::{
-    NetworkMode, RuntimeActionRequest, RuntimeApplyRequest, RuntimeHealthState, RuntimeInspection,
-    RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState, SecretReference, SecretTarget,
+    NetworkMode, RestartPolicy, RuntimeActionRequest, RuntimeApplyRequest, RuntimeExecRequest,
+    RuntimeHealthState, RuntimeInspection, RuntimeObservation, RuntimeServiceEndpoint,
+    RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState, SecretReference, SecretTarget,
 };
+use a3s_runtime::RuntimeError;
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use futures_util::{SinkExt, StreamExt};
@@ -51,6 +53,7 @@ const ACCESS_KEY_ENV: &str = "A3S_CLOUD_TEST_S3_ACCESS_KEY_ID";
 const SECRET_KEY_ENV: &str = "A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY";
 const SESSION_TOKEN_ENV: &str = "A3S_CLOUD_TEST_S3_SESSION_TOKEN";
 const SCRIPT_NAME: &str = "a3s-cloud-cell-publication-gate";
+const BOX_EXECUTION_GENERATION_CLAIM: &str = "a3s.box.execution-generation";
 const PROVIDER_REVISION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../tools/cell-conformance/celld-revision"
@@ -192,10 +195,12 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
         outcome.publication_object_count,
     );
     println!(
-        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified cleanup=verified process_death=not-certified gateway=not-certified",
+        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified process_death=verified rpo=0 box_generation_before={} box_generation_after={} fleet_replay=exact secrets=reauthorized cleanup=verified gateway=not-certified",
         revision,
         outcome.behavior.service_profile_digest,
         outcome.behavior.service_template_digest,
+        outcome.behavior.box_generation_before,
+        outcome.behavior.box_generation_after,
     );
     Ok(())
 }
@@ -210,6 +215,15 @@ struct PublicationOutcome {
 struct ServiceBehaviorOutcome {
     service_profile_digest: String,
     service_template_digest: String,
+    box_generation_before: u64,
+    box_generation_after: u64,
+}
+
+struct ProcessDeathOutcome {
+    box_generation_before: u64,
+    box_generation_after: u64,
+    provider_resource_id: String,
+    provider_build: String,
 }
 
 async fn execute_publication(
@@ -415,6 +429,7 @@ async fn verify_service_behavior(
         project_runtime_spec_with_digest(&revision, Some(service_profile.digest().as_str()))?;
     if spec.class != RuntimeUnitClass::Service
         || spec.network.mode != NetworkMode::Service
+        || spec.restart != RestartPolicy::Always
         || spec.semantics_profile_digest.as_deref() != Some(service_profile.digest().as_str())
     {
         return Err(
@@ -438,12 +453,37 @@ async fn verify_service_behavior(
             },
         )?)
         .await?;
-    let verification = verify_running_service_behavior(&applied, &service_profile).await;
+    let verification =
+        verify_running_service_behavior(&applied, &service_profile, runtime, &spec).await;
+    let inspect = command(
+        node_id,
+        workload_id.as_uuid(),
+        4,
+        NodeCommandPayload::RuntimeInspect {
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+        },
+    )?;
+    let inspected = executor.execute(inspect.clone()).await;
+    let replayed = match &inspected {
+        Ok(acknowledgement) => {
+            let expected = acknowledgement.outcome.clone();
+            let mut replay = inspect;
+            replay.lease_id = Uuid::now_v7();
+            Some(
+                executor
+                    .execute(replay)
+                    .await
+                    .map(|acknowledgement| (expected, acknowledgement.outcome)),
+            )
+        }
+        Err(_) => None,
+    };
     let removed = executor
         .execute(command(
             node_id,
             workload_id.as_uuid(),
-            4,
+            5,
             NodeCommandPayload::RuntimeRemove {
                 request: RuntimeActionRequest {
                     schema: RuntimeActionRequest::SCHEMA.into(),
@@ -455,7 +495,14 @@ async fn verify_service_behavior(
             },
         )?)
         .await;
-    verification?;
+    let verification = verification?;
+    verify_recovery_inspection(&inspected?, &spec, &verification)?;
+    match replayed {
+        Some(Ok((expected, actual))) if expected == actual => {}
+        _ => {
+            return Err(invalid("Fleet journal changed recovered Service inspection replay").into())
+        }
+    }
     expect_removed(&removed?, &spec.unit_id)?;
     if !matches!(
         runtime.inspect(&spec.unit_id).await?,
@@ -465,7 +512,7 @@ async fn verify_service_behavior(
     }
     let expected_secret_calls = secret_transport
         .material_count()
-        .checked_mul(2)
+        .checked_mul(3)
         .ok_or_else(|| invalid("Durable Cell Secret call expectation overflowed"))?;
     if artifact_transport.downloads.load(Ordering::SeqCst) != 1
         || directory_has_entries(secret_root)?
@@ -476,14 +523,19 @@ async fn verify_service_behavior(
     Ok(ServiceBehaviorOutcome {
         service_profile_digest: service_profile.digest().to_string(),
         service_template_digest,
+        box_generation_before: verification.box_generation_before,
+        box_generation_after: verification.box_generation_after,
     })
 }
 
 async fn verify_running_service_behavior(
     applied: &NodeCommandAck,
     service_profile: &DurableCellServiceProfile,
-) -> GateResult<()> {
+    runtime: &dyn a3s_runtime::RuntimeClient,
+    spec: &RuntimeUnitSpec,
+) -> GateResult<ProcessDeathOutcome> {
     let observation = applied_observation(applied)?;
+    observation.validate_against(spec).map_err(invalid)?;
     if observation.state != RuntimeUnitState::Running
         || observation
             .health
@@ -505,7 +557,206 @@ async fn verify_running_service_behavior(
     if public.socket_addr() == internal.socket_addr() {
         return Err(invalid("Durable Cell public and internal Runtime endpoints overlap").into());
     }
-    verify_single_node_behavior(&public, &internal).await
+    verify_single_node_behavior(&public, &internal).await?;
+    verify_provider_process_death(runtime, spec, service_profile, observation).await
+}
+
+async fn verify_provider_process_death(
+    runtime: &dyn a3s_runtime::RuntimeClient,
+    spec: &RuntimeUnitSpec,
+    service_profile: &DurableCellServiceProfile,
+    initial: &RuntimeObservation,
+) -> GateResult<ProcessDeathOutcome> {
+    let box_generation_before = box_execution_generation(initial)?;
+    let expected_generation = box_generation_before
+        .checked_add(1)
+        .ok_or_else(|| invalid("Box execution generation overflowed"))?;
+    let provider_resource_id = initial
+        .provider_resource_id
+        .clone()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| invalid("Box observation omitted its provider resource identity"))?;
+    let provider_build = initial
+        .provider_build
+        .clone()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| invalid("Box observation omitted its provider build"))?;
+
+    inject_celld_process_death(runtime, spec).await?;
+    let recovered = wait_for_provider_restart(
+        runtime,
+        spec,
+        expected_generation,
+        &provider_resource_id,
+        &provider_build,
+    )
+    .await?;
+    let public = RuntimeServiceEndpoint::from_observation(
+        &recovered,
+        &service_profile.spec().public_runtime_port,
+    )
+    .map_err(invalid)?;
+    let internal = RuntimeServiceEndpoint::from_observation(
+        &recovered,
+        &service_profile.spec().internal_runtime_port,
+    )
+    .map_err(invalid)?;
+    if public.socket_addr() == internal.socket_addr() {
+        return Err(invalid("recovered Durable Cell Runtime endpoints overlap").into());
+    }
+    verify_state_after_process_death(&public).await?;
+
+    Ok(ProcessDeathOutcome {
+        box_generation_before,
+        box_generation_after: box_execution_generation(&recovered)?,
+        provider_resource_id,
+        provider_build,
+    })
+}
+
+async fn inject_celld_process_death(
+    runtime: &dyn a3s_runtime::RuntimeClient,
+    spec: &RuntimeUnitSpec,
+) -> GateResult<()> {
+    let request_id = format!("cell-service-process-death-{}", Uuid::now_v7());
+    let result = runtime
+        .exec(&RuntimeExecRequest {
+            schema: RuntimeExecRequest::SCHEMA.into(),
+            request_id: request_id.clone(),
+            unit_id: spec.unit_id.clone(),
+            generation: spec.generation,
+            command: vec![
+                "/bin/sh".into(),
+                "-c".into(),
+                concat!(
+                    "for process in /proc/[0-9]*/comm; do ",
+                    "IFS= read -r name < \"$process\" || continue; ",
+                    "[ \"$name\" = celld ] || continue; ",
+                    "pid=${process#/proc/}; pid=${pid%/comm}; ",
+                    "kill -KILL \"$pid\"; exit 0; ",
+                    "done; exit 44"
+                )
+                .into(),
+            ],
+            timeout_ms: 5_000,
+            deadline_at_ms: None,
+        })
+        .await;
+    match result {
+        Ok(result) => {
+            result.validate().map_err(invalid)?;
+            if result.request_id != request_id || !matches!(result.exit_code, -1 | 0 | 137) {
+                return Err(invalid(format!(
+                    "celld process-death injection did not reach the provider: exit {}",
+                    result.exit_code
+                ))
+                .into());
+            }
+        }
+        Err(
+            RuntimeError::NotFound { .. }
+            | RuntimeError::DeadlineExceeded(_)
+            | RuntimeError::ProviderUnavailable(_)
+            | RuntimeError::Transport(_),
+        ) => {
+            // Killing the Service's primary process may tear down the exec
+            // transport before it can return. Recovery generation and durable
+            // application state below are the authoritative fault evidence.
+        }
+        Err(error) => return Err(error.into()),
+    }
+    Ok(())
+}
+
+async fn wait_for_provider_restart(
+    runtime: &dyn a3s_runtime::RuntimeClient,
+    spec: &RuntimeUnitSpec,
+    expected_box_generation: u64,
+    provider_resource_id: &str,
+    provider_build: &str,
+) -> GateResult<RuntimeObservation> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(90);
+    loop {
+        match runtime.inspect(&spec.unit_id).await {
+            Ok(RuntimeInspection::Found { observation, .. }) => {
+                observation.validate_against(spec).map_err(invalid)?;
+                let box_generation = box_execution_generation(&observation)?;
+                if box_generation > expected_box_generation {
+                    return Err(
+                        invalid("Box restarted celld more than once after one fault").into(),
+                    );
+                }
+                if box_generation == expected_box_generation
+                    && observation.state == RuntimeUnitState::Running
+                    && observation
+                        .health
+                        .as_ref()
+                        .is_some_and(|health| health.state == RuntimeHealthState::Healthy)
+                {
+                    if observation.provider_resource_id.as_deref() != Some(provider_resource_id)
+                        || observation.provider_build.as_deref() != Some(provider_build)
+                    {
+                        return Err(invalid(
+                            "Box recovery changed the exact provider resource or build",
+                        )
+                        .into());
+                    }
+                    return Ok(*observation);
+                }
+            }
+            Ok(RuntimeInspection::NotFound { .. }) => {
+                return Err(
+                    invalid("Box lost the Durable Cell Service during process death").into(),
+                )
+            }
+            Err(RuntimeError::ProviderUnavailable(_) | RuntimeError::Transport(_)) => {}
+            Err(error) => return Err(error.into()),
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(invalid("Box did not recover the killed celld process in time").into());
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+fn verify_recovery_inspection(
+    acknowledgement: &NodeCommandAck,
+    spec: &RuntimeUnitSpec,
+    recovery: &ProcessDeathOutcome,
+) -> GateResult<()> {
+    let NodeCommandResult::RuntimeInspected {
+        inspection: RuntimeInspection::Found { observation, .. },
+    } = succeeded_result(acknowledgement)?
+    else {
+        return Err(invalid("Fleet did not journal the recovered Durable Cell Service").into());
+    };
+    observation.validate_against(spec).map_err(invalid)?;
+    if observation.state != RuntimeUnitState::Running
+        || observation
+            .health
+            .as_ref()
+            .is_none_or(|health| health.state != RuntimeHealthState::Healthy)
+        || observation.provider_resource_id.as_deref() != Some(&recovery.provider_resource_id)
+        || observation.provider_build.as_deref() != Some(&recovery.provider_build)
+        || box_execution_generation(observation)? != recovery.box_generation_after
+    {
+        return Err(
+            invalid("Fleet recovery receipt changed the exact healthy Box generation").into(),
+        );
+    }
+    Ok(())
+}
+
+fn box_execution_generation(observation: &RuntimeObservation) -> GateResult<u64> {
+    observation
+        .evidence
+        .as_ref()
+        .and_then(|evidence| evidence.claims.get(BOX_EXECUTION_GENERATION_CLAIM))
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .ok_or_else(|| {
+            invalid("Box observation omitted valid execution-generation evidence").into()
+        })
 }
 
 async fn require_runtime_support(
@@ -681,6 +932,24 @@ async fn verify_single_node_behavior(
     require_counter_value(&client, &url, 3).await
 }
 
+async fn verify_state_after_process_death(public: &RuntimeServiceEndpoint) -> GateResult<()> {
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()?;
+    let counter_url = format!("http://{}/?cell=retained-counter", public.socket_addr());
+    require_counter_value(&client, &counter_url, 4).await?;
+    require_persisted_alarm_delivery(&client, public).await?;
+    let websocket_url = format!("ws://{}/?cell=retained-counter", public.socket_addr());
+    let (mut socket, response) = tokio_tungstenite::connect_async(&websocket_url).await?;
+    if response.status() != 101 {
+        return Err(invalid("recovered Durable Cell WebSocket upgrade was not accepted").into());
+    }
+    require_websocket_echo(&mut socket, "after-provider-process-death", 3).await?;
+    socket.close(None).await?;
+    Ok(())
+}
+
 async fn verify_alarm_delivery(
     client: &reqwest::Client,
     public: &RuntimeServiceEndpoint,
@@ -702,18 +971,10 @@ async fn verify_alarm_delivery(
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
         let status = get_json(client, &status_url).await?;
-        if status.get("fires").and_then(serde_json::Value::as_u64) == Some(1)
-            && status
-                .get("pendingAlarm")
-                .is_some_and(serde_json::Value::is_null)
-        {
+        if alarm_was_delivered(&status) {
             tokio::time::sleep(Duration::from_secs(1)).await;
             let stable = get_json(client, &status_url).await?;
-            if stable.get("fires").and_then(serde_json::Value::as_u64) == Some(1)
-                && stable
-                    .get("pendingAlarm")
-                    .is_some_and(serde_json::Value::is_null)
-            {
+            if alarm_was_delivered(&stable) {
                 return Ok(());
             }
             return Err(invalid("named Durable Cell alarm was delivered more than once").into());
@@ -723,6 +984,36 @@ async fn verify_alarm_delivery(
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
+}
+
+async fn require_persisted_alarm_delivery(
+    client: &reqwest::Client,
+    public: &RuntimeServiceEndpoint,
+) -> GateResult<()> {
+    let status_url = format!(
+        "http://{}/alarm-status?cell=retained-counter",
+        public.socket_addr()
+    );
+    for sample in 0..2 {
+        let status = get_json(client, &status_url).await?;
+        if !alarm_was_delivered(&status) {
+            return Err(invalid(
+                "named Durable Cell lost or repeated its alarm across provider process death",
+            )
+            .into());
+        }
+        if sample == 0 {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    }
+    Ok(())
+}
+
+fn alarm_was_delivered(status: &serde_json::Value) -> bool {
+    status.get("fires").and_then(serde_json::Value::as_u64) == Some(1)
+        && status
+            .get("pendingAlarm")
+            .is_some_and(serde_json::Value::is_null)
 }
 
 async fn verify_hibernatable_websocket(

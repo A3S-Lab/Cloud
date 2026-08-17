@@ -184,13 +184,22 @@ service_profile_digest=$(sed -nE \
 service_template_digest=$(sed -nE \
   's/.* service_template_digest=(sha256:[0-9a-f]{64}) .*/\1/p' \
   <<<"$behavior_certification")
+box_generation_before=$(sed -nE \
+  's/.* box_generation_before=([1-9][0-9]*) .*/\1/p' \
+  <<<"$behavior_certification")
+box_generation_after=$(sed -nE \
+  's/.* box_generation_after=([1-9][0-9]*) .*/\1/p' \
+  <<<"$behavior_certification")
 [[ $service_profile_digest =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ $service_template_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+[[ $box_generation_before =~ ^[1-9][0-9]*$ ]]
+[[ $box_generation_after =~ ^[1-9][0-9]*$ ]]
+(( box_generation_after == box_generation_before + 1 ))
 grep --fixed-strings \
   "revision=$revision service_profile_digest=$service_profile_digest service_template_digest=$service_template_digest" \
   <<<"$behavior_certification" >/dev/null
 grep --fixed-strings \
-  'named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified cleanup=verified process_death=not-certified gateway=not-certified' \
+  "named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified process_death=verified rpo=0 box_generation_before=$box_generation_before box_generation_after=$box_generation_after fleet_replay=exact secrets=reauthorized cleanup=verified gateway=not-certified" \
   <<<"$behavior_certification" >/dev/null
 
 jq -n \
@@ -200,9 +209,11 @@ jq -n \
   --arg image "$image" \
   --arg serviceProfileDigest "$service_profile_digest" \
   --arg serviceTemplateDigest "$service_template_digest" \
+  --argjson boxGenerationBefore "$box_generation_before" \
+  --argjson boxGenerationAfter "$box_generation_after" \
   --arg certification "$behavior_certification" \
   '{
-    schema: "a3s.cloud.cell0.5-single-node-behavior-evidence.v1",
+    schema: "a3s.cloud.cell0.5-single-node-behavior-evidence.v2",
     cloudRevision: $cloud,
     boxRevision: $box,
     provider: "celld",
@@ -210,6 +221,8 @@ jq -n \
     image: $image,
     serviceProfileDigest: $serviceProfileDigest,
     serviceTemplateDigest: $serviceTemplateDigest,
+    boxExecutionGenerationBefore: $boxGenerationBefore,
+    boxExecutionGenerationAfter: $boxGenerationAfter,
     certification: $certification,
     checks: {
       exactWorkloadsServiceProjection: true,
@@ -217,6 +230,11 @@ jq -n \
       namedSQLiteState: true,
       alarmDelivery: true,
       hibernatableWebSocket: true,
+      providerProcessKilled: true,
+      boxRestartGenerationAdvancedExactlyOnce: true,
+      rpo0ProviderProcessDeath: true,
+      fleetRecoveryInspectReplay: true,
+      secretsRematerializedPerStart: true,
       rpo0OutputGateNotOverridden: true,
       idleEviction: true,
       statefulReactivation: true,
@@ -229,7 +247,7 @@ jq -n \
       idleEvictionReactivationCertified: true,
       alarmCertified: true,
       hibernatableWebSocketCertified: true,
-      providerProcessDeathCertified: false,
+      providerProcessDeathCertified: true,
       gatewayCertified: false,
       completeApplicationBehaviorCertified: false,
       faultMatrixCertified: false
@@ -241,16 +259,21 @@ jq -e \
   --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
   --arg revision "$revision" \
   --arg image "$image" \
+  --argjson boxGenerationBefore "$box_generation_before" \
+  --argjson boxGenerationAfter "$box_generation_after" \
   '.cloudRevision == $cloud
    and .boxRevision == $box
    and .providerRevision == $revision
    and .image == $image
+   and .boxExecutionGenerationBefore == $boxGenerationBefore
+   and .boxExecutionGenerationAfter == $boxGenerationAfter
+   and .boxExecutionGenerationAfter == (.boxExecutionGenerationBefore + 1)
    and ([.checks[]] | all)
    and .scope.namedSQLiteStateCertified == true
    and .scope.idleEvictionReactivationCertified == true
    and .scope.alarmCertified == true
    and .scope.hibernatableWebSocketCertified == true
-   and .scope.providerProcessDeathCertified == false
+   and .scope.providerProcessDeathCertified == true
    and .scope.gatewayCertified == false
    and .scope.completeApplicationBehaviorCertified == false
    and .scope.faultMatrixCertified == false' \
