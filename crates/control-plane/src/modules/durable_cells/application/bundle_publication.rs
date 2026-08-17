@@ -1,10 +1,15 @@
 use super::build_run_access::require_definition_build_output;
-use super::provider_workload::validate_publisher_secret_targets;
+#[cfg(test)]
+use super::provider_workload::compose_pinned_celld_service_process;
+use super::provider_workload::{
+    validate_pinned_celld_service_projection, validate_publisher_secret_targets,
+};
 use crate::modules::artifacts::domain::{BuildArtifact, IBuildRunRepository};
 use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::domain::{
-    DurableCellDeployment, DurableCellPublisherProfile, IDurableCellApplicationRepository,
-    IDurableCellDeploymentRepository, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    DurableCellDeployment, DurableCellPublisherProfile, DurableCellServiceProfile,
+    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::executions::application::{
     BoundExecutionCreation, ExecutionCancellation, ExecutionCancellationService, ExecutionCreator,
@@ -239,29 +244,20 @@ impl DurableCellBundlePublicationGate {
         let service_template = workload_revision
             .resolved_template()
             .map_err(CompositionError::failed)?;
-        let service_template_digest = Sha256Digest::parse(
-            service_template
-                .digest()
-                .map_err(CompositionError::failed)?,
+        let service_profile =
+            DurableCellServiceProfile::pinned_celld_v0_2_1().map_err(CompositionError::failed)?;
+        correlation
+            .provider
+            .validate_workload_revision(&service_profile, &workload_revision)
+            .map_err(CompositionError::failed)?;
+        validate_pinned_celld_service_projection(
+            &provider_profile,
+            correlation.storage.storage_namespace_id,
+            &service_profile,
+            service_template,
+            &publisher,
         )
         .map_err(CompositionError::failed)?;
-        if workload_revision.workload_id != correlation.provider.workload_id
-            || workload_revision.id != correlation.provider.workload_revision_id
-            || workload_revision.generation != correlation.provider.workload_generation
-            || service_template_digest != correlation.provider.service_template_digest
-            || service_template.artifact.digest
-                != correlation.provider.provider_artifact_digest.as_str()
-            || service_template.artifact.uri != publisher.image_uri()
-            || service_template.artifact.digest != publisher.image_digest().as_str()
-            || !matches!(
-                service_template.artifact.media_type.as_str(),
-                OCI_IMAGE_MANIFEST_MEDIA_TYPE | OCI_IMAGE_INDEX_MEDIA_TYPE
-            )
-        {
-            return Err(CompositionError::failed(
-                "Durable Cell provider Workload is not the exact pinned celld publisher image",
-            ));
-        }
         validate_publisher_secret_targets(service_template, &publisher)
             .map_err(CompositionError::failed)?;
 
@@ -649,8 +645,7 @@ mod tests {
     use crate::modules::workloads::{
         CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck,
         InMemoryWorkloadRepository, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec,
-        WorkloadRevision,
+        ServiceResources, ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision,
     };
     use chrono::{Duration, Utc};
 
@@ -789,8 +784,14 @@ mod tests {
             &retention,
         )?;
         let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1()?;
-        let service_template =
-            service_template(&publisher, &service_profile, access_key, secret_access_key);
+        let service_template = service_template(
+            &publisher,
+            &service_profile,
+            &storage_profile,
+            projection.storage_namespace_id,
+            access_key,
+            secret_access_key,
+        );
         let workload_revision = WorkloadRevision::create(
             projection.workload_revision_id,
             projection.workload_id,
@@ -1022,6 +1023,8 @@ mod tests {
     fn service_template(
         publisher: &DurableCellPublisherProfile,
         profile: &DurableCellServiceProfile,
+        provider_profile: &ObjectNamespaceProviderProfile,
+        storage_namespace_id: StorageNamespaceId,
         access_key: SecretVersionReference,
         secret_access_key: SecretVersionReference,
     ) -> ServiceTemplate {
@@ -1031,17 +1034,14 @@ mod tests {
                 digest: publisher.image_digest().to_string(),
                 media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
             },
-            process: ServiceProcess {
-                command: publisher.command().to_vec(),
-                args: vec![
-                    "--listen".into(),
-                    "0.0.0.0:8080".into(),
-                    "--internal-listen".into(),
-                    "0.0.0.0:8081".into(),
-                ],
-                working_directory: Some("/".into()),
-                environment: BTreeMap::new(),
-            },
+            process: compose_pinned_celld_service_process(
+                provider_profile,
+                storage_namespace_id,
+                8080,
+                8081,
+                publisher,
+            )
+            .expect("pinned celld Service process"),
             secrets: vec![
                 SecretBinding {
                     name: "s0-access-key-id".into(),

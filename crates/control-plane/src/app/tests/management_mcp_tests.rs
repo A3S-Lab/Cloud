@@ -2920,8 +2920,13 @@ async fn management_mcp_reuses_the_durable_cell_application_projection_lifecycle
     );
 
     let storage = super::durable_cell_tests::deployment_binding(access_key, secret_key)?;
-    let provider_acl =
-        super::durable_cell_tests::provider_workload_acl(&profile, access_key, secret_key, true);
+    let provider_acl = super::durable_cell_tests::provider_workload_acl(
+        &application_id,
+        &profile,
+        access_key,
+        secret_key,
+        true,
+    );
     let deployment_arguments = json!({
         "projectId": project,
         "environmentId": environment,

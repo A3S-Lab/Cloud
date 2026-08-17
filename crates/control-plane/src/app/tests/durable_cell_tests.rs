@@ -3,11 +3,12 @@ use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
 };
 use crate::modules::data::{ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicySpec};
+use crate::modules::durable_cells::application::compose_pinned_celld_service_process;
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
-    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellPublisherProfile,
-    DurableCellRollbackPolicy, DurableCellServiceProfile, DurableCellServiceProfileSpec,
-    DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellProjectionIdentity,
+    DurableCellPublisherProfile, DurableCellRollbackPolicy, DurableCellServiceProfile,
+    DurableCellServiceProfileSpec, DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::secrets::domain::{CreateSecretWrite, Secret, SecretChanged};
 use crate::modules::shared_kernel::domain::{
@@ -241,7 +242,8 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
 
     let deployment_path = format!("{revisions_path}/{revision_id}/deployments");
     let storage = deployment_binding(access_key, secret_key)?;
-    let provider_acl = provider_workload_acl(&profile, access_key, secret_key, true);
+    let provider_acl =
+        provider_workload_acl(&application_id, &profile, access_key, secret_key, true);
     let deployment_body = json!({
         "serviceProfileAcl": profile.canonical_acl(),
         "storageProviderProfileAcl": storage_provider_profile_acl(),
@@ -302,6 +304,7 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
                 "serviceProfileAcl": profile.canonical_acl(),
                 "storageProviderProfileAcl": storage_provider_profile_acl(),
                 "providerWorkloadAcl": provider_workload_acl(
+                    &application_id,
                     &profile,
                     access_key,
                     secret_key,
@@ -412,15 +415,15 @@ pub(super) fn deployment_binding(
 }
 
 pub(super) fn provider_workload_acl(
+    application_id: &str,
     profile: &DurableCellServiceProfile,
     access_key: SecretVersionReference,
     secret_key: SecretVersionReference,
     pinned: bool,
 ) -> String {
-    let artifact_digest = DurableCellPublisherProfile::pinned_celld_v0_2_1()
-        .expect("pinned celld publisher profile")
-        .image_digest()
-        .to_string();
+    let publisher =
+        DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("pinned celld publisher profile");
+    let artifact_digest = publisher.image_digest().to_string();
     let artifact_uri = if pinned {
         format!("oci://ghcr.io/denoland/celld@{artifact_digest}")
     } else {
@@ -431,6 +434,28 @@ pub(super) fn provider_workload_acl(
     } else {
         String::new()
     };
+    let provider_profile =
+        ObjectNamespaceProviderProfile::parse_acl(storage_provider_profile_acl())
+            .expect("S0 provider profile");
+    let application_id = crate::modules::shared_kernel::domain::DurableCellApplicationId::from_uuid(
+        uuid::Uuid::parse_str(application_id).expect("application ID"),
+    );
+    let namespace_id =
+        DurableCellProjectionIdentity::storage_namespace_id_for_application(application_id);
+    let process = compose_pinned_celld_service_process(
+        &provider_profile,
+        namespace_id,
+        8080,
+        8081,
+        &publisher,
+    )
+    .expect("pinned celld Service process");
+    let process_args = process
+        .args
+        .iter()
+        .map(|argument| format!("\"{argument}\""))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         r#"version = 1
 
@@ -440,7 +465,7 @@ workload "celld-provider" {{
 {expected_digest}  }}
   process {{
     command = ["/usr/local/bin/celld"]
-    args = ["--listen", "0.0.0.0:8080", "--internal-listen", "0.0.0.0:8081"]
+    args = [{process_args}]
     working_directory = "/"
   }}
   resources {{

@@ -70,6 +70,31 @@ pub struct DurableCellServiceProfile {
 }
 
 impl DurableCellServiceProfile {
+    /// Returns the exact product-semantics contract certified for the pinned
+    /// celld v0.2.1 adapter.
+    ///
+    /// The caller-facing parser remains capable of reading other compatible
+    /// provider profiles. Production celld composition uses this reviewed
+    /// fixture so a caller cannot pair the pinned binary with a health path or
+    /// behavioral bounds that the adapter never certified.
+    pub fn pinned_celld_v0_2_1() -> Result<Self, String> {
+        let source = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/cell0.3/celld-v0.2.1-service-profile.acl"
+        ));
+        let canonical = source.strip_suffix('\n').ok_or_else(|| {
+            "pinned celld Service profile source must end with one newline".to_owned()
+        })?;
+        if canonical.ends_with(['\r', '\n']) {
+            return Err("pinned celld Service profile has a non-canonical line ending".into());
+        }
+        let profile = Self::parse_acl(canonical)?;
+        if profile.canonical_acl() != canonical {
+            return Err("pinned celld Service profile must be canonical A3S ACL".into());
+        }
+        Ok(profile)
+    }
+
     pub fn from_spec(spec: DurableCellServiceProfileSpec) -> Result<Self, String> {
         spec.validate()?;
         let document = profile_document(&spec)?;
@@ -421,8 +446,8 @@ mod tests {
 
     #[test]
     fn celld_v021_adapter_profile_is_canonical_and_digest_locked() {
-        let profile = DurableCellServiceProfile::parse_acl(CELLD_V021_SERVICE_PROFILE_FIXTURE)
-            .expect("celld adapter profile");
+        let profile =
+            DurableCellServiceProfile::pinned_celld_v0_2_1().expect("celld adapter profile");
         assert_eq!(
             format!("{}\n", profile.canonical_acl()),
             CELLD_V021_SERVICE_PROFILE_FIXTURE.replace("\r\n", "\n")

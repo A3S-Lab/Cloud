@@ -26,10 +26,10 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
     DurableCellApplicationDefinitionSpec, DurableCellApplicationDesiredState,
     DurableCellApplicationRecord, DurableCellApplicationRevision, DurableCellClassSpec,
     DurableCellDeployment, DurableCellDeploymentRequest, DurableCellProjectionIdentity,
-    DurableCellProviderBinding, DurableCellRollbackPolicy, DurableCellServiceProfile,
-    DurableCellStateSchema, DurableCellStorageBinding, IDurableCellApplicationRepository,
-    IDurableCellDeploymentRepository, RequestDurableCellApplicationStateWrite,
-    ReviseDurableCellApplicationWrite,
+    DurableCellProviderBinding, DurableCellPublisherProfile, DurableCellRollbackPolicy,
+    DurableCellServiceProfile, DurableCellStateSchema, DurableCellStorageBinding,
+    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
 };
 use a3s_cloud_control_plane::modules::durable_cells::{
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
@@ -1189,6 +1189,8 @@ fn projection_deployment_command(
         storage_provider_profile_acl: Some(storage_provider_profile.canonical_acl().into()),
         workload_template: durable_cell_service_template(
             &profile,
+            &storage_provider_profile,
+            input.storage_namespace_id,
             input.access_key_id,
             input.secret_access_key,
         ),
@@ -1242,23 +1244,41 @@ struct CanonicalDurableCellStateRequest<'a> {
 
 fn durable_cell_service_template(
     profile: &DurableCellServiceProfile,
+    provider_profile: &ObjectNamespaceProviderProfile,
+    storage_namespace_id: StorageNamespaceId,
     access_key_id: SecretVersionReference,
     secret_access_key: SecretVersionReference,
 ) -> ServiceTemplate {
-    let artifact_digest = digest('d');
+    let publisher =
+        DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("pinned celld publisher");
+    let namespace_prefix = provider_profile
+        .namespace_prefix(storage_namespace_id)
+        .expect("S0 namespace prefix");
     ServiceTemplate {
         artifact: OciArtifact {
-            uri: format!("oci://ghcr.io/denoland/celld@{}", artifact_digest.as_str()),
-            digest: artifact_digest.to_string(),
+            uri: publisher.image_uri().into(),
+            digest: publisher.image_digest().to_string(),
             media_type: "application/vnd.oci.image.index.v1+json".into(),
         },
         process: ServiceProcess {
-            command: vec!["/usr/local/bin/celld".into()],
+            command: publisher.command().to_vec(),
             args: vec![
+                "--bucket".into(),
+                format!(
+                    "s3://{}/{}",
+                    provider_profile.spec().bucket,
+                    namespace_prefix
+                ),
+                "--endpoint".into(),
+                provider_profile.spec().endpoint.clone(),
+                "--region".into(),
+                provider_profile.spec().region.clone(),
                 "--listen".into(),
                 "0.0.0.0:8080".into(),
                 "--internal-listen".into(),
                 "0.0.0.0:8081".into(),
+                "--advertise".into(),
+                "127.0.0.1:8081".into(),
             ],
             working_directory: Some("/".into()),
             environment: BTreeMap::new(),

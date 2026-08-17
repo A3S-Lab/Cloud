@@ -1,5 +1,7 @@
 use super::managed_replica_lifecycle::converge_current_managed_replicas;
-use super::provider_workload::validate_publisher_storage_credentials;
+#[cfg(test)]
+use super::provider_workload::compose_pinned_celld_service_process;
+use super::provider_workload::validate_pinned_celld_provider_workload;
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
@@ -282,6 +284,16 @@ impl PreparedDeployment {
                 "Durable Cell deployment S0 profile and credential binding digests differ".into(),
             );
         }
+        if let Some(provider_profile) = &storage_provider_profile {
+            let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()?;
+            validate_pinned_celld_provider_workload(
+                &command.storage_credentials,
+                provider_profile,
+                &service_profile,
+                &command.workload_template,
+                &publisher,
+            )?;
+        }
         let service_template_digest = Sha256Digest::parse(command.workload_template.digest()?)?;
         let provider_artifact_digest =
             Sha256Digest::parse(&command.workload_template.artifact.digest)?;
@@ -453,7 +465,6 @@ async fn admit_external_bindings(
     require_storage_credentials_in_template(
         &command.storage_credentials,
         &command.workload_template,
-        command.storage_provider_profile_acl.is_some(),
     )?;
     validate_node_pool_selection(node_pools, command.organization_id, command.node_pool_id).await?;
     Ok(())
@@ -727,7 +738,6 @@ fn managed_workload_name(
 fn require_storage_credentials_in_template(
     credentials: &ObjectNamespaceCredentialBinding,
     template: &ServiceTemplate,
-    require_publisher_contract: bool,
 ) -> ApplicationResult<()> {
     if credentials.spec().references().iter().any(|reference| {
         !template.secrets.iter().any(|binding| {
@@ -737,12 +747,6 @@ fn require_storage_credentials_in_template(
         return Err(ApplicationError::Invalid(
             "Durable Cell provider template omitted an exact S0 credential binding".into(),
         ));
-    }
-    if require_publisher_contract {
-        let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()
-            .map_err(ApplicationError::Internal)?;
-        validate_publisher_storage_credentials(credentials, template, &publisher)
-            .map_err(ApplicationError::Invalid)?;
     }
     Ok(())
 }
@@ -780,11 +784,10 @@ mod tests {
     use crate::modules::workloads::{
         HttpHealthCheck, IWorkloadReplicaRetirementRepository, OciArtifact,
         ReplicaRetirementCompletion, SecretBinding, SecretBindingTarget, ServicePort,
-        ServiceProcess, ServiceResources, WorkloadReplicaLifecycle,
+        ServiceResources, WorkloadReplicaLifecycle,
     };
     use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
     use serde::Serialize;
-    use std::collections::BTreeMap;
 
     #[tokio::test]
     async fn persisted_intents_recover_through_the_existing_managed_workload_lifecycle() {
@@ -884,7 +887,13 @@ mod tests {
             application_revision_id: record.revision.id,
             service_profile_acl: profile.canonical_acl().into(),
             storage_provider_profile_acl: Some(storage_provider_profile.canonical_acl().into()),
-            workload_template: service_template(&profile, access_key_id, secret_access_key),
+            workload_template: service_template(
+                &profile,
+                &storage_provider_profile,
+                projection.storage_namespace_id,
+                access_key_id,
+                secret_access_key,
+            ),
             storage_credentials,
             retention_policy,
             node_pool_id: None,
@@ -897,6 +906,18 @@ mod tests {
         let workloads = Arc::new(InMemoryWorkloadRepository::new());
         let node_pools = Arc::new(InMemoryNodeRepository::new());
         let secret_port: Arc<dyn ISecretRepository> = secrets.clone();
+
+        let mut missing_storage_process = command.clone();
+        missing_storage_process.workload_template.process.args = vec![
+            "--listen".into(),
+            "0.0.0.0:8080".into(),
+            "--internal-listen".into(),
+            "0.0.0.0:8081".into(),
+        ];
+        assert!(PreparedDeployment::new(&missing_storage_process).is_err());
+        missing_storage_process.storage_provider_profile_acl = None;
+        PreparedDeployment::new(&missing_storage_process)
+            .expect("legacy deployment remains outside the pinned celld/S0 adapter");
 
         // Persist the exact intent without invoking Workloads, modeling a
         // process death at the cross-owner boundary.
@@ -1405,6 +1426,8 @@ mod tests {
 
     fn service_template(
         profile: &DurableCellServiceProfile,
+        provider_profile: &ObjectNamespaceProviderProfile,
+        storage_namespace_id: crate::modules::shared_kernel::domain::StorageNamespaceId,
         access_key_id: SecretVersionReference,
         secret_access_key: SecretVersionReference,
     ) -> ServiceTemplate {
@@ -1417,17 +1440,14 @@ mod tests {
                 digest: artifact_digest.to_string(),
                 media_type: "application/vnd.oci.image.index.v1+json".into(),
             },
-            process: ServiceProcess {
-                command: vec!["/usr/local/bin/celld".into()],
-                args: vec![
-                    "--listen".into(),
-                    "0.0.0.0:8080".into(),
-                    "--internal-listen".into(),
-                    "0.0.0.0:8081".into(),
-                ],
-                working_directory: Some("/".into()),
-                environment: BTreeMap::new(),
-            },
+            process: compose_pinned_celld_service_process(
+                provider_profile,
+                storage_namespace_id,
+                8080,
+                8081,
+                &publisher,
+            )
+            .expect("pinned celld Service process"),
             secrets: vec![
                 SecretBinding {
                     name: "s0-access-key-id".into(),

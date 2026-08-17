@@ -1130,6 +1130,16 @@ gate, omission preserves the pre-C3b v1 request behavior, and the maintained
 CLI requires it for new C3b deployments. Retained real publication and `C4/C5`
 application/lifecycle evidence remain open.
 
+Component-only `CELL0.5-C4a` reuses that adapter at the serving boundary. For
+profile-bound deployments, the pinned celld Service profile, image, command,
+empty environment, S0 bucket/application prefix/endpoint/region, public and
+internal listeners, single-replica advertise address, and exact Secret targets
+must match at initial admission and again when publication adopts the persisted
+Workload revision. The resulting Service is still projected solely by
+Workloads into the existing Runtime/Box contract; Durable Cells adds no Service
+specification, endpoint registry, lifecycle, or provider configuration store.
+Real named-state and lifecycle evidence remains open.
+
 Component-only `CELL0.4-C1` persists `DurableCellApplication` heads and
 immutable `DurableCellApplicationRevision` canonical ACL through migration
 `116`, registered in Cloud's sole A3S ORM Migrator. Every create, revision

@@ -20,6 +20,8 @@ pub use deployment::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
     DurableCellDeploymentMutationResult,
 };
+#[cfg(test)]
+pub(crate) use provider_workload::compose_pinned_celld_service_process;
 pub use queries::{
     GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
     GetDurableCellApplicationRevisionHandler, ListDurableCellApplicationRevisions,

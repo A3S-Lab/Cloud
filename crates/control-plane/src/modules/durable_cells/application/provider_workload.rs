@@ -1,11 +1,154 @@
-use crate::modules::data::ObjectNamespaceCredentialBinding;
-use crate::modules::durable_cells::domain::DurableCellPublisherProfile;
-use crate::modules::shared_kernel::domain::SecretVersionReference;
-use crate::modules::workloads::{SecretBinding, SecretBindingTarget, ServiceTemplate};
+use crate::modules::artifacts::domain::{
+    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+};
+use crate::modules::data::{ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile};
+use crate::modules::durable_cells::domain::{
+    DurableCellPublisherProfile, DurableCellServiceProfile,
+};
+use crate::modules::shared_kernel::domain::{SecretVersionReference, StorageNamespaceId};
+use crate::modules::workloads::{
+    SecretBinding, SecretBindingTarget, ServiceProcess, ServiceTemplate,
+};
 
 const ACCESS_KEY_BINDING: &str = "s0-access-key-id";
 const SECRET_ACCESS_KEY_BINDING: &str = "s0-secret-access-key";
 const SESSION_TOKEN_BINDING: &str = "s0-session-token";
+
+/// The sole translation from the reviewed celld/S0 profiles into the
+/// long-running Workloads-owned Service process.
+///
+/// CELL0.5 is intentionally single-replica. The internal listener therefore
+/// advertises loopback while still binding the Runtime port. CELL0.6 must
+/// replace that value with an existing Fleet/private-network identity before
+/// multi-node placement is admitted; it must not add another Service
+/// lifecycle or provider configuration authority.
+pub(crate) fn compose_pinned_celld_service_process(
+    provider_profile: &ObjectNamespaceProviderProfile,
+    storage_namespace_id: StorageNamespaceId,
+    public_container_port: u16,
+    internal_container_port: u16,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<ServiceProcess, String> {
+    provider_profile.validate()?;
+    publisher.validate()?;
+    if provider_profile.spec().virtual_hosted_style {
+        return Err("celld v0.2.1 Service requires path-style S0 addressing".into());
+    }
+    if public_container_port == 0
+        || internal_container_port == 0
+        || public_container_port == internal_container_port
+    {
+        return Err("celld Service requires distinct nonzero public and internal ports".into());
+    }
+    let namespace_prefix = provider_profile.namespace_prefix(storage_namespace_id)?;
+    Ok(ServiceProcess {
+        command: publisher.command().to_vec(),
+        args: vec![
+            "--bucket".into(),
+            format!(
+                "s3://{}/{}",
+                provider_profile.spec().bucket,
+                namespace_prefix
+            ),
+            "--endpoint".into(),
+            provider_profile.spec().endpoint.clone(),
+            "--region".into(),
+            provider_profile.spec().region.clone(),
+            "--listen".into(),
+            format!("0.0.0.0:{public_container_port}"),
+            "--internal-listen".into(),
+            format!("0.0.0.0:{internal_container_port}"),
+            "--advertise".into(),
+            format!("127.0.0.1:{internal_container_port}"),
+        ],
+        working_directory: Some("/".into()),
+        // In particular, an input cannot disable celld's default RPO=0
+        // output gate. A durable local cache will be added only through the
+        // existing Runtime volume contract, not an unowned host path.
+        environment: std::collections::BTreeMap::new(),
+    })
+}
+
+/// Validates the complete non-secret Service projection against the exact S0
+/// namespace used by publication. This is reused by initial deployment and by
+/// publication recovery so a persisted Workload cannot publish successfully
+/// and then start celld against a different bucket or prefix.
+pub(super) fn validate_pinned_celld_service_projection(
+    provider_profile: &ObjectNamespaceProviderProfile,
+    storage_namespace_id: StorageNamespaceId,
+    service_profile: &DurableCellServiceProfile,
+    template: &ServiceTemplate,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<(), String> {
+    provider_profile.validate()?;
+    template.validate()?;
+    publisher.validate()?;
+    let reviewed_service_profile = DurableCellServiceProfile::pinned_celld_v0_2_1()?;
+    if service_profile != &reviewed_service_profile {
+        return Err(
+            "pinned celld v0.2.1 requires its exact reviewed Durable Cell Service profile".into(),
+        );
+    }
+    if template.artifact.uri != publisher.image_uri()
+        || template.artifact.digest != publisher.image_digest().as_str()
+        || !matches!(
+            template.artifact.media_type.as_str(),
+            OCI_IMAGE_MANIFEST_MEDIA_TYPE | OCI_IMAGE_INDEX_MEDIA_TYPE
+        )
+    {
+        return Err("Durable Cell provider Workload is not the exact pinned celld image".into());
+    }
+    let profile = service_profile.spec();
+    let public = template
+        .ports
+        .iter()
+        .find(|port| port.name == profile.public_runtime_port)
+        .ok_or_else(|| {
+            "Durable Cell provider Service omitted its public Runtime port".to_owned()
+        })?;
+    let internal = template
+        .ports
+        .iter()
+        .find(|port| port.name == profile.internal_runtime_port)
+        .ok_or_else(|| {
+            "Durable Cell provider Service omitted its internal Runtime port".to_owned()
+        })?;
+    let expected = compose_pinned_celld_service_process(
+        provider_profile,
+        storage_namespace_id,
+        public.container_port,
+        internal.container_port,
+        publisher,
+    )?;
+    if template.process != expected {
+        return Err(
+            "Durable Cell provider process does not match the exact reviewed celld/S0 adapter"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+/// Validates one complete profile-bound provider Workload without resolving
+/// Secret material. Workloads remains the Service owner and Secrets remains
+/// the only materialization authority.
+pub(super) fn validate_pinned_celld_provider_workload(
+    credentials: &ObjectNamespaceCredentialBinding,
+    provider_profile: &ObjectNamespaceProviderProfile,
+    service_profile: &DurableCellServiceProfile,
+    template: &ServiceTemplate,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<(), String> {
+    credentials.validate_provider_profile(provider_profile)?;
+    validate_pinned_celld_service_projection(
+        provider_profile,
+        credentials.spec().namespace_id,
+        service_profile,
+        template,
+        publisher,
+    )?;
+    validate_publisher_storage_credentials(credentials, template, publisher)
+}
 
 /// Checks the exact Secret surface exposed to the pinned celld adapter.
 ///
@@ -118,15 +261,16 @@ mod tests {
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, OrganizationId, ProjectId, SecretId, StorageNamespaceId,
     };
-    use crate::modules::workloads::{OciArtifact, ServiceProcess, ServiceResources};
-    use std::collections::BTreeMap;
-
-    fn binding() -> ObjectNamespaceCredentialBinding {
-        let profile = ObjectNamespaceProviderProfile::parse_acl(include_str!(concat!(
+    use crate::modules::workloads::{HttpHealthCheck, OciArtifact, ServicePort, ServiceResources};
+    fn provider_profile() -> ObjectNamespaceProviderProfile {
+        ObjectNamespaceProviderProfile::parse_acl(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../contracts/s0.1/object-namespace-provider-profile.acl"
         )))
-        .expect("S0 profile");
+        .expect("S0 profile")
+    }
+
+    fn binding(profile: &ObjectNamespaceProviderProfile) -> ObjectNamespaceCredentialBinding {
         ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
             organization_id: OrganizationId::new(),
             project_id: ProjectId::new(),
@@ -141,20 +285,26 @@ mod tests {
         .expect("binding")
     }
 
-    fn template(credentials: &ObjectNamespaceCredentialBinding) -> ServiceTemplate {
-        let digest = format!("sha256:{}", "a".repeat(64));
+    fn template(
+        credentials: &ObjectNamespaceCredentialBinding,
+        provider_profile: &ObjectNamespaceProviderProfile,
+        service_profile: &DurableCellServiceProfile,
+        publisher: &DurableCellPublisherProfile,
+    ) -> ServiceTemplate {
         ServiceTemplate {
             artifact: OciArtifact {
-                uri: format!("oci://example.invalid/celld@{digest}"),
-                digest,
-                media_type: "application/vnd.oci.image.index.v1+json".into(),
+                uri: publisher.image_uri().into(),
+                digest: publisher.image_digest().to_string(),
+                media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
             },
-            process: ServiceProcess {
-                command: vec!["/usr/local/bin/celld".into()],
-                args: Vec::new(),
-                working_directory: Some("/".into()),
-                environment: BTreeMap::new(),
-            },
+            process: compose_pinned_celld_service_process(
+                provider_profile,
+                credentials.spec().namespace_id,
+                8080,
+                8081,
+                publisher,
+            )
+            .expect("celld Service process"),
             secrets: vec![
                 secret(
                     ACCESS_KEY_BINDING,
@@ -168,13 +318,30 @@ mod tests {
                 ),
             ],
             resources: ServiceResources {
-                cpu_millis: 1,
-                memory_bytes: 1,
-                pids: 1,
-                ephemeral_storage_bytes: None,
+                cpu_millis: 1_000,
+                memory_bytes: 512 * 1024 * 1024,
+                pids: 256,
+                ephemeral_storage_bytes: Some(512 * 1024 * 1024),
             },
-            ports: Vec::new(),
-            health: None,
+            ports: vec![
+                ServicePort {
+                    name: service_profile.spec().public_runtime_port.clone(),
+                    container_port: 8080,
+                },
+                ServicePort {
+                    name: service_profile.spec().internal_runtime_port.clone(),
+                    container_port: 8081,
+                },
+            ],
+            health: Some(HttpHealthCheck {
+                port_name: service_profile.spec().public_runtime_port.clone(),
+                path: service_profile.spec().health_path.clone(),
+                interval_ms: 1_000,
+                timeout_ms: 500,
+                healthy_threshold: 1,
+                unhealthy_threshold: 3,
+                stabilization_window_ms: 5_000,
+            }),
         }
     }
 
@@ -190,13 +357,91 @@ mod tests {
     }
 
     #[test]
-    fn accepts_only_exact_credential_references_and_provider_targets() {
-        let credentials = binding();
+    fn accepts_only_the_exact_s0_backed_celld_service_projection() {
+        let provider_profile = provider_profile();
+        let service_profile =
+            DurableCellServiceProfile::pinned_celld_v0_2_1().expect("pinned Service profile");
+        let credentials = binding(&provider_profile);
         let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("publisher");
-        let template = template(&credentials);
+        let template = template(
+            &credentials,
+            &provider_profile,
+            &service_profile,
+            &publisher,
+        );
+        validate_pinned_celld_provider_workload(
+            &credentials,
+            &provider_profile,
+            &service_profile,
+            &template,
+            &publisher,
+        )
+        .expect("exact celld Service projection");
         validate_publisher_storage_credentials(&credentials, &template, &publisher)
             .expect("exact credentials");
         validate_publisher_secret_targets(&template, &publisher).expect("exact targets");
+
+        assert_eq!(template.process.args[0], "--bucket");
+        assert_eq!(
+            template.process.args[1],
+            format!(
+                "s3://a3s-durable-cells/a3s/durable-cells/{}",
+                credentials.spec().namespace_id
+            )
+        );
+        assert_eq!(
+            template.process.args.last().map(String::as_str),
+            Some("127.0.0.1:8081")
+        );
+
+        let mut wrong_namespace = template.clone();
+        wrong_namespace.process.args[1] = "s3://a3s-durable-cells/a3s/durable-cells/foreign".into();
+        assert!(validate_pinned_celld_service_projection(
+            &provider_profile,
+            credentials.spec().namespace_id,
+            &service_profile,
+            &wrong_namespace,
+            &publisher,
+        )
+        .is_err());
+
+        let mut missing_advertise = template.clone();
+        missing_advertise.process.args.truncate(10);
+        assert!(validate_pinned_celld_service_projection(
+            &provider_profile,
+            credentials.spec().namespace_id,
+            &service_profile,
+            &missing_advertise,
+            &publisher,
+        )
+        .is_err());
+
+        let mut weakened_durability = template.clone();
+        weakened_durability
+            .process
+            .environment
+            .insert("CELLD_OUTPUT_GATE".into(), "0".into());
+        assert!(validate_pinned_celld_service_projection(
+            &provider_profile,
+            credentials.spec().namespace_id,
+            &service_profile,
+            &weakened_durability,
+            &publisher,
+        )
+        .is_err());
+
+        let mut drifted_profile_spec = service_profile.spec().clone();
+        drifted_profile_spec.health_path = "/different-health".into();
+        let drifted_profile = DurableCellServiceProfile::from_spec(drifted_profile_spec)
+            .expect("structurally valid drifted profile");
+        assert!(validate_pinned_celld_service_projection(
+            &provider_profile,
+            credentials.spec().namespace_id,
+            &drifted_profile,
+            &template,
+            &publisher,
+        )
+        .is_err());
 
         let mut wrong_target = template.clone();
         wrong_target.secrets[0].target = SecretBindingTarget::Environment {
