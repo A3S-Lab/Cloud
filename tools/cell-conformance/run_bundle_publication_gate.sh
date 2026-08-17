@@ -190,7 +190,7 @@ grep --fixed-strings \
   "revision=$revision service_profile_digest=$service_profile_digest service_template_digest=$service_template_digest" \
   <<<"$behavior_certification" >/dev/null
 grep --fixed-strings \
-  'named_sqlite=verified idle_eviction=verified reactivation=verified cleanup=verified alarms=not-certified websockets=not-certified process_death=not-certified gateway=not-certified' \
+  'named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified cleanup=verified process_death=not-certified gateway=not-certified' \
   <<<"$behavior_certification" >/dev/null
 
 jq -n \
@@ -215,6 +215,8 @@ jq -n \
       exactWorkloadsServiceProjection: true,
       exactS0PublicationNamespace: true,
       namedSQLiteState: true,
+      alarmDelivery: true,
+      hibernatableWebSocket: true,
       rpo0OutputGateNotOverridden: true,
       idleEviction: true,
       statefulReactivation: true,
@@ -225,8 +227,8 @@ jq -n \
     scope: {
       namedSQLiteStateCertified: true,
       idleEvictionReactivationCertified: true,
-      alarmCertified: false,
-      hibernatableWebSocketCertified: false,
+      alarmCertified: true,
+      hibernatableWebSocketCertified: true,
       providerProcessDeathCertified: false,
       gatewayCertified: false,
       completeApplicationBehaviorCertified: false,
@@ -246,8 +248,8 @@ jq -e \
    and ([.checks[]] | all)
    and .scope.namedSQLiteStateCertified == true
    and .scope.idleEvictionReactivationCertified == true
-   and .scope.alarmCertified == false
-   and .scope.hibernatableWebSocketCertified == false
+   and .scope.alarmCertified == true
+   and .scope.hibernatableWebSocketCertified == true
    and .scope.providerProcessDeathCertified == false
    and .scope.gatewayCertified == false
    and .scope.completeApplicationBehaviorCertified == false

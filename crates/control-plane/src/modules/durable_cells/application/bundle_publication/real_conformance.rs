@@ -34,6 +34,7 @@ use a3s_runtime::contract::{
 };
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
+use futures_util::{SinkExt, StreamExt};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::error::Error;
@@ -75,12 +76,43 @@ const WORKER_MODULE: &[u8] = br#"export class Counter {
   }
 
   async fetch(request) {
+    const url = new URL(request.url);
+    if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+      const pair = new WebSocketPair();
+      const server = pair[0];
+      this.state.acceptWebSocket(server);
+      return new Response(null, { status: 101, webSocket: pair[1] });
+    }
+    if (url.pathname === "/arm") {
+      await this.state.storage.setAlarm(Date.now() + 2000);
+      return new Response(JSON.stringify({
+        armed: true,
+        pendingAlarm: await this.state.storage.getAlarm(),
+      }), { headers: { "content-type": "application/json" } });
+    }
+    if (url.pathname === "/alarm-status") {
+      return new Response(JSON.stringify({
+        fires: (await this.state.storage.get("alarmFires")) ?? 0,
+        pendingAlarm: await this.state.storage.getAlarm(),
+      }), { headers: { "content-type": "application/json" } });
+    }
     const value = (await this.state.storage.get("value")) ?? 0;
     const next = value + 1;
     await this.state.storage.put("value", next);
     return new Response(JSON.stringify({ value: next, url: request.url }), {
       headers: { "content-type": "application/json" },
     });
+  }
+
+  async alarm() {
+    const fires = (await this.state.storage.get("alarmFires")) ?? 0;
+    await this.state.storage.put("alarmFires", fires + 1);
+  }
+
+  async webSocketMessage(webSocket, message) {
+    const count = ((await this.state.storage.get("webSocketMessages")) ?? 0) + 1;
+    await this.state.storage.put("webSocketMessages", count);
+    webSocket.send(JSON.stringify({ echo: message, count }));
   }
 }
 
@@ -160,7 +192,7 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
         outcome.publication_object_count,
     );
     println!(
-        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified cleanup=verified alarms=not-certified websockets=not-certified process_death=not-certified gateway=not-certified",
+        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified cleanup=verified process_death=not-certified gateway=not-certified",
         revision,
         outcome.behavior.service_profile_digest,
         outcome.behavior.service_template_digest,
@@ -473,7 +505,7 @@ async fn verify_running_service_behavior(
     if public.socket_addr() == internal.socket_addr() {
         return Err(invalid("Durable Cell public and internal Runtime endpoints overlap").into());
     }
-    verify_named_state_and_idle_reactivation(&public, &internal).await
+    verify_single_node_behavior(&public, &internal).await
 }
 
 async fn require_runtime_support(
@@ -628,7 +660,7 @@ fn secret_version_reference(
         .map_err(invalid)
 }
 
-async fn verify_named_state_and_idle_reactivation(
+async fn verify_single_node_behavior(
     public: &RuntimeServiceEndpoint,
     internal: &RuntimeServiceEndpoint,
 ) -> GateResult<()> {
@@ -639,23 +671,133 @@ async fn verify_named_state_and_idle_reactivation(
     let url = format!("http://{}/?cell=retained-counter", public.socket_addr());
     require_counter_value(&client, &url, 1).await?;
     require_counter_value(&client, &url, 2).await?;
+    verify_alarm_delivery(&client, public).await?;
     let state_url = format!("http://{}/state", internal.socket_addr());
     if operator_occupied(&client, &state_url).await? == 0 {
         return Err(invalid("named Cell was not resident before idle eviction").into());
     }
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(75);
+    verify_hibernatable_websocket(&client, public, &state_url).await?;
+    wait_until_unoccupied(&client, &state_url, "named Cell idle eviction").await?;
+    require_counter_value(&client, &url, 3).await
+}
+
+async fn verify_alarm_delivery(
+    client: &reqwest::Client,
+    public: &RuntimeServiceEndpoint,
+) -> GateResult<()> {
+    let arm_url = format!("http://{}/arm?cell=retained-counter", public.socket_addr());
+    let armed = get_json(client, &arm_url).await?;
+    if armed.get("armed").and_then(serde_json::Value::as_bool) != Some(true)
+        || armed
+            .get("pendingAlarm")
+            .and_then(serde_json::Value::as_u64)
+            .is_none()
+    {
+        return Err(invalid("named Durable Cell did not persist its alarm deadline").into());
+    }
+    let status_url = format!(
+        "http://{}/alarm-status?cell=retained-counter",
+        public.socket_addr()
+    );
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
-        if operator_occupied(&client, &state_url).await? == 0 {
-            break;
+        let status = get_json(client, &status_url).await?;
+        if status.get("fires").and_then(serde_json::Value::as_u64) == Some(1)
+            && status
+                .get("pendingAlarm")
+                .is_some_and(serde_json::Value::is_null)
+        {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let stable = get_json(client, &status_url).await?;
+            if stable.get("fires").and_then(serde_json::Value::as_u64) == Some(1)
+                && stable
+                    .get("pendingAlarm")
+                    .is_some_and(serde_json::Value::is_null)
+            {
+                return Ok(());
+            }
+            return Err(invalid("named Durable Cell alarm was delivered more than once").into());
         }
         if tokio::time::Instant::now() >= deadline {
-            return Err(
-                invalid("named Cell did not become inactive after the pinned idle policy").into(),
-            );
+            return Err(invalid("named Durable Cell alarm did not fire exactly once").into());
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn verify_hibernatable_websocket(
+    client: &reqwest::Client,
+    public: &RuntimeServiceEndpoint,
+    state_url: &str,
+) -> GateResult<()> {
+    let url = format!("ws://{}/?cell=retained-counter", public.socket_addr());
+    let (mut socket, response) = tokio_tungstenite::connect_async(&url).await?;
+    if response.status() != 101 {
+        return Err(invalid("Durable Cell WebSocket upgrade was not accepted").into());
+    }
+    require_websocket_echo(&mut socket, "before-hibernation", 1).await?;
+    wait_until_unoccupied(client, state_url, "hibernatable WebSocket").await?;
+    require_websocket_echo(&mut socket, "after-hibernation", 2).await?;
+    socket.close(None).await?;
+    Ok(())
+}
+
+async fn require_websocket_echo<S>(
+    socket: &mut tokio_tungstenite::WebSocketStream<S>,
+    message: &str,
+    expected_count: u64,
+) -> GateResult<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            message.to_owned().into(),
+        ))
+        .await?;
+    let reply = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            match socket.next().await {
+                Some(Ok(message @ tokio_tungstenite::tungstenite::Message::Text(_))) => {
+                    return Ok::<_, Box<dyn Error + Send + Sync>>(message);
+                }
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) | None => {
+                    return Err(invalid("Durable Cell WebSocket closed before its reply").into())
+                }
+                Some(Ok(_)) => {}
+                Some(Err(error)) => return Err(error.into()),
+            }
+        }
+    })
+    .await
+    .map_err(|_| invalid("Durable Cell WebSocket reply timed out"))??;
+    let value: serde_json::Value = serde_json::from_str(reply.to_text()?)?;
+    if value.get("echo").and_then(serde_json::Value::as_str) != Some(message)
+        || value.get("count").and_then(serde_json::Value::as_u64) != Some(expected_count)
+    {
+        return Err(invalid("hibernatable WebSocket changed its echoed durable state").into());
+    }
+    Ok(())
+}
+
+async fn wait_until_unoccupied(
+    client: &reqwest::Client,
+    state_url: &str,
+    behavior: &str,
+) -> GateResult<()> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(75);
+    loop {
+        if operator_occupied(client, state_url).await? == 0 {
+            return Ok(());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(invalid(format!(
+                "named Cell did not become inactive during {behavior}"
+            ))
+            .into());
         }
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
-    require_counter_value(&client, &url, 3).await
 }
 
 async fn require_counter_value(
@@ -663,15 +805,7 @@ async fn require_counter_value(
     url: &str,
     expected: u64,
 ) -> GateResult<()> {
-    let response = client.get(url).send().await?;
-    if !response.status().is_success() {
-        return Err(invalid(format!(
-            "Durable Cell request returned HTTP {}",
-            response.status()
-        ))
-        .into());
-    }
-    let value: serde_json::Value = response.json().await?;
+    let value = get_json(client, url).await?;
     if value.get("value").and_then(serde_json::Value::as_u64) != Some(expected) {
         return Err(invalid(format!(
             "named Durable Cell returned {:?} instead of counter {expected}",
@@ -680,6 +814,26 @@ async fn require_counter_value(
         .into());
     }
     Ok(())
+}
+
+async fn get_json(client: &reqwest::Client, url: &str) -> GateResult<serde_json::Value> {
+    let response = client.get(url).send().await?;
+    if !response.status().is_success()
+        || response
+            .content_length()
+            .is_some_and(|bytes| bytes > 64 * 1024)
+    {
+        return Err(invalid(format!(
+            "Durable Cell request returned bounded HTTP {}",
+            response.status()
+        ))
+        .into());
+    }
+    let bytes = response.bytes().await?;
+    if bytes.len() > 64 * 1024 {
+        return Err(invalid("Durable Cell JSON response exceeded its bound").into());
+    }
+    serde_json::from_slice(&bytes).map_err(Into::into)
 }
 
 async fn operator_occupied(client: &reqwest::Client, url: &str) -> GateResult<u64> {

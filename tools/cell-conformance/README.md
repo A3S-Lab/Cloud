@@ -35,7 +35,7 @@ not be used to advertise the Durable Cell product as available.
 
 ## CELL0.5 single-node publication and behavior gate
 
-`run_bundle_publication_gate.sh` is the joint C3 gate. It composes the pinned
+`run_bundle_publication_gate.sh` is the joint C3/C4 gate. It composes the pinned
 publisher ACL, the existing node-bound Execution projection, the existing Box
 Task Runtime, the Cloud Artifact and Secret adapters, and the production S0
 object-namespace client. The fixture is a deterministic typed Durable Cell
@@ -57,17 +57,19 @@ bytes, and the shared test context to delete and re-list the whole prefix as
 empty. Before that cleanup, the same test projects the reviewed provider
 template through Workloads' sole Runtime Service compiler, reuses the same Box
 client, Fleet journal, Secret materializer, and S0 namespace, and verifies that
-one named SQLite counter advances, becomes inactive under the sole fixed
-30-second idle policy, and resumes with its next value. The retained log is
-scanned byte-for-byte for every supplied credential before evidence is
+one named SQLite counter advances, its alarm fires exactly once, an accepted
+WebSocket persists its message count across provider-managed hibernation, the
+Cell becomes inactive under the sole fixed 30-second idle policy, and both
+request and WebSocket delivery resume with their next values. The retained log
+is scanned byte-for-byte for every supplied credential before evidence is
 accepted.
 
 The manual `Durable Cell single-node conformance` workflow is restricted to
 `main` and calls the existing Box provider workflow so Box installation, celld
 supply-chain verification, image pulling, process cleanup, and evidence
 retention stay single-sourced. Once the Box prerequisite passes, the component
-evidence certifies named SQLite state and idle eviction/reactivation only. No
-such retained behavior evidence exists yet. It deliberately keeps alarm,
-hibernatable-WebSocket, provider-process-death, Gateway, complete application
-behavior, and fault-matrix claims false; those remain C4/C5 work until their
-own checks pass in this same gate.
+evidence certifies named SQLite state, exact alarm delivery, hibernatable
+WebSockets, and idle eviction/reactivation. No such retained behavior evidence
+exists yet. It deliberately keeps provider-process-death, Gateway, complete
+application behavior, and fault-matrix claims false; those remain C4/C5 work
+until their own checks pass in this same gate.
