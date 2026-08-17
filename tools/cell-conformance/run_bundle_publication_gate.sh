@@ -173,6 +173,87 @@ jq -e \
    and .scope.faultMatrixCertified == false' \
   "$evidence_directory/cell-bundle-publication.json" >/dev/null
 
+grep --fixed-strings \
+  'A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld ' \
+  "$log" >"$evidence_directory/cell-single-node-behavior-certification.txt"
+test "$(wc -l <"$evidence_directory/cell-single-node-behavior-certification.txt")" -eq 1
+behavior_certification=$(<"$evidence_directory/cell-single-node-behavior-certification.txt")
+service_profile_digest=$(sed -nE \
+  's/.* service_profile_digest=(sha256:[0-9a-f]{64}) .*/\1/p' \
+  <<<"$behavior_certification")
+service_template_digest=$(sed -nE \
+  's/.* service_template_digest=(sha256:[0-9a-f]{64}) .*/\1/p' \
+  <<<"$behavior_certification")
+[[ $service_profile_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+[[ $service_template_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+grep --fixed-strings \
+  "revision=$revision service_profile_digest=$service_profile_digest service_template_digest=$service_template_digest" \
+  <<<"$behavior_certification" >/dev/null
+grep --fixed-strings \
+  'named_sqlite=verified idle_eviction=verified reactivation=verified cleanup=verified alarms=not-certified websockets=not-certified process_death=not-certified gateway=not-certified' \
+  <<<"$behavior_certification" >/dev/null
+
+jq -n \
+  --arg cloud "$cloud_revision" \
+  --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+  --arg providerRevision "$revision" \
+  --arg image "$image" \
+  --arg serviceProfileDigest "$service_profile_digest" \
+  --arg serviceTemplateDigest "$service_template_digest" \
+  --arg certification "$behavior_certification" \
+  '{
+    schema: "a3s.cloud.cell0.5-single-node-behavior-evidence.v1",
+    cloudRevision: $cloud,
+    boxRevision: $box,
+    provider: "celld",
+    providerRevision: $providerRevision,
+    image: $image,
+    serviceProfileDigest: $serviceProfileDigest,
+    serviceTemplateDigest: $serviceTemplateDigest,
+    certification: $certification,
+    checks: {
+      exactWorkloadsServiceProjection: true,
+      exactS0PublicationNamespace: true,
+      namedSQLiteState: true,
+      rpo0OutputGateNotOverridden: true,
+      idleEviction: true,
+      statefulReactivation: true,
+      runtimeServiceRemoved: true,
+      s0NamespaceCleanup: true,
+      credentialScanClean: true
+    },
+    scope: {
+      namedSQLiteStateCertified: true,
+      idleEvictionReactivationCertified: true,
+      alarmCertified: false,
+      hibernatableWebSocketCertified: false,
+      providerProcessDeathCertified: false,
+      gatewayCertified: false,
+      completeApplicationBehaviorCertified: false,
+      faultMatrixCertified: false
+    }
+  }' >"$evidence_directory/cell-single-node-behavior.json"
+
+jq -e \
+  --arg cloud "$cloud_revision" \
+  --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
+  --arg revision "$revision" \
+  --arg image "$image" \
+  '.cloudRevision == $cloud
+   and .boxRevision == $box
+   and .providerRevision == $revision
+   and .image == $image
+   and ([.checks[]] | all)
+   and .scope.namedSQLiteStateCertified == true
+   and .scope.idleEvictionReactivationCertified == true
+   and .scope.alarmCertified == false
+   and .scope.hibernatableWebSocketCertified == false
+   and .scope.providerProcessDeathCertified == false
+   and .scope.gatewayCertified == false
+   and .scope.completeApplicationBehaviorCertified == false
+   and .scope.faultMatrixCertified == false' \
+  "$evidence_directory/cell-single-node-behavior.json" >/dev/null
+
 (
   cd -- "$evidence_directory"
   sha256sum \
@@ -180,5 +261,7 @@ jq -e \
     cell-bundle-publication.log \
     cell-bundle-publication-certification.txt \
     cell-bundle-publication.json \
+    cell-single-node-behavior-certification.txt \
+    cell-single-node-behavior.json \
     >cell-bundle-publication-sha256.txt
 )

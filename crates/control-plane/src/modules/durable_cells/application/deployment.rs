@@ -1470,7 +1470,7 @@ mod tests {
                 cpu_millis: 1000,
                 memory_bytes: 512 * 1024 * 1024,
                 pids: 256,
-                ephemeral_storage_bytes: Some(512 * 1024 * 1024),
+                ephemeral_storage_bytes: None,
             },
             ports: vec![
                 ServicePort {

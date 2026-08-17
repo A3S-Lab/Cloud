@@ -974,7 +974,7 @@ unavailable until Identity owns an exact verified recipient contact reference;
 an adapter may never infer an address from an OIDC claim, display name, or
 provider payload.
 
-### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b` implemented)
+### 3.20 Durable Cells (`CELL0.1` implemented; component `CELL0.2`, `CELL0.3`, `CELL0.4-C1/C2/C3/C4/C5`, and `CELL0.5-C1/C2/C3a/C3b/C4a` implemented; `C4b` gate staged)
 
 Owns Durable Cell application identity, immutable revisions, exact canonical
 Service-profile ACL/digest, retention intent, and correlation to an existing
@@ -1128,7 +1128,10 @@ before the existing resource-claim release. Persisted Deployment Flow versions
 exact S0 profile as an optional fourth deployment ACL: presence activates this
 gate, omission preserves the pre-C3b v1 request behavior, and the maintained
 CLI requires it for new C3b deployments. Retained real publication and `C4/C5`
-application/lifecycle evidence remain open.
+application/lifecycle evidence remain open. The currently pinned Box provider
+does not advertise Runtime `Outbound`, so the real publication Task fails
+closed at capability preflight until Box implements and certifies that generic
+capability; Cloud does not add a publisher-specific network path.
 
 Component-only `CELL0.5-C4a` reuses that adapter at the serving boundary. For
 profile-bound deployments, the pinned celld Service profile, image, command,
@@ -1136,11 +1139,23 @@ sole fixed 30-second idle-eviction environment policy, S0
 bucket/application prefix/endpoint/region, public and internal listeners,
 single-replica advertise address, and exact Secret targets must match at
 initial admission and again when publication adopts the persisted Workload
-revision. Every other environment entry remains rejected, including an output
+revision. The template omits, and the shared adapter rejects, unsupported Box
+ephemeral-storage control rather than accepting an unenforceable resource
+promise. Every other environment entry remains rejected, including an output
 gate override. The resulting Service is still projected solely by
 Workloads into the existing Runtime/Box contract; Durable Cells adds no Service
 specification, endpoint registry, lifecycle, or provider configuration store.
-Real named-state and lifecycle evidence remains open.
+The staged component-only `CELL0.5-C4b` gate extends that same manual path before
+whole-prefix cleanup. It projects that exact validated template through the
+existing Workloads Runtime compiler and reuses the same Box client, Fleet
+journal, Secret materializer, and S0 namespace to advance one named SQLite
+counter, observe its idle eviction through a bounded provider response, and
+reactivate it at the next value. It cannot claim a pass until the pinned Box
+revision supplies the outbound publication prerequisite above. Its first
+retained pass remains open, and the
+evidence explicitly leaves alarm, WebSocket, provider-process-death, Gateway,
+complete application behavior, and fault-matrix claims false. No Cell name or
+provider occupancy state is persisted in Cloud.
 
 Component-only `CELL0.4-C1` persists `DurableCellApplication` heads and
 immutable `DurableCellApplicationRevision` canonical ACL through migration

@@ -1,4 +1,4 @@
-name: Durable Cell bundle publication conformance
+name: Durable Cell single-node conformance
 
 on:
   workflow_dispatch:
@@ -17,12 +17,12 @@ jobs:
         run: test "$GITHUB_REF" = refs/heads/main
 
   bundle-publication:
-    name: Real celld publication through Box and S0
+    name: Real celld publication and named state through Box and S0
     needs: require-main
     uses: ./.github/workflows/box-conformance.yml
     with:
       run_cell_bundle_publication: true
-      evidence_artifact_prefix: cell0.5-bundle-publication
+      evidence_artifact_prefix: cell0.5-single-node
     secrets:
       S0_S3_ENDPOINT: ${{ secrets.S0_S3_ENDPOINT }}
       S0_S3_REGION: ${{ secrets.S0_S3_REGION }}

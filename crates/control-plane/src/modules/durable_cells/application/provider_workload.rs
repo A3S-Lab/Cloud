@@ -24,7 +24,7 @@ const CELLD_IDLE_EVICT_SECONDS: &str = "30";
 /// replace that value with an existing Fleet/private-network identity before
 /// multi-node placement is admitted; it must not add another Service
 /// lifecycle or provider configuration authority.
-pub(crate) fn compose_pinned_celld_service_process(
+pub fn compose_pinned_celld_service_process(
     provider_profile: &ObjectNamespaceProviderProfile,
     storage_namespace_id: StorageNamespaceId,
     public_container_port: u16,
@@ -79,7 +79,9 @@ pub(crate) fn compose_pinned_celld_service_process(
 /// Validates the complete non-secret Service projection against the exact S0
 /// namespace used by publication. This is reused by initial deployment and by
 /// publication recovery so a persisted Workload cannot publish successfully
-/// and then start celld against a different bucket or prefix.
+/// and then start celld against a different bucket or prefix. The pinned Box
+/// provider does not advertise ephemeral-storage control, so this adapter also
+/// rejects rather than silently accepting that unsupported resource promise.
 pub(super) fn validate_pinned_celld_service_projection(
     provider_profile: &ObjectNamespaceProviderProfile,
     storage_namespace_id: StorageNamespaceId,
@@ -104,6 +106,11 @@ pub(super) fn validate_pinned_celld_service_projection(
         )
     {
         return Err("Durable Cell provider Workload is not the exact pinned celld image".into());
+    }
+    if template.resources.ephemeral_storage_bytes.is_some() {
+        return Err(
+            "pinned celld Service cannot request unsupported Box ephemeral-storage control".into(),
+        );
     }
     let profile = service_profile.spec();
     let public = template
@@ -328,7 +335,7 @@ mod tests {
                 cpu_millis: 1_000,
                 memory_bytes: 512 * 1024 * 1024,
                 pids: 256,
-                ephemeral_storage_bytes: Some(512 * 1024 * 1024),
+                ephemeral_storage_bytes: None,
             },
             ports: vec![
                 ServicePort {
@@ -448,6 +455,19 @@ mod tests {
             credentials.spec().namespace_id,
             &service_profile,
             &disabled_idle_eviction,
+            &publisher,
+        )
+        .is_err());
+
+        let mut unsupported_storage_control = template.clone();
+        unsupported_storage_control
+            .resources
+            .ephemeral_storage_bytes = Some(512 * 1024 * 1024);
+        assert!(validate_pinned_celld_service_projection(
+            &provider_profile,
+            credentials.spec().namespace_id,
+            &service_profile,
+            &unsupported_storage_control,
             &publisher,
         )
         .is_err());

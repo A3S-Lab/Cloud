@@ -37,7 +37,7 @@ on:
   workflow_call:
     inputs:
       run_cell_bundle_publication:
-        description: Run the credentialed CELL0.5 bundle publication gate
+        description: Run the credentialed CELL0.5 publication and named-state gate
         required: false
         default: false
         type: boolean
@@ -538,7 +538,7 @@ jobs:
               >durable-cell-provider-runtime-sha256.txt
           )
 
-      - name: Certify real Durable Cell bundle publication through Box and S0
+      - name: Certify real Durable Cell publication, named state, and idle reactivation
         if: ${{ inputs.run_cell_bundle_publication == true }}
         working-directory: apps/cloud
         env:

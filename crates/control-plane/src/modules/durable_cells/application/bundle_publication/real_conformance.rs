@@ -1,12 +1,22 @@
+use super::super::provider_workload::{
+    compose_pinned_celld_service_process, validate_pinned_celld_provider_workload,
+};
 use super::*;
 use crate::infrastructure::DisposableS3TestContext;
 use crate::modules::data::{
-    IObjectNamespace, ObjectNamespaceKey, ObjectNamespaceProviderProfile,
-    ObjectNamespaceProviderProfileSpec, ObjectNamespaceRead,
+    IObjectNamespace, ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+    ObjectNamespaceKey, ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec,
+    ObjectNamespaceRead,
 };
 use crate::modules::executions::project_execution_task;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeId, OrganizationId, ProjectId, SecretId, StorageNamespaceId,
+    EnvironmentId, NodeId, OrganizationId, ProjectId, SecretId, SecretVersionReference,
+    StorageNamespaceId, WorkloadId, WorkloadRevisionId,
+};
+use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_spec_with_digest;
+use crate::modules::workloads::{
+    HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
+    ServiceResources, ServiceTemplate, WorkloadRevision,
 };
 use a3s_cloud_contracts::{
     artifact_uri, CloudSecretReference, NodeArtifactDownloadRequest, NodeArtifactUploadRequest,
@@ -19,8 +29,8 @@ use a3s_cloud_node_agent::{
     NodeArtifactTransport, NodeControlClientError, NodeSecretTransport, SecretMaterial,
 };
 use a3s_runtime::contract::{
-    NetworkMode, RuntimeActionRequest, RuntimeApplyRequest, RuntimeInspection, RuntimeUnitClass,
-    RuntimeUnitState, SecretReference, SecretTarget,
+    NetworkMode, RuntimeActionRequest, RuntimeApplyRequest, RuntimeHealthState, RuntimeInspection,
+    RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState, SecretReference, SecretTarget,
 };
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
@@ -31,6 +41,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use uuid::Uuid;
 
 const GATE_ENV: &str = "A3S_CLOUD_TEST_CELL_BUNDLE_PUBLICATION";
@@ -59,21 +70,31 @@ const WRANGLER_JSON: &[u8] = br#"{
 }
 "#;
 const WORKER_MODULE: &[u8] = br#"export class Counter {
-  async fetch() {
-    return new Response("a3s-cloud-cell-publication-gate");
+  constructor(state) {
+    this.state = state;
+  }
+
+  async fetch(request) {
+    const value = (await this.state.storage.get("value")) ?? 0;
+    const next = value + 1;
+    await this.state.storage.put("value", next);
+    return new Response(JSON.stringify({ value: next, url: request.url }), {
+      headers: { "content-type": "application/json" },
+    });
   }
 }
 
 export default {
-  async fetch() {
-    return new Response("a3s-cloud-cell-publication-gate");
+  async fetch(request, env) {
+    const name = new URL(request.url).searchParams.get("cell") ?? "primary";
+    return env.COUNTER.get(env.COUNTER.idFromName(name)).fetch(request);
   },
 };
 "#;
 
 type GateResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
-/// Retained CELL0.5-C3 gate. It runs the exact publisher profile as an
+/// Retained CELL0.5-C3/C4 gate. It runs the exact publisher profile as an
 /// ordinary node-bound Execution Task, resolves credentials through the sole
 /// Cloud Secret adapter, materializes the typed bundle through the sole
 /// Artifact adapter, and observes/cleans the result through the production S0
@@ -124,8 +145,8 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
     let cleanup = storage.remove_all().await;
     let outcome = publication?;
     let removed = cleanup?;
-    if removed != outcome.object_count {
-        return Err(invalid("S0 cleanup count changed after publication verification").into());
+    if removed < outcome.publication_object_count {
+        return Err(invalid("S0 cleanup omitted an object verified during publication").into());
     }
 
     println!(
@@ -136,7 +157,13 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
         storage_profile.digest(),
         outcome.bundle_digest,
         outcome.version,
-        outcome.object_count,
+        outcome.publication_object_count,
+    );
+    println!(
+        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified cleanup=verified alarms=not-certified websockets=not-certified process_death=not-certified gateway=not-certified",
+        revision,
+        outcome.behavior.service_profile_digest,
+        outcome.behavior.service_template_digest,
     );
     Ok(())
 }
@@ -144,7 +171,13 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
 struct PublicationOutcome {
     bundle_digest: String,
     version: String,
-    object_count: usize,
+    publication_object_count: usize,
+    behavior: ServiceBehaviorOutcome,
+}
+
+struct ServiceBehaviorOutcome {
+    service_profile_digest: String,
+    service_template_digest: String,
 }
 
 async fn execute_publication(
@@ -164,8 +197,10 @@ async fn execute_publication(
         media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
     };
     let node_id = NodeId::new();
-    let subject_id = Uuid::now_v7();
+    let workload_revision_id = WorkloadRevisionId::new();
+    let subject_id = workload_revision_id.as_uuid();
     let (secrets, secret_transport) = publication_secrets(subject_id, publisher)?;
+    let service_secrets = secrets.clone();
     let artifact_transport = Arc::new(PublicationArtifactTransport {
         artifact: bundle.clone(),
         bytes: bundle_bytes,
@@ -214,6 +249,7 @@ async fn execute_publication(
     if spec.class != RuntimeUnitClass::Task || spec.network.mode != NetworkMode::Outbound {
         return Err(invalid("publication Execution did not project to one outbound Task").into());
     }
+    require_runtime_support(runtime.as_ref(), &spec).await?;
     let executor = CommandExecutor::runtime_only(
         FileCommandJournal::new(node_state.path().join("journal"), node_id.as_uuid())?,
         runtime.clone(),
@@ -282,11 +318,387 @@ async fn execute_publication(
 
     let namespace: Arc<dyn IObjectNamespace> = Arc::new(storage.client());
     let version = verify_publication(namespace.as_ref()).await?;
+    let behavior = verify_service_behavior(
+        node_id,
+        workload_revision_id,
+        storage_namespace_id,
+        storage_profile,
+        publisher,
+        service_secrets,
+        &executor,
+        runtime.as_ref(),
+        &secret_root,
+        artifact_transport.as_ref(),
+        secret_transport.as_ref(),
+    )
+    .await?;
     Ok(PublicationOutcome {
         bundle_digest,
         version,
-        object_count: 4,
+        publication_object_count: 4,
+        behavior,
     })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn verify_service_behavior(
+    node_id: NodeId,
+    workload_revision_id: WorkloadRevisionId,
+    storage_namespace_id: StorageNamespaceId,
+    storage_profile: &ObjectNamespaceProviderProfile,
+    publisher: &DurableCellPublisherProfile,
+    secrets: Vec<SecretReference>,
+    executor: &CommandExecutor,
+    runtime: &dyn a3s_runtime::RuntimeClient,
+    secret_root: &Path,
+    artifact_transport: &PublicationArtifactTransport,
+    secret_transport: &PublicationSecretTransport,
+) -> GateResult<ServiceBehaviorOutcome> {
+    let service_profile = DurableCellServiceProfile::pinned_celld_v0_2_1()?;
+    let credentials = service_credentials(
+        workload_revision_id,
+        storage_namespace_id,
+        storage_profile,
+        &secrets,
+    )?;
+    let template = service_template(
+        storage_namespace_id,
+        storage_profile,
+        publisher,
+        &service_profile,
+        &secrets,
+    )?;
+    validate_pinned_celld_provider_workload(
+        &credentials,
+        storage_profile,
+        &service_profile,
+        &template,
+        publisher,
+    )?;
+    let service_template_digest = template.digest()?;
+    let workload_id = WorkloadId::new();
+    let revision =
+        WorkloadRevision::create(workload_revision_id, workload_id, 1, template, Utc::now())?;
+    let spec =
+        project_runtime_spec_with_digest(&revision, Some(service_profile.digest().as_str()))?;
+    if spec.class != RuntimeUnitClass::Service
+        || spec.network.mode != NetworkMode::Service
+        || spec.semantics_profile_digest.as_deref() != Some(service_profile.digest().as_str())
+    {
+        return Err(
+            invalid("Durable Cell Workload did not project to the exact Runtime Service").into(),
+        );
+    }
+    require_runtime_support(runtime, &spec).await?;
+    let applied = executor
+        .execute(command(
+            node_id,
+            workload_id.as_uuid(),
+            3,
+            NodeCommandPayload::RuntimeApply {
+                request: Box::new(RuntimeApplyRequest {
+                    schema: RuntimeApplyRequest::SCHEMA.into(),
+                    request_id: format!("cell-service-apply-{workload_revision_id}"),
+                    deadline_at_ms: None,
+                    spec: spec.clone(),
+                }),
+                resource_claim: None,
+            },
+        )?)
+        .await?;
+    let verification = verify_running_service_behavior(&applied, &service_profile).await;
+    let removed = executor
+        .execute(command(
+            node_id,
+            workload_id.as_uuid(),
+            4,
+            NodeCommandPayload::RuntimeRemove {
+                request: RuntimeActionRequest {
+                    schema: RuntimeActionRequest::SCHEMA.into(),
+                    request_id: format!("cell-service-remove-{workload_revision_id}"),
+                    unit_id: spec.unit_id.clone(),
+                    generation: spec.generation,
+                    deadline_at_ms: None,
+                },
+            },
+        )?)
+        .await;
+    verification?;
+    expect_removed(&removed?, &spec.unit_id)?;
+    if !matches!(
+        runtime.inspect(&spec.unit_id).await?,
+        RuntimeInspection::NotFound { .. }
+    ) {
+        return Err(invalid("removed Durable Cell Workload Service remained inspectable").into());
+    }
+    let expected_secret_calls = secret_transport
+        .material_count()
+        .checked_mul(2)
+        .ok_or_else(|| invalid("Durable Cell Secret call expectation overflowed"))?;
+    if artifact_transport.downloads.load(Ordering::SeqCst) != 1
+        || directory_has_entries(secret_root)?
+        || secret_transport.total_calls()? != expected_secret_calls
+    {
+        return Err(invalid("Service behavior changed Artifact or Secret cleanup").into());
+    }
+    Ok(ServiceBehaviorOutcome {
+        service_profile_digest: service_profile.digest().to_string(),
+        service_template_digest,
+    })
+}
+
+async fn verify_running_service_behavior(
+    applied: &NodeCommandAck,
+    service_profile: &DurableCellServiceProfile,
+) -> GateResult<()> {
+    let observation = applied_observation(applied)?;
+    if observation.state != RuntimeUnitState::Running
+        || observation
+            .health
+            .as_ref()
+            .is_none_or(|health| health.state != RuntimeHealthState::Healthy)
+    {
+        return Err(invalid("S0-backed celld Workload Service did not become healthy").into());
+    }
+    let public = RuntimeServiceEndpoint::from_observation(
+        observation,
+        &service_profile.spec().public_runtime_port,
+    )
+    .map_err(invalid)?;
+    let internal = RuntimeServiceEndpoint::from_observation(
+        observation,
+        &service_profile.spec().internal_runtime_port,
+    )
+    .map_err(invalid)?;
+    if public.socket_addr() == internal.socket_addr() {
+        return Err(invalid("Durable Cell public and internal Runtime endpoints overlap").into());
+    }
+    verify_named_state_and_idle_reactivation(&public, &internal).await
+}
+
+async fn require_runtime_support(
+    runtime: &dyn a3s_runtime::RuntimeClient,
+    spec: &a3s_runtime::contract::RuntimeUnitSpec,
+) -> GateResult<()> {
+    let missing = runtime.capabilities().await?.missing_for(spec)?;
+    if !missing.is_empty() {
+        return Err(invalid(format!(
+            "pinned Box cannot run the Durable Cell conformance projection: {}",
+            missing.join(", ")
+        ))
+        .into());
+    }
+    Ok(())
+}
+
+fn service_credentials(
+    workload_revision_id: WorkloadRevisionId,
+    storage_namespace_id: StorageNamespaceId,
+    storage_profile: &ObjectNamespaceProviderProfile,
+    secrets: &[SecretReference],
+) -> GateResult<ObjectNamespaceCredentialBinding> {
+    let access_key = service_secret_reference(secrets, "s0-access-key-id")?;
+    let secret_access_key = service_secret_reference(secrets, "s0-secret-access-key")?;
+    let session_token = service_secret_reference_optional(secrets, "s0-session-token")?;
+    for reference in [Some(access_key), Some(secret_access_key), session_token]
+        .into_iter()
+        .flatten()
+    {
+        if reference.workload_revision_id != workload_revision_id.as_uuid() {
+            return Err(invalid("Service Secret reference changed its Workload revision").into());
+        }
+    }
+    ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        environment_id: EnvironmentId::new(),
+        namespace_id: storage_namespace_id,
+        generation: 1,
+        provider_profile_digest: storage_profile.digest().clone(),
+        access_key_id: secret_version_reference(access_key)?,
+        secret_access_key: secret_version_reference(secret_access_key)?,
+        session_token: session_token.map(secret_version_reference).transpose()?,
+    })
+    .map_err(|error| invalid(error).into())
+}
+
+fn service_template(
+    storage_namespace_id: StorageNamespaceId,
+    storage_profile: &ObjectNamespaceProviderProfile,
+    publisher: &DurableCellPublisherProfile,
+    service_profile: &DurableCellServiceProfile,
+    secrets: &[SecretReference],
+) -> GateResult<ServiceTemplate> {
+    let template = ServiceTemplate {
+        artifact: OciArtifact {
+            uri: publisher.image_uri().into(),
+            digest: publisher.image_digest().to_string(),
+            media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
+        },
+        process: compose_pinned_celld_service_process(
+            storage_profile,
+            storage_namespace_id,
+            8080,
+            8081,
+            publisher,
+        )?,
+        secrets: secrets
+            .iter()
+            .map(service_secret_binding)
+            .collect::<Result<Vec<_>, _>>()?,
+        resources: ServiceResources {
+            cpu_millis: 1_000,
+            memory_bytes: 512 * 1024 * 1024,
+            pids: 256,
+            ephemeral_storage_bytes: None,
+        },
+        ports: vec![
+            ServicePort {
+                name: service_profile.spec().public_runtime_port.clone(),
+                container_port: 8080,
+            },
+            ServicePort {
+                name: service_profile.spec().internal_runtime_port.clone(),
+                container_port: 8081,
+            },
+        ],
+        health: Some(HttpHealthCheck {
+            port_name: service_profile.spec().public_runtime_port.clone(),
+            path: service_profile.spec().health_path.clone(),
+            interval_ms: 1_000,
+            timeout_ms: 500,
+            healthy_threshold: 1,
+            unhealthy_threshold: 3,
+            stabilization_window_ms: 5_000,
+        }),
+    };
+    template.validate().map_err(invalid)?;
+    Ok(template)
+}
+
+fn service_secret_binding(reference: &SecretReference) -> Result<SecretBinding, io::Error> {
+    let parsed = CloudSecretReference::parse(&reference.reference).map_err(invalid)?;
+    let target = match &reference.target {
+        SecretTarget::Environment { variable } => SecretBindingTarget::Environment {
+            variable: variable.clone(),
+        },
+        _ => {
+            return Err(invalid(
+                "celld Service Secret target is not an environment variable",
+            ))
+        }
+    };
+    Ok(SecretBinding {
+        name: reference.name.clone(),
+        secret_id: SecretId::from_uuid(parsed.secret_id),
+        version: parsed.version,
+        target,
+    })
+}
+
+fn service_secret_reference(
+    secrets: &[SecretReference],
+    name: &str,
+) -> GateResult<CloudSecretReference> {
+    service_secret_reference_optional(secrets, name)?
+        .ok_or_else(|| invalid(format!("Service omitted Secret binding {name}")).into())
+}
+
+fn service_secret_reference_optional(
+    secrets: &[SecretReference],
+    name: &str,
+) -> GateResult<Option<CloudSecretReference>> {
+    let matches = secrets
+        .iter()
+        .filter(|reference| reference.name == name)
+        .collect::<Vec<_>>();
+    match matches.as_slice() {
+        [] => Ok(None),
+        [reference] => CloudSecretReference::parse(&reference.reference)
+            .map(Some)
+            .map_err(|error| invalid(error).into()),
+        _ => Err(invalid(format!("Service duplicated Secret binding {name}")).into()),
+    }
+}
+
+fn secret_version_reference(
+    reference: CloudSecretReference,
+) -> Result<SecretVersionReference, io::Error> {
+    SecretVersionReference::new(SecretId::from_uuid(reference.secret_id), reference.version)
+        .map_err(invalid)
+}
+
+async fn verify_named_state_and_idle_reactivation(
+    public: &RuntimeServiceEndpoint,
+    internal: &RuntimeServiceEndpoint,
+) -> GateResult<()> {
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()?;
+    let url = format!("http://{}/?cell=retained-counter", public.socket_addr());
+    require_counter_value(&client, &url, 1).await?;
+    require_counter_value(&client, &url, 2).await?;
+    let state_url = format!("http://{}/state", internal.socket_addr());
+    if operator_occupied(&client, &state_url).await? == 0 {
+        return Err(invalid("named Cell was not resident before idle eviction").into());
+    }
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(75);
+    loop {
+        if operator_occupied(&client, &state_url).await? == 0 {
+            break;
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(
+                invalid("named Cell did not become inactive after the pinned idle policy").into(),
+            );
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    require_counter_value(&client, &url, 3).await
+}
+
+async fn require_counter_value(
+    client: &reqwest::Client,
+    url: &str,
+    expected: u64,
+) -> GateResult<()> {
+    let response = client.get(url).send().await?;
+    if !response.status().is_success() {
+        return Err(invalid(format!(
+            "Durable Cell request returned HTTP {}",
+            response.status()
+        ))
+        .into());
+    }
+    let value: serde_json::Value = response.json().await?;
+    if value.get("value").and_then(serde_json::Value::as_u64) != Some(expected) {
+        return Err(invalid(format!(
+            "named Durable Cell returned {:?} instead of counter {expected}",
+            value.get("value")
+        ))
+        .into());
+    }
+    Ok(())
+}
+
+async fn operator_occupied(client: &reqwest::Client, url: &str) -> GateResult<u64> {
+    let response = client.get(url).send().await?;
+    if !response.status().is_success()
+        || response
+            .content_length()
+            .is_some_and(|bytes| bytes > 64 * 1024)
+    {
+        return Err(invalid("celld operator state was unavailable or unbounded").into());
+    }
+    let bytes = response.bytes().await?;
+    if bytes.len() > 64 * 1024 {
+        return Err(invalid("celld operator state exceeded its response bound").into());
+    }
+    serde_json::from_slice::<serde_json::Value>(&bytes)?
+        .get("occupied")
+        .and_then(serde_json::Value::as_u64)
+        .ok_or_else(|| invalid("celld operator state omitted occupied").into())
 }
 
 fn publication_execution(
@@ -618,21 +1030,21 @@ fn applied_observation(
 ) -> GateResult<&a3s_runtime::contract::RuntimeObservation> {
     match succeeded_result(acknowledgement)? {
         NodeCommandResult::RuntimeApplied { observation } => Ok(observation),
-        _ => Err(invalid("publication apply returned an unexpected result").into()),
+        _ => Err(invalid("Durable Cell Runtime apply returned an unexpected result").into()),
     }
 }
 
 fn expect_removed(acknowledgement: &NodeCommandAck, unit_id: &str) -> GateResult<()> {
     match succeeded_result(acknowledgement)? {
         NodeCommandResult::RuntimeRemoved { removal } if removal.unit_id == unit_id => Ok(()),
-        _ => Err(invalid("publication remove returned an unexpected result").into()),
+        _ => Err(invalid("Durable Cell Runtime remove returned an unexpected result").into()),
     }
 }
 
 fn succeeded_result(acknowledgement: &NodeCommandAck) -> GateResult<&NodeCommandResult> {
     match &acknowledgement.outcome {
         NodeCommandOutcome::Succeeded { result } => Ok(result),
-        _ => Err(invalid("publication node command did not succeed").into()),
+        _ => Err(invalid("Durable Cell node command did not succeed").into()),
     }
 }
 

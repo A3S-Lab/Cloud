@@ -269,8 +269,9 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
             CELL_WRITE_TOKEN,
         ))
         .await?;
-    assert_eq!(deployed.status(), 201);
+    let deployed_status = deployed.status();
     let deployed = response_json(&deployed)?;
+    assert_eq!(deployed_status, 201, "{deployed}");
     assert_eq!(deployed["data"]["replayed"], false);
     assert_eq!(
         deployed["data"]["correlation"]["applicationRevisionId"],
@@ -450,12 +451,36 @@ pub(super) fn provider_workload_acl(
         &publisher,
     )
     .expect("pinned celld Service process");
+    let process_command = process
+        .command
+        .iter()
+        .map(|argument| serde_json::to_string(argument).expect("celld command is JSON encodable"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let process_args = process
         .args
         .iter()
-        .map(|argument| format!("\"{argument}\""))
+        .map(|argument| serde_json::to_string(argument).expect("celld argument is JSON encodable"))
         .collect::<Vec<_>>()
         .join(", ");
+    let process_working_directory = serde_json::to_string(
+        process
+            .working_directory
+            .as_deref()
+            .expect("pinned celld process has a working directory"),
+    )
+    .expect("celld working directory is JSON encodable");
+    let process_environment = process
+        .environment
+        .iter()
+        .map(|(name, value)| {
+            let name =
+                serde_json::to_string(name).expect("celld environment name is JSON encodable");
+            let value =
+                serde_json::to_string(value).expect("celld environment value is JSON encodable");
+            format!("    environment {name} {{\n      value = {value}\n    }}\n")
+        })
+        .collect::<String>();
     format!(
         r#"version = 1
 
@@ -464,15 +489,14 @@ workload "celld-provider" {{
     uri = "{artifact_uri}"
 {expected_digest}  }}
   process {{
-    command = ["/usr/local/bin/celld"]
+    command = [{process_command}]
     args = [{process_args}]
-    working_directory = "/"
-  }}
+    working_directory = {process_working_directory}
+{process_environment}  }}
   resources {{
     cpu_millis = 1000
     memory_bytes = 536870912
     pids = 256
-    ephemeral_storage_bytes = 536870912
   }}
   port "{}" {{
     container_port = 8080

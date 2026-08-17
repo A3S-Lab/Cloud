@@ -12,8 +12,9 @@ use a3s_cloud_control_plane::modules::data::{
     ObjectNamespaceRetentionPolicySpec,
 };
 use a3s_cloud_control_plane::modules::durable_cells::application::{
-    CreateDurableCellApplication, CreateDurableCellApplicationHandler,
-    DeployDurableCellApplication, DeployDurableCellApplicationHandler, GetDurableCellApplication,
+    compose_pinned_celld_service_process, CreateDurableCellApplication,
+    CreateDurableCellApplicationHandler, DeployDurableCellApplication,
+    DeployDurableCellApplicationHandler, GetDurableCellApplication,
     GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
     ListDurableCellApplicationRevisionsHandler, ReviseDurableCellApplication,
     ReviseDurableCellApplicationHandler, StartDurableCellApplication,
@@ -54,10 +55,9 @@ use a3s_cloud_control_plane::modules::sources::domain::BuildPlatform;
 use a3s_cloud_control_plane::modules::workloads::{
     HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadRepository, OciArtifact,
     PostgresWorkloadRepository, ReplicaRetirementCompletion, SecretBinding, SecretBindingTarget,
-    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, WorkloadReplicaLifecycle,
+    ServicePort, ServiceResources, ServiceTemplate, WorkloadReplicaLifecycle,
 };
 use chrono::Duration;
-use std::collections::BTreeMap;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::time::Duration as StdDuration;
 
@@ -1251,38 +1251,20 @@ fn durable_cell_service_template(
 ) -> ServiceTemplate {
     let publisher =
         DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("pinned celld publisher");
-    let namespace_prefix = provider_profile
-        .namespace_prefix(storage_namespace_id)
-        .expect("S0 namespace prefix");
     ServiceTemplate {
         artifact: OciArtifact {
             uri: publisher.image_uri().into(),
             digest: publisher.image_digest().to_string(),
             media_type: "application/vnd.oci.image.index.v1+json".into(),
         },
-        process: ServiceProcess {
-            command: publisher.command().to_vec(),
-            args: vec![
-                "--bucket".into(),
-                format!(
-                    "s3://{}/{}",
-                    provider_profile.spec().bucket,
-                    namespace_prefix
-                ),
-                "--endpoint".into(),
-                provider_profile.spec().endpoint.clone(),
-                "--region".into(),
-                provider_profile.spec().region.clone(),
-                "--listen".into(),
-                "0.0.0.0:8080".into(),
-                "--internal-listen".into(),
-                "0.0.0.0:8081".into(),
-                "--advertise".into(),
-                "127.0.0.1:8081".into(),
-            ],
-            working_directory: Some("/".into()),
-            environment: BTreeMap::new(),
-        },
+        process: compose_pinned_celld_service_process(
+            provider_profile,
+            storage_namespace_id,
+            8080,
+            8081,
+            &publisher,
+        )
+        .expect("pinned celld Service process"),
         secrets: vec![
             SecretBinding {
                 name: "s0-access-key-id".into(),
@@ -1305,7 +1287,7 @@ fn durable_cell_service_template(
             cpu_millis: 1000,
             memory_bytes: 512 * 1024 * 1024,
             pids: 256,
-            ephemeral_storage_bytes: Some(512 * 1024 * 1024),
+            ephemeral_storage_bytes: None,
         },
         ports: vec![
             ServicePort {
