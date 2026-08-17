@@ -13,6 +13,8 @@ use crate::modules::workloads::{
 const ACCESS_KEY_BINDING: &str = "s0-access-key-id";
 const SECRET_ACCESS_KEY_BINDING: &str = "s0-secret-access-key";
 const SESSION_TOKEN_BINDING: &str = "s0-session-token";
+const CELLD_IDLE_EVICT_ENVIRONMENT: &str = "CELLD_IDLE_EVICT_S";
+const CELLD_IDLE_EVICT_SECONDS: &str = "30";
 
 /// The sole translation from the reviewed celld/S0 profiles into the
 /// long-running Workloads-owned Service process.
@@ -62,10 +64,15 @@ pub(crate) fn compose_pinned_celld_service_process(
             format!("127.0.0.1:{internal_container_port}"),
         ],
         working_directory: Some("/".into()),
-        // In particular, an input cannot disable celld's default RPO=0
-        // output gate. A durable local cache will be added only through the
-        // existing Runtime volume contract, not an unowned host path.
-        environment: std::collections::BTreeMap::new(),
+        // celld leaves idle eviction disabled unless this provider-owned
+        // policy is set, while the canonical Service profile requires the
+        // behavior. Keeping the exact value in this sole adapter also means
+        // an input cannot disable celld's default RPO=0 output gate or add an
+        // unowned host cache path.
+        environment: std::collections::BTreeMap::from([(
+            CELLD_IDLE_EVICT_ENVIRONMENT.into(),
+            CELLD_IDLE_EVICT_SECONDS.into(),
+        )]),
     })
 }
 
@@ -393,6 +400,10 @@ mod tests {
             template.process.args.last().map(String::as_str),
             Some("127.0.0.1:8081")
         );
+        assert_eq!(
+            template.process.environment,
+            std::collections::BTreeMap::from([("CELLD_IDLE_EVICT_S".into(), "30".into(),)])
+        );
 
         let mut wrong_namespace = template.clone();
         wrong_namespace.process.args[1] = "s3://a3s-durable-cells/a3s/durable-cells/foreign".into();
@@ -426,6 +437,17 @@ mod tests {
             credentials.spec().namespace_id,
             &service_profile,
             &weakened_durability,
+            &publisher,
+        )
+        .is_err());
+
+        let mut disabled_idle_eviction = template.clone();
+        disabled_idle_eviction.process.environment.clear();
+        assert!(validate_pinned_celld_service_projection(
+            &provider_profile,
+            credentials.spec().namespace_id,
+            &service_profile,
+            &disabled_idle_eviction,
             &publisher,
         )
         .is_err());

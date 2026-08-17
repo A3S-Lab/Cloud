@@ -1132,10 +1132,12 @@ application/lifecycle evidence remain open.
 
 Component-only `CELL0.5-C4a` reuses that adapter at the serving boundary. For
 profile-bound deployments, the pinned celld Service profile, image, command,
-empty environment, S0 bucket/application prefix/endpoint/region, public and
-internal listeners, single-replica advertise address, and exact Secret targets
-must match at initial admission and again when publication adopts the persisted
-Workload revision. The resulting Service is still projected solely by
+sole fixed 30-second idle-eviction environment policy, S0
+bucket/application prefix/endpoint/region, public and internal listeners,
+single-replica advertise address, and exact Secret targets must match at
+initial admission and again when publication adopts the persisted Workload
+revision. Every other environment entry remains rejected, including an output
+gate override. The resulting Service is still projected solely by
 Workloads into the existing Runtime/Box contract; Durable Cells adds no Service
 specification, endpoint registry, lifecycle, or provider configuration store.
 Real named-state and lifecycle evidence remains open.
