@@ -82,6 +82,12 @@ pub(super) async fn schedule(
         .map_err(|error| flow_error("could not list execution Runtime nodes", error))?;
     nodes.sort_by_key(|node| node.id);
     for node in nodes {
+        if execution
+            .target_node_id
+            .is_some_and(|target_node_id| target_node_id != node.id)
+        {
+            continue;
+        }
         if !node.accepts_new_work_at(now, runtime.config.heartbeat_timeout) {
             continue;
         }
@@ -141,7 +147,11 @@ pub(super) async fn schedule(
         });
     }
     Ok(ScheduleOutput::Pending {
-        reason: "waiting for a node with Task, sandbox, Artifact, execution-timeout, and network-none capabilities".into(),
+        reason: if execution.target_node_id.is_some() {
+            "waiting for the exact bound node with Task, sandbox, shared Artifact, Secret-reference, outbound-network, and execution-timeout capabilities".into()
+        } else {
+            "waiting for a node with Task, sandbox, Artifact, execution-timeout, and network-none capabilities".into()
+        },
         next_poll_at: next_poll(now, runtime.config.observation_poll, convergence_deadline)?,
         deadline_at: convergence_deadline,
     })

@@ -1,8 +1,10 @@
 mod execution;
+mod execution_task_policy;
 mod execution_template;
 mod execution_template_revision;
 
 pub use execution::{Execution, ExecutionOutcome, ExecutionStatus, WorkflowExecutionBinding};
+pub use execution_task_policy::{ExecutionTaskAuthority, ExecutionTaskPolicy};
 pub use execution_template::{
     ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
     MAX_EXECUTION_TIMEOUT_MS,

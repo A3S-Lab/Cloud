@@ -1,3 +1,4 @@
+use super::execution_task_policy::ExecutionTaskPolicy;
 use super::execution_template::{valid_sha256, ExecutionTemplate};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, ExecutionId, ExecutionTemplateId,
@@ -132,6 +133,10 @@ pub struct Execution {
     pub id: ExecutionId,
     pub operation_id: OperationId,
     pub workflow: Option<WorkflowExecutionBinding>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_node_id: Option<NodeId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_policy: Option<ExecutionTaskPolicy>,
     pub template: ExecutionTemplate,
     pub template_digest: String,
     pub status: ExecutionStatus,
@@ -180,6 +185,55 @@ impl Execution {
         workflow: Option<WorkflowExecutionBinding>,
         requested_at: DateTime<Utc>,
     ) -> Result<Self, String> {
+        Self::create_with_bindings(
+            organization_id,
+            project_id,
+            environment_id,
+            id,
+            template,
+            workflow,
+            None,
+            None,
+            requested_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_bound_task(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        id: ExecutionId,
+        template: ExecutionTemplate,
+        target_node_id: NodeId,
+        task_policy: ExecutionTaskPolicy,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        Self::create_with_bindings(
+            organization_id,
+            project_id,
+            environment_id,
+            id,
+            template,
+            None,
+            Some(target_node_id),
+            Some(task_policy),
+            requested_at,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_with_bindings(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        id: ExecutionId,
+        template: ExecutionTemplate,
+        workflow: Option<WorkflowExecutionBinding>,
+        target_node_id: Option<NodeId>,
+        task_policy: Option<ExecutionTaskPolicy>,
+        requested_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
         if organization_id.as_uuid().is_nil()
             || project_id.as_uuid().is_nil()
             || environment_id.as_uuid().is_nil()
@@ -196,6 +250,8 @@ impl Execution {
             id,
             operation_id: OperationId::from_uuid(id.as_uuid()),
             workflow,
+            target_node_id,
+            task_policy,
             template,
             template_digest,
             status: ExecutionStatus::Queued,
@@ -229,6 +285,10 @@ impl Execution {
         format!("cloud-execution-{}", self.id)
     }
 
+    pub const fn is_bound_task(&self) -> bool {
+        self.task_policy.is_some()
+    }
+
     pub fn schedule(
         &mut self,
         node_id: NodeId,
@@ -247,6 +307,9 @@ impl Execution {
         if self.status != ExecutionStatus::Queued
             || node_id.as_uuid().is_nil()
             || !valid_sha256(&runtime_spec_digest)
+            || self
+                .target_node_id
+                .is_some_and(|target_node_id| target_node_id != node_id)
         {
             return Err("execution cannot be scheduled with the supplied Runtime identity".into());
         }
@@ -349,6 +412,16 @@ impl Execution {
         if let Some(workflow) = &self.workflow {
             workflow.validate()?;
         }
+        match (self.target_node_id, self.task_policy.as_ref()) {
+            (None, None) => {}
+            (Some(target_node_id), Some(task_policy)) if self.workflow.is_none() => {
+                task_policy.validate(target_node_id, &self.template)?;
+            }
+            _ => return Err(
+                "execution bound Task policy, target node, and Workflow authority are inconsistent"
+                    .into(),
+            ),
+        }
         if self.organization_id.as_uuid().is_nil()
             || self.project_id.as_uuid().is_nil()
             || self.environment_id.as_uuid().is_nil()
@@ -370,6 +443,10 @@ impl Execution {
                 .runtime_spec_digest
                 .as_ref()
                 .is_some_and(|digest| !valid_sha256(digest))
+            || self
+                .node_id
+                .zip(self.target_node_id)
+                .is_some_and(|(node_id, target_node_id)| node_id != target_node_id)
         {
             return Err("execution aggregate is invalid".into());
         }

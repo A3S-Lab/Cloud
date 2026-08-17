@@ -15,10 +15,10 @@ pub use application::{
 };
 pub use domain::{
     Execution, ExecutionArtifact, ExecutionOutcome, ExecutionProcess, ExecutionResources,
-    ExecutionStatus, ExecutionTemplate, ExecutionTemplateDefinition,
-    ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
-    IExecutionTemplateRepository, WorkflowExecutionBinding, EXECUTION_TEMPLATE_CAPABILITY,
-    EXECUTION_TEMPLATE_MAX_ACL_BYTES, EXECUTION_TEMPLATE_SCHEMA,
+    ExecutionStatus, ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTemplate,
+    ExecutionTemplateDefinition, ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision,
+    IExecutionRepository, IExecutionTemplateRepository, WorkflowExecutionBinding,
+    EXECUTION_TEMPLATE_CAPABILITY, EXECUTION_TEMPLATE_MAX_ACL_BYTES, EXECUTION_TEMPLATE_SCHEMA,
 };
 pub use infrastructure::{
     project_execution_task, ExecutionFlowConfig, ExecutionFlowConfigOptions, ExecutionFlowRuntime,

@@ -307,6 +307,8 @@ mod tests {
         assert!(encoded["template"]["resources"].get("cpuMillis").is_some());
         assert!(encoded["template"]["artifact"].get("mediaType").is_some());
         for private in [
+            "targetNodeId",
+            "taskPolicy",
             "nodeId",
             "commandId",
             "cleanupCommandId",

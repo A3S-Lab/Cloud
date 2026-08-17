@@ -8,6 +8,9 @@ use sha2::{Digest, Sha256};
 const EXECUTION_ID_ENV: &str = "A3S_EXECUTION_ID";
 const EXECUTION_INPUT_ENV: &str = "A3S_EXECUTION_INPUT_JSON";
 const EXECUTION_TEMPLATE_DIGEST_ENV: &str = "A3S_EXECUTION_TEMPLATE_DIGEST";
+const EXECUTION_AUTHORITY_KIND_ENV: &str = "A3S_EXECUTION_AUTHORITY_KIND";
+const EXECUTION_AUTHORITY_SUBJECT_ENV: &str = "A3S_EXECUTION_AUTHORITY_SUBJECT_ID";
+const EXECUTION_AUTHORITY_DIGEST_ENV: &str = "A3S_EXECUTION_AUTHORITY_DIGEST";
 const SEMANTICS_PROFILE: &str = "a3s.cloud.execution-task.v1:network-none:json-env";
 
 pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, String> {
@@ -23,7 +26,31 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
         EXECUTION_TEMPLATE_DIGEST_ENV.into(),
         execution.template_digest.clone(),
     );
+    if let Some(policy) = &execution.task_policy {
+        environment.insert(
+            EXECUTION_AUTHORITY_KIND_ENV.into(),
+            policy.authority.kind.clone(),
+        );
+        environment.insert(
+            EXECUTION_AUTHORITY_SUBJECT_ENV.into(),
+            policy.authority.subject_id.to_string(),
+        );
+        environment.insert(
+            EXECUTION_AUTHORITY_DIGEST_ENV.into(),
+            policy.authority.digest.to_string(),
+        );
+    }
     let template = &execution.template;
+    let mounts = execution
+        .task_policy
+        .as_ref()
+        .map(|policy| policy.mounts.clone())
+        .unwrap_or_default();
+    let secrets = execution
+        .task_policy
+        .as_ref()
+        .map(|policy| policy.secrets.clone())
+        .unwrap_or_default();
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
         unit_id: execution.runtime_unit_id(),
@@ -40,10 +67,14 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
             working_directory: template.process.working_directory.clone(),
             environment,
         },
-        mounts: Vec::new(),
-        secrets: Vec::new(),
+        mounts,
+        secrets,
         network: RuntimeNetworkSpec {
-            mode: NetworkMode::None,
+            mode: if execution.task_policy.is_some() {
+                NetworkMode::Outbound
+            } else {
+                NetworkMode::None
+            },
             ports: Vec::new(),
         },
         resources: ResourceLimits {
@@ -57,9 +88,9 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
         health: None,
         restart: RestartPolicy::Never,
         outputs: Vec::new(),
-        semantics_profile_digest: Some(format!(
-            "sha256:{:x}",
-            Sha256::digest(SEMANTICS_PROFILE.as_bytes())
+        semantics_profile_digest: Some(execution.task_policy.as_ref().map_or_else(
+            || format!("sha256:{:x}", Sha256::digest(SEMANTICS_PROFILE.as_bytes())),
+            |policy| policy.semantics_profile_digest.to_string(),
         )),
     };
     spec.validate()?;
@@ -70,11 +101,14 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
 mod tests {
     use super::*;
     use crate::modules::executions::domain::{
-        ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
+        ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTaskAuthority,
+        ExecutionTaskPolicy, ExecutionTemplate,
     };
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, ExecutionId, OrganizationId, ProjectId,
+        EnvironmentId, ExecutionId, NodeId, OrganizationId, ProjectId, Sha256Digest,
     };
+    use a3s_cloud_contracts::{artifact_uri, CloudSecretReference, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
+    use a3s_runtime::contract::{RuntimeMount, RuntimeMountSource, SecretReference, SecretTarget};
     use chrono::Utc;
     use std::collections::BTreeMap;
 
@@ -155,5 +189,76 @@ mod tests {
             first_spec.digest().expect("first digest"),
             changed_spec.digest().expect("changed digest")
         );
+    }
+
+    #[test]
+    fn bound_projection_reuses_the_same_task_with_exact_node_inputs_and_outbound_network() {
+        let standard = execution();
+        let subject_id = uuid::Uuid::now_v7();
+        let target_node_id = NodeId::new();
+        let bundle_digest = format!("sha256:{}", "b".repeat(64));
+        let secret_id = uuid::Uuid::now_v7();
+        let policy = ExecutionTaskPolicy {
+            authority: ExecutionTaskAuthority {
+                kind: "workload.prestart".into(),
+                subject_id,
+                digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+                    .expect("authority digest"),
+            },
+            mounts: vec![RuntimeMount {
+                name: "application-bundle".into(),
+                source: RuntimeMountSource::Artifact {
+                    artifact: ArtifactRef {
+                        uri: artifact_uri(&bundle_digest).expect("artifact URI"),
+                        digest: bundle_digest,
+                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
+                    },
+                },
+                target: "/workspace/bundle".into(),
+                read_only: true,
+            }],
+            secrets: vec![SecretReference {
+                name: "s0-access-key-id".into(),
+                reference: CloudSecretReference::new(subject_id, secret_id, 4)
+                    .expect("Secret reference")
+                    .to_string(),
+                target: SecretTarget::Environment {
+                    variable: "AWS_ACCESS_KEY_ID".into(),
+                },
+            }],
+            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))
+                .expect("semantics digest"),
+        };
+        let bound = Execution::create_bound_task(
+            standard.organization_id,
+            standard.project_id,
+            standard.environment_id,
+            ExecutionId::new(),
+            standard.template,
+            target_node_id,
+            policy.clone(),
+            Utc::now(),
+        )
+        .expect("bound execution");
+
+        let spec = project_execution_task(&bound).expect("bound Runtime Task");
+        assert_eq!(bound.target_node_id, Some(target_node_id));
+        assert_eq!(spec.class, RuntimeUnitClass::Task);
+        assert_eq!(spec.network.mode, NetworkMode::Outbound);
+        assert_eq!(spec.mounts, policy.mounts);
+        assert_eq!(spec.secrets, policy.secrets);
+        assert_eq!(
+            spec.semantics_profile_digest.as_deref(),
+            Some(policy.semantics_profile_digest.as_str())
+        );
+        assert_eq!(
+            spec.process
+                .environment
+                .get(EXECUTION_AUTHORITY_SUBJECT_ENV)
+                .map(String::as_str),
+            Some(subject_id.to_string().as_str())
+        );
+        assert!(spec.outputs.is_empty());
+        spec.validate().expect("valid bound Runtime Task");
     }
 }

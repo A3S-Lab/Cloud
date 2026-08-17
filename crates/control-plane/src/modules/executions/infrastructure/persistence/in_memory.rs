@@ -162,6 +162,7 @@ impl IExecutionRepository for InMemoryExecutionRepository {
                 execution.organization_id == organization_id
                     && execution.project_id == project_id
                     && execution.environment_id == environment_id
+                    && !execution.is_bound_task()
             })
             .cloned()
             .collect::<Vec<_>>();

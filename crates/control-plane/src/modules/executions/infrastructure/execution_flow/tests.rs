@@ -10,7 +10,8 @@ use super::{
 };
 use crate::modules::executions::domain::{
     CreateExecution, Execution, ExecutionArtifact, ExecutionOutcome, ExecutionProcess,
-    ExecutionResources, ExecutionStatus, ExecutionTemplate, IExecutionRepository,
+    ExecutionResources, ExecutionStatus, ExecutionTaskAuthority, ExecutionTaskPolicy,
+    ExecutionTemplate, IExecutionRepository,
 };
 use crate::modules::executions::infrastructure::InMemoryExecutionRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
@@ -23,16 +24,17 @@ use crate::modules::fleet::domain::value_objects::{
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::shared_kernel::domain::{
     EnrollmentTokenId, EnvironmentId, ExecutionId, IdempotencyRequest, NodeId, OrganizationId,
-    ProjectId,
+    ProjectId, Sha256Digest,
 };
 use a3s_cloud_contracts::{
-    DomainEventEnvelope, NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, NodeHeartbeat, NodeObservationBatch,
-    RuntimeObservationReport,
+    artifact_uri, CloudSecretReference, DomainEventEnvelope, NodeCommandAck,
+    NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{
-    IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
-    RuntimeFeature, RuntimeObservation, RuntimeRemoval, RuntimeUnitClass, RuntimeUnitState,
+    ArtifactRef, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeCapabilities,
+    RuntimeEvidence, RuntimeFeature, RuntimeMount, RuntimeMountSource, RuntimeObservation,
+    RuntimeRemoval, RuntimeUnitClass, RuntimeUnitState, SecretReference, SecretTarget,
 };
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
@@ -242,6 +244,60 @@ async fn runtime_task_runs_only_on_a_sandbox_node_and_completes_after_removal(
 }
 
 #[tokio::test]
+async fn bound_runtime_task_schedules_only_on_its_exact_capable_node(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = Fixture::create().await?;
+    let now = Utc::now();
+    let _other = ready_node(
+        &fixture.nodes,
+        fixture.execution.organization_id,
+        now,
+        "bound-other",
+        bound_capabilities(),
+    )
+    .await?;
+    let (target_node_id, _) = ready_node(
+        &fixture.nodes,
+        fixture.execution.organization_id,
+        now,
+        "bound-target",
+        bound_capabilities(),
+    )
+    .await?;
+    let bound = bound_execution(&fixture.execution, target_node_id, now)?;
+    fixture
+        .executions
+        .create(CreateExecution {
+            execution: bound.clone(),
+            idempotency: IdempotencyRequest::new(
+                "test/executions/internal-bound",
+                bound.id.to_string(),
+                b"bound-execution",
+            )?,
+            event: event(bound.organization_id),
+        })
+        .await?;
+
+    let ScheduleOutput::Ready { scheduled } = runtime::schedule(
+        &fixture.runtime,
+        &bound.operation_id.to_string(),
+        ExecutionFlowInput {
+            organization_id: bound.organization_id,
+            execution_id: bound.id,
+        },
+    )
+    .await?
+    else {
+        return Err("bound execution was not scheduled".into());
+    };
+    assert_eq!(scheduled.node_id, target_node_id);
+    assert_eq!(scheduled.spec.network.mode, NetworkMode::Outbound);
+    assert_eq!(scheduled.spec.mounts.len(), 1);
+    assert_eq!(scheduled.spec.secrets.len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
 async fn cancellation_before_scheduling_finishes_without_a_runtime_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let fixture = Fixture::create().await?;
@@ -338,6 +394,59 @@ fn capabilities(isolation: IsolationLevel) -> RuntimeCapabilities {
         ],
         features: vec![RuntimeFeature::DurableIdentity, RuntimeFeature::Remove],
     }
+}
+
+fn bound_capabilities() -> RuntimeCapabilities {
+    let mut capabilities = capabilities(IsolationLevel::Sandbox);
+    capabilities.network_modes = vec![NetworkMode::Outbound];
+    capabilities.mount_kinds = vec![MountKind::Artifact];
+    capabilities.features.push(RuntimeFeature::SecretReferences);
+    capabilities
+}
+
+fn bound_execution(
+    standard: &Execution,
+    target_node_id: NodeId,
+    at: chrono::DateTime<Utc>,
+) -> Result<Execution, String> {
+    let subject_id = Uuid::now_v7();
+    let bundle_digest = format!("sha256:{}", "b".repeat(64));
+    Execution::create_bound_task(
+        standard.organization_id,
+        standard.project_id,
+        standard.environment_id,
+        ExecutionId::new(),
+        standard.template.clone(),
+        target_node_id,
+        ExecutionTaskPolicy {
+            authority: ExecutionTaskAuthority {
+                kind: "workload.prestart".into(),
+                subject_id,
+                digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))?,
+            },
+            mounts: vec![RuntimeMount {
+                name: "application-bundle".into(),
+                source: RuntimeMountSource::Artifact {
+                    artifact: ArtifactRef {
+                        uri: artifact_uri(&bundle_digest)?,
+                        digest: bundle_digest,
+                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
+                    },
+                },
+                target: "/workspace/bundle".into(),
+                read_only: true,
+            }],
+            secrets: vec![SecretReference {
+                name: "s0-access-key-id".into(),
+                reference: CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)?.to_string(),
+                target: SecretTarget::Environment {
+                    variable: "AWS_ACCESS_KEY_ID".into(),
+                },
+            }],
+            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))?,
+        },
+        at,
+    )
 }
 
 async fn ready_node(

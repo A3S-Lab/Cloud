@@ -4,8 +4,8 @@ use crate::infrastructure::{
 };
 use crate::modules::executions::domain::{
     validate_execution_transition, CreateExecution, Execution, ExecutionOutcome, ExecutionStatus,
-    ExecutionTemplate, ExecutionWrite, IExecutionRepository, TransitionExecution,
-    WorkflowExecutionBinding,
+    ExecutionTaskPolicy, ExecutionTemplate, ExecutionWrite, IExecutionRepository,
+    TransitionExecution, WorkflowExecutionBinding,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId,
@@ -20,7 +20,7 @@ use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
 
-const SELECT_EXECUTIONS: &str = "select e.organization_id, e.project_id, e.environment_id, e.id, e.operation_id, e.workflow_run_id, e.workflow_plan_revision_id, e.workflow_plan_digest, e.workflow_step_id, e.workflow_step_attempt, e.execution_template_id, e.execution_template_revision_id, e.execution_template_definition_digest, e.template, e.template_digest, e.status, e.node_id, e.command_id, e.cleanup_command_id, e.runtime_spec_digest, e.outcome, e.aggregate_version, e.requested_at, e.updated_at, e.started_at, e.cancellation_requested_at, e.finished_at from executions e";
+const SELECT_EXECUTIONS: &str = "select e.organization_id, e.project_id, e.environment_id, e.id, e.operation_id, e.workflow_run_id, e.workflow_plan_revision_id, e.workflow_plan_digest, e.workflow_step_id, e.workflow_step_attempt, e.execution_template_id, e.execution_template_revision_id, e.execution_template_definition_digest, e.target_node_id, e.task_policy, e.template, e.template_digest, e.status, e.node_id, e.command_id, e.cleanup_command_id, e.runtime_spec_digest, e.outcome, e.aggregate_version, e.requested_at, e.updated_at, e.started_at, e.cancellation_requested_at, e.finished_at from executions e";
 
 #[derive(Clone)]
 pub struct PostgresExecutionRepository {
@@ -102,6 +102,7 @@ impl IExecutionRepository for PostgresExecutionRepository {
                     .bind(project_id.as_uuid())
                     .append(" and e.environment_id = ")
                     .bind(environment_id.as_uuid())
+                    .append(" and e.task_policy is null")
                     .append(" order by e.requested_at desc, e.id desc limit ")
                     .bind(limit),
             )
@@ -243,10 +244,15 @@ async fn insert_execution(
     transaction: &a3s_orm::PostgresTransaction,
     execution: &Execution,
 ) -> Result<(), PostgresPersistenceError> {
+    let task_policy = execution
+        .task_policy
+        .as_ref()
+        .map(serde_json::to_value)
+        .transpose()?;
     let inserted = execute(
         transaction,
         sql_query::<()>(
-            "insert into executions (organization_id, project_id, environment_id, id, operation_id, workflow_run_id, workflow_plan_revision_id, workflow_plan_digest, workflow_step_id, workflow_step_attempt, execution_template_id, execution_template_revision_id, execution_template_definition_digest, template, template_digest, status, aggregate_version, requested_at, updated_at) values (",
+            "insert into executions (organization_id, project_id, environment_id, id, operation_id, workflow_run_id, workflow_plan_revision_id, workflow_plan_digest, workflow_step_id, workflow_step_attempt, execution_template_id, execution_template_revision_id, execution_template_definition_digest, target_node_id, task_policy, template, template_digest, status, aggregate_version, requested_at, updated_at) values (",
         )
         .bind(execution.organization_id.as_uuid())
         .append(", ")
@@ -310,6 +316,10 @@ async fn insert_execution(
                 .as_ref()
                 .map(|binding| binding.execution_template_digest.as_str()),
         )
+        .append(", ")
+        .bind(execution.target_node_id.map(NodeId::as_uuid))
+        .append(", ")
+        .bind(task_policy)
         .append(", ")
         .bind(serde_json::to_value(&execution.template)?)
         .append(", ")
@@ -451,6 +461,8 @@ struct ExecutionRow {
     execution_template_id: Option<Uuid>,
     execution_template_revision_id: Option<Uuid>,
     execution_template_definition_digest: Option<String>,
+    target_node_id: Option<Uuid>,
+    task_policy: Option<Value>,
     template: Value,
     template_digest: String,
     status: String,
@@ -483,20 +495,22 @@ impl FromRow for ExecutionRow {
             execution_template_id: decode(row, 10)?,
             execution_template_revision_id: decode(row, 11)?,
             execution_template_definition_digest: decode(row, 12)?,
-            template: decode(row, 13)?,
-            template_digest: decode(row, 14)?,
-            status: decode(row, 15)?,
-            node_id: decode(row, 16)?,
-            command_id: decode(row, 17)?,
-            cleanup_command_id: decode(row, 18)?,
-            runtime_spec_digest: decode(row, 19)?,
-            outcome: decode(row, 20)?,
-            aggregate_version: decode(row, 21)?,
-            requested_at: decode(row, 22)?,
-            updated_at: decode(row, 23)?,
-            started_at: decode(row, 24)?,
-            cancellation_requested_at: decode(row, 25)?,
-            finished_at: decode(row, 26)?,
+            target_node_id: decode(row, 13)?,
+            task_policy: decode(row, 14)?,
+            template: decode(row, 15)?,
+            template_digest: decode(row, 16)?,
+            status: decode(row, 17)?,
+            node_id: decode(row, 18)?,
+            command_id: decode(row, 19)?,
+            cleanup_command_id: decode(row, 20)?,
+            runtime_spec_digest: decode(row, 21)?,
+            outcome: decode(row, 22)?,
+            aggregate_version: decode(row, 23)?,
+            requested_at: decode(row, 24)?,
+            updated_at: decode(row, 25)?,
+            started_at: decode(row, 26)?,
+            cancellation_requested_at: decode(row, 27)?,
+            finished_at: decode(row, 28)?,
         })
     }
 }
@@ -517,6 +531,11 @@ fn map_row(row: ExecutionRow) -> Result<Execution, RepositoryError> {
         .map(serde_json::from_value::<ExecutionOutcome>)
         .transpose()
         .map_err(|error| corrupt(format!("stored execution outcome is invalid: {error}")))?;
+    let task_policy = row
+        .task_policy
+        .map(serde_json::from_value::<ExecutionTaskPolicy>)
+        .transpose()
+        .map_err(|error| corrupt(format!("stored execution Task policy is invalid: {error}")))?;
     let workflow = match (
         row.workflow_run_id,
         row.workflow_plan_revision_id,
@@ -559,6 +578,8 @@ fn map_row(row: ExecutionRow) -> Result<Execution, RepositoryError> {
         id: ExecutionId::from_uuid(row.id),
         operation_id: OperationId::from_uuid(row.operation_id),
         workflow,
+        target_node_id: row.target_node_id.map(NodeId::from_uuid),
+        task_policy,
         template,
         template_digest: row.template_digest,
         status: ExecutionStatus::parse(&row.status)

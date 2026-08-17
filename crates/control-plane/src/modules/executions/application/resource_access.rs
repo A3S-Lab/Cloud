@@ -34,7 +34,8 @@ impl ExecutionResourceAccess {
         if !evaluator.allows(ResourceGrantScope::Environment {
             project_id: execution.project_id,
             environment_id: execution.environment_id,
-        }) {
+        }) || execution.is_bound_task()
+        {
             return Err(not_found());
         }
         Ok(execution)

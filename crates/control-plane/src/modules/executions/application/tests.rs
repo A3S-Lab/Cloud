@@ -4,10 +4,11 @@ use super::{
     WorkflowExecutionApplicationService, WorkflowExecutionRequest, EXECUTION_WORKFLOW_NAME,
     EXECUTION_WORKFLOW_VERSION,
 };
-use crate::modules::executions::domain::events::ExecutionTemplatePublished;
+use crate::modules::executions::domain::events::{ExecutionRequested, ExecutionTemplatePublished};
 use crate::modules::executions::domain::{
-    CreateExecutionTemplateRevision, ExecutionArtifact, ExecutionProcess, ExecutionResources,
-    ExecutionStatus, ExecutionTemplate, ExecutionTemplateDefinition,
+    CreateExecution, CreateExecutionTemplateRevision, Execution, ExecutionArtifact,
+    ExecutionProcess, ExecutionResources, ExecutionStatus, ExecutionTaskAuthority,
+    ExecutionTaskPolicy, ExecutionTemplate, ExecutionTemplateDefinition,
     ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
     IExecutionTemplateRepository, EXECUTION_TEMPLATE_CAPABILITY,
 };
@@ -24,12 +25,17 @@ use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::projects::infrastructure::persistence::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, ExecutionTemplateId, ExecutionTemplateRevisionId,
-    IdempotencyRequest, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, Sha256Digest,
-    WorkflowRunId,
+    canonical_timestamp, EnvironmentId, ExecutionId, ExecutionTemplateId,
+    ExecutionTemplateRevisionId, IdempotencyRequest, NodeId, OrganizationId, PlanRevisionId,
+    PrincipalId, ProjectId, Sha256Digest, WorkflowRunId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use a3s_cloud_contracts::DomainEventEnvelope;
+use a3s_cloud_contracts::{
+    artifact_uri, CloudSecretReference, DomainEventEnvelope, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+};
+use a3s_runtime::contract::{
+    ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference, SecretTarget,
+};
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -62,6 +68,57 @@ fn template(value: u64) -> ExecutionTemplate {
             timeout_ms: 5_000,
         },
     }
+}
+
+fn bound_task(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    requested_at: chrono::DateTime<Utc>,
+) -> Execution {
+    let subject_id = Uuid::now_v7();
+    let bundle_digest = format!("sha256:{}", "b".repeat(64));
+    Execution::create_bound_task(
+        organization_id,
+        project_id,
+        environment_id,
+        ExecutionId::new(),
+        template(99),
+        NodeId::new(),
+        ExecutionTaskPolicy {
+            authority: ExecutionTaskAuthority {
+                kind: "workload.prestart".into(),
+                subject_id,
+                digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+                    .expect("authority digest"),
+            },
+            mounts: vec![RuntimeMount {
+                name: "application-bundle".into(),
+                source: RuntimeMountSource::Artifact {
+                    artifact: ArtifactRef {
+                        uri: artifact_uri(&bundle_digest).expect("artifact URI"),
+                        digest: bundle_digest,
+                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
+                    },
+                },
+                target: "/workspace/bundle".into(),
+                read_only: true,
+            }],
+            secrets: vec![SecretReference {
+                name: "s0-access-key-id".into(),
+                reference: CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)
+                    .expect("Secret reference")
+                    .to_string(),
+                target: SecretTarget::Environment {
+                    variable: "AWS_ACCESS_KEY_ID".into(),
+                },
+            }],
+            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))
+                .expect("semantics digest"),
+        },
+        requested_at,
+    )
+    .expect("bound Task")
 }
 
 async fn environment() -> (
@@ -328,6 +385,74 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
         .expect("framework")
         .expect_err("revocation must block cancellation replay");
     assert_eq!(replay_after_revocation, missing);
+}
+
+#[tokio::test]
+async fn public_execution_queries_and_cancellation_hide_internal_bound_tasks() {
+    let (organization_id, project_id, environment_id, _) = environment().await;
+    let executions = Arc::new(InMemoryExecutionRepository::new());
+    let requested_at = Utc::now();
+    let execution = bound_task(organization_id, project_id, environment_id, requested_at);
+    executions
+        .create(CreateExecution {
+            execution: execution.clone(),
+            idempotency: IdempotencyRequest::new(
+                "test/executions/internal-bound",
+                execution.id.to_string(),
+                b"internal-bound",
+            )
+            .expect("idempotency"),
+            event: ExecutionRequested::envelope(&execution, Uuid::now_v7()).expect("event"),
+        })
+        .await
+        .expect("create bound Task");
+    let access = ResourceAccessEvaluator::organization_wide();
+    let hidden = GetExecutionHandler::new(executions.clone())
+        .execute(
+            GetExecution {
+                organization_id,
+                execution_id: execution.id,
+                resource_access: access.clone(),
+            },
+            context(),
+        )
+        .await
+        .expect("framework")
+        .expect_err("bound Task must be hidden");
+    assert_eq!(
+        hidden,
+        ApplicationError::NotFound("execution not found".into())
+    );
+    let cancellation = CancelExecutionHandler::new(executions.clone())
+        .execute(
+            CancelExecution {
+                organization_id,
+                execution_id: execution.id,
+                resource_access: access,
+                idempotency_key: "forbidden-bound-cancel".into(),
+                request_id: Uuid::now_v7(),
+                requested_at,
+            },
+            context(),
+        )
+        .await
+        .expect("framework")
+        .expect_err("bound Task cancellation must be hidden");
+    assert_eq!(cancellation, hidden);
+    assert!(executions
+        .list(organization_id, project_id, environment_id, 100)
+        .await
+        .expect("public list")
+        .is_empty());
+    assert_eq!(
+        executions
+            .find(organization_id, execution.id)
+            .await
+            .expect("internal lookup")
+            .expect("bound Task")
+            .status,
+        ExecutionStatus::Queued
+    );
 }
 
 #[tokio::test]

@@ -389,6 +389,19 @@ async fn run_postgres_foundation_test() -> Result<(), Box<dyn std::error::Error>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_bound_execution_tasks_are_exact_node_scoped_and_fail_closed() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        executions_support::exercise_bound_execution_persistence,
+    )
+    .await
+    .expect("PostgreSQL bound Execution Task persistence gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_replica_set_foundation_is_migrated_atomic_and_replay_safe() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
@@ -611,7 +624,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (118, "118".into()));
+    assert_eq!(migration_state, (119, "119".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -1339,7 +1352,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 99);
+    assert_eq!(applied, 119);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",
@@ -4268,6 +4281,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         a3s_cloud_control_plane::modules::shared_kernel::domain::EnvironmentId::from_uuid(
             Uuid::parse_str(&environment_id)?,
         ),
+        workload_fixture.node_id,
     )
     .await
     .map_err(|error| format!("Execution persistence integration failed: {error}"))?;

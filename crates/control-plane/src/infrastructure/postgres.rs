@@ -1021,6 +1021,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/118_typed_build_outputs.sql"
             )),
         ),
+        Migration::new(
+            "119",
+            "node-bound internal Execution Tasks",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/119_bound_execution_tasks.sql"
+            )),
+        ),
     ]
 }
 
@@ -1863,6 +1871,50 @@ mod typed_build_output_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 118 added another build, artifact, or Durable Cells authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod bound_execution_task_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/119_bound_execution_tasks.sql"
+    ));
+
+    #[test]
+    fn migration_119_extends_the_existing_execution_authority_only() {
+        for expected in [
+            "alter table executions",
+            "add column target_node_id uuid",
+            "add column task_policy jsonb",
+            "check (coalesce((",
+            "task_policy - array[",
+            "jsonb_array_length(task_policy -> 'mounts') between 1 and 128",
+            "jsonb_array_length(task_policy -> 'secrets') between 1 and 128",
+            "references nodes (organization_id, id)",
+            "not product configuration or another task lifecycle",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 119 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "create table",
+            "create index",
+            "durable_cell_task",
+            "publisher_queue",
+            "publisher_worker",
+            "secret_value",
+            "retry_count",
+            "jsonb_object_length",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 119 added another execution, publisher, or Secret authority: {forbidden}"
             );
         }
     }

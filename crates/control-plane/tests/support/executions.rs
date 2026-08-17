@@ -1,22 +1,28 @@
+use a3s_cloud_contracts::{artifact_uri, CloudSecretReference, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
+use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
 use a3s_cloud_control_plane::modules::executions::domain::events::{
     ExecutionCancellationRequested, ExecutionRequested, ExecutionTemplatePublished,
 };
 use a3s_cloud_control_plane::modules::executions::domain::{
     CreateExecution, CreateExecutionTemplateRevision, Execution, ExecutionArtifact,
-    ExecutionOutcome, ExecutionProcess, ExecutionResources, ExecutionStatus, ExecutionTemplate,
-    ExecutionTemplateDefinition, ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision,
-    IExecutionRepository, IExecutionTemplateRepository, TransitionExecution,
-    WorkflowExecutionBinding,
+    ExecutionOutcome, ExecutionProcess, ExecutionResources, ExecutionStatus,
+    ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTemplate, ExecutionTemplateDefinition,
+    ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
+    IExecutionTemplateRepository, TransitionExecution, WorkflowExecutionBinding,
 };
 use a3s_cloud_control_plane::modules::executions::{
     PostgresExecutionRepository, PostgresExecutionTemplateRepository,
 };
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId,
-    IdempotencyRequest, OrganizationId, PlanRevisionId, PrincipalId, ProjectId, RepositoryError,
-    Sha256Digest, WorkflowRunId,
+    IdempotencyRequest, NodeId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
+    RepositoryError, Sha256Digest, WorkflowRunId,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_runtime::contract::{
+    ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference, SecretTarget,
+};
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -29,6 +35,7 @@ pub async fn exercise_execution_persistence(
     other_organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
+    target_node_id: NodeId,
 ) -> TestResult {
     let repository = PostgresExecutionRepository::new(executor.clone());
     let execution = execution(organization_id, project_id, environment_id, Utc::now())?;
@@ -138,6 +145,195 @@ pub async fn exercise_execution_persistence(
         )
         .await?;
     assert_eq!(events, 2);
+
+    exercise_bound_execution_roundtrip(
+        &repository,
+        &database,
+        organization_id,
+        project_id,
+        environment_id,
+        target_node_id,
+    )
+    .await?;
+    Ok(())
+}
+
+pub async fn exercise_bound_execution_persistence(url: String) -> TestResult {
+    let executor = connect_and_migrate(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let migration_state = database
+        .fetch_one_as(sql_query::<(i64, String)>(
+            "select count(*), max(version) from a3s_orm_migrations",
+        ))
+        .await?;
+    assert_eq!(migration_state, (119, "119".into()));
+
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let target_node_id = NodeId::new();
+    let created_at = Utc::now();
+    let capabilities = NodeCapabilities::new(
+        "bound-task-test-runtime",
+        "bound-task-test-runtime-1",
+        serde_json::json!({}),
+    )?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", 'Bound Task tenant', 'bound-task-tenant', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", 'Bound Task project', 'bound-task-project', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(project_id.as_uuid())
+            .append(", ")
+            .bind(environment_id.as_uuid())
+            .append(", 'Bound Task environment', 'bound-task-environment', 1, ")
+            .bind(created_at)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into nodes (organization_id, id, name, name_key, state, agent_instance_id, agent_version, runtime_provider_id, runtime_provider_build, capabilities_digest, capabilities, enrolled_at, last_observed_at, last_sequence, aggregate_version) values (",
+            )
+            .bind(organization_id.as_uuid())
+            .append(", ")
+            .bind(target_node_id.as_uuid())
+            .append(", 'Bound Task node', 'bound-task-node', 'ready', ")
+            .bind(Uuid::now_v7())
+            .append(", 'test', ")
+            .bind(capabilities.provider_id())
+            .append(", ")
+            .bind(capabilities.provider_build())
+            .append(", ")
+            .bind(capabilities.digest())
+            .append(", ")
+            .bind(capabilities.document().clone())
+            .append(", ")
+            .bind(created_at)
+            .append(", ")
+            .bind(created_at)
+            .append(", 0, 1)"),
+        )
+        .await?;
+
+    let repository = PostgresExecutionRepository::new(executor);
+    exercise_bound_execution_roundtrip(
+        &repository,
+        &database,
+        organization_id,
+        project_id,
+        environment_id,
+        target_node_id,
+    )
+    .await
+}
+
+async fn exercise_bound_execution_roundtrip(
+    repository: &PostgresExecutionRepository,
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    target_node_id: NodeId,
+) -> TestResult {
+    let bound = bound_execution(
+        organization_id,
+        project_id,
+        environment_id,
+        target_node_id,
+        Utc::now(),
+    )?;
+    let bound_write = repository
+        .create(CreateExecution {
+            execution: bound.clone(),
+            idempotency: IdempotencyRequest::new(
+                format!(
+                    "organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions/internal-bound"
+                ),
+                "postgres-bound-execution-create",
+                b"postgres-bound-execution-request",
+            )?,
+            event: ExecutionRequested::envelope(&bound, Uuid::now_v7())?,
+        })
+        .await?;
+    assert!(!bound_write.replayed);
+    assert_eq!(
+        repository.find(organization_id, bound.id).await?,
+        Some(bound.clone())
+    );
+    let stored_policy = database
+        .fetch_one_as(
+            sql_query::<(Uuid, serde_json::Value)>(
+                "select target_node_id, task_policy from executions where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and id = ")
+            .bind(bound.id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(stored_policy.0, target_node_id.as_uuid());
+    assert_eq!(
+        serde_json::from_value::<ExecutionTaskPolicy>(stored_policy.1)?,
+        bound.task_policy.expect("bound policy")
+    );
+    assert!(!repository
+        .list(organization_id, project_id, environment_id, 100)
+        .await?
+        .iter()
+        .any(Execution::is_bound_task));
+    let json_null = database
+        .execute(
+            sql_query::<()>(
+                "update executions set task_policy = 'null'::jsonb where organization_id = ",
+            )
+            .bind(organization_id.as_uuid())
+            .append(" and id = ")
+            .bind(bound.id.as_uuid()),
+        )
+        .await;
+    assert!(
+        json_null.is_err(),
+        "JSON null must not bypass the Task-policy pair fence"
+    );
+    let unknown_field = database
+        .execute(
+            sql_query::<()>("update executions set task_policy = task_policy || jsonb_build_object('unexpected', true) where organization_id = ")
+                .bind(organization_id.as_uuid())
+                .append(" and id = ")
+                .bind(bound.id.as_uuid()),
+        )
+        .await;
+    assert!(
+        unknown_field.is_err(),
+        "unknown Task-policy fields must fail closed"
+    );
     Ok(())
 }
 
@@ -601,6 +797,74 @@ fn execution(
                 ephemeral_storage_bytes: None,
                 timeout_ms: 5_000,
             },
+        },
+        requested_at,
+    )
+}
+
+fn bound_execution(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    target_node_id: NodeId,
+    requested_at: chrono::DateTime<Utc>,
+) -> Result<Execution, String> {
+    let image_digest = format!("sha256:{}", "e".repeat(64));
+    let bundle_digest = format!("sha256:{}", "f".repeat(64));
+    let subject_id = Uuid::now_v7();
+    Execution::create_bound_task(
+        organization_id,
+        project_id,
+        environment_id,
+        ExecutionId::new(),
+        ExecutionTemplate {
+            artifact: ExecutionArtifact {
+                uri: format!("oci://registry.example/tasks/publisher@{image_digest}"),
+                digest: image_digest,
+                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+            },
+            process: ExecutionProcess {
+                command: vec!["/app/publisher".into()],
+                args: Vec::new(),
+                working_directory: Some("/workspace".into()),
+                environment: BTreeMap::new(),
+            },
+            input: serde_json::json!({"fixture": "postgres-bound"}),
+            resources: ExecutionResources {
+                cpu_millis: 250,
+                memory_bytes: 128 * 1024 * 1024,
+                pids: 64,
+                ephemeral_storage_bytes: Some(512 * 1024 * 1024),
+                timeout_ms: 30_000,
+            },
+        },
+        target_node_id,
+        ExecutionTaskPolicy {
+            authority: ExecutionTaskAuthority {
+                kind: "workload.prestart".into(),
+                subject_id,
+                digest: Sha256Digest::parse(format!("sha256:{}", "1".repeat(64)))?,
+            },
+            mounts: vec![RuntimeMount {
+                name: "application-bundle".into(),
+                source: RuntimeMountSource::Artifact {
+                    artifact: ArtifactRef {
+                        uri: artifact_uri(&bundle_digest)?,
+                        digest: bundle_digest,
+                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
+                    },
+                },
+                target: "/workspace/bundle".into(),
+                read_only: true,
+            }],
+            secrets: vec![SecretReference {
+                name: "s0-access-key-id".into(),
+                reference: CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)?.to_string(),
+                target: SecretTarget::Environment {
+                    variable: "AWS_ACCESS_KEY_ID".into(),
+                },
+            }],
+            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "2".repeat(64)))?,
         },
         requested_at,
     )
