@@ -22,7 +22,6 @@ use a3s_runtime::contract::{
     NetworkMode, RuntimeActionRequest, RuntimeApplyRequest, RuntimeInspection, RuntimeUnitClass,
     RuntimeUnitState, SecretReference, SecretTarget,
 };
-use a3s_runtime::RuntimeClient;
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
 use sha2::{Digest, Sha256};
