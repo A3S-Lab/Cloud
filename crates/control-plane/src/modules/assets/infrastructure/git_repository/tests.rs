@@ -52,6 +52,40 @@ fn write_lease(asset: &Asset, operation: AssetGitWriteOperation) -> AssetGitWrit
     }
 }
 
+#[test]
+fn repository_storage_identity_is_root_specific_and_persistent() {
+    let first_root = tempfile::tempdir().expect("first repository root");
+    let second_root = tempfile::tempdir().expect("second repository root");
+
+    let first = store(first_root.path());
+    let restarted = store(first_root.path());
+    assert_eq!(restarted.storage_id, first.storage_id);
+    let split_replica = store(second_root.path());
+    assert_ne!(split_replica.storage_id, first.storage_id);
+}
+
+#[test]
+fn repository_storage_identity_is_persistent_bounded_and_fail_closed() {
+    let directory = tempfile::tempdir().expect("repository root");
+    let initial = store(directory.path());
+    let storage_id = initial.storage_id;
+    drop(initial);
+    assert_eq!(store(directory.path()).storage_id, storage_id);
+
+    std::fs::write(
+        directory
+            .path()
+            .join(STORAGE_IDENTITY_DIRECTORY)
+            .join(STORAGE_IDENTITY_FILE),
+        b"{}",
+    )
+    .expect("corrupt storage identity");
+    assert!(matches!(
+        LocalAssetGitRepository::new(directory.path(), Duration::from_secs(10)),
+        Err(AssetGitRepositoryError::Integrity(_))
+    ));
+}
+
 #[tokio::test]
 async fn concurrent_provisioning_creates_one_asset_id_addressed_bare_repository() {
     let directory = tempfile::tempdir().expect("repository directory");

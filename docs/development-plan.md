@@ -3227,7 +3227,7 @@ Current `A1.0` implementation:
   for filesystem and S3-compatible conditional creation, byte and streaming
   admission, exact replay, bounded reads, digest verification, idempotent
   deletion, and health probes;
-- `LogChunkObjectStore` and `LocalNodeArtifactStore` remain typed domain
+- `LogChunkObjectStore` and `NodeArtifactObjectStore` remain typed domain
   adapters. Log validation and retention, Artifact media/size admission, the
   versioned Artifact receipt, and blob-before-receipt repair remain in their
   bounded contexts;
@@ -3899,7 +3899,7 @@ reconciliation, process death, and provider recovery.
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, one generation-fenced group Deployment/operation with exact member and plan bindings, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, and smaller typed PostgreSQL adapter families remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. One deployment-level object client now owns all immutable-byte namespaces; production requires shared HTTPS S3, while migration `121` create-once binds its secret-free identity and the Hosted Git filesystem UUID in PostgreSQL so replica drift fails startup. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, storage-migration procedures, and smaller typed PostgreSQL adapter families remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; replicated object/Git storage plus process/node loss preserve topology identity, leadership fencing, and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
 The implemented `H0.1` foundation introduces `WorkloadControl`,
@@ -4217,7 +4217,7 @@ transactional Outbox, and its notification projection. Worker now omits the
 typed management capability bundle, including bootstrap, OIDC, webhook,
 node-CA, plugin-catalog, domain-verification, and management application
 adapters. Its exact readiness set is PostgreSQL, NATS, Flow, Gateway
-certificate authority, key encryption, and log storage. API owns no event
+certificate authority, key encryption, and shared object storage. API owns no event
 transport, does not resolve NATS, and uses the sole A3S Flow PostgreSQL store
 through a query-only adapter with no Boot queue, task manager, or execution
 authority. Checkout, build staging, evidence signing, runtime registration,
@@ -4250,15 +4250,20 @@ readiness set, rejects management/OpenAPI/MCP routes, and proves no node CA,
 node-control identity, or plugin-catalog state was created. ACL admission and
 Gateway compilation also share one host-neutral target-path validator, while
 immutable-object and hosted-Git persistence share one platform-aware
-directory-sync primitive; neither behavior can diverge by call site or host
-OS.
+directory-sync primitive. A single deployment-level object client supplies
+logs, Artifacts, Asset Git backups, and plugin trust roots. Migration `121`
+uses the existing PostgreSQL authority and advisory-lock primitive to bind
+only secret-free create-once digests for that object root and the Hosted Git
+filesystem UUID; it does not mirror bytes, refs, objects, journals, or locks.
+Replica drift now fails before serving or advancing work, while storage
+replacement remains an explicit installer/migration responsibility.
 
 The API boundary is retained before NATS starts by
 `postgres_api_role_has_only_management_dependencies_and_routes`. It uses an
 isolated PostgreSQL 17 database, a deliberately unresolved random NATS URL
 environment name, and exact API readiness containing PostgreSQL, query-only
-Flow, node and Gateway certificate authorities, key encryption, and log
-storage. It requires management/OpenAPI registration and proves that source
+Flow, node and Gateway certificate authorities, key encryption, and shared
+object storage. It requires management/OpenAPI registration and proves that source
 checkout plus build input/output staging directories were never created. A
 source gate separately forbids the read adapter from acquiring a Boot queue,
 task manager, or incompatible-history retirement writer.

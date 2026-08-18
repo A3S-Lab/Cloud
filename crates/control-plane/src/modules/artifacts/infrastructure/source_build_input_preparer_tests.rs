@@ -1,5 +1,5 @@
 use super::*;
-use crate::modules::artifacts::infrastructure::LocalNodeArtifactStore;
+use crate::modules::artifacts::infrastructure::NodeArtifactObjectStore;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
@@ -24,7 +24,7 @@ async fn prepared_source_is_deterministic_and_replayed_without_credentials(
         checked_out_source(&revision, build.id.as_uuid(), source_directory),
         false,
     ));
-    let store = Arc::new(LocalNodeArtifactStore::new(
+    let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("artifacts"),
         16 * 1024 * 1024,
     )?);
@@ -52,7 +52,7 @@ async fn package_time_checkout_change_is_rejected() -> Result<(), Box<dyn std::e
         checked_out_source(&revision, build.id.as_uuid(), source_directory),
         true,
     ));
-    let store = Arc::new(LocalNodeArtifactStore::new(
+    let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("artifacts"),
         16 * 1024 * 1024,
     )?);
@@ -70,7 +70,7 @@ async fn package_time_checkout_change_is_rejected() -> Result<(), Box<dyn std::e
 fn preparer(
     root: &Path,
     checkout: Arc<ReplayCheckout>,
-    artifacts: Arc<LocalNodeArtifactStore>,
+    artifacts: Arc<NodeArtifactObjectStore>,
 ) -> Result<SourceBuildInputPreparer, String> {
     SourceBuildInputPreparer::new(
         checkout,

@@ -68,6 +68,14 @@ The code on `main` separates implemented mechanics from released capability:
   Worker and Relay gates retain all three boundaries. Extracting the remaining
   shared PostgreSQL adapter factory is structural follow-up, not another
   execution or persistence mechanism.
+- **Implemented / one deployment storage topology** — API and Worker construct
+  one filesystem or S3-compatible immutable-object root and derive the
+  `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
+  namespaces from that exact client. Production requires one shared HTTPS
+  S3-compatible root. Migration `121` records only secret-free create-once
+  topology digests in PostgreSQL, so a replica with another bucket, prefix,
+  local root, or Hosted Git filesystem fails before serving or advancing
+  work. PostgreSQL does not mirror object bytes, Git refs, or Git objects.
 - **Implemented / one compute path** — Sources, assets, builds, finite
   Executions, Workloads, Fleet, outbound Node Agent control, Edge snapshots,
   Runtime, and Box already compose. Current Box/Gateway real-provider
@@ -132,6 +140,8 @@ preservation register.
 | Placement and rollout | Workloads plus Fleet | Agent-, MCP-, inference-, Cell-, or Gateway-specific schedulers |
 | Provider lifecycle | A3S Runtime Task/Service plus A3S Box | Direct provider calls from business contexts or a Cloud executor |
 | Storage and credentials | Data S0 port plus Secrets exact-version materialization | Raw S3 clients, credential stores, or recovery workers per product |
+| Shared immutable bytes | One deployment-level object client with typed child namespaces | Log-, Artifact-, Asset-, or Plugin-local filesystem/S3 authorities |
+| Deployment storage identity | Create-once PostgreSQL `infrastructure_bindings` digests | A data plane attesting itself, mutable topology overrides, or byte/ref mirrors |
 | Traffic application | Edge planner/compiler, Fleet command, A3S Gateway applied state | Cloud proxying, competing publishers, or inferred success |
 | Gateway runtime settings | One target-neutral `GatewaySnapshotRuntimeSettings` validator shared by ACL admission and snapshot compilation | Host-OS path interpretation or a second compiler validator |
 | Local metadata durability | One platform-aware directory-sync primitive shared by immutable objects and hosted Git | Store-specific directory handles or Windows no-op flushing |
@@ -263,22 +273,28 @@ ACL. Configuration is parsed only through `a3s-acl`.
 | `server`, `auth`, `postgres` | Process roles, bootstrap, identity, and durable state |
 | `events`, `operations` | Outbox publication and durable operation timing |
 | `node_control`, `fleet` | Outbound mTLS, leases, inventory, observations, and Claims |
-| `deployments`, `executions`, `builds`, `artifacts` | Workload, Task, Box build, and immutable-content bounds |
+| `deployments`, `executions`, `builds`, `artifacts` | Workload, Task, Box build, and immutable-content admission bounds |
+| `objects` | The one deployment-level local or S3-compatible immutable-object root; production requires shared HTTPS S3 |
 | `registry`, `sources`, `edge`, `gateway` | Source policy, OCI publication, routes, certificates, and exact Gateway apply |
-| `logs`, `security`, `box` | Durable logs, production trust, isolation, and transient Secret materialization |
+| `logs`, `security`, `box` | Log retention/compaction, production trust, isolation, and transient Secret materialization |
+
+The storage schema is intentionally singular: move the former
+`artifacts.store_dir` and `logs.s3_*`/`logs.storage_provider` settings into
+`objects`. Those former fields are rejected as unknown instead of remaining
+as aliases that could create a second provider authority.
 
 `server.role = "all"` or `"api"` owns the management REST/OpenAPI/MCP
 surface. Dedicated `"worker"` and `"relay"` processes expose only liveness,
 readiness, and their `/platform` identity; they cannot become accidental
 management API replicas. The relay composition initializes only PostgreSQL,
 NATS, the existing Outbox/notification projection, and those status routes;
-it does not require API, Flow, Runtime, Box, Vault, Gateway, or log-storage
+it does not require API, Flow, Runtime, Box, Vault, Gateway, or object-storage
 providers. Worker readiness is exactly PostgreSQL, NATS, Flow, Gateway
-certificate authority, key encryption, and log storage. Its composition does
+certificate authority, key encryption, and shared object storage. Its composition does
 not resolve the bootstrap or webhook credentials and does not create the node
 CA, node-control server identity, or plugin-catalog state. API readiness is
 exactly PostgreSQL, query-only Flow history, the node and Gateway certificate
-authorities, key encryption, and log storage. API does not own event transport:
+authorities, key encryption, and shared object storage. API does not own event transport:
 it neither resolves NATS nor constructs the Outbox relay or notification
 consumer. Its Flow adapter reuses the sole A3S Flow PostgreSQL event store and
 projection engine but cannot execute workflows or steps. Worker construction

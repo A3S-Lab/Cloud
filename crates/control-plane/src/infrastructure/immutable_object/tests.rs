@@ -2,6 +2,7 @@ use super::*;
 use object_store::memory::InMemory;
 use sha2::{Digest, Sha256};
 use std::io::Cursor;
+use std::time::Duration;
 use tokio::io::AsyncReadExt;
 
 fn digest(bytes: &[u8]) -> String {
@@ -15,10 +16,9 @@ fn reader(bytes: &[u8]) -> super::stream::ImmutableObjectReader {
 #[tokio::test]
 async fn namespaces_isolate_keys_and_immutable_replays_are_exact() {
     let objects: Arc<dyn ObjectStore> = Arc::new(InMemory::new());
-    let logs =
-        ImmutableObjectClient::from_store(Arc::clone(&objects), "logs").expect("log namespace");
-    let artifacts =
-        ImmutableObjectClient::from_store(objects, "artifacts").expect("artifact namespace");
+    let root = ImmutableObjectClient::from_store(objects, "cloud").expect("root object namespace");
+    let logs = root.subnamespace("logs").expect("log namespace");
+    let artifacts = root.subnamespace("artifacts").expect("artifact namespace");
 
     assert!(
         logs.put("same-key", b"log".to_vec(), 3)
@@ -52,6 +52,71 @@ async fn namespaces_isolate_keys_and_immutable_replays_are_exact() {
         artifacts.get("same-key", 8).await.expect("artifact read"),
         ImmutableObjectRead::Found(b"artifact".to_vec())
     );
+}
+
+#[test]
+fn child_namespaces_are_closed_relative_paths() {
+    let root = ImmutableObjectClient::from_store(Arc::new(InMemory::new()), "cloud")
+        .expect("root object namespace");
+    assert!(root.subnamespace("plugin-trust-roots").is_ok());
+    for invalid in ["", "/absolute", "../escape", "nested/../escape"] {
+        assert!(matches!(
+            root.subnamespace(invalid),
+            Err(ImmutableObjectError::Invalid(_))
+        ));
+    }
+}
+
+#[test]
+fn provider_identity_is_root_scoped_stable_and_secret_opaque() {
+    let directory = tempfile::tempdir().expect("object root");
+    let local = ImmutableObjectClient::local(directory.path(), "cloud").expect("local root");
+    let local_replay = ImmutableObjectClient::local(directory.path().join("."), "cloud")
+        .expect("canonical local root");
+    let child = local.subnamespace("logs").expect("child namespace");
+    assert_eq!(
+        local.infrastructure_identity(),
+        local_replay.infrastructure_identity()
+    );
+    assert_eq!(
+        local.infrastructure_identity(),
+        child.infrastructure_identity()
+    );
+
+    let s3 = |bucket: &str, access_key_id: &str, secret_access_key: &str| {
+        ImmutableObjectClient::s3(S3ImmutableObjectOptions {
+            endpoint: Some("https://objects.example".into()),
+            region: "us-east-1".into(),
+            bucket: bucket.into(),
+            prefix: "cloud".into(),
+            access_key_id: access_key_id.into(),
+            secret_access_key: secret_access_key.into(),
+            session_token: None,
+            allow_http: false,
+            virtual_hosted_style: false,
+            request_timeout: Duration::from_secs(30),
+            connect_timeout: Duration::from_secs(5),
+            retry_timeout: Duration::from_secs(60),
+            max_retries: 3,
+        })
+        .expect("S3 root")
+    };
+    let first = s3("objects-a", "access-a", "secret-a");
+    let rotated = s3("objects-a", "access-b", "secret-b");
+    let other = s3("objects-b", "access-a", "secret-a");
+    assert_eq!(
+        first.infrastructure_identity(),
+        rotated.infrastructure_identity(),
+        "credential rotation must not change provider identity"
+    );
+    assert_ne!(
+        first.infrastructure_identity(),
+        other.infrastructure_identity(),
+        "a different bucket must change provider identity"
+    );
+    let identity = String::from_utf8(first.infrastructure_identity().to_vec()).expect("JSON");
+    assert!(!identity.contains("access-a"));
+    assert!(!identity.contains("secret-a"));
 }
 
 #[tokio::test]
@@ -226,7 +291,7 @@ fn log_adapter_cannot_reimplement_low_level_object_storage() {
 #[test]
 fn artifact_adapter_cannot_reimplement_low_level_object_storage() {
     let source =
-        include_str!("../../modules/artifacts/infrastructure/local_node_artifact_store.rs");
+        include_str!("../../modules/artifacts/infrastructure/node_artifact_object_store.rs");
     let production = source.split("#[cfg(test)]").next().unwrap_or(source);
     for forbidden in [
         "fs2::",
@@ -286,4 +351,42 @@ fn real_s3_consumer_gates_share_the_one_test_fixture_and_production_client() {
     let fixture = include_str!("s3_test.rs");
     assert_eq!(fixture.matches("ImmutableObjectClient::s3").count(), 1);
     assert!(!fixture.contains("AmazonS3Builder"));
+}
+
+#[test]
+fn production_composition_builds_one_provider_and_derives_every_consumer_namespace() {
+    let source = include_str!("../../app.rs");
+    let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+
+    assert_eq!(
+        production.matches("ImmutableObjectClient::local").count(),
+        1
+    );
+    assert_eq!(production.matches("ImmutableObjectClient::s3").count(), 1);
+    for namespace in [
+        "logs",
+        "artifacts",
+        "asset-git-backups",
+        "plugin-trust-roots",
+    ] {
+        assert!(
+            production.contains(&format!(".subnamespace(\"{namespace}\")")),
+            "production composition must derive the {namespace} namespace from the shared root"
+        );
+    }
+    assert_eq!(production.matches("bind_infrastructure(").count(), 2);
+    assert!(production.contains("object_storage.infrastructure_identity()"));
+    assert!(production.contains("asset_git_repository.infrastructure_identity()"));
+    for forbidden in [
+        "LogChunkObjectStore::local",
+        "NodeArtifactObjectStore::local",
+        "PluginTrustRootObjectStore::local",
+        "config.logs.storage_provider",
+        "config.artifacts.store_dir",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "production composition must not construct a consumer-local object authority: {forbidden}"
+        );
+    }
 }

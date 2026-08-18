@@ -6,6 +6,7 @@ mod oci_registry_client;
 mod operation_resource_access;
 mod postgres;
 mod postgres_schema;
+mod topology_binding;
 mod vault_client;
 
 #[cfg(test)]
@@ -38,5 +39,6 @@ pub(crate) use postgres::{
     is_unique_violation, lock_idempotency_key, lock_node_placement, require_one_row, store_audit,
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
-pub(crate) use postgres_schema::{AuditRecords, OutboxEvents};
+pub(crate) use postgres_schema::{AuditRecords, InfrastructureBindings, OutboxEvents};
+pub(crate) use topology_binding::{bind_infrastructure, InfrastructureBinding};
 pub(crate) use vault_client::{VaultClient, VaultClientError};

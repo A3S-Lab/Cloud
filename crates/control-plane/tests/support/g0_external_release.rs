@@ -7,7 +7,7 @@ use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_control_plane::modules::artifacts::{
     BoxBuildEvidenceGenerator, BuildEvidence, BuildRunFinalization, BuildRunStatus, BuildSource,
     IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildOutputValidator, IBuildRunRepository,
-    LocalNodeArtifactStore, OciPublicationRequest, PostgresBuildRunRepository,
+    NodeArtifactObjectStore, OciPublicationRequest, PostgresBuildRunRepository,
     VaultBuildEvidenceSigner,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodePoolRepository;
@@ -49,7 +49,7 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
     let mut build = reserve_build(builds.as_ref(), &inputs).await?;
 
     let root = tempfile::tempdir()?;
-    let artifacts = Arc::new(LocalNodeArtifactStore::new(
+    let artifacts = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("artifacts"),
         256 * 1024 * 1024,
     )?);

@@ -15,7 +15,7 @@ use crate::modules::artifacts::{
     CancelBuildRunHandler, CloudBuildSourceResolver, GetBuildEvidenceHandler, GetBuildRunHandler,
     GetBuildRunLogsHandler, IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner,
     IBuildInputPreparer, IBuildOutputValidator, IBuildRunRepository, IBuildSourceResolver,
-    INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, LocalNodeArtifactStore,
+    INodeArtifactStore, ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
     OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
     PostgresBuildRunRepository, RetryBuildRunHandler, SourceBuildInputPreparer,
     VaultBuildEvidenceSigner,
@@ -238,12 +238,12 @@ use crate::presentation::{
 use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
     config::{
-        EventProviderKind, LogStorageProviderKind, ProcessRole, SecurityProfile,
+        EventProviderKind, ObjectStorageProviderKind, ProcessRole, SecurityProfile,
         SecurityProviderKind,
     },
     infrastructure::{
-        connect_and_migrate, postgres_health, FlowReadInfrastructure, FlowRuntimeRouter,
-        PostgresBootstrapError,
+        bind_infrastructure, connect_and_migrate, postgres_health, FlowReadInfrastructure,
+        FlowRuntimeRouter, InfrastructureBinding, PostgresBootstrapError,
     },
     CloudConfig,
 };
@@ -280,8 +280,12 @@ pub enum ControlPlaneStartupError {
     Security(String),
     #[error("could not initialize Edge providers: {0}")]
     Edge(String),
-    #[error("could not initialize log storage: {0}")]
-    LogStorage(String),
+    #[error("could not initialize log retention or compaction: {0}")]
+    LogMaintenance(String),
+    #[error("could not initialize shared object storage: {0}")]
+    ObjectStorage(String),
+    #[error("could not bind deployment infrastructure: {0}")]
+    InfrastructureBinding(String),
     #[error("could not initialize node control: {0}")]
     NodeControl(String),
     #[error("could not initialize OCI registry access: {0}")]
@@ -383,6 +387,50 @@ async fn build_api_worker_application(
     let run_relay = config.server.role.runs_relay();
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
+    let object_storage = object_storage(&config)?;
+    if !object_storage
+        .health()
+        .await
+        .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?
+    {
+        return Err(ControlPlaneStartupError::ObjectStorage(
+            "shared object storage startup probe returned unhealthy".into(),
+        ));
+    }
+    bind_infrastructure(
+        &executor,
+        InfrastructureBinding::new(
+            "object-storage",
+            "a3s.cloud.object-storage-topology.v1",
+            object_storage.infrastructure_identity(),
+        )
+        .map_err(|error| ControlPlaneStartupError::InfrastructureBinding(error.to_string()))?,
+    )
+    .await
+    .map_err(|error| ControlPlaneStartupError::InfrastructureBinding(error.to_string()))?;
+    let asset_backup_objects = object_storage
+        .subnamespace("asset-git-backups")
+        .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
+    let asset_git_repository = LocalAssetGitRepository::new(
+        &config.assets.repository_dir,
+        Duration::from_millis(config.assets.git_command_timeout_ms),
+    )
+    .and_then(|repository| {
+        repository.with_backup_objects(asset_backup_objects, config.assets.backup_max_bytes)
+    })
+    .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
+    bind_infrastructure(
+        &executor,
+        InfrastructureBinding::new(
+            "asset-git-storage",
+            "a3s.cloud.asset-git-storage.v1",
+            asset_git_repository.infrastructure_identity(),
+        )
+        .map_err(|error| ControlPlaneStartupError::InfrastructureBinding(error.to_string()))?,
+    )
+    .await
+    .map_err(|error| ControlPlaneStartupError::InfrastructureBinding(error.to_string()))?;
+    let asset_git_repositories: Arc<dyn IAssetGitRepository> = Arc::new(asset_git_repository);
     let event_publisher = if config.server.role.owns_event_transport() {
         Some(event_publisher(&config).await?)
     } else {
@@ -392,7 +440,11 @@ async fn build_api_worker_application(
     let key_encryption = key_encryption_provider(&config, vault_credentials.as_ref())?;
     let gateway_certificate_authority =
         gateway_certificate_authority(&config, vault_credentials.as_ref())?;
-    let log_chunks = log_chunk_store(&config)?;
+    let log_chunks: Arc<dyn ILogChunkStore> = Arc::new(LogChunkObjectStore::from_client(
+        object_storage
+            .subnamespace("logs")
+            .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
+    ));
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
@@ -436,8 +488,13 @@ async fn build_api_worker_application(
     let draining_nodes: Arc<dyn INodeDrainRepository> = node_repository.clone();
     let node_control: Arc<dyn INodeControlRepository> = node_repository.clone();
     let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
-        LocalNodeArtifactStore::new(&config.artifacts.store_dir, config.artifacts.max_blob_bytes)
-            .map_err(ControlPlaneStartupError::NodeControl)?,
+        NodeArtifactObjectStore::from_client(
+            object_storage
+                .subnamespace("artifacts")
+                .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))?,
+            config.artifacts.max_blob_bytes,
+        )
+        .map_err(ControlPlaneStartupError::ObjectStorage)?,
     );
     let builds: Arc<dyn IBuildRunRepository> =
         Arc::new(PostgresBuildRunRepository::new(executor.clone()));
@@ -474,19 +531,6 @@ async fn build_api_worker_application(
     let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
     let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
-    let asset_backup_objects =
-        ImmutableObjectClient::local(&config.artifacts.store_dir, "asset-git-backups")
-            .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
-    let asset_git_repositories: Arc<dyn IAssetGitRepository> = Arc::new(
-        LocalAssetGitRepository::new(
-            &config.assets.repository_dir,
-            Duration::from_millis(config.assets.git_command_timeout_ms),
-        )
-        .and_then(|repository| {
-            repository.with_backup_objects(asset_backup_objects, config.assets.backup_max_bytes)
-        })
-        .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?,
-    );
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let connector_profiles: Arc<dyn IConnectorProfileRepository> =
@@ -904,8 +948,10 @@ async fn build_api_worker_application(
         let bootstrap_credential = BootstrapCredential::new(&config.bootstrap_token()?)
             .map_err(ControlPlaneStartupError::Auth)?;
         let plugin_trust_roots: Arc<dyn IPluginTrustRootStore> = Arc::new(
-            PluginTrustRootObjectStore::local(
-                &config.artifacts.store_dir,
+            PluginTrustRootObjectStore::from_client(
+                object_storage
+                    .subnamespace("plugin-trust-roots")
+                    .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
                 MAX_BOOTSTRAP_ROOT_BYTES,
             )
             .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
@@ -1181,14 +1227,14 @@ async fn build_api_worker_application(
             Duration::from_millis(config.logs.retention_poll_ms),
             config.logs.retention_batch_size,
         )
-        .map_err(ControlPlaneStartupError::LogStorage)?;
+        .map_err(ControlPlaneStartupError::LogMaintenance)?;
         let log_compaction_worker = LogCompactionWorker::new(
             log_retention_repository,
             Duration::from_millis(config.logs.tombstone_retention_ms),
             Duration::from_millis(config.logs.tombstone_compaction_poll_ms),
             config.logs.tombstone_compaction_batch_size,
         )
-        .map_err(ControlPlaneStartupError::LogStorage)?;
+        .map_err(ControlPlaneStartupError::LogMaintenance)?;
         let node_drain_evacuation_reconciler = NodeDrainEvacuationReconciler::new(
             draining_nodes,
             Arc::clone(&node_pools),
@@ -1296,7 +1342,7 @@ async fn build_api_worker_application(
             Arc::clone(&management.certificate_authority),
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&key_encryption),
-            Arc::clone(&log_chunks),
+            object_storage.clone(),
         ),
         Some(management) => api_readiness(
             executor,
@@ -1308,7 +1354,7 @@ async fn build_api_worker_application(
             Arc::clone(&management.certificate_authority),
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&key_encryption),
-            Arc::clone(&log_chunks),
+            object_storage.clone(),
         ),
         None => worker_readiness(
             executor,
@@ -1324,7 +1370,7 @@ async fn build_api_worker_application(
             })?,
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&key_encryption),
-            Arc::clone(&log_chunks),
+            object_storage,
         ),
     };
     let application = if let Some(management) = management {
@@ -2937,7 +2983,7 @@ fn infrastructure_readiness(
     certificate_authority: Arc<dyn ICertificateAuthority>,
     gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     key_encryption: Arc<dyn ISecretEncryptionService>,
-    log_chunks: Arc<dyn ILogChunkStore>,
+    object_storage: ImmutableObjectClient,
 ) -> HealthModule {
     worker_readiness(
         executor,
@@ -2945,7 +2991,7 @@ fn infrastructure_readiness(
         events,
         gateway_certificate_authority,
         key_encryption,
-        log_chunks,
+        object_storage,
     )
     .indicator("certificate-authority", move || {
         let certificate_authority = certificate_authority.clone();
@@ -2967,7 +3013,7 @@ fn api_readiness(
     certificate_authority: Arc<dyn ICertificateAuthority>,
     gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     key_encryption: Arc<dyn ISecretEncryptionService>,
-    log_chunks: Arc<dyn ILogChunkStore>,
+    object_storage: ImmutableObjectClient,
 ) -> HealthModule {
     postgres_readiness(executor)
         .indicator("flow", move || {
@@ -3013,10 +3059,10 @@ fn api_readiness(
                 }
             }
         })
-        .indicator("log-storage", move || {
-            let log_chunks = log_chunks.clone();
+        .indicator("object-storage", move || {
+            let object_storage = object_storage.clone();
             async move {
-                match log_chunks.health().await {
+                match object_storage.health().await {
                     Ok(true) => Ok(HealthIndicatorResult::up()),
                     Ok(false) => Ok(HealthIndicatorResult::down()),
                     Err(error) => {
@@ -3034,7 +3080,7 @@ fn worker_readiness(
     events: Arc<dyn IEventPublisher>,
     gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     key_encryption: Arc<dyn ISecretEncryptionService>,
-    log_chunks: Arc<dyn ILogChunkStore>,
+    object_storage: ImmutableObjectClient,
 ) -> HealthModule {
     relay_readiness(executor, events)
         .indicator("flow", move || {
@@ -3067,10 +3113,10 @@ fn worker_readiness(
                 }
             }
         })
-        .indicator("log-storage", move || {
-            let log_chunks = log_chunks.clone();
+        .indicator("object-storage", move || {
+            let object_storage = object_storage.clone();
             async move {
-                match log_chunks.health().await {
+                match object_storage.health().await {
                     Ok(true) => Ok(HealthIndicatorResult::up()),
                     Ok(false) => Ok(HealthIndicatorResult::down()),
                     Err(error) => {
@@ -3240,36 +3286,37 @@ fn gateway_certificate_authority(
     }
 }
 
-fn log_chunk_store(
+fn object_storage(
     config: &CloudConfig,
-) -> std::result::Result<Arc<dyn ILogChunkStore>, ControlPlaneStartupError> {
-    match config.logs.storage_provider {
-        LogStorageProviderKind::Local => Ok(Arc::new(
-            LogChunkObjectStore::local(&config.security.state_dir)
-                .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?,
-        )),
-        LogStorageProviderKind::S3 => {
-            let credentials = config.s3_log_credentials()?.ok_or_else(|| {
-                ControlPlaneStartupError::LogStorage("S3 credentials were not resolved".into())
+) -> std::result::Result<ImmutableObjectClient, ControlPlaneStartupError> {
+    match config.objects.provider {
+        ObjectStorageProviderKind::Local => {
+            ImmutableObjectClient::local(&config.objects.local_dir, &config.objects.prefix)
+                .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))
+        }
+        ObjectStorageProviderKind::S3 => {
+            let credentials = config.object_storage_credentials()?.ok_or_else(|| {
+                ControlPlaneStartupError::ObjectStorage(
+                    "object-storage credentials were not resolved".into(),
+                )
             })?;
-            let objects = ImmutableObjectClient::s3(S3ImmutableObjectOptions {
-                endpoint: (!config.logs.s3_endpoint.is_empty())
-                    .then(|| config.logs.s3_endpoint.clone()),
-                region: config.logs.s3_region.clone(),
-                bucket: config.logs.s3_bucket.clone(),
-                prefix: config.logs.s3_prefix.clone(),
+            ImmutableObjectClient::s3(S3ImmutableObjectOptions {
+                endpoint: (!config.objects.endpoint.is_empty())
+                    .then(|| config.objects.endpoint.clone()),
+                region: config.objects.region.clone(),
+                bucket: config.objects.bucket.clone(),
+                prefix: config.objects.prefix.clone(),
                 access_key_id: credentials.access_key_id,
                 secret_access_key: credentials.secret_access_key,
                 session_token: credentials.session_token,
-                allow_http: config.logs.s3_allow_http,
-                virtual_hosted_style: config.logs.s3_virtual_hosted_style,
-                request_timeout: Duration::from_millis(config.logs.s3_request_timeout_ms),
-                connect_timeout: Duration::from_millis(config.logs.s3_connect_timeout_ms),
-                retry_timeout: Duration::from_millis(config.logs.s3_retry_timeout_ms),
-                max_retries: config.logs.s3_max_retries,
+                allow_http: config.objects.allow_http,
+                virtual_hosted_style: config.objects.virtual_hosted_style,
+                request_timeout: Duration::from_millis(config.objects.request_timeout_ms),
+                connect_timeout: Duration::from_millis(config.objects.connect_timeout_ms),
+                retry_timeout: Duration::from_millis(config.objects.retry_timeout_ms),
+                max_retries: config.objects.max_retries,
             })
-            .map_err(|error| ControlPlaneStartupError::LogStorage(error.to_string()))?;
-            Ok(Arc::new(LogChunkObjectStore::from_client(objects)))
+            .map_err(|error| ControlPlaneStartupError::ObjectStorage(error.to_string()))
         }
     }
 }

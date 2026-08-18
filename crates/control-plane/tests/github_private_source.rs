@@ -1,6 +1,6 @@
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, BuildSource, IBuildInputPreparer, INodeArtifactStore,
-    LocalNodeArtifactStore, SourceBuildInputPreparer,
+    NodeArtifactObjectStore, SourceBuildInputPreparer,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     BuildRunId, EnvironmentId, OrganizationId, ProjectId, SourceConnectionId, SourceRevisionId,
@@ -134,7 +134,7 @@ async fn real_github_installation_token_resolves_and_checks_out_a_private_reposi
     drop(credential);
     assert_eq!(checkout.checkout(&request, None).await?, accepted);
     let handoff_directory = secure_handoff_directory(&required(HANDOFF_DIRECTORY_ENV)?).await?;
-    let artifact_store = Arc::new(LocalNodeArtifactStore::new(
+    let artifact_store = Arc::new(NodeArtifactObjectStore::local(
         handoff_directory.join("artifact-store"),
         512 * 1024 * 1024,
     )?);
@@ -280,7 +280,7 @@ async fn secure_handoff_directory(value: &str) -> Result<PathBuf, Box<dyn std::e
 }
 
 async fn export_artifact(
-    store: &LocalNodeArtifactStore,
+    store: &NodeArtifactObjectStore,
     artifact: &BuildArtifact,
     destination: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {

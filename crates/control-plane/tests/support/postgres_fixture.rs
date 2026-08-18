@@ -204,7 +204,6 @@ pub(super) fn config() -> CloudConfig {
             request_body_timeout_ms: 10_000,
         },
         artifacts: ArtifactTransferConfig {
-            store_dir: ".a3s/integration-artifacts".into(),
             max_blob_bytes: 1024 * 1024 * 1024,
             transfer_timeout_ms: 900_000,
         },
@@ -215,6 +214,23 @@ pub(super) fn config() -> CloudConfig {
             repository_quota_bytes: 1024 * 1024 * 1024,
             max_rpc_body_bytes: 64 * 1024 * 1024,
             backup_max_bytes: 1024 * 1024 * 1024,
+        },
+        objects: ObjectStorageConfig {
+            provider: ObjectStorageProviderKind::Local,
+            local_dir: ".a3s/integration-objects".into(),
+            endpoint: String::new(),
+            region: "us-east-1".into(),
+            bucket: "a3s-cloud-objects".into(),
+            prefix: "cloud".into(),
+            access_key_env: "A3S_CLOUD_S3_ACCESS_KEY_ID".into(),
+            secret_key_env: "A3S_CLOUD_S3_SECRET_ACCESS_KEY".into(),
+            session_token_env: String::new(),
+            allow_http: false,
+            virtual_hosted_style: false,
+            request_timeout_ms: 30_000,
+            connect_timeout_ms: 5_000,
+            retry_timeout_ms: 60_000,
+            max_retries: 3,
         },
         postgres: PostgresConfig {
             url_env: URL_ENV.into(),
@@ -317,20 +333,6 @@ pub(super) fn config() -> CloudConfig {
             denied_repositories: Vec::new(),
         },
         logs: LogsConfig {
-            storage_provider: a3s_cloud_control_plane::config::LogStorageProviderKind::Local,
-            s3_endpoint: String::new(),
-            s3_region: "us-east-1".into(),
-            s3_bucket: "a3s-cloud-logs".into(),
-            s3_prefix: "logs".into(),
-            s3_access_key_env: "A3S_CLOUD_S3_ACCESS_KEY_ID".into(),
-            s3_secret_key_env: "A3S_CLOUD_S3_SECRET_ACCESS_KEY".into(),
-            s3_session_token_env: String::new(),
-            s3_allow_http: false,
-            s3_virtual_hosted_style: false,
-            s3_request_timeout_ms: 30_000,
-            s3_connect_timeout_ms: 5_000,
-            s3_retry_timeout_ms: 60_000,
-            s3_max_retries: 3,
             retention_ms: 60_000,
             retention_poll_ms: 1_000,
             retention_batch_size: 16,
@@ -396,6 +398,6 @@ pub(super) fn configure_ephemeral_application_state(
     config.node_control.client_ca_file = root.join("node-ca/ca.pem").display().to_string();
     let asset_repository_directory = root.join("asset-repositories");
     config.assets.repository_dir = asset_repository_directory.display().to_string();
-    config.artifacts.store_dir = root.join("immutable-objects").display().to_string();
+    config.objects.local_dir = root.join("immutable-objects").display().to_string();
     asset_repository_directory
 }

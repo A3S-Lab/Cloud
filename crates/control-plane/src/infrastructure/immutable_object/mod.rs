@@ -10,6 +10,7 @@ mod tests;
 use futures_util::TryStreamExt;
 use object_store::path::Path as ObjectPath;
 use object_store::{ObjectStore, PutMode, PutResult, UpdateVersion};
+use serde::Serialize;
 use std::fmt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -142,6 +143,7 @@ pub(crate) struct ImmutableObjectMetadata {
 pub(crate) struct ImmutableObjectClient {
     backend: Arc<Backend>,
     namespace: String,
+    infrastructure_identity: Arc<[u8]>,
 }
 
 enum Backend {
@@ -169,19 +171,58 @@ impl ImmutableObjectClient {
         namespace: &str,
     ) -> Result<Self, ImmutableObjectError> {
         validate_relative_path(namespace, "namespace")?;
+        let backend = local::LocalBackend::new(root.into())?;
+        let root = backend.root().to_str().ok_or_else(|| {
+            ImmutableObjectError::Invalid("local object root must be UTF-8".into())
+        })?;
+        let infrastructure_identity = encode_infrastructure_identity(&ObjectAuthority::Local {
+            schema: "a3s.cloud.object-storage-authority.v1",
+            root,
+            prefix: namespace,
+        })?;
         Ok(Self {
-            backend: Arc::new(Backend::Local(local::LocalBackend::new(root.into())?)),
+            backend: Arc::new(Backend::Local(backend)),
             namespace: namespace.into(),
+            infrastructure_identity,
         })
     }
 
     pub(crate) fn s3(options: S3ImmutableObjectOptions) -> Result<Self, ImmutableObjectError> {
         validate_relative_path(&options.prefix, "namespace")?;
+        let infrastructure_identity = encode_infrastructure_identity(&ObjectAuthority::S3 {
+            schema: "a3s.cloud.object-storage-authority.v1",
+            endpoint: options.endpoint.as_deref().unwrap_or_default(),
+            region: &options.region,
+            bucket: &options.bucket,
+            prefix: &options.prefix,
+            allow_http: options.allow_http,
+            virtual_hosted_style: options.virtual_hosted_style,
+        })?;
         let namespace = options.prefix.clone();
         Ok(Self {
             backend: Arc::new(Backend::Remote(s3::build(options)?)),
             namespace,
+            infrastructure_identity,
         })
+    }
+
+    /// Derives a typed child namespace while retaining the exact same provider
+    /// handle. Composition creates one root client and gives domain adapters
+    /// only their child; adapters cannot construct parallel filesystem or S3
+    /// authorities.
+    pub(crate) fn subnamespace(&self, namespace: &str) -> Result<Self, ImmutableObjectError> {
+        validate_relative_path(namespace, "namespace")?;
+        Ok(Self {
+            backend: Arc::clone(&self.backend),
+            namespace: format!("{}/{namespace}", self.namespace),
+            infrastructure_identity: Arc::clone(&self.infrastructure_identity),
+        })
+    }
+
+    /// Returns the canonical, secret-free identity of the provider root and
+    /// root namespace. Child namespaces deliberately retain these exact bytes.
+    pub(crate) fn infrastructure_identity(&self) -> &[u8] {
+        &self.infrastructure_identity
     }
 
     #[cfg(test)]
@@ -193,6 +234,10 @@ impl ImmutableObjectClient {
         Ok(Self {
             backend: Arc::new(Backend::Remote(objects)),
             namespace: namespace.into(),
+            infrastructure_identity: encode_infrastructure_identity(&ObjectAuthority::Test {
+                schema: "a3s.cloud.object-storage-authority.test.v1",
+                prefix: namespace,
+            })?,
         })
     }
 
@@ -518,6 +563,42 @@ impl ImmutableObjectClient {
         validate_relative_path(object_key, "object key")?;
         Ok(format!("{}/{object_key}", self.namespace))
     }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "provider", rename_all = "kebab-case")]
+enum ObjectAuthority<'a> {
+    Local {
+        schema: &'static str,
+        root: &'a str,
+        prefix: &'a str,
+    },
+    S3 {
+        schema: &'static str,
+        endpoint: &'a str,
+        region: &'a str,
+        bucket: &'a str,
+        prefix: &'a str,
+        allow_http: bool,
+        virtual_hosted_style: bool,
+    },
+    #[cfg(test)]
+    Test {
+        schema: &'static str,
+        prefix: &'a str,
+    },
+}
+
+fn encode_infrastructure_identity(
+    authority: &ObjectAuthority<'_>,
+) -> Result<Arc<[u8]>, ImmutableObjectError> {
+    serde_json::to_vec(authority)
+        .map(Arc::from)
+        .map_err(|error| {
+            ImmutableObjectError::Invalid(format!(
+                "could not encode immutable object infrastructure identity: {error}"
+            ))
+        })
 }
 
 async fn remote_existing_matches(

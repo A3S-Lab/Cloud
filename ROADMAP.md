@@ -1312,7 +1312,7 @@ health, and operations. Neither store becomes PostgreSQL desired-state truth.
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
 | `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, stateless drain/evacuation, Fleet-owned node pools with bounded maintenance evacuation, explicit Workload pool selection, generation-fenced safe member removal, bounded atomic multi-Claim reservation, durable placement-group identity with immutable multi-member execution plans, and one generation-fenced group Deployment/operation with exact member and plan bindings; group member scheduling, gang preparation/compensation, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, maintenance, member removal, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
-| `H0.4` | Foundation in progress | The closed ACL requires NATS only for event-owning `all`/worker/relay processes; Worker/Relay HTTP registers only process identity and health; Relay initializes only PostgreSQL, NATS, Outbox, and its notification projection; Worker omits management capabilities/local state; API uses PostgreSQL-backed query-only Flow and constructs no NATS, Boot queue, runtime registry, reconciler, checkout, or build staging. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, and smaller typed PostgreSQL adapter families remain | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | The closed ACL requires NATS only for event-owning `all`/worker/relay processes; Worker/Relay HTTP registers only process identity and health; Relay initializes only PostgreSQL, NATS, Outbox, and its notification projection; Worker omits management capabilities/local state; API uses PostgreSQL-backed query-only Flow and constructs no NATS, Boot queue, runtime registry, reconciler, checkout, or build staging. One deployment-level object client supplies all immutable-byte namespaces; production requires shared HTTPS S3, and migration `121` create-once binds both its secret-free authority identity and the Hosted Git filesystem UUID in PostgreSQL. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, storage replacement, and smaller typed PostgreSQL adapter families remain | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, replicated object/Git storage, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
 The Cloud production profile is ACL-native and Box-hosted. It does not depend
@@ -1328,7 +1328,7 @@ Management MCP routes with `404`.
 
 The companion Worker composition gate uses the same real providers, leaves
 bootstrap and webhook credentials unresolved, requires exactly PostgreSQL,
-NATS, Flow, Gateway certificate authority, key encryption, and log storage,
+NATS, Flow, Gateway certificate authority, key encryption, and shared object storage,
 and proves management routes and management-owned local state are absent. One
 host-neutral Gateway runtime-settings validator now owns ACL and compiler path
 admission, and one platform-aware directory-sync primitive owns local
@@ -1337,8 +1337,11 @@ gate runs before NATS starts, leaves a random NATS URL unresolved, requires the
 exact management readiness set, and proves Worker checkout/build staging is
 absent. API reads Flow history through the sole PostgreSQL event store without
 a Boot queue or execution runtime. Shared repository-adapter family extraction
-and the production installation/HA work remain; these slices do not claim high
-availability.
+and the production installation/HA work remain. The same API gate now proves
+that another object root or Hosted Git filesystem conflicts with the generic
+create-only PostgreSQL topology binding before serving; it stores no object
+bytes, Git refs, objects, journals, credentials, or mutable override. These
+slices do not claim high availability.
 
 The current `H0.1` foundation persists inference-neutral managed-owner
 references, one effective single-replica placement policy, one stable

@@ -6,8 +6,9 @@ use a3s_cloud_control_plane::app::{
 use a3s_cloud_control_plane::config::{
     ArtifactTransferConfig, AssetsConfig, AuthConfig, BuildsConfig, DeploymentsConfig, EdgeConfig,
     EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig, NodeControlConfig,
-    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
-    SecurityProviderKind, ServerConfig, SourcesConfig,
+    ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig, PostgresConfig, ProcessRole,
+    RegistryConfig, SecurityConfig, SecurityProfile, SecurityProviderKind, ServerConfig,
+    SourcesConfig,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::assets::{
@@ -660,7 +661,7 @@ async fn exercise_postgres_replica_set_foundation(
             "select count(*), max(version) from a3s_orm_migrations",
         ))
         .await?;
-    assert_eq!(migration_state, (120, "120".into()));
+    assert_eq!(migration_state, (121, "121".into()));
 
     let organization_id = Uuid::now_v7();
     let project_id = Uuid::now_v7();
@@ -887,6 +888,7 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
     let mut api_config = config();
     configure_split_role(&mut api_config, state.path(), ProcessRole::Api, "API");
     api_config.auth.bootstrap_token_env = BOOTSTRAP_ENV.into();
+    let shared_object_dir = api_config.objects.local_dir.clone();
     let unused_nats_env = format!(
         "A3S_CLOUD_API_UNUSED_NATS_{}",
         Uuid::new_v4().simple().to_string().to_uppercase()
@@ -907,7 +909,7 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
             "flow",
             "gateway-certificate-authority",
             "key-encryption",
-            "log-storage",
+            "object-storage",
             "postgres",
         ],
     )
@@ -922,6 +924,52 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
             "API initialized worker-owned state {relative}"
         );
     }
+
+    let drift_state = tempfile::tempdir()?;
+    let mut object_drift = config();
+    configure_split_role(
+        &mut object_drift,
+        drift_state.path(),
+        ProcessRole::Api,
+        "API_OBJECT_DRIFT",
+    );
+    object_drift.auth.bootstrap_token_env = BOOTSTRAP_ENV.into();
+    let object_error = match build_application_with_source_resolver(
+        object_drift,
+        Arc::new(OfflineCommitSourceResolver),
+    )
+    .await
+    {
+        Ok(_) => return Err("API accepted a different object-storage authority".into()),
+        Err(error) => error,
+    };
+    assert!(
+        object_error.to_string().contains("object-storage"),
+        "unexpected object-storage drift error: {object_error}"
+    );
+
+    let mut git_drift = config();
+    configure_split_role(
+        &mut git_drift,
+        drift_state.path(),
+        ProcessRole::Api,
+        "API_GIT_DRIFT",
+    );
+    git_drift.auth.bootstrap_token_env = BOOTSTRAP_ENV.into();
+    git_drift.objects.local_dir = shared_object_dir;
+    let git_error = match build_application_with_source_resolver(
+        git_drift,
+        Arc::new(OfflineCommitSourceResolver),
+    )
+    .await
+    {
+        Ok(_) => return Err("API accepted a different hosted-Git filesystem".into()),
+        Err(error) => error,
+    };
+    assert!(
+        git_error.to_string().contains("asset-git-storage"),
+        "unexpected hosted-Git drift error: {git_error}"
+    );
     Ok(())
 }
 
@@ -958,7 +1006,7 @@ async fn exercise_worker_role_composition(url: String) -> Result<(), Box<dyn std
             "flow",
             "gateway-certificate-authority",
             "key-encryption",
-            "log-storage",
+            "object-storage",
             "postgres",
         ],
     )
@@ -1657,7 +1705,7 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
     let applied = database
         .fetch_one_as(sql_query::<i64>("select count(*) from a3s_orm_migrations"))
         .await?;
-    assert_eq!(applied, 120);
+    assert_eq!(applied, 121);
     let boot_schema = database
         .fetch_one_as(sql_query::<Option<String>>(
             "select to_regnamespace('a3s_boot')::text",

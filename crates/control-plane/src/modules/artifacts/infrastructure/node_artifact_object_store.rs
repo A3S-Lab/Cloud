@@ -10,13 +10,13 @@ use a3s_cloud_contracts::validate_cloud_artifact;
 use a3s_runtime::contract::ArtifactRef;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::path::{Component, PathBuf};
+use std::path::PathBuf;
 
 const RECEIPT_SCHEMA: &str = "a3s.cloud.node-artifact-object.v1";
 const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
 
 #[derive(Debug, Clone)]
-pub struct LocalNodeArtifactStore {
+pub struct NodeArtifactObjectStore {
     blobs: ImmutableObjectClient,
     receipts: ImmutableObjectClient,
     maximum_blob_bytes: u64,
@@ -30,25 +30,25 @@ struct ArtifactReceipt {
     size_bytes: u64,
 }
 
-impl LocalNodeArtifactStore {
-    pub fn new(root: impl Into<PathBuf>, maximum_blob_bytes: u64) -> Result<Self, String> {
-        let root = root.into();
-        let text = root
-            .to_str()
-            .ok_or_else(|| "node artifact store path must be UTF-8".to_owned())?;
-        if text.trim().is_empty()
-            || text.len() > 4096
-            || text.contains('\0')
-            || root
-                .components()
-                .any(|component| matches!(component, Component::ParentDir))
-            || maximum_blob_bytes == 0
-        {
-            return Err("node artifact store options are invalid".into());
+impl NodeArtifactObjectStore {
+    pub fn local(root: impl Into<PathBuf>, maximum_blob_bytes: u64) -> Result<Self, String> {
+        let objects =
+            ImmutableObjectClient::local(root, "artifacts").map_err(|error| error.to_string())?;
+        Self::from_client(objects, maximum_blob_bytes)
+    }
+
+    pub(crate) fn from_client(
+        objects: ImmutableObjectClient,
+        maximum_blob_bytes: u64,
+    ) -> Result<Self, String> {
+        if maximum_blob_bytes == 0 {
+            return Err("node artifact store maximum must be positive".into());
         }
-        let blobs = ImmutableObjectClient::local(root.clone(), "blobs/sha256")
+        let blobs = objects
+            .subnamespace("blobs/sha256")
             .map_err(|error| error.to_string())?;
-        let receipts = ImmutableObjectClient::local(root, "receipts/sha256")
+        let receipts = objects
+            .subnamespace("receipts/sha256")
             .map_err(|error| error.to_string())?;
         Ok(Self {
             blobs,
@@ -170,7 +170,7 @@ impl LocalNodeArtifactStore {
 }
 
 #[async_trait]
-impl INodeArtifactStore for LocalNodeArtifactStore {
+impl INodeArtifactStore for NodeArtifactObjectStore {
     async fn put(
         &self,
         descriptor: &NodeArtifactDescriptor,
@@ -306,7 +306,8 @@ mod tests {
     }
 
     fn blob_path(root: &Path, descriptor: &NodeArtifactDescriptor) -> PathBuf {
-        root.join("blobs")
+        root.join("artifacts")
+            .join("blobs")
             .join("sha256")
             .join(descriptor.artifact.digest.trim_start_matches("sha256:"))
     }
@@ -314,7 +315,7 @@ mod tests {
     #[tokio::test]
     async fn content_addressed_write_replays_and_streams_exact_bytes() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"durable artifact bytes";
         let descriptor = descriptor(bytes);
 
@@ -346,7 +347,7 @@ mod tests {
     #[tokio::test]
     async fn skill_bundle_write_replays_and_streams_exact_bytes() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"deterministic Skill release tar";
         let descriptor = descriptor_with_media_type(bytes, SKILL_BUNDLE_MEDIA_TYPE);
 
@@ -378,7 +379,7 @@ mod tests {
     #[tokio::test]
     async fn durable_cell_bundle_reuses_the_same_exact_artifact_store() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"deterministic Durable Cell bundle tar";
         let descriptor = descriptor_with_media_type(bytes, DURABLE_CELL_BUNDLE_MEDIA_TYPE);
 
@@ -414,7 +415,7 @@ mod tests {
     #[tokio::test]
     async fn digest_mismatch_and_media_type_conflict_fail_closed() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"artifact";
         let descriptor = descriptor(bytes);
         assert!(matches!(
@@ -437,7 +438,7 @@ mod tests {
     #[tokio::test]
     async fn blob_commit_gap_is_repaired_idempotently() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"crash-gap artifact";
         let descriptor = descriptor(bytes);
         let blob = blob_path(directory.path(), &descriptor);
@@ -460,7 +461,7 @@ mod tests {
     #[tokio::test]
     async fn same_length_blob_tampering_is_rejected_before_download_or_replay() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"trusted artifact";
         let descriptor = descriptor(bytes);
         store
@@ -487,7 +488,7 @@ mod tests {
     #[tokio::test]
     async fn receipt_without_blob_is_not_silently_repaired() {
         let directory = tempfile::tempdir().expect("artifact directory");
-        let store = LocalNodeArtifactStore::new(directory.path(), 1024).expect("store");
+        let store = NodeArtifactObjectStore::local(directory.path(), 1024).expect("store");
         let bytes = b"receipt-only artifact";
         let descriptor = descriptor(bytes);
         store

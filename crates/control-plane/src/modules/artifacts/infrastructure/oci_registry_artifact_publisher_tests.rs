@@ -3,7 +3,7 @@ use crate::modules::artifacts::domain::{
     BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, INodeArtifactStore,
     NodeArtifactDescriptor, OciPublicationRequest,
 };
-use crate::modules::artifacts::infrastructure::{LocalNodeArtifactStore, OciBuildOutputValidator};
+use crate::modules::artifacts::infrastructure::{NodeArtifactObjectStore, OciBuildOutputValidator};
 use crate::modules::sources::domain::BuildRecipe;
 use a3s_cloud_contracts::{
     artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
@@ -310,7 +310,7 @@ impl PublicationFixture {
         let layout = create_export(&export, platforms, indexed)?;
         let archive = root.path().join("output.tar");
         archive_directory(&export, &archive)?;
-        let store = Arc::new(LocalNodeArtifactStore::new(
+        let store = Arc::new(NodeArtifactObjectStore::local(
             root.path().join("store"),
             64 * 1024 * 1024,
         )?);
@@ -728,7 +728,7 @@ impl Drop for CredentialEnv {
 }
 
 async fn admit(
-    store: &Arc<LocalNodeArtifactStore>,
+    store: &Arc<NodeArtifactObjectStore>,
     archive: &Path,
 ) -> Result<BuildArtifact, Box<dyn std::error::Error>> {
     let bytes = tokio::fs::read(archive).await?;

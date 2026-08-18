@@ -31,7 +31,13 @@ impl LocalBackend {
         }
         create_secure_directory(&root)?;
         create_secure_directory(&root.join(".immutable-object-staging"))?;
+        let root = fs::canonicalize(root)
+            .map_err(|error| io_error("canonicalize immutable object root", error))?;
         Ok(Self { root })
+    }
+
+    pub(super) fn root(&self) -> &Path {
+        &self.root
     }
 
     pub(super) fn put(

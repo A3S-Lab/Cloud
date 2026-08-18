@@ -7,7 +7,7 @@ use crate::modules::agents::domain::{
     IAgentRepository, StartAgentExecutionWrite,
 };
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
-use crate::modules::artifacts::LocalNodeArtifactStore;
+use crate::modules::artifacts::NodeArtifactObjectStore;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCertificateAuthority};
 use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
@@ -56,7 +56,7 @@ async fn authenticated_node_projects_code_semantics_and_replays_one_receipt() {
         commands,
         agents.clone(),
         Arc::new(
-            LocalNodeArtifactStore::new(directory.path().join("artifacts"), 1024 * 1024)
+            NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
                 .expect("artifact store"),
         ),
         Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),

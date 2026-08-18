@@ -7,8 +7,8 @@ mod protocol;
 mod tests;
 
 use crate::infrastructure::{
-    sync_directories as sync_filesystem_directories, GitCommandError, GitCommandRunner,
-    ImmutableObjectClient,
+    sync_directories as sync_filesystem_directories, sync_directory as sync_filesystem_directory,
+    GitCommandError, GitCommandRunner, ImmutableObjectClient,
 };
 use crate::modules::assets::domain::{
     validate_asset_repository_mutation, Asset, AssetGitBackup, AssetGitBuildInput,
@@ -21,17 +21,24 @@ use crate::modules::shared_kernel::domain::{
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
 const REPOSITORY_SCHEMA: &str = "a3s.cloud.asset-git-repository.v1";
+const STORAGE_IDENTITY_SCHEMA: &str = "a3s.cloud.asset-git-storage.v1";
+const STORAGE_IDENTITY_DIRECTORY: &str = ".storage-identity";
+const STORAGE_IDENTITY_FILE: &str = "identity.json";
+const MAX_STORAGE_IDENTITY_BYTES: u64 = 1024;
 const MAX_ROOT_PATH_BYTES: usize = 4096;
 const MAX_GIT_COMMAND_TIMEOUT: Duration = Duration::from_secs(600);
 
 pub struct LocalAssetGitRepository {
     root: PathBuf,
+    storage_id: Uuid,
     staging_root: PathBuf,
     build_input_root: PathBuf,
     git_home: PathBuf,
@@ -65,6 +72,7 @@ impl LocalAssetGitRepository {
             GitCommandRunner::normalize_path(std::fs::canonicalize(root).map_err(|error| {
                 storage(format!("could not canonicalize repository root: {error}"))
             })?);
+        let storage_id = load_or_create_storage_identity(&root)?;
         let staging_root = root.join(".repository-staging");
         let build_input_root = root.join(".build-inputs");
         let sandbox = root.join(".git-command-sandbox");
@@ -83,6 +91,7 @@ impl LocalAssetGitRepository {
             .map_err(git_storage("initialize hosted Git command runner"))?;
         Ok(Self {
             root,
+            storage_id,
             staging_root,
             build_input_root,
             git_home,
@@ -106,6 +115,12 @@ impl LocalAssetGitRepository {
         self.backup_objects = Some(objects);
         self.backup_max_bytes = maximum_bytes;
         Ok(self)
+    }
+
+    /// Stable identity of the exact hosted-Git filesystem. Composition binds
+    /// these bytes through PostgreSQL before API or Worker capabilities start.
+    pub(crate) fn infrastructure_identity(&self) -> &[u8] {
+        self.storage_id.as_bytes()
     }
 
     async fn prepare(
@@ -234,6 +249,142 @@ impl LocalAssetGitRepository {
     fn organization_path(&self, asset: &Asset) -> PathBuf {
         self.root.join(asset.organization_id.to_string())
     }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StorageIdentity {
+    schema: String,
+    storage_id: Uuid,
+}
+
+fn load_or_create_storage_identity(root: &Path) -> Result<Uuid, AssetGitRepositoryError> {
+    let target = root.join(STORAGE_IDENTITY_DIRECTORY);
+    if target.exists() {
+        return load_storage_identity(&target);
+    }
+
+    let storage_id = Uuid::now_v7();
+    let staging = root.join(format!(
+        "{STORAGE_IDENTITY_DIRECTORY}-{}.pending",
+        Uuid::now_v7()
+    ));
+    create_secure_directory_sync(&staging, "repository storage identity staging")?;
+    let body = serde_json::to_vec(&StorageIdentity {
+        schema: STORAGE_IDENTITY_SCHEMA.into(),
+        storage_id,
+    })
+    .map_err(|error| {
+        storage(format!(
+            "could not encode repository storage identity: {error}"
+        ))
+    })?;
+    if body.is_empty() || body.len() as u64 > MAX_STORAGE_IDENTITY_BYTES {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(integrity("repository storage identity is not bounded"));
+    }
+    let marker = staging.join(STORAGE_IDENTITY_FILE);
+    let written = (|| -> Result<(), AssetGitRepositoryError> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        let mut file = options.open(&marker).map_err(|error| {
+            storage(format!(
+                "could not create repository storage identity: {error}"
+            ))
+        })?;
+        file.write_all(&body).map_err(|error| {
+            storage(format!(
+                "could not write repository storage identity: {error}"
+            ))
+        })?;
+        file.sync_all().map_err(|error| {
+            storage(format!(
+                "could not sync repository storage identity: {error}"
+            ))
+        })?;
+        sync_filesystem_directory(&staging).map_err(|error| {
+            storage(format!(
+                "could not sync repository storage identity directory: {error}"
+            ))
+        })
+    })();
+    if let Err(error) = written {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(error);
+    }
+
+    match std::fs::rename(&staging, &target) {
+        Ok(()) => {
+            sync_filesystem_directory(root).map_err(|error| {
+                storage(format!(
+                    "could not publish repository storage identity: {error}"
+                ))
+            })?;
+            Ok(storage_id)
+        }
+        Err(_) if target.exists() => {
+            let _ = std::fs::remove_dir_all(&staging);
+            load_storage_identity(&target)
+        }
+        Err(error) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            Err(storage(format!(
+                "could not publish repository storage identity: {error}"
+            )))
+        }
+    }
+}
+
+fn load_storage_identity(directory: &Path) -> Result<Uuid, AssetGitRepositoryError> {
+    let metadata = std::fs::symlink_metadata(directory).map_err(|error| {
+        storage(format!(
+            "could not inspect repository storage identity: {error}"
+        ))
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(integrity(
+            "repository storage identity path is not an owned directory",
+        ));
+    }
+    let entries = std::fs::read_dir(directory)
+        .map_err(|error| {
+            storage(format!(
+                "could not list repository storage identity: {error}"
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            storage(format!(
+                "could not list repository storage identity: {error}"
+            ))
+        })?;
+    if entries.len() != 1 || entries[0].file_name() != STORAGE_IDENTITY_FILE {
+        return Err(integrity("repository storage identity directory changed"));
+    }
+    let marker = entries[0].path();
+    let marker_metadata = std::fs::symlink_metadata(&marker).map_err(|error| {
+        storage(format!(
+            "could not inspect repository storage identity file: {error}"
+        ))
+    })?;
+    if marker_metadata.file_type().is_symlink()
+        || !marker_metadata.is_file()
+        || marker_metadata.len() == 0
+        || marker_metadata.len() > MAX_STORAGE_IDENTITY_BYTES
+    {
+        return Err(integrity("repository storage identity file changed"));
+    }
+    let bytes = std::fs::read(&marker).map_err(|error| {
+        storage(format!(
+            "could not read repository storage identity: {error}"
+        ))
+    })?;
+    let identity: StorageIdentity = serde_json::from_slice(&bytes)
+        .map_err(|_| integrity("repository storage identity is malformed"))?;
+    if identity.schema != STORAGE_IDENTITY_SCHEMA || identity.storage_id.is_nil() {
+        return Err(integrity("repository storage identity is invalid"));
+    }
+    Ok(identity.storage_id)
 }
 
 #[async_trait]

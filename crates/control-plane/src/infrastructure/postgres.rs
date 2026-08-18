@@ -1037,6 +1037,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/120_durable_cell_provider_profiles.sql"
             )),
         ),
+        Migration::new(
+            "121",
+            "deployment infrastructure bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/121_infrastructure_bindings.sql"
+            )),
+        ),
     ]
 }
 
@@ -1960,6 +1968,44 @@ mod durable_cell_provider_profile_migration_tests {
             assert!(
                 !lower.contains(forbidden),
                 "migration 120 added another publication or Secret authority: {forbidden}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod infrastructure_binding_migration_tests {
+    const MIGRATION: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../migrations/121_infrastructure_bindings.sql"
+    ));
+
+    #[test]
+    fn migration_121_adds_one_generic_create_only_topology_authority() {
+        for expected in [
+            "create table infrastructure_bindings",
+            "binding_name varchar(128) primary key",
+            "binding_schema varchar(128) not null",
+            "binding_digest char(71) not null",
+            "replacement requires an explicit migration",
+        ] {
+            assert!(
+                MIGRATION.contains(expected),
+                "migration 121 is missing {expected}"
+            );
+        }
+        let lower = MIGRATION.to_ascii_lowercase();
+        for forbidden in [
+            "secret_value",
+            "credential_value",
+            "object_body",
+            "git_ref",
+            "updated_at",
+            "on update",
+        ] {
+            assert!(
+                !lower.contains(forbidden),
+                "migration 121 added mutable or duplicated authority: {forbidden}"
             );
         }
     }

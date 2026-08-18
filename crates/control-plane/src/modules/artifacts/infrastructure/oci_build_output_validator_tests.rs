@@ -5,7 +5,7 @@ use crate::modules::artifacts::domain::{
     OciPublicationTarget, PublishedOciArtifact, DSSE_PAYLOAD_TYPE,
 };
 use crate::modules::artifacts::infrastructure::{
-    BoxBuildEvidenceGenerator, LocalBuildEvidenceSigner, LocalNodeArtifactStore,
+    BoxBuildEvidenceGenerator, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
@@ -52,7 +52,10 @@ async fn box_output_revalidates_the_complete_oci_graph_and_stored_bytes(
     let archive = root.path().join("output.tar");
     archive_layout(&layout, &archive)?;
     let store_root = root.path().join("store");
-    let store = Arc::new(LocalNodeArtifactStore::new(&store_root, 64 * 1024 * 1024)?);
+    let store = Arc::new(NodeArtifactObjectStore::local(
+        &store_root,
+        64 * 1024 * 1024,
+    )?);
     let artifact = admit(&store, &archive).await?;
     let receipt = receipt(&artifact, &fixture);
     let validator = validator(store, root.path().join("validation"))?;
@@ -65,7 +68,7 @@ async fn box_output_revalidates_the_complete_oci_graph_and_stored_bytes(
     assert_eq!(validated.blob_count, fixture.blob_count as usize);
 
     let blob = store_root
-        .join("blobs/sha256")
+        .join("artifacts/blobs/sha256")
         .join(artifact.digest.strip_prefix("sha256:").ok_or("digest")?);
     let mut bytes = std::fs::read(&blob)?;
     bytes[0] ^= 0xff;
@@ -95,7 +98,7 @@ async fn box_output_rejects_non_file_archive_entries() -> Result<(), Box<dyn std
     builder.finish()?;
     drop(builder);
 
-    let store = Arc::new(LocalNodeArtifactStore::new(
+    let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("store"),
         1024 * 1024,
     )?);
@@ -126,7 +129,7 @@ async fn box_receipt_must_match_every_validated_oci_measurement(
     let fixture = create_layout(&layout)?;
     let archive = root.path().join("output.tar");
     archive_layout(&layout, &archive)?;
-    let store = Arc::new(LocalNodeArtifactStore::new(
+    let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("store"),
         64 * 1024 * 1024,
     )?);
@@ -175,7 +178,7 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
     let fixture = create_layout(&layout)?;
     let archive = root.path().join("output.tar");
     archive_layout(&layout, &archive)?;
-    let store = Arc::new(LocalNodeArtifactStore::new(
+    let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("store"),
         64 * 1024 * 1024,
     )?);
@@ -298,7 +301,7 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
 }
 
 fn validator(
-    store: Arc<LocalNodeArtifactStore>,
+    store: Arc<NodeArtifactObjectStore>,
     staging_root: impl Into<std::path::PathBuf>,
 ) -> Result<OciBuildOutputValidator, String> {
     OciBuildOutputValidator::new(
@@ -313,7 +316,7 @@ fn validator(
 }
 
 async fn admit(
-    store: &Arc<LocalNodeArtifactStore>,
+    store: &Arc<NodeArtifactObjectStore>,
     archive: &Path,
 ) -> Result<BuildArtifact, Box<dyn std::error::Error>> {
     let bytes = tokio::fs::read(archive).await?;

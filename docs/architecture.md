@@ -297,9 +297,10 @@ second entry in an authority row must be redesigned before implementation.
 | Routing intent | Edge | Gateway-local desired routes in managed mode |
 | Applied request-path state | A3S Gateway | Cloud request proxying, Durable Cell owner lookup/stickiness, or Edge inferring an apply without acknowledgement |
 | Product configuration | A3S ACL through `a3s-acl` | Non-ACL product configuration, provider-native manifests, or compatibility parsers |
-| Hosted Asset Git refs, objects, and rollback evidence | Assets `LocalAssetGitRepository` plus its same-lease checksummed journal | PostgreSQL ref mirrors, Source checkout clones, Artifact copies, or another Git runner |
+| Hosted Asset Git refs, objects, and rollback evidence | Assets `LocalAssetGitRepository` on one identity-bound shared filesystem plus its same-lease checksummed journal | PostgreSQL ref mirrors, Source checkout clones, Artifact copies, or another Git runner |
 | Hosted Asset Git writer, quota, commit, and backup-reference state | One `asset_git_repository_controls` row through A3S ORM | Redis/file locks, process-local writer flags, a second repository-control table, or event-stream authority |
-| Object-store transport | One shared infrastructure client with typed domain adapters; immutable consumers retain create-only exact-replay semantics, while S0 alone exposes version-token CAS through `IObjectNamespace` | Parallel filesystem/S3 clients, mutable operations in immutable adapters, and untyped cross-domain blob APIs |
+| Object-store transport | One deployment-level infrastructure client with typed child namespaces; immutable consumers retain create-only exact-replay semantics, while S0 alone exposes version-token CAS through `IObjectNamespace` | Per-consumer filesystem/S3 clients, mutable operations in immutable adapters, and untyped cross-domain blob APIs |
+| Deployment storage topology | Create-only, secret-free digests in PostgreSQL `infrastructure_bindings` for the one object root and Hosted Git filesystem identity | A storage backend attesting itself, mutable runtime overrides, ref/object mirrors, or a second topology registry |
 | Mutable workload data and distributed volume intent | Data context plus typed `S0` provider contracts and fencing | Workflow filesystems, Agent volume managers, provider JSON as desired state, or unfenced shared writers |
 | Unified capability discovery | Search projection over exact owning-context release references | Copied release rows, a second package registry, or a catalog that can mutate source identities |
 | Audit | Shared append-only `audit_records` plus one owner/admin-only bounded read projection | Agent, Gateway, inference, or MCP-specific audit stores, duplicate writers, or public unstructured details |
@@ -433,7 +434,7 @@ versioned components. Cloud ships no management Web UI or static SPA server;
 all product management enters through `all` or `api`. A worker or relay never
 registers REST, OpenAPI, or Management MCP product routes merely to obtain a
 health listener. The dedicated relay also does not initialize Flow, Runtime,
-Box, OIDC, GitHub, Vault, Gateway certificate, or log-object providers. Its
+Box, OIDC, GitHub, Vault, Gateway certificate, or object-storage providers. Its
 readiness is the conjunction of the PostgreSQL and A3S Event dependencies it
 actually uses.
 
@@ -443,7 +444,7 @@ OIDC provider, source-webhook verifier, management source resolver, node CA,
 node-control server identity, plugin trust/catalog state, domain verifier, or
 management-only application services. Its readiness is the exact conjunction
 of PostgreSQL, A3S Event, executable Flow, Gateway certificate authority, key
-encryption, and log storage. A real PostgreSQL 17 plus NATS gate checks that
+encryption, and shared object storage. A real PostgreSQL 17 plus NATS gate checks that
 dependency set, the status-only route set, and the absence of management-owned
 local state.
 
@@ -455,7 +456,7 @@ runtime rejects workflow or step execution. Checkout, build input/output
 staging, evidence signing, the exact runtime registry, executable Flow queue,
 and every reconciler are constructed only behind the Worker capability. API
 readiness is exactly PostgreSQL, query-only Flow, node CA, Gateway CA, key
-encryption, and log storage. A PostgreSQL-only gate uses an unresolved NATS URL
+encryption, and shared object storage. A PostgreSQL-only gate uses an unresolved NATS URL
 and proves both that readiness set and the absence of Worker staging state.
 
 `all` composes the same management, Worker, and Relay capabilities rather than
@@ -471,10 +472,13 @@ therefore share one lexical, host-neutral validator that admits POSIX,
 Windows-drive, and UNC absolute paths and rejects relative or parent-traversal
 paths. Local immutable-object and hosted-Git durability likewise share one
 platform-aware directory flush; Windows obtains a directory handle with
-backup semantics rather than silently skipping metadata durability. Assets
-and Sources also retain one `GitCommandRunner`; canonical Windows verbatim
-paths are normalized only at that external-process boundary instead of by
-either product adapter.
+backup semantics rather than silently skipping metadata durability. The
+selected object root and Hosted Git filesystem each expose one canonical,
+secret-free identity that is create-once bound to the same PostgreSQL
+deployment; a split API/Worker mount or provider configuration fails startup.
+Assets and Sources also retain one `GitCommandRunner`; canonical Windows
+verbatim paths are normalized only at that external-process boundary instead
+of by either product adapter.
 
 ## 6. Control-plane modular monolith and DDD boundaries
 
@@ -628,6 +632,15 @@ admission, quota, applied usage, audit commit, and the latest immutable backup
 reference. Those facts are complementary consistency boundaries, not mirrored
 repository state.
 
+The repository root contains one bounded, fsynced, create-once storage UUID.
+API and Worker bind that UUID through the generic PostgreSQL deployment
+topology table before exposing capabilities. Reopening the same shared mount
+replays the exact binding; pointing any replica at another local or network
+mount conflicts even if its path string looks valid. PostgreSQL stores only
+the secret-free digest and never mirrors Git refs, objects, journals, or
+backup bytes. Replacing the filesystem therefore requires an explicit
+migration and restore procedure rather than an implicit startup override.
+
 ```text
 Git client
   -> tenant guard + cloud:read or asset:write scope
@@ -773,6 +786,13 @@ Commands use optimistic versions for aggregate conflicts and scoped locks only
 where a shared invariant requires serialization. Transactions are short and do
 not span node, Gateway, object-store, or provider calls.
 
+Migration `121` adds one small infrastructure exception with deliberately
+narrow semantics: `infrastructure_bindings` stores create-once, secret-free
+digests of deployment topology, not business state or provider content. The
+same PostgreSQL authority independently binds the object-provider root and
+Hosted Git filesystem UUID. Exact process restart is a replay; drift is a
+startup conflict, and replacement requires an explicit migration procedure.
+
 ### 7.2 Commit and publication
 
 A business mutation atomically commits:
@@ -810,12 +830,22 @@ and recovery semantics; duplicating one into another is equally prohibited.
 
 ### 7.4 Immutable objects
 
-Large logs, artifacts, hosted Git backup bundles, Agent content, checkpoints,
-and evidence share one
-low-level content-addressed object client. Each domain keeps a typed adapter,
+Large logs, artifacts, hosted Git backup bundles, plugin trust roots, Agent
+content, checkpoints, and evidence share one low-level content-addressed
+object client. Composition constructs the provider exactly once and derives
+closed `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
+children from the same handle. Each domain keeps only its typed adapter,
 namespace, size/media admission policy, authorization, and retention rule.
-Filesystem and S3-compatible implementations are deployment choices behind
-that client, not simultaneous business authorities.
+Filesystem is a development choice; production requires one shared HTTPS
+S3-compatible root for every API and Worker replica.
+
+Before binding a previously unseen provider identity, startup performs an
+actual bounded create/read/delete probe. The canonical secret-free identity
+includes the provider location and root prefix, excludes credentials and
+timeouts, and is bound in PostgreSQL. Credential rotation therefore preserves
+identity, while a bucket, endpoint, prefix, or canonical local-root change
+fails closed. Child namespaces inherit the same identity and cannot construct
+parallel provider authorities.
 
 Object publication is digest-verified and adoptable after a crash. A database
 reference is committed only with sufficient identity to replay or clean up an
@@ -1402,6 +1432,12 @@ rollout acknowledgements.
 | Multi-node | Separated `api`, `worker`, and `relay` roles; multiple Box nodes and independently placed Gateways | `H0.3` target |
 | Highly available | Replicated roles, leader/lease fencing, PostgreSQL failover, durable event delivery, replicated object storage, upgrade and disaster procedures | `H0.4` and `H0.5` target |
 
+The current split-role foundation fails closed when replicas disagree about
+the shared object root or Hosted Git filesystem. It does not yet certify the
+mount implementation, object-provider replication, PostgreSQL failover,
+rolling migration, backup/restore, or process-placement procedures required
+to call the highly available profile complete.
+
 Cloud's production installation is ACL-native and Box-hosted. It packages the
 same Cloud roles, migrations, Node Agent, Gateway, and required dependencies
 without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
@@ -1426,6 +1462,7 @@ their worker futures own behavior while the process shell alone owns lifetime.
 | Candidate deployment failure | Prior healthy generation and route remain active; cleanup is explicit and resumable |
 | Hosted Git process death before PostgreSQL completion | The expired lease is claimed for recovery; the same local journal restores refs and removes only newly introduced objects before another writer starts |
 | Hosted Git completion acknowledged by PostgreSQL before journal cleanup | The committed cleanup lease causes restart to remove the same journal without rolling back applied refs |
+| API/Worker object provider or Hosted Git mount drift | Create-once PostgreSQL topology binding rejects startup before routes or workers become available; no backend is selected by first successful read |
 | Plugin plan/apply acknowledgement loss | Fleet replays the exact command; the A3S Use manager reloads the same operation and plan digest, preserves the prior active generation until cutover, and returns the same receipt |
 | Plugin plan expiry or policy/trust drift | Apply fails closed; Cloud records the blocked attempt and may create a new immutable plan attempt only inside the still-current desired-generation reconciliation, never by mutating or silently reauthorizing the reviewed plan |
 | Workflow plan commit or child-dispatch ambiguity | Replay resolves the same plan digest and exact child identity; it never compiles a replacement plan or starts a second child |
@@ -1456,7 +1493,7 @@ discard an approval, command, log gap, usage gap, or cleanup obligation.
 | A3S Gateway | Managed application, MCP, and inference traffic | Required when a profile exposes traffic |
 | A3S Power | Local inference serving | Required only for `I0` |
 | A3S Use | Signed plugin catalog, canonical plan/confirmation/receipt contracts, shared Plugin Manager, package generations, grants, bindings, and capability reconciliation | Required only for `U0`; Cloud pins and adapts it rather than reimplementing it |
-| Filesystem or S3-compatible objects | Immutable large content | One selected backend per namespace/profile behind the shared client |
+| Filesystem or S3-compatible objects | Immutable large content | One selected root per Cloud deployment behind the shared client; local is development-only and production requires shared HTTPS S3 |
 | NATS JetStream | Replicated A3S Event delivery | Required for every event-owning production `all`, worker, or relay role; a dedicated API owns no event transport; never workflow or desired-state authority |
 | Redis | Ephemeral fan-out or specifically gated exact distributed counters | Optional and disposable; prohibited for durable control state |
 | OpenTelemetry Collector | Telemetry routing | Production profile dependency, not a decision authority |

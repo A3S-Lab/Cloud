@@ -1,7 +1,7 @@
 use super::{NodeControlApi, NodeControlServer};
 use crate::config::NodeControlConfig;
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
-use crate::modules::artifacts::LocalNodeArtifactStore;
+use crate::modules::artifacts::NodeArtifactObjectStore;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
 use crate::modules::edge::{EdgeGatewayAcknowledgementProjector, LocalGatewayCertificateAuthority};
 use crate::modules::fleet::application::{EnrollNode, EnrollNodeHandler};
@@ -85,7 +85,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         commands,
         agents,
         Arc::new(
-            LocalNodeArtifactStore::new(directory.path().join("artifacts"), 1024 * 1024)
+            NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
                 .expect("artifact store"),
         ),
         Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),

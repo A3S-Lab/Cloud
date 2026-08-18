@@ -31,7 +31,7 @@ pub use domain::{
 pub use infrastructure::{
     BoxBuildEvidenceGenerator, BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime,
     BuildFlowRuntimeDependencies, CloudBuildSourceResolver, InMemoryBuildRunRepository,
-    LocalBuildEvidenceSigner, LocalNodeArtifactStore, OciBuildOutputValidator,
+    LocalBuildEvidenceSigner, NodeArtifactObjectStore, OciBuildOutputValidator,
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions, PostgresBuildRunRepository,
     SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };

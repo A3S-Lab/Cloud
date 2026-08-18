@@ -2643,11 +2643,12 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Provider push delivery identity and exact-payload digest | PostgreSQL source webhook inbox; no raw payload or secret |
 | Provider connection-lifecycle event/action, subject, and exact-payload digest | PostgreSQL GitHub lifecycle inbox; no raw payload or credential |
 | External source revision, recipe digest, and tenant mutation webhook source-identity reservation | PostgreSQL Sources tables |
-| Asset repository refs, objects, immutable repository identity, and same-lease rollback journal | Tenant/Asset-qualified local Git repository store |
+| Asset repository refs, objects, immutable repository identity, and same-lease rollback journal | Tenant/Asset-qualified `LocalAssetGitRepository` on one identity-bound shared filesystem |
 | Asset repository writer lease, quota, applied usage, audit commit, cleanup obligation, and latest backup receipt | One PostgreSQL `asset_git_repository_controls` row through A3S ORM |
 | Asset repository backup bytes | Shared immutable-object infrastructure through the typed Assets adapter |
 | Asset release and artifact descriptors | PostgreSQL domain tables |
-| Artifact bytes | OCI registry or S3-compatible object store |
+| Artifact bytes | OCI registry or the one deployment-level immutable-object root through the typed Artifacts adapter |
+| Deployment object-root and Hosted Git filesystem identities | Create-only, secret-free SHA-256 digests in PostgreSQL `infrastructure_bindings`; migration `121` binds topology only and never mirrors bytes, refs, objects, journals, credentials, or writer state |
 | Agent conversation, execution, event-stream head, semantic event metadata, immutable bindings, approval decisions, checkpoint descriptors, and fork lineage | PostgreSQL Agents tables through A3S ORM |
 | Large Agent event content and logical checkpoint bytes | Shared immutable-object infrastructure through typed Agent adapters |
 | Harness invocation profiles, provider/capability digests, exact instructions/environment/security policy and release/Secret references, conformance identity, and selected execution binding | PostgreSQL Agents tables through A3S ORM |
@@ -2695,7 +2696,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Transient Secret material | Authorized control-plane decryption and the node-local A3S Box process-create or pull boundary; file targets use Linux tmpfs only |
 | Durable Runtime log cursor, delivery watermark, last discontinuity, and pending upload | Node-agent secure state, keyed by unit and generation, with the pending upload governed by the shared typed outbound-batch/receipt primitive |
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
-| Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
+| Log chunk report bodies | The one deployment-level immutable-object root selected by typed ACL; filesystem is development-only and production requires shared HTTPS S3-compatible storage |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
 | Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, and `S0.1-C4` supplies bounded recovery/delete execution and interruption replay through the same port, and its three exact operation contracts are routed through the existing Operations/Flow runtime with JIT Secrets. Workloads still owns writer-fence receipt production and durable enqueue; Operations/Flow owns the durable lifecycle; there is no second object client, provider registry, recovery worker/evidence store, or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |

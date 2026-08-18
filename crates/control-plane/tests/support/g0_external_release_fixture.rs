@@ -5,7 +5,7 @@ use a3s_cloud_contracts::{
 };
 use a3s_cloud_control_plane::infrastructure::connect_and_migrate;
 use a3s_cloud_control_plane::modules::artifacts::{
-    BuildArtifact, BuildRun, INodeArtifactStore, LocalNodeArtifactStore, NodeArtifactDescriptor,
+    BuildArtifact, BuildRun, INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactObjectStore,
     OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
@@ -430,7 +430,7 @@ pub(super) async fn connect(url: &str) -> TestResult<PostgresExecutor> {
 }
 
 pub(super) async fn admit_artifact(
-    store: &Arc<LocalNodeArtifactStore>,
+    store: &Arc<NodeArtifactObjectStore>,
     artifact: &BuildArtifact,
     path: &Path,
 ) -> TestResult {
@@ -453,7 +453,7 @@ pub(super) async fn admit_artifact(
 }
 
 pub(super) async fn admit_box_output(
-    store: &Arc<LocalNodeArtifactStore>,
+    store: &Arc<NodeArtifactObjectStore>,
     output: &NodeBoxBuildOutput,
     path: &Path,
 ) -> TestResult<BuildArtifact> {
@@ -585,7 +585,7 @@ pub(super) async fn enqueue_box_commands(
 }
 
 pub(super) fn output_validator(
-    store: Arc<LocalNodeArtifactStore>,
+    store: Arc<NodeArtifactObjectStore>,
     root: &Path,
 ) -> TestResult<Arc<OciBuildOutputValidator>> {
     Ok(Arc::new(OciBuildOutputValidator::new(

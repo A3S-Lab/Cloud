@@ -37,7 +37,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
         enroll_node(Arc::clone(&nodes), Arc::clone(&authority), &identity_store).await;
     let node_id = enrolled_identity.response.node_id;
     let artifact_store = Arc::new(
-        LocalNodeArtifactStore::new(directory.path().join("artifacts"), 1024 * 1024)
+        NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
             .expect("artifact store"),
     );
     let artifact_binding: Arc<dyn INodeArtifactStore> = artifact_store.clone();

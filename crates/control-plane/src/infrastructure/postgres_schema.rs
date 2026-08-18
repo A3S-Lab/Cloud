@@ -9,6 +9,15 @@ orm_table! {
 }
 
 orm_table! {
+    pub(crate) struct InfrastructureBindings => "infrastructure_bindings" {
+        binding_name: String => "binding_name",
+        binding_schema: String => "binding_schema",
+        binding_digest: String => "binding_digest",
+        bound_at: DateTime<Utc> => "bound_at",
+    }
+}
+
+orm_table! {
     pub(crate) struct IdempotencyRecords => "idempotency_records" {
         scope_key: String => "scope_key",
         idempotency_key: String => "idempotency_key",

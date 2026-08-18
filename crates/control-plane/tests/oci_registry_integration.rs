@@ -5,8 +5,9 @@ use a3s_cloud_contracts::{
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, IBuildArtifactPublisher, IBuildOutputValidator, INodeArtifactStore,
-    LocalNodeArtifactStore, NodeArtifactDescriptor, OciBuildOutputValidator, OciPublicationRequest,
-    OciPublicationTarget, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
+    NodeArtifactDescriptor, NodeArtifactObjectStore, OciBuildOutputValidator,
+    OciPublicationRequest, OciPublicationTarget, OciRegistryArtifactPublisher,
+    OciRegistryArtifactPublisherOptions,
 };
 use a3s_cloud_control_plane::modules::sources::domain::BuildRecipe;
 use a3s_cloud_control_plane::modules::workloads::{
@@ -98,7 +99,7 @@ async fn real_private_registry_publishes_and_replays_a_validated_oci_graph(
     let layout = create_publication_export(&export)?;
     let archive = root.path().join("output.tar");
     archive_publication_export(&export, &archive)?;
-    let store = Arc::new(LocalNodeArtifactStore::new(
+    let store = Arc::new(NodeArtifactObjectStore::local(
         root.path().join("store"),
         64 * 1024 * 1024,
     )?);
@@ -269,7 +270,7 @@ impl Drop for PublicationCredentialEnv {
 }
 
 async fn admit_publication_artifact(
-    store: &Arc<LocalNodeArtifactStore>,
+    store: &Arc<NodeArtifactObjectStore>,
     archive: &Path,
 ) -> Result<BuildArtifact, Box<dyn std::error::Error>> {
     let bytes = tokio::fs::read(archive).await?;
