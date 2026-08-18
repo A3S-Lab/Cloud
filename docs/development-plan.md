@@ -196,10 +196,11 @@ change shared mechanisms only; they do not add a parallel platform gate.
    starve a newly committed request. A Flow snapshot whose sequence and
    semantic content did not change causes no projection write and cannot
    advance a user-visible timestamp.
-2. **Supervise every mandatory background worker once.** One process-level
-   supervisor observes all worker exits and panics. An unexpected exit either
-   fails readiness or terminates the process according to the declared role;
-   individual contexts do not add their own supervisors.
+2. **Supervise every mandatory background worker once — implemented.** One
+   process-level `JoinSet` observes every worker exit, returned error, and
+   panic. An unexpected completion ends serving, broadcasts shutdown to the
+   remaining workers, and fails the process; individual contexts have no
+   failure channels or detached supervisors.
 3. **Route Flow work from one exact registry.** Workflow name/version and the
    complete exact step-name set are registered together and checked for
    collisions at startup. Unknown workflows and steps fail at the router;

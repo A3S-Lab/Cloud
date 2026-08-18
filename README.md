@@ -43,9 +43,10 @@ The code on `main` separates implemented mechanics from released capability:
 - **Implemented / durable foundation update** — `main` pins A3S Flow `0.13.1`
   so Workflow ACL graphs reuse Flow's portable DAG compiler, while Boot
   `0.2.0`, ORM `0.3.0`, the PostgreSQL queue, Operations, Outbox, audit, and
-  replay remain the only durable path. The last retained complete `F0`
-  certification used Flow `0.12.0`; the upgraded exact lock must be
-  recertified before `F0` returns to `Verified`.
+  replay remain the only durable path. One process-level supervisor observes
+  every mandatory worker and fails serving on an unexpected exit or panic.
+  The last retained complete `F0` certification used Flow `0.12.0`; the
+  upgraded exact lock must be recertified before `F0` returns to `Verified`.
 - **Implemented / stable management contract** — committed
   [OpenAPI `1.39.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and

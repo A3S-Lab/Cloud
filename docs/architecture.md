@@ -1352,6 +1352,12 @@ without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
 
 ### 15.2 Failure behavior
 
+Every mandatory background component is registered in one process-level
+`JoinSet` supervisor. A clean exit before shutdown, returned error, or panic
+ends serving, broadcasts shutdown to the remaining workers, and fails the
+process. Bounded contexts do not own failure channels or detached supervisors;
+their worker futures own behavior while the process shell alone owns lifetime.
+
 | Failure | Required behavior |
 | --- | --- |
 | API process loss after commit | Caller retry replays the same result; workers recover from durable state |

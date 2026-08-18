@@ -1926,7 +1926,9 @@ The shared execution substrate now pins A3S Flow `0.13.1`, A3S Boot `0.2.0`
 with `queue-postgres`, and A3S ORM `0.3.0`-backed PostgreSQL stores. Workflow
 ACL graphs construct Flow `WorkflowDag` inputs programmatically and reuse its
 single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
-and `a3s_boot` schemas. New Cloud Operation
+and `a3s_boot` schemas. One process-level supervisor now observes every
+mandatory worker exit, error, and panic and fails serving before a background
+path can disappear silently. New Cloud Operation
 runs pin runtime build `a3s-cloud-workflows@1`, while legacy unpinned histories
 remain replayable. PostgreSQL tests cover queue draining, bounded retries,
 terminal-failure readiness, and the existing nine Build Flow `SIGKILL`

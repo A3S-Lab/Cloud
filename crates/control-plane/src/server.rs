@@ -19,7 +19,10 @@ use crate::modules::workloads::{
     SecretRotationRestartReconciler, WorkloadRuntimeReconciler,
 };
 use a3s_boot::{BootApplication, BootError, BootRequest, BootResponse, HttpAdapter, Result};
+use std::future::Future;
 use std::net::SocketAddr;
+use tokio::sync::watch;
+use tokio::task::{JoinError, JoinSet};
 
 pub struct ControlPlane {
     application: BootApplication,
@@ -113,6 +116,97 @@ impl ControlPlaneWorkers {
     }
 }
 
+#[derive(Debug)]
+struct WorkerExit {
+    name: &'static str,
+    error: Option<String>,
+    shutdown_requested: bool,
+}
+
+fn spawn_worker<Start, Worker>(
+    workers: &mut JoinSet<WorkerExit>,
+    name: &'static str,
+    shutdown: watch::Receiver<bool>,
+    start: Start,
+) where
+    Start: FnOnce(watch::Receiver<bool>) -> Worker + Send + 'static,
+    Worker: Future<Output = ()> + Send + 'static,
+{
+    let lifecycle = shutdown.clone();
+    workers.spawn(async move {
+        start(shutdown).await;
+        WorkerExit {
+            name,
+            error: None,
+            shutdown_requested: *lifecycle.borrow(),
+        }
+    });
+}
+
+fn spawn_fallible_worker<Start, Worker, Error>(
+    workers: &mut JoinSet<WorkerExit>,
+    name: &'static str,
+    shutdown: watch::Receiver<bool>,
+    start: Start,
+) where
+    Start: FnOnce(watch::Receiver<bool>) -> Worker + Send + 'static,
+    Worker: Future<Output = std::result::Result<(), Error>> + Send + 'static,
+    Error: std::fmt::Display,
+{
+    let lifecycle = shutdown.clone();
+    workers.spawn(async move {
+        let error = start(shutdown).await.err().map(|error| error.to_string());
+        WorkerExit {
+            name,
+            error,
+            shutdown_requested: *lifecycle.borrow(),
+        }
+    });
+}
+
+fn unexpected_worker_exit(
+    completed: Option<std::result::Result<WorkerExit, JoinError>>,
+) -> BootError {
+    match completed {
+        Some(Ok(exit)) => worker_exit_error(exit),
+        Some(Err(error)) => {
+            BootError::Internal(format!("control-plane worker task failed: {error}"))
+        }
+        None => BootError::Internal("control-plane worker supervisor became empty".into()),
+    }
+}
+
+fn worker_exit_error(exit: WorkerExit) -> BootError {
+    match exit.error {
+        Some(error) => BootError::Internal(format!(
+            "control-plane worker {:?} failed: {error}",
+            exit.name
+        )),
+        None => BootError::Internal(format!(
+            "control-plane worker {:?} stopped before shutdown",
+            exit.name
+        )),
+    }
+}
+
+async fn drain_workers(workers: &mut JoinSet<WorkerExit>) -> Option<BootError> {
+    let mut worker_error = None;
+    while let Some(completed) = workers.join_next().await {
+        match completed {
+            Ok(exit) if !exit.shutdown_requested => {
+                worker_error.get_or_insert_with(|| worker_exit_error(exit));
+            }
+            Ok(_) => {}
+            Err(error) => {
+                worker_error.get_or_insert_with(|| {
+                    BootError::Internal(format!("control-plane worker task failed: {error}"))
+                });
+            }
+        }
+    }
+    worker_error
+}
+
 impl ControlPlane {
     pub(crate) fn new(application: BootApplication, workers: ControlPlaneWorkers) -> Self {
         Self {
@@ -135,136 +229,221 @@ impl ControlPlane {
             return Err(error);
         }
         let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
-        let (failure_sender, mut failure_receiver) =
-            tokio::sync::mpsc::unbounded_channel::<BootError>();
-        let mut workers = Vec::new();
+        let mut workers = JoinSet::new();
         if let Some(reconciler) = self.workers.build_run_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "build-run reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.execution_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "execution reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.agent_execution_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Agent execution reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.workflow_run_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "WorkflowRun reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(coordinator) = self.workers.human_task_coordinator {
-            workers.push(tokio::spawn(coordinator.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "HumanTask coordinator",
+                shutdown_receiver.clone(),
+                move |shutdown| coordinator.run(shutdown),
+            );
         }
         if let Some(worker) = self.workers.human_task_resume_worker {
-            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "HumanTask resume worker",
+                shutdown_receiver.clone(),
+                move |shutdown| worker.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.github_authority_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "GitHub authority reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.gateway_certificate_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Gateway certificate reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.mcp_gateway_desired_state_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "MCP Gateway desired-state reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.mcp_gateway_snapshot_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "MCP Gateway snapshot reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(worker) = self.workers.mcp_credential_delivery_receipt_sweeper {
-            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "MCP credential receipt sweeper",
+                shutdown_receiver.clone(),
+                move |shutdown| worker.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.gateway_rollout_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Gateway rollout reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.gateway_replica_recovery_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Gateway replica recovery reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.gateway_rollout_rollback_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Gateway rollout rollback reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Secret rotation restart reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.node_drain_evacuation_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "node-drain evacuation reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(materializer) = self.workers.replica_deployment_materializer {
-            workers.push(tokio::spawn(materializer.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "replica deployment materializer",
+                shutdown_receiver.clone(),
+                move |shutdown| materializer.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.replica_retirement_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "replica retirement reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(coordinator) = self.workers.operation_coordinator {
-            let failure_sender = failure_sender.clone();
-            let coordinator_shutdown = shutdown_receiver.clone();
-            workers.push(tokio::spawn(async move {
-                if let Err(error) = coordinator.run(coordinator_shutdown).await {
-                    let _ = failure_sender.send(BootError::Internal(format!(
-                        "operation Flow coordinator stopped: {error}"
-                    )));
-                }
-            }));
+            spawn_fallible_worker(
+                &mut workers,
+                "Operation Flow coordinator",
+                shutdown_receiver.clone(),
+                move |shutdown| coordinator.run(shutdown),
+            );
         }
         if let Some(reconciler) = self.workers.workload_reconciler {
-            workers.push(tokio::spawn(reconciler.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Workload Runtime reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| reconciler.run(shutdown),
+            );
         }
         if let Some(worker) = self.workers.log_retention_worker {
-            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "log retention worker",
+                shutdown_receiver.clone(),
+                move |shutdown| worker.run(shutdown),
+            );
         }
         if let Some(worker) = self.workers.log_compaction_worker {
-            workers.push(tokio::spawn(worker.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "log compaction worker",
+                shutdown_receiver.clone(),
+                move |shutdown| worker.run(shutdown),
+            );
         }
         if let Some(consumer) = self.workers.outbound_notification_consumer {
-            let failure_sender = failure_sender.clone();
-            let lifecycle = shutdown_receiver.clone();
-            let consumer_shutdown = shutdown_receiver.clone();
-            workers.push(tokio::spawn(async move {
-                if let Err(error) = consumer.run(consumer_shutdown).await {
-                    if !*lifecycle.borrow() {
-                        let _ = failure_sender.send(BootError::Internal(format!(
-                            "outbound notification A3S Event consumer stopped: {error}"
-                        )));
-                    }
-                }
-            }));
+            spawn_fallible_worker(
+                &mut workers,
+                "outbound notification A3S Event consumer",
+                shutdown_receiver.clone(),
+                move |shutdown| consumer.run(shutdown),
+            );
         }
         if let Some(relay) = self.workers.outbox_relay {
-            workers.push(tokio::spawn(relay.run(shutdown_receiver.clone())));
+            spawn_worker(
+                &mut workers,
+                "Outbox relay",
+                shutdown_receiver.clone(),
+                move |shutdown| relay.run(shutdown),
+            );
         }
         if let Some(node_control) = self.workers.node_control_server {
-            let failure_sender = failure_sender.clone();
-            let lifecycle = shutdown_receiver.clone();
-            workers.push(tokio::spawn(async move {
-                let result = node_control.run(shutdown_receiver).await;
-                if !*lifecycle.borrow() {
-                    let error = match result {
-                        Ok(()) => BootError::Internal(
-                            "node-control listener stopped before shutdown".into(),
-                        ),
-                        Err(error) => BootError::Internal(error.to_string()),
-                    };
-                    let _ = failure_sender.send(error);
-                }
-            }));
+            spawn_fallible_worker(
+                &mut workers,
+                "node-control listener",
+                shutdown_receiver.clone(),
+                move |shutdown| node_control.run(shutdown),
+            );
         }
+        let monitor_workers = !workers.is_empty();
         let serve_result = {
             let serve = adapter.serve(self.application, address);
             tokio::pin!(serve);
             tokio::select! {
                 result = &mut serve => result,
                 result = wait_for_shutdown_signal() => result,
-                failure = failure_receiver.recv() => Err(failure.unwrap_or_else(|| {
-                    BootError::Internal("control-plane background failure channel closed".into())
-                })),
+                completed = workers.join_next(), if monitor_workers => {
+                    Err(unexpected_worker_exit(completed))
+                },
             }
         };
         let _ = shutdown_sender.send(true);
-        let mut worker_error = None;
-        for worker in workers {
-            if let Err(error) = worker.await {
-                worker_error.get_or_insert_with(|| {
-                    BootError::Internal(format!("control-plane worker failed: {error}"))
-                });
-            }
-        }
+        let worker_error = drain_workers(&mut workers).await;
         let shutdown_result = shutdown_application.shutdown().await;
 
         match (serve_result, worker_error, shutdown_result) {
@@ -299,4 +478,94 @@ async fn wait_for_shutdown_signal() -> Result<()> {
         .await
         .map_err(|error| BootError::Internal(format!("could not register Ctrl+C: {error}")))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_has_no_per_worker_supervision_rail() {
+        let production = include_str!("server.rs")
+            .split("#[cfg(test)]\nmod tests")
+            .next()
+            .expect("production server source");
+        for forbidden in [
+            ["tokio", "::spawn("].concat(),
+            ["unbounded_", "channel::<BootError>"].concat(),
+            ["failure_", "sender"].concat(),
+        ] {
+            assert!(
+                !production.contains(&forbidden),
+                "server restored a per-worker supervision mechanism {forbidden:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn supervisor_rejects_an_unexpected_clean_worker_exit() {
+        let (_shutdown_sender, shutdown_receiver) = watch::channel(false);
+        let mut workers = JoinSet::new();
+        spawn_worker(
+            &mut workers,
+            "fixture worker",
+            shutdown_receiver,
+            |_| async {},
+        );
+
+        let error = unexpected_worker_exit(workers.join_next().await);
+        assert!(
+            error
+                .to_string()
+                .contains("fixture worker\" stopped before shutdown"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn supervisor_rejects_an_unexpected_worker_error() {
+        let (_shutdown_sender, shutdown_receiver) = watch::channel(false);
+        let mut workers = JoinSet::new();
+        spawn_fallible_worker(
+            &mut workers,
+            "fallible fixture",
+            shutdown_receiver,
+            |_| async { Err::<(), _>("fixture failure") },
+        );
+
+        let error = unexpected_worker_exit(workers.join_next().await);
+        let message = error.to_string();
+        assert!(
+            message.contains("fallible fixture") && message.contains("fixture failure"),
+            "{message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn supervisor_accepts_workers_that_exit_after_requested_shutdown() {
+        let (shutdown_sender, shutdown_receiver) = watch::channel(false);
+        let mut workers = JoinSet::new();
+        spawn_worker(
+            &mut workers,
+            "shutdown fixture",
+            shutdown_receiver,
+            |mut shutdown| async move {
+                let _ = shutdown.changed().await;
+            },
+        );
+
+        shutdown_sender.send(true).expect("request shutdown");
+        assert!(drain_workers(&mut workers).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn supervisor_observes_worker_panics() {
+        let mut workers = JoinSet::new();
+        workers.spawn(async { panic!("fixture panic") });
+
+        let error = drain_workers(&mut workers)
+            .await
+            .expect("worker panic must fail supervision");
+        assert!(error.to_string().contains("worker task failed"), "{error}");
+    }
 }
