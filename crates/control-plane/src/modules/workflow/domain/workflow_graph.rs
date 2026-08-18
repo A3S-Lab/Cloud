@@ -1,5 +1,6 @@
 use super::validation::{validate_identifier, validate_text};
 use super::{WorkflowContractQuotas, WorkflowEdgeSpec, WorkflowSpec, WorkflowStepKind};
+use a3s_flow::{WorkflowDag, WorkflowDagEdge, WorkflowDagNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 pub(super) fn validate_workflow(
@@ -21,15 +22,11 @@ pub(super) fn validate_workflow(
         ));
     }
 
-    let mut steps = BTreeMap::new();
     let mut inputs = Vec::new();
     let mut outputs = Vec::new();
     for step in &spec.steps {
         validate_identifier("Workflow step ID", &step.id)?;
         validate_text("Workflow step label", &step.label, 1, 120)?;
-        if steps.insert(step.id.as_str(), step).is_some() {
-            return Err(format!("Workflow contains duplicate step ID {:?}", step.id));
-        }
         validate_capability_binding(step.kind, step.capability.as_ref())?;
         match step.kind {
             WorkflowStepKind::Input => inputs.push(step.id.as_str()),
@@ -37,6 +34,17 @@ pub(super) fn validate_workflow(
             _ => {}
         }
     }
+    for edge in &spec.edges {
+        validate_identifier("Workflow edge ID", &edge.id)?;
+    }
+
+    let structural_order = compile_structural_order(spec)?;
+
+    let steps = spec
+        .steps
+        .iter()
+        .map(|step| (step.id.as_str(), step))
+        .collect::<BTreeMap<_, _>>();
     if inputs.len() != 1 || outputs.is_empty() {
         return Err(format!(
             "Workflow must contain exactly one input and at least one output step; found {} input and {} output steps",
@@ -46,7 +54,6 @@ pub(super) fn validate_workflow(
     }
 
     let input = inputs[0];
-    let mut edge_ids = BTreeSet::new();
     let mut outgoing: BTreeMap<&str, Vec<&str>> =
         steps.keys().copied().map(|id| (id, Vec::new())).collect();
     let mut incoming: BTreeMap<&str, Vec<&str>> =
@@ -54,14 +61,14 @@ pub(super) fn validate_workflow(
     let mut branch_handles: BTreeMap<&str, BTreeSet<&str>> = BTreeMap::new();
 
     for edge in &spec.edges {
-        validate_edge(edge, &steps, &mut edge_ids, &mut branch_handles)?;
+        validate_edge_semantics(edge, &steps, &mut branch_handles)?;
         outgoing
             .get_mut(edge.source.as_str())
-            .ok_or_else(|| format!("Workflow edge {:?} has no source state", edge.id))?
+            .ok_or_else(|| format!("Workflow structural plan lost source {:?}", edge.source))?
             .push(edge.target.as_str());
         incoming
             .get_mut(edge.target.as_str())
-            .ok_or_else(|| format!("Workflow edge {:?} has no target state", edge.id))?
+            .ok_or_else(|| format!("Workflow structural plan lost target {:?}", edge.target))?
             .push(edge.source.as_str());
     }
 
@@ -95,7 +102,33 @@ pub(super) fn validate_workflow(
         return Err("Every Workflow step must lead to output".into());
     }
 
-    topological_order(&incoming, &outgoing)
+    Ok(structural_order)
+}
+
+/// Translate Cloud's authoritative ACL-backed product graph into Flow's pure
+/// structural compiler input. Flow owns generic graph identities, endpoints,
+/// scopes, acyclicity, and deterministic ordering; no external document parser
+/// is used in Cloud.
+fn compile_structural_order(spec: &WorkflowSpec) -> Result<Vec<String>, String> {
+    WorkflowDag::new(
+        spec.steps
+            .iter()
+            .map(|step| WorkflowDagNode::new(&step.id, step.kind.as_str()))
+            .collect(),
+        spec.edges
+            .iter()
+            .map(|edge| {
+                let compiled = WorkflowDagEdge::new(&edge.id, &edge.source, &edge.target);
+                match &edge.source_handle {
+                    Some(handle) => compiled.with_source_handle(handle),
+                    None => compiled,
+                }
+            })
+            .collect(),
+    )
+    .execution_plan()
+    .map(|plan| plan.top_level().to_vec())
+    .map_err(|error| format!("Workflow graph structure is invalid: {error}"))
 }
 
 fn validate_capability_binding(
@@ -128,34 +161,17 @@ fn validate_capability_binding(
     }
 }
 
-fn validate_edge<'a>(
+fn validate_edge_semantics<'a>(
     edge: &'a WorkflowEdgeSpec,
     steps: &BTreeMap<&str, &super::WorkflowStepSpec>,
-    edge_ids: &mut BTreeSet<&'a str>,
     branch_handles: &mut BTreeMap<&'a str, BTreeSet<&'a str>>,
 ) -> Result<(), String> {
-    validate_identifier("Workflow edge ID", &edge.id)?;
-    if !edge_ids.insert(edge.id.as_str()) {
-        return Err(format!("Workflow contains duplicate edge ID {:?}", edge.id));
-    }
     let source = steps.get(edge.source.as_str()).ok_or_else(|| {
         format!(
             "Workflow edge {:?} references missing source {:?}",
             edge.id, edge.source
         )
     })?;
-    if !steps.contains_key(edge.target.as_str()) {
-        return Err(format!(
-            "Workflow edge {:?} references missing target {:?}",
-            edge.id, edge.target
-        ));
-    }
-    if edge.source == edge.target {
-        return Err(format!(
-            "Workflow edge {:?} cannot connect a step to itself",
-            edge.id
-        ));
-    }
     match (source.kind, edge.source_handle.as_deref()) {
         (WorkflowStepKind::Branch, Some(handle)) => {
             validate_identifier("Workflow branch handle", handle)?;
@@ -199,37 +215,4 @@ fn walk<'a>(start: &'a str, adjacency: &BTreeMap<&'a str, Vec<&'a str>>) -> BTre
         }
     }
     visited
-}
-
-fn topological_order<'a>(
-    incoming: &BTreeMap<&'a str, Vec<&'a str>>,
-    outgoing: &BTreeMap<&'a str, Vec<&'a str>>,
-) -> Result<Vec<String>, String> {
-    let mut indegree: BTreeMap<&str, usize> = incoming
-        .iter()
-        .map(|(id, sources)| (*id, sources.len()))
-        .collect();
-    let mut ready: BTreeSet<&str> = indegree
-        .iter()
-        .filter_map(|(id, count)| (*count == 0).then_some(*id))
-        .collect();
-    let mut order = Vec::with_capacity(incoming.len());
-    while let Some(id) = ready.pop_first() {
-        order.push(id.to_owned());
-        for target in &outgoing[id] {
-            let count = indegree
-                .get_mut(target)
-                .ok_or_else(|| format!("Workflow target {target:?} has no indegree state"))?;
-            *count = count
-                .checked_sub(1)
-                .ok_or_else(|| "Workflow indegree underflowed".to_owned())?;
-            if *count == 0 {
-                ready.insert(target);
-            }
-        }
-    }
-    if order.len() != incoming.len() {
-        return Err("Workflow graph must be acyclic".into());
-    }
-    Ok(order)
 }

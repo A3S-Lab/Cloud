@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="820" viewBox="0 0 1200 820" role="img" aria-labelledby="title desc">
   <title id="title">A3S Cloud single-authority architecture</title>
-  <desc id="desc">Four management adapters enter one application core and PostgreSQL authority. Flow coordinates storage recovery through Data and Secrets or workload convergence through Fleet and the outbound Node Agent. Edge publishes exact snapshots to Gateway while live request bytes remain outside the control plane.</desc>
+  <desc id="desc">Four management adapters enter one application core and PostgreSQL authority. Flow compiles portable Workflow DAG structure and coordinates durable recovery through existing Data, Workloads, Fleet, and Node Agent paths. Edge publishes exact snapshots to Gateway while live request bytes remain outside the control plane.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8fa298"/></marker>
     <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#b7f56a"/></marker>
@@ -57,8 +57,8 @@
   <!-- Durable coordination. -->
   <rect x="76" y="390" width="236" height="116" rx="8" fill="#121c16" stroke="#53665b"/>
   <text x="94" y="424" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="21" font-weight="700">Flow + Operations</text>
-  <text x="94" y="455" fill="#9dafa5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">replay / retry / wait</text>
-  <text x="94" y="480" fill="#9dafa5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">leases / recovery</text>
+  <text x="94" y="455" fill="#9dafa5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">DAG plan / replay</text>
+  <text x="94" y="480" fill="#9dafa5" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18">retry / wait / recovery</text>
 
   <rect x="344" y="390" width="236" height="116" rx="8" fill="#121c16" stroke="#53665b"/>
   <text x="362" y="424" fill="#f4faf6" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, PingFang SC, sans-serif" font-size="21" font-weight="700">Data + Secrets</text>

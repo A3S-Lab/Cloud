@@ -270,6 +270,7 @@ second entry in an authority row must be redesigned before implementation.
 | Plugin catalog, package trust, immutable generation, grant, binding, and capability lifecycle | Shared A3S Use Plugin Manager and its canonical contracts | Cloud installer, TUF implementation, package/grant/binding tables, capability registry, surface reconciler, or universal plugin action RPC |
 | Relational access | A3S ORM | Raw SQL, direct database drivers, or a context-local data-access layer |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
+| Portable Workflow DAG structure | A3S Flow `WorkflowDag` compiler | A Cloud compatibility parser, Cloud topology sorter, authoring-tool execution schema, or product-local graph compiler |
 | Ontology, goal, plan, and Workflow semantic state | Workflow context in PostgreSQL | Flow history as business truth, a graph database authority, planner-local files, or a second workflow engine |
 | Application identity, immutable release, delivery/toolkit policy, sessions, messages/variants, conversation variables, feedback, and annotations | Applications context in PostgreSQL | Mode-specific/toolkit runtimes, Workflow-owned conversations, direct provider clients, delivery-local state, or presentation state as truth |
 | Durable Cell application identity, immutable revision, retention intent, and deployment projection | Durable Cells context in PostgreSQL | Cell state/lease rows, provider-native deployment authority, a second Workload controller, or application code as mutable desired state |
@@ -1054,8 +1055,14 @@ aggregate head; immutable `WorkflowRevision` rows atomically own the canonical
 definition ACL and the exact closed configuration, data-schema, and policy
 payloads referenced by digest. An immutable `WorkflowGoal` binds exact
 Workflow and Ontology revisions, optional Environment identity, and canonical
-input. Compiler `cloud.workflow.plan-compiler.v1` emits one content-addressed
-`PlanRevision` with deterministic topological order. REST, client, CLI, and
+input. Compiler `cloud.workflow.plan-compiler.v1` maps the canonical ACL-backed
+steps and edges programmatically into A3S Flow's `WorkflowDag` and consumes its
+deterministic structural order. Flow alone rejects generic duplicate
+identities, missing endpoints, self-edges, scopes, and cycles. Cloud then binds
+that order to exact ontology, capability, policy, payload, reachable-input/
+output, and branch semantics before emitting one content-addressed
+`PlanRevision`. Cloud constructs only the programmatic DAG surface and keeps
+`a3s-acl` as its sole product-configuration parser. REST, client, CLI, and
 Management MCP reuse the same CQRS lifecycle and historical replay. No Flow
 history, Search row, external payload, or presentation transport becomes
 semantic authority.
@@ -1374,7 +1381,7 @@ discard an approval, command, log gap, usage gap, or cleanup obligation.
 | PostgreSQL | Desired state, operations, idempotency, audit, and durable projections | Required; sole business database authority |
 | A3S ORM | Typed relational persistence and transactions | Required for every production relational path |
 | A3S ACL | Product configuration and immutable profile compilation | Required; sole configuration language |
-| A3S Flow | Durable workflows, retries, timers, and leases | Required for long-running work |
+| A3S Flow | Portable Workflow DAG structure plus durable workflows, retries, timers, and leases | Required for Workflow structural compilation and long-running work |
 | A3S Event | Integration-fact transport | Required abstraction; local or NATS provider does not own state |
 | A3S Runtime | Provider-neutral Task and Service lifecycle | Required execution contract |
 | A3S Box | Local execution, build, image, isolation, mount, snapshot, and cleanup | Required sole provider |

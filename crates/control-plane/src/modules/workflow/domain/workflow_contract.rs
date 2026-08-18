@@ -621,7 +621,23 @@ mod tests {
     }
 
     #[test]
-    fn graph_validation_rejects_cycles_dangling_edges_and_invalid_branch_handles() {
+    fn graph_validation_delegates_generic_structure_to_flow() {
+        let mut duplicate_node = fixture();
+        duplicate_node
+            .steps
+            .push(step("transform", WorkflowStepKind::Transform));
+
+        let mut duplicate_edge = fixture();
+        duplicate_edge
+            .edges
+            .push(edge("input-transform", "input", "output"));
+
+        let mut dangling = fixture();
+        dangling.edges[0].source = "missing".into();
+
+        let mut self_edge = fixture();
+        self_edge.edges[0].target = "input".into();
+
         let mut cyclic = fixture();
         cyclic
             .steps
@@ -632,12 +648,27 @@ mod tests {
             edge("c", "loop", "transform"),
             edge("d", "loop", "output"),
         ];
-        assert!(cyclic.validate(Default::default()).is_err());
 
-        let mut dangling = fixture();
-        dangling.edges[0].source = "missing".into();
-        assert!(dangling.validate(Default::default()).is_err());
+        for (workflow, invariant) in [
+            (duplicate_node, "duplicate node ID"),
+            (duplicate_edge, "duplicate edge ID"),
+            (dangling, "missing source"),
+            (self_edge, "connects a node to itself"),
+            (cyclic, "contains a cycle"),
+        ] {
+            let error = workflow
+                .validate(Default::default())
+                .expect_err("generic graph invariant must fail");
+            assert!(
+                error.starts_with("Workflow graph structure is invalid:")
+                    && error.contains(invariant),
+                "{error}"
+            );
+        }
+    }
 
+    #[test]
+    fn graph_validation_keeps_cloud_branch_semantics() {
         let mut branch = fixture();
         branch.steps[1].kind = WorkflowStepKind::Branch;
         assert!(branch.validate(Default::default()).is_err());

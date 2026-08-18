@@ -50,6 +50,7 @@ ledger:
 | Concern | One reusable mechanism | Forbidden duplicate |
 | --- | --- | --- |
 | Durable orchestration | A3S Flow plus Operations | Workflow runner, Agent job queue, evaluation scheduler, or retry daemon |
+| Portable DAG structure | A3S Flow `WorkflowDag`, constructed programmatically from Cloud ACL | Workflow compatibility parser, topology sorter, or authoring-tool runtime contract inside Cloud |
 | Placement and scaling | Workloads | Workflow, Harness, training, model, or MCP scheduler/autoscaler |
 | Node delivery | Fleet commands, leases, and the Node Agent journal | Provider-specific queue or direct Cloud-to-process channel |
 | Provider lifecycle | A3S Runtime Task/Service over A3S Box | WaaS/AaaS/FaaS runtime implementations or a training executor daemon |
@@ -114,6 +115,13 @@ Authoritative objects, relation types, constraints, rules, and revision
 lineage live in PostgreSQL through A3S ORM. Search and vector indexes are
 rebuildable projections. `W0` does not introduce a graph database or make a
 Search index authoritative.
+
+Workflow definitions are also canonical ACL. Cloud maps their typed steps and
+edges directly into Flow's `WorkflowDag`; it does not add a compatibility
+parser. Flow owns generic graph identity, endpoint, scope, cycle, and
+deterministic-order compilation. Workflow owns the single-input/reachable-
+output contract, branch handles, capability bindings, ontology/dataflow
+semantics, and immutable `PlanRevision`.
 
 ### 4.2 Ordered sub-gates
 

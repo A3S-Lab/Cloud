@@ -9,7 +9,6 @@ fn workflow_domain_cannot_import_execution_or_persistence_authorities() {
             return;
         }
         for forbidden in [
-            "a3s_flow::",
             "a3s_runtime::",
             "a3s_orm::",
             "sqlx::",
@@ -21,7 +20,15 @@ fn workflow_domain_cannot_import_execution_or_persistence_authorities() {
             "std::fs",
             "std::net",
             "std::process",
+            "FlowEngine",
+            "FlowEventStore",
+            "FlowRuntime",
+            "FlowScheduler",
             "FlowTaskQueue",
+            "FlowWorker",
+            "NativeTsRuntime",
+            "RuntimeCommand",
+            "WorkflowContext",
             "RuntimeClient",
             "EventBus",
             "object_store::",
@@ -34,6 +41,29 @@ fn workflow_domain_cannot_import_execution_or_persistence_authorities() {
     assert!(
         violations.is_empty(),
         "Workflow domain crossed an authority boundary: {}",
+        violations.join(", ")
+    );
+}
+
+#[test]
+fn workflow_domain_flow_dependency_is_limited_to_the_pure_dag_compiler() {
+    const ALLOWED_IMPORT: &str = "use a3s_flow::{WorkflowDag, WorkflowDagEdge, WorkflowDagNode};";
+
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/modules/workflow/domain");
+    let mut violations = Vec::new();
+    visit_rust_sources(&root, &mut |path, source| {
+        if path.ends_with("authority_tests.rs") {
+            return;
+        }
+        for line in source.lines().filter(|line| line.contains("a3s_flow")) {
+            if !path.ends_with("workflow_graph.rs") || line.trim() != ALLOWED_IMPORT {
+                violations.push(format!("{} contains {line:?}", path.display()));
+            }
+        }
+    });
+    assert!(
+        violations.is_empty(),
+        "Workflow domain imported Flow execution authority instead of only its DAG compiler: {}",
         violations.join(", ")
     );
 }

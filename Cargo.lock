@@ -169,7 +169,7 @@ dependencies = [
  "a3s-cloud-contracts",
  "a3s-cloud-node-agent",
  "a3s-event",
- "a3s-flow 0.12.0",
+ "a3s-flow 0.13.1",
  "a3s-form-core",
  "a3s-orm",
  "a3s-runtime",
@@ -368,15 +368,17 @@ dependencies = [
 
 [[package]]
 name = "a3s-flow"
-version = "0.12.0"
-source = "git+https://github.com/A3S-Lab/Flow.git?rev=0650f598a1d31e0036ea94b218d5db41031ec042#0650f598a1d31e0036ea94b218d5db41031ec042"
+version = "0.13.1"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=73c431d18a76a0b9fbfdc878f82bf50623950bdc#73c431d18a76a0b9fbfdc878f82bf50623950bdc"
 dependencies = [
  "a3s-boot",
  "a3s-orm",
  "async-trait",
  "chrono",
+ "semver",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "sha2 0.10.9",
  "thiserror 1.0.69",
  "tokio",

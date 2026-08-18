@@ -40,9 +40,12 @@ converges through one PostgreSQL authority and one durable execution path.
 
 The code on `main` separates implemented mechanics from released capability:
 
-- **Verified / durable foundation** — A3S Flow `0.12.0`, Boot `0.2.0`, ORM
-  `0.3.0`, PostgreSQL queue, Operations, Outbox, audit, and replay satisfy
-  `F0`.
+- **Implemented / durable foundation update** — `main` pins A3S Flow `0.13.1`
+  so Workflow ACL graphs reuse Flow's portable DAG compiler, while Boot
+  `0.2.0`, ORM `0.3.0`, the PostgreSQL queue, Operations, Outbox, audit, and
+  replay remain the only durable path. The last retained complete `F0`
+  certification used Flow `0.12.0`; the upgraded exact lock must be
+  recertified before `F0` returns to `Verified`.
 - **Implemented / stable management contract** — committed
   [OpenAPI `1.39.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
@@ -106,6 +109,7 @@ preservation register.
 | --- | --- | --- |
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
 | Long-running coordination | A3S Flow plus Cloud Operations | Product-specific workflow engines, retry tables, and schedulers |
+| Portable DAG structure | A3S Flow `WorkflowDag`; Cloud constructs it programmatically from canonical ACL | A Cloud compatibility parser, topology sorter, or editor-owned execution schema |
 | Placement and rollout | Workloads plus Fleet | Agent-, MCP-, inference-, Cell-, or Gateway-specific schedulers |
 | Provider lifecycle | A3S Runtime Task/Service plus A3S Box | Direct provider calls from business contexts or a Cloud executor |
 | Storage and credentials | Data S0 port plus Secrets exact-version materialization | Raw S3 clients, credential stores, or recovery workers per product |
