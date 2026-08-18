@@ -15,6 +15,7 @@ pub use entities::{
     McpCredentialDeliveryReceipt, McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec,
     Route, RouteState, MCP_ROUTE_POLICY_MAX_ACL_BYTES,
 };
+pub(crate) use value_objects::GatewaySnapshotRuntimeSettings;
 pub use value_objects::{
     DomainNamePattern, GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget,
     UpstreamEndpoint, MAX_GATEWAY_SCOPE_MEMBERS,

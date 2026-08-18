@@ -1,0 +1,4 @@
+# Canonical ACL, contract, digest, and certificate fixtures are byte-sensitive.
+# Keep every detected text file LF-stable on every development host; Git's
+# normal binary detection remains authoritative for generated visual assets.
+* text=auto eol=lf

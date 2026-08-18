@@ -1,3 +1,4 @@
+use crate::modules::edge::domain::GatewaySnapshotRuntimeSettings;
 use crate::modules::identity::domain::value_objects::{OidcIssuer, OidcProviderKey};
 use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
@@ -1344,47 +1345,19 @@ impl CloudConfig {
                     .into(),
             ));
         }
-        let entrypoint = self
-            .edge
-            .entrypoint_address
-            .parse::<SocketAddr>()
-            .map_err(|error| {
-                ConfigError::Invalid(format!("edge.entrypoint_address is invalid: {error}"))
-            })?;
-        let management = self
-            .edge
-            .management_address
-            .parse::<SocketAddr>()
-            .map_err(|error| {
-                ConfigError::Invalid(format!("edge.management_address is invalid: {error}"))
-            })?;
-        let certificate_directory = std::path::Path::new(&self.edge.certificate_directory);
-        let managed_state_file = std::path::Path::new(&self.edge.managed_state_file);
-        if entrypoint.port() == 0
-            || management.port() == 0
-            || !management.ip().is_loopback()
-            || !self.edge.management_path_prefix.starts_with('/')
-            || self.edge.management_path_prefix.len() > 255
-            || self
-                .edge
-                .management_path_prefix
-                .contains(['\0', '\r', '\n', '?', '#'])
-            || !valid_env_name(&self.edge.management_auth_token_env)
-            || self.edge.domain_verification_timeout_ms == 0
+        GatewaySnapshotRuntimeSettings {
+            entrypoint_address: &self.edge.entrypoint_address,
+            management_address: &self.edge.management_address,
+            management_path_prefix: &self.edge.management_path_prefix,
+            management_auth_token_env: &self.edge.management_auth_token_env,
+            upstream_request_timeout_ms: self.edge.upstream_request_timeout_ms,
+            certificate_directory: &self.edge.certificate_directory,
+            managed_state_file: &self.edge.managed_state_file,
+        }
+        .validate()
+        .map_err(|error| ConfigError::Invalid(format!("edge configuration is invalid: {error}")))?;
+        if self.edge.domain_verification_timeout_ms == 0
             || self.edge.domain_verification_timeout_ms > 60_000
-            || self.edge.certificate_directory.len() > 4096
-            || self.edge.certificate_directory.contains(['\0', '\r', '\n'])
-            || !certificate_directory.is_absolute()
-            || certificate_directory
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
-            || self.edge.managed_state_file.len() > 4096
-            || self.edge.managed_state_file.contains(['\0', '\r', '\n'])
-            || !managed_state_file.is_absolute()
-            || managed_state_file.file_name().is_none()
-            || managed_state_file
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
             || !(3_600_000..=34_300_800_000).contains(&self.edge.certificate_ttl_ms)
             || self.edge.certificate_renewal_window_ms == 0
             || self.edge.certificate_renewal_window_ms >= self.edge.certificate_ttl_ms
@@ -1395,8 +1368,6 @@ impl CloudConfig {
                 > self.edge.certificate_renewal_window_ms
             || self.edge.certificate_reconciliation_interval_ms
                 > self.edge.snapshot_renewal_window_ms
-            || self.edge.upstream_request_timeout_ms == 0
-            || self.edge.upstream_request_timeout_ms > 3_600_000
             || self.edge.command_ttl_ms == 0
             || self.edge.command_ttl_ms > 86_400_000
             || self.edge.command_ttl_ms >= self.edge.snapshot_renewal_window_ms

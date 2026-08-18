@@ -3,6 +3,7 @@ use super::stream::{
     ImmutableObjectReader,
 };
 use super::{ImmutableObjectError, ImmutableObjectRead, ImmutableObjectWrite};
+use crate::infrastructure::sync_directory;
 use sha2::{Digest, Sha256};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
@@ -70,7 +71,8 @@ impl LocalBackend {
                 .map_err(|error| io_error("sync immutable object staging file", error))?;
             match fs::hard_link(&temporary, &target) {
                 Ok(()) => {
-                    sync_directory(parent)?;
+                    sync_directory(parent)
+                        .map_err(|error| io_error("sync immutable object directory", error))?;
                     Ok(ImmutableObjectWrite { created: true })
                 }
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -263,7 +265,8 @@ impl LocalBackend {
         })?;
         match fs::hard_link(staged, &target) {
             Ok(()) => {
-                sync_directory(parent)?;
+                sync_directory(parent)
+                    .map_err(|error| io_error("sync immutable object directory", error))?;
                 Ok(ImmutableObjectWrite { created: true })
             }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -375,12 +378,6 @@ fn secure_directory(_path: &Path) -> Result<(), ImmutableObjectError> {
             .map_err(|error| io_error("secure immutable object directory", error))?;
     }
     Ok(())
-}
-
-fn sync_directory(path: &Path) -> Result<(), ImmutableObjectError> {
-    fs::File::open(path)
-        .and_then(|directory| directory.sync_all())
-        .map_err(|error| io_error("sync immutable object directory", error))
 }
 
 fn not_real_directory(path: &Path) -> ImmutableObjectError {

@@ -1,6 +1,7 @@
 use super::{
     git_directory, git_integrity, integrity, storage, sync_directories, LocalAssetGitRepository,
 };
+use crate::infrastructure::sync_file;
 use crate::modules::assets::domain::{
     Asset, AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRepositoryError, IAssetGitRepository,
 };
@@ -222,7 +223,7 @@ fn digest_file(path: &Path) -> Result<(Sha256Digest, u64), AssetGitRepositoryErr
         }
         digest.update(&buffer[..read]);
     }
-    file.sync_all()
+    sync_file(path)
         .map_err(|error| storage(format!("could not sync Asset build input: {error}")))?;
     let digest = Sha256Digest::parse(format!("sha256:{:x}", digest.finalize()))
         .map_err(AssetGitRepositoryError::Integrity)?;

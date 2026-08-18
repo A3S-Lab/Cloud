@@ -74,11 +74,13 @@ impl GitSourceCheckout {
         checkout.commands = GitCommandRunner::discover(timeout, true, false)
             .map_err(|error| format!("could not initialize test Git source checkout: {error}"))?;
         checkout.test_remote = Some(
-            remote
-                .into()
-                .canonicalize()
-                .map_err(|_| "test Git remote is unavailable".to_owned())?
-                .into_os_string(),
+            GitCommandRunner::normalize_path(
+                remote
+                    .into()
+                    .canonicalize()
+                    .map_err(|_| "test Git remote is unavailable".to_owned())?,
+            )
+            .into_os_string(),
         );
         Ok(checkout)
     }
@@ -441,6 +443,7 @@ async fn ensure_root(root: &Path) -> Result<PathBuf, SourceCheckoutError> {
     }
     tokio::fs::canonicalize(root)
         .await
+        .map(GitCommandRunner::normalize_path)
         .map_err(|_| storage("could not canonicalize source checkout root"))
 }
 

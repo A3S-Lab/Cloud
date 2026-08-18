@@ -1,5 +1,8 @@
 use super::protocol::{digest_refs, list_refs, replace_refs};
 use super::{integrity, storage, LocalAssetGitRepository};
+use crate::infrastructure::{
+    sync_directories as sync_filesystem_directories, sync_directory as sync_filesystem_directory,
+};
 use crate::modules::assets::domain::{
     Asset, AssetGitRepositoryError, AssetGitWriteJournal, AssetGitWriteLease, IAssetGitRepository,
 };
@@ -365,8 +368,7 @@ fn restore_object_snapshot(
             ))
         })?;
     }
-    std::fs::File::open(root)
-        .and_then(|directory| directory.sync_all())
+    sync_filesystem_directory(root)
         .map_err(|error| storage(format!("could not sync Git object rollback: {error}")))
 }
 
@@ -424,11 +426,7 @@ async fn remove_if_present(path: &Path) -> Result<(), AssetGitRepositoryError> {
 }
 
 async fn sync_directory(path: &Path) -> Result<(), AssetGitRepositoryError> {
-    let directory = tokio::fs::File::open(path)
-        .await
-        .map_err(|error| storage(format!("could not open journal directory: {error}")))?;
-    directory
-        .sync_all()
+    sync_filesystem_directories(vec![path.to_owned()])
         .await
         .map_err(|error| storage(format!("could not sync journal directory: {error}")))
 }

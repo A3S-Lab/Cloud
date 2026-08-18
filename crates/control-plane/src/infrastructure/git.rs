@@ -35,6 +35,17 @@ pub(crate) struct GitCommandRunner {
 }
 
 impl GitCommandRunner {
+    /// Converts a canonical host path into the representation accepted by the
+    /// external Git executable.
+    ///
+    /// Rust preserves Windows verbatim prefixes after canonicalization, while
+    /// Git for Windows rejects those prefixes for commands such as `init`.
+    /// Filesystem ownership checks still use the canonical path; only the
+    /// process-boundary representation is normalized.
+    pub(crate) fn normalize_path(path: PathBuf) -> PathBuf {
+        normalize_external_path(path)
+    }
+
     pub(crate) fn discover(
         timeout: Duration,
         allow_file_protocol: bool,
@@ -231,6 +242,7 @@ fn find_executable(name: &str) -> Result<PathBuf, GitCommandError> {
         if let Some(candidate) = resolve_executable(&directory.join(name)) {
             return candidate
                 .canonicalize()
+                .map(normalize_external_path)
                 .map_err(|_| GitCommandError::ExecutableUnavailable);
         }
     }
@@ -255,11 +267,50 @@ fn find_exec_path(executable: &Path) -> Result<PathBuf, GitCommandError> {
     }
     let path = PathBuf::from(path)
         .canonicalize()
+        .map(normalize_external_path)
         .map_err(|_| GitCommandError::ExecutableUnavailable)?;
     if !path.is_dir() || !is_valid_exec_path(&path) {
         return Err(GitCommandError::ExecutableUnavailable);
     }
     Ok(path)
+}
+
+#[cfg(not(windows))]
+fn normalize_external_path(path: PathBuf) -> PathBuf {
+    path
+}
+
+#[cfg(windows)]
+fn normalize_external_path(path: PathBuf) -> PathBuf {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+    const SEPARATOR: u16 = b'\\' as u16;
+    let units = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    let verbatim = units.starts_with(&[SEPARATOR, SEPARATOR, b'?' as u16, SEPARATOR]);
+    if !verbatim {
+        return path;
+    }
+    let drive = units.get(4).copied().unwrap_or_default();
+    if units.len() >= 7
+        && ((b'A' as u16..=b'Z' as u16).contains(&drive)
+            || (b'a' as u16..=b'z' as u16).contains(&drive))
+        && units[5] == b':' as u16
+        && units[6] == SEPARATOR
+    {
+        return PathBuf::from(OsString::from_wide(&units[4..]));
+    }
+    if units.len() >= 8
+        && matches!(units[4], value if value == b'U' as u16 || value == b'u' as u16)
+        && matches!(units[5], value if value == b'N' as u16 || value == b'n' as u16)
+        && matches!(units[6], value if value == b'C' as u16 || value == b'c' as u16)
+        && units[7] == SEPARATOR
+    {
+        let mut normalized = vec![SEPARATOR, SEPARATOR];
+        normalized.extend_from_slice(&units[8..]);
+        return PathBuf::from(OsString::from_wide(&normalized));
+    }
+    path
 }
 
 #[cfg(not(windows))]
@@ -344,6 +395,25 @@ mod tests {
 
         std::fs::write(directory.path().join("git.exe"), []).expect("stub Git dispatcher");
         assert!(super::is_valid_exec_path(directory.path()));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_verbatim_paths_are_normalized_only_for_git() {
+        for (canonical, external) in [
+            (r"\\?\C:\a3s\repository.git", r"C:\a3s\repository.git"),
+            (
+                r"\\?\UNC\git-host\a3s\repository.git",
+                r"\\git-host\a3s\repository.git",
+            ),
+        ] {
+            assert_eq!(
+                super::normalize_external_path(canonical.into()),
+                std::path::PathBuf::from(external)
+            );
+        }
+        let ordinary = std::path::PathBuf::from(r"C:\a3s\repository.git");
+        assert_eq!(super::normalize_external_path(ordinary.clone()), ordinary);
     }
 
     #[test]

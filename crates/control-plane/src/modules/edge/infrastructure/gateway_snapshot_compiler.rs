@@ -1,5 +1,6 @@
 use crate::modules::edge::domain::{
-    DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState, Route, RouteState,
+    DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState,
+    GatewaySnapshotRuntimeSettings, Route, RouteState,
 };
 use crate::modules::edge::infrastructure::{
     McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedGatewayNodeDesiredState,
@@ -13,7 +14,6 @@ use chrono::{DateTime, Utc};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::SocketAddr;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewaySnapshotCompilerConfig {
@@ -199,26 +199,16 @@ pub struct GatewaySnapshotCompiler {
 
 impl GatewaySnapshotCompiler {
     pub fn new(config: GatewaySnapshotCompilerConfig) -> Result<Self, String> {
-        let entrypoint = config
-            .entrypoint_address
-            .parse::<SocketAddr>()
-            .map_err(|error| format!("invalid Gateway entrypoint address: {error}"))?;
-        let management = config
-            .management_address
-            .parse::<SocketAddr>()
-            .map_err(|error| format!("invalid Gateway management address: {error}"))?;
-        if entrypoint.port() == 0
-            || management.port() == 0
-            || !management.ip().is_loopback()
-            || !valid_path_prefix(&config.management_path_prefix)
-            || !valid_environment_name(&config.management_auth_token_env)
-            || config.upstream_request_timeout_ms == 0
-            || config.upstream_request_timeout_ms > 3_600_000
-            || !valid_certificate_directory(&config.certificate_directory)
-            || !valid_absolute_file(&config.managed_state_file)
-        {
-            return Err("Gateway snapshot compiler configuration is invalid".into());
+        GatewaySnapshotRuntimeSettings {
+            entrypoint_address: &config.entrypoint_address,
+            management_address: &config.management_address,
+            management_path_prefix: &config.management_path_prefix,
+            management_auth_token_env: &config.management_auth_token_env,
+            upstream_request_timeout_ms: config.upstream_request_timeout_ms,
+            certificate_directory: &config.certificate_directory,
+            managed_state_file: &config.managed_state_file,
         }
+        .validate()?;
         Ok(Self { config })
     }
 
@@ -1458,39 +1448,6 @@ fn duration(milliseconds: u64) -> String {
     } else {
         format!("{milliseconds}ms")
     }
-}
-
-fn valid_path_prefix(value: &str) -> bool {
-    value.starts_with('/') && value.len() <= 255 && !value.contains(['\0', '\r', '\n', '?', '#'])
-}
-
-fn valid_environment_name(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 255
-        && value.bytes().enumerate().all(|(index, byte)| {
-            byte == b'_' || byte.is_ascii_uppercase() || index > 0 && byte.is_ascii_digit()
-        })
-}
-
-fn valid_certificate_directory(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 4096
-        && !value.contains(['\0', '\r', '\n'])
-        && value.starts_with('/')
-        && !value.split('/').any(|component| component == "..")
-}
-
-fn valid_absolute_file(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 4096
-        && !value.contains(['\0', '\r', '\n'])
-        && value.starts_with('/')
-        && !value.split('/').any(|component| component == "..")
-        && value
-            .trim_end_matches('/')
-            .rsplit('/')
-            .next()
-            .is_some_and(|component| !component.is_empty() && component != ".")
 }
 
 #[cfg(test)]

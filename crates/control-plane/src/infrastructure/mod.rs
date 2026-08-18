@@ -1,3 +1,4 @@
+mod durable_filesystem;
 mod flow;
 mod git;
 mod immutable_object;
@@ -20,6 +21,7 @@ pub use flow::{
 pub(crate) use immutable_object::DisposableS3TestContext;
 pub use postgres::{connect_and_migrate, postgres_health, PostgresBootstrapError};
 
+pub(crate) use durable_filesystem::{sync_directories, sync_directory, sync_file};
 pub(crate) use git::{GitCommandError, GitCommandRunner};
 pub(crate) use immutable_object::{
     ConditionalObjectError, ConditionalObjectRead, ConditionalObjectVersion, ImmutableObjectClient,

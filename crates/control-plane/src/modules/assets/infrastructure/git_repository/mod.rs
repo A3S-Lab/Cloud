@@ -6,7 +6,10 @@ mod protocol;
 #[cfg(test)]
 mod tests;
 
-use crate::infrastructure::{GitCommandError, GitCommandRunner, ImmutableObjectClient};
+use crate::infrastructure::{
+    sync_directories as sync_filesystem_directories, GitCommandError, GitCommandRunner,
+    ImmutableObjectClient,
+};
 use crate::modules::assets::domain::{
     validate_asset_repository_mutation, Asset, AssetGitBackup, AssetGitBuildInput,
     AssetGitReleaseBundle, AssetGitRepository, AssetGitRepositoryError, AssetGitRepositoryWrite,
@@ -58,8 +61,10 @@ impl LocalAssetGitRepository {
             ));
         }
         create_secure_directory_sync(&root, "root")?;
-        let root = std::fs::canonicalize(root)
-            .map_err(|error| storage(format!("could not canonicalize repository root: {error}")))?;
+        let root =
+            GitCommandRunner::normalize_path(std::fs::canonicalize(root).map_err(|error| {
+                storage(format!("could not canonicalize repository root: {error}"))
+            })?);
         let staging_root = root.join(".repository-staging");
         let build_input_root = root.join(".build-inputs");
         let sandbox = root.join(".git-command-sandbox");
@@ -489,21 +494,9 @@ async fn sync_directories(
     paths: impl IntoIterator<Item = PathBuf>,
 ) -> Result<(), AssetGitRepositoryError> {
     let paths = paths.into_iter().collect::<Vec<_>>();
-    tokio::task::spawn_blocking(move || {
-        for path in paths {
-            std::fs::File::open(&path)
-                .and_then(|directory| directory.sync_all())
-                .map_err(|error| {
-                    storage(format!(
-                        "could not sync repository directory {}: {error}",
-                        path.display()
-                    ))
-                })?;
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|error| storage(format!("repository directory sync failed: {error}")))?
+    sync_filesystem_directories(paths)
+        .await
+        .map_err(|error| storage(format!("repository directory sync failed: {error}")))
 }
 
 async fn remove_staging(path: &Path) {
