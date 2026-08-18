@@ -342,49 +342,51 @@ async fn build_application_with_overrides(
         return build_relay_application(config).await;
     }
 
-    let source_resolver = match source_resolver {
-        Some(source_resolver) => source_resolver,
-        None => Arc::new(
-            GithubSourceResolver::new(Duration::from_millis(
-                config.sources.github_request_timeout_ms,
-            ))
-            .map_err(ControlPlaneStartupError::Sources)?,
-        ),
+    let management_adapters = if config.server.role.serves_management_api() {
+        let source_resolver = match source_resolver {
+            Some(source_resolver) => source_resolver,
+            None => Arc::new(
+                GithubSourceResolver::new(Duration::from_millis(
+                    config.sources.github_request_timeout_ms,
+                ))
+                .map_err(ControlPlaneStartupError::Sources)?,
+            ),
+        };
+        let oidc_provider = match oidc_provider {
+            Some(oidc_provider) => oidc_provider,
+            None => Arc::new(
+                OpenIdConnectProviderService::new(&config.auth.oidc_providers)
+                    .map_err(ControlPlaneStartupError::Auth)?,
+            ),
+        };
+        Some(ManagementAdapterOverrides {
+            source_resolver,
+            oidc_provider,
+        })
+    } else {
+        None
     };
-    let oidc_provider = match oidc_provider {
-        Some(oidc_provider) => oidc_provider,
-        None => Arc::new(
-            OpenIdConnectProviderService::new(&config.auth.oidc_providers)
-                .map_err(ControlPlaneStartupError::Auth)?,
-        ),
-    };
-    build_full_application(config, source_resolver, oidc_provider).await
+    build_full_application(config, management_adapters).await
+}
+
+struct ManagementAdapterOverrides {
+    source_resolver: Arc<dyn ISourceResolver>,
+    oidc_provider: Arc<dyn IOidcProviderService>,
 }
 
 async fn build_full_application(
     config: CloudConfig,
-    source_resolver: Arc<dyn ISourceResolver>,
-    oidc_provider: Arc<dyn IOidcProviderService>,
+    management_adapters: Option<ManagementAdapterOverrides>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
-    let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
-        GithubWebhookVerifier::new(
-            config.sources.github_webhook_secret_env.clone(),
-            config.sources.github_webhook_max_body_bytes,
-        )
-        .map_err(ControlPlaneStartupError::Sources)?,
-    );
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
     let vault_credentials = config.vault_credentials()?;
-    let (certificate_authority, key_encryption) =
-        security_providers(&config, vault_credentials.as_ref())?;
+    let key_encryption = key_encryption_provider(&config, vault_credentials.as_ref())?;
     let build_evidence_signer = build_evidence_signer(&config, vault_credentials.as_ref()).await?;
     let gateway_certificate_authority =
         gateway_certificate_authority(&config, vault_credentials.as_ref())?;
     let log_chunks = log_chunk_store(&config)?;
-    let bootstrap_credential = BootstrapCredential::new(&config.bootstrap_token()?)
-        .map_err(ControlPlaneStartupError::Auth)?;
     let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
     let organizations: Arc<dyn IOrganizationRepository> = identity.clone();
     let api_tokens: Arc<dyn IApiTokenRepository> = identity.clone();
@@ -421,18 +423,6 @@ async fn build_full_application(
     let plugin_registries: Arc<dyn IPluginRegistryRepository> = plugin_repository.clone();
     let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> =
         plugin_repository;
-    let plugin_trust_roots: Arc<dyn IPluginTrustRootStore> = Arc::new(
-        PluginTrustRootObjectStore::local(&config.artifacts.store_dir, MAX_BOOTSTRAP_ROOT_BYTES)
-            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
-    );
-    let plugin_metadata_root = std::path::absolute(
-        std::path::Path::new(&config.security.state_dir).join("use-plugin-registry-metadata"),
-    )
-    .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?;
-    let plugin_catalog: Arc<dyn IPluginRegistryCatalog> = Arc::new(
-        A3sUsePluginRegistryCatalog::new(Arc::clone(&plugin_trust_roots), plugin_metadata_root)
-            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
-    );
     let node_repository = Arc::new(PostgresNodeRepository::new(executor.clone()));
     let nodes: Arc<dyn INodeRepository> = node_repository.clone();
     let scheduling_nodes: Arc<dyn INodeSchedulingRepository> = node_repository.clone();
@@ -478,14 +468,6 @@ async fn build_full_application(
     let assets: Arc<dyn IAssetRepository> = asset_repository.clone();
     let asset_controls: Arc<dyn IAssetGitRepositoryControl> = asset_repository.clone();
     let mcp_profiles: Arc<dyn IMcpServiceProfileRepository> = asset_repository;
-    let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(
-        Arc::clone(&mcp_profiles),
-        Arc::clone(&assets),
-    ));
-    let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
-        mcp_route_policy_repository,
-        Arc::clone(&mcp_profiles),
-    ));
     let asset_backup_objects =
         ImmutableObjectClient::local(&config.artifacts.store_dir, "asset-git-backups")
             .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?;
@@ -499,31 +481,6 @@ async fn build_full_application(
         })
         .map_err(|error| ControlPlaneStartupError::Assets(error.to_string()))?,
     );
-    let asset_git = Arc::new(
-        AssetGitApplicationService::new(
-            Arc::clone(&assets),
-            Arc::clone(&asset_git_repositories),
-            asset_controls,
-            AssetGitApplicationServiceOptions {
-                write_lease: Duration::from_millis(config.assets.write_lease_ms),
-                default_repository_quota_bytes: config.assets.repository_quota_bytes,
-                maximum_rpc_body_bytes: u64::try_from(config.assets.max_rpc_body_bytes).map_err(
-                    |_| {
-                        ControlPlaneStartupError::Assets(
-                            "Asset Git RPC body bound exceeds u64".into(),
-                        )
-                    },
-                )?,
-            },
-        )
-        .map_err(ControlPlaneStartupError::Assets)?,
-    );
-    let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
-        Arc::clone(&organizations),
-        Arc::clone(&assets),
-        Arc::clone(&asset_git_repositories),
-        Arc::clone(&node_artifacts),
-    ));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
     let connector_profiles: Arc<dyn IConnectorProfileRepository> =
@@ -580,21 +537,6 @@ async fn build_full_application(
         Arc::new(PostgresSourceSubscriptionRepository::new(executor.clone()));
     let github_connections: Arc<dyn IGithubConnectionRepository> =
         Arc::new(PostgresGithubConnectionRepository::new(executor.clone()));
-    let github_authorization: Arc<dyn IGithubAppAuthorizationService> =
-        if config.sources.github_app_enabled {
-            Arc::new(
-                GithubAppClient::new(
-                    Duration::from_millis(config.sources.github_request_timeout_ms),
-                    config.sources.github_app_slug.clone(),
-                    config.sources.github_app_client_id.clone(),
-                    config.sources.github_app_client_secret_env.clone(),
-                    &config.sources.github_app_callback_url,
-                )
-                .map_err(ControlPlaneStartupError::Sources)?,
-            )
-        } else {
-            Arc::new(GithubAppClient::disabled())
-        };
     let github_installation_client = Arc::new(if config.sources.github_app_enabled {
         GithubInstallationTokenIssuer::new(
             Duration::from_millis(config.sources.github_request_timeout_ms),
@@ -692,18 +634,6 @@ async fn build_full_application(
         BoxBuildEvidenceGenerator::new(oci_build_outputs, build_evidence_signer)
             .map_err(ControlPlaneStartupError::Build)?,
     );
-    let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
-        SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
-        SecurityProfile::Production => Arc::new(
-            DnsDomainOwnershipVerifier::from_system_config(Duration::from_millis(
-                config.edge.domain_verification_timeout_ms,
-            ))
-            .map_err(|error| ControlPlaneStartupError::Edge(error.to_string()))?,
-        ),
-    };
-    let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
-        EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
-    );
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
         WorkloadRouteTargetReader::new(
             Arc::clone(&workloads),
@@ -730,7 +660,7 @@ async fn build_full_application(
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         edge_repository.clone(),
         Arc::clone(&routes),
-        mcp_profiles,
+        Arc::clone(&mcp_profiles),
         Arc::clone(&workloads),
     ));
     let mcp_route_planner = McpRouteProjectionPlanner::new(
@@ -978,18 +908,126 @@ async fn build_full_application(
         },
     )
     .map_err(ControlPlaneStartupError::HumanTask)?;
-    let run_node_control = config.server.role.serves_management_api();
-    let node_control_server = if run_node_control {
+    let management = if let Some(ManagementAdapterOverrides {
+        source_resolver,
+        oidc_provider,
+    }) = management_adapters
+    {
+        let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
+            GithubWebhookVerifier::new(
+                config.sources.github_webhook_secret_env.clone(),
+                config.sources.github_webhook_max_body_bytes,
+            )
+            .map_err(ControlPlaneStartupError::Sources)?,
+        );
+        let certificate_authority =
+            certificate_authority_provider(&config, vault_credentials.as_ref())?;
+        let bootstrap_credential = BootstrapCredential::new(&config.bootstrap_token()?)
+            .map_err(ControlPlaneStartupError::Auth)?;
+        let plugin_trust_roots: Arc<dyn IPluginTrustRootStore> = Arc::new(
+            PluginTrustRootObjectStore::local(
+                &config.artifacts.store_dir,
+                MAX_BOOTSTRAP_ROOT_BYTES,
+            )
+            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+        );
+        let plugin_metadata_root = std::path::absolute(
+            std::path::Path::new(&config.security.state_dir).join("use-plugin-registry-metadata"),
+        )
+        .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?;
+        let plugin_catalog: Arc<dyn IPluginRegistryCatalog> = Arc::new(
+            A3sUsePluginRegistryCatalog::new(Arc::clone(&plugin_trust_roots), plugin_metadata_root)
+                .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+        );
+        let mcp_service_profiles = Arc::new(McpServiceProfileApplicationService::new(
+            Arc::clone(&mcp_profiles),
+            Arc::clone(&assets),
+        ));
+        let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
+            mcp_route_policy_repository,
+            Arc::clone(&mcp_profiles),
+        ));
+        let asset_git = Arc::new(
+            AssetGitApplicationService::new(
+                Arc::clone(&assets),
+                Arc::clone(&asset_git_repositories),
+                asset_controls,
+                AssetGitApplicationServiceOptions {
+                    write_lease: Duration::from_millis(config.assets.write_lease_ms),
+                    default_repository_quota_bytes: config.assets.repository_quota_bytes,
+                    maximum_rpc_body_bytes: u64::try_from(config.assets.max_rpc_body_bytes)
+                        .map_err(|_| {
+                            ControlPlaneStartupError::Assets(
+                                "Asset Git RPC body bound exceeds u64".into(),
+                            )
+                        })?,
+                },
+            )
+            .map_err(ControlPlaneStartupError::Assets)?,
+        );
+        let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
+            Arc::clone(&organizations),
+            Arc::clone(&assets),
+            Arc::clone(&asset_git_repositories),
+            Arc::clone(&node_artifacts),
+        ));
+        let github_authorization: Arc<dyn IGithubAppAuthorizationService> =
+            if config.sources.github_app_enabled {
+                Arc::new(
+                    GithubAppClient::new(
+                        Duration::from_millis(config.sources.github_request_timeout_ms),
+                        config.sources.github_app_slug.clone(),
+                        config.sources.github_app_client_id.clone(),
+                        config.sources.github_app_client_secret_env.clone(),
+                        &config.sources.github_app_callback_url,
+                    )
+                    .map_err(ControlPlaneStartupError::Sources)?,
+                )
+            } else {
+                Arc::new(GithubAppClient::disabled())
+            };
+        let domain_verifier: Arc<dyn IDomainOwnershipVerifier> = match config.security.profile {
+            SecurityProfile::Development => Arc::new(LocalDomainOwnershipVerifier),
+            SecurityProfile::Production => Arc::new(
+                DnsDomainOwnershipVerifier::from_system_config(Duration::from_millis(
+                    config.edge.domain_verification_timeout_ms,
+                ))
+                .map_err(|error| ControlPlaneStartupError::Edge(error.to_string()))?,
+            ),
+        };
+        let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
+            EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
+        );
+        Some(ManagementSurfaceDependencies {
+            oidc_provider,
+            plugin_trust_roots,
+            plugin_catalog,
+            asset_catalog,
+            mcp_service_profiles,
+            mcp_route_policies,
+            asset_git,
+            github_authorization,
+            source_resolver,
+            source_webhook_verifier,
+            domain_verifier,
+            gateway_projector,
+            certificate_authority,
+            bootstrap_credential,
+        })
+    } else {
+        None
+    };
+    let node_control_server = if let Some(management) = management.as_ref() {
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
             Arc::clone(&agents),
             Arc::clone(&node_artifacts),
-            Arc::clone(&gateway_projector),
+            Arc::clone(&management.gateway_projector),
             Arc::clone(&routes),
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&log_chunks),
-            Arc::clone(&certificate_authority),
+            Arc::clone(&management.certificate_authority),
             Arc::clone(&workloads),
             Arc::clone(&secrets),
             Arc::clone(&key_encryption),
@@ -1131,16 +1169,35 @@ async fn build_full_application(
         100,
     )
     .map_err(ControlPlaneStartupError::SecretRestart)?;
+    let readiness = match management.as_ref() {
+        Some(management) => infrastructure_readiness(
+            executor,
+            flow,
+            event_publisher,
+            Arc::clone(&management.certificate_authority),
+            Arc::clone(&gateway_certificate_authority),
+            Arc::clone(&key_encryption),
+            Arc::clone(&log_chunks),
+        ),
+        None => worker_readiness(
+            executor,
+            flow,
+            event_publisher,
+            Arc::clone(&gateway_certificate_authority),
+            Arc::clone(&key_encryption),
+            Arc::clone(&log_chunks),
+        ),
+    };
     let application = build_application_with_health(
         config,
         ApplicationDependencies {
+            management,
             organizations,
             api_tokens,
             memberships,
             membership_invitations,
             resource_grants,
             oidc_identity,
-            oidc_provider,
             resource_authorization_decisions,
             projects: projects.clone(),
             environments: projects,
@@ -1163,12 +1220,6 @@ async fn build_full_application(
             oci_artifacts: durable_cell_artifacts,
             plugin_registries,
             plugin_enrollment_authorizer,
-            plugin_trust_roots,
-            plugin_catalog,
-            asset_catalog,
-            mcp_service_profiles,
-            mcp_route_policies,
-            asset_git,
             assets,
             workloads,
             builds,
@@ -1182,33 +1233,18 @@ async fn build_full_application(
             source_webhooks,
             source_subscriptions,
             github_connections,
-            github_authorization,
             github_installation_tokens,
-            source_resolver,
-            source_webhook_verifier,
             secret_encryption: Arc::clone(&key_encryption),
             route_targets,
             route_commands,
             mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
             gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
-            domain_verifier,
-            gateway_projector,
             operations: operation_repository,
             nodes,
             node_pools,
             node_control,
-            log_chunks: log_chunks.clone(),
-            certificate_authority: certificate_authority.clone(),
-            bootstrap_credential,
-            readiness: infrastructure_readiness(
-                executor,
-                flow,
-                event_publisher,
-                certificate_authority,
-                gateway_certificate_authority,
-                key_encryption,
-                log_chunks,
-            ),
+            log_chunks,
+            readiness,
         },
     )?;
     Ok(ControlPlane::new(
@@ -1297,14 +1333,31 @@ fn build_outbox_relay(
     Ok(relay)
 }
 
+struct ManagementSurfaceDependencies {
+    oidc_provider: Arc<dyn IOidcProviderService>,
+    plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
+    plugin_catalog: Arc<dyn IPluginRegistryCatalog>,
+    asset_catalog: Arc<AssetCatalogApplicationService>,
+    mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
+    mcp_route_policies: Arc<McpRoutePolicyApplicationService>,
+    asset_git: Arc<AssetGitApplicationService>,
+    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
+    source_resolver: Arc<dyn ISourceResolver>,
+    source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
+    domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
+    gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
+    certificate_authority: Arc<dyn ICertificateAuthority>,
+    bootstrap_credential: BootstrapCredential,
+}
+
 struct ApplicationDependencies {
+    management: Option<ManagementSurfaceDependencies>,
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
     memberships: Arc<dyn IMembershipRepository>,
     membership_invitations: Arc<dyn IMembershipInvitationRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
     oidc_identity: Arc<dyn IOidcIdentityRepository>,
-    oidc_provider: Arc<dyn IOidcProviderService>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
@@ -1327,12 +1380,6 @@ struct ApplicationDependencies {
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
-    plugin_trust_roots: Arc<dyn IPluginTrustRootStore>,
-    plugin_catalog: Arc<dyn IPluginRegistryCatalog>,
-    asset_catalog: Arc<AssetCatalogApplicationService>,
-    mcp_service_profiles: Arc<McpServiceProfileApplicationService>,
-    mcp_route_policies: Arc<McpRoutePolicyApplicationService>,
-    asset_git: Arc<AssetGitApplicationService>,
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
     builds: Arc<dyn IBuildRunRepository>,
@@ -1346,24 +1393,17 @@ struct ApplicationDependencies {
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
     source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
     github_connections: Arc<dyn IGithubConnectionRepository>,
-    github_authorization: Arc<dyn IGithubAppAuthorizationService>,
     github_installation_tokens: Arc<dyn IGithubInstallationTokenService>,
-    source_resolver: Arc<dyn ISourceResolver>,
-    source_webhook_verifier: Arc<dyn ISourceWebhookVerifier>,
     secret_encryption: Arc<dyn ISecretEncryptionService>,
     route_targets: Arc<dyn IRouteTargetReader>,
     route_commands: Arc<dyn IGatewayCommandQueue>,
     mcp_gateway_snapshots: Option<Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository>>,
     gateway_node_desired_state_planner: Option<GatewayNodeDesiredStatePlanner>,
-    domain_verifier: Arc<dyn IDomainOwnershipVerifier>,
-    gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
     operations: Arc<dyn IOperationRepository>,
     nodes: Arc<dyn INodeRepository>,
     node_pools: Arc<dyn INodePoolRepository>,
     node_control: Arc<dyn INodeControlRepository>,
     log_chunks: Arc<dyn ILogChunkStore>,
-    certificate_authority: Arc<dyn ICertificateAuthority>,
-    bootstrap_credential: BootstrapCredential,
     readiness: HealthModule,
 }
 
@@ -1371,18 +1411,23 @@ fn build_application_with_health(
     config: CloudConfig,
     dependencies: ApplicationDependencies,
 ) -> Result<BootApplication> {
+    if config.server.role.serves_management_api() != dependencies.management.is_some() {
+        return Err(BootError::Internal(
+            "process role and management dependency capability disagree".into(),
+        ));
+    }
     if !config.server.role.serves_management_api() {
         return build_process_status_application(&config, dependencies.readiness);
     }
 
     let ApplicationDependencies {
+        management,
         organizations,
         api_tokens,
         memberships,
         membership_invitations,
         resource_grants,
         oidc_identity,
-        oidc_provider,
         resource_authorization_decisions,
         projects,
         environments,
@@ -1405,12 +1450,6 @@ fn build_application_with_health(
         oci_artifacts,
         plugin_registries,
         plugin_enrollment_authorizer,
-        plugin_trust_roots,
-        plugin_catalog,
-        asset_catalog,
-        mcp_service_profiles,
-        mcp_route_policies,
-        asset_git,
         assets,
         workloads,
         builds,
@@ -1424,26 +1463,37 @@ fn build_application_with_health(
         source_webhooks,
         source_subscriptions,
         github_connections,
-        github_authorization,
         github_installation_tokens,
-        source_resolver,
-        source_webhook_verifier,
         secret_encryption,
         route_targets,
         route_commands,
         mcp_gateway_snapshots,
         gateway_node_desired_state_planner,
-        domain_verifier,
-        gateway_projector,
         operations,
         nodes,
         node_pools,
         node_control,
         log_chunks,
-        certificate_authority,
-        bootstrap_credential,
         readiness,
     } = dependencies;
+    let ManagementSurfaceDependencies {
+        oidc_provider,
+        plugin_trust_roots,
+        plugin_catalog,
+        asset_catalog,
+        mcp_service_profiles,
+        mcp_route_policies,
+        asset_git,
+        github_authorization,
+        source_resolver,
+        source_webhook_verifier,
+        domain_verifier,
+        gateway_projector,
+        certificate_authority,
+        bootstrap_credential,
+    } = management.ok_or_else(|| {
+        BootError::Internal("management process is missing its capability bundle".into())
+    })?;
     let operation_resource_access = Arc::new(OperationResourceAccessResolver::new(
         Arc::clone(&workloads),
         Arc::clone(&builds),
@@ -2755,23 +2805,40 @@ fn infrastructure_readiness(
     key_encryption: Arc<dyn ISecretEncryptionService>,
     log_chunks: Arc<dyn ILogChunkStore>,
 ) -> HealthModule {
+    worker_readiness(
+        executor,
+        flow,
+        events,
+        gateway_certificate_authority,
+        key_encryption,
+        log_chunks,
+    )
+    .indicator("certificate-authority", move || {
+        let certificate_authority = certificate_authority.clone();
+        async move {
+            match certificate_authority.health().await {
+                Ok(true) => Ok(HealthIndicatorResult::up()),
+                Ok(false) => Ok(HealthIndicatorResult::down()),
+                Err(error) => {
+                    Ok(HealthIndicatorResult::down().with_detail_value("error", error.to_string()))
+                }
+            }
+        }
+    })
+}
+
+fn worker_readiness(
+    executor: PostgresExecutor,
+    flow: crate::infrastructure::FlowInfrastructure,
+    events: Arc<dyn IEventPublisher>,
+    gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
+    key_encryption: Arc<dyn ISecretEncryptionService>,
+    log_chunks: Arc<dyn ILogChunkStore>,
+) -> HealthModule {
     relay_readiness(executor, events)
         .indicator("flow", move || {
             let flow = flow.clone();
             async move { Ok(flow.health().await) }
-        })
-        .indicator("certificate-authority", move || {
-            let certificate_authority = certificate_authority.clone();
-            async move {
-                match certificate_authority.health().await {
-                    Ok(true) => Ok(HealthIndicatorResult::up()),
-                    Ok(false) => Ok(HealthIndicatorResult::down()),
-                    Err(error) => {
-                        Ok(HealthIndicatorResult::down()
-                            .with_detail_value("error", error.to_string()))
-                    }
-                }
-            }
         })
         .indicator("gateway-certificate-authority", move || {
             let gateway_certificate_authority = gateway_certificate_authority.clone();
@@ -2836,15 +2903,10 @@ fn relay_readiness(executor: PostgresExecutor, events: Arc<dyn IEventPublisher>)
         })
 }
 
-type SecurityProviders = (
-    Arc<dyn ICertificateAuthority>,
-    Arc<dyn ISecretEncryptionService>,
-);
-
-fn security_providers(
+fn certificate_authority_provider(
     config: &CloudConfig,
     credentials: Option<&(String, String)>,
-) -> std::result::Result<SecurityProviders, ControlPlaneStartupError> {
+) -> std::result::Result<Arc<dyn ICertificateAuthority>, ControlPlaneStartupError> {
     let timeout = Duration::from_millis(config.security.vault_timeout_ms);
     let certificate_authority: Arc<dyn ICertificateAuthority> =
         match config.security.certificate_authority {
@@ -2881,6 +2943,14 @@ fn security_providers(
                 )
             }
         };
+    Ok(certificate_authority)
+}
+
+fn key_encryption_provider(
+    config: &CloudConfig,
+    credentials: Option<&(String, String)>,
+) -> std::result::Result<Arc<dyn ISecretEncryptionService>, ControlPlaneStartupError> {
+    let timeout = Duration::from_millis(config.security.vault_timeout_ms);
     let key_encryption: Arc<dyn ISecretEncryptionService> = match config.security.key_encryption {
         SecurityProviderKind::Local => Arc::new(
             LocalKeyEncryptionService::load_or_create(
@@ -2904,7 +2974,7 @@ fn security_providers(
             )
         }
     };
-    Ok((certificate_authority, key_encryption))
+    Ok(key_encryption)
 }
 
 async fn build_evidence_signer(

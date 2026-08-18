@@ -1745,15 +1745,37 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     build_application_with_health(
         config(),
         ApplicationDependencies {
+            management: Some(ManagementSurfaceDependencies {
+                oidc_provider: oidc_provider.unwrap_or(Arc::new(
+                    OpenIdConnectProviderService::new(&[]).map_err(BootError::Internal)?,
+                )),
+                plugin_trust_roots: Arc::new(
+                    PluginTrustRootObjectStore::in_memory(MAX_BOOTSTRAP_ROOT_BYTES)
+                        .map_err(|error| BootError::Internal(error.to_string()))?,
+                ),
+                plugin_catalog: Arc::new(UnavailablePluginRegistryCatalog),
+                asset_catalog,
+                mcp_service_profiles,
+                mcp_route_policies,
+                asset_git,
+                github_authorization,
+                source_resolver,
+                source_webhook_verifier: Arc::new(
+                    GithubWebhookVerifier::for_test(GITHUB_WEBHOOK_SECRET, 1024 * 1024)
+                        .map_err(BootError::Internal)?,
+                ),
+                domain_verifier: Arc::new(LocalDomainOwnershipVerifier),
+                gateway_projector,
+                certificate_authority: Arc::new(TestCertificateAuthority),
+                bootstrap_credential: BootstrapCredential::new(BOOTSTRAP_TOKEN)
+                    .map_err(BootError::Internal)?,
+            }),
             organizations: identity.clone(),
             api_tokens: identity.clone(),
             memberships: identity.clone(),
             membership_invitations: identity.clone(),
             resource_grants: identity.clone(),
             oidc_identity: identity.clone(),
-            oidc_provider: oidc_provider.unwrap_or(Arc::new(
-                OpenIdConnectProviderService::new(&[]).map_err(BootError::Internal)?,
-            )),
             resource_authorization_decisions: identity,
             projects: projects.clone(),
             environments: projects,
@@ -1782,15 +1804,6 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             oci_artifacts: Arc::new(TestOciArtifactResolver),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
             plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
-            plugin_trust_roots: Arc::new(
-                PluginTrustRootObjectStore::in_memory(MAX_BOOTSTRAP_ROOT_BYTES)
-                    .map_err(|error| BootError::Internal(error.to_string()))?,
-            ),
-            plugin_catalog: Arc::new(UnavailablePluginRegistryCatalog),
-            asset_catalog,
-            mcp_service_profiles,
-            mcp_route_policies,
-            asset_git,
             assets: unavailable_assets,
             workloads: workload_port,
             builds,
@@ -1804,28 +1817,17 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             source_webhooks,
             source_subscriptions,
             github_connections,
-            github_authorization,
             github_installation_tokens,
-            source_resolver,
-            source_webhook_verifier: Arc::new(
-                GithubWebhookVerifier::for_test(GITHUB_WEBHOOK_SECRET, 1024 * 1024)
-                    .map_err(BootError::Internal)?,
-            ),
             secret_encryption: Arc::new(TestSecretEncryption),
             route_targets,
             route_commands,
             mcp_gateway_snapshots: None,
             gateway_node_desired_state_planner: None,
-            domain_verifier: Arc::new(LocalDomainOwnershipVerifier),
-            gateway_projector,
             operations: operations.unwrap_or_else(|| Arc::new(InMemoryOperationRepository::new())),
             nodes: nodes.clone(),
             node_pools: nodes.clone(),
             node_control,
             log_chunks: Arc::new(TestLogChunkStore),
-            certificate_authority: Arc::new(TestCertificateAuthority),
-            bootstrap_credential: BootstrapCredential::new(BOOTSTRAP_TOKEN)
-                .map_err(BootError::Internal)?,
             readiness: HealthModule::new("readiness")
                 .with_route("/health/ready")
                 .indicator("repositories", || async { Ok(HealthIndicatorResult::up()) }),

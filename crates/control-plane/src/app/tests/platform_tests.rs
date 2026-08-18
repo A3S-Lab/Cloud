@@ -132,7 +132,8 @@ fn relay_composition_has_one_closed_dependency_set() {
     }
     for forbidden in [
         "connect_flow(",
-        "security_providers(",
+        "certificate_authority_provider(",
+        "key_encryption_provider(",
         "build_evidence_signer(",
         "gateway_certificate_authority(",
         "log_chunk_store(",
@@ -156,4 +157,18 @@ fn relay_composition_has_one_closed_dependency_set() {
         1,
         "all and relay roles must share one Outbox timing projection"
     );
+}
+
+#[test]
+fn process_roles_have_one_closed_capability_matrix() {
+    for (role, management, workers, relay) in [
+        (ProcessRole::All, true, true, true),
+        (ProcessRole::Api, true, false, false),
+        (ProcessRole::Worker, false, true, false),
+        (ProcessRole::Relay, false, false, true),
+    ] {
+        assert_eq!(role.serves_management_api(), management, "{role:?}");
+        assert_eq!(role.runs_workers(), workers, "{role:?}");
+        assert_eq!(role.runs_relay(), relay, "{role:?}");
+    }
 }

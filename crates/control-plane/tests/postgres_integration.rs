@@ -35,7 +35,7 @@ use a3s_cloud_control_plane::modules::sources::domain::{
     SourceResolutionRequest,
 };
 use a3s_cloud_control_plane::{
-    build_application, infrastructure::connect_and_migrate, CloudConfig,
+    build_application, infrastructure::connect_and_migrate, CloudConfig, ControlPlane,
 };
 use a3s_event::{NatsConfig, StorageType};
 use a3s_flow::{
@@ -288,6 +288,19 @@ async fn postgres_relay_role_has_only_its_owned_dependencies_and_routes() {
     run_isolated_postgres(&admin_url, exercise_relay_role_composition)
         .await
         .expect("PostgreSQL and NATS relay composition gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_worker_role_has_only_its_owned_dependencies_and_routes() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    if std::env::var("A3S_CLOUD_TEST_NATS_URL").is_err() {
+        return;
+    }
+    run_isolated_postgres(&admin_url, exercise_worker_role_composition)
+        .await
+        .expect("PostgreSQL and NATS worker composition gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -851,31 +864,103 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let state = tempfile::tempdir()?;
     let mut relay_config = config();
-    configure_ephemeral_application_state(&mut relay_config, state.path());
-    relay_config.server.role = ProcessRole::Relay;
-    relay_config.events.provider = EventProviderKind::Nats;
-    relay_config.events.nats_url_env = "A3S_CLOUD_TEST_NATS_URL".into();
-    relay_config.events.stream_name = format!(
-        "A3S_CLOUD_RELAY_{}",
+    configure_split_role(&mut relay_config, state.path(), ProcessRole::Relay, "RELAY");
+
+    let relay = build_application(relay_config).await?;
+    assert_split_role_surface(&relay, "relay", &["events", "postgres"]).await
+}
+
+async fn exercise_worker_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
+    let state = tempfile::tempdir()?;
+    let mut worker_config = config();
+    let unused_bootstrap_env = configure_split_role(
+        &mut worker_config,
+        state.path(),
+        ProcessRole::Worker,
+        "WORKER",
+    );
+    let unused_webhook_env = format!(
+        "A3S_CLOUD_WORKER_UNUSED_WEBHOOK_{}",
         Uuid::new_v4().simple().to_string().to_uppercase()
     );
-    relay_config.auth.bootstrap_token_env = format!(
-        "A3S_CLOUD_RELAY_UNUSED_{}",
+    worker_config.sources.github_webhook_secret_env = unused_webhook_env.clone();
+    assert!(
+        std::env::var_os(&unused_bootstrap_env).is_none(),
+        "worker composition gate requires an unresolved bootstrap credential"
+    );
+    assert!(
+        std::env::var_os(&unused_webhook_env).is_none(),
+        "worker composition gate requires an unresolved webhook credential"
+    );
+
+    let worker = build_application(worker_config).await?;
+    assert_split_role_surface(
+        &worker,
+        "worker",
+        &[
+            "events",
+            "flow",
+            "gateway-certificate-authority",
+            "key-encryption",
+            "log-storage",
+            "postgres",
+        ],
+    )
+    .await?;
+    assert!(
+        !state.path().join("node-ca").exists(),
+        "worker initialized the management-owned node certificate authority"
+    );
+    assert!(
+        !state.path().join("node-control/server.pem").exists(),
+        "worker initialized the management-owned node-control server identity"
+    );
+    assert!(
+        !state.path().join("use-plugin-registry-metadata").exists(),
+        "worker initialized the management-owned plugin catalog"
+    );
+    Ok(())
+}
+
+fn configure_split_role(
+    config: &mut CloudConfig,
+    state: &std::path::Path,
+    role: ProcessRole,
+    label: &str,
+) -> String {
+    configure_ephemeral_application_state(config, state);
+    config.server.role = role;
+    config.events.provider = EventProviderKind::Nats;
+    config.events.nats_url_env = "A3S_CLOUD_TEST_NATS_URL".into();
+    config.events.stream_name = "A3S_CLOUD_PROCESS_ROLE_GATE".into();
+    let unused_bootstrap_env = format!(
+        "A3S_CLOUD_{label}_UNUSED_{}",
         Uuid::new_v4().simple().to_string().to_uppercase()
     );
-    relay_config.edge.certificate_directory = state
-        .path()
-        .join("gateway/certificates")
-        .display()
-        .to_string();
-    relay_config.edge.managed_state_file = state
-        .path()
+    config.auth.bootstrap_token_env = unused_bootstrap_env.clone();
+    config.edge.certificate_directory = state.join("gateway/certificates").display().to_string();
+    config.edge.managed_state_file = state
         .join("gateway/managed-snapshot.json")
         .display()
         .to_string();
+    unused_bootstrap_env
+}
 
-    let relay = build_application(relay_config).await?;
-    let readiness = relay
+async fn assert_split_role_surface(
+    application: &ControlPlane,
+    expected_role: &str,
+    expected_readiness_checks: &[&str],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let liveness = application
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/health/live")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(liveness.status(), 200, "{expected_role} liveness failed");
+
+    let readiness = application
         .call(
             BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
                 .with_header("accept", "application/json"),
@@ -885,16 +970,20 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
     assert_eq!(readiness.status(), 200, "{readiness_body}");
     let readiness_checks = readiness_body["data"]["checks"]
         .as_object()
-        .ok_or_else(|| std::io::Error::other("relay readiness checks are not an object"))?;
+        .ok_or_else(|| {
+            std::io::Error::other(format!(
+                "{expected_role} readiness checks are not an object"
+            ))
+        })?;
     assert_eq!(
         readiness_checks
             .keys()
             .map(String::as_str)
             .collect::<std::collections::BTreeSet<_>>(),
-        std::collections::BTreeSet::from(["events", "postgres"])
+        expected_readiness_checks.iter().copied().collect()
     );
 
-    let platform = relay
+    let platform = application
         .call(
             BootRequest::new(HttpMethod::Get, "/api/v1/platform")
                 .with_header("accept", "application/json"),
@@ -902,17 +991,17 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
         .await?;
     let platform_body = response_json(&platform)?;
     assert_eq!(platform.status(), 200, "{platform_body}");
-    assert_eq!(platform_body["data"]["role"], "relay");
+    assert_eq!(platform_body["data"]["role"], expected_role);
 
     for path in [
         "/api/v1/openapi.json",
         "/api/v1/organizations",
         "/api/v1/mcp",
     ] {
-        let response = relay
+        let response = application
             .call(BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"))
             .await?;
-        assert_eq!(response.status(), 404, "relay exposed {path}");
+        assert_eq!(response.status(), 404, "{expected_role} exposed {path}");
     }
     Ok(())
 }

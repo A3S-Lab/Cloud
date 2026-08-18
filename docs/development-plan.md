@@ -2347,7 +2347,9 @@ and are published by staging-directory rename followed by directory sync.
 Concurrent attempts converge on one repository; archived Assets remain
 inspectable but cannot provision missing repositories; symlinked paths and
 changed identity fail closed. The adapter and Source checkout use the same
-hardened Git command runner.
+hardened Git command runner. That runner is also the sole boundary that
+normalizes canonical Windows verbatim paths into the representation accepted
+by Git for Windows; Assets and Sources do not carry independent path fixes.
 
 The thin Smart HTTP controllers apply the existing tenant guard, require
 `cloud:read` for upload-pack and `asset:write` for receive-pack, validate exact
@@ -3897,7 +3899,7 @@ reconciliation, process death, and provider recovery.
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, one generation-fenced group Deployment/operation with exact member and plan bindings, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS for every production or split role, limits worker/relay HTTP to process status, and gives relay a PostgreSQL/NATS/Outbox-only composition root; worker/API dependency isolation plus ACL-native Box-hosted installation/upgrade and highly available API, worker/reconciler, relay, Gateway, migration, and dependency wiring remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS for every production or split role, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only composition root, and removes the typed management capability bundle and its local state from Worker. Complete API/Worker infrastructure isolation plus ACL-native Box-hosted installation/upgrade and highly available API, worker/reconciler, relay, Gateway, migration, and dependency wiring remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
 The implemented `H0.1` foundation introduces `WorkloadControl`,
@@ -4210,9 +4212,16 @@ private networking, and stateful moves remain open.
 H0.4 packages the Cloud API, workers/reconcilers, relay, A3S Gateway, and
 migration job as ACL-native Box-hosted units. The current role boundary keeps
 management routes on `all`/`api` and process-status routes on dedicated
-workers/relays. The relay already initializes only PostgreSQL, NATS JetStream,
-the transactional Outbox, and its notification projection; later slices must
-apply the same dependency-ownership rule to worker and API composition.
+workers/relays. The Relay initializes only PostgreSQL, NATS JetStream, the
+transactional Outbox, and its notification projection. Worker now omits the
+typed management capability bundle, including bootstrap, OIDC, webhook,
+node-CA, plugin-catalog, domain-verification, and management application
+adapters. Its exact readiness set is PostgreSQL, NATS, Flow, Gateway
+certificate authority, key encryption, and log storage. The shared full
+composition root still initializes some Worker-owned infrastructure for API
+and some common repository adapters for both roles; later slices must finish
+that dependency-ownership split without duplicating repositories or domain
+mechanisms.
 PostgreSQL, NATS JetStream,
 S3-compatible storage, profile-conditional Redis, and the OpenTelemetry
 Collector remain replaceable dependencies with explicit health and recovery
@@ -4230,8 +4239,25 @@ readiness result, and verifies that management, OpenAPI, and MCP routes are
 absent. A source-level uniqueness gate separately prevents a second Outbox
 constructor or timing projection.
 
+The Worker boundary is retained by
+`postgres_worker_role_has_only_its_owned_dependencies_and_routes` against the
+same real PostgreSQL 17 and NATS fixtures. It leaves unique bootstrap and
+webhook environment names unresolved, requires the exact six-indicator
+readiness set, rejects management/OpenAPI/MCP routes, and proves no node CA,
+node-control identity, or plugin-catalog state was created. ACL admission and
+Gateway compilation also share one host-neutral target-path validator, while
+immutable-object and hosted-Git persistence share one platform-aware
+directory-sync primitive; neither behavior can diverge by call site or host
+OS.
+
 ### Work
 
+- Split the current full composition root into typed common-data, API, and
+  Worker bundles. API must stop constructing Worker-only Flow, Gateway-CA,
+  log-storage, and reconciliation dependencies; Worker must construct only
+  dependencies reachable from registered workers. Keep each repository and
+  provider adapter single-owned rather than copying constructors between
+  roles.
 - Extend the verified replica identity, capacity, anti-affinity, stateless
   evacuation, and generation-fenced Fleet member removal with operator-visible
   stateful drain blocking once `S0` supplies prior-writer fence evidence.

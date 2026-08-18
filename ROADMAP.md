@@ -1312,7 +1312,7 @@ health, and operations. Neither store becomes PostgreSQL desired-state truth.
 | `H0.1` | Verified | Managed-owner references, durable replica identity, effective placement policy, versioned Fleet inventory, generic hard-resource claims, and fencing | Concurrent create/reconcile/replay produces one provider unit for one replica generation and never reuses an unfenced claim |
 | `H0.2` | Verified | Logical Gateway scopes, complete target sets, generation-bound private endpoints, exact snapshot acknowledgement, and rollback | Only healthy exact-generation targets become eligible; restart and rejected apply preserve the prior route |
 | `H0.3` | Foundation in progress | Typed managed target identity, durable multi-node replica sets, required anti-affinity, stateless drain/evacuation, Fleet-owned node pools with bounded maintenance evacuation, explicit Workload pool selection, generation-fenced safe member removal, bounded atomic multi-Claim reservation, durable placement-group identity with immutable multi-member execution plans, and one generation-fenced group Deployment/operation with exact member and plan bindings; group member scheduling, gang preparation/compensation, stateful moves, cluster-private networking, and independently placed Gateways remain open | Real-node scale, drain, maintenance, member removal, partition, stale-node return, and partial preparation converge without duplicate units, claims, members, or targets |
-| `H0.4` | Foundation in progress | The closed ACL rejects the process-local event provider for production and every split role, requiring NATS before startup; worker/relay HTTP registers only process identity and health, and the dedicated relay initializes only PostgreSQL, NATS, Outbox, and its notification projection. Worker/API dependency isolation, ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, and dependency orchestration remain | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | The closed ACL rejects the process-local event provider for production and every split role, requiring NATS before startup; Worker/Relay HTTP registers only process identity and health; Relay initializes only PostgreSQL, NATS, Outbox, and its notification projection; Worker omits the typed management capability bundle and management-owned local state. Complete API/Worker infrastructure isolation, ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, and dependency orchestration remain | Clean-Linux install, upgrade, process/node loss, leadership fencing, migration, rollback, and Gateway readiness gates pass without Kubernetes or Docker |
 | `H0.5` | Planned | Sole Workloads autoscaling controller, quotas, telemetry bounds, load limits, backup/restore, and operational hardening | Stale, missing, duplicate, and bursty metrics stay safe without another scaling path; failover and restore meet published limits |
 
 The Cloud production profile is ACL-native and Box-hosted. It does not depend
@@ -1325,6 +1325,16 @@ It passes locally on `2026-08-19` and is wired into the retained H0 job. The
 gate uses an unresolved bootstrap credential name, proves readiness contains
 exactly PostgreSQL and A3S Event, and rejects OpenAPI, organization, and
 Management MCP routes with `404`.
+
+The companion Worker composition gate uses the same real providers, leaves
+bootstrap and webhook credentials unresolved, requires exactly PostgreSQL,
+NATS, Flow, Gateway certificate authority, key encryption, and log storage,
+and proves management routes and management-owned local state are absent. One
+host-neutral Gateway runtime-settings validator now owns ACL and compiler path
+admission, and one platform-aware directory-sync primitive owns local
+immutable-object and hosted-Git metadata durability. API/Worker infrastructure
+construction remains the next `H0.4` boundary; these completed slices do not
+claim high availability.
 
 The current `H0.1` foundation persists inference-neutral managed-owner
 references, one effective single-replica placement policy, one stable

@@ -57,6 +57,13 @@ The code on `main` separates implemented mechanics from released capability:
   [TypeScript client](packages/cloud-client), [CLI](cli), and
   [Management MCP](docs/management-mcp.md) share the same commands and
   queries. Broader enterprise `C0` gates remain.
+- **Implemented / split-process capability boundary** — dedicated Worker and
+  Relay processes expose only process status. Relay constructs only
+  PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the
+  complete management capability bundle, including bootstrap, OIDC, webhook,
+  node-CA, plugin-catalog, and management route adapters. Real PostgreSQL 17
+  plus NATS gates retain both boundaries; complete API/Worker infrastructure
+  separation remains an `H0.4` exit requirement.
 - **Implemented / one compute path** — Sources, assets, builds, finite
   Executions, Workloads, Fleet, outbound Node Agent control, Edge snapshots,
   Runtime, and Box already compose. Current Box/Gateway real-provider
@@ -122,6 +129,9 @@ preservation register.
 | Provider lifecycle | A3S Runtime Task/Service plus A3S Box | Direct provider calls from business contexts or a Cloud executor |
 | Storage and credentials | Data S0 port plus Secrets exact-version materialization | Raw S3 clients, credential stores, or recovery workers per product |
 | Traffic application | Edge planner/compiler, Fleet command, A3S Gateway applied state | Cloud proxying, competing publishers, or inferred success |
+| Gateway runtime settings | One target-neutral `GatewaySnapshotRuntimeSettings` validator shared by ACL admission and snapshot compilation | Host-OS path interpretation or a second compiler validator |
+| Local metadata durability | One platform-aware directory-sync primitive shared by immutable objects and hosted Git | Store-specific directory handles or Windows no-op flushing |
+| Git subprocess execution | One hardened `GitCommandRunner`, including canonical host-path normalization at the process boundary | Asset- or Source-specific command environments and Windows path workarounds |
 | Identity and authorization | Principals, Memberships, grants, tokens, and revocation | Adapter-local users, roles, or authorization rules |
 | Management behavior | One command/query application layer | REST-, client-, CLI-, MCP-, or UI-specific business lifecycles |
 | A3S dependency identity | One exact source for each package name/version in the root lock | The same release resolved from both crates.io and Git, or an undocumented version fork |
@@ -258,7 +268,13 @@ readiness, and their `/platform` identity; they cannot become accidental
 management API replicas. The relay composition initializes only PostgreSQL,
 NATS, the existing Outbox/notification projection, and those status routes;
 it does not require API, Flow, Runtime, Box, Vault, Gateway, or log-storage
-providers.
+providers. Worker readiness is exactly PostgreSQL, NATS, Flow, Gateway
+certificate authority, key encryption, and log storage. Its composition does
+not resolve the bootstrap or webhook credentials and does not create the node
+CA, node-control server identity, or plugin-catalog state. The API role still
+uses the shared full composition root and therefore initializes some
+Worker-owned infrastructure; `H0.4` remains incomplete until typed API and
+Worker composition roots remove that final dependency overlap.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as executable references.
