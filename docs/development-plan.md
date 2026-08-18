@@ -154,6 +154,10 @@ Management MCP, provider, recovery, and evidence contracts.
   cross-version debt must name its upstream owner and is guarded from growth.
 - Put every external middleware behind a typed application port and test its
   real provider; backend names never enter domain decisions.
+- Permit the process-local A3S Event adapter only in the development
+  all-in-one process. Production and every split API, worker, or relay role
+  require NATS JetStream so integration facts cannot disappear at a process
+  boundary.
 - Compose the shared A3S Box Runtime driver directly. Do not add another Box
   lifecycle adapter, provider selector, or Docker-compatible fallback.
 - Compile local inference only to the A3S Power Service contract. An engine

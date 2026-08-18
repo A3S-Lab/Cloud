@@ -287,7 +287,7 @@ second entry in an authority row must be redesigned before implementation.
 | Governed Agent runtime/sandbox product projection | `AR0` over Agents, Workloads, Runtime, Box, Secrets, Operations, and `H0` | Applications-owned sandbox controller, process store, Secret injector, idle evaluator, checkpoint engine, or autoscaler |
 | Evolution experiments, evaluations, candidates, and promotion decisions | Evolution context in PostgreSQL | Model-, Agent-, Workflow-, or telemetry-specific evaluation and promotion controllers |
 | Request replay | Shared tenant-scoped idempotency records | Per-context idempotency tables or in-memory replay state |
-| Integration facts | Transactional Outbox plus A3S Event | Direct publish-before-commit or a profile-specific event bus |
+| Integration facts | Transactional Outbox plus A3S Event; memory is development all-in-one only, while production and every split process role require NATS | Direct publish-before-commit, a process-local bus across process boundaries, or another queue |
 | Personal and outbound notification projection | Notifications owns the exact-recipient inbox and deterministic delivery intent; A3S Event owns durable consumption; Connectors/Secrets own target and credential material; Identity owns verified recipient contacts and retains invitation/revocation lifecycle | Business desired state, source-fact mutation, a second event rail or queue, provider-local retry scheduler, copied connection/Secret/contact authority, or presentation-local inbox |
 | Placement, replicas, rollout, and scaling | Workloads | Agent, MCP, Durable Cell, inference, Gateway, or import-specific schedulers and autoscalers |
 | Node delivery | Fleet `node_commands`, leases, and the Node Agent journal | Direct Cloud-to-process control, second queue, or profile-specific node channel |
@@ -1412,7 +1412,7 @@ discard an approval, command, log gap, usage gap, or cleanup obligation.
 | A3S Power | Local inference serving | Required only for `I0` |
 | A3S Use | Signed plugin catalog, canonical plan/confirmation/receipt contracts, shared Plugin Manager, package generations, grants, bindings, and capability reconciliation | Required only for `U0`; Cloud pins and adapts it rather than reimplementing it |
 | Filesystem or S3-compatible objects | Immutable large content | One selected backend per namespace/profile behind the shared client |
-| NATS JetStream | Replicated A3S Event delivery | Conditional on the HA profile; never workflow or desired-state authority |
+| NATS JetStream | Replicated A3S Event delivery | Required for production and every split API, worker, or relay role; never workflow or desired-state authority |
 | Redis | Ephemeral fan-out or specifically gated exact distributed counters | Optional and disposable; prohibited for durable control state |
 | OpenTelemetry Collector | Telemetry routing | Production profile dependency, not a decision authority |
 | PgBouncer | Connection pressure control | Added only after measured need |

@@ -135,7 +135,8 @@ preservation register.
 - A3S Box for node-local workload and build execution
 - The pinned A3S Gateway revision for routed services
 - Bun only when developing the TypeScript client or CLI
-- NATS JetStream only when selecting the NATS A3S Event provider
+- NATS JetStream for production and every split API, worker, or relay process;
+  the in-process A3S Event provider is development all-in-one only
 
 Redis is not required and is never a durable business, workflow, queue,
 session, lock, or replay authority.
@@ -150,8 +151,10 @@ export A3S_CLOUD_GITHUB_WEBHOOK_SECRET="replace-with-32-to-512-random-bytes"
 cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ```
 
-Migrations run during startup. The development profile listens on
-`127.0.0.1:8080` and uses the in-memory A3S Event provider.
+Migrations run during startup. The development all-in-one profile listens on
+`127.0.0.1:8080` and may use the in-memory A3S Event provider. Production and
+split-process topologies fail configuration validation unless they use NATS
+JetStream, because an in-process bus cannot cross an API/worker/relay boundary.
 
 ```bash
 curl http://127.0.0.1:8080/api/v1/health/live

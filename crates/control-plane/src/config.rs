@@ -1082,6 +1082,15 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        if self.events.provider == EventProviderKind::Memory
+            && (self.security.profile != SecurityProfile::Development
+                || self.server.role != ProcessRole::All)
+        {
+            return Err(ConfigError::Invalid(
+                "events.provider memory is allowed only for the development all-in-one process; production and split process roles require nats"
+                    .into(),
+            ));
+        }
         if self.operations.reconcile_interval_ms == 0
             || self.operations.lease_ms <= self.operations.reconcile_interval_ms
         {
@@ -2495,6 +2504,7 @@ security {
 
         let production_s3 = VALID
             .replace("profile = \"development\"", "profile = \"production\"")
+            .replace("provider = \"memory\"", "provider = \"nats\"")
             .replace(
                 "  gateway_certificate_authority = \"local\"",
                 "  gateway_certificate_authority = \"vault\"",
@@ -2526,6 +2536,10 @@ security {
                 "publication_allow_anonymous = false",
             );
         assert!(CloudConfig::parse(&production_s3).is_ok());
+        assert!(CloudConfig::parse(
+            &production_s3.replace("provider = \"nats\"", "provider = \"memory\"")
+        )
+        .is_err());
         assert!(CloudConfig::parse(&production_s3.replace(
             "insecure_hosts = []",
             "insecure_hosts = [\"registry.example.test\"]"
@@ -2562,6 +2576,39 @@ security {
             "s3_endpoint = \"https://credential@objects.example\""
         ))
         .is_err());
+    }
+
+    #[test]
+    fn memory_event_delivery_is_development_all_in_one_only() {
+        const ERROR: &str = "invalid Cloud config: events.provider memory is allowed only for the development all-in-one process; production and split process roles require nats";
+
+        let valid = platform_valid();
+        let mut production = CloudConfig::parse(&valid).expect("development all-in-one config");
+        production.security.profile = SecurityProfile::Production;
+        assert_eq!(
+            production
+                .validate()
+                .expect_err("production must reject process-local event delivery")
+                .to_string(),
+            ERROR
+        );
+
+        for role in ["api", "worker", "relay"] {
+            let memory = valid.replace("role = \"all\"", &format!("role = \"{role}\""));
+            assert_eq!(
+                CloudConfig::parse(&memory)
+                    .expect_err("split role must reject process-local event delivery")
+                    .to_string(),
+                ERROR,
+                "split role {role} returned the wrong validation failure"
+            );
+
+            let nats = memory.replace("provider = \"memory\"", "provider = \"nats\"");
+            assert!(
+                CloudConfig::parse(&nats).is_ok(),
+                "split role {role} must accept durable NATS delivery"
+            );
+        }
     }
 
     #[test]
