@@ -7,6 +7,7 @@ mod stream;
 #[cfg(test)]
 mod tests;
 
+use futures_util::TryStreamExt;
 use object_store::path::Path as ObjectPath;
 use object_store::{ObjectStore, PutMode, PutResult, UpdateVersion};
 use std::fmt;
@@ -125,8 +126,16 @@ pub(crate) enum ImmutableObjectError {
     Conflict(String),
     #[error("immutable object failed integrity validation: {0}")]
     Integrity(String),
+    #[error("immutable object capability is unsupported: {0}")]
+    Unsupported(String),
     #[error("immutable object storage is unavailable: {0}")]
     Unavailable(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ImmutableObjectMetadata {
+    pub(crate) key: String,
+    pub(crate) size_bytes: u64,
 }
 
 #[derive(Clone)]
@@ -380,6 +389,91 @@ impl ImmutableObjectClient {
         }
     }
 
+    /// Lists an exact bounded portion of this already-scoped namespace.
+    ///
+    /// The returned keys are relative to `self.namespace`. This is the sole
+    /// shared listing path for typed S0 lifecycle adapters; callers do not get
+    /// the underlying object-store handle or construct another provider
+    /// client.
+    pub(crate) async fn list(
+        &self,
+        key_prefix: Option<&str>,
+        maximum_objects: u32,
+        maximum_total_bytes: u64,
+    ) -> Result<Vec<ImmutableObjectMetadata>, ImmutableObjectError> {
+        if maximum_objects == 0 || maximum_total_bytes == 0 {
+            return Err(ImmutableObjectError::Invalid(
+                "immutable object list bounds must be positive".into(),
+            ));
+        }
+        if let Some(prefix) = key_prefix {
+            validate_relative_path(prefix, "list prefix")?;
+        }
+        let Backend::Remote(objects) = self.backend.as_ref() else {
+            return Err(ImmutableObjectError::Unsupported(
+                "the local immutable-object backend is not certified for namespace listing".into(),
+            ));
+        };
+        let provider_prefix = match key_prefix {
+            Some(prefix) => format!("{}/{prefix}", self.namespace),
+            None => self.namespace.clone(),
+        };
+        let provider_prefix = remote_path(&provider_prefix)?;
+        let namespace_prefix = format!("{}/", self.namespace);
+        let exact_prefix = key_prefix.map(|prefix| format!("{prefix}/"));
+        let mut listed = objects.list(Some(&provider_prefix));
+        let mut entries = Vec::new();
+        let mut total_bytes = 0_u64;
+        while let Some(metadata) = listed
+            .try_next()
+            .await
+            .map_err(|error| remote_error("list immutable objects", error))?
+        {
+            let Some(relative_key) = metadata.location.as_ref().strip_prefix(&namespace_prefix)
+            else {
+                // S3-style prefix listing may also return a sibling whose raw
+                // prefix happens to match. It is outside this client's exact
+                // namespace and therefore deliberately invisible here.
+                continue;
+            };
+            if let Some(prefix) = key_prefix {
+                if relative_key != prefix
+                    && !exact_prefix
+                        .as_deref()
+                        .is_some_and(|expected| relative_key.starts_with(expected))
+                {
+                    continue;
+                }
+            }
+            validate_relative_path(relative_key, "listed key").map_err(|_| {
+                ImmutableObjectError::Integrity(
+                    "provider returned an invalid key inside the immutable-object namespace".into(),
+                )
+            })?;
+            total_bytes = total_bytes.checked_add(metadata.size).ok_or_else(|| {
+                ImmutableObjectError::Integrity(
+                    "immutable object list size overflowed its bound".into(),
+                )
+            })?;
+            if entries.len() >= maximum_objects as usize || total_bytes > maximum_total_bytes {
+                return Err(ImmutableObjectError::Integrity(
+                    "immutable object list exceeded its admission bounds".into(),
+                ));
+            }
+            entries.push(ImmutableObjectMetadata {
+                key: relative_key.to_owned(),
+                size_bytes: metadata.size,
+            });
+        }
+        entries.sort_unstable_by(|left, right| left.key.cmp(&right.key));
+        if entries.windows(2).any(|pair| pair[0].key == pair[1].key) {
+            return Err(ImmutableObjectError::Integrity(
+                "immutable object list contained duplicate keys".into(),
+            ));
+        }
+        Ok(entries)
+    }
+
     /// Test-only corruption hook over the same already-built remote client.
     ///
     /// Real-provider tests use this to prove typed immutable readers reject an
@@ -491,7 +585,12 @@ fn remote_path(scoped_key: &str) -> Result<ObjectPath, ImmutableObjectError> {
 }
 
 fn remote_error(action: &str, error: object_store::Error) -> ImmutableObjectError {
-    ImmutableObjectError::Unavailable(format!("{action}: {error}"))
+    match error {
+        object_store::Error::NotImplemented | object_store::Error::NotSupported { .. } => {
+            ImmutableObjectError::Unsupported(action.into())
+        }
+        other => ImmutableObjectError::Unavailable(format!("{action}: {other}")),
+    }
 }
 
 fn conditional_remote_error(action: &str, error: object_store::Error) -> ConditionalObjectError {
@@ -513,6 +612,7 @@ fn map_base_conditional_error(error: ImmutableObjectError) -> ConditionalObjectE
         ImmutableObjectError::Invalid(message) => ConditionalObjectError::Invalid(message),
         ImmutableObjectError::Conflict(message) => ConditionalObjectError::Precondition(message),
         ImmutableObjectError::Integrity(message) => ConditionalObjectError::Corrupt(message),
+        ImmutableObjectError::Unsupported(message) => ConditionalObjectError::Unsupported(message),
         ImmutableObjectError::Unavailable(message) => ConditionalObjectError::Unavailable(message),
     }
 }

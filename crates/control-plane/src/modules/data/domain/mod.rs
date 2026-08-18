@@ -5,8 +5,8 @@ mod object_namespace_recovery;
 mod object_namespace_retention;
 
 pub use object_namespace::{
-    IObjectNamespace, ObjectNamespaceError, ObjectNamespaceKey, ObjectNamespaceProbeEvidence,
-    ObjectNamespaceRead, ObjectNamespaceVersion,
+    IObjectNamespace, ObjectNamespaceEntry, ObjectNamespaceError, ObjectNamespaceKey,
+    ObjectNamespaceProbeEvidence, ObjectNamespaceRead, ObjectNamespaceVersion,
 };
 pub use object_namespace_credential::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,

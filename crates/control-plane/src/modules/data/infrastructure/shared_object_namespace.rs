@@ -3,13 +3,38 @@ use crate::infrastructure::{
     ImmutableObjectError,
 };
 use crate::modules::data::domain::{
-    IObjectNamespace, ObjectNamespaceError, ObjectNamespaceKey, ObjectNamespaceRead,
-    ObjectNamespaceVersion,
+    IObjectNamespace, ObjectNamespaceEntry, ObjectNamespaceError, ObjectNamespaceKey,
+    ObjectNamespaceRead, ObjectNamespaceVersion,
 };
 use async_trait::async_trait;
 
 #[async_trait]
 impl IObjectNamespace for ImmutableObjectClient {
+    async fn list(
+        &self,
+        key_prefix: Option<&ObjectNamespaceKey>,
+        maximum_objects: u32,
+        maximum_total_bytes: u64,
+    ) -> Result<Vec<ObjectNamespaceEntry>, ObjectNamespaceError> {
+        ImmutableObjectClient::list(
+            self,
+            key_prefix.map(ObjectNamespaceKey::as_str),
+            maximum_objects,
+            maximum_total_bytes,
+        )
+        .await
+        .map_err(map_immutable_error)?
+        .into_iter()
+        .map(|entry| {
+            ObjectNamespaceEntry::new(
+                ObjectNamespaceKey::parse(entry.key).map_err(ObjectNamespaceError::Corrupt)?,
+                entry.size_bytes,
+            )
+            .map_err(ObjectNamespaceError::Corrupt)
+        })
+        .collect()
+    }
+
     async fn conditional_create(
         &self,
         object_key: &ObjectNamespaceKey,
@@ -103,6 +128,7 @@ fn map_immutable_error(error: ImmutableObjectError) -> ObjectNamespaceError {
         ImmutableObjectError::Invalid(message) => ObjectNamespaceError::Invalid(message),
         ImmutableObjectError::Conflict(message) => ObjectNamespaceError::Precondition(message),
         ImmutableObjectError::Integrity(message) => ObjectNamespaceError::Corrupt(message),
+        ImmutableObjectError::Unsupported(message) => ObjectNamespaceError::Unsupported(message),
         ImmutableObjectError::Unavailable(message) => ObjectNamespaceError::Unavailable(message),
     }
 }
@@ -139,6 +165,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn shared_remote_client_lists_only_the_exact_bounded_subtree() {
+        let client = ImmutableObjectClient::from_store(
+            Arc::new(InMemory::new()) as Arc<dyn ObjectStore>,
+            "durable-cells/list-namespace",
+        )
+        .expect("shared object client");
+        for (key, body) in [
+            ("cells/alpha/state", b"alpha".as_slice()),
+            ("cells/alpha/alarm", b"alarm".as_slice()),
+            ("cells/alpha-other/state", b"foreign".as_slice()),
+            ("cells/beta/state", b"beta".as_slice()),
+        ] {
+            IObjectNamespace::conditional_create(
+                &client,
+                &ObjectNamespaceKey::parse(key).expect("key"),
+                body.to_vec(),
+                32,
+            )
+            .await
+            .expect("create listed object");
+        }
+
+        let prefix = ObjectNamespaceKey::parse("cells/alpha").expect("prefix");
+        let listed = IObjectNamespace::list(&client, Some(&prefix), 2, 16)
+            .await
+            .expect("bounded exact listing");
+        assert_eq!(
+            listed
+                .iter()
+                .map(|entry| entry.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["cells/alpha/alarm", "cells/alpha/state"]
+        );
+        assert!(matches!(
+            IObjectNamespace::list(&client, Some(&prefix), 1, 16).await,
+            Err(ObjectNamespaceError::Corrupt(_))
+        ));
+        assert!(matches!(
+            IObjectNamespace::list(&client, Some(&prefix), 2, 9).await,
+            Err(ObjectNamespaceError::Corrupt(_))
+        ));
+    }
+
+    #[tokio::test]
     async fn uncertified_local_backend_fails_closed_for_cas() {
         let directory = tempfile::tempdir().expect("object directory");
         let client = ImmutableObjectClient::local(directory.path(), "durable-cells/local")
@@ -151,6 +221,10 @@ mod tests {
                 32
             )
             .await,
+            Err(ObjectNamespaceError::Unsupported(_))
+        ));
+        assert!(matches!(
+            IObjectNamespace::list(&client, None, 1, 32).await,
             Err(ObjectNamespaceError::Unsupported(_))
         ));
     }

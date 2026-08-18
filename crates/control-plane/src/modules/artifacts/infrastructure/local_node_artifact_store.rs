@@ -267,6 +267,7 @@ fn map_object_error(error: ImmutableObjectError) -> NodeArtifactStoreError {
         ImmutableObjectError::Invalid(message) => NodeArtifactStoreError::Invalid(message),
         ImmutableObjectError::Conflict(_) => NodeArtifactStoreError::Conflict,
         ImmutableObjectError::Integrity(message) => NodeArtifactStoreError::Integrity(message),
+        ImmutableObjectError::Unsupported(message) => NodeArtifactStoreError::Storage(message),
         ImmutableObjectError::Unavailable(message) => NodeArtifactStoreError::Storage(message),
     }
 }

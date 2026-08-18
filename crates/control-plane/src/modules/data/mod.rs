@@ -3,13 +3,14 @@ mod domain;
 mod infrastructure;
 
 pub use application::{
-    MaterializedObjectNamespaceCredentials, ObjectNamespaceConformanceProbe,
+    MaterializedObjectNamespaceCredentials, ObjectNamespaceAccess, ObjectNamespaceConformanceProbe,
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialMaterializer,
+    ObjectNamespaceRecoveryExecutor, ObjectNamespaceRecoveryStore,
 };
 pub use domain::{
     IObjectNamespace, ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
     ObjectNamespaceDeletionEvidence, ObjectNamespaceDeletionPlan, ObjectNamespaceDeletionPlanSpec,
-    ObjectNamespaceError, ObjectNamespaceKey, ObjectNamespaceProbeEvidence,
+    ObjectNamespaceEntry, ObjectNamespaceError, ObjectNamespaceKey, ObjectNamespaceProbeEvidence,
     ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec, ObjectNamespaceRead,
     ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec, ObjectNamespaceRestoreEvidence,
     ObjectNamespaceRestorePlan, ObjectNamespaceRestorePlanSpec, ObjectNamespaceRetentionPolicy,

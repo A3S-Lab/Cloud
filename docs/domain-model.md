@@ -368,10 +368,11 @@ Primary aggregates:
 - `PersistentVolume`
 - `Backup`
 
-Implemented component-only `S0.1-C1/C2` value/port foundation:
+Implemented component-only `S0.1-C1/C2/C4` value/port and execution foundation:
 
 - `ObjectNamespaceKey`
 - `ObjectNamespaceVersion`
+- `ObjectNamespaceEntry`
 - `IObjectNamespace`
 - `ObjectNamespaceProbeEvidence`
 - `ObjectNamespaceProviderProfile`
@@ -384,6 +385,9 @@ Implemented component-only `S0.1-C1/C2` value/port foundation:
 - `ObjectNamespaceDeletionEvidence`
 - `ObjectNamespaceCredentialAdmission`
 - `ObjectNamespaceCredentialMaterializer`
+- `ObjectNamespaceAccess`
+- `ObjectNamespaceRecoveryStore`
+- `ObjectNamespaceRecoveryExecutor`
 
 The sole shared object client now exposes atomic create-only and exact-version
 overwrite/read operations behind that typed S0 port. Its destructive startup
@@ -419,11 +423,28 @@ exact Cloud revision, seven-check CAS/cleanup marker, secret-scanned log, and
 evidence hashes. It is a provider conformance gate, not a new client, domain
 port, credential parser, or lifecycle.
 
+Component-only `S0.1-C4` extends `IObjectNamespace` and the same
+`ImmutableObjectClient` with exact, canonically ordered, count/byte-bounded
+listing. `ObjectNamespaceRecoveryExecutor` uses only that port to seal a
+writer-fence-receipted immutable manifest, restore it into a distinct exact
+namespace, re-observe the sealed source and restored state, and execute an
+already-authorized deletion only after its positive grace period. Exact
+partial creates and deletes are adopted after interruption; foreign
+namespace/profile bindings, extra target state, changed bytes, premature
+deletion, or loss of the retained restore fail closed. The latest manifest is
+digest-bound to its exact predecessor. Deletion first writes a deterministic
+temporary intent anchor, so a partial source is accepted only after this
+executor started cleanup; the latest manifest is removed last, so it remains
+the replay anchor until source and recovery cleanup are complete.
+Operations/Flow still owns the long-running operation and retry schedule,
+Workloads supplies writer-fence receipts, and no recovery repository, worker,
+object client, or evidence store is introduced.
+
 Managed database/volume/backup aggregates, persistence, production provider
-certification through a retained `S0.1-C3` pass, executable
-backup/restore/deletion, and retained fault evidence remain planned. This
-boundary prevents stateful behavior from being hidden in workload metadata or
-provider-specific configuration.
+certification through retained `S0.1-C3/C4` passes, Operations/Flow recovery
+wiring, durable operation/evidence persistence, and retained real-provider
+fault evidence remain planned. This boundary prevents stateful behavior from
+being hidden in workload metadata or provider-specific configuration.
 
 ### 3.11 Inference platform (planned I0)
 
@@ -2666,7 +2687,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
-| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, and `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, with no second object client, provider registry, backup engine, or provider-native mutable Cloud configuration |
+| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, and component-only `S0.1-C4` supplies bounded recovery/delete execution and interruption replay through the same port. Operations/Flow still owns the durable lifecycle; there is no second object client, provider registry, recovery worker/evidence store, or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |

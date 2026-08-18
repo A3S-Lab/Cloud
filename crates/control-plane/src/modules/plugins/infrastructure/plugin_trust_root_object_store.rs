@@ -120,6 +120,7 @@ fn map_object_error(error: ImmutableObjectError) -> PluginTrustRootStoreError {
         ImmutableObjectError::Invalid(message) => PluginTrustRootStoreError::Invalid(message),
         ImmutableObjectError::Conflict(_) => PluginTrustRootStoreError::Conflict,
         ImmutableObjectError::Integrity(message) => PluginTrustRootStoreError::Integrity(message),
+        ImmutableObjectError::Unsupported(message) => PluginTrustRootStoreError::Storage(message),
         ImmutableObjectError::Unavailable(message) => PluginTrustRootStoreError::Storage(message),
     }
 }

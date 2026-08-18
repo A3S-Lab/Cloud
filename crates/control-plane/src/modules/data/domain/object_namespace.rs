@@ -74,6 +74,19 @@ pub enum ObjectNamespaceRead {
     Corrupt,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ObjectNamespaceEntry {
+    pub key: ObjectNamespaceKey,
+    pub size_bytes: u64,
+}
+
+impl ObjectNamespaceEntry {
+    pub fn new(key: ObjectNamespaceKey, size_bytes: u64) -> Result<Self, String> {
+        ObjectNamespaceKey::parse(key.as_str().to_owned())?;
+        Ok(Self { key, size_bytes })
+    }
+}
+
 #[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
 pub enum ObjectNamespaceError {
     #[error("object namespace request is invalid: {0}")]
@@ -90,6 +103,16 @@ pub enum ObjectNamespaceError {
 
 #[async_trait]
 pub trait IObjectNamespace: Send + Sync {
+    /// Lists either the whole already-scoped namespace or one exact key
+    /// subtree. Implementations must return canonical key order and fail once
+    /// either caller-provided bound is exceeded.
+    async fn list(
+        &self,
+        key_prefix: Option<&ObjectNamespaceKey>,
+        maximum_objects: u32,
+        maximum_total_bytes: u64,
+    ) -> Result<Vec<ObjectNamespaceEntry>, ObjectNamespaceError>;
+
     async fn conditional_create(
         &self,
         object_key: &ObjectNamespaceKey,
@@ -161,6 +184,11 @@ mod tests {
         )
         .is_err());
         assert!(ObjectNamespaceVersion::new(None, Some("v1".into())).is_ok());
+        assert!(ObjectNamespaceEntry::new(
+            ObjectNamespaceKey::parse("owners/counter").expect("key"),
+            0
+        )
+        .is_ok());
 
         let mut evidence = ObjectNamespaceProbeEvidence {
             namespace_id: StorageNamespaceId::new(),
