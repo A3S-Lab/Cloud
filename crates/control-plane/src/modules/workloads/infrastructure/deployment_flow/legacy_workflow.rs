@@ -7,7 +7,7 @@ use super::types::{
     ObserveStepOutput, ResolveStepOutput, ResolveStepResult, ScheduleStepInput, ScheduleStepOutput,
     VerifyStepInput, VerifyStepOutput,
 };
-use super::DeploymentFlowConfig;
+use super::{steps, DeploymentFlowConfig};
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
 const RESOLVE_STEP_ID: &str = "resolve";
@@ -39,7 +39,7 @@ pub(super) fn replay(
                 &context,
                 &input,
                 RESOLVE_STEP_ID,
-                "resolve_deployment",
+                steps::RESOLVE_DEPLOYMENT,
                 &input,
             )
         }
@@ -64,7 +64,7 @@ pub(super) fn replay(
                 &context,
                 &input,
                 DISPATCH_STEP_ID,
-                "dispatch_runtime_apply",
+                steps::DISPATCH_RUNTIME_APPLY,
                 &DispatchStepInput {
                     resolved: resolved.clone(),
                     node_id,
@@ -94,7 +94,7 @@ pub(super) fn replay(
                 &context,
                 &input,
                 VERIFY_STEP_ID,
-                "verify_runtime_health",
+                steps::VERIFY_RUNTIME_HEALTH,
                 &VerifyStepInput {
                     resolved: resolved.clone(),
                     observation,
@@ -113,7 +113,7 @@ pub(super) fn replay(
                 &context,
                 &input,
                 ACTIVATE_STEP_ID,
-                "activate_deployment",
+                steps::ACTIVATE_DEPLOYMENT,
                 &ActivateStepInput {
                     resolved,
                     verification,
@@ -165,7 +165,7 @@ fn schedule_node(
                     context,
                     flow_input,
                     &step_id,
-                    "schedule_deployment",
+                    steps::SCHEDULE_DEPLOYMENT,
                     &ScheduleStepInput {
                         resolved: resolved.clone(),
                     },
@@ -216,7 +216,7 @@ fn observe_runtime(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_runtime_apply",
+                    steps::OBSERVE_RUNTIME_APPLY,
                     &ObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -267,7 +267,7 @@ fn cancel_deployment(
                         context,
                         flow_input,
                         &dispatch_step_id,
-                        "dispatch_runtime_cleanup",
+                        steps::DISPATCH_RUNTIME_CLEANUP,
                         &CleanupDispatchStepInput {
                             resolved: resolved.clone(),
                             attempt,
@@ -356,7 +356,7 @@ fn observe_cleanup(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_runtime_cleanup",
+                    steps::OBSERVE_RUNTIME_CLEANUP,
                     &CleanupObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -381,7 +381,7 @@ fn complete_cancellation_command(
             context,
             flow_input,
             COMPLETE_CANCELLATION_STEP_ID,
-            "complete_deployment_cancellation",
+            steps::COMPLETE_DEPLOYMENT_CANCELLATION,
             &CompleteCancellationStepInput {
                 deployment_id: flow_input.deployment_id,
                 organization_id: flow_input.organization_id,
@@ -446,7 +446,7 @@ fn failure_command(
     }
     Ok(context.schedule_step_with_retry(
         FAIL_STEP_ID,
-        "fail_deployment",
+        steps::FAIL_DEPLOYMENT,
         serde_json::to_value(FailStepInput {
             deployment_id: flow_input.deployment_id,
             organization_id: flow_input.organization_id,

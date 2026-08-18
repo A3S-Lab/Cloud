@@ -1,4 +1,7 @@
-use super::{ObjectNamespaceRecoveryFlowRuntime, RecoveryStepOutput};
+use super::{
+    ObjectNamespaceRecoveryFlowRuntime, RecoveryStepOutput, OBJECT_NAMESPACE_DELETE,
+    OBJECT_NAMESPACE_RESTORE, OBJECT_NAMESPACE_SEAL,
+};
 use crate::modules::data::application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
@@ -28,7 +31,7 @@ pub(super) fn replay(
             replay_step::<SealObjectNamespaceOperationOutput>(
                 runtime,
                 &context,
-                "object_namespace_seal",
+                OBJECT_NAMESPACE_SEAL,
                 input,
             )
         }
@@ -39,7 +42,7 @@ pub(super) fn replay(
             replay_step::<RestoreObjectNamespaceOperationOutput>(
                 runtime,
                 &context,
-                "object_namespace_restore",
+                OBJECT_NAMESPACE_RESTORE,
                 input,
             )
         }
@@ -56,7 +59,7 @@ pub(super) fn replay(
             replay_step::<DeleteObjectNamespaceOperationOutput>(
                 runtime,
                 &context,
-                "object_namespace_delete",
+                OBJECT_NAMESPACE_DELETE,
                 input,
             )
         }

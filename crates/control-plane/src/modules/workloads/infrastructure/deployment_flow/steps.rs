@@ -38,71 +38,124 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
 
+pub(super) const RESOLVE_DEPLOYMENT: &str = "resolve_deployment";
+pub(super) const SCHEDULE_DEPLOYMENT: &str = "schedule_deployment";
+pub(super) const PREPARE_RESOURCE_CLAIM: &str = "prepare_resource_claim";
+pub(super) const RECONCILE_WORKLOAD_PRESTART_GATE: &str = "reconcile_workload_prestart_gate";
+pub(super) const DISPATCH_RUNTIME_APPLY: &str = "dispatch_runtime_apply";
+pub(super) const DISPATCH_RESOURCE_BOUND_RUNTIME_APPLY: &str =
+    "dispatch_resource_bound_runtime_apply";
+pub(super) const OBSERVE_RUNTIME_APPLY: &str = "observe_runtime_apply";
+pub(super) const OBSERVE_RESOURCE_BOUND_RUNTIME_APPLY: &str =
+    "observe_resource_bound_runtime_apply";
+pub(super) const VERIFY_RUNTIME_HEALTH: &str = "verify_runtime_health";
+pub(super) const STAGE_DEPLOYMENT_GATEWAY: &str = "stage_deployment_gateway";
+pub(super) const OBSERVE_DEPLOYMENT_GATEWAY: &str = "observe_deployment_gateway";
+pub(super) const ACTIVATE_DEPLOYMENT: &str = "activate_deployment";
+pub(super) const DISPATCH_PREVIOUS_RUNTIME_RETIREMENT: &str =
+    "dispatch_previous_runtime_retirement";
+pub(super) const OBSERVE_PREVIOUS_RUNTIME_RETIREMENT: &str = "observe_previous_runtime_retirement";
+pub(super) const COMPLETE_DEPLOYMENT_RETIREMENT: &str = "complete_deployment_retirement";
+pub(super) const DISPATCH_RUNTIME_CLEANUP: &str = "dispatch_runtime_cleanup";
+pub(super) const OBSERVE_RUNTIME_CLEANUP: &str = "observe_runtime_cleanup";
+pub(super) const DISPATCH_RUNTIME_REMOVAL: &str = "dispatch_runtime_removal";
+pub(super) const OBSERVE_RUNTIME_REMOVAL: &str = "observe_runtime_removal";
+pub(super) const DISPATCH_FAILED_RUNTIME_CLEANUP: &str = "dispatch_failed_runtime_cleanup";
+pub(super) const OBSERVE_FAILED_RUNTIME_CLEANUP: &str = "observe_failed_runtime_cleanup";
+pub(super) const RELEASE_RESOURCE_CLAIM: &str = "release_resource_claim";
+pub(super) const COMPLETE_DEPLOYMENT_CANCELLATION: &str = "complete_deployment_cancellation";
+pub(super) const FAIL_DEPLOYMENT: &str = "fail_deployment";
+
+pub(super) const STEP_NAMES: &[&str] = &[
+    RESOLVE_DEPLOYMENT,
+    SCHEDULE_DEPLOYMENT,
+    PREPARE_RESOURCE_CLAIM,
+    RECONCILE_WORKLOAD_PRESTART_GATE,
+    DISPATCH_RUNTIME_APPLY,
+    DISPATCH_RESOURCE_BOUND_RUNTIME_APPLY,
+    OBSERVE_RUNTIME_APPLY,
+    OBSERVE_RESOURCE_BOUND_RUNTIME_APPLY,
+    VERIFY_RUNTIME_HEALTH,
+    STAGE_DEPLOYMENT_GATEWAY,
+    OBSERVE_DEPLOYMENT_GATEWAY,
+    ACTIVATE_DEPLOYMENT,
+    DISPATCH_PREVIOUS_RUNTIME_RETIREMENT,
+    OBSERVE_PREVIOUS_RUNTIME_RETIREMENT,
+    COMPLETE_DEPLOYMENT_RETIREMENT,
+    DISPATCH_RUNTIME_CLEANUP,
+    OBSERVE_RUNTIME_CLEANUP,
+    DISPATCH_RUNTIME_REMOVAL,
+    OBSERVE_RUNTIME_REMOVAL,
+    DISPATCH_FAILED_RUNTIME_CLEANUP,
+    OBSERVE_FAILED_RUNTIME_CLEANUP,
+    RELEASE_RESOURCE_CLAIM,
+    COMPLETE_DEPLOYMENT_CANCELLATION,
+    FAIL_DEPLOYMENT,
+];
+
 pub(super) async fn execute(
     runtime: &DeploymentFlowRuntime,
     invocation: StepInvocation,
 ) -> a3s_flow::Result<serde_json::Value> {
     match invocation.step_name.as_str() {
-        "resolve_deployment" => {
+        RESOLVE_DEPLOYMENT => {
             encode(resolve(runtime, &invocation.run_id, invocation.input_as()?).await?)
         }
-        "schedule_deployment" => encode(schedule(runtime, invocation.input_as()?).await?),
-        "prepare_resource_claim" => {
+        SCHEDULE_DEPLOYMENT => encode(schedule(runtime, invocation.input_as()?).await?),
+        PREPARE_RESOURCE_CLAIM => {
             encode(resource_claims::prepare(runtime, invocation.input_as()?).await?)
         }
-        "reconcile_workload_prestart_gate" => {
+        RECONCILE_WORKLOAD_PRESTART_GATE => {
             encode(reconcile_prestart_gate(runtime, invocation.input_as()?).await?)
         }
-        "dispatch_runtime_apply" => encode(dispatch(runtime, invocation.input_as()?).await?),
-        "dispatch_resource_bound_runtime_apply" => {
+        DISPATCH_RUNTIME_APPLY => encode(dispatch(runtime, invocation.input_as()?).await?),
+        DISPATCH_RESOURCE_BOUND_RUNTIME_APPLY => {
             encode(dispatch_bound(runtime, invocation.input_as()?).await?)
         }
-        "observe_runtime_apply" => encode(observe(runtime, invocation.input_as()?).await?),
-        "observe_resource_bound_runtime_apply" => {
+        OBSERVE_RUNTIME_APPLY => encode(observe(runtime, invocation.input_as()?).await?),
+        OBSERVE_RESOURCE_BOUND_RUNTIME_APPLY => {
             encode(observe_bound(runtime, invocation.input_as()?).await?)
         }
-        "verify_runtime_health" => encode(verify(runtime, invocation.input_as()?).await?),
-        "stage_deployment_gateway" => {
-            encode(gateway::stage(runtime, invocation.input_as()?).await?)
-        }
-        "observe_deployment_gateway" => {
+        VERIFY_RUNTIME_HEALTH => encode(verify(runtime, invocation.input_as()?).await?),
+        STAGE_DEPLOYMENT_GATEWAY => encode(gateway::stage(runtime, invocation.input_as()?).await?),
+        OBSERVE_DEPLOYMENT_GATEWAY => {
             encode(gateway::observe(runtime, invocation.input_as()?).await?)
         }
-        "activate_deployment" => encode(activate(runtime, invocation.input_as()?).await?),
-        "dispatch_previous_runtime_retirement" => {
+        ACTIVATE_DEPLOYMENT => encode(activate(runtime, invocation.input_as()?).await?),
+        DISPATCH_PREVIOUS_RUNTIME_RETIREMENT => {
             encode(retirement::dispatch(runtime, invocation.input_as()?).await?)
         }
-        "observe_previous_runtime_retirement" => {
+        OBSERVE_PREVIOUS_RUNTIME_RETIREMENT => {
             encode(retirement::observe(runtime, invocation.input_as()?).await?)
         }
-        "complete_deployment_retirement" => {
+        COMPLETE_DEPLOYMENT_RETIREMENT => {
             encode(retirement::complete(runtime, invocation.input_as()?).await?)
         }
-        "dispatch_runtime_cleanup" => {
+        DISPATCH_RUNTIME_CLEANUP => {
             encode(cleanup::dispatch_cleanup(runtime, invocation.input_as()?).await?)
         }
-        "observe_runtime_cleanup" => {
+        OBSERVE_RUNTIME_CLEANUP => {
             encode(cleanup::observe_cleanup(runtime, invocation.input_as()?).await?)
         }
-        "dispatch_runtime_removal" => {
+        DISPATCH_RUNTIME_REMOVAL => {
             encode(cleanup::dispatch_removal(runtime, invocation.input_as()?).await?)
         }
-        "observe_runtime_removal" => {
+        OBSERVE_RUNTIME_REMOVAL => {
             encode(cleanup::observe_removal(runtime, invocation.input_as()?).await?)
         }
-        "dispatch_failed_runtime_cleanup" => {
+        DISPATCH_FAILED_RUNTIME_CLEANUP => {
             encode(cleanup::dispatch_failed(runtime, invocation.input_as()?).await?)
         }
-        "observe_failed_runtime_cleanup" => {
+        OBSERVE_FAILED_RUNTIME_CLEANUP => {
             encode(cleanup::observe_failed(runtime, invocation.input_as()?).await?)
         }
-        "release_resource_claim" => {
+        RELEASE_RESOURCE_CLAIM => {
             encode(resource_claims::release(runtime, invocation.input_as()?).await?)
         }
-        "complete_deployment_cancellation" => {
+        COMPLETE_DEPLOYMENT_CANCELLATION => {
             encode(cleanup::complete_cancellation(runtime, invocation.input_as()?).await?)
         }
-        "fail_deployment" => encode(fail(runtime, invocation.input_as()?).await?),
+        FAIL_DEPLOYMENT => encode(fail(runtime, invocation.input_as()?).await?),
         step => Err(FlowError::Runtime(format!(
             "Cloud deployment workflow has no step {step:?}"
         ))),

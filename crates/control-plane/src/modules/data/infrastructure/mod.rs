@@ -2,4 +2,6 @@ mod object_namespace_access;
 mod object_namespace_recovery_flow;
 mod shared_object_namespace;
 
+pub(crate) use object_namespace_recovery_flow::flow_step_names as object_namespace_recovery_flow_step_names;
+pub(crate) use object_namespace_recovery_flow::flow_workflow_identities as object_namespace_recovery_flow_workflow_identities;
 pub use object_namespace_recovery_flow::ObjectNamespaceRecoveryFlowRuntime;

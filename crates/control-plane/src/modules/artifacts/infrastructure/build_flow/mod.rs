@@ -149,6 +149,17 @@ impl BuildFlowRuntime {
     }
 }
 
+pub(crate) fn flow_step_names() -> impl Iterator<Item = &'static str> {
+    steps::STEP_NAMES.iter().copied()
+}
+
+pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, &'static str)> {
+    std::iter::once((
+        crate::modules::artifacts::application::BUILD_WORKFLOW_NAME,
+        crate::modules::artifacts::application::BUILD_WORKFLOW_VERSION,
+    ))
+}
+
 #[async_trait]
 impl FlowRuntime for BuildFlowRuntime {
     async fn run_workflow(

@@ -170,6 +170,40 @@ impl DeploymentFlowRuntime {
     }
 }
 
+pub(crate) fn flow_step_names() -> impl Iterator<Item = &'static str> {
+    steps::STEP_NAMES
+        .iter()
+        .chain(placement_group_workflow::STEP_NAMES)
+        .chain(placement_group_workflow_v2::STEP_NAMES)
+        .chain(stop_workflow::STEP_NAMES)
+        .copied()
+}
+
+pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, &'static str)> {
+    [
+        (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION),
+        (
+            DEPLOYMENT_WORKFLOW_NAME,
+            RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION,
+        ),
+        (
+            DEPLOYMENT_WORKFLOW_NAME,
+            PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
+        ),
+        (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION),
+        (
+            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+        ),
+        (
+            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+            PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+        ),
+        (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION),
+    ]
+    .into_iter()
+}
+
 #[async_trait]
 impl FlowRuntime for DeploymentFlowRuntime {
     async fn run_workflow(
@@ -211,20 +245,19 @@ impl FlowRuntime for DeploymentFlowRuntime {
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<serde_json::Value> {
-        if invocation
-            .step_name
-            .starts_with("placement_group_deployment_v2_")
-        {
-            placement_group_workflow_v2::execute(self, invocation).await
-        } else if invocation
-            .step_name
-            .starts_with("placement_group_deployment_")
-        {
+        let step_name = invocation.step_name.as_str();
+        if steps::STEP_NAMES.contains(&step_name) {
+            steps::execute(self, invocation).await
+        } else if placement_group_workflow::STEP_NAMES.contains(&step_name) {
             placement_group_workflow::execute(self, invocation).await
-        } else if invocation.step_name.starts_with("stop_workload_") {
+        } else if placement_group_workflow_v2::STEP_NAMES.contains(&step_name) {
+            placement_group_workflow_v2::execute(self, invocation).await
+        } else if stop_workflow::STEP_NAMES.contains(&step_name) {
             stop_workflow::execute(self, invocation).await
         } else {
-            steps::execute(self, invocation).await
+            Err(FlowError::Runtime(format!(
+                "Cloud deployment workflow has no step {step_name:?}"
+            )))
         }
     }
 }

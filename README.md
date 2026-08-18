@@ -44,7 +44,9 @@ The code on `main` separates implemented mechanics from released capability:
   so Workflow ACL graphs reuse Flow's portable DAG compiler, while Boot
   `0.2.0`, ORM `0.3.0`, the PostgreSQL queue, Operations, Outbox, audit, and
   replay remain the only durable path. One process-level supervisor observes
-  every mandatory worker and fails serving on an unexpected exit or panic.
+  every mandatory worker and fails serving on an unexpected exit or panic. A
+  startup-validated exact registry owns every workflow name/version and step
+  name; unknown identities fail closed and no product runtime is a fallback.
   The last retained complete `F0` certification used Flow `0.12.0`; the
   upgraded exact lock must be recertified before `F0` returns to `Verified`.
 - **Implemented / stable management contract** — committed
@@ -110,6 +112,7 @@ preservation register.
 | --- | --- | --- |
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
 | Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
+| Flow runtime dispatch | One startup-validated registry of exact workflow name/version and exact step name | Prefix routing, a default product runtime, duplicate ownership, or collision discovery after serving starts |
 | Portable DAG structure | A3S Flow `WorkflowDag`; Cloud constructs it programmatically from canonical ACL | A Cloud compatibility parser, topology sorter, or editor-owned execution schema |
 | Placement and rollout | Workloads plus Fleet | Agent-, MCP-, inference-, Cell-, or Gateway-specific schedulers |
 | Provider lifecycle | A3S Runtime Task/Service plus A3S Box | Direct provider calls from business contexts or a Cloud executor |

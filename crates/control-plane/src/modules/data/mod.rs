@@ -23,4 +23,6 @@ pub use domain::{
     ObjectNamespaceRetentionPolicySpec, ObjectNamespaceVersion,
     OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES, OBJECT_NAMESPACE_PROVIDER_PROFILE_SCHEMA,
 };
+pub(crate) use infrastructure::object_namespace_recovery_flow_step_names;
+pub(crate) use infrastructure::object_namespace_recovery_flow_workflow_identities;
 pub use infrastructure::ObjectNamespaceRecoveryFlowRuntime;

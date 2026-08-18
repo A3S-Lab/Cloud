@@ -11,7 +11,7 @@ mod vault_client;
 pub(crate) use flow::CLOUD_FLOW_RUNTIME_BUILD_ID;
 pub use flow::{
     connect_flow, FlowCoordinatorError, FlowCoordinatorReport, FlowInfrastructure,
-    FlowInfrastructureError, FlowOperationCoordinator, FlowRuntimeRouter,
+    FlowInfrastructureError, FlowOperationCoordinator, FlowRuntimeRegistryError, FlowRuntimeRouter,
 };
 #[cfg(test)]
 pub(crate) use immutable_object::DisposableS3TestContext;

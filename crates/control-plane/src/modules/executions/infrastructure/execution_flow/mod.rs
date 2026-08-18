@@ -15,6 +15,19 @@ use async_trait::async_trait;
 use std::sync::Arc;
 use std::time::Duration;
 
+const EXECUTION_SCHEDULE_RUNTIME: &str = "execution_schedule_runtime";
+const EXECUTION_DISPATCH_RUNTIME: &str = "execution_dispatch_runtime";
+const EXECUTION_OBSERVE_RUNTIME: &str = "execution_observe_runtime";
+const EXECUTION_CLEANUP_DISPATCH: &str = "execution_cleanup_dispatch";
+const EXECUTION_CLEANUP_OBSERVE: &str = "execution_cleanup_observe";
+const STEP_NAMES: &[&str] = &[
+    EXECUTION_SCHEDULE_RUNTIME,
+    EXECUTION_DISPATCH_RUNTIME,
+    EXECUTION_OBSERVE_RUNTIME,
+    EXECUTION_CLEANUP_DISPATCH,
+    EXECUTION_CLEANUP_OBSERVE,
+];
+
 #[derive(Debug, Clone, Copy)]
 pub struct ExecutionFlowConfigOptions {
     pub heartbeat_timeout_ms: u64,
@@ -100,6 +113,17 @@ impl ExecutionFlowRuntime {
     }
 }
 
+pub(crate) fn flow_step_names() -> impl Iterator<Item = &'static str> {
+    STEP_NAMES.iter().copied()
+}
+
+pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, &'static str)> {
+    std::iter::once((
+        crate::modules::executions::application::EXECUTION_WORKFLOW_NAME,
+        crate::modules::executions::application::EXECUTION_WORKFLOW_VERSION,
+    ))
+}
+
 #[async_trait]
 impl FlowRuntime for ExecutionFlowRuntime {
     async fn run_workflow(
@@ -111,19 +135,19 @@ impl FlowRuntime for ExecutionFlowRuntime {
 
     async fn run_step(&self, invocation: StepInvocation) -> a3s_flow::Result<serde_json::Value> {
         match invocation.step_name.as_str() {
-            "execution_schedule_runtime" => {
+            EXECUTION_SCHEDULE_RUNTIME => {
                 encode(runtime::schedule(self, &invocation.run_id, invocation.input_as()?).await?)
             }
-            "execution_dispatch_runtime" => {
+            EXECUTION_DISPATCH_RUNTIME => {
                 encode(runtime::dispatch(self, &invocation.run_id, invocation.input_as()?).await?)
             }
-            "execution_observe_runtime" => {
+            EXECUTION_OBSERVE_RUNTIME => {
                 encode(runtime::observe(self, &invocation.run_id, invocation.input_as()?).await?)
             }
-            "execution_cleanup_dispatch" => {
+            EXECUTION_CLEANUP_DISPATCH => {
                 encode(cleanup::dispatch(self, &invocation.run_id, invocation.input_as()?).await?)
             }
-            "execution_cleanup_observe" => {
+            EXECUTION_CLEANUP_OBSERVE => {
                 encode(cleanup::observe(self, &invocation.run_id, invocation.input_as()?).await?)
             }
             step => Err(FlowError::Runtime(format!(

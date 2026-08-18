@@ -19,6 +19,11 @@ const RESOLVE_STEP: &str = "stop-resolve";
 const DISPATCH_STEP: &str = "stop-dispatch";
 const COMPLETE_STEP: &str = "stop-complete";
 const RELEASE_STEP_PREFIX: &str = "stop-claim-release";
+const RESOLVE: &str = "stop_workload_resolve";
+const DISPATCH: &str = "stop_workload_dispatch";
+const OBSERVE: &str = "stop_workload_observe";
+const COMPLETE: &str = "stop_workload_complete";
+pub(super) const STEP_NAMES: &[&str] = &[RESOLVE, DISPATCH, OBSERVE, COMPLETE];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -118,15 +123,7 @@ pub(super) fn replay(
     let input = context.input_as::<StopInput>()?;
     let resolved = match context.step_output_as::<ResolveOutput>(RESOLVE_STEP)? {
         Some(output) => output,
-        None => {
-            return stage(
-                config,
-                &context,
-                RESOLVE_STEP,
-                "stop_workload_resolve",
-                &input,
-            )
-        }
+        None => return stage(config, &context, RESOLVE_STEP, RESOLVE, &input),
     };
     if resolved.operation_id != input.operation_id
         || resolved.organization_id != input.organization_id
@@ -151,7 +148,7 @@ pub(super) fn replay(
                 config,
                 &context,
                 DISPATCH_STEP,
-                "stop_workload_dispatch",
+                DISPATCH,
                 &DispatchInput { resolved },
             )
         }
@@ -185,7 +182,7 @@ pub(super) fn replay(
             config,
             &context,
             COMPLETE_STEP,
-            "stop_workload_complete",
+            COMPLETE,
             &CompleteInput {
                 organization_id: input.organization_id,
                 workload_id: input.workload_id,
@@ -243,7 +240,7 @@ fn release_claim(
                     config,
                     context,
                     &step_id,
-                    "release_resource_claim",
+                    super::steps::RELEASE_RESOURCE_CLAIM,
                     &ReleaseClaimStepInput {
                         organization_id,
                         deployment_id,
@@ -295,7 +292,7 @@ fn observe(
                     config,
                     context,
                     &step_id,
-                    "stop_workload_observe",
+                    OBSERVE,
                     &ObserveInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -330,12 +327,10 @@ pub(super) async fn execute(
     invocation: StepInvocation,
 ) -> a3s_flow::Result<serde_json::Value> {
     match invocation.step_name.as_str() {
-        "stop_workload_resolve" => {
-            encode(resolve(runtime, &invocation.run_id, invocation.input_as()?).await?)
-        }
-        "stop_workload_dispatch" => encode(dispatch(runtime, invocation.input_as()?).await?),
-        "stop_workload_observe" => encode(observe_step(runtime, invocation.input_as()?).await?),
-        "stop_workload_complete" => encode(complete(runtime, invocation.input_as()?).await?),
+        RESOLVE => encode(resolve(runtime, &invocation.run_id, invocation.input_as()?).await?),
+        DISPATCH => encode(dispatch(runtime, invocation.input_as()?).await?),
+        OBSERVE => encode(observe_step(runtime, invocation.input_as()?).await?),
+        COMPLETE => encode(complete(runtime, invocation.input_as()?).await?),
         step => Err(FlowError::Runtime(format!(
             "Cloud workload stop workflow has no step {step:?}"
         ))),

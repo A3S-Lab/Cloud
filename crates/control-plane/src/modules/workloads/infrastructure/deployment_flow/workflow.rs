@@ -11,7 +11,7 @@ use super::types::{
     RouteGate, ScheduleStepInput, ScheduleStepOutput, StageGatewayStepInput,
     StageGatewayStepOutput, VerifyStepInput, VerifyStepOutput,
 };
-use super::DeploymentFlowConfig;
+use super::{steps, DeploymentFlowConfig};
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
 const RESOLVE_STEP_ID: &str = "resolve";
@@ -67,7 +67,7 @@ fn replay_version(
                 &context,
                 &input,
                 RESOLVE_STEP_ID,
-                "resolve_deployment",
+                steps::RESOLVE_DEPLOYMENT,
                 &input,
             )
         }
@@ -130,9 +130,9 @@ fn replay_version(
                 &input,
                 DISPATCH_STEP_ID,
                 if resource_claim_protocol {
-                    "dispatch_resource_bound_runtime_apply"
+                    steps::DISPATCH_RESOURCE_BOUND_RUNTIME_APPLY
                 } else {
-                    "dispatch_runtime_apply"
+                    steps::DISPATCH_RUNTIME_APPLY
                 },
                 &DispatchStepInput {
                     resolved: resolved.clone(),
@@ -172,7 +172,7 @@ fn replay_version(
                 &context,
                 &input,
                 VERIFY_STEP_ID,
-                "verify_runtime_health",
+                steps::VERIFY_RUNTIME_HEALTH,
                 &VerifyStepInput {
                     resolved: resolved.clone(),
                     observation,
@@ -206,7 +206,7 @@ fn replay_version(
                 &context,
                 &input,
                 ACTIVATE_STEP_ID,
-                "activate_deployment",
+                steps::ACTIVATE_DEPLOYMENT,
                 &ActivateStepInput {
                     resolved: resolved.clone(),
                     verification,
@@ -256,7 +256,7 @@ fn replay_version(
             &context,
             &input,
             COMPLETE_RETIREMENT_STEP_ID,
-            "complete_deployment_retirement",
+            steps::COMPLETE_DEPLOYMENT_RETIREMENT,
             &CompleteRetirementStepInput {
                 resolved,
                 activation,
@@ -315,7 +315,7 @@ fn prestart_gate(
                     context,
                     flow_input,
                     &step_id,
-                    "reconcile_workload_prestart_gate",
+                    steps::RECONCILE_WORKLOAD_PRESTART_GATE,
                     &PrestartGateStepInput {
                         resolved: resolved.clone(),
                         node_id,
@@ -376,7 +376,7 @@ fn prepare_claim(
                     context,
                     flow_input,
                     &step_id,
-                    "prepare_resource_claim",
+                    steps::PREPARE_RESOURCE_CLAIM,
                     &PrepareClaimStepInput {
                         resolved: resolved.clone(),
                         node_id,
@@ -431,7 +431,7 @@ fn schedule_node(
                     context,
                     flow_input,
                     &step_id,
-                    "schedule_deployment",
+                    steps::SCHEDULE_DEPLOYMENT,
                     &ScheduleStepInput {
                         resolved: resolved.clone(),
                     },
@@ -487,9 +487,9 @@ fn observe_runtime(
                     flow_input,
                     &step_id,
                     if resource_claim_protocol {
-                        "observe_resource_bound_runtime_apply"
+                        steps::OBSERVE_RESOURCE_BOUND_RUNTIME_APPLY
                     } else {
-                        "observe_runtime_apply"
+                        steps::OBSERVE_RUNTIME_APPLY
                     },
                     &ObserveStepInput {
                         resolved: resolved.clone(),
@@ -561,7 +561,7 @@ fn gate_gateway(
                     context,
                     flow_input,
                     &step_id,
-                    "stage_deployment_gateway",
+                    steps::STAGE_DEPLOYMENT_GATEWAY,
                     &StageGatewayStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -625,7 +625,7 @@ fn observe_gateway(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_deployment_gateway",
+                    steps::OBSERVE_DEPLOYMENT_GATEWAY,
                     &ObserveGatewayStepInput {
                         resolved: resolved.clone(),
                         publication: publication.clone(),
@@ -680,7 +680,7 @@ fn retire_previous(
                         context,
                         flow_input,
                         &dispatch_step_id,
-                        "dispatch_previous_runtime_retirement",
+                        steps::DISPATCH_PREVIOUS_RUNTIME_RETIREMENT,
                         &RetirementDispatchStepInput {
                             resolved: resolved.clone(),
                             activation: activation.clone(),
@@ -769,7 +769,7 @@ fn observe_retirement(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_previous_runtime_retirement",
+                    steps::OBSERVE_PREVIOUS_RUNTIME_RETIREMENT,
                     &RetirementObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -859,7 +859,7 @@ fn cleanup_failed_candidate(
                         context,
                         flow_input,
                         &dispatch_step_id,
-                        "dispatch_failed_runtime_cleanup",
+                        steps::DISPATCH_FAILED_RUNTIME_CLEANUP,
                         &CleanupDispatchStepInput {
                             resolved: resolved.clone(),
                             attempt,
@@ -955,7 +955,7 @@ fn observe_failed_cleanup(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_failed_runtime_cleanup",
+                    steps::OBSERVE_FAILED_RUNTIME_CLEANUP,
                     &CleanupObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -1013,7 +1013,7 @@ fn cancel_deployment(
                         context,
                         flow_input,
                         &dispatch_step_id,
-                        "dispatch_runtime_removal",
+                        steps::DISPATCH_RUNTIME_REMOVAL,
                         &CleanupDispatchStepInput {
                             resolved: resolved.clone(),
                             attempt,
@@ -1133,7 +1133,7 @@ fn release_claim(
                     context,
                     flow_input,
                     &step_id,
-                    "release_resource_claim",
+                    steps::RELEASE_RESOURCE_CLAIM,
                     &ReleaseClaimStepInput {
                         organization_id: flow_input.organization_id,
                         deployment_id,
@@ -1199,7 +1199,7 @@ fn observe_cleanup(
                     context,
                     flow_input,
                     &step_id,
-                    "observe_runtime_removal",
+                    steps::OBSERVE_RUNTIME_REMOVAL,
                     &CleanupObserveStepInput {
                         resolved: resolved.clone(),
                         dispatched: dispatched.clone(),
@@ -1224,7 +1224,7 @@ fn complete_cancellation_command(
             context,
             flow_input,
             COMPLETE_CANCELLATION_STEP_ID,
-            "complete_deployment_cancellation",
+            steps::COMPLETE_DEPLOYMENT_CANCELLATION,
             &CompleteCancellationStepInput {
                 deployment_id: flow_input.deployment_id,
                 organization_id: flow_input.organization_id,
@@ -1303,7 +1303,7 @@ fn failure_command(
     }
     Ok(context.schedule_step_with_retry(
         FAIL_STEP_ID,
-        "fail_deployment",
+        steps::FAIL_DEPLOYMENT,
         serde_json::to_value(FailStepInput {
             deployment_id: flow_input.deployment_id,
             organization_id: flow_input.organization_id,

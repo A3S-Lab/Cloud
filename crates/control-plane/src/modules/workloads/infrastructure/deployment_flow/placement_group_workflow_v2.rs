@@ -24,6 +24,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
+const VALIDATE_MATERIALIZATION: &str = "placement_group_deployment_v2_validate_materialization";
+const SCHEDULE: &str = "placement_group_deployment_v2_schedule";
+const VALIDATE_SCHEDULING: &str = "placement_group_deployment_v2_validate_scheduling";
+pub(super) const STEP_NAMES: &[&str] = &[VALIDATE_MATERIALIZATION, SCHEDULE, VALIDATE_SCHEDULING];
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct PlacementGroupDeploymentInput {
@@ -164,7 +169,7 @@ pub(super) fn replay(
             }
             return Ok(context.schedule_step_with_retry(
                 "placement-group-v2-materialization",
-                "placement_group_deployment_v2_validate_materialization",
+                VALIDATE_MATERIALIZATION,
                 serde_json::to_value(ValidateMaterializationInput { deployment: input })?,
                 config.retry_policy(),
             ));
@@ -282,7 +287,7 @@ fn replay_scheduling(
                 }
                 return Ok(ScheduleReplay::Command(context.schedule_step_with_retry(
                     step_id,
-                    "placement_group_deployment_v2_schedule",
+                    SCHEDULE,
                     serde_json::to_value(SchedulePlacementGroupInput {
                         deployment: input.clone(),
                         attempt,
@@ -338,7 +343,7 @@ fn replay_scheduled_validation(
                 }
                 return Ok(context.schedule_step_with_retry(
                     step_id,
-                    "placement_group_deployment_v2_validate_scheduling",
+                    VALIDATE_SCHEDULING,
                     serde_json::to_value(ValidateScheduledGroupInput {
                         deployment: input.clone(),
                         attempt,
@@ -356,15 +361,15 @@ pub(super) async fn execute(
     invocation: StepInvocation,
 ) -> a3s_flow::Result<serde_json::Value> {
     match invocation.step_name.as_str() {
-        "placement_group_deployment_v2_validate_materialization" => {
+        VALIDATE_MATERIALIZATION => {
             let input = invocation.input_as::<ValidateMaterializationInput>()?;
             encode(validate_materialization(runtime, input).await?)
         }
-        "placement_group_deployment_v2_schedule" => {
+        SCHEDULE => {
             let input = invocation.input_as::<SchedulePlacementGroupInput>()?;
             encode(schedule(runtime, input).await?)
         }
-        "placement_group_deployment_v2_validate_scheduling" => {
+        VALIDATE_SCHEDULING => {
             let input = invocation.input_as::<ValidateScheduledGroupInput>()?;
             encode(validate_scheduling(runtime, input).await?)
         }

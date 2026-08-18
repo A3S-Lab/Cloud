@@ -6,7 +6,7 @@ use super::types::{
     PreparePublicationStepOutput, PrepareStepOutput, PublishStepInput, PublishStepOutput,
     ScheduleStepInput, ScheduleStepOutput, ScheduledBuild, ValidateStepInput, ValidateStepOutput,
 };
-use super::BuildFlowConfig;
+use super::{steps, BuildFlowConfig};
 use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
 use a3s_flow::{FlowError, RuntimeCommand, WorkflowContext, WorkflowInvocation};
 
@@ -62,7 +62,7 @@ pub(super) fn replay(
                     &context,
                     &input,
                     PREPARE_STEP_ID,
-                    "build_prepare_input",
+                    steps::BUILD_PREPARE_INPUT,
                     &input,
                 )
             }
@@ -97,7 +97,7 @@ pub(super) fn replay(
                                 &context,
                                 &input,
                                 DISPATCH_STEP_ID,
-                                "build_dispatch_box",
+                                steps::BUILD_DISPATCH_BOX,
                                 &DispatchStepInput { scheduled },
                             )
                         }
@@ -131,7 +131,7 @@ pub(super) fn replay(
                                         &context,
                                         &input,
                                         VALIDATE_STEP_ID,
-                                        "build_validate_output",
+                                        steps::BUILD_VALIDATE_OUTPUT,
                                         &ValidateStepInput {
                                             flow: input.clone(),
                                             output: Box::new(output_receipt),
@@ -161,7 +161,7 @@ pub(super) fn replay(
                                         &context,
                                         &input,
                                         PREPARE_PUBLICATION_STEP_ID,
-                                        "build_prepare_publication",
+                                        steps::BUILD_PREPARE_PUBLICATION,
                                         &PreparePublicationStepInput {
                                             flow: input.clone(),
                                             output: output.clone(),
@@ -190,7 +190,7 @@ pub(super) fn replay(
                                             &context,
                                             &input,
                                             PUBLISH_STEP_ID,
-                                            "build_publish_output",
+                                            steps::BUILD_PUBLISH_OUTPUT,
                                             &PublishStepInput {
                                                 flow: input.clone(),
                                                 output,
@@ -216,7 +216,7 @@ pub(super) fn replay(
                                                 &context,
                                                 &input,
                                                 ATTEST_STEP_ID,
-                                                "build_attest_output",
+                                                steps::BUILD_ATTEST_OUTPUT,
                                                 &AttestStepInput {
                                                     flow: input.clone(),
                                                     artifact,
@@ -254,7 +254,7 @@ pub(super) fn replay(
         &context,
         &input,
         COMPLETE_STEP_ID,
-        "build_complete",
+        steps::BUILD_COMPLETE,
         &CompleteStepInput {
             flow: input.clone(),
             cleaned_at,
@@ -327,7 +327,7 @@ fn schedule(
                     context,
                     flow,
                     &step_id,
-                    "build_schedule_box",
+                    steps::BUILD_SCHEDULE_BOX,
                     &ScheduleStepInput {
                         prepared: prepared.clone(),
                     },
@@ -385,7 +385,7 @@ fn observe(
                     context,
                     flow,
                     &step_id,
-                    "build_observe_box",
+                    steps::BUILD_OBSERVE_BOX,
                     &ObserveStepInput {
                         dispatched: dispatched.clone(),
                         attempt: command_attempt,
@@ -436,7 +436,7 @@ fn cleanup(
                     context,
                     flow,
                     &dispatch_id,
-                    "build_cleanup_dispatch",
+                    steps::BUILD_CLEANUP_DISPATCH,
                     &CleanupDispatchStepInput {
                         flow: flow.clone(),
                         action,
@@ -534,7 +534,7 @@ fn observe_cleanup(
                     context,
                     flow,
                     &observe_id,
-                    "build_cleanup_observe",
+                    steps::BUILD_CLEANUP_OBSERVE,
                     &CleanupObserveStepInput {
                         flow: flow.clone(),
                         dispatched: dispatched.clone(),
@@ -583,7 +583,7 @@ fn failure_command(
     }
     Ok(context.schedule_step_with_retry(
         FAIL_STEP_ID,
-        "build_fail",
+        steps::BUILD_FAIL,
         serde_json::to_value(FailStepInput {
             flow: flow.clone(),
             reason,

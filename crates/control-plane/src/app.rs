@@ -896,7 +896,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         Arc::new(agent_execution_runtime),
         Arc::new(WorkflowRunFlowRuntime),
         Arc::new(object_namespace_recovery_runtime),
-    );
+    )?;
     let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
     let operation_lease = Duration::from_millis(config.operations.lease_ms);
     let flow = crate::infrastructure::connect_flow(

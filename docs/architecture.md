@@ -270,6 +270,7 @@ second entry in an authority row must be redesigned before implementation.
 | Plugin catalog, package trust, immutable generation, grant, binding, and capability lifecycle | Shared A3S Use Plugin Manager and its canonical contracts | Cloud installer, TUF implementation, package/grant/binding tables, capability registry, surface reconciler, or universal plugin action RPC |
 | Relational access | A3S ORM | Raw SQL, direct database drivers, or a context-local data-access layer |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
+| Flow runtime dispatch | One startup-validated exact registry assembled from owner-provided workflow and step identities | Prefix routing, an implicit default runtime, duplicate step ownership, or discovering collisions only after work is dispatched |
 | Portable Workflow DAG structure | A3S Flow `WorkflowDag` compiler | A Cloud compatibility parser, Cloud topology sorter, authoring-tool execution schema, or product-local graph compiler |
 | Ontology, goal, plan, and Workflow semantic state | Workflow context in PostgreSQL | Flow history as business truth, a graph database authority, planner-local files, or a second workflow engine |
 | Application identity, immutable release, delivery/toolkit policy, sessions, messages/variants, conversation variables, feedback, and annotations | Applications context in PostgreSQL | Mode-specific/toolkit runtimes, Workflow-owned conversations, direct provider clients, delivery-local state, or presentation state as truth |
@@ -492,6 +493,15 @@ one bounded projection pass only. `FlowOperationCoordinator` is the sole owner
 of the poll interval, A3S Flow due-work scheduling, A3S Boot queue lifecycle,
 and the before/after projection calls. A source guard rejects an autonomous
 Operations timer or worker entry point.
+
+The process builds one Flow runtime registry before connecting the engine.
+Each owning runtime supplies its complete exact step-name set; the composition
+root binds those steps and every current or replay-supported workflow
+name/version to that owner. Duplicate workflow identities or step names abort
+startup. Unknown workflow identities and unknown steps fail at the router;
+there is no prefix dispatch and no default Deployment or other product runtime.
+Historic Deployment v1-v4, placement-group v1-v2, and WorkflowRun v1-v2
+identities remain explicit registry entries rather than compatibility guesses.
 
 Workflow also owns the implemented immutable descriptor and typed-variable
 domain contracts. They define semantic metadata, typed value ownership,

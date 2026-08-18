@@ -8,6 +8,8 @@ mod replica_retirement_reconciliation;
 pub(crate) mod runtime_spec;
 mod secret_rotation_reconciliation;
 
+pub(crate) use deployment_flow::flow_step_names as deployment_flow_step_names;
+pub(crate) use deployment_flow::flow_workflow_identities as deployment_flow_workflow_identities;
 pub use deployment_flow::{
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,

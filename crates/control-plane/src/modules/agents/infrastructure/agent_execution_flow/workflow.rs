@@ -2,7 +2,10 @@ use super::types::{
     AgentExecutionFlowInput, CompletedAgentExecution, DispatchInput, DispatchOutput, ObserveInput,
     ObserveOutput, PrepareOutput, PreparedAgentExecution,
 };
-use super::AgentExecutionFlowConfig;
+use super::{
+    AgentExecutionFlowConfig, AGENT_EXECUTION_DISPATCH, AGENT_EXECUTION_OBSERVE,
+    AGENT_EXECUTION_PREPARE,
+};
 use crate::modules::agents::application::{
     AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION,
 };
@@ -36,7 +39,7 @@ pub(super) fn replay(
                 config,
                 &context,
                 "dispatch",
-                "agent_execution_dispatch",
+                AGENT_EXECUTION_DISPATCH,
                 &DispatchInput {
                     prepared: Box::new(prepared),
                 },
@@ -76,7 +79,7 @@ fn prepare(
                 attempt = next_attempt(attempt)?;
             }
             None => {
-                return stage(config, context, &step_id, "agent_execution_prepare", input)
+                return stage(config, context, &step_id, AGENT_EXECUTION_PREPARE, input)
                     .map(Progress::Command)
             }
         }
@@ -105,7 +108,7 @@ fn observe(
                     config,
                     context,
                     &step_id,
-                    "agent_execution_observe",
+                    AGENT_EXECUTION_OBSERVE,
                     &ObserveInput {
                         dispatched: Box::new(dispatched),
                     },

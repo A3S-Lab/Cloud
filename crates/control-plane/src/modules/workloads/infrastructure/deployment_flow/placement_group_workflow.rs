@@ -11,6 +11,8 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 const MINIMUM_PLACEMENT_POLL: Duration = Duration::seconds(30);
+const VALIDATE_MATERIALIZATION: &str = "placement_group_deployment_validate_materialization";
+pub(super) const STEP_NAMES: &[&str] = &[VALIDATE_MATERIALIZATION];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -98,7 +100,7 @@ pub(super) fn replay(
                 }
                 return Ok(context.schedule_step_with_retry(
                     step_id,
-                    "placement_group_deployment_validate_materialization",
+                    VALIDATE_MATERIALIZATION,
                     serde_json::to_value(ValidatePlacementGroupInput {
                         deployment: input.clone(),
                         attempt,
@@ -115,7 +117,7 @@ pub(super) async fn execute(
     invocation: StepInvocation,
 ) -> a3s_flow::Result<serde_json::Value> {
     match invocation.step_name.as_str() {
-        "placement_group_deployment_validate_materialization" => {
+        VALIDATE_MATERIALIZATION => {
             let input = invocation.input_as::<ValidatePlacementGroupInput>()?;
             serde_json::to_value(validate_materialization(runtime, input).await?)
                 .map_err(Into::into)

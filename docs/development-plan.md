@@ -788,6 +788,11 @@ commit and query tenant-scoped desired state.
 - New Operation histories pin runtime build `a3s-cloud-workflows@1`. Legacy
   unpinned histories remain replayable for compatibility, but Cloud does not
   create new unpinned Operation runs.
+- The process constructs one exact Flow runtime registry before serving. Each
+  owning runtime contributes its complete step-name set; the registry binds it
+  together with every current and replay-supported workflow name/version,
+  rejects either kind of collision at startup, and fails unknown work closed.
+  Prefix matching and the former implicit Deployment fallback are removed.
 - The coordinator drains the Boot queue on bounded one-shot execution, reports
   retry exhaustion instead of silently succeeding, exposes terminal queue
   failure through readiness, and shuts the worker down cleanly. Flow

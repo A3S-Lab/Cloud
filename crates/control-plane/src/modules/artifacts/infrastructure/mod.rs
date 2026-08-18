@@ -11,6 +11,8 @@ mod source_build_input_preparer;
 
 pub use build_evidence_generator::BoxBuildEvidenceGenerator;
 pub use build_evidence_signing::{LocalBuildEvidenceSigner, VaultBuildEvidenceSigner};
+pub(crate) use build_flow::flow_step_names as build_flow_step_names;
+pub(crate) use build_flow::flow_workflow_identities as build_flow_workflow_identities;
 pub use build_flow::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
 };

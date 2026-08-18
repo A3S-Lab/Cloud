@@ -20,6 +20,24 @@ use std::collections::BTreeMap;
 
 pub const WORKFLOW_RUN_STEP_NAME: &str = "workflow_run_local";
 
+pub(crate) fn flow_step_names() -> impl Iterator<Item = &'static str> {
+    std::iter::once(WORKFLOW_RUN_STEP_NAME)
+}
+
+pub(crate) fn flow_workflow_identities() -> impl Iterator<Item = (&'static str, &'static str)> {
+    [
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION,
+        ),
+        (
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_NAME,
+            crate::modules::workflow::domain::WORKFLOW_RUN_FLOW_VERSION_V2,
+        ),
+    ]
+    .into_iter()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct WorkflowLocalStepInput {

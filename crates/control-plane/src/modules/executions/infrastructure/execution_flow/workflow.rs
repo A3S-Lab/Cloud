@@ -3,7 +3,10 @@ use super::types::{
     CompletedExecution, DispatchInput, DispatchOutput, ExecutionFlowInput, ObserveInput,
     ObserveOutput, ScheduleOutput, ScheduledExecution, TerminalExecution,
 };
-use super::ExecutionFlowConfig;
+use super::{
+    ExecutionFlowConfig, EXECUTION_CLEANUP_DISPATCH, EXECUTION_CLEANUP_OBSERVE,
+    EXECUTION_DISPATCH_RUNTIME, EXECUTION_OBSERVE_RUNTIME, EXECUTION_SCHEDULE_RUNTIME,
+};
 use crate::modules::executions::application::{
     EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
 };
@@ -40,7 +43,7 @@ pub(super) fn replay(
                 config,
                 &context,
                 DISPATCH_STEP_ID,
-                "execution_dispatch_runtime",
+                EXECUTION_DISPATCH_RUNTIME,
                 &DispatchInput {
                     scheduled: Box::new(scheduled),
                 },
@@ -77,14 +80,8 @@ fn schedule(
                 attempt = next_attempt(attempt, "execution scheduling")?;
             }
             None => {
-                return stage(
-                    config,
-                    context,
-                    &step_id,
-                    "execution_schedule_runtime",
-                    input,
-                )
-                .map(Progress::Command)
+                return stage(config, context, &step_id, EXECUTION_SCHEDULE_RUNTIME, input)
+                    .map(Progress::Command)
             }
         }
     }
@@ -126,7 +123,7 @@ fn observe(
                     config,
                     context,
                     &step_id,
-                    "execution_observe_runtime",
+                    EXECUTION_OBSERVE_RUNTIME,
                     &ObserveInput {
                         dispatched: Box::new(dispatched),
                     },
@@ -174,7 +171,7 @@ fn cleanup(
                     config,
                     context,
                     &dispatch_id,
-                    "execution_cleanup_dispatch",
+                    EXECUTION_CLEANUP_DISPATCH,
                     &CleanupDispatchInput {
                         terminal: terminal.clone(),
                         attempt,
@@ -227,7 +224,7 @@ fn cleanup(
                         config,
                         context,
                         &observe_id,
-                        "execution_cleanup_observe",
+                        EXECUTION_CLEANUP_OBSERVE,
                         &CleanupObserveInput {
                             dispatched: dispatched.clone(),
                         },

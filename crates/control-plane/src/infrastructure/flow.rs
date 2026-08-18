@@ -8,6 +8,7 @@ use a3s_flow::{
     RuntimeCommand, StepInvocation, WorkflowInvocation,
 };
 use chrono::Utc;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -28,8 +29,43 @@ pub enum FlowInfrastructureError {
     ConflictingOptions,
     #[error("could not initialize A3S Flow: {0}")]
     Flow(#[from] FlowError),
+    #[error("invalid Cloud Flow runtime registry: {0}")]
+    RuntimeRegistry(#[from] FlowRuntimeRegistryError),
     #[error("could not initialize the A3S Boot Flow task queue: {0}")]
     Boot(#[from] BootError),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum FlowRuntimeRegistryError {
+    #[error("the Flow runtime registry cannot be empty")]
+    EmptyRegistry,
+    #[error("a Flow runtime owner cannot be empty")]
+    EmptyOwner,
+    #[error("Flow runtime {owner:?} must own at least one workflow identity")]
+    MissingWorkflowIdentity { owner: String },
+    #[error("Flow runtime {owner:?} has invalid workflow identity {name:?}@{version:?}")]
+    InvalidWorkflowIdentity {
+        owner: String,
+        name: String,
+        version: String,
+    },
+    #[error("Flow runtime {owner:?} has invalid step name {step_name:?}")]
+    InvalidStepName { owner: String, step_name: String },
+    #[error(
+        "workflow identity {name}@{version} is owned by both {first_owner:?} and {conflicting_owner:?}"
+    )]
+    DuplicateWorkflowIdentity {
+        name: String,
+        version: String,
+        first_owner: String,
+        conflicting_owner: String,
+    },
+    #[error("step name {step_name:?} is owned by both {first_owner:?} and {conflicting_owner:?}")]
+    DuplicateStepName {
+        step_name: String,
+        first_owner: String,
+        conflicting_owner: String,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -70,34 +106,211 @@ pub struct FlowInfrastructure {
     task_manager: Arc<BootFlowTaskManager>,
 }
 
+/// Exact process-level dispatch for every Cloud-owned A3S Flow runtime.
+///
+/// `StepInvocation` carries a step name but no workflow identity, so step names
+/// are deliberately unique across the complete process registry.
 #[derive(Clone)]
 pub struct FlowRuntimeRouter {
-    deployments: Arc<dyn FlowRuntime>,
-    builds: Arc<dyn FlowRuntime>,
-    executions: Arc<dyn FlowRuntime>,
-    agent_executions: Arc<dyn FlowRuntime>,
-    workflow_runs: Arc<dyn FlowRuntime>,
-    object_namespace_recovery: Arc<dyn FlowRuntime>,
+    workflow_runtimes: Arc<BTreeMap<&'static str, BTreeMap<&'static str, RegisteredFlowRuntime>>>,
+    step_runtimes: Arc<BTreeMap<&'static str, RegisteredFlowRuntime>>,
+}
+
+#[derive(Clone)]
+struct RegisteredFlowRuntime {
+    owner: &'static str,
+    runtime: Arc<dyn FlowRuntime>,
+}
+
+struct FlowRuntimeRegistration {
+    owner: &'static str,
+    runtime: Arc<dyn FlowRuntime>,
+    workflows: Vec<(&'static str, &'static str)>,
+    steps: Vec<&'static str>,
+}
+
+impl FlowRuntimeRegistration {
+    fn new(
+        owner: &'static str,
+        runtime: Arc<dyn FlowRuntime>,
+        workflows: impl IntoIterator<Item = (&'static str, &'static str)>,
+        steps: impl IntoIterator<Item = &'static str>,
+    ) -> Self {
+        Self {
+            owner,
+            runtime,
+            workflows: workflows.into_iter().collect(),
+            steps: steps.into_iter().collect(),
+        }
+    }
 }
 
 impl FlowRuntimeRouter {
     pub fn new(
-        deployments: Arc<dyn FlowRuntime>,
-        builds: Arc<dyn FlowRuntime>,
-        executions: Arc<dyn FlowRuntime>,
-        agent_executions: Arc<dyn FlowRuntime>,
-        workflow_runs: Arc<dyn FlowRuntime>,
-        object_namespace_recovery: Arc<dyn FlowRuntime>,
-    ) -> Self {
-        Self {
+        deployments: Arc<crate::modules::workloads::infrastructure::DeploymentFlowRuntime>,
+        builds: Arc<crate::modules::artifacts::infrastructure::BuildFlowRuntime>,
+        executions: Arc<crate::modules::executions::infrastructure::ExecutionFlowRuntime>,
+        agent_executions: Arc<crate::modules::agents::infrastructure::AgentExecutionFlowRuntime>,
+        workflow_runs: Arc<crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime>,
+        object_namespace_recovery: Arc<crate::modules::data::ObjectNamespaceRecoveryFlowRuntime>,
+    ) -> Result<Self, FlowInfrastructureError> {
+        Self::from_registrations(production_runtime_registrations(
             deployments,
             builds,
             executions,
             agent_executions,
             workflow_runs,
             object_namespace_recovery,
+        ))
+        .map_err(Into::into)
+    }
+
+    fn from_registrations(
+        registrations: impl IntoIterator<Item = FlowRuntimeRegistration>,
+    ) -> Result<Self, FlowRuntimeRegistryError> {
+        let mut workflow_runtimes =
+            BTreeMap::<&'static str, BTreeMap<&'static str, RegisteredFlowRuntime>>::new();
+        let mut step_runtimes = BTreeMap::<&'static str, RegisteredFlowRuntime>::new();
+        let mut registration_count = 0usize;
+
+        for registration in registrations {
+            registration_count += 1;
+            validate_registration(&registration)?;
+            let registered = RegisteredFlowRuntime {
+                owner: registration.owner,
+                runtime: registration.runtime,
+            };
+            for (name, version) in registration.workflows {
+                let versions = workflow_runtimes.entry(name).or_default();
+                if let Some(existing) = versions.get(version) {
+                    return Err(FlowRuntimeRegistryError::DuplicateWorkflowIdentity {
+                        name: name.into(),
+                        version: version.into(),
+                        first_owner: existing.owner.into(),
+                        conflicting_owner: registered.owner.into(),
+                    });
+                }
+                versions.insert(version, registered.clone());
+            }
+            for step_name in registration.steps {
+                if let Some(existing) = step_runtimes.get(step_name) {
+                    return Err(FlowRuntimeRegistryError::DuplicateStepName {
+                        step_name: step_name.into(),
+                        first_owner: existing.owner.into(),
+                        conflicting_owner: registered.owner.into(),
+                    });
+                }
+                step_runtimes.insert(step_name, registered.clone());
+            }
+        }
+
+        if registration_count == 0 {
+            return Err(FlowRuntimeRegistryError::EmptyRegistry);
+        }
+        Ok(Self {
+            workflow_runtimes: Arc::new(workflow_runtimes),
+            step_runtimes: Arc::new(step_runtimes),
+        })
+    }
+}
+
+fn validate_registration(
+    registration: &FlowRuntimeRegistration,
+) -> Result<(), FlowRuntimeRegistryError> {
+    if registration.owner.trim().is_empty() {
+        return Err(FlowRuntimeRegistryError::EmptyOwner);
+    }
+    if registration.workflows.is_empty() {
+        return Err(FlowRuntimeRegistryError::MissingWorkflowIdentity {
+            owner: registration.owner.into(),
+        });
+    }
+    for (name, version) in &registration.workflows {
+        if name.trim().is_empty() || version.trim().is_empty() {
+            return Err(FlowRuntimeRegistryError::InvalidWorkflowIdentity {
+                owner: registration.owner.into(),
+                name: (*name).into(),
+                version: (*version).into(),
+            });
         }
     }
+    for step_name in &registration.steps {
+        if step_name.trim().is_empty() {
+            return Err(FlowRuntimeRegistryError::InvalidStepName {
+                owner: registration.owner.into(),
+                step_name: (*step_name).into(),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn production_runtime_registrations(
+    deployments: Arc<dyn FlowRuntime>,
+    builds: Arc<dyn FlowRuntime>,
+    executions: Arc<dyn FlowRuntime>,
+    agent_executions: Arc<dyn FlowRuntime>,
+    workflow_runs: Arc<dyn FlowRuntime>,
+    object_namespace_recovery: Arc<dyn FlowRuntime>,
+) -> Vec<FlowRuntimeRegistration> {
+    use crate::modules::agents::infrastructure::{
+        agent_execution_flow_step_names, agent_execution_flow_workflow_identities,
+    };
+    use crate::modules::artifacts::infrastructure::{
+        build_flow_step_names, build_flow_workflow_identities,
+    };
+    use crate::modules::data::{
+        object_namespace_recovery_flow_step_names,
+        object_namespace_recovery_flow_workflow_identities,
+    };
+    use crate::modules::executions::infrastructure::{
+        execution_flow_step_names, execution_flow_workflow_identities,
+    };
+    use crate::modules::workflow::infrastructure::{
+        workflow_run_flow_step_names, workflow_run_flow_workflow_identities,
+    };
+    use crate::modules::workloads::infrastructure::{
+        deployment_flow_step_names, deployment_flow_workflow_identities,
+    };
+
+    vec![
+        FlowRuntimeRegistration::new(
+            "workloads.deployment",
+            deployments,
+            deployment_flow_workflow_identities(),
+            deployment_flow_step_names(),
+        ),
+        FlowRuntimeRegistration::new(
+            "artifacts.build",
+            builds,
+            build_flow_workflow_identities(),
+            build_flow_step_names(),
+        ),
+        FlowRuntimeRegistration::new(
+            "executions",
+            executions,
+            execution_flow_workflow_identities(),
+            execution_flow_step_names(),
+        ),
+        FlowRuntimeRegistration::new(
+            "agents.execution",
+            agent_executions,
+            agent_execution_flow_workflow_identities(),
+            agent_execution_flow_step_names(),
+        ),
+        FlowRuntimeRegistration::new(
+            "workflow.runs",
+            workflow_runs,
+            workflow_run_flow_workflow_identities(),
+            workflow_run_flow_step_names(),
+        ),
+        FlowRuntimeRegistration::new(
+            "data.object-namespace-recovery",
+            object_namespace_recovery,
+            object_namespace_recovery_flow_workflow_identities(),
+            object_namespace_recovery_flow_step_names(),
+        ),
+    ]
 }
 
 #[async_trait::async_trait]
@@ -106,84 +319,30 @@ impl FlowRuntime for FlowRuntimeRouter {
         &self,
         invocation: WorkflowInvocation,
     ) -> Result<RuntimeCommand, FlowError> {
-        use crate::modules::agents::application::{
-            AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION,
-        };
-        use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
-        use crate::modules::data::{
-            OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
-            OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
-        };
-        use crate::modules::executions::application::{
-            EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
-        };
-        use crate::modules::workflow::{
-            WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION, WORKFLOW_RUN_FLOW_VERSION_V2,
-        };
-        use crate::modules::workloads::infrastructure::{
-            DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
-            LEGACY_DEPLOYMENT_WORKFLOW_VERSION, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
-            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION,
-            PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
-            RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
-        };
-
-        let runtime = match (
-            invocation.spec.name.as_str(),
-            invocation.spec.version.as_str(),
-        ) {
-            (BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION) => &self.builds,
-            (EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION) => &self.executions,
-            (AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION) => {
-                &self.agent_executions
-            }
-            (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION)
-            | (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V2) => &self.workflow_runs,
-            (OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION)
-            | (
-                OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME,
-                OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
-            )
-            | (OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION) => {
-                &self.object_namespace_recovery
-            }
-            (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
-            | (DEPLOYMENT_WORKFLOW_NAME, RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION)
-            | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
-            | (DEPLOYMENT_WORKFLOW_NAME, LEGACY_DEPLOYMENT_WORKFLOW_VERSION)
-            | (
-                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
-                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
-            )
-            | (
-                PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
-                PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
-            )
-            | (STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION) => &self.deployments,
-            _ => {
-                return Err(FlowError::Runtime(format!(
+        let runtime = self
+            .workflow_runtimes
+            .get(invocation.spec.name.as_str())
+            .and_then(|versions| versions.get(invocation.spec.version.as_str()))
+            .ok_or_else(|| {
+                FlowError::Runtime(format!(
                     "Cloud has no workflow runtime for {}@{}",
                     invocation.spec.name, invocation.spec.version
-                )))
-            }
-        };
-        runtime.run_workflow(invocation).await
+                ))
+            })?;
+        runtime.runtime.run_workflow(invocation).await
     }
 
     async fn run_step(&self, invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
-        if invocation.step_name.starts_with("build_") {
-            self.builds.run_step(invocation).await
-        } else if invocation.step_name.starts_with("agent_execution_") {
-            self.agent_executions.run_step(invocation).await
-        } else if invocation.step_name.starts_with("execution_") {
-            self.executions.run_step(invocation).await
-        } else if invocation.step_name.starts_with("workflow_run_") {
-            self.workflow_runs.run_step(invocation).await
-        } else if invocation.step_name.starts_with("object_namespace_") {
-            self.object_namespace_recovery.run_step(invocation).await
-        } else {
-            self.deployments.run_step(invocation).await
-        }
+        let runtime = self
+            .step_runtimes
+            .get(invocation.step_name.as_str())
+            .ok_or_else(|| {
+                FlowError::Runtime(format!(
+                    "Cloud has no step runtime for {:?}",
+                    invocation.step_name
+                ))
+            })?;
+        runtime.runtime.run_step(invocation).await
     }
 }
 
@@ -611,14 +770,15 @@ mod tests {
     }
 
     fn router() -> FlowRuntimeRouter {
-        FlowRuntimeRouter::new(
+        FlowRuntimeRouter::from_registrations(production_runtime_registrations(
             Arc::new(StubRuntime("deployment")),
             Arc::new(StubRuntime("build")),
             Arc::new(StubRuntime("execution")),
             Arc::new(StubRuntime("agent_execution")),
             Arc::new(StubRuntime("workflow_run")),
             Arc::new(StubRuntime("object_namespace_recovery")),
-        )
+        ))
+        .expect("production Flow runtime registry must be valid")
     }
 
     #[tokio::test]
@@ -627,6 +787,8 @@ mod tests {
         for (name, version, expected) in [
             ("cloud.deployment", "1", "deployment"),
             ("cloud.deployment", "2", "deployment"),
+            ("cloud.deployment", "3", "deployment"),
+            ("cloud.deployment", "4", "deployment"),
             ("cloud.placement-group-deployment", "1", "deployment"),
             ("cloud.placement-group-deployment", "2", "deployment"),
             ("cloud.workload.stop", "1", "deployment"),
@@ -730,34 +892,208 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn runtime_router_routes_build_steps_by_reserved_prefix() -> Result<(), FlowError> {
-        assert_eq!(
-            router().run_step(step("build_prepare_input")).await?,
-            json!("build")
-        );
-        assert_eq!(
-            router()
-                .run_step(step("execution_schedule_runtime"))
-                .await?,
-            json!("execution")
-        );
-        assert_eq!(
-            router().run_step(step("agent_execution_prepare")).await?,
-            json!("agent_execution")
-        );
-        assert_eq!(
-            router().run_step(step("object_namespace_seal")).await?,
-            json!("object_namespace_recovery")
-        );
-        assert_eq!(
-            router().run_step(step("resolve_deployment")).await?,
-            json!("deployment")
-        );
-        assert_eq!(
-            router().run_step(step("stop_workload_resolve")).await?,
-            json!("deployment")
-        );
+    async fn runtime_router_routes_every_registered_step_to_its_exact_owner(
+    ) -> Result<(), FlowError> {
+        async fn assert_routes(
+            router: &FlowRuntimeRouter,
+            step_names: impl IntoIterator<Item = &'static str>,
+            expected: &str,
+        ) -> Result<(), FlowError> {
+            for step_name in step_names {
+                assert_eq!(
+                    router.run_step(step(step_name)).await?,
+                    json!(expected),
+                    "step {step_name:?} routed to the wrong runtime"
+                );
+            }
+            Ok(())
+        }
+
+        let router = router();
+        assert_routes(
+            &router,
+            crate::modules::workloads::infrastructure::deployment_flow_step_names(),
+            "deployment",
+        )
+        .await?;
+        assert_routes(
+            &router,
+            crate::modules::artifacts::infrastructure::build_flow_step_names(),
+            "build",
+        )
+        .await?;
+        assert_routes(
+            &router,
+            crate::modules::executions::infrastructure::execution_flow_step_names(),
+            "execution",
+        )
+        .await?;
+        assert_routes(
+            &router,
+            crate::modules::agents::infrastructure::agent_execution_flow_step_names(),
+            "agent_execution",
+        )
+        .await?;
+        assert_routes(
+            &router,
+            crate::modules::workflow::infrastructure::workflow_run_flow_step_names(),
+            "workflow_run",
+        )
+        .await?;
+        assert_routes(
+            &router,
+            crate::modules::data::object_namespace_recovery_flow_step_names(),
+            "object_namespace_recovery",
+        )
+        .await?;
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn runtime_router_rejects_unknown_steps_instead_of_using_a_prefix_or_default_owner() {
+        for step_name in [
+            "build_future_step",
+            "execution_future_step",
+            "agent_execution_future_step",
+            "workflow_run_future_step",
+            "object_namespace_future_step",
+            "unscoped_future_step",
+        ] {
+            let error = router()
+                .run_step(step(step_name))
+                .await
+                .expect_err("unregistered step must be rejected");
+            assert_eq!(
+                error.to_string(),
+                format!("runtime error: Cloud has no step runtime for {step_name:?}")
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_registry_rejects_workflow_identity_collisions_at_startup() {
+        let error = FlowRuntimeRouter::from_registrations([
+            FlowRuntimeRegistration::new(
+                "first",
+                Arc::new(StubRuntime("first")),
+                [("cloud.shared", "1")],
+                ["first_step"],
+            ),
+            FlowRuntimeRegistration::new(
+                "second",
+                Arc::new(StubRuntime("second")),
+                [("cloud.shared", "1")],
+                ["second_step"],
+            ),
+        ])
+        .err()
+        .expect("duplicate workflow identity must fail registry construction");
+        assert_eq!(
+            error,
+            FlowRuntimeRegistryError::DuplicateWorkflowIdentity {
+                name: "cloud.shared".into(),
+                version: "1".into(),
+                first_owner: "first".into(),
+                conflicting_owner: "second".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn runtime_registry_rejects_step_name_collisions_at_startup() {
+        let error = FlowRuntimeRouter::from_registrations([
+            FlowRuntimeRegistration::new(
+                "first",
+                Arc::new(StubRuntime("first")),
+                [("cloud.first", "1")],
+                ["shared_step"],
+            ),
+            FlowRuntimeRegistration::new(
+                "second",
+                Arc::new(StubRuntime("second")),
+                [("cloud.second", "1")],
+                ["shared_step"],
+            ),
+        ])
+        .err()
+        .expect("duplicate step name must fail registry construction");
+        assert_eq!(
+            error,
+            FlowRuntimeRegistryError::DuplicateStepName {
+                step_name: "shared_step".into(),
+                first_owner: "first".into(),
+                conflicting_owner: "second".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn runtime_registry_rejects_empty_registration_metadata_at_startup() {
+        let empty = FlowRuntimeRouter::from_registrations(std::iter::empty())
+            .err()
+            .expect("empty registry must fail");
+        assert_eq!(empty, FlowRuntimeRegistryError::EmptyRegistry);
+
+        let empty_owner = FlowRuntimeRouter::from_registrations([FlowRuntimeRegistration::new(
+            "",
+            Arc::new(StubRuntime("empty-owner")),
+            [("cloud.valid", "1")],
+            std::iter::empty(),
+        )])
+        .err()
+        .expect("empty owner must fail");
+        assert_eq!(empty_owner, FlowRuntimeRegistryError::EmptyOwner);
+
+        let missing_workflow =
+            FlowRuntimeRouter::from_registrations([FlowRuntimeRegistration::new(
+                "owner",
+                Arc::new(StubRuntime("missing-workflow")),
+                std::iter::empty(),
+                ["valid_step"],
+            )])
+            .err()
+            .expect("missing workflow identity must fail");
+        assert_eq!(
+            missing_workflow,
+            FlowRuntimeRegistryError::MissingWorkflowIdentity {
+                owner: "owner".into(),
+            }
+        );
+
+        for (name, version) in [("", "1"), ("cloud.valid", "")] {
+            let invalid = FlowRuntimeRouter::from_registrations([FlowRuntimeRegistration::new(
+                "owner",
+                Arc::new(StubRuntime("invalid-workflow")),
+                [(name, version)],
+                ["valid_step"],
+            )])
+            .err()
+            .expect("empty workflow identity component must fail");
+            assert_eq!(
+                invalid,
+                FlowRuntimeRegistryError::InvalidWorkflowIdentity {
+                    owner: "owner".into(),
+                    name: name.into(),
+                    version: version.into(),
+                }
+            );
+        }
+
+        let empty_step = FlowRuntimeRouter::from_registrations([FlowRuntimeRegistration::new(
+            "owner",
+            Arc::new(StubRuntime("empty-step")),
+            [("cloud.valid", "1")],
+            [""],
+        )])
+        .err()
+        .expect("empty step name must fail");
+        assert_eq!(
+            empty_step,
+            FlowRuntimeRegistryError::InvalidStepName {
+                owner: "owner".into(),
+                step_name: String::new(),
+            }
+        );
     }
 
     #[tokio::test]
