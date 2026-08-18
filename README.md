@@ -252,6 +252,11 @@ ACL. Configuration is parsed only through `a3s-acl`.
 | `registry`, `sources`, `edge`, `gateway` | Source policy, OCI publication, routes, certificates, and exact Gateway apply |
 | `logs`, `security`, `box` | Durable logs, production trust, isolation, and transient Secret materialization |
 
+`server.role = "all"` or `"api"` owns the management REST/OpenAPI/MCP
+surface. Dedicated `"worker"` and `"relay"` processes expose only liveness,
+readiness, and their `/platform` identity; they cannot become accidental
+management API replicas.
+
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as executable references.
 

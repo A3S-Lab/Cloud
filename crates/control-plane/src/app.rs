@@ -237,10 +237,7 @@ use crate::presentation::{
 };
 use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
-    config::{
-        EventProviderKind, LogStorageProviderKind, ProcessRole, SecurityProfile,
-        SecurityProviderKind,
-    },
+    config::{EventProviderKind, LogStorageProviderKind, SecurityProfile, SecurityProviderKind},
     infrastructure::{
         connect_and_migrate, postgres_health, FlowRuntimeRouter, PostgresBootstrapError,
     },
@@ -340,6 +337,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
     source_resolver: Arc<dyn ISourceResolver>,
     oidc_provider: Arc<dyn IOidcProviderService>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    config.validate()?;
     let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
         GithubWebhookVerifier::new(
             config.sources.github_webhook_secret_env.clone(),
@@ -952,7 +950,7 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         },
     )
     .map_err(ControlPlaneStartupError::HumanTask)?;
-    let run_node_control = matches!(config.server.role, ProcessRole::All | ProcessRole::Api);
+    let run_node_control = config.server.role.serves_management_api();
     let node_control_server = if run_node_control {
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
@@ -1054,8 +1052,8 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         Arc::clone(&notifications),
         Arc::clone(&memberships),
     )));
-    let run_operations = matches!(config.server.role, ProcessRole::All | ProcessRole::Worker);
-    let run_relay = matches!(config.server.role, ProcessRole::All | ProcessRole::Relay);
+    let run_operations = config.server.role.runs_workers();
+    let run_relay = config.server.role.runs_relay();
     let log_retention_worker = LogRetentionWorker::new(
         Arc::clone(&log_retention_repository),
         Arc::clone(&log_chunks),
@@ -1303,6 +1301,10 @@ fn build_application_with_health(
     config: CloudConfig,
     dependencies: ApplicationDependencies,
 ) -> Result<BootApplication> {
+    if !config.server.role.serves_management_api() {
+        return build_process_status_application(&config, dependencies.readiness);
+    }
+
     let ApplicationDependencies {
         organizations,
         api_tokens,
@@ -1725,11 +1727,7 @@ fn build_application_with_health(
     }
     .map_err(BootError::Internal)?;
     BootApplication::builder()
-        .import(PublicHealthModule::new(
-            HealthModule::new("health")
-                .with_route("/health/live")
-                .indicator("process", || async { Ok(HealthIndicatorResult::up()) }),
-        ))
+        .import(process_liveness_module())
         .import(PublicHealthModule::new(readiness))
         .import(
             AuthModule::new("cloud-auth")
@@ -2608,6 +2606,29 @@ fn build_application_with_health(
         .import(ApiContractModule)
         .use_global_middleware(RequestIdMiddleware)
         .use_global_auth()
+        .use_global_interceptor(ApiResponseInterceptor)
+        .use_global_filter(ApiErrorFilter)
+        .global_prefix(API_PREFIX)
+        .build()
+}
+
+fn process_liveness_module() -> PublicHealthModule {
+    PublicHealthModule::new(
+        HealthModule::new("health")
+            .with_route("/health/live")
+            .indicator("process", || async { Ok(HealthIndicatorResult::up()) }),
+    )
+}
+
+fn build_process_status_application(
+    config: &CloudConfig,
+    readiness: HealthModule,
+) -> Result<BootApplication> {
+    BootApplication::builder()
+        .import(process_liveness_module())
+        .import(PublicHealthModule::new(readiness))
+        .import(PlatformModule::new(config))
+        .use_global_middleware(RequestIdMiddleware)
         .use_global_interceptor(ApiResponseInterceptor)
         .use_global_filter(ApiErrorFilter)
         .global_prefix(API_PREFIX)

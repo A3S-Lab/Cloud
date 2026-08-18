@@ -416,20 +416,23 @@ by Gateway to compensate for provider ambiguity.
 ### 5.3 Deployable processes
 
 The Rust control-plane binary currently supports four roles; `APP0.3` adds the
-fifth `delivery` role:
+fifth `delivery` role. A role selects both background ownership and the
+externally registered route set:
 
 | Role | Responsibility |
 | --- | --- |
 | `all` | API, planned application delivery, reconcilers/workers, and integration-event relay in one process |
 | `api` | REST, SSE, Management MCP, and node-control endpoints |
 | `delivery` | Planned `APP0` published application API, embed/MCP facade, and shared cursor/SSE projection; no management or worker authority |
-| `worker` | Flow advancement, reconciliation, scheduling, and cleanup |
-| `relay` | Transactional Outbox delivery through A3S Event |
+| `worker` | Flow advancement, reconciliation, scheduling, and cleanup; HTTP exposes process identity and health only |
+| `relay` | Transactional Outbox delivery through A3S Event; HTTP exposes process identity and health only |
 
 The Node Agent is a separate process because it crosses a machine and trust
 boundary. Gateway, Runtime, Box, and workload processes remain independently
 versioned components. Cloud ships no management Web UI or static SPA server;
-all product management enters through the interfaces above.
+all product management enters through `all` or `api`. A worker or relay never
+registers REST, OpenAPI, or Management MCP product routes merely to obtain a
+health listener.
 
 ## 6. Control-plane modular monolith and DDD boundaries
 

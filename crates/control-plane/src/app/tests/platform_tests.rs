@@ -37,3 +37,74 @@ async fn boot_shell_exposes_wrapped_platform_and_health_responses() -> Result<()
     assert_eq!(body["data"]["status"], "up");
     Ok(())
 }
+
+#[tokio::test]
+async fn worker_and_relay_roles_expose_only_process_status_routes() -> Result<()> {
+    for role in [ProcessRole::Worker, ProcessRole::Relay] {
+        let mut process_config = config();
+        process_config.server.role = role;
+        let app = build_process_status_application(
+            &process_config,
+            HealthModule::new("readiness")
+                .with_route("/health/ready")
+                .indicator("fixture", || async { Ok(HealthIndicatorResult::up()) }),
+        )?;
+
+        for path in [
+            "/api/v1/platform",
+            "/api/v1/health/live",
+            "/api/v1/health/ready",
+        ] {
+            let response = app
+                .call(
+                    BootRequest::new(HttpMethod::Get, path)
+                        .with_header("accept", "application/json"),
+                )
+                .await?;
+            assert_eq!(response.status(), 200, "{role:?} must expose {path}");
+        }
+
+        for path in ["/api/v1/openapi.json", "/api/v1/organizations"] {
+            let response = app
+                .call(
+                    BootRequest::new(HttpMethod::Get, path)
+                        .with_header("accept", "application/json"),
+                )
+                .await?;
+            assert_eq!(
+                response.status(),
+                404,
+                "{role:?} must not expose management route {path}"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn production_composition_revalidates_the_role_contract_before_io() -> Result<()> {
+    let mut invalid = config();
+    invalid.server.role = ProcessRole::Worker;
+    let oidc_provider: Arc<dyn IOidcProviderService> =
+        Arc::new(OpenIdConnectProviderService::new(&[]).map_err(BootError::Internal)?);
+
+    let error = match build_application_with_source_resolver_and_oidc_provider(
+        invalid,
+        Arc::new(TestSourceResolver),
+        oidc_provider,
+    )
+    .await
+    {
+        Ok(_) => {
+            return Err(BootError::Internal(
+                "invalid role contract was accepted".into(),
+            ))
+        }
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.to_string(),
+        "invalid Cloud config: events.provider memory is allowed only for the development all-in-one process; production and split process roles require nats"
+    );
+    Ok(())
+}

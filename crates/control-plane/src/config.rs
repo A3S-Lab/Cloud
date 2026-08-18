@@ -26,6 +26,18 @@ impl ProcessRole {
             ))),
         }
     }
+
+    pub(crate) const fn serves_management_api(self) -> bool {
+        matches!(self, Self::All | Self::Api)
+    }
+
+    pub(crate) const fn runs_workers(self) -> bool {
+        matches!(self, Self::All | Self::Worker)
+    }
+
+    pub(crate) const fn runs_relay(self) -> bool {
+        matches!(self, Self::All | Self::Relay)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
