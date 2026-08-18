@@ -10,6 +10,8 @@ required=(
   A3S_BOX_OCI_AGENT_PATH
   A3S_BOX_OCI_RUNTIME_PATH
   A3S_CLOUD_TEST_BOX_REVISION
+  A3S_CLOUD_TEST_GATEWAY_BIN
+  A3S_CLOUD_TEST_GATEWAY_REVISION
   A3S_CLOUD_TEST_S3_ENDPOINT
   A3S_CLOUD_TEST_S3_BUCKET
   A3S_CLOUD_TEST_S3_ACCESS_KEY_ID
@@ -20,12 +22,19 @@ for name in "${required[@]}"; do
 done
 [[ $A3S_CLOUD_TEST_S3_ENDPOINT == https://* ]]
 [[ ${A3S_CLOUD_TEST_S3_VIRTUAL_HOSTED_STYLE:-false} == false ]]
+[[ $A3S_CLOUD_TEST_GATEWAY_BIN == /* ]]
+[[ -x $A3S_CLOUD_TEST_GATEWAY_BIN ]]
 
 image=$(<"$repository_root/tools/cell-conformance/celld-image")
 revision=$(<"$repository_root/tools/cell-conformance/celld-revision")
+gateway_revision=$(<"$repository_root/tools/gateway-conformance/gateway-revision")
 [[ $image =~ @sha256:[0-9a-f]{64}$ ]]
 [[ $revision =~ ^[0-9a-f]{40}$ ]]
+[[ $gateway_revision =~ ^[0-9a-f]{40}$ ]]
+[[ $A3S_CLOUD_TEST_GATEWAY_REVISION == "$gateway_revision" ]]
 image_digest=${image##*@}
+export A3S_GATEWAY_ADMIN_TOKEN
+A3S_GATEWAY_ADMIN_TOKEN=$(openssl rand -hex 32)
 
 mkdir -p -- "$evidence_directory"
 cd -- "$repository_root"
@@ -50,6 +59,8 @@ sudo env \
   A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
   A3S_CLOUD_TEST_CELL_BUNDLE_PUBLICATION=1 \
   A3S_CLOUD_TEST_CELL_PROVIDER_IMAGE="$image" \
+  A3S_CLOUD_TEST_GATEWAY_BIN="$A3S_CLOUD_TEST_GATEWAY_BIN" \
+  A3S_GATEWAY_ADMIN_TOKEN="$A3S_GATEWAY_ADMIN_TOKEN" \
   A3S_CLOUD_TEST_S3_ENDPOINT="$A3S_CLOUD_TEST_S3_ENDPOINT" \
   A3S_CLOUD_TEST_S3_REGION="${A3S_CLOUD_TEST_S3_REGION:-us-east-1}" \
   A3S_CLOUD_TEST_S3_BUCKET="$A3S_CLOUD_TEST_S3_BUCKET" \
@@ -75,6 +86,7 @@ for name in (
     "A3S_CLOUD_TEST_S3_ACCESS_KEY_ID",
     "A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY",
     "A3S_CLOUD_TEST_S3_SESSION_TOKEN",
+    "A3S_GATEWAY_ADMIN_TOKEN",
 ):
     value = os.environ.get(name, "").encode()
     if value and value in log:
@@ -190,16 +202,24 @@ box_generation_before=$(sed -nE \
 box_generation_after=$(sed -nE \
   's/.* box_generation_after=([1-9][0-9]*) .*/\1/p' \
   <<<"$behavior_certification")
+certified_gateway_revision=$(sed -nE \
+  's/.* gateway_revision=([0-9a-f]{40}) .*/\1/p' \
+  <<<"$behavior_certification")
+gateway_snapshot_digest=$(sed -nE \
+  's/.* gateway_snapshot_digest=(sha256:[0-9a-f]{64}) .*/\1/p' \
+  <<<"$behavior_certification")
 [[ $service_profile_digest =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ $service_template_digest =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ $box_generation_before =~ ^[1-9][0-9]*$ ]]
 [[ $box_generation_after =~ ^[1-9][0-9]*$ ]]
+[[ $certified_gateway_revision == "$gateway_revision" ]]
+[[ $gateway_snapshot_digest =~ ^sha256:[0-9a-f]{64}$ ]]
 (( box_generation_after == box_generation_before + 1 ))
 grep --fixed-strings \
   "revision=$revision service_profile_digest=$service_profile_digest service_template_digest=$service_template_digest" \
   <<<"$behavior_certification" >/dev/null
 grep --fixed-strings \
-  "named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified process_death=verified rpo=0 box_generation_before=$box_generation_before box_generation_after=$box_generation_after fleet_replay=exact secrets=reauthorized cleanup=verified gateway=not-certified" \
+  "named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified process_death=verified rpo=0 box_generation_before=$box_generation_before box_generation_after=$box_generation_after fleet_replay=exact secrets=reauthorized cleanup=verified gateway=verified gateway_revision=$gateway_revision gateway_snapshot_digest=$gateway_snapshot_digest gateway_http=verified gateway_websocket=verified gateway_fleet_replay=exact gateway_owner_lookup=absent" \
   <<<"$behavior_certification" >/dev/null
 
 jq -n \
@@ -207,18 +227,22 @@ jq -n \
   --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
   --arg providerRevision "$revision" \
   --arg image "$image" \
+  --arg gatewayRevision "$gateway_revision" \
+  --arg gatewaySnapshotDigest "$gateway_snapshot_digest" \
   --arg serviceProfileDigest "$service_profile_digest" \
   --arg serviceTemplateDigest "$service_template_digest" \
   --argjson boxGenerationBefore "$box_generation_before" \
   --argjson boxGenerationAfter "$box_generation_after" \
   --arg certification "$behavior_certification" \
   '{
-    schema: "a3s.cloud.cell0.5-single-node-behavior-evidence.v2",
+    schema: "a3s.cloud.cell0.5-single-node-behavior-evidence.v3",
     cloudRevision: $cloud,
     boxRevision: $box,
     provider: "celld",
     providerRevision: $providerRevision,
     image: $image,
+    gatewayRevision: $gatewayRevision,
+    gatewaySnapshotDigest: $gatewaySnapshotDigest,
     serviceProfileDigest: $serviceProfileDigest,
     serviceTemplateDigest: $serviceTemplateDigest,
     boxExecutionGenerationBefore: $boxGenerationBefore,
@@ -234,6 +258,11 @@ jq -n \
       boxRestartGenerationAdvancedExactlyOnce: true,
       rpo0ProviderProcessDeath: true,
       fleetRecoveryInspectReplay: true,
+      edgeCompleteSnapshot: true,
+      gatewayTlsHttpRoute: true,
+      gatewayTlsWebSocketRoute: true,
+      gatewayPublicEndpointOnly: true,
+      gatewayFleetInstallObserveReplay: true,
       secretsRematerializedPerStart: true,
       rpo0OutputGateNotOverridden: true,
       idleEviction: true,
@@ -248,7 +277,7 @@ jq -n \
       alarmCertified: true,
       hibernatableWebSocketCertified: true,
       providerProcessDeathCertified: true,
-      gatewayCertified: false,
+      gatewayCertified: true,
       completeApplicationBehaviorCertified: false,
       faultMatrixCertified: false
     }
@@ -259,12 +288,16 @@ jq -e \
   --arg box "$A3S_CLOUD_TEST_BOX_REVISION" \
   --arg revision "$revision" \
   --arg image "$image" \
+  --arg gatewayRevision "$gateway_revision" \
+  --arg gatewaySnapshotDigest "$gateway_snapshot_digest" \
   --argjson boxGenerationBefore "$box_generation_before" \
   --argjson boxGenerationAfter "$box_generation_after" \
   '.cloudRevision == $cloud
    and .boxRevision == $box
    and .providerRevision == $revision
    and .image == $image
+   and .gatewayRevision == $gatewayRevision
+   and .gatewaySnapshotDigest == $gatewaySnapshotDigest
    and .boxExecutionGenerationBefore == $boxGenerationBefore
    and .boxExecutionGenerationAfter == $boxGenerationAfter
    and .boxExecutionGenerationAfter == (.boxExecutionGenerationBefore + 1)
@@ -274,7 +307,7 @@ jq -e \
    and .scope.alarmCertified == true
    and .scope.hibernatableWebSocketCertified == true
    and .scope.providerProcessDeathCertified == true
-   and .scope.gatewayCertified == false
+   and .scope.gatewayCertified == true
    and .scope.completeApplicationBehaviorCertified == false
    and .scope.faultMatrixCertified == false' \
   "$evidence_directory/cell-single-node-behavior.json" >/dev/null

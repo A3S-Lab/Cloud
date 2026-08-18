@@ -43,7 +43,8 @@ bundle containing a pre-bundled Worker and one SQLite-backed `Counter` class;
 it does not install esbuild or create another publication path.
 
 The test requires the same disposable S3-compatible provider variables as the
-S0 gate, plus an installed real Box runner. Before applying either Runtime
+S0 gate, plus installed real Box and pinned A3S Gateway binaries. The reusable
+workflow builds both pinned revisions. Before applying either Runtime
 unit, it compares the exact projected specification with provider-reported
 capabilities. The currently pinned Box revision does not advertise
 `NetworkMode::Outbound`, so the publication Task fails closed until Box adds
@@ -67,16 +68,26 @@ must advance its execution-generation evidence exactly once, the existing
 Fleet `RuntimeInspect` command must journal and exactly replay the recovered
 healthy generation, and the counter, alarm, and WebSocket message state must
 continue at values 4, 1, and 3. Secret material must be freshly authorized for
-the restart and removed again during ordinary `RuntimeRemove`. The retained
-log is scanned byte-for-byte for every supplied credential before evidence is
-accepted.
+the restart and removed again during ordinary `RuntimeRemove`.
+
+The same journal also delivers Edge's existing complete snapshot to the
+pinned Gateway through the production certificate provisioner and
+`GatewaySnapshotInstall`/`GatewaySnapshotObserve` commands. Counter, alarm,
+and WebSocket traffic uses the Gateway's managed TLS entrypoint before and
+after the celld process fault. The snapshot contains only the exact public
+Runtime endpoint; the provider's internal/operator endpoint is asserted
+absent, and Gateway performs no named-Cell owner lookup. Install and
+observation redelivery must replay byte-for-byte. The retained log is scanned
+for every supplied storage credential and the ephemeral Gateway token before
+evidence is accepted.
 
 The manual `Durable Cell single-node conformance` workflow is restricted to
 `main` and calls the existing Box provider workflow so Box installation, celld
 supply-chain verification, image pulling, process cleanup, and evidence
 retention stay single-sourced. Once the Box prerequisite passes, the component
 evidence certifies named SQLite state, exact alarm delivery, hibernatable
-WebSockets, idle eviction/reactivation, and RPO=0 provider-process-death
-recovery. No such retained behavior evidence exists yet. It deliberately keeps
-Gateway, complete application behavior, and the full fault-matrix claims
-false; those remain C4/C5 work until their own checks pass in this same gate.
+WebSockets, idle eviction/reactivation, RPO=0 provider-process-death recovery,
+and real managed-TLS Gateway HTTP/WebSocket routing. No such retained behavior
+evidence exists yet. Complete application behavior and the full fault-matrix
+claims remain false; rollout, rollback, restore, stop, and deletion stay C5
+work.

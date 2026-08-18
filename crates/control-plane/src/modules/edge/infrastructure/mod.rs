@@ -131,4 +131,6 @@ pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
 pub use route_target_reader::WorkloadRouteTargetReader;
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) use runtime_http_upstream::gateway_http_upstream;
 pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;

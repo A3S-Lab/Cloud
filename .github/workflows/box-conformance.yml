@@ -37,7 +37,7 @@ on:
   workflow_call:
     inputs:
       run_cell_bundle_publication:
-        description: Run the credentialed CELL0.5 publication and named-state gate
+        description: Run the credentialed CELL0.5 publication, behavior, and Gateway gate
         required: false
         default: false
         type: boolean
@@ -107,12 +107,15 @@ jobs:
         run: |
           box_revision=$(<tools/box-conformance/box-revision)
           oci_runtime_revision=$(<tools/box-conformance/oci-runtime-revision)
+          gateway_revision=$(<tools/gateway-conformance/gateway-revision)
           [[ $box_revision =~ ^[0-9a-f]{40}$ ]]
           [[ $oci_runtime_revision =~ ^[0-9a-f]{40}$ ]]
+          [[ $gateway_revision =~ ^[0-9a-f]{40}$ ]]
           grep --fixed-strings \
             "rev = \"$box_revision\"" Cargo.toml
           echo "box=$box_revision" >>"$GITHUB_OUTPUT"
           echo "oci_runtime=$oci_runtime_revision" >>"$GITHUB_OUTPUT"
+          echo "gateway=$gateway_revision" >>"$GITHUB_OUTPUT"
 
       - name: Checkout A3S Box
         uses: actions/checkout@v4
@@ -129,6 +132,14 @@ jobs:
           ref: ${{ steps.revisions.outputs.oci_runtime }}
           path: crates/oci-runtime
 
+      - name: Checkout A3S Gateway for the joint Durable Cell gate
+        if: ${{ inputs.run_cell_bundle_publication == true }}
+        uses: actions/checkout@v4
+        with:
+          repository: A3S-Lab/Gateway
+          ref: ${{ steps.revisions.outputs.gateway }}
+          path: crates/gateway
+
       - name: Verify exact provider dependency closure
         env:
           BOX_REVISION: ${{ steps.revisions.outputs.box }}
@@ -140,6 +151,13 @@ jobs:
             "rev = \"$OCI_RUNTIME_REVISION\"" crates/box/src/Cargo.toml
           grep --fixed-strings \
             "?rev=$OCI_RUNTIME_REVISION#$OCI_RUNTIME_REVISION" crates/box/src/Cargo.lock
+
+      - name: Verify the exact Gateway revision for the joint Durable Cell gate
+        if: ${{ inputs.run_cell_bundle_publication == true }}
+        env:
+          GATEWAY_REVISION: ${{ steps.revisions.outputs.gateway }}
+        run: |
+          test "$(git -C crates/gateway rev-parse HEAD)" = "$GATEWAY_REVISION"
 
       - name: Install stable Rust and build dependencies
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -172,6 +190,12 @@ jobs:
             -p a3s-box-guest-init --target x86_64-unknown-linux-musl
           cargo build --manifest-path crates/oci-runtime/Cargo.toml --locked --release \
             -p a3s-oci-cli -p a3s-oci-agent
+
+      - name: Build the pinned A3S Gateway for the joint Durable Cell gate
+        if: ${{ inputs.run_cell_bundle_publication == true }}
+        run: |
+          cargo build --manifest-path crates/gateway/Cargo.toml \
+            --release --locked --bin a3s-gateway
 
       - name: Install the dedicated Box conformance home
         run: |
@@ -538,13 +562,15 @@ jobs:
               >durable-cell-provider-runtime-sha256.txt
           )
 
-      - name: Certify real Durable Cell publication, named state, and idle reactivation
+      - name: Certify real Durable Cell publication, behavior, recovery, and Gateway routing
         if: ${{ inputs.run_cell_bundle_publication == true }}
         working-directory: apps/cloud
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
           A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
           A3S_CLOUD_TEST_BOX_REVISION: ${{ steps.revisions.outputs.box }}
+          A3S_CLOUD_TEST_GATEWAY_BIN: ${{ github.workspace }}/crates/gateway/target/release/a3s-gateway
+          A3S_CLOUD_TEST_GATEWAY_REVISION: ${{ steps.revisions.outputs.gateway }}
           A3S_CLOUD_TEST_S3_ENDPOINT: ${{ secrets.S0_S3_ENDPOINT }}
           A3S_CLOUD_TEST_S3_REGION: ${{ secrets.S0_S3_REGION }}
           A3S_CLOUD_TEST_S3_BUCKET: ${{ secrets.S0_S3_BUCKET }}
@@ -748,7 +774,7 @@ jobs:
           ps aux >"$EVIDENCE_DIR/processes-after.txt"
           sudo find "$A3S_HOME" -maxdepth 4 -print \
             >"$EVIDENCE_DIR/home-after.txt" 2>&1 || true
-          if pgrep -fa 'a3s-box-shim|a3s-oci-agent|a3s-oci.*native-linux-service' \
+          if pgrep -fa 'a3s-box-shim|a3s-oci-agent|a3s-oci.*native-linux-service|a3s-gateway' \
             >"$EVIDENCE_DIR/leaked-processes.txt"; then
             cat "$EVIDENCE_DIR/leaked-processes.txt"
             cleanup_status=1

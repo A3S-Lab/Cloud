@@ -17,7 +17,7 @@ jobs:
         run: test "$GITHUB_REF" = refs/heads/main
 
   bundle-publication:
-    name: Real celld publication and named state through Box and S0
+    name: Real celld publication and behavior through Box, S0, and Gateway
     needs: require-main
     uses: ./.github/workflows/box-conformance.yml
     with:

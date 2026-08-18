@@ -8,10 +8,17 @@ use crate::modules::data::{
     ObjectNamespaceKey, ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec,
     ObjectNamespaceRead,
 };
+use crate::modules::edge::infrastructure::gateway_http_upstream;
+use crate::modules::edge::{
+    DomainNamePattern, GatewayCertificateIssueRequest, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, IGatewayCertificateAuthority,
+    LocalGatewayCertificateAuthority, Route, RouteHostname, RoutePath, RoutePortName, RouteTarget,
+};
 use crate::modules::executions::project_execution_task;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeId, OrganizationId, ProjectId, SecretId, SecretVersionReference,
-    StorageNamespaceId, WorkloadId, WorkloadRevisionId,
+    DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeId, OrganizationId,
+    ProjectId, RouteId, SecretId, SecretVersionReference, StorageNamespaceId, WorkloadId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::infrastructure::runtime_spec::project_runtime_spec_with_digest;
 use crate::modules::workloads::{
@@ -19,14 +26,19 @@ use crate::modules::workloads::{
     ServiceResources, ServiceTemplate, WorkloadRevision,
 };
 use a3s_cloud_contracts::{
-    artifact_uri, CloudSecretReference, NodeArtifactDownloadRequest, NodeArtifactUploadRequest,
-    NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata, NodeCommandOutcome,
-    NodeCommandPayload, NodeCommandResult, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    artifact_uri, CloudSecretReference, GatewayAckState, GatewayCertificateSigningRequest,
+    GatewayCertificateSigningResponse, GatewayManagementProtocolDiscovery, GatewaySnapshot,
+    GatewaySnapshotObservationRequest, GatewaySnapshotObservationState,
+    NodeArtifactDownloadRequest, NodeArtifactUploadRequest, NodeCommandAck, NodeCommandEnvelope,
+    NodeCommandMetadata, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use a3s_cloud_node_agent::{
     build_box_runtime_provider, ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation,
-    CommandExecutor, DownloadedNodeArtifact, FileCommandJournal, NodeArtifactManager,
-    NodeArtifactTransport, NodeControlClientError, NodeSecretTransport, SecretMaterial,
+    CommandExecutor, ControlPlaneConfig, DownloadedNodeArtifact, DurableGatewaySnapshotInstaller,
+    FileCommandJournal, GatewayCertificateSigningTransport, GatewayControlConfig,
+    GatewaySnapshotInstaller, LogShippingConfig, NodeAgentConfig, NodeArtifactManager,
+    NodeArtifactTransport, NodeConfig, NodeControlClientError, NodeSecretTransport, SecretMaterial,
 };
 use a3s_runtime::contract::{
     NetworkMode, RestartPolicy, RuntimeActionRequest, RuntimeApplyRequest, RuntimeExecRequest,
@@ -40,8 +52,10 @@ use futures_util::{SinkExt, StreamExt};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::error::Error;
-use std::io;
+use std::io::{self, BufReader};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
+use std::process::{Child, Command as ProcessCommand, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -49,6 +63,9 @@ use uuid::Uuid;
 
 const GATE_ENV: &str = "A3S_CLOUD_TEST_CELL_BUNDLE_PUBLICATION";
 const IMAGE_ENV: &str = "A3S_CLOUD_TEST_CELL_PROVIDER_IMAGE";
+const GATEWAY_BINARY_ENV: &str = "A3S_CLOUD_TEST_GATEWAY_BIN";
+const GATEWAY_TOKEN_ENV: &str = "A3S_GATEWAY_ADMIN_TOKEN";
+const GATEWAY_HOSTNAME: &str = "cells.a3s.test";
 const ACCESS_KEY_ENV: &str = "A3S_CLOUD_TEST_S3_ACCESS_KEY_ID";
 const SECRET_KEY_ENV: &str = "A3S_CLOUD_TEST_S3_SECRET_ACCESS_KEY";
 const SESSION_TOKEN_ENV: &str = "A3S_CLOUD_TEST_S3_SESSION_TOKEN";
@@ -57,6 +74,10 @@ const BOX_EXECUTION_GENERATION_CLAIM: &str = "a3s.box.execution-generation";
 const PROVIDER_REVISION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../tools/cell-conformance/celld-revision"
+));
+const GATEWAY_REVISION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tools/gateway-conformance/gateway-revision"
 ));
 const WRANGLER_JSON: &[u8] = br#"{
   "name": "a3s-cloud-cell-publication-gate",
@@ -132,8 +153,9 @@ type GateResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 /// Retained CELL0.5-C3/C4 gate. It runs the exact publisher profile as an
 /// ordinary node-bound Execution Task, resolves credentials through the sole
 /// Cloud Secret adapter, materializes the typed bundle through the sole
-/// Artifact adapter, and observes/cleans the result through the production S0
-/// object-namespace client.
+/// Artifact adapter, observes and cleans the result through the production S0
+/// object-namespace client, and routes the resulting Service through Edge's
+/// complete snapshot plus the production Node Agent Gateway installer.
 #[tokio::test]
 #[ignore = "requires the dedicated Linux Box runner and disposable S3-compatible namespace"]
 async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_s0(
@@ -153,6 +175,14 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
     let revision = PROVIDER_REVISION.trim();
     if revision.len() != 40 || !revision.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err(invalid("checked-in celld revision is invalid").into());
+    }
+    let gateway_revision = GATEWAY_REVISION.trim();
+    if gateway_revision.len() != 40
+        || !gateway_revision
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(invalid("checked-in Gateway revision is invalid").into());
     }
 
     let namespace_id = StorageNamespaceId::new();
@@ -195,12 +225,14 @@ async fn real_celld_bundle_publication_uses_execution_box_secrets_artifacts_and_
         outcome.publication_object_count,
     );
     println!(
-        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified process_death=verified rpo=0 box_generation_before={} box_generation_after={} fleet_replay=exact secrets=reauthorized cleanup=verified gateway=not-certified",
+        "A3S_CLOUD_CELL0_5_SINGLE_NODE_BEHAVIOR_CERTIFIED provider=celld revision={} service_profile_digest={} service_template_digest={} named_sqlite=verified idle_eviction=verified reactivation=verified alarms=verified websockets=verified process_death=verified rpo=0 box_generation_before={} box_generation_after={} fleet_replay=exact secrets=reauthorized cleanup=verified gateway=verified gateway_revision={} gateway_snapshot_digest={} gateway_http=verified gateway_websocket=verified gateway_fleet_replay=exact gateway_owner_lookup=absent",
         revision,
         outcome.behavior.service_profile_digest,
         outcome.behavior.service_template_digest,
         outcome.behavior.box_generation_before,
         outcome.behavior.box_generation_after,
+        gateway_revision,
+        outcome.behavior.gateway_snapshot_digest,
     );
     Ok(())
 }
@@ -217,6 +249,7 @@ struct ServiceBehaviorOutcome {
     service_template_digest: String,
     box_generation_before: u64,
     box_generation_after: u64,
+    gateway_snapshot_digest: String,
 }
 
 struct ProcessDeathOutcome {
@@ -224,6 +257,519 @@ struct ProcessDeathOutcome {
     box_generation_after: u64,
     provider_resource_id: String,
     provider_build: String,
+}
+
+struct GatewayConformance {
+    _directory: tempfile::TempDir,
+    _process: GatewayProcessGuard,
+    gateway_id: NodeId,
+    traffic_address: SocketAddr,
+    management_address: SocketAddr,
+    certificate_directory: PathBuf,
+    managed_state_file: PathBuf,
+    ca_bundle_file: PathBuf,
+    installer: Arc<DurableGatewaySnapshotInstaller>,
+}
+
+impl GatewayConformance {
+    async fn start(gateway_id: NodeId) -> GateResult<Self> {
+        let binary = PathBuf::from(required_environment(GATEWAY_BINARY_ENV)?)
+            .canonicalize()
+            .map_err(|error| invalid(format!("Gateway binary is unavailable: {error}")))?;
+        if !binary.is_file() {
+            return Err(invalid("Gateway conformance binary is not a regular file").into());
+        }
+        required_environment(GATEWAY_TOKEN_ENV)?;
+        let (traffic_address, management_address) = unused_loopback_addresses()?;
+        let directory = tempfile::tempdir()?;
+        let managed_state_file = directory.path().join("managed-snapshot.json");
+        let certificate_directory = directory.path().join("certificates");
+        let ca_directory = directory.path().join("ca");
+        let ca_bundle_file = ca_directory.join("ca.pem");
+        let config_file = directory.path().join("gateway.acl");
+        std::fs::write(
+            &config_file,
+            gateway_bootstrap_acl(gateway_id, management_address, managed_state_file.as_path()),
+        )?;
+        let mut process = GatewayProcessGuard::start(&binary, &config_file)?;
+        wait_for_gateway_management(process.child_mut(), management_address).await?;
+
+        let authority = Arc::new(LocalGatewayCertificateAuthority::load_or_create(
+            ca_directory,
+        )?);
+        let signing_transport: Arc<dyn GatewayCertificateSigningTransport> =
+            Arc::new(LocalGatewaySigningTransport {
+                gateway_id,
+                dns_names: vec![GATEWAY_HOSTNAME.into()],
+                authority,
+            });
+        let config = gateway_node_agent_config(
+            directory.path(),
+            management_address,
+            certificate_directory.clone(),
+        )?;
+        let installer = Arc::new(DurableGatewaySnapshotInstaller::from_config(
+            &config,
+            gateway_id.as_uuid(),
+            signing_transport,
+        )?);
+        Ok(Self {
+            _directory: directory,
+            _process: process,
+            gateway_id,
+            traffic_address,
+            management_address,
+            certificate_directory,
+            managed_state_file,
+            ca_bundle_file,
+            installer,
+        })
+    }
+
+    fn installer(&self) -> Arc<dyn GatewaySnapshotInstaller> {
+        self.installer.clone()
+    }
+
+    fn compile_route_snapshot(
+        &self,
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        service_profile: &DurableCellServiceProfile,
+        spec: &RuntimeUnitSpec,
+        observation: &RuntimeObservation,
+    ) -> GateResult<GatewaySnapshot> {
+        observation.validate_against(spec).map_err(invalid)?;
+        let public = RuntimeServiceEndpoint::from_observation(
+            observation,
+            &service_profile.spec().public_runtime_port,
+        )
+        .map_err(invalid)?;
+        let internal = RuntimeServiceEndpoint::from_observation(
+            observation,
+            &service_profile.spec().internal_runtime_port,
+        )
+        .map_err(invalid)?;
+        let observed_at = Utc::now() - ChronoDuration::milliseconds(1);
+        let target = RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            spec.unit_id.clone(),
+            spec.generation,
+            RoutePortName::parse(&service_profile.spec().public_runtime_port)?,
+            gateway_http_upstream(&public)?,
+            observed_at,
+        )?;
+        let certificate_id = GatewayCertificateId::new();
+        let route = Route::create(
+            RouteId::new(),
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+            GatewayScopeId::new(),
+            self.gateway_id,
+            RouteHostname::parse(GATEWAY_HOSTNAME)?,
+            RoutePath::parse("/")?,
+            DomainClaimId::new(),
+            DomainNamePattern::parse(GATEWAY_HOSTNAME)?,
+            certificate_id,
+            workload_id,
+            target,
+            Utc::now(),
+        )?;
+        let issued_at = Utc::now();
+        let snapshot = self.compiler()?.compile(
+            GatewaySnapshotMetadata::new(
+                self.gateway_id,
+                1,
+                None,
+                issued_at,
+                issued_at + ChronoDuration::minutes(15),
+            ),
+            certificate_id,
+            &[route],
+        )?;
+        let public_origin = gateway_http_upstream(&public)?;
+        if !snapshot.acl.contains(public_origin.as_str())
+            || snapshot.acl.contains(&internal.socket_addr().to_string())
+            || snapshot.acl.matches("routers \"").count() != 1
+            || snapshot.acl.matches("services \"").count() != 1
+            || snapshot.acl.matches("target = {").count() != 1
+        {
+            return Err(invalid(
+                "Edge complete snapshot did not contain only the exact public Cell target",
+            )
+            .into());
+        }
+        Ok(snapshot)
+    }
+
+    fn compiler(&self) -> Result<GatewaySnapshotCompiler, String> {
+        GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+            entrypoint_address: self.traffic_address.to_string(),
+            management_address: self.management_address.to_string(),
+            management_path_prefix: "/api/gateway".into(),
+            management_auth_token_env: GATEWAY_TOKEN_ENV.into(),
+            upstream_request_timeout_ms: 30_000,
+            certificate_directory: self.certificate_directory.to_string_lossy().into_owned(),
+            managed_state_file: self.managed_state_file.to_string_lossy().into_owned(),
+        })
+    }
+
+    fn public_access(
+        &self,
+        snapshot: &GatewaySnapshot,
+        public: &RuntimeServiceEndpoint,
+        internal: &RuntimeServiceEndpoint,
+    ) -> GateResult<GatewayPublicAccess> {
+        let ca_bundle = std::fs::read(&self.ca_bundle_file)?;
+        let root = reqwest::Certificate::from_pem(&ca_bundle)?;
+        let http_client = reqwest::Client::builder()
+            .use_rustls_tls()
+            .no_proxy()
+            .tls_built_in_root_certs(false)
+            .add_root_certificate(root)
+            .resolve(GATEWAY_HOSTNAME, self.traffic_address)
+            .timeout(Duration::from_secs(5))
+            .build()?;
+        let mut roots = rustls::RootCertStore::empty();
+        let certificates = rustls_pemfile::certs(&mut BufReader::new(ca_bundle.as_slice()))
+            .collect::<Result<Vec<_>, _>>()?;
+        if certificates.is_empty() {
+            return Err(invalid("Gateway CA bundle is empty").into());
+        }
+        for certificate in certificates {
+            roots
+                .add(certificate)
+                .map_err(|error| invalid(format!("Gateway CA is invalid: {error}")))?;
+        }
+        let websocket_tls = Arc::new(
+            rustls::ClientConfig::builder()
+                .with_root_certificates(roots)
+                .with_no_client_auth(),
+        );
+        Ok(GatewayPublicAccess {
+            http_client,
+            websocket_tls,
+            traffic_address: self.traffic_address,
+            snapshot_acl: snapshot.acl.clone(),
+            public_origin: gateway_http_upstream(public)?.as_str().into(),
+            internal_address: internal.socket_addr(),
+        })
+    }
+}
+
+struct GatewayProcessGuard {
+    child: Child,
+}
+
+impl GatewayProcessGuard {
+    fn start(binary: &Path, config_file: &Path) -> io::Result<Self> {
+        Ok(Self {
+            child: ProcessCommand::new(binary)
+                .arg("--config")
+                .arg(config_file)
+                .stdout(Stdio::null())
+                .stderr(Stdio::inherit())
+                .spawn()?,
+        })
+    }
+
+    fn child_mut(&mut self) -> &mut Child {
+        &mut self.child
+    }
+}
+
+impl Drop for GatewayProcessGuard {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+struct GatewayPublicAccess {
+    http_client: reqwest::Client,
+    websocket_tls: Arc<rustls::ClientConfig>,
+    traffic_address: SocketAddr,
+    snapshot_acl: String,
+    public_origin: String,
+    internal_address: SocketAddr,
+}
+
+impl GatewayPublicAccess {
+    fn http_client(&self) -> &reqwest::Client {
+        &self.http_client
+    }
+
+    fn url(&self, path: &str) -> String {
+        format!(
+            "https://{}:{}{}",
+            GATEWAY_HOSTNAME,
+            self.traffic_address.port(),
+            path
+        )
+    }
+
+    async fn connect_websocket(
+        &self,
+        path: &str,
+    ) -> GateResult<(
+        tokio_tungstenite::WebSocketStream<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>,
+        tokio_tungstenite::tungstenite::handshake::client::Response,
+    )> {
+        let stream = tokio::net::TcpStream::connect(self.traffic_address).await?;
+        let server_name = rustls::pki_types::ServerName::try_from(GATEWAY_HOSTNAME)
+            .map_err(|_| invalid("Gateway TLS hostname is invalid"))?
+            .to_owned();
+        let stream = tokio_rustls::TlsConnector::from(self.websocket_tls.clone())
+            .connect(server_name, stream)
+            .await?;
+        tokio_tungstenite::client_async(self.url(path).replacen("https://", "wss://", 1), stream)
+            .await
+            .map_err(Into::into)
+    }
+
+    fn require_exact_public_endpoint(
+        &self,
+        public: &RuntimeServiceEndpoint,
+        internal: &RuntimeServiceEndpoint,
+    ) -> GateResult<()> {
+        if gateway_http_upstream(public)?.as_str() != self.public_origin
+            || internal.socket_addr() != self.internal_address
+        {
+            return Err(invalid(
+                "Box recovery changed an endpoint behind the applied Gateway snapshot",
+            )
+            .into());
+        }
+        self.require_unmapped_internal_endpoint()
+    }
+
+    fn require_unmapped_internal_endpoint(&self) -> GateResult<()> {
+        if self
+            .snapshot_acl
+            .contains(&self.internal_address.to_string())
+        {
+            return Err(invalid("Gateway snapshot exposed the Cell operator endpoint").into());
+        }
+        Ok(())
+    }
+}
+
+struct LocalGatewaySigningTransport {
+    gateway_id: NodeId,
+    dns_names: Vec<String>,
+    authority: Arc<LocalGatewayCertificateAuthority>,
+}
+
+#[async_trait]
+impl GatewayCertificateSigningTransport for LocalGatewaySigningTransport {
+    async fn sign_gateway_certificate(
+        &self,
+        request: &GatewayCertificateSigningRequest,
+    ) -> Result<GatewayCertificateSigningResponse, NodeControlClientError> {
+        request
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        if request.node_id != self.gateway_id.as_uuid() {
+            return Err(NodeControlClientError::Invalid(
+                "Gateway signing request changed its node identity".into(),
+            ));
+        }
+        let material = self
+            .authority
+            .issue(GatewayCertificateIssueRequest {
+                certificate_id: GatewayCertificateId::from_uuid(request.certificate_id),
+                node_id: self.gateway_id,
+                dns_names: self.dns_names.clone(),
+                csr_pem: request.csr_pem.clone(),
+                issued_at: request.requested_at,
+                expires_at: request.requested_at + ChronoDuration::minutes(30),
+            })
+            .await
+            .map_err(|error| NodeControlClientError::Invalid(error.to_string()))?;
+        let response = GatewayCertificateSigningResponse {
+            schema: GatewayCertificateSigningResponse::SCHEMA.into(),
+            certificate_id: request.certificate_id,
+            node_id: request.node_id,
+            dns_names: self.dns_names.clone(),
+            serial_number: material.serial_number,
+            fingerprint: material.fingerprint,
+            certificate_pem: material.certificate_pem,
+            ca_bundle_pem: material.ca_bundle_pem,
+            issued_at: material.issued_at,
+            expires_at: material.expires_at,
+        };
+        response
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        Ok(response)
+    }
+}
+
+fn unused_loopback_addresses() -> io::Result<(SocketAddr, SocketAddr)> {
+    let traffic = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+    let management = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+    let addresses = (traffic.local_addr()?, management.local_addr()?);
+    drop((traffic, management));
+    Ok(addresses)
+}
+
+fn gateway_bootstrap_acl(
+    gateway_id: NodeId,
+    management_address: SocketAddr,
+    managed_state_file: &Path,
+) -> String {
+    format!(
+        "mode {{ kind = \"cloud-managed\" }}\n\n\
+         managed {{\n  gateway_id = \"{gateway_id}\"\n  state_file = \"{}\"\n}}\n\n\
+         management {{\n  enabled = true\n  address = \"{management_address}\"\n  path_prefix = \"/api/gateway\"\n  auth_token_env = \"{GATEWAY_TOKEN_ENV}\"\n  allowed_ips = [\"127.0.0.1\"]\n}}\n",
+        managed_state_file.display(),
+    )
+}
+
+async fn wait_for_gateway_management(
+    child: &mut Child,
+    management_address: SocketAddr,
+) -> GateResult<()> {
+    let token = required_environment(GATEWAY_TOKEN_ENV)?;
+    let client = reqwest::Client::builder()
+        .use_rustls_tls()
+        .no_proxy()
+        .timeout(Duration::from_secs(2))
+        .build()?;
+    let url = format!("http://{management_address}/api/gateway/version");
+    for _ in 0..200 {
+        if child.try_wait()?.is_some() {
+            return Err(invalid("A3S Gateway exited before its management API was ready").into());
+        }
+        if client
+            .get(&url)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .is_ok_and(|response| response.status().is_success())
+        {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    Err(invalid("A3S Gateway management API did not become ready").into())
+}
+
+fn gateway_node_agent_config(
+    root: &Path,
+    management_address: SocketAddr,
+    certificate_directory: PathBuf,
+) -> GateResult<NodeAgentConfig> {
+    Ok(NodeAgentConfig {
+        control_plane: ControlPlaneConfig {
+            enrollment_url: url::Url::parse("https://127.0.0.1/v1/nodes:enroll")?,
+            node_control_url: url::Url::parse("https://127.0.0.1/v1/node-control")?,
+            enrollment_token_env: "A3S_UNUSED_ENROLLMENT_TOKEN".into(),
+            server_ca_file: root.join("unused-control-plane-ca.pem"),
+            max_response_bytes: 1024 * 1024,
+            connect_timeout_ms: 2_000,
+            request_timeout_ms: 5_000,
+            artifact_transfer_timeout_ms: 5_000,
+            long_poll_margin_ms: 1_000,
+            retry_initial_ms: 100,
+            retry_max_ms: 1_000,
+        },
+        artifacts: ArtifactConfig {
+            max_blob_bytes: 4 * 1024 * 1024,
+            max_entries: 100,
+            max_file_bytes: 2 * 1024 * 1024,
+            max_expanded_bytes: 8 * 1024 * 1024,
+        },
+        node: NodeConfig {
+            name: "cell-gateway-conformance".into(),
+            state_dir: root.join("node-state"),
+        },
+        logs: LogShippingConfig {
+            poll_interval_ms: 1_000,
+            max_batch_chunks: 10,
+            max_batch_bytes: 64 * 1024,
+        },
+        box_runtime: BoxRuntimeConfig {
+            home_dir: root.join("unused-box-home"),
+            secret_root: root.join("unused-box-secrets"),
+            isolation: BoxRuntimeIsolation::Sandbox,
+            control_timeout_ms: 120_000,
+            task_poll_interval_ms: 25,
+            sev_snp: None,
+        },
+        gateway: GatewayControlConfig {
+            management_url: url::Url::parse(&format!("http://{management_address}/api/gateway"))?,
+            auth_token_env: GATEWAY_TOKEN_ENV.into(),
+            certificate_directory,
+            connect_timeout_ms: 2_000,
+            apply_timeout_ms: 5_000,
+            readiness_timeout_ms: 10_000,
+        },
+    })
+}
+
+fn expect_gateway_applied(
+    acknowledgement: &NodeCommandAck,
+    command: &NodeCommandEnvelope,
+    snapshot: &GatewaySnapshot,
+) -> GateResult<()> {
+    acknowledgement.validate_against(command).map_err(invalid)?;
+    let NodeCommandResult::GatewaySnapshotInstalled { acknowledgement } =
+        succeeded_result(acknowledgement)?
+    else {
+        return Err(invalid("Fleet did not install the Durable Cell Gateway snapshot").into());
+    };
+    acknowledgement
+        .validate_for(command.command_id, command.node_id, snapshot)
+        .map_err(invalid)?;
+    if acknowledgement.state != GatewayAckState::Applied
+        || !acknowledgement.ready
+        || acknowledgement.message.is_some()
+        || acknowledgement
+            .management_protocol
+            .as_ref()
+            .is_none_or(|protocol| {
+                protocol.discovery != GatewayManagementProtocolDiscovery::Advertised
+            })
+    {
+        return Err(invalid("pinned Gateway did not report exact ready-applied state").into());
+    }
+    Ok(())
+}
+
+fn verify_gateway_observation(
+    acknowledgement: &NodeCommandAck,
+    command: &NodeCommandEnvelope,
+    request: &GatewaySnapshotObservationRequest,
+    snapshot: &GatewaySnapshot,
+) -> GateResult<()> {
+    acknowledgement.validate_against(command).map_err(invalid)?;
+    let NodeCommandResult::GatewaySnapshotObserved { observation } =
+        succeeded_result(acknowledgement)?
+    else {
+        return Err(
+            invalid("Fleet did not observe the applied Durable Cell Gateway snapshot").into(),
+        );
+    };
+    observation
+        .validate_for(command.command_id, command.node_id, request)
+        .map_err(invalid)?;
+    if request.gateway_id != snapshot.gateway_id
+        || request.revision != snapshot.revision
+        || request.snapshot_digest != snapshot.snapshot_digest
+        || observation.state != GatewaySnapshotObservationState::Applied
+        || !observation.ready
+        || observation
+            .applied
+            .as_ref()
+            .is_none_or(|applied| !applied.matches(request))
+        || observation.management_protocol.discovery
+            != GatewayManagementProtocolDiscovery::Advertised
+    {
+        return Err(invalid("Gateway observation changed the exact applied snapshot").into());
+    }
+    Ok(())
 }
 
 async fn execute_publication(
@@ -296,9 +842,11 @@ async fn execute_publication(
         return Err(invalid("publication Execution did not project to one outbound Task").into());
     }
     require_runtime_support(runtime.as_ref(), &spec).await?;
-    let executor = CommandExecutor::runtime_only(
+    let gateway = GatewayConformance::start(node_id).await?;
+    let executor = CommandExecutor::new(
         FileCommandJournal::new(node_state.path().join("journal"), node_id.as_uuid())?,
         runtime.clone(),
+        gateway.installer(),
     )
     .with_artifacts(artifacts);
     let apply = command(
@@ -376,6 +924,7 @@ async fn execute_publication(
         &secret_root,
         artifact_transport.as_ref(),
         secret_transport.as_ref(),
+        &gateway,
     )
     .await?;
     Ok(PublicationOutcome {
@@ -399,6 +948,7 @@ async fn verify_service_behavior(
     secret_root: &Path,
     artifact_transport: &PublicationArtifactTransport,
     secret_transport: &PublicationSecretTransport,
+    gateway: &GatewayConformance,
 ) -> GateResult<ServiceBehaviorOutcome> {
     let service_profile = DurableCellServiceProfile::pinned_celld_v0_2_1()?;
     let credentials = service_credentials(
@@ -453,12 +1003,70 @@ async fn verify_service_behavior(
             },
         )?)
         .await?;
-    let verification =
-        verify_running_service_behavior(&applied, &service_profile, runtime, &spec).await;
+    let initial_observation = applied_observation(&applied)?;
+    let gateway_snapshot = gateway.compile_route_snapshot(
+        workload_id,
+        workload_revision_id,
+        &service_profile,
+        &spec,
+        initial_observation,
+    )?;
+    let gateway_install = command_issued_at(
+        node_id,
+        gateway_snapshot.gateway_id,
+        4,
+        gateway_snapshot.issued_at,
+        NodeCommandPayload::GatewaySnapshotInstall {
+            snapshot: Box::new(gateway_snapshot.clone()),
+        },
+    )?;
+    let installed = executor.execute(gateway_install.clone()).await;
+    let replayed_install = match &installed {
+        Ok(acknowledgement) => {
+            let expected = acknowledgement.clone();
+            let mut replay = gateway_install.clone();
+            replay.lease_id = Uuid::now_v7();
+            let replayed = executor.execute(replay.clone()).await;
+            Some((expected, replay, replayed))
+        }
+        Err(_) => None,
+    };
+    let verification = async {
+        expect_gateway_applied(
+            installed
+                .as_ref()
+                .map_err(|error| invalid(format!("Gateway install failed: {error}")))?,
+            &gateway_install,
+            &gateway_snapshot,
+        )?;
+        match replayed_install.as_ref() {
+            Some((expected, replay, Ok(actual))) => {
+                verify_exact_command_replay(expected, replay, actual, "Gateway install")?;
+            }
+            _ => return Err(invalid("Fleet journal changed Gateway install replay").into()),
+        }
+        let initial_public = RuntimeServiceEndpoint::from_observation(
+            initial_observation,
+            &service_profile.spec().public_runtime_port,
+        )
+        .map_err(invalid)?;
+        let initial_internal = RuntimeServiceEndpoint::from_observation(
+            initial_observation,
+            &service_profile.spec().internal_runtime_port,
+        )
+        .map_err(invalid)?;
+        let access =
+            gateway.public_access(&gateway_snapshot, &initial_public, &initial_internal)?;
+        let recovery =
+            verify_running_service_behavior(&applied, &service_profile, runtime, &spec, &access)
+                .await?;
+        Ok::<_, Box<dyn Error + Send + Sync>>((recovery, access))
+    }
+    .await;
     let inspect = command(
         node_id,
         workload_id.as_uuid(),
-        4,
+        5,
         NodeCommandPayload::RuntimeInspect {
             unit_id: spec.unit_id.clone(),
             generation: spec.generation,
@@ -479,11 +1087,35 @@ async fn verify_service_behavior(
         }
         Err(_) => None,
     };
+    let gateway_observation_request = GatewaySnapshotObservationRequest::new(
+        gateway_snapshot.gateway_id,
+        gateway_snapshot.revision,
+        gateway_snapshot.snapshot_digest.clone(),
+    )?;
+    let gateway_observe = command(
+        node_id,
+        gateway_snapshot.gateway_id,
+        6,
+        NodeCommandPayload::GatewaySnapshotObserve {
+            request: gateway_observation_request.clone(),
+        },
+    )?;
+    let gateway_observed = executor.execute(gateway_observe.clone()).await;
+    let replayed_gateway_observation = match &gateway_observed {
+        Ok(acknowledgement) => {
+            let expected = acknowledgement.clone();
+            let mut replay = gateway_observe.clone();
+            replay.lease_id = Uuid::now_v7();
+            let replayed = executor.execute(replay.clone()).await;
+            Some((expected, replay, replayed))
+        }
+        Err(_) => None,
+    };
     let removed = executor
         .execute(command(
             node_id,
             workload_id.as_uuid(),
-            5,
+            7,
             NodeCommandPayload::RuntimeRemove {
                 request: RuntimeActionRequest {
                     schema: RuntimeActionRequest::SCHEMA.into(),
@@ -495,7 +1127,7 @@ async fn verify_service_behavior(
             },
         )?)
         .await;
-    let verification = verification?;
+    let (verification, gateway_access) = verification?;
     verify_recovery_inspection(&inspected?, &spec, &verification)?;
     match replayed {
         Some(Ok((expected, actual))) if expected == actual => {}
@@ -503,6 +1135,19 @@ async fn verify_service_behavior(
             return Err(invalid("Fleet journal changed recovered Service inspection replay").into())
         }
     }
+    verify_gateway_observation(
+        &gateway_observed?,
+        &gateway_observe,
+        &gateway_observation_request,
+        &gateway_snapshot,
+    )?;
+    match replayed_gateway_observation {
+        Some((expected, replay, Ok(actual))) => {
+            verify_exact_command_replay(&expected, &replay, &actual, "Gateway observation")?;
+        }
+        _ => return Err(invalid("Fleet journal changed Gateway observation replay").into()),
+    }
+    gateway_access.require_unmapped_internal_endpoint()?;
     expect_removed(&removed?, &spec.unit_id)?;
     if !matches!(
         runtime.inspect(&spec.unit_id).await?,
@@ -525,6 +1170,7 @@ async fn verify_service_behavior(
         service_template_digest,
         box_generation_before: verification.box_generation_before,
         box_generation_after: verification.box_generation_after,
+        gateway_snapshot_digest: gateway_snapshot.snapshot_digest,
     })
 }
 
@@ -533,6 +1179,7 @@ async fn verify_running_service_behavior(
     service_profile: &DurableCellServiceProfile,
     runtime: &dyn a3s_runtime::RuntimeClient,
     spec: &RuntimeUnitSpec,
+    gateway: &GatewayPublicAccess,
 ) -> GateResult<ProcessDeathOutcome> {
     let observation = applied_observation(applied)?;
     observation.validate_against(spec).map_err(invalid)?;
@@ -557,8 +1204,9 @@ async fn verify_running_service_behavior(
     if public.socket_addr() == internal.socket_addr() {
         return Err(invalid("Durable Cell public and internal Runtime endpoints overlap").into());
     }
-    verify_single_node_behavior(&public, &internal).await?;
-    verify_provider_process_death(runtime, spec, service_profile, observation).await
+    gateway.require_exact_public_endpoint(&public, &internal)?;
+    verify_single_node_behavior(gateway, &internal).await?;
+    verify_provider_process_death(runtime, spec, service_profile, observation, gateway).await
 }
 
 async fn verify_provider_process_death(
@@ -566,6 +1214,7 @@ async fn verify_provider_process_death(
     spec: &RuntimeUnitSpec,
     service_profile: &DurableCellServiceProfile,
     initial: &RuntimeObservation,
+    gateway: &GatewayPublicAccess,
 ) -> GateResult<ProcessDeathOutcome> {
     let box_generation_before = box_execution_generation(initial)?;
     let expected_generation = box_generation_before
@@ -604,7 +1253,8 @@ async fn verify_provider_process_death(
     if public.socket_addr() == internal.socket_addr() {
         return Err(invalid("recovered Durable Cell Runtime endpoints overlap").into());
     }
-    verify_state_after_process_death(&public).await?;
+    gateway.require_exact_public_endpoint(&public, &internal)?;
+    verify_state_after_process_death(gateway).await?;
 
     Ok(ProcessDeathOutcome {
         box_generation_before,
@@ -912,36 +1562,28 @@ fn secret_version_reference(
 }
 
 async fn verify_single_node_behavior(
-    public: &RuntimeServiceEndpoint,
+    gateway: &GatewayPublicAccess,
     internal: &RuntimeServiceEndpoint,
 ) -> GateResult<()> {
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(5))
-        .build()?;
-    let url = format!("http://{}/?cell=retained-counter", public.socket_addr());
-    require_counter_value(&client, &url, 1).await?;
-    require_counter_value(&client, &url, 2).await?;
-    verify_alarm_delivery(&client, public).await?;
+    let client = gateway.http_client();
+    let url = gateway.url("/?cell=retained-counter");
+    require_counter_value(client, &url, 1).await?;
+    require_counter_value(client, &url, 2).await?;
+    verify_alarm_delivery(client, gateway).await?;
     let state_url = format!("http://{}/state", internal.socket_addr());
-    if operator_occupied(&client, &state_url).await? == 0 {
+    if operator_occupied(client, &state_url).await? == 0 {
         return Err(invalid("named Cell was not resident before idle eviction").into());
     }
-    verify_hibernatable_websocket(&client, public, &state_url).await?;
-    wait_until_unoccupied(&client, &state_url, "named Cell idle eviction").await?;
-    require_counter_value(&client, &url, 3).await
+    verify_hibernatable_websocket(client, gateway, &state_url).await?;
+    wait_until_unoccupied(client, &state_url, "named Cell idle eviction").await?;
+    require_counter_value(client, &url, 3).await
 }
 
-async fn verify_state_after_process_death(public: &RuntimeServiceEndpoint) -> GateResult<()> {
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(5))
-        .build()?;
-    let counter_url = format!("http://{}/?cell=retained-counter", public.socket_addr());
-    require_counter_value(&client, &counter_url, 4).await?;
-    require_persisted_alarm_delivery(&client, public).await?;
-    let websocket_url = format!("ws://{}/?cell=retained-counter", public.socket_addr());
-    let (mut socket, response) = tokio_tungstenite::connect_async(&websocket_url).await?;
+async fn verify_state_after_process_death(gateway: &GatewayPublicAccess) -> GateResult<()> {
+    let counter_url = gateway.url("/?cell=retained-counter");
+    require_counter_value(gateway.http_client(), &counter_url, 4).await?;
+    require_persisted_alarm_delivery(gateway.http_client(), gateway).await?;
+    let (mut socket, response) = gateway.connect_websocket("/?cell=retained-counter").await?;
     if response.status() != 101 {
         return Err(invalid("recovered Durable Cell WebSocket upgrade was not accepted").into());
     }
@@ -952,9 +1594,9 @@ async fn verify_state_after_process_death(public: &RuntimeServiceEndpoint) -> Ga
 
 async fn verify_alarm_delivery(
     client: &reqwest::Client,
-    public: &RuntimeServiceEndpoint,
+    gateway: &GatewayPublicAccess,
 ) -> GateResult<()> {
-    let arm_url = format!("http://{}/arm?cell=retained-counter", public.socket_addr());
+    let arm_url = gateway.url("/arm?cell=retained-counter");
     let armed = get_json(client, &arm_url).await?;
     if armed.get("armed").and_then(serde_json::Value::as_bool) != Some(true)
         || armed
@@ -964,10 +1606,7 @@ async fn verify_alarm_delivery(
     {
         return Err(invalid("named Durable Cell did not persist its alarm deadline").into());
     }
-    let status_url = format!(
-        "http://{}/alarm-status?cell=retained-counter",
-        public.socket_addr()
-    );
+    let status_url = gateway.url("/alarm-status?cell=retained-counter");
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
         let status = get_json(client, &status_url).await?;
@@ -988,12 +1627,9 @@ async fn verify_alarm_delivery(
 
 async fn require_persisted_alarm_delivery(
     client: &reqwest::Client,
-    public: &RuntimeServiceEndpoint,
+    gateway: &GatewayPublicAccess,
 ) -> GateResult<()> {
-    let status_url = format!(
-        "http://{}/alarm-status?cell=retained-counter",
-        public.socket_addr()
-    );
+    let status_url = gateway.url("/alarm-status?cell=retained-counter");
     for sample in 0..2 {
         let status = get_json(client, &status_url).await?;
         if !alarm_was_delivered(&status) {
@@ -1018,11 +1654,10 @@ fn alarm_was_delivered(status: &serde_json::Value) -> bool {
 
 async fn verify_hibernatable_websocket(
     client: &reqwest::Client,
-    public: &RuntimeServiceEndpoint,
+    gateway: &GatewayPublicAccess,
     state_url: &str,
 ) -> GateResult<()> {
-    let url = format!("ws://{}/?cell=retained-counter", public.socket_addr());
-    let (mut socket, response) = tokio_tungstenite::connect_async(&url).await?;
+    let (mut socket, response) = gateway.connect_websocket("/?cell=retained-counter").await?;
     if response.status() != 101 {
         return Err(invalid("Durable Cell WebSocket upgrade was not accepted").into());
     }
@@ -1454,6 +2089,16 @@ fn command(
     payload: NodeCommandPayload,
 ) -> GateResult<NodeCommandEnvelope> {
     let issued_at = Utc::now() - ChronoDuration::seconds(1);
+    command_issued_at(node_id, aggregate_id, sequence, issued_at, payload)
+}
+
+fn command_issued_at(
+    node_id: NodeId,
+    aggregate_id: Uuid,
+    sequence: u64,
+    issued_at: chrono::DateTime<Utc>,
+    payload: NodeCommandPayload,
+) -> GateResult<NodeCommandEnvelope> {
     NodeCommandEnvelope::new(
         NodeCommandMetadata {
             command_id: Uuid::now_v7(),
@@ -1468,6 +2113,21 @@ fn command(
         payload,
     )
     .map_err(|error| invalid(error).into())
+}
+
+fn verify_exact_command_replay(
+    expected: &NodeCommandAck,
+    replay_command: &NodeCommandEnvelope,
+    actual: &NodeCommandAck,
+    behavior: &str,
+) -> GateResult<()> {
+    actual.validate_against(replay_command).map_err(invalid)?;
+    let mut expected = expected.clone();
+    expected.lease_id = replay_command.lease_id;
+    if &expected != actual {
+        return Err(invalid(format!("Fleet journal changed {behavior} replay")).into());
+    }
+    Ok(())
 }
 
 fn applied_observation(

@@ -8,7 +8,7 @@ mod artifact_fixture;
 /// Compiles one provider-owned Runtime TCP socket into the HTTP origin consumed
 /// by A3S Gateway. Runtime remains the endpoint authority; this adapter adds no
 /// endpoint identity, evidence prefix, registry, or lifecycle state.
-pub(super) fn gateway_http_upstream(
+pub(crate) fn gateway_http_upstream(
     endpoint: &RuntimeServiceEndpoint,
 ) -> Result<UpstreamEndpoint, String> {
     endpoint.validate()?;
