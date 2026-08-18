@@ -1394,6 +1394,16 @@ discard an approval, command, log gap, usage gap, or cleanup obligation.
 | OpenTelemetry Collector | Telemetry routing | Production profile dependency, not a decision authority |
 | PgBouncer | Connection pressure control | Added only after measured need |
 
+Dependency identity is also an authority boundary. The root lock permits only
+one source for a given A3S package name and version. Cloud, Code, and Box now
+resolve A3S ACL `0.3.0` from the exact ACL revision
+`5317e166222495585909d81f2caffdca90273c99`; resolving that same version from
+both crates.io and Git is rejected by a contract test. Two upstream version
+debts remain explicit: A3S Use/Search still require ACL `0.2.2`, and the pinned
+Code release still requires Flow `0.11.0` while Cloud requires Flow `0.13.1`.
+The owning upstream releases must converge those constraints before `F0` can
+return to `Verified`; Cloud does not copy or fork their implementations.
+
 Evolution follows these rules:
 
 1. Extend an existing authority before creating a context. Create a context
@@ -1404,6 +1414,8 @@ Evolution follows these rules:
    capabilities. Prove mixed-version upgrade, downgrade rejection, and replay.
 4. Update the exact component revision, Cargo dependency, compatibility lock,
    contract fixtures, architecture, roadmap, and operational evidence together.
+   One package name/version may resolve from only one source; any temporary
+   cross-version debt has a named upstream owner and cannot expand silently.
 5. Remove retired adapters, exports, configuration, tests, and documentation
    when a replacement becomes authoritative; do not retain a hidden fallback.
 6. Add middleware only for a measured limit and state its failure semantics.

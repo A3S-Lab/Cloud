@@ -14,7 +14,7 @@ license = "MIT"
 repository = "https://github.com/A3S-Lab/Cloud"
 
 [workspace.dependencies]
-a3s-acl = "=0.3.0"
+a3s-acl = { version = "=0.3.0", git = "https://github.com/A3S-Lab/ACL.git", rev = "5317e166222495585909d81f2caffdca90273c99" }
 a3s-boot = { version = "=0.2.0", default-features = false, features = [
     "auth",
     "axum",
@@ -95,6 +95,7 @@ url = "2"
 zeroize = "1"
 
 [patch.crates-io]
+a3s-acl = { git = "https://github.com/A3S-Lab/ACL.git", rev = "5317e166222495585909d81f2caffdca90273c99" }
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "b04ab197deeebe23acbd5dd922f734032622368f" }
 
 [workspace.lints.rust]
