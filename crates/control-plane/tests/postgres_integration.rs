@@ -988,7 +988,6 @@ fn boot_flow_coordinator(
             operations,
             Arc::new(FlowOperationEngine::new(flow.engine())),
         )),
-        Duration::from_millis(5),
         100,
     );
     Ok(FlowOperationCoordinator::new(

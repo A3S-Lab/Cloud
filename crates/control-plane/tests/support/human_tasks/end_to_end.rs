@@ -118,7 +118,6 @@ pub(crate) async fn exercise_human_task_flow_end_to_end(url: String) -> TestResu
             Arc::clone(&operation_repository),
             Arc::new(FlowOperationEngine::new(engine.clone())),
         )),
-        Duration::from_millis(5),
         100,
     );
     let flow_coordinator = FlowOperationCoordinator::new(

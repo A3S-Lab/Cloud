@@ -108,7 +108,7 @@ preservation register.
 | Concern | Sole authority | Duplicate mechanism deliberately absent |
 | --- | --- | --- |
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
-| Long-running coordination | A3S Flow plus Cloud Operations | Product-specific workflow engines, retry tables, and schedulers |
+| Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
 | Portable DAG structure | A3S Flow `WorkflowDag`; Cloud constructs it programmatically from canonical ACL | A Cloud compatibility parser, topology sorter, or editor-owned execution schema |
 | Placement and rollout | Workloads plus Fleet | Agent-, MCP-, inference-, Cell-, or Gateway-specific schedulers |
 | Provider lifecycle | A3S Runtime Task/Service plus A3S Box | Direct provider calls from business contexts or a Cloud executor |

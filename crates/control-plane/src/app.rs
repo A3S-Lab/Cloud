@@ -1028,7 +1028,6 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             operation_repository.clone(),
             operation_engine,
         )),
-        operation_interval,
         100,
     );
     let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(

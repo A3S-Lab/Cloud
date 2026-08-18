@@ -1026,7 +1026,6 @@ impl RecoveryRuntime {
                 Arc::clone(&self.operations),
                 Arc::new(FlowOperationEngine::new(self.engine.clone())),
             )),
-            Duration::from_millis(5),
             100,
         )
     }

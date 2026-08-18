@@ -3498,7 +3498,9 @@ provider evidence, and public availability remain open; no UI mechanism is requi
 The shared Operations adapter now pins A3S Flow `0.13.1` with A3S Boot `0.2.0`
 PostgreSQL task management, isolated ORM-backed stores, runtime-build-pinned
 new runs, and retained process-death regression evidence from the previously
-certified Flow `0.12.0` composition. The minimal WorkflowRun slice
+certified Flow `0.12.0` composition. Its application reconciler is a clockless
+projection pass; only `FlowOperationCoordinator` owns the interval, Flow
+scheduler, and Boot queue lifecycle. The minimal WorkflowRun slice
 and HumanTask submission/automatic-expiry/parent-cancellation plus finite
 Execution coordination now consume that foundation. Business-service and
 remaining provider dispatch, compensation, multi-day recovery, and the

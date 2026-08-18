@@ -11,6 +11,22 @@ use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
+#[test]
+fn operation_projection_has_no_autonomous_scheduling_authority() {
+    let source = include_str!("application/reconciler.rs");
+    for forbidden in [
+        "tokio::time",
+        "tokio::sync::watch",
+        "watch::Receiver",
+        "pub async fn run(",
+    ] {
+        assert!(
+            !source.contains(forbidden),
+            "OperationReconciler contains autonomous scheduling {forbidden:?}; FlowOperationCoordinator must remain the sole clock and queue owner"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 struct CompletingRuntime;
 

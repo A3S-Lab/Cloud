@@ -108,7 +108,6 @@ pub async fn exercise_deployment_flow(
             operation_repository.clone(),
             Arc::new(FlowOperationEngine::new(flow.engine())),
         )),
-        Duration::from_millis(5),
         100,
     );
     let coordinator = FlowOperationCoordinator::new(
@@ -310,7 +309,6 @@ pub async fn exercise_deployment_flow(
             operation_repository.clone(),
             Arc::new(FlowOperationEngine::new(flow.engine())),
         )),
-        Duration::from_millis(5),
         100,
     );
     let coordinator = FlowOperationCoordinator::new(

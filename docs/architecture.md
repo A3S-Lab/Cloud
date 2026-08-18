@@ -487,6 +487,12 @@ not business ownership or convenience wrappers.
 | Data | Managed databases, immutable-object and volume provider policy, distributed volumes, backup, restore, retention, and writer fencing | Component-only `S0.1-C1/C2` expose the sole-client namespace, exact Secret, recovery, retention, restore, and deletion contracts. `S0.1-C3` centralizes real S3 test construction and retains an HTTPS CAS/cleanup gate with secret scanning and evidence hashes; the former duplicate raw log-test client is removed. A retained provider pass, persistence, volume/database, and executable backup/restore/deletion remain planned |
 | Inference | Models, backends, deployments, routes, provider egress, and durable usage | Planned `I0` |
 
+The Operations application reconciler is deliberately clockless: it exposes
+one bounded projection pass only. `FlowOperationCoordinator` is the sole owner
+of the poll interval, A3S Flow due-work scheduling, A3S Boot queue lifecycle,
+and the before/after projection calls. A source guard rejects an autonomous
+Operations timer or worker entry point.
+
 Workflow also owns the implemented immutable descriptor and typed-variable
 domain contracts. They define semantic metadata, typed value ownership,
 compiler admission, and the implemented initial runtime projection. Secret and
