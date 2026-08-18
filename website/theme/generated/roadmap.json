@@ -26,8 +26,8 @@
       "code": "F0",
       "name": "Foundation",
       "outcome": "Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API",
-      "status": "Verified; Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, and the exact root compatibility lock pass together",
-      "statusKind": "verified"
+      "status": "In progress; re-certification required because the last complete pass used Flow `0.12.0`, while the current exact lock pins Flow `0.13.1` for the shared DAG compiler, startup-validates one exact workflow/step runtime registry, and pins one ACL `0.3.0` source with Boot `0.2.0` and ORM `0.3.0`; upstream ACL `0.2.2` and Flow `0.11.0` constraints must converge",
+      "statusKind": "in-progress"
     },
     {
       "code": "N0",
