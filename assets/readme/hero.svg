@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
-  <title id="title">A3S Cloud turns intent into exact applied state</title>
-  <desc id="desc">A self-hosted Cloud control plane with one durable loop from PostgreSQL commit through Flow, Workloads, Fleet, Runtime, Box, and Gateway evidence.</desc>
+  <title id="title">A3S Cloud interface-only control plane</title>
+  <desc id="desc">REST and OpenAPI, TypeScript, CLI, and Management MCP enter one authorized command and query core that commits intent, coordinates durable work, and returns exact evidence.</desc>
 
   <rect width="1200" height="420" rx="24" fill="#0a0f0c"/>
   <rect x="1" y="1" width="1198" height="418" rx="23" fill="none" stroke="#2d4035" stroke-width="2"/>
@@ -11,54 +11,57 @@
       <path d="m10 16 8-8 8 8M18 8v13" stroke="#67b7ff" stroke-width="2.2"/>
     </g>
     <text x="48" y="10" fill="#eff7f1" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" letter-spacing="2.4">A3S CLOUD</text>
-    <text x="48" y="34" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" letter-spacing="1.5">SELF-HOSTED CONTROL PLANE</text>
+    <text x="48" y="34" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" letter-spacing="1.5">INTERFACE-ONLY CONTROL PLANE</text>
   </g>
 
   <g transform="translate(56 118)">
-    <text x="0" y="56" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="66" font-weight="760" letter-spacing="-2.5">Intent becomes</text>
-    <text x="0" y="126" fill="#b7f56a" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="66" font-weight="760" letter-spacing="-2.5">exact applied state.</text>
-    <text x="3" y="174" fill="#b9c7bf" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">Applications, Agents, MCP, Workflows, and model services</text>
-    <text x="3" y="205" fill="#b9c7bf" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">on infrastructure you own.</text>
+    <text x="0" y="56" fill="#f4faf6" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="64" font-weight="760" letter-spacing="-2.4">One control plane.</text>
+    <text x="0" y="124" fill="#b7f56a" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="64" font-weight="760" letter-spacing="-2.4">Exact applied state.</text>
+    <text x="3" y="172" fill="#b9c7bf" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">Operate AI systems through stable interfaces</text>
+    <text x="3" y="203" fill="#b9c7bf" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-size="21">on infrastructure you own.</text>
 
     <g transform="translate(0 240)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700">
-      <rect width="148" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
-      <text x="74" y="27" fill="#d7ff9f" text-anchor="middle">ACL-NATIVE</text>
-      <rect x="162" width="182" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
-      <text x="253" y="27" fill="#d7ff9f" text-anchor="middle">ONE AUTHORITY</text>
-      <rect x="358" width="176" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
-      <text x="446" y="27" fill="#d7ff9f" text-anchor="middle">FAIL-CLOSED</text>
+      <rect width="160" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
+      <text x="80" y="27" fill="#d7ff9f" text-anchor="middle">INTERFACE-ONLY</text>
+      <rect x="174" width="180" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
+      <text x="264" y="27" fill="#d7ff9f" text-anchor="middle">ONE AUTHORITY</text>
+      <rect x="368" width="160" height="42" rx="8" fill="#111a14" stroke="#344b3c"/>
+      <text x="448" y="27" fill="#d7ff9f" text-anchor="middle">REPLAY-SAFE</text>
     </g>
   </g>
 
   <g transform="translate(684 36)">
     <rect width="460" height="348" rx="18" fill="#101812" stroke="#344b3c" stroke-width="1.5"/>
-    <text x="26" y="34" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" letter-spacing="1.5">ONE DURABLE CONTROL LOOP</text>
+    <text x="26" y="34" fill="#8fa298" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="17" font-weight="700" letter-spacing="1.5">ONE CORE / FOUR ADAPTERS</text>
     <line x1="26" y1="51" x2="434" y2="51" stroke="#2d4035"/>
 
-    <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
-      <circle cx="44" cy="91" r="16" fill="#14261d" stroke="#67b7ff" stroke-width="2"/>
-      <text x="44" y="98" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">1</text>
-      <text x="76" y="86" fill="#eff7f1" font-size="21" font-weight="700">Commit intent</text>
-      <text x="76" y="111" fill="#96a99e" font-size="18">PostgreSQL + A3S ORM</text>
-
-      <circle cx="44" cy="157" r="16" fill="#14261d" stroke="#67b7ff" stroke-width="2"/>
-      <text x="44" y="164" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">2</text>
-      <text x="76" y="152" fill="#eff7f1" font-size="21" font-weight="700">Coordinate work</text>
-      <text x="76" y="177" fill="#96a99e" font-size="18">Flow + Operations</text>
-
-      <circle cx="44" cy="223" r="16" fill="#14261d" stroke="#67b7ff" stroke-width="2"/>
-      <text x="44" y="230" fill="#67b7ff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">3</text>
-      <text x="76" y="218" fill="#eff7f1" font-size="21" font-weight="700">Converge nodes</text>
-      <text x="76" y="243" fill="#96a99e" font-size="18">Workloads + Fleet</text>
-
-      <circle cx="44" cy="289" r="16" fill="#1d2b17" stroke="#b7f56a" stroke-width="2"/>
-      <text x="44" y="296" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">4</text>
-      <text x="76" y="284" fill="#eff7f1" font-size="21" font-weight="700">Apply exact state</text>
-      <text x="76" y="309" fill="#96a99e" font-size="18">Runtime + Box + Gateway</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="700" text-anchor="middle">
+      <rect x="26" y="66" width="88" height="38" rx="7" fill="#102036" stroke="#3c79aa"/>
+      <text x="70" y="91" fill="#86c9ff">REST</text>
+      <rect x="124" y="66" width="128" height="38" rx="7" fill="#102036" stroke="#3c79aa"/>
+      <text x="188" y="91" fill="#86c9ff">TS CLIENT</text>
+      <rect x="262" y="66" width="78" height="38" rx="7" fill="#102036" stroke="#3c79aa"/>
+      <text x="301" y="91" fill="#86c9ff">CLI</text>
+      <rect x="350" y="66" width="84" height="38" rx="7" fill="#102036" stroke="#3c79aa"/>
+      <text x="392" y="91" fill="#86c9ff">MCP</text>
     </g>
 
-    <path d="M44 107v34M44 173v34M44 239v34" fill="none" stroke="#67b7ff" stroke-width="2" stroke-dasharray="5 5"/>
-    <path d="M418 290v35H44v-20" fill="none" stroke="#b7f56a" stroke-width="2" stroke-dasharray="6 5"/>
-    <text x="404" y="339" fill="#b7f56a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="16" font-weight="700" text-anchor="end">EXACT EVIDENCE RETURNS</text>
+    <path d="M70 104v14h322v-14M230 118v10" fill="none" stroke="#67b7ff" stroke-width="2"/>
+
+    <g font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif">
+      <rect x="26" y="128" width="408" height="58" rx="9" fill="#142019" stroke="#3f5748"/>
+      <text x="44" y="153" fill="#eff7f1" font-size="20" font-weight="700">Authorize + dispatch</text>
+      <text x="44" y="176" fill="#96a99e" font-size="18">Identity / Grants / command-query core</text>
+
+      <rect x="26" y="204" width="408" height="58" rx="9" fill="#142019" stroke="#3f5748"/>
+      <text x="44" y="229" fill="#eff7f1" font-size="20" font-weight="700">Commit exact intent</text>
+      <text x="44" y="252" fill="#96a99e" font-size="18">PostgreSQL / ORM / Operation / Outbox</text>
+
+      <rect x="26" y="280" width="408" height="58" rx="9" fill="#182219" stroke="#719b46"/>
+      <text x="44" y="305" fill="#eff7f1" font-size="20" font-weight="700">Converge + prove</text>
+      <text x="44" y="328" fill="#b7f56a" font-size="18">Flow / Workloads / Fleet / receipts</text>
+    </g>
+
+    <path d="M230 186v18M230 262v18" fill="none" stroke="#b7f56a" stroke-width="2" stroke-dasharray="5 5"/>
   </g>
 </svg>
