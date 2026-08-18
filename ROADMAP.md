@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-08-15.**
+**Status as of 2026-08-18.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -84,8 +84,8 @@ Cloud owns:
 - databases, volumes, fencing, backup, restore, and retention after `S0`;
 - Durable Cell application identity, immutable revision, deployment policy,
   retention intent, and exact Workload/Gateway projection after `CELL0`;
-- durable operations, audit, logs, usage ledgers, API, CLI, management MCP, and
-  web surfaces;
+- durable operations, audit, logs, usage ledgers, REST/OpenAPI, the maintained
+  client, CLI, and Management MCP surfaces;
 - tenant-scoped A3S Use registry enrollment, exact package assignments,
   reviewed-plan projections, and applied-host observations after `U0`; and
 - installation, upgrades, high availability, disaster recovery, and
@@ -178,6 +178,14 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `I0` — Inference profile | Accelerator-backed model serving, typed model protocols, scoped keys, routing/fallback, Providers, durable usage, governed self-service, and optional protocol/provider expansion | Planned |
 | `EV0` — Governed self-evolution | Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback | Planned |
 | `AR0` — Governed Agent Runtime experience | One simplified projection over existing Agent, Workload, Deployment, Operation, Runtime, Box, Secret, and evidence authorities; bounded egress, brokered credentials, context-cost evidence, idle policy, and checkpoint/fork experience without a parallel lifecycle | Planned; `AR0.1` waits for `A1.3` and the Box baseline |
+
+`AR0`, `CELL0`, `MCP0`, `I0`, and later application delivery profiles are
+sibling product projections over the same execution substrate. They compile
+to existing Execution/Workload intent and A3S Runtime `Task` or `Service`;
+none is a Runtime subtype or may introduce a product-specific scheduler,
+Fleet channel, provider lifecycle, or applied-route authority. In particular,
+one Cell provider replica is a Runtime Service while individual named Cells
+remain provider-owned entities, and Agent Runtime never owns their state.
 
 ### 3.1 `AR0`: governed Agent Runtime experience
 
@@ -2111,6 +2119,12 @@ interface-specific mechanism remain prohibited. A gate is never blocked on a
 Web/console projection; prior frontend outcomes are retired from Cloud scope.
 
 ### 6.2 Backend execution order
+
+The shared-control-path convergence requirements in
+[`docs/development-plan.md`](docs/development-plan.md#21-architecture-convergence-before-feature-expansion)
+precede implementation of another planned bounded context. They repair and
+remove shared mechanisms; they do not create an additional product gate or
+change the evidence required by the gates below.
 
 The default portfolio priority is:
 

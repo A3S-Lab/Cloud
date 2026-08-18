@@ -70,6 +70,40 @@ compatibility merely because one provider runs a compatible bundle.
 These boundaries deliberately keep the specialized data-plane mechanism where
 it is required while preventing it from becoming a second Cloud platform.
 
+### 3.1 Relationship to Agent Runtime and A3S Runtime
+
+Durable Cells and the governed Agent Runtime experience are sibling Cloud
+product projections. They reuse the same Operations, Workloads, Fleet,
+Runtime, Box, Secrets, and Gateway authorities, but they do not inherit from or
+own one another:
+
+- Agent Runtime owns an ergonomic projection over Agent releases, Harness
+  execution, semantic events, policy, and checkpoints.
+- Durable Cells owns application revision, Cell-class/state-schema
+  compatibility, retention intent, and the exact provider/S0 projection.
+- An Agent may call an admitted Durable Cell endpoint as an external state
+  dependency. That does not make Cell state an Agent checkpoint or make the
+  Agent lifecycle a Cell lifecycle.
+
+At the execution layer, a digest-pinned Cell provider replica is one ordinary
+A3S Runtime `Service`. A bundle publication or migration may use an existing
+finite Runtime `Task` through the shared Execution path. An individual named
+Cell is never a Runtime Unit: its SQLite lineage, ownership epoch, alarm,
+WebSocket residency, activation, and eviction remain inside the selected
+provider and S0 namespace.
+
+No `Cell`, `DurableObject`, or `AgentRuntime` class is added to A3S Runtime.
+Only provider-neutral mechanisms that satisfy the technical architecture's
+promotion test may move down, such as generic outbound networking,
+pause/resume, checkpoint/restore, or fenced volume attachment. Product policy
+and provider protocol remain above or behind that boundary.
+
+The Node Agent's typed Cell operator adapter is permitted only as bounded,
+read-only adoption evidence for an exact healthy Runtime Service generation.
+It cannot expose the provider operator API or create, route, migrate, wake,
+evict, or delete a Cell. Adding such behavior would create a second lifecycle
+and must be rejected rather than expanded in place.
+
 ## 4. Topology and request flow
 
 ```mermaid

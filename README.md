@@ -88,6 +88,13 @@ The system keeps three paths explicit:
    Gateway sends opaque bytes to the exact applied target; Cloud remains off
    the request byte path and advances only from matching evidence.
 
+Agent Runtime, hosted MCP, Durable Cells, inference, and later application
+profiles are sibling product projections over this substrate. Each compiles to
+an existing Execution or Workload and ultimately to A3S Runtime `Task` or
+`Service`; no product adds a Runtime class or scheduler. A Cell provider
+replica is a Runtime Service, while individual named Cells remain entirely
+provider-owned inside S0.
+
 Explore the [interactive architecture](https://a3s-lab.github.io/Cloud/architecture/)
 or read the [technical architecture](docs/architecture.md) for bounded
 contexts, consistency rules, failure behavior, and the full capability

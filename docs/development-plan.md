@@ -145,11 +145,11 @@ Management MCP, provider, recovery, and evidence contracts.
   transport, maintained interfaces, documentation, and tests. Product UI is
   outside the section 1.1 boundary.
 - Write aggregate and protocol tests before the implementation they constrain.
-- Keep the repository root as orchestration only. The Rust workspace lives at
-  `apps/cloud/Cargo.toml`.
+- Keep the repository root as orchestration only. The Rust workspace is the
+  repository-root `Cargo.toml`; crates remain under `crates/`.
 - Commit changes in external crate submodules separately from the root pointer
   update. Never mix an A3S Runtime release with unrelated Cloud code.
-- Pin A3S dependency revisions and keep one app-local `Cargo.lock`.
+- Pin A3S dependency revisions and keep one repository-root `Cargo.lock`.
 - Put every external middleware behind a typed application port and test its
   real provider; backend names never enter domain decisions.
 - Compose the shared A3S Box Runtime driver directly. Do not add another Box
@@ -180,6 +180,62 @@ Management MCP, provider, recovery, and evidence contracts.
   website capabilities by extending their named authorities. Architecture
   tests must reject profile-specific Flow engines, schedulers, queues, event
   buses, registries, object clients, and rollout controllers.
+
+### 2.1 Architecture convergence before feature expansion
+
+New product families do not compensate for ambiguity or duplicate mechanisms
+in the shared control path. Before opening implementation for another planned
+bounded context, close the following convergence work in order. These items
+change shared mechanisms only; they do not add a parallel platform gate.
+
+1. **Make Operation coordination fair and deterministic.** Requests without a
+   Flow projection are repaired independently from active projection refresh.
+   More than one scan batch of old running or suspended Operations cannot
+   starve a newly committed request. A Flow snapshot whose sequence and
+   semantic content did not change causes no projection write and cannot
+   advance a user-visible timestamp.
+2. **Supervise every mandatory background worker once.** One process-level
+   supervisor observes all worker exits and panics. An unexpected exit either
+   fails readiness or terminates the process according to the declared role;
+   individual contexts do not add their own supervisors.
+3. **Route Flow work from one exact registry.** Workflow name/version and the
+   complete exact step-name set are registered together and checked for
+   collisions at startup. Unknown workflows and steps fail at the router;
+   there is no default product runtime.
+4. **Bound retries and durable activities.** Flow remains the sole retry and
+   timer authority, using capped exponential backoff, deterministic jitter,
+   visible suspension, and explicit cancellation. Object recovery and other
+   large activities checkpoint deterministic pages so process death never
+   restarts an unbounded namespace-sized step. No context adds a retry table,
+   sleep loop, or queue.
+5. **Keep event delivery reconstructible from PostgreSQL.** A3S Event remains
+   transport and acceleration, never the only recoverable copy of unfinished
+   business work. Every pending consumer intent, including outbound
+   notification delivery, can republish the same deterministic event identity
+   after stream-state loss. This recovery scan reuses the Outbox/Event path and
+   consumer idempotency; it is not a second queue or retry authority.
+6. **Make endpoint metadata one source of truth.** Existing Rust route and DTO
+   metadata, not a new configuration language, owns paths, methods, schemas,
+   stable errors, permissions, and operation identity. OpenAPI, TypeScript
+   transport/types, and the mechanical Management MCP catalog/registration are
+   generated or verified from it. CLI UX and human-authored MCP descriptions
+   remain overlays over the same application commands and queries.
+7. **Finish the single A3S ORM path.** Production repositories contain no raw
+   SQL escape hatch. Missing expressions, joins, locks, or transaction
+   primitives are implemented and certified in A3S ORM. The one A3S ORM
+   Migrator remains authoritative while its SQL-file registry is generated or
+   context-composed and validated instead of repeated by hand.
+8. **Remove executable fallbacks and duplicated live status.** Edge always
+   compiles one complete managed Gateway snapshot, with historic adapters kept
+   only where persisted replay requires them. `ROADMAP.md` remains the sole
+   live gate-status source; architecture and detailed plans hold invariants,
+   dependencies, and evidence rather than competing status summaries.
+
+The architecture definition of done in
+[`architecture.md`](architecture.md#17-architecture-definition-of-done) and
+its abstraction-promotion test remain the acceptance authority. A focused
+test is evidence only for the exact invariant it exercises; mock or
+component-only evidence cannot close a provider or production claim.
 
 ## 3. Critical path
 
@@ -337,9 +393,12 @@ that rule to exercise inference-neutral replica, claim, target-set, placement,
 and network primitives. This does not mark the broader H0 milestone complete
 for P0, C0, A0, A1, S0, production packaging, control-plane HA, or autoscaling.
 
-### 3.1 Verified delivery status
+### 3.1 Retained delivery evidence snapshot
 
-Status as of 2026-08-15:
+Evidence retained through 2026-08-15 is summarized below. The root
+[`ROADMAP.md`](../ROADMAP.md) owns current product gate state; this table keeps
+the detailed implementation and provider evidence needed to reproduce or
+supersede those claims rather than acting as a second live status source.
 
 | Gate | State | Release evidence |
 | --- | --- | --- |
@@ -679,13 +738,13 @@ contract before Cloud depends on it.
 
 ### Goal
 
-Create the smallest app-local workspace and modular-monolith skeleton that can
+Create the smallest repository-root Rust workspace and modular-monolith
+skeleton that can
 commit and query tenant-scoped desired state.
 
 ### Work
 
-- Create `contracts`, `control-plane`, and `node-agent` crates under
-  `apps/cloud`, plus the React application under `web`.
+- Create `contracts`, `control-plane`, and `node-agent` crates under `crates/`.
 - Bootstrap A3S Boot with API, worker, relay, and all-in-one process roles.
 - Add validated `cloud.acl` configuration, environment-secret resolution,
   startup checks, structured logging, request IDs, health endpoints, and clean

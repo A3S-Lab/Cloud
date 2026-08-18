@@ -204,6 +204,55 @@ The architecture also excludes:
     schedules one ordinary Service fleet per application. The Cell provider
     alone activates, evicts, restores, and fences named Cells inside its S0
     namespace; Cloud and Gateway never mirror their ownership.
+13. **Lower layers expose mechanisms, not product meanings.** Product contexts
+    compile immutable intent down to existing Cloud lifecycles and Runtime
+    capabilities. Runtime, Box, Fleet, and Gateway return bounded evidence up;
+    they never acquire Agent, MCP, Workflow, inference, or Durable Cell
+    business state.
+
+### 3.1 Abstraction ladder and promotion test
+
+Every deployable product is expressed through the same one-way abstraction
+ladder. A lower layer must not call upward to recover meaning that its input
+failed to carry.
+
+| Layer | Owns | Admitted shapes | Must not own |
+| --- | --- | --- | --- |
+| Product semantics | Product bounded contexts | Agent execution, Workflow run, hosted MCP release, Durable Cell application, inference deployment, and their immutable revisions | Node placement, process identity, provider journals, or applied routes |
+| Durable coordination | Operations and A3S Flow | Intent-before-work correlation, deterministic workflow identity, timers, retry, cancellation, and replay | Product aggregate truth, provider-local retry rails, or interface state |
+| Cloud execution projection | Executions, Workloads, and Fleet | Finite Execution, desired Service fleet, placement, Claims, versioned node command, and exact receipt | Product-specific schedulers, provider mechanics, or request-path behavior |
+| Provider-neutral unit lifecycle | A3S Runtime | Exactly `Task` and `Service`, immutable generation, apply, inspect, stop, remove, health, endpoints, and capability evidence | Agent, Cell, MCP, model, Workflow, route, retention, or tenant policy |
+| Local and request-path mechanism | A3S Box, A3S OCI Runtime, selected data providers, and A3S Gateway | Process/isolation/network/storage mechanisms and applied request policy | Cloud desired state, semantic execution history, or another scheduler |
+
+A product type compiles downward to an existing shape and receives only exact,
+generation-bound observations upward. Product identity may cross Runtime as an
+opaque ID or digest needed for replay and evidence, but product fields and
+state machines do not.
+
+A capability may be added to A3S Runtime only when all of these conditions
+hold:
+
+1. it can be specified without product vocabulary;
+2. it is intrinsic to Task/Service lifecycle or is reusable by independent
+   product profiles;
+3. its command, capability advertisement, receipt, replay, and cleanup
+   semantics can be versioned and fail closed;
+4. Box and every advertised OCI Runtime backend can prove conformance; and
+5. it introduces no business aggregate, placement decision, route policy,
+   retention policy, or provider-native desired-state authority.
+
+Outbound networking, pause/resume, checkpoint/restore, and fenced volume
+attachment can pass this test as generic capabilities. Cell ownership, alarm
+delivery, Agent Tool events, MCP discovery, and model routing cannot. Those
+remain with their product or provider owner even when they use Runtime
+mechanisms.
+
+The Runtime Unit granularity is one provider process or replica generation,
+never one logical product entity. One Cell provider replica may host many
+named Cells; one Harness Service may execute many admitted Agent commands.
+Creating one Runtime Unit per Cell, conversation, Workflow step, MCP method,
+or model request is prohibited unless that item independently satisfies the
+existing finite-Task contract rather than gaining a product-specific class.
 
 ## 4. Single-authority map
 
@@ -673,6 +722,11 @@ A business mutation atomically commits:
 
 A3S Event transports integration facts through a local or NATS-backed provider.
 Events accelerate coordination but never replace PostgreSQL recovery scans.
+Every unfinished consumer intent is reconstructible from its owning PostgreSQL
+state and can republish the same deterministic event identity after stream
+loss. An Outbox row marked published proves transport handoff, not downstream
+business completion; recovery reuses the same Outbox/Event path and consumer
+idempotency instead of introducing another queue or retry authority.
 Consumers are idempotent, and an event contains identifiers, versions, states,
 and digests rather than secret or transcript payloads.
 
@@ -735,7 +789,13 @@ The same path serves different products:
 | Agent Harness | Agents over Workloads | Service, with versioned Harness commands | Semantic events, immutable bindings, approval, checkpoint, and fork |
 | Stateful service | Data over Workloads | Service | Volume claim, writer fencing, backup, and restore |
 | Durable Cell application | Durable Cells over Workloads | Service | Dedicated application fleet, S0 namespace, provider-owned per-Cell SQLite/epoch fencing, alarms, WebSockets, and idle reactivation |
-| Inference backend | Inference over Workloads | Power Service | Accelerator claims, model cache, routing, limits, and usage |
+| Inference backend | Inference over Workloads | Service | A3S Power profile, accelerator claims, model cache, routing, limits, and usage |
+
+`AR0` and `CELL0` are sibling product projections over this table, not
+subtypes of one another and not Runtime extensions. An Agent may consume a
+Durable Cell through an admitted service binding, but Agents retain semantic
+execution identity while the Cell provider retains named-state identity. One
+context never adopts, scales, checkpoints, or deletes the other's aggregate.
 
 No import format or product profile may bypass this lifecycle. An importer
 produces reviewable immutable desired state; it does not remain a second source
@@ -1162,6 +1222,19 @@ Agent's typed operator adapter. Runtime does not gain a Cell unit class, Fleet
 does not gain a Cell scheduler, and Gateway does not gain owner lookup or
 stickiness.
 
+The Runtime Unit is the Cell provider replica, not an individual named Cell.
+The governed Agent Runtime projection is a sibling consumer of the same
+Workloads, Fleet, Runtime, and Box substrate. It may bind a Durable Cell as an
+external state dependency, but neither product shares aggregate ownership or
+inherits the other's lifecycle.
+
+The typed Node Agent operator adapter is read-only adoption evidence for the
+exact already-running Runtime Service. It may return bounded, sanitized health
+or capacity observations. It must not create, route, migrate, wake, evict, or
+delete Cells, expose the provider operator API, or become a second provider
+lifecycle channel. Such behavior remains provider-local or must pass the
+generic Runtime capability promotion test in section 3.1.
+
 The provider owns each named Cell's private SQLite lineage, serial execution,
 alarm wakeups, WebSocket residency, idle eviction/reactivation, ownership
 record, and fencing epoch inside one application-scoped S0 namespace. The S0
@@ -1332,6 +1405,11 @@ Evolution follows these rules:
    MCP, model, storage, observability, or evolution label cannot add another
    Flow engine, scheduler, queue, event bus, object client, catalog authority,
    or rollout controller.
+8. Apply the section 3.1 promotion test before adding a bounded context,
+   Runtime class, Fleet payload, worker, repository, or provider adapter. Every
+   accepted product profile records its semantic owner, Operation/Flow owner,
+   Execution or Workload projection, data authority, provider mechanism,
+   route owner, observation, and recovery path.
 
 ## 17. Architecture definition of done
 
