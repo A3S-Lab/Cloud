@@ -4,6 +4,7 @@ import {
   type ArchitectureEdge,
   type ArchitectureNode,
 } from '../src/architecture';
+import { writeFile } from 'node:fs/promises';
 import { archifyStructuralConnectionId } from '../src/archify-bridge';
 import { ARCHITECTURE_HOSTING_RELATIONSHIPS } from '../src/topology';
 
@@ -33,8 +34,8 @@ const document = {
       {
         id: 'management-boundary',
         label: 'Management boundary',
-        focus: ['clients', 'web', 'a3s-box', 'code-tui', 'gateway', 'api'],
-        note: 'Web and Code both cross the public Gateway before the private Boot API.',
+        focus: ['clients', 'cloud-client', 'a3s-box', 'code-tui', 'gateway', 'api'],
+        note: 'The maintained client and Code both cross the public Gateway before the private Boot API.',
       },
       {
         id: 'product-semantics',
@@ -154,12 +155,12 @@ const document = {
 } as const;
 
 const outputUrl = new URL('../archify/a3s-cloud.architecture.json', import.meta.url);
-await Bun.write(outputUrl, `${JSON.stringify(document, null, 2)}\n`);
+await writeFile(outputUrl, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
 process.stdout.write(`Generated ${outputUrl.pathname}\n`);
 
 function componentType(node: ArchitectureNode): ArchifyComponentType {
   if (node.status === 'external' || node.id === 'github') return 'external';
-  if (node.id === 'web' || node.id === 'code-tui') return 'frontend';
+  if (node.id === 'cloud-client' || node.id === 'code-tui') return 'frontend';
   if (node.id === 'gateway' || node.id === 'identity') return 'security';
   if (node.id === 'postgres' || node.id === 'object-storage' || node.id === 'registry') {
     return 'database';
@@ -190,7 +191,7 @@ function componentSize(node: ArchitectureNode): readonly [number, number] {
 }
 
 function connectionVariant(edge: ArchitectureEdge): ArchifyConnectionVariant {
-  if (edge.id === 'web-gateway' || edge.id === 'code-gateway' || edge.id === 'gateway-api') {
+  if (edge.id === 'cloud-client-gateway' || edge.id === 'code-gateway' || edge.id === 'gateway-api') {
     return 'emphasis';
   }
   if (edge.id.includes('identity') || edge.label.toLowerCase().includes('authorize')) {

@@ -2,24 +2,24 @@
 
 The C0 runner boots one real Cloud control-plane process and PostgreSQL 17
 database from the shipped A3S ACL configuration. Scenario selection keeps the
-verified `C0.1` REST/Web/CLI contract and the verified `C0.2` management MCP
+verified `C0.1` REST/client/CLI contract and the verified `C0.2` management MCP
 contract independently runnable while sharing the same production fixture and
 credential boundary.
 
-## C0.1 REST, Web client, and CLI
+## C0.1 REST, TypeScript client, and CLI
 
-The default scenario proves the shipped REST v1 contract, the exact shared
-`CloudApi` import used by the Web console, and the compiled `a3s-cloud` CLI.
+The default scenario proves the shipped REST v1 contract, the maintained
+`CloudApi` package import, and the compiled `a3s-cloud` CLI.
 It:
 
-1. waits for public liveness and readiness through the Web client import;
+1. waits for public liveness and readiness through the maintained client;
 2. bootstraps the first organization through raw REST without returning the
    bootstrap or administrator credential;
-3. creates a Project through the Web client and replays the same idempotency
+3. creates a Project through the maintained client and replays the same idempotency
    identity through the compiled CLI;
 4. creates an Environment through raw REST, replays it through the CLI, and
-   reads it through the Web client;
-5. compares authorized search results from the Web client and CLI;
+   reads it through the maintained client;
+5. compares authorized search results from the maintained client and CLI;
 6. verifies stable CLI conflict, cross-tenant denial, and revoked-token error
    contracts; and
 7. requires the expected Token digests, durable revocation, and zero plaintext

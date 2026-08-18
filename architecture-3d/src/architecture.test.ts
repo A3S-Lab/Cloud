@@ -95,20 +95,20 @@ describe('architecture graph', () => {
   });
 
   it('places Gateway between management clients and the private Cloud API', () => {
-    const web = ARCHITECTURE_NODES.find((node) => node.id === 'web');
+    const client = ARCHITECTURE_NODES.find((node) => node.id === 'cloud-client');
     const code = ARCHITECTURE_NODES.find((node) => node.id === 'code-tui');
     const gateway = ARCHITECTURE_NODES.find((node) => node.id === 'gateway');
     const api = ARCHITECTURE_NODES.find((node) => node.id === 'api');
     const edgeIds = new Set(ARCHITECTURE_EDGES.map((edge) => edge.id));
 
     expect(gateway?.domain).toBe('access');
-    expect(web?.position[2]).toBeGreaterThan(gateway?.position[2] ?? Number.POSITIVE_INFINITY);
+    expect(client?.position[2]).toBeGreaterThan(gateway?.position[2] ?? Number.POSITIVE_INFINITY);
     expect(code?.position[2]).toBeGreaterThan(gateway?.position[2] ?? Number.POSITIVE_INFINITY);
     expect(gateway?.position[2]).toBeGreaterThan(api?.position[2] ?? Number.POSITIVE_INFINITY);
-    expect(edgeIds.has('web-gateway')).toBe(true);
+    expect(edgeIds.has('cloud-client-gateway')).toBe(true);
     expect(edgeIds.has('code-gateway')).toBe(true);
     expect(edgeIds.has('gateway-api')).toBe(true);
-    expect(edgeIds.has('web-api')).toBe(false);
+    expect(edgeIds.has('cloud-client-api')).toBe(false);
     expect(edgeIds.has('code-api')).toBe(false);
   });
 

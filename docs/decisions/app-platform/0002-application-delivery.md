@@ -16,7 +16,7 @@ publication policy. Every `ApplicationRelease` binds exactly one immutable
 `WorkflowRevision`. Preset compilers and user-authored modes both produce that
 same target.
 
-Web, blocking API, streaming API, embed, internal invocation, and hosted MCP
+Browser-facing API, blocking API, streaming API, embed, internal invocation, and hosted MCP
 resolve the same release, authorization policy, schemas, session semantics,
 Workflow revision, cursor stream, limits, and audit identity. Gateway owns live
 routing; the bounded delivery role calls the same Applications commands and

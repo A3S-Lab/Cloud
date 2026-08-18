@@ -1,19 +1,18 @@
 import type { ArchitectureEdgeDetail } from './architecture-schema';
 
 export const ARCHITECTURE_EDGE_DETAILS = {
-  'clients-web': {
+  'clients-cloud-client': {
     summary:
-      'Operators use the management surface to turn human intent into explicit Cloud commands, queries, and observation requests.',
-    transfers: ['Operator intent', 'Authenticated browser context', 'Navigation and filter state'],
+      'Operators and integrations use the maintained client to turn intent into explicit Cloud commands, queries, and observation requests.',
+    transfers: ['Typed request intent', 'Authentication context', 'Idempotency metadata'],
     boundary:
-      'The browser surface initiates work but does not decide placement, mutate durable state directly, or hold provider credentials.',
+      'The client initiates work but does not decide placement, mutate durable state directly, or hold provider credentials.',
   },
-  'web-gateway': {
-    summary:
-      'The Web Console sends same-origin management requests to the public Gateway, keeping browser delivery and API access behind one origin.',
+  'cloud-client-gateway': {
+    summary: 'The TypeScript client sends versioned management requests through the public Gateway contract.',
     transfers: ['HTTPS /api request', 'Tenant and identity context', 'Idempotency metadata'],
     boundary:
-      'The browser never addresses the private Boot API directly; Gateway remains the public transport boundary.',
+      'The client never addresses the private Boot API directly; Gateway remains the public transport boundary.',
   },
   'code-gateway': {
     summary:

@@ -325,7 +325,7 @@ mechanisms or surfaces.
 | Run lifecycle, event history, per-step tracing, statistics, and diagnostics | Authorized WorkflowRun and WorkflowStepProjection reads correlated with the one Operation/Flow history and owning-context evidence | `W0.3`-`W0.5` | Preserve list/get/start/wait/cancel/history/evidence/diagnostic outcomes without a second event log, metrics authority, or mutable run-history store |
 | PostgreSQL durability, Flow recovery, approval hooks, and worker scaling | Cloud PostgreSQL through A3S ORM plus the existing Operations/A3S Flow workers | `W0.2`-`W0.5` | No Workflow database bootstrap, queue table, lease worker, retry daemon, or local audit file is introduced |
 | Machine-readable CLI and coding-agent Skill | Existing Cloud client, CLI, and Management MCP expose the same list/get/author/apply/start/wait/cancel/history/evidence/decide outcomes | `W0.2`-`W0.5` | One Cloud authentication, response envelope, idempotency model, and management catalog; no `a3s-workflow` control-plane URL or token namespace |
-| Graph Designer, node catalog, diagnostics, patch review, and run projection | Deferred Cloud Workflow Designer using one descriptor contract and the existing Cloud shell | Later frontend phase after the backend freeze | Preserve the product outcome and controlled editing model; do not copy the standalone React application or make layout state execution authority |
+| Graph authoring, node catalog, diagnostics, patch review, and run projection | Versioned REST/OpenAPI contracts plus the maintained client, CLI, and Management MCP | `W0.2`-`W0.5` | Preserve controlled editing and inspection without copying a standalone React application or making presentation state execution authority |
 
 The ten standalone node names have one explicit migration map:
 
@@ -560,11 +560,10 @@ restore evidence.
 
 `W0`, heterogeneous `A1`, or `EV0` is complete only when:
 
-- during the active backend-first phase, every aggregate, command, query,
-  migration, A3S ORM repository, adapter, REST/OpenAPI contract, maintained
-  client, CLI, and Management MCP surface lands under its owning backend slice;
-  new Web projections are deferred, and a broader gate that promises Web stays
-  in progress until that retained projection is later delivered;
+- every aggregate, command, query, migration, A3S ORM repository, adapter,
+  REST/OpenAPI contract, maintained client, CLI, and Management MCP surface
+  lands under its owning backend slice; product UI is outside Cloud scope and
+  never blocks the gate;
 - closed A3S ACL is the only product configuration and every exact revision is
   digest-bound before use;
 - architecture tests reject new schedulers, Flow engines, queues, node

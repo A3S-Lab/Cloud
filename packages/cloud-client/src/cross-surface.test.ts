@@ -1,6 +1,5 @@
 import { expect, it } from 'bun:test';
-import { CloudApi as WebCloudApi, CloudApiError } from '../../../web/src/lib/api';
-import { CLOUD_API_CONTRACT_VERSION } from './api';
+import { CLOUD_API_CONTRACT_VERSION, CloudApi, CloudApiError } from './api';
 
 const conformanceIt = process.env.A3S_CLOUD_C0_CONFORMANCE === '1' ? it : it.skip;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -30,11 +29,11 @@ interface CliResult {
 type JsonObject = Record<string, unknown>;
 
 conformanceIt(
-  'proves REST, the Web shared client, and the compiled CLI against one real Cloud API',
+  'proves REST, the maintained client, and the compiled CLI against one real Cloud API',
   async () => {
     const environment = conformanceEnvironment();
     const credentials = [environment.bootstrapToken, environment.adminToken, environment.restrictedToken];
-    const publicApi = new WebCloudApi(undefined, environment.baseUrl);
+    const publicApi = new CloudApi(undefined, environment.baseUrl);
     const diagnostics = await publicApi.getDiagnostics();
     expect(diagnostics.liveness.status).toBe('up');
     expect(diagnostics.readiness.status).toBe('up');
@@ -61,12 +60,12 @@ conformanceIt(
     const organizationId = uuidValue(organization.id, 'REST bootstrap organization ID');
     expect(bootstrap.response.headers.get('x-a3s-api-contract-version')).toBe(CLOUD_API_CONTRACT_VERSION);
 
-    const webApi = new WebCloudApi(environment.adminToken, environment.baseUrl);
-    const organizations = await webApi.listOrganizations();
+    const client = new CloudApi(environment.adminToken, environment.baseUrl);
+    const organizations = await client.listOrganizations();
     expect(organizations.map((candidate) => candidate.id)).toContain(organizationId);
 
-    const projectKey = 'c0:web-cli:project';
-    const project = await webApi.createProject(organizationId, 'Cross Surface Project', projectKey);
+    const projectKey = 'c0:client-cli:project';
+    const project = await client.createProject(organizationId, 'Cross Surface Project', projectKey);
     expect(project.replayed).toBe(false);
     expect(project.organizationId).toBe(organizationId);
 
@@ -126,12 +125,12 @@ conformanceIt(
     expect(replayedEnvironment.id).toBe(environmentId);
     expect(replayedEnvironment.replayed).toBe(true);
 
-    const webEnvironments = await webApi.listEnvironments(organizationId, project.id);
-    expect(webEnvironments.map((candidate) => candidate.id)).toEqual([environmentId]);
-    const webSearch = await webApi.searchResources(organizationId, 'Cross Surface', 20);
-    const webSearchIds = new Set(webSearch.map((result) => result.id));
-    expect(webSearchIds.has(project.id)).toBe(true);
-    expect(webSearchIds.has(environmentId)).toBe(true);
+    const clientEnvironments = await client.listEnvironments(organizationId, project.id);
+    expect(clientEnvironments.map((candidate) => candidate.id)).toEqual([environmentId]);
+    const clientSearch = await client.searchResources(organizationId, 'Cross Surface', 20);
+    const clientSearchIds = new Set(clientSearch.map((result) => result.id));
+    expect(clientSearchIds.has(project.id)).toBe(true);
+    expect(clientSearchIds.has(environmentId)).toBe(true);
 
     const cliSearch = await runCli(
       environment,
@@ -149,16 +148,16 @@ conformanceIt(
     expect(cliSearchIds.has(project.id)).toBe(true);
     expect(cliSearchIds.has(environmentId)).toBe(true);
 
-    const isolatedOrganization = await webApi.createOrganization(
+    const isolatedOrganization = await client.createOrganization(
       'C0 Isolated Tenant',
       'c0:isolation:organization'
     );
-    const isolationSentinel = await webApi.createProject(
+    const isolationSentinel = await client.createProject(
       isolatedOrganization.id,
       'Isolation Sentinel',
       'c0:isolation:sentinel'
     );
-    const restricted = await webApi.createApiToken(
+    const restricted = await client.createApiToken(
       organizationId,
       {
         name: 'c0-restricted',
@@ -168,16 +167,16 @@ conformanceIt(
       },
       'c0:isolation:token'
     );
-    assertCredentialFree(JSON.stringify(restricted), credentials, 'Web API-token projection');
+    assertCredentialFree(JSON.stringify(restricted), credentials, 'client API-token projection');
 
-    const restrictedWebApi = new WebCloudApi(environment.restrictedToken, environment.baseUrl);
-    expect((await restrictedWebApi.listProjects(organizationId)).map((candidate) => candidate.id)).toContain(
+    const restrictedClient = new CloudApi(environment.restrictedToken, environment.baseUrl);
+    expect((await restrictedClient.listProjects(organizationId)).map((candidate) => candidate.id)).toContain(
       project.id
     );
-    const webDenial = await capturedError(() => restrictedWebApi.listProjects(isolatedOrganization.id));
-    expect(webDenial).toBeInstanceOf(CloudApiError);
-    expect((webDenial as CloudApiError).status).toBe(403);
-    expect((webDenial as CloudApiError).statusCode).toBe('FORBIDDEN');
+    const clientDenial = await capturedError(() => restrictedClient.listProjects(isolatedOrganization.id));
+    expect(clientDenial).toBeInstanceOf(CloudApiError);
+    expect((clientDenial as CloudApiError).status).toBe(403);
+    expect((clientDenial as CloudApiError).statusCode).toBe('FORBIDDEN');
 
     const cliDenial = await runCli(environment, credentials, ['projects', 'list'], {
       token: environment.restrictedToken,
@@ -190,7 +189,7 @@ conformanceIt(
     expect(deniedError.statusCode).toBe('FORBIDDEN');
     expect(cliDenial.stderr).not.toContain(isolationSentinel.name);
 
-    const revoked = await webApi.revokeApiToken(organizationId, restricted.id, 'c0:isolation:token-revoke');
+    const revoked = await client.revokeApiToken(organizationId, restricted.id, 'c0:isolation:token-revoke');
     expect(revoked.replayed).toBe(false);
     const revokedCli = await runCli(environment, credentials, ['projects', 'list'], {
       token: environment.restrictedToken,
@@ -206,7 +205,7 @@ conformanceIt(
       cloudRevision: environment.cloudRevision,
       apiContractVersion: CLOUD_API_CONTRACT_VERSION,
       persistence: 'postgresql-17-through-a3s-orm',
-      surfaces: ['rest', 'web-shared-client', 'compiled-cli'],
+      surfaces: ['rest', 'typescript-client', 'compiled-cli'],
       resources: {
         organizationId,
         projectId: project.id,
@@ -224,7 +223,7 @@ conformanceIt(
       checks: [
         'public-diagnostics',
         'rest-bootstrap',
-        'web-to-cli-idempotency-replay',
+        'client-to-cli-idempotency-replay',
         'rest-to-cli-idempotency-replay',
         'stable-conflict-error',
         'shared-authorized-search',

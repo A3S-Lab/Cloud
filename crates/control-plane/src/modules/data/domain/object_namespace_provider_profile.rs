@@ -113,6 +113,17 @@ impl ObjectNamespaceProviderProfile {
         Ok(format!("{}/{}", self.spec.prefix, namespace_id))
     }
 
+    /// Deterministic provider-owned recovery scope kept outside the live
+    /// namespace. Live state listing therefore cannot absorb manifests or
+    /// snapshots into the state cut it is sealing.
+    pub fn recovery_prefix(&self, namespace_id: StorageNamespaceId) -> Result<String, String> {
+        self.validate()?;
+        if namespace_id.as_uuid().is_nil() {
+            return Err("object namespace recovery scope requires a non-nil namespace ID".into());
+        }
+        Ok(format!("{}/.a3s-recovery/{namespace_id}", self.spec.prefix))
+    }
+
     pub const fn spec(&self) -> &ObjectNamespaceProviderProfileSpec {
         &self.spec
     }
@@ -304,6 +315,12 @@ mod tests {
         assert_eq!(
             profile.namespace_prefix(namespace_id).expect("prefix"),
             format!("a3s/durable-cells/{namespace_id}")
+        );
+        assert_eq!(
+            profile
+                .recovery_prefix(namespace_id)
+                .expect("recovery prefix"),
+            format!("a3s/durable-cells/.a3s-recovery/{namespace_id}")
         );
         for forbidden in ["access_key", "secret", "token"] {
             assert!(!profile.canonical_acl().contains(forbidden));

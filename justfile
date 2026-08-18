@@ -3,13 +3,9 @@
 default:
     @just --list
 
-# Start the control-plane API and the hot-reloading web console
+# Start the control-plane API
 cloud:
-    ./tools/dev/run_cloud.sh dev
-
-# Build the SPA and serve the API and web console through A3S Gateway
-cloud-gateway:
-    ./tools/dev/run_cloud.sh gateway
+    ./tools/dev/run_cloud.sh
 
 # Stop the local PostgreSQL, NATS, and registry dependencies
 cloud-down:

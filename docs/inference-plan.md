@@ -13,14 +13,11 @@ portfolio and publishes its current status and dependencies. This document
 owns the detailed inference contracts, delivery gates, and evidence within the
 roadmap's Cloud/Gateway ownership boundary.
 
-The active delivery phase follows the roadmap's backend-first freeze. I0 work
-may change domain, ACL, persistence, provider, Gateway, REST/OpenAPI, maintained
-client, CLI, Management MCP, and conformance code, but it does not add or
-redesign Web, product-site, playground, or architecture-visualization code.
-Named console and workspace outcomes remain retained later projections; they
-do not become browser-owned authority and do not block verification of a
-backend/interface slice. The complete product gate remains in progress when it
-still promises one of those deferred projections.
+The active delivery phase follows the roadmap's interface-only boundary. I0
+work may change domain, ACL, persistence, provider, Gateway, REST/OpenAPI,
+maintained client, CLI, Management MCP, documentation, and conformance code.
+Product consoles, visual playgrounds, and browser-owned state are outside
+Cloud scope and never block an interface/provider gate.
 
 I0 adds an optional inference product profile to A3S Cloud. Its target is a
 clearly gated GPUStack-like multi-node model-serving capability set, not API,
@@ -37,8 +34,7 @@ UI, or implementation compatibility with GPUStack. The finished profile will:
   commercial billing;
 - expose grant-derived consumer, project-steward, and platform-operator
   commands and queries for model discovery, key lifecycle, route diagnostics,
-  API contract discovery, and usage showback, while retaining their frontend
-  workspaces for the later frontend phase;
+  API contract discovery, and usage showback;
 - preserve valuable multi-protocol and subscription-backed Provider outcomes as
   separately gated optional profiles after the production core is complete;
   and
@@ -960,12 +956,9 @@ overflow, timeout, and restart gates.
 I0.2e first turns the verified inference contracts into grant-derived backend
 self-service and governance interfaces. It takes product inspiration from
 TokenHub without adopting its API, UI, storage topology, or billing model. The
-active slice lands commands, queries, REST/OpenAPI, the maintained client, CLI,
-Management MCP, and conformance evidence. Console workspaces and the
-browser-local playground are retained for the later frontend phase. When that
-phase is authorized, workspace selection may change navigation and default
-queries only; C0 effective grants remain the sole authority for every result
-and action.
+slice lands commands, queries, REST/OpenAPI, the maintained client, CLI,
+Management MCP, and conformance evidence. C0 effective grants remain the sole
+authority for every result and action.
 
 The TokenHub reference inventory is preserved by outcome rather than by
 surface compatibility:
@@ -978,7 +971,7 @@ surface compatibility:
 | Request logs, user/project/model/provider attribution, and cost-center showback | Prompt-free `I0.2c` usage facts, immutable project attribution references, and authorized `I0.2e` views |
 | OpenAI-compatible core APIs and broad Provider support | Closed `I0.2b` protocol matrix, generic credential-isolated `I0.2d` Provider, and real-conformance Provider breadth in `I0.5` |
 | Responses, Anthropic Messages, media APIs, custom upstreams, and approved subscription-backed channels | Optional `I0.6` profiles; each remains unavailable until separately certified |
-| Release update, rollback, multi-instance operation, language parity, and API documentation | Existing `E0`/`H0` lifecycle plus `C0` Web/documentation contracts; no inference-specific updater or UI authority |
+| Release update, rollback, multi-instance operation, language parity, and API documentation | Existing `E0`/`H0` lifecycle plus `C0` interface/documentation contracts; no inference-specific updater or UI authority |
 
 Commercial prices, balances, invoices, settlement, tax, and entitlement remain
 an external service/profile, but Cloud retains immutable attribution and usage
@@ -986,7 +979,7 @@ exports so that integration does not require a second usage ledger.
 
 | Persona | Workspace outcomes |
 | --- | --- |
-| Consumer | Discover only allowed models, create/rotate/revoke authorized environment keys, copy versioned SDK/API examples, exercise a browser-local API playground, and inspect authorized personal usage |
+| Consumer | Discover only allowed models, create/rotate/revoke authorized environment keys, use versioned SDK/API examples, exercise bounded CLI/API requests, and inspect authorized personal usage |
 | Project steward | Manage project members and grants through C0, govern project keys and typed limits, and inspect usage breakdowns with the effective project attribution reference |
 | Platform operator | Certify ExternalModelProvider channels, curate the model catalog, inspect route health and applied revisions, test fallback policy, and follow the complete audit/correlation chain |
 
@@ -1138,21 +1131,18 @@ evidence, and fenced release protocol.
 - Depend on C0.3 and I0.2b/I0.2c/I0.2d. Land authorized I0 search registration,
   model and key self-service, Provider/route diagnostics, API-contract
   discovery, and usage showback through commands, queries, REST/OpenAPI, the
-  maintained client, CLI, and Management MCP. Retain console workspaces, the
-  visual API explorer, and in-memory playground for the later frontend phase.
+  maintained client, CLI, and Management MCP.
 - Prove consumer, project-steward, and platform-operator backend fixtures
   cannot learn or mutate an ungranted resource through search, counts,
-  diagnostics, usage rollups, timing, or a guessed identifier. Navigation,
-  recent-item, and forged-deep-link fixtures remain a later frontend gate.
+  diagnostics, usage rollups, timing, or a guessed identifier.
 - Create, reveal once, rotate, and revoke a real inference key; prove reload and
   receipt expiry cannot recover it, the exact Gateway revocation acknowledgement
-  closes access, and plaintext scans of durable browser/server state, logs,
+  closes access, and plaintext scans of durable client/server state, logs,
   events, audit, and exports remain clean.
 - Exercise the public protocol and maintained SDK through Gateway against both
   the local backend and certified generic external Provider. Force target and
   fallback failures and reconcile diagnostics and usage with the durable
-  ledger. The browser-local playground and browser-reload draft test remain a
-  retained later frontend gate; Cloud still stores no prompt or response.
+  ledger. Cloud still stores no prompt or response.
 - Change a project attribution profile and prove future usage selects the new
   immutable reference while historical request facts and authorized exports
   retain the prior reference exactly.
@@ -1307,7 +1297,6 @@ The recommended merge order is:
 10. I0.2d external-provider egress and Secret-version replacement;
 11. C0.3 principal/grant, authorized-search, and attribution backend
     foundations, then I0.2e API/client/CLI/MCP self-service and governance;
-    retain console and playground projections for the later frontend phase;
 12. H0.3 replica sets, multi-node placement/drain and dedicated Gateway;
 13. I0.3 independent replica failover and rolling update;
 14. H0.3 placement-group/private-network gate, then I0.4 distributed Power;

@@ -41,12 +41,6 @@ export function createFacilityModel(
       addBox(kit.root, [0.58, 0.32, 0.42], [-0.7, 0.3, 0.18], kit.dark);
       addBox(kit.root, [0.58, 0.32, 0.42], [0.7, 0.3, 0.18], kit.dark);
       break;
-    case 'web-console':
-      addBox(kit.root, [0.72, 1.65, 0.7], [0, 0.83, 0], kit.primary);
-      addBox(kit.root, [0.08, 1.06, 0.84], [-0.52, 0.94, 0.06], kit.glass, [0, 0, -0.12]);
-      addBox(kit.root, [0.08, 1.06, 0.84], [0.52, 0.94, 0.06], kit.glass, [0, 0, 0.12]);
-      addBeacon(kit, [0, 1.78, 0]);
-      break;
     case 'box-runtime':
       addBox(kit.root, [1.62, 1.24, 1.24], [0, 0.62, 0], kit.dark);
       addBox(kit.root, [1.3, 0.92, 0.08], [0, 0.64, 0.66], kit.glass);

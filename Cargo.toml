@@ -3,7 +3,6 @@ members = [
     "crates/contracts",
     "crates/control-plane",
     "crates/node-agent",
-    "crates/web-server",
 ]
 resolver = "2"
 

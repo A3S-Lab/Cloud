@@ -157,7 +157,7 @@ const preservationContracts = [
     path: 'docs/architecture.md',
     required: [
       '### 2.1 Reference capability preservation register',
-      'Organizations, projects, environments, identity, grants, API, CLI, Web, and Management MCP',
+      'Organizations, projects, environments, identity, grants, REST/OpenAPI, TypeScript client, CLI, and Management MCP',
       'External sources, webhooks, reproducible builds, provenance, previews, monorepos, and imports',
       'Generic finite Tasks and ordinary application Services',
       'Runtime/Box provider lifecycle, isolation, mounts, outputs, checkpoints, and builds',

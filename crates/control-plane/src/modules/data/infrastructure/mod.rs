@@ -1,1 +1,5 @@
+mod object_namespace_access;
+mod object_namespace_recovery_flow;
 mod shared_object_namespace;
+
+pub use object_namespace_recovery_flow::ObjectNamespaceRecoveryFlowRuntime;

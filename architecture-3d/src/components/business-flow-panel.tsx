@@ -84,7 +84,7 @@ export function BusinessFlowPanel({
               onClick={() => onChangeEntry(entry.id)}
               aria-pressed={entry.id === entryId}
             >
-              {entry.id === 'web' ? (
+              {entry.id === 'client' ? (
                 <Monitor size={12} aria-hidden='true' />
               ) : (
                 <Terminal size={12} aria-hidden='true' />

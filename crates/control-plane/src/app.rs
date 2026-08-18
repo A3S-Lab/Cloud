@@ -42,6 +42,9 @@ use crate::modules::connectors::{
     PostgresConnectorExecutionAttemptRepository, PostgresConnectorProfileRepository,
     PublicInternetConnectorEgressAuthorizer, ReviseConnectorProfileHandler,
 };
+use crate::modules::data::{
+    ObjectNamespaceCredentialMaterializer, ObjectNamespaceRecoveryFlowRuntime,
+};
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
     DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate, DurableCellsModule,
@@ -292,6 +295,8 @@ pub enum ControlPlaneStartupError {
     Execution(String),
     #[error("could not initialize Agent execution: {0}")]
     AgentExecution(String),
+    #[error("could not initialize object namespace recovery: {0}")]
+    ObjectNamespaceRecovery(String),
     #[error("could not initialize WorkflowRun execution: {0}")]
     WorkflowRun(String),
     #[error("could not initialize HumanTask workers: {0}")]
@@ -878,12 +883,19 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             .agent_execution_flow_config()
             .map_err(ControlPlaneStartupError::AgentExecution)?,
     );
+    let object_namespace_recovery_runtime =
+        ObjectNamespaceRecoveryFlowRuntime::new(ObjectNamespaceCredentialMaterializer::new(
+            Arc::clone(&secrets),
+            Arc::clone(&key_encryption),
+        ))
+        .map_err(ControlPlaneStartupError::ObjectNamespaceRecovery)?;
     let flow_runtime = FlowRuntimeRouter::new(
         Arc::new(deployment_runtime),
         Arc::new(build_runtime),
         Arc::new(execution_runtime),
         Arc::new(agent_execution_runtime),
         Arc::new(WorkflowRunFlowRuntime),
+        Arc::new(object_namespace_recovery_runtime),
     );
     let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
     let operation_lease = Duration::from_millis(config.operations.lease_ms);

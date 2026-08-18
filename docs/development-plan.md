@@ -104,7 +104,7 @@ not lost when the implementation is made A3S-native:
 | --- | --- | --- |
 | TokenHub-style private model gateway | Typed model protocols, Provider catalog and routing, project/environment keys, external OIDC identity federation, role-focused workspaces, diagnostics, API exploration, prompt-free usage and cost attribution, plus optional protocol/subscription channels | `C0.3`, `I0.2b` through `I0.2e`, `I0.5`, optional `I0.6`; commercial billing stays external and no TokenHub API/UI/storage compatibility is required |
 | Google AX-style distributed Harness runtime | Isolated heterogeneous providers, one semantic event writer and reconnect stream, immutable invocation profiles, approvals, resume, checkpoints, forks, trajectories, and telemetry correlation | `A1.1` through `A1.6`, `BX0`, and `H0`; no AX controller, event log, scheduler, config authority, or wire compatibility enters Cloud |
-| Dify-style public commercial core | Six current application projections including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Bases/Pipelines, six plugin outcomes, Web/API/embed/MCP delivery, monitoring/feedback, and enterprise governance | Composite `APP0.6` over `W0`, `K0`, `AUT0`, A0/A1/AR0, and named provider/platform gates; no copied API, storage topology, package lifecycle, configuration authority, mode runtime, Agent/sandbox lifecycle, pipeline engine, or scheduler enters Cloud |
+| Dify-style public commercial core | Six current application projections including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Bases/Pipelines, six plugin outcomes, API/embed/MCP delivery, monitoring/feedback, and enterprise governance | Composite `APP0.6` over `W0`, `K0`, `AUT0`, A0/A1/AR0, and named provider/platform gates; no copied API, storage topology, package lifecycle, configuration authority, mode runtime, Agent/sandbox lifecycle, pipeline engine, or scheduler enters Cloud |
 | Deno celld-style Durable Objects | Named SQLite state, alarms, hibernatable WebSockets, inactive residency, object-store CAS ownership, replication-before-acknowledgement, and node handoff | `CELL0.1` through `CELL0.7`; Cloud owns application intent only, the provider owns per-Cell state inside S0, and no celld control topology, raw configuration authority, public operator API, Runtime class, or blanket compatibility claim enters Cloud |
 | Cross-layer security operations | Authorized correlation of Gateway policy, Agent semantics, Runtime/Box and host evidence, tenant-scoped detections, investigation timelines, signed export, and explicit enforcement through the owning context | `C0.3` plus `E0`/`H0.5` evidence foundations; no fourth control plane, security node channel, telemetry-driven mutation, or second audit store |
 
@@ -113,14 +113,12 @@ is the detailed authority. A
 delivery slice may defer one of these outcomes only by retaining its named gate
 and unavailable status; deleting its marketing label is not retirement.
 
-## 1.1 Active backend-first execution policy
+## 1.1 Interface-only execution policy
 
-Effective 2026-08-06, feature delivery is backend and interface first until the
-operator explicitly lifts this policy. Existing frontend behavior remains a
-supported projection, but it is frozen: planned work does not add or redesign
-pages, components, interactions, product-site sections, or architecture
-visualizations under `web/`, `website/`, or `architecture-3d/`. An unavoidable
-security or build-break repair in those paths requires explicit operator scope.
+Effective 2026-08-18, A3S Cloud ships no product Web UI. The product `web/`,
+static `crates/web-server/`, `deploy/web/`, and `tools/web/` paths and their
+build/runtime/CI wiring are removed. `website/` and `architecture-3d/` remain
+documentation projections only and are not product management surfaces.
 
 An active delivery slice proceeds in this order:
 
@@ -134,25 +132,18 @@ An active delivery slice proceeds in this order:
 5. expose the same application boundary through the maintained client, CLI,
    and applicable Management MCP tools;
 6. pass real-provider, failure, process-death, recovery, cleanup, security, and
-   cross-repository conformance gates; and
-7. retain the future frontend projection as an explicit backlog item without
-   implementing it during this phase.
+   cross-repository conformance gates.
 
-No backend endpoint is added only to fit a screen, and no frontend state may
-become business, authorization, routing, execution, or recovery truth. A
-backend/interface slice may be verified without a new Web projection. When a
-named product gate promises a Web or console outcome, the backend slice can
-land first, but the full product gate remains in progress until that retained
-projection is delivered after this policy is lifted. Existing frontend tests
-remain regression evidence and are not rewritten as part of backend feature
-work.
+No backend endpoint is added only to fit a screen. Product UI state, UI-only
+business behavior, and UI-specific lifecycles are outside Cloud scope. A gate
+is judged only by its supported REST/OpenAPI, maintained client, CLI,
+Management MCP, provider, recovery, and evidence contracts.
 
 ## 2. Engineering rules
 
-- During the active backend-first phase, implement vertical behavior through
-  domain, application, infrastructure, transport, maintained non-Web
-  interfaces, documentation, and tests. Defer new frontend projections under
-  section 1.1.
+- Implement vertical behavior through domain, application, infrastructure,
+  transport, maintained interfaces, documentation, and tests. Product UI is
+  outside the section 1.1 boundary.
 - Write aggregate and protocol tests before the implementation they constrain.
 - Keep the repository root as orchestration only. The Rust workspace lives at
   `apps/cloud/Cargo.toml`.
@@ -170,8 +161,7 @@ work.
 - Every long-running command is idempotent, cancellable, resumable after
   process death, and visible as one Operation timeline.
 - REST, the maintained client, CLI, and MCP surfaces call the same application
-  commands and queries. Existing Web surfaces remain adapters over that same
-  boundary; no interface owns business rules or bypasses tenant guards.
+  commands and queries; no interface owns business rules or bypasses tenant guards.
 - Cloud plugin APIs manage one desired `PluginAssignment`; they never copy or
   proxy A3S Use's installer, management MCP, TUF/catalog verifier, plan
   generator, Workspace Grants, Runtime Bindings, capability registry, surface
@@ -320,8 +310,8 @@ the protected `W0.3` run-start and descriptor foundations pass. Knowledge
 delivery consumes the selected `W0.4`, Inference, Use, Connectors, and storage
 ports. Automations owns only new-invocation triggers and reuses Boot's durable
 task rail; Flow timers remain scoped to existing runs. Full `APP0.6` follows
-`W0.5`, `K0.6`, `AUT0.6`, and the named production gates and remains open until
-the retained visual product is delivered after the frontend freeze.
+`W0.5`, `K0.6`, `AUT0.6`, and the named production gates. Product UI delivery
+is outside Cloud scope and does not block `APP0.6`.
 
 `U0` is a control-plane integration lane, not another plugin platform. `U0.1`
 pins and adapts the frozen typed remote-host boundary from the exact A3S Use
@@ -359,17 +349,17 @@ Status as of 2026-08-15:
 | F0 | Verified | Isolated PostgreSQL migrations, tenancy, idempotency, local/NATS outbox, A3S Flow `0.12.0` history, A3S Boot `0.2.0` PostgreSQL task management, A3S ORM `0.3.0`, queue-failure readiness, and the nine-boundary persistent Build Flow `SIGKILL` gates pass. The exact root compatibility lock publishes this verified composition |
 | N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
-| E0 | Historical | Route, Gateway, Secret, log, update, rollback, Web, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
-| G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/web download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. The manual external-provider workflow now binds a private GitHub revision and production input to that exact Box output, an operator HTTPS Registry graph, a locally verified Vault Transit signature, a restart-restored PostgreSQL BuildRun, and one `cloud.deployment@3` Workload handoff. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Retained successful executions of both operator gates still block G0 verification |
-| C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by Web and CLI; the versioned OpenAPI envelope, bounded transport, safe token handling, tenant/operational reads, replay-safe mutations, evidence, logs, diagnostics, Search, Workload/Source/Secret/Identity/Fleet/Edge parity, and compatibility checks pass focused tests. The verified pre-extension Management MCP gate proved exact 23-tool administrator and 16-tool read-only catalogs. The current 111-tool administrator and 64-tool read-only catalogs retain those tools and add fifteen Identity, two Project-attribution, one bounded tenant-administrator audit query, three personal-notification tools, four personal outbound-subscription tools, seven verified `W0.2` Ontology, ten `W0.3` Workflow definition/goal/plan, one read-only built-in Workflow node-catalog query, seven native Form lifecycle, eight WorkflowRun lifecycle including Flow-derived variable inspection, five protected HumanTask read/assignment/submission tools, three ExecutionTemplate tools, six Connector profile/revision tools, ten Durable Cell application/revision/deployment/route tools, and six verified `U0.2` plugin Registry/catalog read tools; focused catalog, permission, strict-argument, lifecycle, deterministic-plan, Workflow node-catalog, WorkflowRun/HumanTask/ExecutionTemplate/Connector/Durable Cell, plugin tenant, role, invitation, audit, attribution, notification, outbound-subscription, and replay conformance pass. `C0.2m` uses the `2026-07-28` sessionless protocol with per-request metadata and `server/discover`. The `C0.3` slice implements stable human/service Principals, one explicit Principal-plus-Membership creation path, Membership roles, exact-Principal MembershipInvitations, Principal-bound credentials, exact OIDC issuer/subject links and replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired login/link/callback routes and maintained-client entry points, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable versioned Project attribution, a personal in-app notification inbox, immutable outbound-subscription A3S ACLs with REST/client/CLI/MCP management, transactional delivery authorization facts, signed-webhook/Slack-compatible request builders, the first NATS A3S Event-to-fenced-Connector consumer composition, monotonic Delivered/Rejected/Indeterminate/Exhausted terminal receipts, C6 `Retry-After` pacing, and fixed eight-attempt termination, plus A3S ORM/Outbox/audit writes and the redacted keyset audit and outbound-subscription projections through REST/OpenAPI `1.37.0`, client, CLI, and Management MCP. REST/OpenAPI `1.38.0`, the maintained client, CLI, and ten Management MCP tools expose Durable Cells C5 over its existing C2-C4 authority; Web remains deferred. Focused attribution, notification, and Durable Cell surface tests pass. The retained [PostgreSQL 17 subscription/receipt job](https://github.com/A3S-Lab/Cloud/actions/runs/31870067201/job/94977216459) proves migration `114`, exact Connector binding, atomic delivery-fact emission, idempotent terminal-receipt settlement, and the earlier attribution/inbox persistence boundaries; the retained [PostgreSQL 17 bounded-attempt job](https://github.com/A3S-Lab/Cloud/actions/runs/31872285521/job/94982690995) proves migration `115`, Exhausted receipt persistence, and exact C6 evidence binding. The notification slice reuses the transactional Outbox relay, A3S Event, shared Resource Grant evaluator, idempotency, audit, and A3S ORM migrator without another queue, provider authority, retry mechanism, or configuration format. User-configured suppression/delivery budgets, SMTP, alert policy, retained production evidence, security investigation, usage-fact profile snapshots, audit retention/export, and the intentionally deferred role-focused frontend projections remain planned; `C0.3` is in progress and `C0.4` remains planned. |
-| A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI/Web management projections. `A0.4` has immutable exact Agent release-to-Workload binding, server-side OCI injection, lifecycle reuse, migration 066 persistence, and REST/client/CLI/Web projections. `A0.5` now publishes exact hosted Git archives as immutable Skill bundles and binds them to Agent Workload revisions through migration 067, read-only Runtime Artifact mounts, rollback-safe revision history, and REST/client/CLI/Web surfaces. Retained external-provider and real PostgreSQL/Box evidence still blocks `A0.3` through `A0.5` verification. |
+| E0 | Historical | Route, Gateway, Secret, log, update, rollback, interface, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
+| G0 | In progress | Exact source resolution, the sole `cloud.build@5` Box-native workflow, command-bound Artifact transport, complete OCI admission, authenticated digest-only publication, remote graph verification, replay/cancellation, deterministic SPDX/SLSA generation, locally verified Ed25519 DSSE signing, durable evidence restoration, evidence API/client/CLI download, explicit deployment through `cloud.deployment@3`, periodic provider revalidation, and BuildRun status/cancellation/retry controls are implemented. The Box provider workflow defines a revision-bound real Linux build consumer for post-publication Agent-process death, exact Box/Artifact replay, cleared-cache hydration from the immediate parent, idempotent removal, and live-state baseline restoration, plus a nine-boundary Fleet/Flow completion-event-loss matrix for the exact start/cancel/inspect/remove command chain in both logical and PostgreSQL-backed nine-`SIGKILL` forms. The manual external-provider workflow now binds a private GitHub revision and production input to that exact Box output, an operator HTTPS Registry graph, a locally verified Vault Transit signature, a restart-restored PostgreSQL BuildRun, and one `cloud.deployment@3` Workload handoff. BuildRun logs fail explicitly until Box supplies an authoritative durable log contract. Retained successful executions of both operator gates still block G0 verification |
+| C0 | In progress | `C0.1`, `C0.2`, and `C0.2m` are verified. One typed TypeScript client is shared by the CLI and external integrators; the versioned OpenAPI envelope, bounded transport, safe token handling, tenant/operational reads, replay-safe mutations, evidence, logs, diagnostics, Search, Workload/Source/Secret/Identity/Fleet/Edge parity, and compatibility checks pass focused tests. The verified pre-extension Management MCP gate proved exact 23-tool administrator and 16-tool read-only catalogs. The current 111-tool administrator and 64-tool read-only catalogs retain those tools and add fifteen Identity, two Project-attribution, one bounded tenant-administrator audit query, three personal-notification tools, four personal outbound-subscription tools, seven verified `W0.2` Ontology, ten `W0.3` Workflow definition/goal/plan, one read-only built-in Workflow node-catalog query, seven native Form lifecycle, eight WorkflowRun lifecycle including Flow-derived variable inspection, five protected HumanTask read/assignment/submission tools, three ExecutionTemplate tools, six Connector profile/revision tools, ten Durable Cell application/revision/deployment/route tools, and six verified `U0.2` plugin Registry/catalog read tools; focused catalog, permission, strict-argument, lifecycle, deterministic-plan, Workflow node-catalog, WorkflowRun/HumanTask/ExecutionTemplate/Connector/Durable Cell, plugin tenant, role, invitation, audit, attribution, notification, outbound-subscription, and replay conformance pass. `C0.2m` uses the `2026-07-28` sessionless protocol with per-request metadata and `server/discover`. The `C0.3` slice implements stable human/service Principals, one explicit Principal-plus-Membership creation path, Membership roles, exact-Principal MembershipInvitations, Principal-bound credentials, exact OIDC issuer/subject links and replay-safe one-time flows, a bounded OIDC discovery/JWKS/ID-token adapter, production-wired login/link/callback routes and maintained-client entry points, immediate role/revocation enforcement, last-owner protection, closed project/environment/node Resource Grants, immutable versioned Project attribution, a personal in-app notification inbox, immutable outbound-subscription A3S ACLs with REST/client/CLI/MCP management, transactional delivery authorization facts, signed-webhook/Slack-compatible request builders, the first NATS A3S Event-to-fenced-Connector consumer composition, monotonic Delivered/Rejected/Indeterminate/Exhausted terminal receipts, C6 `Retry-After` pacing, and fixed eight-attempt termination, plus A3S ORM/Outbox/audit writes and the redacted keyset audit and outbound-subscription projections through REST/OpenAPI `1.37.0`, client, CLI, and Management MCP. REST/OpenAPI `1.38.0`, the maintained client, CLI, and ten Management MCP tools expose Durable Cells C5 over its existing C2-C4 authority. Focused attribution, notification, and Durable Cell surface tests pass. The retained [PostgreSQL 17 subscription/receipt job](https://github.com/A3S-Lab/Cloud/actions/runs/31870067201/job/94977216459) proves migration `114`, exact Connector binding, atomic delivery-fact emission, idempotent terminal-receipt settlement, and the earlier attribution/inbox persistence boundaries; the retained [PostgreSQL 17 bounded-attempt job](https://github.com/A3S-Lab/Cloud/actions/runs/31872285521/job/94982690995) proves migration `115`, Exhausted receipt persistence, and exact C6 evidence binding. The notification slice reuses the transactional Outbox relay, A3S Event, shared Resource Grant evaluator, idempotency, audit, and A3S ORM migrator without another queue, provider authority, retry mechanism, or configuration format. User-configured suppression/delivery budgets, SMTP, alert policy, retained production evidence, security investigation, usage-fact profile snapshots, audit retention/export remain planned; `C0.3` is in progress and `C0.4` remains planned. |
+| A0 | In progress | `A0.1` and `A0.2` are verified. `A0.3` has the typed external-or-hosted build path, deterministic hosted input, migrations 063-064 through typed A3S ORM, concurrent draft BuildRun reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized API/client/CLI management projections. `A0.4` has immutable exact Agent release-to-Workload binding, server-side OCI injection, lifecycle reuse, migration 066 persistence, and REST/client/CLI projections. `A0.5` now publishes exact hosted Git archives as immutable Skill bundles and binds them to Agent Workload revisions through migration 067, read-only Runtime Artifact mounts, rollback-safe revision history, and REST/client/CLI surfaces. Retained external-provider and real PostgreSQL/Box evidence still blocks `A0.3` through `A0.5` verification. |
 | A1 | In progress | `A1.0` is verified and `A1.1` implements the durable conversation/execution foundation. The local `A1.2` native Code provider pins the Code-owned protocol, persists exact Workload/Runtime/run delivery identity through migration 069, reconciles the reserved Operation through the existing Flow runtime, forwards commands through Fleet and the node journal, settles Code pages through the shared outbound-batch primitive, derives only bounded semantic output/terminal facts, and implements the root `a3s code harness` HTTP entrypoint. Dependency publication, cancel/recover orchestration, and clean Linux PostgreSQL/Runtime recovery evidence remain open; provider-neutral `A1.3` and `A1.4` through `A1.6` remain planned. |
 | W0 | In progress; unavailable | `W0.1` implements the closed ACL-native Workflow/Ontology foundation and `W0.2` verifies immutable Ontology revisions, deterministic migration policy, and authorized Search. `W0.3` includes immutable definitions and Goals, native Forms, Goal/Plan-bound WorkflowRuns, HumanTasks, reachable-Output aggregation, finite Execution, Flow-derived authorized variable inspection, deterministic project-authorized 23-node discovery, and the immutable composite-region policy/binding foundation. Migration `103` persists three mandatory semantic children; migration `107` permits optional exact variable-default material; migration `108` permits optional `cloud.workflow.composite-regions.v1` material without adding a table and requires new composite publication to exactly cover Iteration/Loop descriptors and child WorkflowRevision bindings. Compiler schema 2 emits Plan v2 with exact descriptor, semantic, variable, and optional composite-region digest pins, prevents authority downgrade, and preserves Plan v1 byte shape. WorkflowRun input/runtime/Flow v2 freezes exact variable/default/composite material and reconstructs the supported variable subset from immutable input plus existing Flow history; migrations `105`, `107`, and `108` only expand that immutable input's bound. REST/OpenAPI `1.35.0`, client, CLI, MCP, focused domain/REST/replay/catalog/default/inspection/composite tests, and PostgreSQL migration/replay/rollback/immutability plus reconnect gates cover the foundation. `AUT0.5-C8` corrects exact Connector capability ownership and supplies a component-only Connectors-owned attempt port; `C9` freezes its bounded retry budget in the existing immutable policy payload, without scheduling the node. Variable inspection, composite binding, the Connector attempt port, and the retry contract add no Workflow table, cache, event log, worker, scheduler, queue, or provider mechanism; the catalog has no persistence or write path and cannot admit descriptors or claim public parity. Composite frames/exports and Flow-backed Iteration/Loop/Connector dispatch, Applications-owned variables, Answer/error semantics, remaining application ports, compensation, expanded provider conformance, `W0.4`-`W0.5`, and public availability remain planned. |
 | APP0 | Planned; unavailable | Applications, immutable releases, six authoring/delivery projections including classic/New Agent, sessions, publishing, monitoring, and enterprise completion are specified in `ai-application-platform-plan.md`. Full public parity is a composite `APP0.6` claim and no application-platform availability exists yet. |
 | K0 | Planned; unavailable | Files, Knowledge Bases/documents/chunks, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval, external Knowledge, and Flow-backed Knowledge Pipelines are specified in `ai-application-platform-plan.md`; no Knowledge product availability exists yet. |
 | AUT0 | Planned; unavailable | New-invocation schedules/webhooks/plugin events and reusable outbound connection profiles are specified in `ai-application-platform-plan.md`. Component-only `AUT0.5-C1` supplies the exact-revision execution port and bounded HTTP executor; verified `C2` adds canonical HTTP A3S ACL admission plus immutable environment-scoped profile/revision persistence and exact Secret-version bindings; verified `C3` adds Resource Grant-aware application contracts and Secrets-owned just-in-time materialization; verified `C4` adds public-Internet DNS/SSRF evaluation and exact address pinning; verified `C5` adds immutable exact-attempt terminal evidence through migration `112` and authorized bounded reads; verified `C6` adds durable pre-dispatch fencing, conservative indeterminate recovery, authorized one-shot composition, and atomic attempt/evidence settlement through migration `113`; implemented `C7` exposes that same profile/revision CQRS through REST/OpenAPI `1.36.0`, the maintained client, CLI, and six Management MCP tools without resolving Secrets or adding another repository; component-only `C8` binds exact WorkflowRun/plan/step-attempt and Connector profile/revision/digest authority to the same C6 service, stable attempt identity, body-free evidence, and typed deferred/indeterminate observations without another repository or retry mechanism; component-only `C9` freezes its exact bounded provider-attempt and fallback-delay semantics as Workflow policy v2 through the existing immutable payload channel without a table, schema fork, or second scheduler; component-only `C0.3-N2b` supplies the first exact-subject Notification NATS-to-C6 composition, while `N2c`-`N2e` keep subscription, delivery authorization, logical receipt, `Retry-After` pacing, and fixed attempt-budget authority in Notifications by consuming the same C6 evidence. Workflow Flow scheduling/interpretation and immutable response-object composition, remaining provider/consumer wiring, revocation/recovery operations, retained end-to-end integration evidence, and all Automations/Connectors product availability remain open. |
 | EV0 | Planned | Evidence admission, reproducible evaluation, candidate/Agentic RL jobs, promotion safety, and rollback are specified in `workflow-evolution-plan.md`; no training or production self-evolution availability exists yet. |
-| CELL0 | In progress; unavailable | `CELL0.1-C1/C2/C3` implement the canonical application foundation. Component-only `CELL0.2-C1/C2` freeze the sole-client CAS, exact Secret, storage, recovery, retention, restore, and deletion contracts without another lifecycle. `CELL0.2-C3` checks in the shared HTTPS S3-compatible CAS/cleanup gate, credential-safe evidence script, and manual workflow while removing the former duplicate raw test client. `CELL0.3-C1/C2` bind the exact digest-pinned provider through the existing Workload/Runtime Service projector and Fleet apply receipt, add a bounded Cell-name-free operator observation over the same Fleet journal, and reuse Runtime stop/remove evidence for drain/cleanup. `CELL0.3-C3` pins celld v0.2.1 supply-chain identity and adds a runtime-only real Box gate to the existing provider workflow with an explicit negative storage/product scope; the [retained gate](https://github.com/A3S-Lab/Cloud/actions/runs/31946279906/job/95162662254) passes. `CELL0.4-C1/C2` persist application heads and immutable canonical-ACL revisions through migration `116` and add authorization-before-replay mutation/query CQRS over existing owners. Component-only `C3` adds migration `117` for immutable projection-correlation intent and an internal crash-replay-safe composition into the existing managed Workload revision/Deployment, Operation request, Outbox, and Fleet flow after exact S0/Secrets admission; Workloads alone advances managed-owner and placement authority. Component-only `C4` delegates the exact C3 Workload revision and ACL-derived public port to the existing Edge/Gateway healthy-target publication path, while the existing Workloads route updater remains the only later-revision cutover path. `C5` exposes those same commands and queries through bounded REST/OpenAPI `1.38.0`, the maintained TypeScript client, CLI, and ten Management MCP tools with canonical A3S ACL inputs, existing permissions, and no new state or configuration parser. Component-only `CELL0.5-C1/C2` bind the exact S0 provider profile and add migration `118` for one immutable typed output on the existing successful BuildRun, signed in existing provenance and admitted only on exact application media/digest/size. Component-only `CELL0.5-C3a/C3b` add migrations `119`-`120`, reuse the existing Execution exact-node Task authority, and add Workload Deployment Flow v4's generic post-placement pre-start gate. It deterministically composes or adopts the pinned `celld deploy` Task from the exact profile, bundle, Secret references, and node, blocks Service apply until success, cancels publication before Claim release, and leaves persisted v1-v3 semantics unchanged. Component-only `C4a` reuses the same adapter to require that the long-running ordinary Workloads Service consumes that exact S0 bucket/application namespace/endpoint/region with the pinned image/profile, startup-safe single-node listener/advertise arguments, exact Secret targets, and an environment that cannot weaken RPO=0; initial admission and publication recovery share the drift check. The [retained PostgreSQL 17 C6a/C6b recovery and lifecycle gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600) passes through fresh production repositories after a real projection child SIGKILL and after an application-only stopped commit, then proves the existing Workloads retirement transaction and same-replica restart exactly once. Retained real bundle publication, real S0 named-application behavior, and the remaining `CELL0.5-C4/C5` availability evidence remain open; Web stays deferred. |
+| CELL0 | In progress; unavailable | `CELL0.1-C1/C2/C3` implement the canonical application foundation. Component-only `CELL0.2-C1/C2` freeze the sole-client CAS, exact Secret, storage, recovery, retention, restore, and deletion contracts without another lifecycle. `CELL0.2-C3` checks in the shared HTTPS S3-compatible CAS/cleanup gate, credential-safe evidence script, and manual workflow while removing the former duplicate raw test client. Shared `S0.1-C4` adds exact bounded recovery/delete execution and three Operations/Flow workflows with runtime routing, durable retry/wait, JIT Secrets, and completion-loss replay; Workloads-owned fence production/enqueue and retained provider evidence remain. `CELL0.3-C1/C2` bind the exact digest-pinned provider through the existing Workload/Runtime Service projector and Fleet apply receipt, add a bounded Cell-name-free operator observation over the same Fleet journal, and reuse Runtime stop/remove evidence for drain/cleanup. `CELL0.3-C3` pins celld v0.2.1 supply-chain identity and adds a runtime-only real Box gate to the existing provider workflow with an explicit negative storage/product scope; the [retained gate](https://github.com/A3S-Lab/Cloud/actions/runs/31946279906/job/95162662254) passes. `CELL0.4-C1/C2` persist application heads and immutable canonical-ACL revisions through migration `116` and add authorization-before-replay mutation/query CQRS over existing owners. Component-only `C3` adds migration `117` for immutable projection-correlation intent and an internal crash-replay-safe composition into the existing managed Workload revision/Deployment, Operation request, Outbox, and Fleet flow after exact S0/Secrets admission; Workloads alone advances managed-owner and placement authority. Component-only `C4` delegates the exact C3 Workload revision and ACL-derived public port to the existing Edge/Gateway healthy-target publication path, while the existing Workloads route updater remains the only later-revision cutover path. `C5` exposes those same commands and queries through bounded REST/OpenAPI `1.38.0`, the maintained TypeScript client, CLI, and ten Management MCP tools with canonical A3S ACL inputs, existing permissions, and no new state or configuration parser. Component-only `CELL0.5-C1/C2` bind the exact S0 provider profile and add migration `118` for one immutable typed output on the existing successful BuildRun, signed in existing provenance and admitted only on exact application media/digest/size. Component-only `CELL0.5-C3a/C3b` add migrations `119`-`120`, reuse the existing Execution exact-node Task authority, and add Workload Deployment Flow v4's generic post-placement pre-start gate. It deterministically composes or adopts the pinned `celld deploy` Task from the exact profile, bundle, Secret references, and node, blocks Service apply until success, cancels publication before Claim release, and leaves persisted v1-v3 semantics unchanged. Component-only `C4a` reuses the same adapter to require that the long-running ordinary Workloads Service consumes that exact S0 bucket/application namespace/endpoint/region with the pinned image/profile, startup-safe single-node listener/advertise arguments, exact Secret targets, and an environment that cannot weaken RPO=0; initial admission and publication recovery share the drift check. The [retained PostgreSQL 17 C6a/C6b recovery and lifecycle gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600) passes through fresh production repositories after a real projection child SIGKILL and after an application-only stopped commit, then proves the existing Workloads retirement transaction and same-replica restart exactly once. Retained real bundle publication, real S0 named-application behavior, and the remaining `CELL0.5-C4/C5` availability evidence remain open. |
 | U0 | In progress; `U0.1` host compatibility and `U0.2` trusted Registry/catalog reads and Search verified | Verified `U0.1` pins the canonical A3S Use protocol-level-4 host contract and adds explicit capabilities, package-plan, enablement-plan, digest-only apply, and observation Fleet payloads plus one optional Node Agent adapter over the sole shared `PluginHostManager`. They reuse the existing command queue and journal. The root compatibility lock pins the same immutable Use revision and all ten consumed host schemas. Verified `U0.2` adds the `PluginRegistry` domain, migration 084 persistence, migration 085 integration with the sole authorized global Search view, one typed trust-root adapter over the shared immutable-object client, one published `a3s-use-extension` adapter for public-network refresh and online/cached catalog search/inspection, application enrollment plus tenant queries, REST `1.15.0`, the maintained client, CLI, and six read-only Management MCP tools. Cloud adds no TUF, catalog, query, cursor, cache, Search store/worker, object-storage, authorization, or cleanup mechanism. Stable CI verifies both the production public-HTTPS provider against the metadata-only fixture at the exact pinned Use revision and a strict `12/12` PostgreSQL 17 transaction, replay, tenancy, Search, fail-closed, and migration gate. Assignments and complete Manager mutation composition remain open; no assignment capability is claimed. |
 | MCP0 | In progress; unavailable | Closed cross-repository contracts, Runtime profile/generation fencing, Cloud immutable profiles plus mutable route policies, typed persistence, release-bound Runtime projection, hosted credential authority, scope-complete healthy local-target planning, ordinary-plus-MCP complete Gateway snapshot composition, credential-lifecycle route cleanup, bounded encrypted-receipt sweeping, complete version-vector CAS, and atomic publication/certificate/scope/Outbox staging pass focused and PostgreSQL fixture tests alongside Gateway request/auth/single-dispatch/JSON-SSE/snapshot-swap/drain foundations. Retained clean-host lifecycle execution, real Box/Linux hosting, Gateway forced-drain/readiness/telemetry, and joint conformance remain open |
 | H0.1 | Historical | Claim fencing, conflicting-capacity rejection, higher-generation release, Agent process death, and residue behavior passed against the retired provider; Box process/VM-loss re-certification is required |
@@ -406,7 +396,7 @@ authoritative model:
 | Logs, metrics, traces, and alerts | `E0`/`C0`/`H0` | Establish truthful single-node signals first, then notifications, SLOs, and measured scaling |
 | External Git and reproducible builds | `G0` | Explicit recipes first; automatic detection builds on the proven contract |
 | Stack detection, previews, monorepos, and Compose import | `P0` | Normalize into Workload, Route, and later Volume resources; no second orchestrator |
-| Web, worker, and scheduled Task profiles | `P0` + `AUT0` | P0 detects and compiles explicit product profiles into common Runtime Service/Task targets; Automations is the sole due-time and new-invocation schedule authority |
+| HTTP Service, worker, and scheduled Task profiles | `P0` + `AUT0` | P0 detects and compiles explicit product profiles into common Runtime Service/Task targets; Automations is the sole due-time and new-invocation schedule authority |
 | CLI, management MCP, collaboration, notifications, and audited exec | `C0` | Reuse public commands, queries, scopes, idempotency, and audit |
 | Agent, MCP, and Skill releases | `A0` | A3S-specific immutable catalog over the common source, build, and publication path |
 | A3S Use plugin management | `U0` | Cloud owns only registry enrollment and desired host/workspace assignments; the shared A3S Use Plugin Manager owns signed catalog, plan/apply, package generations, grants, bindings, capability publication, drain, and cleanup |
@@ -711,8 +701,8 @@ commit and query tenant-scoped desired state.
 - Integrate A3S Flow with an isolated ORM-backed PostgreSQL schema, execute its
   durable tasks through A3S Boot's isolated PostgreSQL queue, and add an
   idempotent runtime-build-pinned Operation starter plus projection rebuilder.
-- Add the first web shell: sign-in, organization/project/environment selection,
-  operation drawer, and reconnecting SSE client.
+- Retired on 2026-08-18: the former product Web shell and its frontend-only
+  projections were removed; the REST/SSE/client/CLI contracts remain.
 
 ### Current compatibility evidence
 
@@ -971,9 +961,8 @@ Complete the first user-visible release loop.
   watermarks, and snapshot pages expose provider gaps under every stream filter.
 - Implemented: the authorized live-log SSE endpoint polls at most 16 ordered
   records, caps encoded events at 8 MiB, resumes from `Last-Event-ID`, and
-  terminates on authoritative-query failure. The web console reconnects with
-  bounded backoff, retains 500 deduplicated records, filters stdout/stderr, and
-  preserves provider and compaction gaps.
+  terminates on authoritative-query failure while preserving provider and
+  compaction gaps for interface consumers.
 - Implemented: the real Linux/PostgreSQL/Docker gate reads sanitized provider
   stdout/stderr, persists immutable filesystem objects and PostgreSQL metadata,
   reconstructs the persistence boundary for exact batch replay, scans durable
@@ -1030,20 +1019,12 @@ Complete the first user-visible release loop.
   isolated Docker A→failed B→distinct C→cloned A scenario verifies real apply,
   health, selection, and deterministic retirement of C.
 - Implemented: workload queries expose complete immutable requested templates
-  with reference-only Secret bindings, operation queries expose explicit
-  rollback lineage, and the web console renders the deployment timeline plus
-  route/certificate state, commits complete-template updates after field-level
-  comparison, offers only eligible activated rollback sources, and dismisses
-  terminal operations locally without deleting durable history.
-- Implemented post-E0: the production SPA build is served from a private,
-  fail-fast Rust service with history fallback, bounded content types, cache
-  policy, path containment, security headers, and a product favicon. A3S
-  repository-pinned Gateway revision validates the same-origin profile that
-  routes exact `/api` paths to the control plane and everything else to the
-  SPA. CI exercises the real built assets, deep-link fallback, headers, API
-  isolation, process cleanup, and Gateway ACL validation; `just cloud`
-  supervises the local API and hot-reloading web process from the monorepo
-  root.
+  with reference-only Secret bindings, and operation queries expose explicit
+  rollback lineage plus route/certificate state through the supported
+  interfaces without deleting durable history.
+- Retired on 2026-08-18: the product SPA, private static server, Gateway SPA
+  profile, local frontend supervision, and their CI gates were removed under
+  the interface-only product boundary.
 
 ### Exit gate
 
@@ -1072,10 +1053,9 @@ Complete the first user-visible release loop.
   health, and Gateway paths. Process death after candidate activation but before
   retirement dispatch reconstructs to one cleanup command and no false terminal
   success.
-- The production management SPA opens through the Gateway origin, a direct
-  client route returns the same entrypoint, hashed assets retain immutable
-  cache headers, `/api` cannot fall through to HTML, and stopping the launcher
-  leaves no API or web child process.
+- REST/OpenAPI, the maintained client, CLI, and Management MCP reach the same
+  application boundary through Gateway; the API-only launcher leaves no child
+  process and no product SPA/static-server fallback exists.
 - The full scenario runs from a clean machine in CI and on a separately managed
   Linux host; screenshots or mocks are not release evidence.
 
@@ -1406,16 +1386,13 @@ repairs installation/account drift, and every private credential requires a
 fresh successful check. Verifying-user OAuth revocation remains signed-webhook
 authoritative because no tokenless GitHub query exists and user tokens are not
 persisted. Environment-scoped BuildRun lists, tenant-scoped detail and evidence
-queries, atomic idempotent cancellation and retry-as-new-attempt commands,
-public response redaction, and the corresponding web status/control/evidence
-surface are implemented. Retry accepts only failed or cancelled runs, creates
+queries, atomic idempotent cancellation and retry-as-new-attempt commands, and
+public response redaction are implemented. Retry accepts only failed or cancelled runs, creates
 one fresh BuildRun and Operation for each parent, preserves the exact source
 revision, and records attempt and parent lineage. BuildRun log page and SSE
 queries return explicit `503 Service Unavailable` until Box exposes an
 authoritative durable build-log contract; Cloud neither fabricates empty pages
-nor projects Runtime logs for Box operations. The web console provides
-BuildRun selection, cancellation and retry controls, signed-evidence
-summary/view/download, and an explicit log-unavailable state. The exact Box
+nor projects Runtime logs for Box operations. The exact Box
 provider workflow now contains the first real build certification slice:
 post-publication Agent-process death, byte-identical Box/Artifact replay,
 immediate-parent cache download and hydration after clearing the local native
@@ -1448,7 +1425,7 @@ the persistent process-death gate remain open.
   Box-journal replay, and authoritative removal with no residue.
 - Add the remaining build surfaces without weakening the implemented
   source/build/attempt/evidence lineage in BuildRun, Workload, and Operation
-  API/web projections.
+  API/client/CLI projections.
 
 ### Exit gate
 
@@ -1567,7 +1544,7 @@ The first vertical automation slice is implemented as two presentation-only
 packages:
 
 - `packages/cloud-client` owns the shared TypeScript REST transport and public
-  response types used by both Web and CLI. It validates the standard API
+  response types used by the maintained client and CLI. It validates the standard API
   envelope, retains bounded business error metadata, applies a finite request
   timeout, and converts malformed JSON, malformed envelopes, cancellation, and
   network failure into stable client errors without returning credentials or
@@ -1632,10 +1609,8 @@ packages:
   credential-free projections for the registered C0 resource kinds. PostgreSQL
   execution stays inside a typed A3S ORM repository, ranks exact, prefix, then
   contained matches, and returns at most 50 results. The shared client and CLI
-  validate the same bounds before transport. Web calls only that server query,
-  debounces input, supports keyboard selection, and verifies returned context
-  before updating navigation. It does not claim the grant-derived filtering
-  reserved for `C0.3`.
+  validate the same bounds before transport. Grant-derived filtering remains
+  owned by `C0.3`.
 - The REST contract boundary serves committed `openapi/v1.json` as raw public
   OpenAPI 3.0.3 at `/api/v1/openapi.json`. It assigns stable operation IDs,
   explicit authentication, mutation inputs, response statuses, and shared
@@ -1648,7 +1623,7 @@ packages:
   replacement and at least 180 days before sunset.
 - The real `C0.1` cross-surface gate boots the production control-plane binary
   with the shipped ACL and PostgreSQL 17, then executes raw REST, the exact
-  shared client import used by Web, and the compiled CLI. It proves Web-to-CLI
+  shared client import used by the maintained client, and the compiled CLI. It proves client-to-CLI
   and REST-to-CLI idempotency replay, stable conflict errors, authorized-search
   parity, cross-tenant denial, immediate token revocation, expected token
   digests through A3S ORM, and zero plaintext credentials in responses, logs,
@@ -1668,7 +1643,7 @@ node.
 
 - Implemented: version the public REST and OpenAPI contracts, define
   compatibility and deprecation policy, and maintain one typed client used by
-  the web console and Cloud CLI.
+  the Cloud CLI and external integrators.
 - Implemented for `C0.1`: a thin Cloud CLI for authentication, context selection,
   projects, environments, nodes, deployments, operations, routes, logs, and
   administrative diagnostics. Later gates add build, preview, release, and
@@ -1760,7 +1735,7 @@ node.
   reuse the shared evaluator across REST and Management MCP, with denied and
   missing IDs returning the same `404` contract. Mutation authorization occurs
   before idempotency replay, so grant revocation takes effect on the next
-  request. No frontend identity surface, second RBAC evaluator, identity store,
+  request. No presentation-specific identity state, second RBAC evaluator, identity store,
   or audit path is introduced. The Artifacts vertical slice applies the same
   contract to BuildRun detail, evidence, logs, cancellation, and retry by
   resolving the existing BuildRun before authorization. External-source runs
@@ -1892,8 +1867,8 @@ node.
   neither commercial billing authority nor another migration mechanism.
   `C0.3` remains in progress because user-configured suppression/delivery
   budgets, SMTP plus alert policy, retained production evidence, security
-  investigation, usage-fact profile snapshots, audit retention/export, and
-  role-focused frontend projections remain open.
+  investigation, usage-fact profile snapshots, and audit retention/export
+  remain open.
 - Add optional enterprise OIDC identity sources inside the existing Identity
   context. Pin issuer and audience policy, validate discovery/JWKS, signature,
   state, nonce, PKCE, time bounds, and exact issuer/subject identity, and store
@@ -1924,11 +1899,9 @@ node.
   authorization result. Denied and missing indirect IDs must have the same
   response shape and observable behavior.
 - Add one tenant-authorized global-search command/query and REST/client/CLI/MCP
-  interface over registered resource projections. Retain grant-derived console
-  modes for consumers, project stewards, and platform operators as a deferred
-  frontend projection under section 1.1. Those later modes may change
-  navigation and default queries only; they are not authorization roles, and
-  hidden navigation never substitutes for a command/query guard. Optional
+  interface over registered resource projections. Consumer, project-steward,
+  and platform-operator access remains a server-side authorization contract;
+  client-side filtering never substitutes for a command/query guard. Optional
   product profiles such as I0 register backend search projections only after
   their exit gates pass.
 - Implemented: a bounded Project-owned attribution profile contains a business
@@ -2112,8 +2085,7 @@ node.
   concurrency, idempotency, Outbox, audit, and response DTOs. Focused REST,
   OpenAPI, client, CLI, MCP catalog/permission, strict-argument, replay,
   isolation, and lifecycle tests pass. No surface resolves Secrets or exposes
-  endpoint, credential, provider-body, attempt, evidence, or retry state; Web
-  remains intentionally deferred.
+  endpoint, credential, provider-body, attempt, evidence, or retry state.
 - Implemented as component-only `AUT0.5-C8`: one Connectors-owned
   `IWorkflowConnectorPort` maps immutable WorkflowRun/Plan/step-attempt and
   exact profile/revision/digest authority to a stable UUIDv5 C6 attempt and
@@ -2144,7 +2116,7 @@ node.
   existing ACL, Connector revision, idempotency, Outbox, audit, and single
   Notifications repository authorities. Responses do not resolve endpoints,
   Secrets, credentials, provider bodies, attempts, receipts, or retry state;
-  no Web work, table, migration, parser, queue, scheduler, or counter is added.
+  no presentation-specific state, table, migration, parser, queue, scheduler, or counter is added.
 - Verified as `C0.3-N2g` by the retained
   [PostgreSQL 17 plus NATS H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/31881826576/job/95005391069):
   the existing notification fixture publishes through a real, checksum-pinned
@@ -2159,8 +2131,8 @@ node.
   PostgreSQL/end-to-end evidence
   remain open in `AUT0.5`; these components create no product availability
   claim.
-- Outbound delivery product availability remains gated by the intentionally
-  deferred Web projection and the broader Connector/Workflow provider work; the
+- Outbound delivery product availability remains gated by the broader
+  Connector/Workflow provider work; the
   retained NATS production-evidence gate is complete. The immutable
   Notification-owned subscription ACL is already exposed through REST, the
   maintained client, CLI, and Management MCP. Any future
@@ -2228,9 +2200,7 @@ node.
 - Backend persona fixtures prove consumer, project-steward, and
   platform-operator REST/client/CLI/MCP calls expose only authorized query
   results. Global search, counts, timing, and guessed identifiers do not reveal
-  a denied resource. Console, empty-state, navigation, and deep-link fixtures
-  remain a retained later frontend exit gate and do not block the active
-  backend/interface slice.
+  a denied resource. Product UI fixtures are outside the interface-only gate.
 - Updating a project attribution profile affects only future audit and usage
   facts. Historical records retain the exact prior attribution reference, and
   export fixtures contain no Secret, prompt, response, or commercial balance
@@ -2275,9 +2245,9 @@ forge.
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset/AssetRelease domain, immutable identities, tenant-scoped PostgreSQL schema and A3S ORM repository, optimistic concurrency, shared idempotency/Outbox, and real PostgreSQL behavior evidence |
 | `A0.2` | Verified | Tenant-authorized Git Smart HTTP, tenant-qualified durable bare repositories, immutable identity checks, atomic concurrent provisioning, shared Git runner, A3S ORM-backed leases/quotas/audit, same-lease recovery, immutable backup/restore, and pinned `.a3s/asset.acl` admission |
-| `A0.3` | In progress | Typed external-or-hosted build admission, deterministic pinned hosted-Git input, the shared Build Flow/OCI/evidence path, migrations 063-064 typed persistence, concurrent reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized REST/client/CLI/Web management projections are implemented; retained execution of the exact `G0` external-provider gate still blocks verification |
-| `A0.4` | In progress | Exact published Agent releases bind immutably to ordinary Workload revisions through the existing Deployment, Operation, Flow, Fleet, and Runtime path. Server-side artifact injection, replay, update, rollback, Secret restart, persistence, REST, client, CLI, and Web projections are implemented; real-provider lifecycle evidence still blocks verification. Hosted MCP deployment is owned by `MCP0` |
-| `A0.5` | In progress | Exact Git archive publication, immutable Skill release binding/rebinding/unbinding, migration 067 persistence, read-only Runtime Artifact mounts, rollback-safe revisions, and authorized REST/client/CLI/Web/catalog surfaces are implemented; focused and real PostgreSQL/Box lifecycle evidence still blocks verification |
+| `A0.3` | In progress | Typed external-or-hosted build admission, deterministic pinned hosted-Git input, the shared Build Flow/OCI/evidence path, migrations 063-064 typed persistence, concurrent reservation, restart repair, atomic successful BuildRun/AssetRelease/provenance/Outbox finalization, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized REST/client/CLI management projections are implemented; retained execution of the exact `G0` external-provider gate still blocks verification |
+| `A0.4` | In progress | Exact published Agent releases bind immutably to ordinary Workload revisions through the existing Deployment, Operation, Flow, Fleet, and Runtime path. Server-side artifact injection, replay, update, rollback, Secret restart, persistence, REST, client, CLI projections are implemented; real-provider lifecycle evidence still blocks verification. Hosted MCP deployment is owned by `MCP0` |
+| `A0.5` | In progress | Exact Git archive publication, immutable Skill release binding/rebinding/unbinding, migration 067 persistence, read-only Runtime Artifact mounts, rollback-safe revisions, and authorized REST/client/CLI/catalog surfaces are implemented; focused and real PostgreSQL/Box lifecycle evidence still blocks verification |
 
 Migration 051 stores organization-scoped Asset names and immutable release
 identities. The repository uses only typed A3S ORM queries and transactions;
@@ -2360,7 +2330,7 @@ selection accepts an optional exact semantic version or otherwise chooses the
 highest stable published version by semantic precedence; it excludes drafts,
 yanked releases, prereleases by default, and every release of an archived
 Asset. The same contract is exposed by OpenAPI `1.9.0`, the shared TypeScript
-client, the standalone CLI, and the Web catalog summary.
+client, the standalone CLI, and the catalog summary.
 
 Migration 066 stores one optional immutable Agent binding on each Workload
 revision: organization, Asset, AssetRelease, and successful BuildRun identities.
@@ -2374,7 +2344,7 @@ Runtime path. Ordinary Workload update cannot bypass the release lifecycle.
 Exact idempotency replay resolves the persisted revision before lifecycle
 admission, so a later yank does not invalidate replay. Rollback and
 Secret-triggered restart copy the pinned binding without selecting a new
-release. Tenant-authorized REST routes, OpenAPI, the typed client, CLI, and Web
+release. Tenant-authorized REST routes, OpenAPI, the typed client, CLI
 projections expose the same boundary; hosted MCP deployment remains in `MCP0`.
 
 Migration 067 stores an ordered set of exact Skill release inputs for every
@@ -2390,7 +2360,7 @@ read-only Artifact mount per Skill under `/a3s/skills/{asset_id}`; callers
 cannot inject mount names or paths, and Skills never become standalone Runtime
 units. Replay resolves the committed revision before fresh release admission,
 while rollback, Agent release updates, and Secret restarts preserve the exact
-Skill set. OpenAPI `1.9.0`, the shared client, CLI, and Web expose the same
+Skill set. OpenAPI `1.9.0`, the shared client, CLI exposes the same
 tenant-authorized lifecycle.
 
 ### Remaining A0 work
@@ -2534,8 +2504,7 @@ unavailable. As of 2026-08-07:
   Asset repository transaction reuses migration 053 and atomically stores the
   binding, caller idempotency, one secret-free Outbox event, and control-plane
   audit; canonical-equivalent ACL is the same digest and an identical binding
-  is a no-op. Web lifecycle views remain intentionally deferred until backend
-  conformance; no profile table, parser, scheduler, or publication mechanism is
+  is a no-op. No profile table, parser, scheduler, or publication mechanism is
   duplicated; and
 - Gateway validates/authenticates each modern request, selects one exact
   healthy target, never replays after dispatch, and has focused
@@ -2609,7 +2578,7 @@ never become its state store.
 | --- | --- | --- |
 | `MCP0.1` | Freeze the modern protocol baseline, canonical immutable Service-profile ACL, separate route-policy ACL projection, identity/digests, Runtime projection, Gateway snapshot, authorization model, retry rule, errors, bounds, telemetry redaction, and pinned fixture | Verified domain and managed-snapshot foundations |
 | `MCP0.2` | Certify one and multiple Box-hosted generic Runtime Service replicas, each with a distinct Unit ID, exact profile digest, typed TCP endpoint, health, logs, restart recovery, generation fencing, and cleanup | Required `BX0.3` and Runtime provider profiles |
-| `MCP0.3` | Implement the Cloud Service profile and route policy, A3S ORM persistence, Workload/Runtime compiler, replica and rollout reconciliation, Gateway ACL compiler, API/client/CLI lifecycle interfaces, operations, control-plane audit, and recovery; defer Web lifecycle views until backend conformance is complete | `MCP0.1`, `A0.3`, `H0.2`; implementation may proceed with `MCP0.2`, but closing waits for its exact Runtime contract and evidence |
+| `MCP0.3` | Implement the Cloud Service profile and route policy, A3S ORM persistence, Workload/Runtime compiler, replica and rollout reconciliation, Gateway ACL compiler, REST/client/CLI/MCP lifecycle interfaces, operations, control-plane audit, and recovery | `MCP0.1`, `A0.3`, `H0.2`; implementation may proceed with `MCP0.2`, but closing waits for its exact Runtime contract and evidence |
 | `MCP0.4` | Implement and certify Gateway's native modern MCP data plane without sessions, sticky routing, Cloud calls, or post-dispatch replay | `MCP0.1`, `H0.2` |
 | `MCP0.5` | Run a real single-node client-to-Gateway-to-Box-Service gate at exact Cloud, Runtime, Box, Gateway, and fixture revisions | `MCP0.2`-`MCP0.4` |
 | `MCP0.6` | Add multi-node replica placement, zero/one/many target transitions, rollout, drain, policy expiry, partition, load, HA, disaster recovery, and operational limits | `MCP0.5`, `H0.3`, relevant `H0.4`/`H0.5`, `C0.3` |
@@ -2658,9 +2627,8 @@ never become its state store.
    digest. Update and rollback use immutable revisions; drain removes a target
    from acknowledged traffic before Runtime stop.
 9. Expose deployment, health, logs, update, rollback, stop, route readiness,
-   and bounded protocol diagnostics through the existing API, client, CLI,
-   Operation, and control-plane audit paths. Defer Web lifecycle views until
-   backend conformance is complete.
+   and bounded protocol diagnostics through the existing REST, client, CLI,
+   Management MCP, Operation, and control-plane audit paths.
 10. Recover every commit-before-dispatch and apply-before-acknowledgement gap
    through Flow, Fleet journals, Runtime inspection, Gateway exact readiness,
    and deterministic reconciliation.
@@ -2679,8 +2647,7 @@ valid routes. A bounded worker sweeps expired encrypted receipts through that
 same lifecycle repository while preserving credential and idempotency records.
 This reuses the existing Secret encryption provider and common
 idempotency/audit authorities and does not add TokenHub, another credential
-store, or another Gateway publication path. Web views remain planned and
-intentionally deferred during this phase.
+store, another Gateway publication path, or product UI lifecycle.
 
 The current backend-first route-policy slice exposes create, list, get, and
 revision writes through REST/OpenAPI `1.9.0`, the maintained TypeScript client,
@@ -2694,7 +2661,7 @@ current-expiry and revision checks, so a committed historical response remains
 recoverable after later revisions. The same route policy continues into the
 existing node desired-state planner, complete snapshot compiler, MCP
 reconciler, Fleet command, and Gateway acknowledgement path. No second policy
-store, ACL parser, scheduler, publication worker, or frontend implementation is
+store, ACL parser, scheduler, publication worker, or product UI implementation is
 introduced.
 
 MCP-only certificate renewal is also owned by that existing desired-state
@@ -2777,9 +2744,9 @@ implementation preference.
 | Actor versus package authorization | Cloud Identity and A3S Use Workspace Grants respectively | Identity authorizes changing the tenant assignment; Use authorizes the exact package generation inside the workspace; neither grant model is copied or translated into the other |
 | Package apply and recovery | Shared A3S Use Plugin Manager | One parent saga owns package generations, receipts, Workspace Grants, Runtime Bindings, Route Leases, capability cutover, drain, and cleanup |
 | Remote operation | Cloud Operations/Flow and Fleet | One Cloud Flow coordinates remote plan/confirmation/apply/observe; one Fleet queue and Node Agent journal deliver every host command |
-| Managed-scope mutation ownership | Versioned Node Agent host fence | The Cloud adapter is the only mutation adapter for that scope; local CLI/Web/Use management MCP are read-only or policy-denied and cannot create competing intent |
+| Managed-scope mutation ownership | Versioned Node Agent host fence | The Cloud adapter is the only mutation adapter for that scope; local CLI/Use management MCP are read-only or policy-denied and cannot create competing intent |
 | Executable surfaces | A3S Use host adapters plus existing owners | Host-local Tool/MCP surfaces use only the explicitly injected Runtime-to-Box provider and private scoped bindings; public/replicated services remain explicit A0/MCP0 Workloads; no plugin-specific provider, scheduler, route owner, Secret path, or Knowledge index |
-| Management interfaces | Cloud Plugins application bus | REST, client, CLI, Web, and Management MCP are thin adapters; none calls another presentation interface |
+| Management interfaces | Cloud Plugins application bus | REST, client, CLI, and Management MCP are thin adapters; none calls another presentation interface |
 
 The Cloud module is named `plugins`, not `plugin_manager`, `installer`, or
 `marketplace`, because it does not own those semantics. Its intended DDD shape
@@ -2900,8 +2867,7 @@ public HTTPS refresh, exact bootstrap and role versions, online and cached
 bounded reads, root/cache drift rejection, SSRF and cursor rejection, and no
 package-target download. The strict `12/12` PostgreSQL 17 gate now verifies
 transactional persistence, replay, tenant isolation, Search, fail-closed
-behavior, and migrations `084`-`085`; the Web projection stays deferred by
-section 1.1.
+behavior, and migrations `084`-`085`; product UI is outside section 1.1.
 
 The exact catalog selection is immutable within one assignment generation.
 Cloud assignment generation, Use installed generation, and Use capability
@@ -2934,7 +2900,7 @@ catalog selection returned by the trusted query path, canonical selected
 surfaces, one existing same-tenant workspace/host, and the canonical A3S Use
 desired state `enabled`, `installed-disabled`, or `absent`. Exact replay returns
 the original aggregate and Operation; changed input under one idempotency key
-conflicts. REST `DELETE`, CLI remove, and UI enable/disable actions translate to
+conflicts. REST `DELETE`, CLI remove, and MCP enable/disable actions translate to
 this same command. `absent` retains the assignment evidence and requests the
 canonical A3S Use uninstall; it does not delete the aggregate or imply that
 node-local bytes are gone. Canonical uninstall retains user data. A future
@@ -2963,7 +2929,7 @@ without confirmation; `deny` becomes an explicit blocked result.
 Read queries are catalog search/inspect, assignment list/detail, plan review,
 and observed status. Catalog pages retain the A3S Use bounds and cursors.
 Search metadata does not install or download a package. REST, the shared
-TypeScript client, CLI, Web, and Management MCP map to these same commands and
+TypeScript client, CLI, and Management MCP map to these same commands and
 queries. Cloud does not proxy the local Use management MCP, and no management
 surface exposes plugin execution.
 
@@ -2979,7 +2945,7 @@ tenant-owned PluginRegistry and PluginAssignment projections for cross-resource
 navigation. It stores no external catalog, permission, package, or capability
 record and introduces no second catalog cursor.
 
-Registry enrollment and trust-root rotation are user-only REST/CLI/Web
+Registry enrollment and trust-root rotation are user-only REST/client/CLI
 mutations with audit. Management MCP can receive read tools in `U0.2` and
 assignment mutations in `U0.3` only when the current Cloud grant and canonical
 Use ACL policy produce `allow`; it cannot supply a registry URL/root, local
@@ -3053,7 +3019,7 @@ authority exactly as its canonical lifecycle requires.
 | Sub-gate | Work | Exit evidence |
 | --- | --- | --- |
 | `U0.1` | Pin the exact Use revision that contains the frozen protocol-level-4 `PluginHostManager`, managed-scope, capabilities, package-plan/apply/enablement-plan/observation contracts, package lock, and selected-surface evidence; add compatibility fixtures, inspect exact host capabilities through the existing Fleet command path, and freeze corresponding Fleet payloads | Cross-repository canonical bytes/digests match; standalone and managed scopes cannot mutate each other; unknown schema/capability and mixed versions fail closed; enablement cannot bypass reviewed apply; no duplicate Cloud contract, lifecycle enum, Heartbeat capability schema, capability store, or node channel exists |
-| `U0.2` | Add `PluginRegistry`, root evidence, A3S ORM persistence, A3S Use catalog adapter, tenant queries, authorized search projection, API/client/CLI/Management MCP reads, and retain the Web projection for the later frontend phase | Real TUF registry refresh/cache verification, offline bounded read, root/metadata drift, SSRF, tenant denial, cursor, and no-package-download tests pass |
+| `U0.2` | Add `PluginRegistry`, root evidence, A3S ORM persistence, A3S Use catalog adapter, tenant queries, authorized search projection, API/client/CLI/Management MCP reads | Real TUF registry refresh/cache verification, offline bounded read, root/metadata drift, SSRF, tenant denial, cursor, and no-package-download tests pass |
 | `U0.3` | Add `PluginAssignment`, one Flow, plan review/confirmation, Fleet/Agent adapter, safe non-executable apply, enable/disable/uninstall, observations, audit, and recovery | One exact Skill/UI package converges on one host; OKF joins only after Use M0K-C-B; cross-tenant scope/path/symlink attacks fail closed; install/upgrade/uninstall and every named crash point return one receipt and no partial capability generation |
 | `U0.4` | Inject production permission/grant and host adapters for Tool Task, private Tool Service, standard MCP, UI, OKF, Secrets, Runtime/Box, private bindings, and Knowledge; require explicit A0/MCP0 promotion for any public or replicated service | A3S Use M5/M6 plus each owning component gate proves native semantics, exact authority, no fallback, no automatic Cloud deployment, prior-generation preservation, drain, and cleanup |
 | `U0.5` | Operate independent per-host assignments over existing H0/Fleet host membership; add node replacement/fencing, trust rotation/revocation, mixed-version upgrade, backup/restore, quotas, observability, and runbooks without a group rollout aggregate | Real multi-node loss/partition/return, supply-chain compromise, HA, load, restore, zero-residue, and compatibility-lock evidence passes without a plugin scheduler or second authority |
@@ -3097,7 +3063,7 @@ when:
 - package identity, surface selection, catalog record, plan, confirmation, and
   observation validate with the exact pinned A3S Use contracts and golden
   fixtures;
-- REST, client, CLI, Web, and applicable Management MCP surfaces dispatch the
+- REST, client, CLI, and applicable Management MCP surfaces dispatch the
   same commands/queries and cannot forge tenant, host, workspace, policy,
   provider, or confirmation authority;
 - registry browsing performs no package mutation, and assignment mutation
@@ -3217,10 +3183,10 @@ Current `A1.1` implementation:
 - event content is canonical bounded inline JSON of at most 64 KiB with a
   stored SHA-256 digest; immutable-object references begin only when a later
   gate admits larger content;
-- REST, OpenAPI `1.9.0`, the shared TypeScript client, CLI, and Web expose
+- REST, OpenAPI `1.9.0`, the shared TypeScript client, and CLI expose
   conversation creation/list/get, execution start/list/get, paged event reads,
   and the shared resumable SSE stream; and
-- domain, application, concurrency, controller, contract, client, CLI, Web,
+- domain, application, concurrency, controller, contract, client, CLI,
   migration-registration, and source-architecture tests cover the slice.
 
 `A1.1` deliberately reserves rather than runs the Operation. It has no Harness
@@ -3458,7 +3424,7 @@ domain/application/coordinator/REST/MCP/client/CLI tests, a local real PostgreSQ
 seven-boundary run, and provider-gate source checks pass; retained clean Linux
 PostgreSQL/provider gates still govern verification. Business-service
 and remaining provider capability dispatch, compensation, expanded clean
-provider evidence, and public availability remain open; no frontend was added.
+provider evidence, and public availability remain open; no UI mechanism is required.
 
 The shared Operations adapter has moved to A3S Flow `0.12.0` with A3S Boot `0.2.0`
 PostgreSQL task management, isolated ORM-backed stores, runtime-build-pinned
@@ -3533,10 +3499,8 @@ Follow the detailed gates in
    session contract, authorization policy, and shared sequence;
 6. close `A1.6`, `AR0.8`, enterprise `C0.5`, then `K0.6` and `AUT0.6` on the
    `H0.5` production foundation; and
-7. after the operator lifts the frontend freeze, deliver the retained Studio,
-   Knowledge, publication, monitor, plugin, and enterprise projections and
-   close composite `APP0.6` only when the machine-checked parity manifest and
-   all golden scenarios pass.
+7. close composite `APP0.6` only when its interface contracts, machine-checked
+   parity manifest, and all golden scenarios pass.
 
 P0 may still detect a `scheduled_task` profile, but it submits the resulting
 exact Task target to Automations. Flow timers advance existing runs and cannot
@@ -3556,14 +3520,14 @@ Workflow revisions and cannot create an ingestion queue or DAG runtime.
 - Existing Flow histories and pinned runtime builds replay unchanged, and
   Build, Deployment, Executions, and Workflow recovery suites reject a Cloud
   retry/timer/history substitute.
-- Blocking, streaming, Web, embed, MCP, and internal invocation channels share
+- Blocking, streaming, API, embed, MCP, and internal invocation channels share
   one application command and exact release; mode-specific runtimes do not
   exist.
 - File, Knowledge, trigger, connection, model, Agent, Tool, Secret, route,
   identity, usage, and run state remain with their named owners under tenant,
   failure, cleanup, upgrade, backup/restore, and disaster-recovery evidence.
-- Full `APP0` remains unavailable until its retained visual product and
-  composite `APP0.6` gate pass.
+- Full `APP0` remains unavailable until its composite `APP0.6` interface,
+  provider, recovery, and parity gates pass.
 
 ## 13.3 Milestone EV0: governed self-evolution
 
@@ -3758,7 +3722,7 @@ Runtime class, node channel, object client, or per-Cell desired-state store.
   Management MCP tools using the existing `cloud:read`, `workload:write`, and
   `route:write` permissions and canonical A3S ACLs. These adapters reuse the
   same C2-C4 buses, bounded ACL readers, and Edge hostname/path validation;
-  they add no parser, OCI/DNS authority, or state. Web stays deferred. The
+  they add no parser, OCI/DNS authority, or state. The
   [retained C6a/C6b PostgreSQL 17 gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600)
   holds Workloads unavailable, observes the child blocked on its insert after
   immutable correlation commit, sends SIGKILL, and reconstructs the exact
@@ -4298,7 +4262,7 @@ proves the resource stopped or records an operator-visible orphan.
 | Integration | Real Flow PostgreSQL store, Event relay, registry, Gateway, object/Git storage |
 | Build | Real source provider, isolated builder, registry, cache, provenance, cancellation, and credential-boundary evidence |
 | Project import | Golden detection/Compose plans, unsupported input, webhook disorder, preview cleanup, and monorepo affected-set evidence |
-| Interfaces | REST/web/CLI/MCP contract parity, scope equivalence, revocation, redaction, and terminal lifetime evidence |
+| Interfaces | REST/OpenAPI/client/CLI/MCP contract parity, scope equivalence, revocation, redaction, and terminal lifetime evidence |
 | Hosted MCP | Canonical profile compilation, real Runtime/Box Service, modern header/body and discovery conformance, request-scoped SSE, per-request authorization, no post-dispatch replay, exact target rollout, process/node loss, and cleanup evidence |
 | Agent execution | Real A0 release binding, native Code plus non-Code Harness conformance, exact event/SSE replay, Tool approval, checkpoint/fork lineage, redaction, process-death recovery, and cleanup evidence |
 | Workflow | Ontology migration, deterministic plan compilation, typed child identity, Flow replay, human decision, compensation, multi-day recovery, Search rebuild, and connector-boundary evidence |
@@ -4409,11 +4373,9 @@ record is:
    same versioned operation, exact routed cutover, and deterministic retirement
    path. PostgreSQL API persistence/replay, routed control-plane, and isolated
    Docker A→B→C→A evidence cover the slice.
-3. Implemented on 2026-07-20: Web route, certificate, deployment-timeline,
-   complete-template update-diff, eligible rollback, lineage, and
-   terminal-operation cleanup surfaces are backed only by authoritative
-   projections; cleanup is browser-local and preserves durable operation and
-   audit history.
+3. Retired on 2026-08-18: the former Web route/timeline controls were removed
+   with the product UI; route, certificate, rollback, lineage, Operation, and
+   audit projections remain authoritative through supported interfaces.
 4. Implemented on 2026-07-20: the production profile verifies the issued
    ownership challenge against bounded system-resolver DNS TXT responses,
    rejects incorrect caller proofs before lookup, keeps absent or stale DNS
@@ -4483,7 +4445,7 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Lane | Dependency | Ordered delivery |
 | --- | --- | --- |
 | Box-only provider migration | Release blocking | `BX0.1` dependency/config alignment -> `BX0.2` lifecycle -> `BX0.3` networking/mounts/health/Secrets/outputs/evidence -> `BX0.4` typed Box builds -> `BX0.5` complete re-certification, retired-code removal, and zero-Docker guard |
-| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> sole `cloud.build@5` Box command path -> Cloud OCI admission -> registry publication -> locally verified signed evidence -> evidence API/web -> deployment handoff -> parent-bound Box cache reuse -> external-provider and fault-injection operator gates |
+| Source delivery | `E0` | `G0` source/recipe contracts -> public GitHub resolution -> secure checkout -> signed provider inbox -> GitHub App installation connection -> repository subscription/fanout -> installation-token checkout -> connection lifecycle reconciliation -> durable build intent/crash-gap repair -> command-bound node Artifact transport -> sole `cloud.build@5` Box command path -> Cloud OCI admission -> registry publication -> locally verified signed evidence -> evidence API/client/CLI -> deployment handoff -> parent-bound Box cache reuse -> external-provider and fault-injection operator gates |
 | Developer workflows | `G0` | `P0` A3S ACL build-plan/source-layout detection -> previews -> monorepos -> stateless Compose -> S0-backed Compose |
 | Control surfaces | Stable E0 API | `C0.1` REST/CLI parity and authorized search -> `C0.2` scoped management MCP -> `C0.2m` modern-protocol migration -> `C0.3` external OIDC identity federation/membership/grants/attribution/security-investigation/notification/audit APIs -> `C0.4` exec/terminal + `C0.5` enterprise SAML/OIDC/SCIM/session/audit/SIEM/data-governance contracts; role-focused projections are retained but deferred by section 1.1 |
 | A3S assets | `G0` | `A0` repository safety -> immutable release -> Agent deployment -> Skill binding |
@@ -4491,13 +4453,13 @@ With E0 verified, work may proceed in parallel only along these owned lanes:
 | Hosted MCP services | `A0.3`, `BX0.3`, and `H0.2`; production scale also consumes `H0.3` and `C0.3` | `MCP0.1` contract -> `MCP0.2` Runtime/Box substrate + `MCP0.3` Cloud orchestration + `MCP0.4` Gateway data plane -> `MCP0.5` single-node release -> `MCP0.6` production scale |
 | Heterogeneous Agent execution | `A1.0`: verified `E0`; `A1.1+`: immutable `A0` release identities; `A1.5`: `C0.3` grants and audit | `A1.0` shared primitives -> `A1.1` conversations/executions/events -> `A1.2` native Code provider -> `A1.3` provider-neutral contract/non-Code conformance -> `A1.4` immutable invocation profile/bindings/Tool events -> `A1.5` approval/pause/resume -> `A1.6` checkpoints/forks/trajectories/telemetry |
 | Ontology-driven Workflow | `F0`, `C0`; typed steps consume verified `A1.3`, `MCP0.5`, `I0.2`, and applicable `U0.4` | `W0.1` authority/ACL -> `W0.2` ontology revisions -> `W0.3` deterministic plans/Flow runs -> `W0.4` typed capability steps -> `W0.5` production recovery |
-| Application lifecycle and delivery | `W0.3` foundation; complete modes/channels consume selected `A0.5`, `A1.4`/`A1.6`, `AR0.1`-`AR0.8`, `I0.2`, `MCP0.5`, `K0`, `AUT0`, `C0`, `S0`, and `H0` | `APP0.1` contracts/releases -> `APP0.2` sessions/invocation -> `APP0.3` delivery -> `APP0.4` six modes/channels including classic/New Agent + `APP0.5` monitoring -> `APP0.6` composite parity and retained Web |
-| Knowledge and Knowledge Pipeline | `F0`, shared immutable objects; ingestion/retrieval consumes selected `AUT0.5`, `U0.4`, `I0.2`, required `I0.6` rerank/media profiles, `S0`, and `W0.4` | `K0.1` Files/Knowledge authority -> `K0.2` multi-source/text-multimodal processing -> `K0.3` three chunk structures/index/retrieval -> `K0.4` Workflow ports -> `K0.5` scoped inputs/debug/published Flow-backed pipelines -> `K0.6` production and retained Web |
-| Automations and Connectors | `F0`, `W0.3`; webhook, schedule, plugin, and production slices consume `E0`, P0 contract, `U0.4`, `C0.3`, and `H0.5` | `AUT0.1` authority -> `AUT0.2` webhook + `AUT0.3` schedule + `AUT0.4` plugin events + `AUT0.5` connectors -> `AUT0.6` production and retained Web |
+| Application lifecycle and delivery | `W0.3` foundation; complete modes/channels consume selected `A0.5`, `A1.4`/`A1.6`, `AR0.1`-`AR0.8`, `I0.2`, `MCP0.5`, `K0`, `AUT0`, `C0`, `S0`, and `H0` | `APP0.1` contracts/releases -> `APP0.2` sessions/invocation -> `APP0.3` delivery -> `APP0.4` six modes/channels including classic/New Agent + `APP0.5` monitoring -> `APP0.6` composite parity and retained interface |
+| Knowledge and Knowledge Pipeline | `F0`, shared immutable objects; ingestion/retrieval consumes selected `AUT0.5`, `U0.4`, `I0.2`, required `I0.6` rerank/media profiles, `S0`, and `W0.4` | `K0.1` Files/Knowledge authority -> `K0.2` multi-source/text-multimodal processing -> `K0.3` three chunk structures/index/retrieval -> `K0.4` Workflow ports -> `K0.5` scoped inputs/debug/published Flow-backed pipelines -> `K0.6` production and retained interface |
+| Automations and Connectors | `F0`, `W0.3`; webhook, schedule, plugin, and production slices consume `E0`, P0 contract, `U0.4`, `C0.3`, and `H0.5` | `AUT0.1` authority -> `AUT0.2` webhook + `AUT0.3` schedule + `AUT0.4` plugin events + `AUT0.5` connectors -> `AUT0.6` production and retained interface |
 | Stateful and distributed storage platform | `E0`; production distribution also consumes `H0` | shared immutable-object provider conformance -> `S0` local volume -> PostgreSQL -> backup/restore -> distributed object/remote volume providers -> additional engines |
 | Durable Cell Service | `CELL0.1` consumes `F0`; storage/provider/orchestration consume named `S0`, `BX0`, `E0`, `C0.3`, and `H0.2`; multi-node consumes `H0.3` | `CELL0.1` authority/ACL -> `CELL0.2` S0 namespace/fencing -> `CELL0.3` Runtime Service provider -> `CELL0.4` Cloud projection/interfaces -> `CELL0.5` single-node release -> `CELL0.6` multi-node -> `CELL0.7` tested compatibility/production |
 | Production scale | `P0`, `C0`, `A0`, `A1`, and `S0` single-node contracts; H0.1-H0.3 may first be proven by an owning profile | `H0.1` managed replicas/claims -> `H0.2` private target projection -> `H0.3` multi-node placement/network -> `H0.4` installation/HA -> `H0.5` autoscaling/hardening |
-| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` API/client/CLI/MCP self-service and governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth -> optional independently certified `I0.6` protocol/channel profiles; console and playground projections are retained for the later frontend phase |
+| Inference profile | `E0`; each inference slice also consumes its named H0 foundation | `I0.0` contracts + `H0.1` claims -> `I0.1` accelerator substrate -> `I0.2a` single-node backend + `H0.2` target projection -> `I0.2b/c` data plane and usage -> `I0.2d` external providers -> `I0.2e` API/client/CLI/MCP self-service and governance -> `H0.3` multi-node foundation -> `I0.3` replicas -> `I0.4` distributed replica -> `H0.4/H0.5` -> `I0.5` hardening/provider breadth -> optional independently certified `I0.6` protocol/channel profiles |
 | Governed self-evolution | `W0.5`, `A1.6`, `I0.5`, `H0.5`, `C0.3`, and shared storage/evidence foundations | `EV0.1` evidence admission -> `EV0.2` reproducible evaluation -> `EV0.3` candidate/Agentic RL jobs -> `EV0.4` approval/canary/halt/rollback -> `EV0.5` production safety and recovery |
 
 The lane table expresses dependency, not a promise of equal staffing or calendar
@@ -4535,8 +4497,7 @@ A milestone is complete only when all of the following are true:
 - A backend/interface milestone lands its domain invariants, application
   commands/queries, PostgreSQL schema, provider adapters, transport contracts,
   REST/OpenAPI, maintained client, and applicable CLI/MCP surfaces together.
-  New Web work is excluded while section 1.1 is active; a broader product gate
-  that promises Web remains in progress until the retained projection lands.
+  Product UI is outside the section 1.1 boundary and never blocks a gate.
 - Every mutation has tenant scope, idempotency, audit, timeout, cancellation,
   retry, and cleanup semantics with documented errors.
 - Real-provider happy path, failure, process-death, replay, corruption, and

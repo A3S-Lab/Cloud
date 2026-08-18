@@ -36,7 +36,6 @@ interface BrandSpec {
 
 const BRAND_SPECS: Readonly<Record<ArchitectureLogoId, BrandSpec>> = {
   clients: { label: 'Clients + SDKs', eyebrow: 'REQUEST ORIGIN', glyph: 'client', accent: '#72b7ff' },
-  'a3s-web': { label: 'A3S Web', eyebrow: 'CONSOLE', glyph: 'a3s', accent: '#b8f36b' },
   'a3s-box': { label: 'A3S Box', eyebrow: 'LOCAL RUNTIME', glyph: 'box', accent: '#71d5c3' },
   'a3s-box-provider': {
     label: 'A3S Box',

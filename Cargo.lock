@@ -256,20 +256,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "a3s-cloud-web-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "http-body-util",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tower",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "a3s-code-core"
 version = "6.8.1"
 source = "git+https://github.com/A3S-Lab/Code.git?rev=ab3abc831c686db37f084c2f12bd7e1c571c9f7a#ab3abc831c686db37f084c2f12bd7e1c571c9f7a"

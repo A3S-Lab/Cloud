@@ -23,7 +23,7 @@ export function App() {
   const [autoRotate, setAutoRotate] = useState(false);
   const [focusRevision, setFocusRevision] = useState(0);
   const [resetRevision, setResetRevision] = useState(0);
-  const [simulationEntryId, setSimulationEntryId] = useState<SimulationEntryId>('web');
+  const [simulationEntryId, setSimulationEntryId] = useState<SimulationEntryId>('client');
   const [activeScenarioId, setActiveScenarioId] = useState<SimulationScenarioId>();
   const [simulationStepIndex, setSimulationStepIndex] = useState(0);
   const [simulationPlaying, setSimulationPlaying] = useState(false);

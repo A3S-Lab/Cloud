@@ -595,7 +595,7 @@
     }
   },
   "info": {
-    "description": "Stable version 1 REST contract shared by the A3S Cloud web console and CLI.",
+    "description": "Stable version 1 REST contract shared by the A3S Cloud TypeScript client, CLI, and integrations.",
     "title": "A3S Cloud REST API",
     "version": "1.39.0"
   },

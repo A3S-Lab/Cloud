@@ -3,9 +3,15 @@ mod domain;
 mod infrastructure;
 
 pub use application::{
+    DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     MaterializedObjectNamespaceCredentials, ObjectNamespaceAccess, ObjectNamespaceConformanceProbe,
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialMaterializer,
-    ObjectNamespaceRecoveryExecutor, ObjectNamespaceRecoveryStore,
+    ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryExecutor,
+    ObjectNamespaceRecoveryOperationRequest, ObjectNamespaceRecoveryStore,
+    RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
+    SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
+    OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+    OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
 };
 pub use domain::{
     IObjectNamespace, ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
@@ -17,3 +23,4 @@ pub use domain::{
     ObjectNamespaceRetentionPolicySpec, ObjectNamespaceVersion,
     OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES, OBJECT_NAMESPACE_PROVIDER_PROFILE_SCHEMA,
 };
+pub use infrastructure::ObjectNamespaceRecoveryFlowRuntime;

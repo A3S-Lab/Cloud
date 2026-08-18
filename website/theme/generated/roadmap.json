@@ -25,7 +25,7 @@
     {
       "code": "F0",
       "name": "Foundation",
-      "outcome": "Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, API, and web shell",
+      "outcome": "Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API",
       "status": "Verified; Flow `0.12.0`, Boot `0.2.0`, ORM `0.3.0`, and the exact root compatibility lock pass together",
       "statusKind": "verified"
     },
@@ -46,7 +46,7 @@
     {
       "code": "E0",
       "name": "Reachable service",
-      "outcome": "Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, web operations, and a clean-host release loop",
+      "outcome": "Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop",
       "status": "Historical; Box re-certification pending",
       "statusKind": "historical"
     },
@@ -131,14 +131,14 @@
       "code": "S0",
       "name": "Stateful and distributed storage platform",
       "outcome": "Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings",
-      "status": "Foundation in progress; component-only `S0.1-C1/C2` add the sole-client CAS, credential, recovery, retention, and deletion contracts, `CELL0.5-C1` adds the canonical non-secret HTTPS provider-profile ACL/digest and exact credential binding, and `S0.1-C3` checks in one retained S3-compatible CAS/cleanup gate shared with existing consumers. Component-only `S0.1-C4` adds bounded exact listing plus deterministic writer-fenced seal, isolated restore, interruption replay, grace-delayed deletion, and retained-restore verification through that same port; Operations/Flow wiring and a retained real-provider pass remain, so no production provider is certified yet",
+      "status": "Foundation in progress; component-only `S0.1-C1/C2` add the sole-client CAS, credential, recovery, retention, and deletion contracts, `CELL0.5-C1` adds the canonical non-secret HTTPS provider-profile ACL/digest and exact credential binding, and `S0.1-C3` checks in one retained S3-compatible CAS/cleanup gate shared with existing consumers. Component-only `S0.1-C4` adds bounded exact listing plus deterministic writer-fenced seal, isolated restore, interruption replay, grace-delayed deletion, and retained-restore verification through that same port; the owning Workloads writer-fence receipt/enqueue path and a retained real-provider pass remain, so no production provider is certified yet",
       "statusKind": "in-progress"
     },
     {
       "code": "CELL0",
       "name": "Durable Cell Service",
       "outcome": "Named SQLite-backed state entities with alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path",
-      "status": "In progress and unavailable; `CELL0.1` is implemented, component-only `CELL0.2-C1/C2` bind exact S0 contracts without copying their lifecycle, the shared storage `C3` gate awaits a retained pass, and shared `S0.1-C4` now supplies the component-only recovery/delete execution prerequisite without moving that lifecycle into Cells. The retained `CELL0.3-C1/C2/C3` real-Box runtime-only gate passes without another journal or controller, and `CELL0.4-C1/C2/C3/C4/C5` implement application authority, existing-owner projection, route composition, and complete non-Web interfaces. Component-only `CELL0.5-C1/C2/C3a/C3b/C4a` freeze the provider profile, exact signed BuildRun bundle output/admission, the existing Execution exact-node Task foundation, Workload Deployment Flow v4's deterministic pinned publisher pre-start composition through migrations `118`-`120`, and the exact ordinary Workloads Service projection. Staged `C4b/C4c` add named-state behavior, RPO=0 provider-process-death recovery, and real managed-TLS Gateway HTTP/WebSocket checks to the same joint gate without another lifecycle or owner lookup; its exact preflight remains blocked on Box Runtime `Outbound`. The storage-provider pass, first retained joint behavior/Gateway pass, Operations/Flow recovery wiring, `C5` rollout/rollback/stop and retained lifecycle/fault evidence, and real service availability remain open",
+      "status": "In progress and unavailable; `CELL0.1` is implemented, component-only `CELL0.2-C1/C2` bind exact S0 contracts without copying their lifecycle, the shared storage `C3` gate awaits a retained pass, and shared `S0.1-C4` now supplies the component-only recovery/delete execution prerequisite without moving that lifecycle into Cells. The retained `CELL0.3-C1/C2/C3` real-Box runtime-only gate passes without another journal or controller, and `CELL0.4-C1/C2/C3/C4/C5` implement application authority, existing-owner projection, route composition, and complete REST/OpenAPI/client/CLI/MCP interfaces. Component-only `CELL0.5-C1/C2/C3a/C3b/C4a` freeze the provider profile, exact signed BuildRun bundle output/admission, the existing Execution exact-node Task foundation, Workload Deployment Flow v4's deterministic pinned publisher pre-start composition through migrations `118`-`120`, and the exact ordinary Workloads Service projection. Staged `C4b/C4c` add named-state behavior, RPO=0 provider-process-death recovery, and real managed-TLS Gateway HTTP/WebSocket checks to the same joint gate without another lifecycle or owner lookup; its exact preflight remains blocked on Box Runtime `Outbound`. The storage-provider pass, first retained joint behavior/Gateway pass, owning Workloads writer-fence production and recovery enqueue, `C5` rollout/rollback/stop and retained lifecycle/fault evidence, and real service availability remain open",
       "statusKind": "in-progress"
     },
     {

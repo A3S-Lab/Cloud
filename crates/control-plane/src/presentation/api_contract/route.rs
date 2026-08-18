@@ -32,7 +32,7 @@ impl Module for ApiContractModule {
 pub fn openapi_info() -> OpenApiInfo {
     OpenApiInfo::new("A3S Cloud REST API", OPENAPI_CONTRACT_VERSION)
         .with_description(
-            "Stable version 1 REST contract shared by the A3S Cloud web console and CLI.",
+            "Stable version 1 REST contract shared by the A3S Cloud TypeScript client, CLI, and integrations.",
         )
         .with_server_description(API_PREFIX, "A3S Cloud REST API v1")
 }

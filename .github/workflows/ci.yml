@@ -477,7 +477,6 @@ jobs:
           bash -n tools/cell-conformance/verify_celld_release.sh
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
           bash -n tools/dev/run_cloud.sh
-          bash -n tools/dev/test_run_cloud.sh
           bash -n tools/use-conformance/run_postgres_registry_gate.sh
           bash -n tools/use-conformance/run_registry_gate.sh
 
@@ -497,7 +496,7 @@ jobs:
 
       - name: Enforce ACL-only product configuration
         run: |
-          forbidden_files=$(git ls-files README.md cli config contracts crates deploy docs packages tools web |
+          forbidden_files=$(git ls-files README.md cli config contracts crates deploy docs packages tools |
             grep -E '\.(hcl|tf|tfvars)$' || true)
           if [[ -n $forbidden_files ]]; then
             printf '%s\n' "$forbidden_files"
@@ -505,7 +504,7 @@ jobs:
           fi
           if git grep -I -n -i -E \
             '(^|[^[:alnum:]_])HCL([^[:alnum:]_]|$)|\.hcl([^[:alnum:]_]|$)' -- \
-            README.md cli config contracts crates deploy docs packages tools web; then
+            README.md cli config contracts crates deploy docs packages tools; then
             exit 1
           fi
 
@@ -691,7 +690,7 @@ jobs:
           grep -q '^root:' /etc/subuid || echo 'root:100000:65536' | sudo tee -a /etc/subuid
           grep -q '^root:' /etc/subgid || echo 'root:100000:65536' | sudo tee -a /etc/subgid
 
-      - name: Run real REST, Web-client, CLI, and PostgreSQL gate
+      - name: Run real REST, TypeScript client, CLI, and PostgreSQL gate
         env:
           A3S_CLOUD_BOX_BIN: ${{ runner.temp }}/a3s-box/a3s-box
           A3S_CLOUD_BOX_RUN_AS_ROOT: "true"
@@ -771,90 +770,3 @@ jobs:
           path: ${{ runner.temp }}/a3s-cloud-c0-mcp-evidence
           if-no-files-found: warn
           retention-days: 14
-
-  web:
-    name: Web
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        shell: bash
-        working-directory: apps/cloud/web
-    steps:
-      - name: Checkout Cloud
-        uses: actions/checkout@v4
-        with:
-          path: apps/cloud
-
-      - name: Read pinned Runtime revision
-        id: runtime_revision
-        run: |
-          revision=$(<../tools/runtime-conformance/runtime-revision)
-          [[ $revision =~ ^[0-9a-f]{40}$ ]]
-          echo "revision=$revision" >>"$GITHUB_OUTPUT"
-
-      - name: Checkout Runtime
-        uses: actions/checkout@v4
-        with:
-          repository: A3S-Lab/Runtime
-          ref: ${{ steps.runtime_revision.outputs.revision }}
-          path: crates/runtime
-
-      - name: Install Rust 1.88.0
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          toolchain: 1.88.0
-
-      - name: Install Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Install dependencies
-        run: |
-          for attempt in 1 2 3; do
-            cache_dir="$RUNNER_TEMP/a3s-cloud-bun-cache-$attempt"
-            rm -rf node_modules "$cache_dir"
-            install_args=(
-              --frozen-lockfile
-              --backend=copyfile
-              --cache-dir="$cache_dir"
-              --network-concurrency=8
-            )
-            if [[ $attempt -eq 3 ]]; then
-              install_args+=(--force --no-cache)
-            fi
-            if timeout --signal=TERM --kill-after=10s 180s \
-              bun install "${install_args[@]}"; then
-              rm -rf "$cache_dir"
-              break
-            fi
-            [[ $attempt -lt 3 ]] || exit 1
-            rm -rf node_modules "$cache_dir"
-            sleep $((attempt * 5))
-          done
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Check formatting
-        run: bun run format:check
-
-      - name: Lint
-        run: bun run lint:check
-
-      - name: Test
-        run: bun run test
-
-      - name: Verify development process supervision
-        run: ../tools/dev/test_run_cloud.sh
-
-      - name: Build
-        run: bun run build
-
-      - name: Verify production SPA delivery
-        run: ../tools/web/verify_spa_delivery.sh

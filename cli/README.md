@@ -1,7 +1,7 @@
 # A3S Cloud CLI
 
 `a3s-cloud` is the presentation-only command-line client for the A3S Cloud
-management API. It calls the same public REST queries as the web console and
+management API. It calls only the public REST contract through the maintained client and
 never reads PostgreSQL or contacts a node directly.
 
 ## Build and run
@@ -602,9 +602,9 @@ standard-input-only credential creation and digest-only persistence. Node
 bootstrap is implemented with standard-input-only credential issuance,
 digest-only Fleet persistence, and a checksum-verified installation invocation.
 Organization-scoped authorized search parity is implemented through the same
-typed client and is also available in the Web console. The
+typed client. The
 compatibility/deprecation gate passes, and the real cross-surface gate proves
-raw REST, the Web client import, and this compiled CLI against one Cloud process
+raw REST, the maintained client package, and this compiled CLI against one Cloud process
 and PostgreSQL database. The first `C0.2` scoped management MCP slice now reuses
 the same core application commands and queries; it does not change this CLI's
 transport or credential contract.

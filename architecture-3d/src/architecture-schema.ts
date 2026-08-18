@@ -48,7 +48,6 @@ export type ArchitectureDomainId = (typeof ARCHITECTURE_DOMAIN_IDS)[number];
 
 export const ARCHITECTURE_VISUAL_KINDS = [
   'client-terminal',
-  'web-console',
   'box-runtime',
   'box-workload-host',
   'code-terminal',
@@ -81,7 +80,6 @@ export type ArchitectureVisualKind = (typeof ARCHITECTURE_VISUAL_KINDS)[number];
 
 export const ARCHITECTURE_LOGO_IDS = [
   'clients',
-  'a3s-web',
   'a3s-box',
   'a3s-box-provider',
   'a3s-code',

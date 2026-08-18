@@ -30,8 +30,8 @@ vi.mock('./components/architecture-scene', () => ({
       <button type='button' onClick={() => onSelect({ kind: 'node', id: 'gateway' })}>
         Select Gateway in scene
       </button>
-      <button type='button' onClick={() => onSelect({ kind: 'business-edge', id: 'web-gateway' })}>
-        Select Web to Gateway flow
+      <button type='button' onClick={() => onSelect({ kind: 'business-edge', id: 'cloud-client-gateway' })}>
+        Select client to Gateway flow
       </button>
       <button type='button' onClick={() => onSelect({ kind: 'structural-edge', id: 'box-hosts-code' })}>
         Select Box hosting relationship
@@ -69,14 +69,14 @@ describe('A3S Cloud architecture application', () => {
     expect(screen.getByRole('button', { name: 'Traffic' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('runs business simulations from both A3S Web and A3S Code TUI', () => {
+  it('runs business simulations from both the Cloud client and A3S Code TUI', () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole('button', { name: 'CPU deploy' }));
     expect(screen.getByTestId('architecture-scene')).toHaveAttribute('data-journey', 'deploy');
     expect(screen.getByTestId('architecture-scene')).toHaveAttribute(
       'data-simulation-nodes',
-      'clients,web,gateway,api'
+      'clients,cloud-client,gateway,api'
     );
     expect(screen.getByRole('button', { name: 'Pause simulation' })).toBeVisible();
 
@@ -112,8 +112,8 @@ describe('A3S Cloud architecture application', () => {
   it('opens detailed HUDs for business and structural relationships', () => {
     render(<App />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Select Web to Gateway flow' }));
-    expect(screen.getByRole('heading', { name: 'same-origin /api requests' })).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Select client to Gateway flow' }));
+    expect(screen.getByRole('heading', { name: 'HTTPS /api requests' })).toBeVisible();
     expect(screen.getByText('What crosses this boundary')).toBeVisible();
     expect(screen.getByText('HTTPS /api request')).toBeVisible();
 

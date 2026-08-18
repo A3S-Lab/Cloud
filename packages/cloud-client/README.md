@@ -1,7 +1,7 @@
 # A3S Cloud TypeScript Client
 
-`@a3s/cloud-client` is the single typed REST client shared by the A3S Cloud web
-console and CLI. It contains transport and public response types only; business
+`@a3s/cloud-client` is the single maintained typed REST client shared by the
+A3S Cloud CLI and external integrators. It contains transport and public response types only; business
 rules remain in Cloud application commands and queries.
 
 ```typescript
@@ -30,7 +30,7 @@ client returns that report as diagnostics. A `503` error envelope remains a
 `CloudApiError`. Authenticated methods still require server-authorized
 credentials.
 
-The package currently exposes the Web management calls plus `C0.1` tenant,
+The package currently exposes the `C0.1` tenant,
 operational-resource, evidence, and bounded paged-log queries. Its Workload,
 deployment, and route types match the current replica/member and Gateway scope
 REST projections. DomainClaim and logical Gateway-scope queries and mutations,
@@ -246,7 +246,7 @@ retry state.
 `startDurableCellApplication`, `stopDurableCellApplication`,
 `listDurableCellApplicationRevisions`, `getDurableCellApplicationRevision`,
 `deployDurableCellApplication`, and `publishDurableCellApplicationRoute`
-expose the non-Web `CELL0.4-C5` surface added by REST contract `1.38.0`.
+expose the `CELL0.4-C5` interface added by REST contract `1.38.0`.
 Application definitions, Service profiles, provider Workloads, and
 plaintext-free storage bindings remain bounded canonical A3S ACL strings; the
 client validates transport bounds and delegates parsing to Cloud. Deployment
@@ -278,7 +278,7 @@ logical execution to an exact published Agent AssetRelease and its immutable
 BuildRun/OCI identity. `getAgentExecutionEvents` reads the authoritative
 contiguous semantic sequence with a bounded opaque cursor, while
 `agentExecutionEventStreamUrl` builds the credential-free shared SSE URL used
-by Web. Conversation creation and execution start require caller-owned
+by streaming consumers. Conversation creation and execution start require caller-owned
 idempotency keys. This contract reserves an Operation identity but does not
 claim Harness, Fleet, Workload, or Runtime dispatch; those are `A1.2` work.
 
@@ -365,6 +365,5 @@ arguments, environment variables, or configuration.
 `createWorkloadFromAcl`, `updateWorkloadFromAcl`, and
 `deploySourceRevisionFromAcl` transport one nonempty A3S ACL document of at
 most 64 KiB without rewriting it. They use `application/vnd.a3s.acl`; Cloud is
-the sole parser and schema authority. Existing Web methods continue to use the
-semantically equivalent JSON request contract and share durable idempotency
-records with ACL requests.
+the sole parser and schema authority. JSON and ACL requests share the same
+durable idempotency records.

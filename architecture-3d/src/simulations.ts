@@ -1,6 +1,6 @@
 import type { JourneyId } from './architecture';
 
-export const SIMULATION_ENTRY_IDS = ['web', 'code'] as const;
+export const SIMULATION_ENTRY_IDS = ['client', 'code'] as const;
 export type SimulationEntryId = (typeof SIMULATION_ENTRY_IDS)[number];
 
 export const SIMULATION_SCENARIO_IDS = [
@@ -43,13 +43,13 @@ export interface SimulationScenario {
 
 export const SIMULATION_ENTRIES: readonly SimulationEntry[] = [
   {
-    id: 'web',
-    label: 'A3S Web Console',
-    shortLabel: 'A3S Web',
+    id: 'client',
+    label: 'A3S Cloud TypeScript Client',
+    shortLabel: 'Cloud Client',
     description:
-      'An operator uses the management SPA, whose same-origin API calls cross A3S Gateway before reaching Cloud.',
-    nodeIds: ['clients', 'web', 'gateway', 'api'],
-    edgeIds: ['clients-web', 'web-gateway', 'gateway-api'],
+      'An operator or integration uses the maintained typed client through A3S Gateway before reaching Cloud.',
+    nodeIds: ['clients', 'cloud-client', 'gateway', 'api'],
+    edgeIds: ['clients-cloud-client', 'cloud-client-gateway', 'gateway-api'],
   },
   {
     id: 'code',
@@ -376,11 +376,11 @@ export const SIMULATION_SCENARIOS: readonly SimulationScenario[] = [
       {
         id: 'render-operation',
         title: 'Render progress and recovery state',
-        actor: 'A3S Web/Code · Operations',
+        actor: 'Cloud Client/Code · Operations',
         description:
           'The selected surface displays durable operation history, cancellation, replay, and repair without owning business rules.',
-        nodeIds: ['web', 'code-tui', 'gateway', 'api', 'operations', 'flow'],
-        edgeIds: ['web-gateway', 'code-gateway', 'gateway-api', 'operations-flow'],
+        nodeIds: ['cloud-client', 'code-tui', 'gateway', 'api', 'operations', 'flow'],
+        edgeIds: ['cloud-client-gateway', 'code-gateway', 'gateway-api', 'operations-flow'],
         durationMs: 3100,
       },
     ],

@@ -18,13 +18,13 @@
         "label": "Management boundary",
         "focus": [
           "clients",
-          "web",
+          "cloud-client",
           "a3s-box",
           "code-tui",
           "gateway",
           "api"
         ],
-        "note": "Web and Code both cross the public Gateway before the private Boot API."
+        "note": "The maintained client and Code both cross the public Gateway before the private Boot API."
       },
       {
         "id": "product-semantics",
@@ -100,11 +100,11 @@
       ]
     },
     {
-      "id": "web",
+      "id": "cloud-client",
       "type": "frontend",
-      "label": "Web Console",
-      "sublabel": "Management surface",
-      "tag": "F0 · Verified",
+      "label": "TypeScript Client",
+      "sublabel": "Maintained interface",
+      "tag": "C0.1 · Verified",
       "pos": [
         409,
         72
@@ -556,7 +556,7 @@
       "label": "01 · Intent · Experience & Sources",
       "wraps": [
         "clients",
-        "web",
+        "cloud-client",
         "a3s-box",
         "code-tui",
         "github"
@@ -634,14 +634,14 @@
   ],
   "connections": [
     {
-      "id": "clients-web",
+      "id": "clients-cloud-client",
       "from": "clients",
-      "to": "web",
+      "to": "cloud-client",
       "variant": "dashed"
     },
     {
-      "id": "web-gateway",
-      "from": "web",
+      "id": "cloud-client-gateway",
+      "from": "cloud-client",
       "to": "gateway",
       "variant": "emphasis"
     },
@@ -1191,12 +1191,6 @@
       "id": "struct-boot-hosts-contexts-api-operations",
       "from": "api",
       "to": "operations",
-      "variant": "dashed"
-    },
-    {
-      "id": "struct-gateway-routes-web-gateway-web",
-      "from": "gateway",
-      "to": "web",
       "variant": "dashed"
     },
     {

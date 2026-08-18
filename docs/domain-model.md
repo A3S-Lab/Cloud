@@ -423,7 +423,7 @@ exact Cloud revision, seven-check CAS/cleanup marker, secret-scanned log, and
 evidence hashes. It is a provider conformance gate, not a new client, domain
 port, credential parser, or lifecycle.
 
-Component-only `S0.1-C4` extends `IObjectNamespace` and the same
+`S0.1-C4` extends `IObjectNamespace` and the same
 `ImmutableObjectClient` with exact, canonically ordered, count/byte-bounded
 listing. `ObjectNamespaceRecoveryExecutor` uses only that port to seal a
 writer-fence-receipted immutable manifest, restore it into a distinct exact
@@ -440,10 +440,20 @@ Operations/Flow still owns the long-running operation and retry schedule,
 Workloads supplies writer-fence receipts, and no recovery repository, worker,
 object client, or evidence store is introduced.
 
+Three exact operation contracts—`cloud.object-namespace.seal@1`,
+`cloud.object-namespace.restore@1`, and `cloud.object-namespace.delete@1`—now
+bind those commands to the existing `OperationRequest`, A3S Flow runtime/router,
+retry policy, and durable `wait_until` primitive. Each step validates the exact
+tenant/project/environment/profile/namespace/evidence binding and materializes
+the referenced Secret version just in time through the sole Secrets-owned
+materializer before constructing the shared S3 client. Flow completion-loss
+tests replay the exact manifest and provider mutation. No new operation table,
+queue, worker, client registry, credential cache, or provider lifecycle exists.
+
 Managed database/volume/backup aggregates, persistence, production provider
-certification through retained `S0.1-C3/C4` passes, Operations/Flow recovery
-wiring, durable operation/evidence persistence, and retained real-provider
-fault evidence remain planned. This boundary prevents stateful behavior from
+certification through retained `S0.1-C3/C4` passes, the owning Workloads
+writer-fence receipt and durable recovery-enqueue path, and retained
+real-provider fault evidence remain planned. This boundary prevents stateful behavior from
 being hidden in workload metadata or provider-specific configuration.
 
 ### 3.11 Inference platform (planned I0)
@@ -765,7 +775,7 @@ port read-only and makes the attempt repository's atomic settlement the only
 write path. It deliberately allocates no second shared command-idempotency entry,
 Outbox event, audit actor, queue, or retry mechanism. Resource Grant-aware
 get/list queries authorize the exact environment before storage access and
-return bounded pages; they are component contracts, not REST, CLI, MCP, or Web
+return bounded pages; they are component contracts, not public REST, client, CLI, or MCP
 availability.
 
 The component-only `AUT0.5-C6` recovery boundary persists one exact request
@@ -866,7 +876,7 @@ install, upgrade, enable, disable, and uninstall engines. A changed exact
 catalog selection or surface set increments the assignment generation;
 the imported A3S Use `PluginDesiredState` value `enabled`,
 `installed-disabled`, or `absent` lets reconciliation choose the matching
-canonical A3S Use manager operation. REST/CLI/Web lifecycle verbs map to the
+canonical A3S Use manager operation. REST/client/CLI/MCP lifecycle verbs map to the
 same `SetPluginAssignment` command, and retry maps to the shared Operation/Flow
 resume path. Package dependencies are resolved and reference-counted by A3S
 Use and never become synthetic Cloud assignments.
@@ -1244,7 +1254,7 @@ OCI resolver, S0 contracts, and C3/C4 handlers, with no interface repository,
 configuration parser, lifecycle, or authorization mechanism. Client and CLI
 reuse their existing bounded ACL readers and Edge hostname/path validators;
 MCP dispatches the same buses with the same `cloud:read`, `workload:write`, and
-`route:write` permissions. Web remains deliberately deferred. The retained
+`route:write` permissions. The retained
 C6a/C6b gate closes control-plane projection, stop, undispatched cleanup, and
 restart recovery, while the retained `CELL0.3` gate closes runtime-only provider
 stop/remove. Real S0 namespace/application behavior remains unclaimed.
@@ -1598,7 +1608,7 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   package, route, request, or cross-tenant identifier cannot choose or escape
   its scope root.
 - A cloud-managed workspace scope has one versioned Node Agent ownership/fence.
-  Local Use CLI, Web, or management MCP adapters cannot mutate that scope, and
+  Local Use CLI or management MCP adapters cannot mutate that scope, and
   a standalone scope is never adopted without an explicit tenant assignment
   and matching host evidence.
 - Desired package state binds one exact verified catalog-record digest,
@@ -2648,7 +2658,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | WorkflowRun typed runtime values | Derived on read and execution from immutable WorkflowRun input, including optional digest-bound defaults, plus the sole correlated A3S Flow history; no variable table, cache, or parallel event log |
 | Ontology and Workflow Search/vector projections | Rebuildable Search indexes derived from exact Workflow revisions; never write or revision authority |
 | Application identity/release/template, delivery/toolkit policy, application end users, sessions, messages/variants, conversation-variable revisions, feedback, annotations, and publication state | PostgreSQL Applications tables through A3S ORM |
-| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `C5` exposes the same authority through REST/OpenAPI `1.38.0`, maintained client, CLI, and Management MCP without another parser, state, or authorization path. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates. `CELL0.5-C1/C2` bind the exact provider profile and use migration `118` to persist one signed typed output on the existing BuildRun, with exact successful application admission and no new bundle authority. Component-only `CELL0.5-C3a/C3b` use migrations `119`-`120` to add exact-node Artifact/Secret-bound inputs to the existing Execution aggregate and a generic Workload Deployment Flow v4 pre-start gate that deterministically composes the pinned publisher after placement, waits for its existing lifecycle, and preserves historic Flow replay. The real-Box runtime-only gate is retained, while retained real bundle publication, real storage recovery/application evidence, and Web remain open |
+| Durable Cell application identity, immutable revision/profile/retention policy, exact Workload/S0/Operation correlation, and Edge-owned public route projection | Migrations `116` and `117` in the existing A3S ORM Migrator persist the `CELL0.4-C1` application head/immutable canonical-ACL revisions and the `C3` immutable lifecycle-free projection intent through shared idempotency, Outbox, audit, and transaction mechanisms; `C2` adds authorization-before-replay CQRS through existing environment/BuildRun readers and shared buses. C3 composes the existing managed Workload revision/Deployment, Operation request, and Fleet flow after exact S0/Secrets admission without owning their state. C4 loads that exact correlation, derives only the ACL public port, and delegates to Edge's existing verified-claim, healthy-target, complete-snapshot, idempotency, and Fleet-dispatch authority; the shared Workloads updater owns later cutover. `C5` exposes the same authority through REST/OpenAPI `1.38.0`, maintained client, CLI, and Management MCP without another parser, state, or authorization path. `CELL0.1-C1/C2/C3`, component-only `CELL0.2-C1/C2/C3`, shared `S0.1-C4` Operations/Flow recovery composition, and `CELL0.3-C1/C2/C3` supply the underlying application, S0, provider, ordinary Runtime Service, operator-observation, and lifecycle-receipt contracts/gates. `CELL0.5-C1/C2` bind the exact provider profile and use migration `118` to persist one signed typed output on the existing BuildRun, with exact successful application admission and no new bundle authority. Component-only `CELL0.5-C3a/C3b` use migrations `119`-`120` to add exact-node Artifact/Secret-bound inputs to the existing Execution aggregate and a generic Workload Deployment Flow v4 pre-start gate that deterministically composes the pinned publisher after placement, waits for its existing lifecycle, and preserves historic Flow replay. The real-Box runtime-only gate is retained, while retained real bundle publication, real storage recovery/application evidence remain open |
 | Individual Durable Cell SQLite lineage, ownership record/epoch/seal, alarm, WebSocket residency, activation, and peer forwarding | Selected Cell provider inside one application-scoped S0 namespace; never Cloud PostgreSQL, Gateway, Runtime, or audit authority |
 | User upload/scan/quota/retention/reference lifecycle | PostgreSQL Files tables through A3S ORM |
 | User-file and Knowledge document/chunk bytes | Shared immutable-object infrastructure through typed Files/Knowledge adapters |
@@ -2687,7 +2697,7 @@ operator-visible halt recommendation but cannot advance these states directly.
 | Log chunk ordering, provider-gap boundary, cursor, stream, checksum, object key, retained tombstone, compacted range, and batch replay header | PostgreSQL Fleet telemetry tables |
 | Log chunk report bodies | Immutable object storage selected by typed ACL; filesystem adapter for development and HTTPS S3-compatible storage for production |
 | Database intent, object/volume provider policy, volume identity, attachment/fencing state, and backup descriptors | PostgreSQL Data tables through A3S ORM |
-| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, and component-only `S0.1-C4` supplies bounded recovery/delete execution and interruption replay through the same port. Operations/Flow still owns the durable lifecycle; there is no second object client, provider registry, recovery worker/evidence store, or provider-native mutable Cloud configuration |
+| Durable Cell object-store provider profile, namespace capability, credential binding, retention, backup, and deletion evidence | S0 and Secrets through typed Durable Cells adapters; `S0.1-C1/C2` and `CELL0.2-C1/C2` supply the plaintext-free contracts, component-only `CELL0.5-C1` resolves the exact non-secret HTTPS provider profile through canonical A3S ACL/digest, `S0.1-C3`/`CELL0.2-C3` supply one shared HTTPS S3-compatible retained-evidence gate awaiting an operator pass, and `S0.1-C4` supplies bounded recovery/delete execution and interruption replay through the same port, and its three exact operation contracts are routed through the existing Operations/Flow runtime with JIT Secrets. Workloads still owns writer-fence receipt production and durable enqueue; Operations/Flow owns the durable lifecycle; there is no second object client, provider registry, recovery worker/evidence store, or provider-native mutable Cloud configuration |
 | Provider volume attachment and live database health | Node agent plus Runtime provider |
 | Backup bytes | S3-compatible object storage |
 | Integration-fact delivery | Transactional Outbox plus A3S Event; never the sole source of truth |
@@ -2785,7 +2795,7 @@ The first architecture does not implement:
   generator, permission evaluator, Workspace Grant store, Runtime Binding
   store, capability registry, surface reconciler, dependency graph, package
   reference counter, or plugin-specific scheduler;
-- direct REST, CLI, Web, or Cloud Management MCP calls to the node-local A3S
+- direct REST, client, CLI, or Cloud Management MCP calls to the node-local A3S
   Use management MCP, or a private `execute(plugin, action, payload)` protocol;
 - an enterprise-only Principal/Membership store, SCIM-owned role or grant
   authority, application-local SSO/session evaluator, second audit chain, or

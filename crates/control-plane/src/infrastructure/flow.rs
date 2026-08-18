@@ -77,6 +77,7 @@ pub struct FlowRuntimeRouter {
     executions: Arc<dyn FlowRuntime>,
     agent_executions: Arc<dyn FlowRuntime>,
     workflow_runs: Arc<dyn FlowRuntime>,
+    object_namespace_recovery: Arc<dyn FlowRuntime>,
 }
 
 impl FlowRuntimeRouter {
@@ -86,6 +87,7 @@ impl FlowRuntimeRouter {
         executions: Arc<dyn FlowRuntime>,
         agent_executions: Arc<dyn FlowRuntime>,
         workflow_runs: Arc<dyn FlowRuntime>,
+        object_namespace_recovery: Arc<dyn FlowRuntime>,
     ) -> Self {
         Self {
             deployments,
@@ -93,6 +95,7 @@ impl FlowRuntimeRouter {
             executions,
             agent_executions,
             workflow_runs,
+            object_namespace_recovery,
         }
     }
 }
@@ -107,6 +110,10 @@ impl FlowRuntime for FlowRuntimeRouter {
             AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION,
         };
         use crate::modules::artifacts::application::{BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION};
+        use crate::modules::data::{
+            OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+            OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
+        };
         use crate::modules::executions::application::{
             EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
         };
@@ -132,6 +139,14 @@ impl FlowRuntime for FlowRuntimeRouter {
             }
             (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION)
             | (WORKFLOW_RUN_FLOW_NAME, WORKFLOW_RUN_FLOW_VERSION_V2) => &self.workflow_runs,
+            (OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION)
+            | (
+                OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME,
+                OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+            )
+            | (OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION) => {
+                &self.object_namespace_recovery
+            }
             (DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION)
             | (DEPLOYMENT_WORKFLOW_NAME, PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION)
@@ -164,6 +179,8 @@ impl FlowRuntime for FlowRuntimeRouter {
             self.executions.run_step(invocation).await
         } else if invocation.step_name.starts_with("workflow_run_") {
             self.workflow_runs.run_step(invocation).await
+        } else if invocation.step_name.starts_with("object_namespace_") {
+            self.object_namespace_recovery.run_step(invocation).await
         } else {
             self.deployments.run_step(invocation).await
         }
@@ -600,6 +617,7 @@ mod tests {
             Arc::new(StubRuntime("execution")),
             Arc::new(StubRuntime("agent_execution")),
             Arc::new(StubRuntime("workflow_run")),
+            Arc::new(StubRuntime("object_namespace_recovery")),
         )
     }
 
@@ -617,6 +635,21 @@ mod tests {
             ("cloud.agent-execution", "1", "agent_execution"),
             ("cloud.workflow-run", "1", "workflow_run"),
             ("cloud.workflow-run", "2", "workflow_run"),
+            (
+                "cloud.object-namespace.seal",
+                "1",
+                "object_namespace_recovery",
+            ),
+            (
+                "cloud.object-namespace.restore",
+                "1",
+                "object_namespace_recovery",
+            ),
+            (
+                "cloud.object-namespace.delete",
+                "1",
+                "object_namespace_recovery",
+            ),
         ] {
             assert_eq!(
                 router().run_workflow(workflow(name, version)).await?,
@@ -711,6 +744,10 @@ mod tests {
         assert_eq!(
             router().run_step(step("agent_execution_prepare")).await?,
             json!("agent_execution")
+        );
+        assert_eq!(
+            router().run_step(step("object_namespace_seal")).await?,
+            json!("object_namespace_recovery")
         );
         assert_eq!(
             router().run_step(step("resolve_deployment")).await?,

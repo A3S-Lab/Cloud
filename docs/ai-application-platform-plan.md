@@ -27,7 +27,7 @@ documentation. It includes:
   test/debug history, reusable publication, and blocking/streaming execution;
 - Tool, Model, Agent Strategy, Extension, Datasource, and Trigger plugin
   outcomes;
-- Web, API, streaming, embed, MCP, internal invocation, and reusable
+- browser-facing API, streaming, embed, MCP, internal invocation, and reusable
   application-template/catalog publication;
 - run monitoring, feedback, annotation, usage, and operational diagnostics;
 - public enterprise outcomes including multiple workspaces, SAML/OIDC SSO,
@@ -58,6 +58,9 @@ This is a capability target, not a compatibility promise. A3S Cloud does not
 copy another product's internal API, storage model, package format, execution
 engine, or configuration authority. All admitted product configuration is
 closed A3S ACL parsed and generated only through `a3s-acl`.
+Product Studio/Web UI implementation and visual parity are intentionally
+outside this repository's interface-only scope; baseline UI outcomes are
+translated only into stable domain and protocol contracts where applicable.
 
 The document hierarchy is:
 
@@ -193,7 +196,7 @@ write authority.
 
 ```mermaid
 flowchart LR
-    Client[Web / API / Embed / MCP client]
+    Client[Browser / API / Embed / MCP client]
     Gateway[A3S Gateway]
     Delivery[Application delivery role]
     Apps[Applications]
@@ -218,7 +221,7 @@ flowchart LR
 The application delivery role is a bounded public protocol projection in the
 Cloud binary. It accepts published application invocations, emits the common
 stream/cursor protocol, and calls the same Applications commands and queries as
-the maintained non-Web interfaces. It does not plan graphs, call providers,
+the maintained interfaces. It does not plan graphs, call providers,
 schedule work, persist an independent session, or proxy arbitrary hosted
 workloads. Gateway remains the only live route and edge-policy authority.
 
@@ -554,7 +557,7 @@ Knowledge, and Automations owners above.
 
 One published `ApplicationRelease` may expose any allowed combination of:
 
-- a generated Web experience;
+- a browser-facing application API;
 - authenticated blocking and streaming APIs;
 - an embed contract with explicit origin and capability policy;
 - a hosted MCP application facade; and
@@ -630,21 +633,21 @@ implementing a Cloud substitute is prohibited by this plan.
 | --- | --- | --- |
 | `APP0.1` | Freeze Application, immutable ApplicationRelease, six authoring projections including classic/New Agent distinction, exact WorkflowRevision binding, canonical ACL, authorization, idempotency, audit, Outbox, REST/OpenAPI, client, CLI, and Management MCP contracts | `F0`, `C0.1`, `W0.3` definition/revision foundation |
 | `APP0.2` | Add deterministic preset compilers, application end users, invocation/session/message/variant state, conversation variables, file references, Answer frames, citations, final outputs, feedback, annotations, cancellation, replay, and blocking/streaming parity | `APP0.1`, public `W0.3` execution and HumanTask surfaces; `K0.1` for file admission |
-| `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, Web/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
+| `APP0.3` | Add the bounded application delivery role, Identity-issued application-scoped credentials/grants, browser/API/embed routes, shared SSE/cursors, rate limits, exact-release routing, drain, rollback, and failure recovery | `APP0.2`, `E0`, `H0.2`, `C0.3` |
 | `APP0.4` | Complete Chatbot, Text Generator, classic Agent, New Agent Beta, Chatflow, and Workflow behavior; New Agent reusable release/sandbox/build-chat projection; opener/follow-up, file/citation, moderation, Annotation Reply, More Like This, and TTS/STT toolkit policy; reusable snippets and immutable application templates/catalog; authorized global discovery; collaborative revision safety; version control; node test; variable inspection; per-node error handling; canonical ACL import/export; internal app invocation; and hosted MCP facade | `APP0.3`, `A0.5`, `A1.4`, selected `AR0.1`-`AR0.5`, `I0.2`, `U0.4`, `MCP0.5`; relevant `W0.3`/`W0.4` ports and certified `I0.6` media/speech profiles |
 | `APP0.5` | Add run-history and monitor projections, token/usage/cost correlation, latency and failure diagnostics, feedback/annotation review, retention/redaction, external telemetry export, and operator alerts without a second run log | `APP0.3`, `I0.2c`, Operations and telemetry foundations |
-| `APP0.6` | Pass the complete parity manifest, authorized Studio/Web projections after the frontend freeze is lifted, multi-workspace enterprise identity/governance, branding, quotas, HA, backup/restore, upgrade, air-gap, and disaster-recovery evidence | `APP0.4`, `APP0.5`, `A1.6`, `AR0.8`, `W0.5`, `K0.6`, `AUT0.6`, `U0.5`, `C0.5`, `S0`, `H0.5` |
+| `APP0.6` | Pass the complete interface parity manifest, multi-workspace enterprise identity/governance, quotas, HA, backup/restore, upgrade, air-gap, and disaster-recovery evidence | `APP0.4`, `APP0.5`, `A1.6`, `AR0.8`, `W0.5`, `K0.6`, `AUT0.6`, `U0.5`, `C0.5`, `S0`, `H0.5` |
 
 ### 11.2 `K0`: Knowledge and Knowledge Pipeline
 
 | Sub-gate | Outcome | Dependencies |
 | --- | --- | --- |
-| `K0.1` | Freeze Files, Knowledge, and KnowledgePipeline identities/revisions, canonical ACL, typed object references, upload/scan/quota/retention state, authorization, idempotency, audit, document/chunk/metadata/tag lifecycle, and non-Web interfaces | `F0`, `C0.1`, shared immutable-object client |
+| `K0.1` | Freeze Files, Knowledge, and KnowledgePipeline identities/revisions, canonical ACL, typed object references, upload/scan/quota/retention state, authorization, idempotency, audit, document/chunk/metadata/tag lifecycle, and maintained interfaces | `F0`, `C0.1`, shared immutable-object client |
 | `K0.2` | Add file/text, online-document/drive, web-crawler, and admitted Datasource ingestion; built-in and Tool document processors; OCR/layout and multimodal attachments; provenance; incremental update; cancellation; failure cleanup; and exact source tombstones | `K0.1`, Executions/Runtime/Box; `AUT0.5` for web/HTTP; applicable `U0.4` Datasource/Tool capability and Sources connection contract |
 | `K0.3` | Add deterministic General, Parent-child, and Q&A chunk profiles; immutable published chunk structure; metadata/tags; high-quality and economical indexes; vector/full-text/hybrid/inverted retrieval; text/multimodal embedding and reranking; retrieval test/citations; index rebuild; and model-revision migration | `K0.1`, `I0.2`, `S0` immutable-object production contract; certified `I0.6` rerank/media profiles are required to close the full gate |
 | `K0.4` | Add Knowledge Retrieval and Document Extractor Workflow ports plus external Knowledge bindings with exact revisions and bounded evidence | `K0.2`, `K0.3`, `W0.4` |
 | `K0.5` | Add immutable KnowledgePipelineRelease lifecycle over exact Workflow revisions, global and datasource-local native Form inputs, whole-pipeline test, single-datasource debug, history/variable inspection, publish/reuse, blocking/streaming run APIs, resume, repair, and Flow-backed observation | `K0.4`, native Form/public `W0.3`, and selected `W0.4` steps |
-| `K0.6` | Pass tenant isolation, deletion, quota, large-corpus, incremental synchronization, provider outage, rebuild, backup/restore, HA, upgrade, and runbook gates; add authorized Web projection after the freeze | `K0.5`, `C0.3`, `S0`, `H0.5` |
+| `K0.6` | Pass tenant isolation, deletion, quota, large-corpus, incremental synchronization, provider outage, rebuild, backup/restore, HA, upgrade, runbook, and interface gates | `K0.5`, `C0.3`, `S0`, `H0.5` |
 
 ### 11.3 `AUT0`: Automations and Connectors
 
@@ -664,7 +667,7 @@ implementing a Cloud substitute is prohibited by this plan.
 | `AUT0.5-C8` | Implemented component foundation: add one Connectors-owned Workflow exact-attempt port over C6. It binds immutable WorkflowRun/plan/step-attempt and profile/revision/digest authority to a stable UUIDv5 attempt, canonical bounded JSON, exact-environment authorization, digest verification during C6's sole revision load, body-free terminal evidence, and typed deferred/indeterminate observations. Correct `ConnectorRevision` ownership to `connectors` and require an exact revision UUID plus `connector.http`. Add no response-body store, retry/wait policy, queue, scheduler, credential authority, or HTTP client. | `AUT0.5-C6`, `W0.3` |
 | `AUT0.5-C9` | Implemented component foundation: add bounded provider-attempt and fallback-delay semantics as `cloud.workflow.policy.v2` through the existing per-step policy payload/digest channel. Require exact v2 material for ConnectorRevision steps in WorkflowRevision and immutable WorkflowRun admission; reject retry material for provider runtimes not yet admitted; bind Connector retry classification to the Connectors-owned `connector.http` descriptor. Preserve policy v1 bytes and add no policy table/semantic child, Plan/Run version, scheduler, wait worker, queue, or configuration language. | `AUT0.5-C8`, `W0.3` |
 | `AUT0.5` | Complete Workflow Flow scheduling, retry/wait interpretation, and immutable response-object composition over C8/C9; finish remaining provider/consumer wiring beyond the first Notification NATS-to-C6 composition, revocation/recovery operations, and retained PostgreSQL/integration evidence. Flow or the owning A3S Event consumer remains the retry/backoff authority. | `AUT0.5-C9`; `W0.4` for node availability |
-| `AUT0.6` | Pass duplicate delivery, out-of-order event, clock shift, lease loss, process death, provider outage, revoke, quota, multi-node HA, replay, and disaster-recovery gates; add authorized Web projection after the freeze | `AUT0.2` through `AUT0.5`, `H0.5` |
+| `AUT0.6` | Pass duplicate delivery, out-of-order event, clock shift, lease loss, process death, provider outage, revoke, quota, multi-node HA, replay, disaster-recovery, and interface gates | `AUT0.2` through `AUT0.5`, `H0.5` |
 
 The sub-gates are dependency gates, not calendar promises. `K0.1`, `AUT0.1`,
 and `APP0.1` may advance in parallel after their prerequisites. Full `APP0`
@@ -673,11 +676,10 @@ availability is the composite public parity claim and remains unavailable until
 
 ## 12. Implementation sequence
 
-Each slice follows the repository's backend-first policy: tests and ACL
+Each slice follows the repository's interface-only policy: tests and ACL
 contracts, domain invariants, application commands/queries, A3S ORM persistence,
 real adapters, REST/OpenAPI, maintained client, CLI, applicable Management MCP,
-failure/recovery evidence, then the retained Web projection when the operator
-lifts the freeze.
+and failure/recovery evidence.
 
 The recommended sequence is:
 
@@ -724,10 +726,6 @@ The recommended sequence is:
 8. **Close production and enterprise evidence.** Complete `K0.6`, `AUT0.6`,
    then `APP0.6` against `A1.6`, `AR0.8`, `C0.5`, `S0`, `H0.5`, backup/restore,
    upgrade, mixed versions, quotas, isolation, security, and clean-host runbooks.
-9. **Deliver the retained visual product.** After explicit removal of the
-   frontend freeze, implement Studio, Knowledge, monitoring, plugin, publishing,
-   and enterprise projections over the already verified application APIs. No
-   browser state may become authority.
 
 ## 13. Required evidence and parity decision
 
@@ -742,8 +740,7 @@ Every node and product capability advances through the same evidence ladder:
 4. **Recover:** process death before and after each external effect, replay,
    retry classification, timeout, cancel, duplicate delivery, and cleanup.
 5. **Surface:** REST/OpenAPI, maintained client, CLI, applicable Management MCP,
-   application delivery protocols, and later the authorized Web projection all
-   invoke the same application handler.
+   and application delivery protocols invoke the same application handler.
 6. **Operate:** telemetry, audit, retention, upgrade, rollback, backup/restore,
    HA, security, runbooks, and clean supported Linux installation.
 
@@ -789,5 +786,5 @@ This plan does not authorize:
   control plane owned by Applications;
 - a second session, audit, usage, telemetry, identity, authorization, routing,
   storage, placement, or rollout authority; or
-- a public parity claim before the composite `APP0.6` gate and its retained Web
-  outcomes pass.
+- a public parity claim before the composite `APP0.6` interface, provider,
+  recovery, and evidence gates pass.

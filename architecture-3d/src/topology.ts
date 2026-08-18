@@ -45,9 +45,9 @@ export const ARCHITECTURE_CARRIERS: readonly ArchitectureCarrier[] = [
   {
     id: 'gateway-public-boundary',
     label: 'A3S Gateway Public Boundary',
-    eyebrow: 'Web / Code → Gateway → Cloud',
+    eyebrow: 'Client / Code → Gateway → Cloud',
     description:
-      'The public same-origin boundary routes Web and Code API calls to private Cloud services and live requests to healthy workloads.',
+      'The public boundary routes TypeScript-client and Code API calls to private Cloud services and live requests to healthy workloads.',
     position: [0, 0.08, 10.3],
     size: [9.8, 1.75],
     color: '#5dd6ff',
@@ -162,19 +162,6 @@ export const ARCHITECTURE_HOSTING_RELATIONSHIPS: readonly ArchitectureHostingRel
     boundary:
       'Each bounded context keeps its own domain and persistence contracts even though Boot composes them in one process.',
     color: '#b8f36b',
-  },
-  {
-    id: 'gateway-routes-web',
-    hostNodeIds: ['gateway'],
-    guestNodeIds: ['web'],
-    label: 'private SPA service',
-    description:
-      'Gateway routes non-API same-origin requests to the private service that delivers the A3S Web management SPA.',
-    hostAction: 'routes non-API paths to',
-    guestAction: 'served behind',
-    boundary:
-      'Gateway does not read SPA files itself, and the Web surface does not gain direct access to private Cloud services.',
-    color: '#72b7ff',
   },
   {
     id: 'agent-manages-runtime',
