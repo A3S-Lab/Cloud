@@ -785,9 +785,12 @@ commit and query tenant-scoped desired state.
   its `FormReleaseRef`, request, submission, canonicalization, and digest types,
   and calls its compiler and evaluator through one application port without a
   Cloud copy.
-- New Operation histories pin runtime build `a3s-cloud-workflows@1`. Legacy
-  unpinned histories remain replayable for compatibility, but Cloud does not
-  create new unpinned Operation runs.
+- New Operation histories pin runtime build `a3s-cloud-workflows@2`. The
+  former `@1` generation is an explicit replay-compatible migration entry;
+  unknown pinned generations fail closed. Legacy unpinned histories remain
+  replayable only as visible migration debt, and Cloud does not create new
+  unpinned Operation runs. Flow readiness reports the current and complete
+  compatible build set plus the unpinned-migration switch.
 - The process constructs one exact Flow runtime registry before serving. Each
   owning runtime contributes its complete step-name set; the registry binds it
   together with every current and replay-supported workflow name/version,

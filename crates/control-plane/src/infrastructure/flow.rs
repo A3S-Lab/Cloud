@@ -19,7 +19,9 @@ const BOOT_SCHEMA: &str = "a3s_boot";
 const FLOW_QUEUE: &str = "cloud-operations";
 const FLOW_TASK_RETRIES: u32 = 3;
 const QUEUE_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(5);
-pub(crate) const CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@1";
+pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@2";
+pub(crate) const REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS: &[&str] =
+    &["a3s-cloud-workflows@1"];
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlowInfrastructureError {
@@ -585,6 +587,18 @@ impl FlowInfrastructure {
     }
 
     pub async fn health(&self) -> HealthIndicatorResult {
+        let runtime_build = match self.engine.runtime_build_compatibility() {
+            Some(runtime_build) => runtime_build,
+            None => {
+                return HealthIndicatorResult::down()
+                    .with_detail_value("error", "Flow runtime build policy is not configured")
+            }
+        };
+        let current_runtime_build_id = runtime_build.current_build_id().as_str().to_owned();
+        let compatible_runtime_build_ids = runtime_build
+            .compatible_build_ids()
+            .map(|build_id| build_id.as_str().to_owned())
+            .collect::<Vec<_>>();
         let runs = match self.engine.list_run_ids().await {
             Ok(runs) => runs.len(),
             Err(error) => {
@@ -609,6 +623,12 @@ impl FlowInfrastructure {
             HealthIndicatorResult::up()
         }
         .with_detail_value("runs", runs)
+        .with_detail_value("currentRuntimeBuildId", current_runtime_build_id)
+        .with_detail_value("compatibleRuntimeBuildIds", compatible_runtime_build_ids)
+        .with_detail_value(
+            "acceptsUnpinnedRuntimeBuilds",
+            runtime_build.accepts_unpinned(),
+        )
         .with_detail_value("pendingTasks", stats.pending)
         .with_detail_value("activeTasks", stats.active)
         .with_detail_value("completedTasks", stats.completed)
@@ -620,11 +640,16 @@ impl FlowInfrastructure {
     }
 }
 
-fn cloud_runtime_build_compatibility() -> Result<RuntimeBuildCompatibility, FlowError> {
-    Ok(
-        RuntimeBuildCompatibility::new(RuntimeBuildId::new(CLOUD_FLOW_RUNTIME_BUILD_ID)?)
-            .accept_unpinned(),
-    )
+pub(crate) fn cloud_runtime_build_compatibility() -> Result<RuntimeBuildCompatibility, FlowError> {
+    let mut compatibility =
+        RuntimeBuildCompatibility::new(RuntimeBuildId::new(CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID)?);
+    for build_id in REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS {
+        compatibility = compatibility.with_compatible_build(RuntimeBuildId::new(*build_id)?);
+    }
+
+    // Histories created before runtime-build pinning remain admitted only as
+    // migration debt. Cloud never creates a new unpinned Operation run.
+    Ok(compatibility.accept_unpinned())
 }
 
 pub async fn connect_flow(
@@ -689,16 +714,38 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn runtime_build_policy_pins_current_runs_and_admits_legacy_histories() -> Result<(), FlowError>
-    {
+    fn runtime_build_policy_pins_one_current_generation_and_admits_only_declared_legacy_builds(
+    ) -> Result<(), FlowError> {
         let compatibility = cloud_runtime_build_compatibility()?;
 
         assert_eq!(
             compatibility.current_build_id().as_str(),
-            CLOUD_FLOW_RUNTIME_BUILD_ID
+            CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID
+        );
+        let compatible_build_ids = compatibility
+            .compatible_build_ids()
+            .map(RuntimeBuildId::as_str)
+            .collect::<Vec<_>>();
+        let declared_build_ids = REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS
+            .iter()
+            .copied()
+            .chain(std::iter::once(CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID))
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(
+            compatible_build_ids,
+            declared_build_ids.iter().copied().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            declared_build_ids.len(),
+            REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS.len() + 1,
+            "current and replay-compatible runtime build identities must be unique"
         );
         assert!(compatibility.accepts_unpinned());
         assert!(compatibility.supports(Some(compatibility.current_build_id())));
+        assert!(compatibility.supports(Some(&RuntimeBuildId::new(
+            REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS[0]
+        )?)));
+        assert!(!compatibility.supports(Some(&RuntimeBuildId::new("a3s-cloud-workflows@unknown")?)));
         assert!(compatibility.supports(None));
         Ok(())
     }

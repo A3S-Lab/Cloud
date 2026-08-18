@@ -1929,10 +1929,11 @@ single structural compiler. Flow events and Boot tasks use isolated `a3s_flow`
 and `a3s_boot` schemas. One process-level supervisor now observes every
 mandatory worker exit, error, and panic and fails serving before a background
 path can disappear silently. New Cloud Operation
-runs pin runtime build `a3s-cloud-workflows@1`, while legacy unpinned histories
-remain replayable. PostgreSQL tests cover queue draining, bounded retries,
-terminal-failure readiness, and the existing nine Build Flow `SIGKILL`
-boundaries. The exact root compatibility lock now publishes this
+runs pin runtime build `a3s-cloud-workflows@2`; the former `@1` generation is
+admitted only through the explicit compatibility set, while legacy unpinned
+histories remain replayable as migration debt. PostgreSQL tests cover queue
+draining, bounded retries, terminal-failure readiness, and the existing nine
+Build Flow `SIGKILL` boundaries. The exact root compatibility lock now publishes this
 Form/Flow/Boot/ORM composition. This
 supports the minimal WorkflowRun, internal HumanTask execution, and finite
 Execution slices plus protected task list/detail reads and public

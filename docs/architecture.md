@@ -271,6 +271,7 @@ second entry in an authority row must be redesigned before implementation.
 | Relational access | A3S ORM | Raw SQL, direct database drivers, or a context-local data-access layer |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
 | Flow runtime dispatch | One startup-validated exact registry assembled from owner-provided workflow and step identities | Prefix routing, an implicit default runtime, duplicate step ownership, or discovering collisions only after work is dispatched |
+| Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility`, configured from one Cloud manifest with current `a3s-cloud-workflows@2` and explicitly retained generations | A static identity reused after replay code changes, caller-selected identities, or another build router/queue |
 | Portable Workflow DAG structure | A3S Flow `WorkflowDag` compiler | A Cloud compatibility parser, Cloud topology sorter, authoring-tool execution schema, or product-local graph compiler |
 | Ontology, goal, plan, and Workflow semantic state | Workflow context in PostgreSQL | Flow history as business truth, a graph database authority, planner-local files, or a second workflow engine |
 | Application identity, immutable release, delivery/toolkit policy, sessions, messages/variants, conversation variables, feedback, and annotations | Applications context in PostgreSQL | Mode-specific/toolkit runtimes, Workflow-owned conversations, direct provider clients, delivery-local state, or presentation state as truth |

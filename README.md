@@ -47,6 +47,9 @@ The code on `main` separates implemented mechanics from released capability:
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
   name; unknown identities fail closed and no product runtime is a fallback.
+  New Operations pin replay generation `a3s-cloud-workflows@2`; the former
+  `@1` generation is admitted only through the explicit Flow compatibility
+  set, which readiness exposes with the remaining unpinned migration switch.
   The last retained complete `F0` certification used Flow `0.12.0`; the
   upgraded exact lock must be recertified before `F0` returns to `Verified`.
 - **Implemented / stable management contract** — committed
@@ -113,6 +116,7 @@ preservation register.
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
 | Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
 | Flow runtime dispatch | One startup-validated registry of exact workflow name/version and exact step name | Prefix routing, a default product runtime, duplicate ownership, or collision discovery after serving starts |
+| Flow replay-code identity | A3S Flow `RuntimeBuildCompatibility` configured by one Cloud build manifest | Reusing one build ID across runtime generations, caller-selected build IDs, or a second build router |
 | Portable DAG structure | A3S Flow `WorkflowDag`; Cloud constructs it programmatically from canonical ACL | A Cloud compatibility parser, topology sorter, or editor-owned execution schema |
 | Placement and rollout | Workloads plus Fleet | Agent-, MCP-, inference-, Cell-, or Gateway-specific schedulers |
 | Provider lifecycle | A3S Runtime Task/Service plus A3S Box | Direct provider calls from business contexts or a Cloud executor |

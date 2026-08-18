@@ -19,7 +19,8 @@ AI application platform parity manifest.
 | [0012](0012-revision-bound-composite-region-policies.md) | Bind bounded Iteration and Loop policy plus exact child Workflow identity without adding another execution engine |
 | [0013](0013-single-flow-dag-compiler.md) | Reuse A3S Flow as the sole portable DAG structural compiler while Cloud retains ACL and product semantics |
 | [0014](0014-exact-flow-runtime-registry.md) | Route every Flow workflow and step through one startup-validated exact registry with no default runtime |
+| [0015](0015-versioned-flow-runtime-builds.md) | Give each deployed Flow replay-code generation one explicit build identity and admit older generations only by declaration |
 
-All fourteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All fifteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

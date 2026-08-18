@@ -1,9 +1,12 @@
 use super::*;
-use crate::infrastructure::CLOUD_FLOW_RUNTIME_BUILD_ID;
+use crate::infrastructure::{
+    cloud_runtime_build_compatibility, CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID,
+    REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS,
+};
 use crate::modules::shared_kernel::domain::{OperationId, OrganizationId};
 use a3s_flow::{
-    FlowEngine, FlowError, FlowRuntime, RuntimeBuildCompatibility, RuntimeBuildId, RuntimeCommand,
-    StepInvocation, WorkflowInvocation, WorkflowSpec,
+    FlowEngine, FlowError, FlowRuntime, RuntimeBuildId, RuntimeCommand, StepInvocation,
+    WorkflowInvocation, WorkflowSpec,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -64,10 +67,7 @@ fn operation_request(
 
 fn flow_engine() -> Result<FlowEngine, FlowError> {
     Ok(FlowEngine::builder(Arc::new(CompletingRuntime))
-        .with_runtime_build_compatibility(
-            RuntimeBuildCompatibility::new(RuntimeBuildId::new(CLOUD_FLOW_RUNTIME_BUILD_ID)?)
-                .accept_unpinned(),
-        )
+        .with_runtime_build_compatibility(cloud_runtime_build_compatibility()?)
         .build())
 }
 
@@ -105,7 +105,7 @@ async fn operation_reconciliation_repairs_start_and_rebuilds_projection(
             .runtime_build_id
             .as_ref()
             .map(RuntimeBuildId::as_str),
-        Some(CLOUD_FLOW_RUNTIME_BUILD_ID)
+        Some(CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID)
     );
     let projection = repository
         .find_projection(operation_id)
@@ -161,6 +161,64 @@ async fn operation_engine_replays_legacy_unpinned_history_without_creating_new_u
             .runtime_build_id,
         None
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn operation_engine_replays_only_an_explicitly_compatible_pinned_generation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let operation_id = OperationId::new();
+    let input = json!({"generation": 1});
+    let request = operation_request(operation_id, input.clone())?;
+    let legacy_build_id = RuntimeBuildId::new(
+        REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS
+            .first()
+            .copied()
+            .ok_or("missing legacy Flow runtime build fixture")?,
+    )?;
+    let engine = flow_engine()?;
+    engine
+        .start_with_id(
+            operation_id.to_string(),
+            WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main")
+                .with_runtime_build(legacy_build_id.clone()),
+            input,
+        )
+        .await?;
+
+    let projection = FlowOperationEngine::new(engine.clone())
+        .ensure(&request)
+        .await?;
+
+    assert_eq!(projection.status, OperationStatus::Succeeded);
+    assert_eq!(
+        engine
+            .snapshot(&operation_id.to_string())
+            .await?
+            .spec
+            .runtime_build_id,
+        Some(legacy_build_id)
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn cloud_flow_policy_rejects_an_unknown_pinned_generation_before_history_mutation(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let operation_id = OperationId::new();
+    let engine = flow_engine()?;
+    let error = engine
+        .start_with_id(
+            operation_id.to_string(),
+            WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main")
+                .with_runtime_build(RuntimeBuildId::new("a3s-cloud-workflows@unknown")?),
+            json!({"generation": "unknown"}),
+        )
+        .await
+        .expect_err("an unknown runtime generation must fail closed");
+
+    assert!(matches!(error, FlowError::RuntimeBuildUnavailable { .. }));
+    assert!(engine.list_run_ids().await?.is_empty());
     Ok(())
 }
 

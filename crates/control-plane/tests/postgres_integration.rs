@@ -888,7 +888,28 @@ async fn exercise_boot_flow_task_manager(url: String) -> Result<(), Box<dyn std:
     let completed = flow.engine().snapshot(run_id).await?;
     assert_eq!(completed.status, WorkflowRunStatus::Completed);
     assert_eq!(completed.output, Some(json!({"queue": "a3s-boot"})));
-    assert!(flow.health().await.is_up());
+    let health = flow.health().await;
+    assert!(health.is_up());
+    let runtime_build = flow
+        .engine()
+        .runtime_build_compatibility()
+        .ok_or("Flow runtime build compatibility")?
+        .clone();
+    assert_eq!(
+        health.details["currentRuntimeBuildId"],
+        runtime_build.current_build_id().as_str()
+    );
+    assert_eq!(
+        health.details["compatibleRuntimeBuildIds"],
+        json!(runtime_build
+            .compatible_build_ids()
+            .map(a3s_flow::RuntimeBuildId::as_str)
+            .collect::<Vec<_>>())
+    );
+    assert_eq!(
+        health.details["acceptsUnpinnedRuntimeBuilds"],
+        runtime_build.accepts_unpinned()
+    );
 
     let database = Database::new(PostgresDialect, executor.clone());
     for relation in [
