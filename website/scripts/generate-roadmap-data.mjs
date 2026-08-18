@@ -28,6 +28,7 @@ const expectedGates = [
   'K0',
   'AUT0',
   'S0',
+  'CELL0',
   'H0',
   'I0',
   'EV0',
@@ -36,7 +37,12 @@ const expectedGates = [
 
 function normalizeStatus(status) {
   if (status.startsWith('Verified')) return 'verified';
-  if (status.startsWith('In progress')) return 'in-progress';
+  if (
+    status.startsWith('In progress') ||
+    status.startsWith('Foundation in progress')
+  ) {
+    return 'in-progress';
+  }
   if (status.startsWith('Planned')) return 'planned';
   if (status.startsWith('Historical')) return 'historical';
   throw new Error(`Unsupported roadmap status: ${status}`);
