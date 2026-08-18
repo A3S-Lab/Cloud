@@ -108,6 +108,37 @@ pub struct FlowInfrastructure {
     task_manager: Arc<BootFlowTaskManager>,
 }
 
+/// Query-side access to the durable A3S Flow event store.
+///
+/// Management API processes need to inspect workflow history, but they do not
+/// own workflow runtimes, the Boot task queue, or task execution. Keeping this
+/// adapter separate makes that ownership impossible to acquire accidentally.
+#[derive(Clone)]
+pub struct FlowReadInfrastructure {
+    engine: FlowEngine,
+}
+
+#[derive(Debug)]
+struct ReadOnlyFlowRuntime;
+
+#[async_trait::async_trait]
+impl FlowRuntime for ReadOnlyFlowRuntime {
+    async fn run_workflow(
+        &self,
+        _invocation: WorkflowInvocation,
+    ) -> Result<RuntimeCommand, FlowError> {
+        Err(FlowError::Runtime(
+            "the management Flow reader cannot execute workflows".into(),
+        ))
+    }
+
+    async fn run_step(&self, _invocation: StepInvocation) -> Result<serde_json::Value, FlowError> {
+        Err(FlowError::Runtime(
+            "the management Flow reader cannot execute steps".into(),
+        ))
+    }
+}
+
 /// Exact process-level dispatch for every Cloud-owned A3S Flow runtime.
 ///
 /// `StepInvocation` carries a step name but no workflow identity, so step names
@@ -636,6 +667,31 @@ impl FlowInfrastructure {
         match worker_error {
             Some(error) => health.with_detail_value("workerError", error),
             None => health,
+        }
+    }
+}
+
+impl FlowReadInfrastructure {
+    pub async fn connect(database_url: &str) -> Result<Self, FlowInfrastructureError> {
+        let flow_url = scoped_postgres_url(database_url, FLOW_SCHEMA)?;
+        let store = Arc::new(PostgresEventStore::connect(flow_url.as_str()).await?);
+        let engine = FlowEngine::builder(Arc::new(ReadOnlyFlowRuntime))
+            .with_store(store)
+            .with_runtime_build_compatibility(cloud_runtime_build_compatibility()?)
+            .build();
+        Ok(Self { engine })
+    }
+
+    pub fn engine(&self) -> FlowEngine {
+        self.engine.clone()
+    }
+
+    pub async fn health(&self) -> HealthIndicatorResult {
+        match self.engine.list_run_ids().await {
+            Ok(runs) => HealthIndicatorResult::up().with_detail_value("runs", runs.len()),
+            Err(error) => {
+                HealthIndicatorResult::down().with_detail_value("error", error.to_string())
+            }
         }
     }
 }

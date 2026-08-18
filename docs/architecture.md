@@ -287,7 +287,7 @@ second entry in an authority row must be redesigned before implementation.
 | Governed Agent runtime/sandbox product projection | `AR0` over Agents, Workloads, Runtime, Box, Secrets, Operations, and `H0` | Applications-owned sandbox controller, process store, Secret injector, idle evaluator, checkpoint engine, or autoscaler |
 | Evolution experiments, evaluations, candidates, and promotion decisions | Evolution context in PostgreSQL | Model-, Agent-, Workflow-, or telemetry-specific evaluation and promotion controllers |
 | Request replay | Shared tenant-scoped idempotency records | Per-context idempotency tables or in-memory replay state |
-| Integration facts | Transactional Outbox plus A3S Event; memory is development all-in-one only, while production and every split process role require NATS | Direct publish-before-commit, a process-local bus across process boundaries, or another queue |
+| Integration facts | Transactional Outbox plus A3S Event; memory is limited to development all-in-one or a non-publishing API, while every event-owning production or split role requires NATS | Direct publish-before-commit, a process-local bus across process boundaries, or another queue |
 | Personal and outbound notification projection | Notifications owns the exact-recipient inbox and deterministic delivery intent; A3S Event owns durable consumption; Connectors/Secrets own target and credential material; Identity owns verified recipient contacts and retains invitation/revocation lifecycle | Business desired state, source-fact mutation, a second event rail or queue, provider-local retry scheduler, copied connection/Secret/contact authority, or presentation-local inbox |
 | Placement, replicas, rollout, and scaling | Workloads | Agent, MCP, Durable Cell, inference, Gateway, or import-specific schedulers and autoscalers |
 | Node delivery | Fleet `node_commands`, leases, and the Node Agent journal | Direct Cloud-to-process control, second queue, or profile-specific node channel |
@@ -437,23 +437,33 @@ Box, OIDC, GitHub, Vault, Gateway certificate, or log-object providers. Its
 readiness is the conjunction of the PostgreSQL and A3S Event dependencies it
 actually uses.
 
-The Worker composition omits one typed `ManagementSurfaceDependencies`
+The Worker composition omits the typed `ManagementSurfaceDependencies`
 capability bundle. It therefore does not resolve the bootstrap credential,
 OIDC provider, source-webhook verifier, management source resolver, node CA,
 node-control server identity, plugin trust/catalog state, domain verifier, or
 management-only application services. Its readiness is the exact conjunction
-of PostgreSQL, A3S Event, Flow, Gateway certificate authority, key encryption,
-and log storage. A real PostgreSQL 17 plus NATS gate checks that dependency
-set, the status-only route set, and the absence of management-owned local
-state.
+of PostgreSQL, A3S Event, executable Flow, Gateway certificate authority, key
+encryption, and log storage. A real PostgreSQL 17 plus NATS gate checks that
+dependency set, the status-only route set, and the absence of management-owned
+local state.
 
-This closes the management-surface leak but not all of `H0.4`. The current
-full composition root still constructs a shared set of repositories and
-worker infrastructure before selecting API or Worker background ownership;
-the API role also retains Worker-oriented readiness dependencies. The next
-topology slice must separate typed common-data, API, and Worker dependency
-bundles while retaining one repository implementation and one business
-mechanism for each concern.
+The API composition owns no event transport and therefore does not resolve or
+health-check NATS. It connects a query-only `FlowReadInfrastructure` directly
+to the sole A3S Flow PostgreSQL event store for workflow history and variable
+projection. That adapter has no Boot queue or task manager and its guarded
+runtime rejects workflow or step execution. Checkout, build input/output
+staging, evidence signing, the exact runtime registry, executable Flow queue,
+and every reconciler are constructed only behind the Worker capability. API
+readiness is exactly PostgreSQL, query-only Flow, node CA, Gateway CA, key
+encryption, and log storage. A PostgreSQL-only gate uses an unresolved NATS URL
+and proves both that readiness set and the absence of Worker staging state.
+
+`all` composes the same management, Worker, and Relay capabilities rather than
+building an alternate mechanism. Shared PostgreSQL repository implementations
+remain instantiated from the common composition function; extracting them
+into smaller typed adapter families is maintainability work, while production
+HA, migration jobs, installation, and dependency orchestration remain the
+substantive open `H0.4` boundaries.
 
 Gateway certificate and managed-state paths describe the target Gateway
 runtime, not the control-plane host. ACL admission and snapshot compilation
@@ -1447,7 +1457,7 @@ discard an approval, command, log gap, usage gap, or cleanup obligation.
 | A3S Power | Local inference serving | Required only for `I0` |
 | A3S Use | Signed plugin catalog, canonical plan/confirmation/receipt contracts, shared Plugin Manager, package generations, grants, bindings, and capability reconciliation | Required only for `U0`; Cloud pins and adapts it rather than reimplementing it |
 | Filesystem or S3-compatible objects | Immutable large content | One selected backend per namespace/profile behind the shared client |
-| NATS JetStream | Replicated A3S Event delivery | Required for production and every split API, worker, or relay role; never workflow or desired-state authority |
+| NATS JetStream | Replicated A3S Event delivery | Required for every event-owning production `all`, worker, or relay role; a dedicated API owns no event transport; never workflow or desired-state authority |
 | Redis | Ephemeral fan-out or specifically gated exact distributed counters | Optional and disposable; prohibited for durable control state |
 | OpenTelemetry Collector | Telemetry routing | Production profile dependency, not a decision authority |
 | PgBouncer | Connection pressure control | Added only after measured need |

@@ -242,7 +242,8 @@ use crate::{
         SecurityProviderKind,
     },
     infrastructure::{
-        connect_and_migrate, postgres_health, FlowRuntimeRouter, PostgresBootstrapError,
+        connect_and_migrate, postgres_health, FlowReadInfrastructure, FlowRuntimeRouter,
+        PostgresBootstrapError,
     },
     CloudConfig,
 };
@@ -366,7 +367,7 @@ async fn build_application_with_overrides(
     } else {
         None
     };
-    build_full_application(config, management_adapters).await
+    build_api_worker_application(config, management_adapters).await
 }
 
 struct ManagementAdapterOverrides {
@@ -374,16 +375,21 @@ struct ManagementAdapterOverrides {
     oidc_provider: Arc<dyn IOidcProviderService>,
 }
 
-async fn build_full_application(
+async fn build_api_worker_application(
     config: CloudConfig,
     management_adapters: Option<ManagementAdapterOverrides>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    let run_operations = config.server.role.runs_workers();
+    let run_relay = config.server.role.runs_relay();
     let postgres_url = config.postgres_url()?;
     let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
-    let event_publisher = event_publisher(&config).await?;
+    let event_publisher = if config.server.role.owns_event_transport() {
+        Some(event_publisher(&config).await?)
+    } else {
+        None
+    };
     let vault_credentials = config.vault_credentials()?;
     let key_encryption = key_encryption_provider(&config, vault_credentials.as_ref())?;
-    let build_evidence_signer = build_evidence_signer(&config, vault_credentials.as_ref()).await?;
     let gateway_certificate_authority =
         gateway_certificate_authority(&config, vault_credentials.as_ref())?;
     let log_chunks = log_chunk_store(&config)?;
@@ -491,45 +497,51 @@ async fn build_full_application(
     let durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository> = Arc::new(
         PostgresDurableCellDeploymentRepository::new(executor.clone()),
     );
-    let outbound_notification_consumer = if config.events.provider == EventProviderKind::Nats {
-        let connector_attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
-            executor.clone(),
-        ));
-        let connector_materializer = ConnectorHttpRevisionMaterializer::new(
-            Arc::clone(&secrets),
-            Arc::clone(&key_encryption),
-        );
-        let connector_egress = Arc::new(
-            PublicInternetConnectorEgressAuthorizer::from_system_config(Duration::from_secs(5))
+    let outbound_notification_consumer =
+        if run_operations && config.events.provider == EventProviderKind::Nats {
+            let event_publisher = event_publisher.as_ref().ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "worker process is missing its event publisher".into(),
+                ))
+            })?;
+            let connector_attempts = Arc::new(PostgresConnectorExecutionAttemptRepository::new(
+                executor.clone(),
+            ));
+            let connector_materializer = ConnectorHttpRevisionMaterializer::new(
+                Arc::clone(&secrets),
+                Arc::clone(&key_encryption),
+            );
+            let connector_egress = Arc::new(
+                PublicInternetConnectorEgressAuthorizer::from_system_config(Duration::from_secs(5))
+                    .map_err(ControlPlaneStartupError::Connector)?,
+            );
+            let connector_preparation = Arc::new(ConnectorHttpExecutionPreparationPort::new(
+                connector_materializer,
+                connector_egress,
+            ));
+            let connector_execution = Arc::new(
+                ConnectorExecutionApplicationService::new(
+                    Arc::clone(&connector_profiles),
+                    connector_attempts,
+                    connector_preparation,
+                    ConnectorExecutionServiceOptions::default(),
+                )
                 .map_err(ControlPlaneStartupError::Connector)?,
-        );
-        let connector_preparation = Arc::new(ConnectorHttpExecutionPreparationPort::new(
-            connector_materializer,
-            connector_egress,
-        ));
-        let connector_execution = Arc::new(
-            ConnectorExecutionApplicationService::new(
-                Arc::clone(&connector_profiles),
-                connector_attempts,
-                connector_preparation,
-                ConnectorExecutionServiceOptions::default(),
+            );
+            let dispatcher: Arc<dyn IOutboundNotificationDispatcher> =
+                Arc::new(OutboundNotificationDispatcher::new(connector_execution));
+            Some(
+                A3sEventOutboundNotificationConsumer::new(
+                    event_publisher.bus(),
+                    event_publisher.subject(OUTBOUND_NOTIFICATION_EVENT_KEY),
+                    outbound_notification_deliveries,
+                    dispatcher,
+                )
+                .map_err(ControlPlaneStartupError::Notification)?,
             )
-            .map_err(ControlPlaneStartupError::Connector)?,
-        );
-        let dispatcher: Arc<dyn IOutboundNotificationDispatcher> =
-            Arc::new(OutboundNotificationDispatcher::new(connector_execution));
-        Some(
-            A3sEventOutboundNotificationConsumer::new(
-                event_publisher.bus(),
-                event_publisher.subject(OUTBOUND_NOTIFICATION_EVENT_KEY),
-                outbound_notification_deliveries,
-                dispatcher,
-            )
-            .map_err(ControlPlaneStartupError::Notification)?,
-        )
-    } else {
-        None
-    };
+        } else {
+            None
+        };
     let source_repository = Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let sources: Arc<dyn ISourceRevisionRepository> = source_repository.clone();
     let source_webhooks: Arc<dyn ISourceWebhookRepository> = source_repository;
@@ -566,74 +578,6 @@ async fn build_full_application(
     let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> = Arc::new(
         RevalidatingGithubInstallationTokens::new(github_authority, github_installation_tokens_raw),
     );
-    let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
-        GitSourceCheckout::new(
-            &config.sources.checkout_dir,
-            Duration::from_millis(config.sources.checkout_timeout_ms),
-            config.sources.checkout_max_files,
-            config.sources.checkout_max_bytes,
-        )
-        .map_err(ControlPlaneStartupError::Build)?,
-    );
-    let build_sources: Arc<dyn IBuildSourceResolver> = Arc::new(CloudBuildSourceResolver::new(
-        Arc::clone(&sources),
-        Arc::clone(&assets),
-        Arc::clone(&asset_git_repositories),
-    ));
-    let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
-        SourceBuildInputPreparer::new(
-            source_checkout,
-            Arc::clone(&github_connections),
-            Arc::clone(&github_installation_tokens),
-            Arc::clone(&node_artifacts),
-            &config.builds.input_staging_dir,
-            config.builds.input_max_entries,
-            config.builds.input_max_bytes,
-        )
-        .map(|preparer| {
-            preparer.with_hosted_assets(Arc::clone(&assets), Arc::clone(&asset_git_repositories))
-        })
-        .map_err(ControlPlaneStartupError::Build)?,
-    );
-    let build_flow_config = config
-        .build_flow_config()
-        .map_err(ControlPlaneStartupError::Build)?;
-    let oci_build_outputs = Arc::new(
-        OciBuildOutputValidator::new(
-            Arc::clone(&node_artifacts),
-            &config.builds.output_staging_dir,
-            config.builds.output_max_bytes,
-            config.builds.output_max_entries,
-            config.builds.output_max_expanded_bytes,
-            config.builds.oci_max_blobs,
-            config.builds.oci_max_bytes,
-        )
-        .map_err(ControlPlaneStartupError::Build)?,
-    );
-    let build_outputs: Arc<dyn IBuildOutputValidator> = oci_build_outputs.clone();
-    let build_publisher: Arc<dyn IBuildArtifactPublisher> = Arc::new(
-        OciRegistryArtifactPublisher::new(
-            Arc::clone(&oci_build_outputs),
-            Duration::from_millis(config.registry.request_timeout_ms),
-            config
-                .registry
-                .insecure_hosts
-                .iter()
-                .filter(|host| *host == &config.registry.publication_registry)
-                .cloned(),
-            OciRegistryArtifactPublisherOptions {
-                registry: config.registry.publication_registry.clone(),
-                repository_prefix: config.registry.publication_repository_prefix.clone(),
-                credential_env: config.registry.publication_credential_env.clone(),
-                allow_anonymous: config.registry.publication_allow_anonymous,
-            },
-        )
-        .map_err(ControlPlaneStartupError::Registry)?,
-    );
-    let build_evidence: Arc<dyn IBuildEvidenceGenerator> = Arc::new(
-        BoxBuildEvidenceGenerator::new(oci_build_outputs, build_evidence_signer)
-            .map_err(ControlPlaneStartupError::Build)?,
-    );
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
         WorkloadRouteTargetReader::new(
             Arc::clone(&workloads),
@@ -645,8 +589,6 @@ async fn build_full_application(
     );
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
-    let gateway_observations: Arc<dyn IGatewayObservationQueue> =
-        Arc::new(FleetGatewayObservationQueue::new(Arc::clone(&node_control)));
     let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -682,81 +624,13 @@ async fn build_full_application(
         Arc::clone(&mcp_gateway_snapshots),
         Arc::clone(&mcp_node_projection_planner),
     );
-    let gateway_certificate_reconciler = GatewayCertificateReconciler::new_managed(
-        Arc::clone(&routes),
-        Arc::clone(&mcp_gateway_snapshots),
-        gateway_node_desired_state_planner.clone(),
-        Arc::clone(&route_commands),
-        Arc::clone(&gateway_certificate_authority),
-        deployment_route_compiler.clone(),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        chrono_duration(config.edge.certificate_renewal_window_ms)?,
-        chrono_duration(config.edge.snapshot_renewal_window_ms)?,
-        chrono_duration(config.edge.command_ttl_ms)?,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
-    let mcp_gateway_desired_state_reconciler = McpGatewayDesiredStateReconciler::new(
-        Arc::clone(&mcp_gateway_snapshots),
-        mcp_node_projection_planner,
-        deployment_route_compiler.clone(),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        chrono_duration(config.edge.command_ttl_ms)?,
-        chrono::Duration::hours(24),
-        chrono_duration(config.edge.certificate_renewal_window_ms)?,
-        chrono_duration(config.edge.command_ttl_ms)?,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
-    let mcp_gateway_snapshot_reconciler = McpGatewaySnapshotReconciler::new(
-        Arc::clone(&mcp_gateway_snapshots),
-        Arc::clone(&route_commands),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
-    let mcp_credential_delivery_receipt_sweeper = McpCredentialDeliveryReceiptSweeper::new(
-        Arc::clone(&mcp_credentials),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
-    let gateway_rollout_reconciler = GatewayRolloutReconciler::new(
-        Arc::clone(&routes),
-        Arc::clone(&route_commands),
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
-    let gateway_replica_recovery_reconciler = GatewayReplicaRecoveryReconciler::new(
-        Arc::clone(&routes),
-        gateway_observations,
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        chrono_duration(config.edge.command_ttl_ms)?,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
-    let gateway_rollout_rollback_reconciler = GatewayRolloutRollbackReconciler::new_managed(
-        Arc::clone(&routes),
-        Arc::clone(&mcp_gateway_snapshots),
-        gateway_node_desired_state_planner.clone(),
-        GatewayRolloutRollbackCompiler::new(
-            deployment_route_compiler.clone(),
-            chrono_duration(config.edge.command_ttl_ms)?,
-            chrono::Duration::hours(24),
-        )
-        .map_err(ControlPlaneStartupError::Edge)?,
-        Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Edge)?;
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
         EdgeDeploymentRouteUpdater::new_managed(
             Arc::clone(&routes),
             Arc::clone(&mcp_gateway_snapshots),
             Arc::clone(&node_control),
             Arc::clone(&route_commands),
-            deployment_route_compiler,
+            deployment_route_compiler.clone(),
             gateway_node_desired_state_planner.clone(),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
@@ -772,142 +646,247 @@ async fn build_full_application(
         .with_registry_secret_material(Arc::clone(&secrets), Arc::clone(&key_encryption)),
     );
     let durable_cell_artifacts = Arc::clone(&artifacts);
-    let deployment_flow_config = DeploymentFlowConfig::from_milliseconds(
-        config.deployments.command_ttl_ms,
-        config.deployments.runtime_apply_timeout_ms,
-        config.deployments.observation_poll_ms,
-        config.deployments.convergence_timeout_ms,
-        config.deployments.runtime_stop_timeout_ms,
-        config.deployments.cleanup_poll_ms,
-        config.deployments.cleanup_timeout_ms,
-    )
-    .map_err(ControlPlaneStartupError::NodeControl)?;
-    let workload_prestart_gate: Arc<dyn IWorkloadPrestartGate> =
-        Arc::new(DurableCellBundlePublicationGate::new(
-            Arc::clone(&durable_cell_applications),
-            Arc::clone(&durable_cell_deployments),
-            Arc::clone(&builds),
-            Arc::clone(&workloads),
-            projects.clone(),
-            Arc::clone(&executions),
-        ));
-    let deployment_runtime = DeploymentFlowRuntime::new(
-        DeploymentFlowDependencies::new(
-            deployment_workloads,
-            Arc::clone(&resource_claims),
-            artifacts,
-            scheduling_nodes,
-            Arc::clone(&node_control),
-            deployment_route_updates,
-        )
-        .with_prestart_gate(workload_prestart_gate),
-        chrono_duration(config.fleet.heartbeat_timeout_ms)
-            .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
-        deployment_flow_config,
-    )
-    .map_err(ControlPlaneStartupError::NodeControl)?;
-    let build_runtime = BuildFlowRuntime::new(
-        BuildFlowRuntimeDependencies {
-            builds: Arc::clone(&builds),
-            sources: build_sources,
-            inputs: build_inputs,
-            outputs: build_outputs,
-            publisher: build_publisher,
-            evidence: build_evidence,
-            nodes: Arc::clone(&nodes),
-            node_control: Arc::clone(&node_control),
-        },
-        build_flow_config,
-    );
-    let execution_runtime = ExecutionFlowRuntime::new(
-        ExecutionFlowRuntimeDependencies {
-            executions: Arc::clone(&executions),
-            nodes: Arc::clone(&nodes),
-            node_control: Arc::clone(&node_control),
-        },
-        config
-            .execution_flow_config()
-            .map_err(ControlPlaneStartupError::Execution)?,
-    );
-    let agent_execution_runtime = AgentExecutionFlowRuntime::new(
-        AgentExecutionFlowRuntimeDependencies {
-            agents: Arc::clone(&agents),
-            workload_targets: Arc::clone(&workload_targets),
-            node_control: Arc::clone(&node_control),
-        },
-        config
-            .agent_execution_flow_config()
-            .map_err(ControlPlaneStartupError::AgentExecution)?,
-    );
-    let object_namespace_recovery_runtime =
-        ObjectNamespaceRecoveryFlowRuntime::new(ObjectNamespaceCredentialMaterializer::new(
-            Arc::clone(&secrets),
-            Arc::clone(&key_encryption),
-        ))
-        .map_err(ControlPlaneStartupError::ObjectNamespaceRecovery)?;
-    let flow_runtime = FlowRuntimeRouter::new(
-        Arc::new(deployment_runtime),
-        Arc::new(build_runtime),
-        Arc::new(execution_runtime),
-        Arc::new(agent_execution_runtime),
-        Arc::new(WorkflowRunFlowRuntime),
-        Arc::new(object_namespace_recovery_runtime),
-    )?;
     let operation_interval = Duration::from_millis(config.operations.reconcile_interval_ms);
     let operation_lease = Duration::from_millis(config.operations.lease_ms);
-    let flow = crate::infrastructure::connect_flow(
-        &postgres_url,
-        Arc::new(flow_runtime),
-        QueueOptions::new()
-            .with_poll_interval(operation_interval)
-            .with_lease_duration(operation_lease),
-    )
-    .await?;
-    let workflow_execution_environments: Arc<dyn IEnvironmentRepository> = projects.clone();
-    let workflow_execution_port: Arc<dyn IWorkflowExecutionPort> =
-        Arc::new(WorkflowExecutionApplicationService::new(
-            workflow_execution_environments,
-            Arc::clone(&execution_templates),
-            Arc::clone(&executions),
+    let flow = if run_operations {
+        let source_checkout: Arc<dyn ISourceCheckout> = Arc::new(
+            GitSourceCheckout::new(
+                &config.sources.checkout_dir,
+                Duration::from_millis(config.sources.checkout_timeout_ms),
+                config.sources.checkout_max_files,
+                config.sources.checkout_max_bytes,
+            )
+            .map_err(ControlPlaneStartupError::Build)?,
+        );
+        let build_sources: Arc<dyn IBuildSourceResolver> = Arc::new(CloudBuildSourceResolver::new(
+            Arc::clone(&sources),
+            Arc::clone(&assets),
+            Arc::clone(&asset_git_repositories),
         ));
-    let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> = Arc::new(
-        FlowWorkflowRunCoordinator::with_executions(flow.engine(), workflow_execution_port),
-    );
-    let workflow_run_history: Arc<dyn IWorkflowRunHistoryReader> =
-        Arc::new(WorkflowRunHistoryReader::new(flow.engine()));
-    let workflow_run_variables: Arc<dyn IWorkflowRunVariableReader> =
-        Arc::new(WorkflowRunVariableReader::new(flow.engine()));
-    let workflow_run_reconciler = WorkflowRunReconciler::new(
-        Arc::clone(&workflow_runs),
-        workflow_run_coordinator,
-        operation_interval,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::WorkflowRun)?;
-    let human_task_coordinator = HumanTaskCoordinator::new(
-        Arc::clone(&workflow_runs),
-        Arc::clone(&forms),
-        Arc::clone(&human_tasks),
-        flow.engine(),
-        Duration::from_millis(config.human_tasks.coordination_poll_interval_ms),
-        config.human_tasks.coordination_batch_size,
-    )
-    .map_err(ControlPlaneStartupError::HumanTask)?;
-    let human_task_resume_worker = HumanTaskResumeWorker::new(
-        Arc::clone(&human_tasks),
-        flow.engine(),
-        HumanTaskResumeWorkerConfig {
-            batch_size: config.human_tasks.resume_batch_size,
-            poll_interval: Duration::from_millis(config.human_tasks.resume_poll_interval_ms),
-            lease_duration: Duration::from_millis(config.human_tasks.resume_lease_ms),
-            flow_operation_timeout: Duration::from_millis(
-                config.human_tasks.flow_operation_timeout_ms,
-            ),
-            initial_backoff: Duration::from_millis(config.human_tasks.retry_initial_ms),
-            maximum_backoff: Duration::from_millis(config.human_tasks.retry_max_ms),
-        },
-    )
-    .map_err(ControlPlaneStartupError::HumanTask)?;
+        let build_inputs: Arc<dyn IBuildInputPreparer> = Arc::new(
+            SourceBuildInputPreparer::new(
+                source_checkout,
+                Arc::clone(&github_connections),
+                Arc::clone(&github_installation_tokens),
+                Arc::clone(&node_artifacts),
+                &config.builds.input_staging_dir,
+                config.builds.input_max_entries,
+                config.builds.input_max_bytes,
+            )
+            .map(|preparer| {
+                preparer
+                    .with_hosted_assets(Arc::clone(&assets), Arc::clone(&asset_git_repositories))
+            })
+            .map_err(ControlPlaneStartupError::Build)?,
+        );
+        let build_flow_config = config
+            .build_flow_config()
+            .map_err(ControlPlaneStartupError::Build)?;
+        let oci_build_outputs = Arc::new(
+            OciBuildOutputValidator::new(
+                Arc::clone(&node_artifacts),
+                &config.builds.output_staging_dir,
+                config.builds.output_max_bytes,
+                config.builds.output_max_entries,
+                config.builds.output_max_expanded_bytes,
+                config.builds.oci_max_blobs,
+                config.builds.oci_max_bytes,
+            )
+            .map_err(ControlPlaneStartupError::Build)?,
+        );
+        let build_outputs: Arc<dyn IBuildOutputValidator> = oci_build_outputs.clone();
+        let build_publisher: Arc<dyn IBuildArtifactPublisher> = Arc::new(
+            OciRegistryArtifactPublisher::new(
+                Arc::clone(&oci_build_outputs),
+                Duration::from_millis(config.registry.request_timeout_ms),
+                config
+                    .registry
+                    .insecure_hosts
+                    .iter()
+                    .filter(|host| *host == &config.registry.publication_registry)
+                    .cloned(),
+                OciRegistryArtifactPublisherOptions {
+                    registry: config.registry.publication_registry.clone(),
+                    repository_prefix: config.registry.publication_repository_prefix.clone(),
+                    credential_env: config.registry.publication_credential_env.clone(),
+                    allow_anonymous: config.registry.publication_allow_anonymous,
+                },
+            )
+            .map_err(ControlPlaneStartupError::Registry)?,
+        );
+        let build_evidence_signer =
+            build_evidence_signer(&config, vault_credentials.as_ref()).await?;
+        let build_evidence: Arc<dyn IBuildEvidenceGenerator> = Arc::new(
+            BoxBuildEvidenceGenerator::new(oci_build_outputs, build_evidence_signer)
+                .map_err(ControlPlaneStartupError::Build)?,
+        );
+        let deployment_flow_config = DeploymentFlowConfig::from_milliseconds(
+            config.deployments.command_ttl_ms,
+            config.deployments.runtime_apply_timeout_ms,
+            config.deployments.observation_poll_ms,
+            config.deployments.convergence_timeout_ms,
+            config.deployments.runtime_stop_timeout_ms,
+            config.deployments.cleanup_poll_ms,
+            config.deployments.cleanup_timeout_ms,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        let workload_prestart_gate: Arc<dyn IWorkloadPrestartGate> =
+            Arc::new(DurableCellBundlePublicationGate::new(
+                Arc::clone(&durable_cell_applications),
+                Arc::clone(&durable_cell_deployments),
+                Arc::clone(&builds),
+                Arc::clone(&workloads),
+                projects.clone(),
+                Arc::clone(&executions),
+            ));
+        let deployment_runtime = DeploymentFlowRuntime::new(
+            DeploymentFlowDependencies::new(
+                deployment_workloads,
+                Arc::clone(&resource_claims),
+                artifacts,
+                scheduling_nodes,
+                Arc::clone(&node_control),
+                deployment_route_updates,
+            )
+            .with_prestart_gate(workload_prestart_gate),
+            chrono_duration(config.fleet.heartbeat_timeout_ms)
+                .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
+            deployment_flow_config,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        let build_runtime = BuildFlowRuntime::new(
+            BuildFlowRuntimeDependencies {
+                builds: Arc::clone(&builds),
+                sources: build_sources,
+                inputs: build_inputs,
+                outputs: build_outputs,
+                publisher: build_publisher,
+                evidence: build_evidence,
+                nodes: Arc::clone(&nodes),
+                node_control: Arc::clone(&node_control),
+            },
+            build_flow_config,
+        );
+        let execution_runtime = ExecutionFlowRuntime::new(
+            ExecutionFlowRuntimeDependencies {
+                executions: Arc::clone(&executions),
+                nodes: Arc::clone(&nodes),
+                node_control: Arc::clone(&node_control),
+            },
+            config
+                .execution_flow_config()
+                .map_err(ControlPlaneStartupError::Execution)?,
+        );
+        let agent_execution_runtime = AgentExecutionFlowRuntime::new(
+            AgentExecutionFlowRuntimeDependencies {
+                agents: Arc::clone(&agents),
+                workload_targets: Arc::clone(&workload_targets),
+                node_control: Arc::clone(&node_control),
+            },
+            config
+                .agent_execution_flow_config()
+                .map_err(ControlPlaneStartupError::AgentExecution)?,
+        );
+        let object_namespace_recovery_runtime =
+            ObjectNamespaceRecoveryFlowRuntime::new(ObjectNamespaceCredentialMaterializer::new(
+                Arc::clone(&secrets),
+                Arc::clone(&key_encryption),
+            ))
+            .map_err(ControlPlaneStartupError::ObjectNamespaceRecovery)?;
+        let flow_runtime = FlowRuntimeRouter::new(
+            Arc::new(deployment_runtime),
+            Arc::new(build_runtime),
+            Arc::new(execution_runtime),
+            Arc::new(agent_execution_runtime),
+            Arc::new(WorkflowRunFlowRuntime),
+            Arc::new(object_namespace_recovery_runtime),
+        )?;
+        Some(
+            crate::infrastructure::connect_flow(
+                &postgres_url,
+                Arc::new(flow_runtime),
+                QueueOptions::new()
+                    .with_poll_interval(operation_interval)
+                    .with_lease_duration(operation_lease),
+            )
+            .await?,
+        )
+    } else {
+        None
+    };
+    let management_flow_reader = if management_adapters.is_some() && flow.is_none() {
+        Some(FlowReadInfrastructure::connect(&postgres_url).await?)
+    } else {
+        None
+    };
+    let management_flow_engine = if management_adapters.is_some() {
+        flow.as_ref()
+            .map(crate::infrastructure::FlowInfrastructure::engine)
+            .or_else(|| {
+                management_flow_reader
+                    .as_ref()
+                    .map(FlowReadInfrastructure::engine)
+            })
+    } else {
+        None
+    };
+    let workflow_run_history: Option<Arc<dyn IWorkflowRunHistoryReader>> = management_flow_engine
+        .as_ref()
+        .map(|engine| Arc::new(WorkflowRunHistoryReader::new(engine.clone())) as Arc<_>);
+    let workflow_run_variables: Option<Arc<dyn IWorkflowRunVariableReader>> =
+        management_flow_engine
+            .as_ref()
+            .map(|engine| Arc::new(WorkflowRunVariableReader::new(engine.clone())) as Arc<_>);
+    let worker_workflow = if let Some(flow) = flow.as_ref() {
+        let workflow_execution_environments: Arc<dyn IEnvironmentRepository> = projects.clone();
+        let workflow_execution_port: Arc<dyn IWorkflowExecutionPort> =
+            Arc::new(WorkflowExecutionApplicationService::new(
+                workflow_execution_environments,
+                Arc::clone(&execution_templates),
+                Arc::clone(&executions),
+            ));
+        let workflow_run_coordinator: Arc<dyn IWorkflowRunCoordinator> = Arc::new(
+            FlowWorkflowRunCoordinator::with_executions(flow.engine(), workflow_execution_port),
+        );
+        let workflow_run_reconciler = WorkflowRunReconciler::new(
+            Arc::clone(&workflow_runs),
+            workflow_run_coordinator,
+            operation_interval,
+            100,
+        )
+        .map_err(ControlPlaneStartupError::WorkflowRun)?;
+        let human_task_coordinator = HumanTaskCoordinator::new(
+            Arc::clone(&workflow_runs),
+            Arc::clone(&forms),
+            Arc::clone(&human_tasks),
+            flow.engine(),
+            Duration::from_millis(config.human_tasks.coordination_poll_interval_ms),
+            config.human_tasks.coordination_batch_size,
+        )
+        .map_err(ControlPlaneStartupError::HumanTask)?;
+        let human_task_resume_worker = HumanTaskResumeWorker::new(
+            Arc::clone(&human_tasks),
+            flow.engine(),
+            HumanTaskResumeWorkerConfig {
+                batch_size: config.human_tasks.resume_batch_size,
+                poll_interval: Duration::from_millis(config.human_tasks.resume_poll_interval_ms),
+                lease_duration: Duration::from_millis(config.human_tasks.resume_lease_ms),
+                flow_operation_timeout: Duration::from_millis(
+                    config.human_tasks.flow_operation_timeout_ms,
+                ),
+                initial_backoff: Duration::from_millis(config.human_tasks.retry_initial_ms),
+                maximum_backoff: Duration::from_millis(config.human_tasks.retry_max_ms),
+            },
+        )
+        .map_err(ControlPlaneStartupError::HumanTask)?;
+        Some((
+            workflow_run_reconciler,
+            human_task_coordinator,
+            human_task_resume_worker,
+        ))
+    } else {
+        None
+    };
     let management = if let Some(ManagementAdapterOverrides {
         source_resolver,
         oidc_provider,
@@ -1065,115 +1044,267 @@ async fn build_full_application(
     };
     let operation_repository: Arc<dyn IOperationRepository> =
         Arc::new(PostgresOperationRepository::new(executor.clone()));
-    let build_run_reconciler = BuildRunReconciler::with_schedule(
-        Arc::clone(&builds),
-        Arc::clone(&operation_repository),
-        Duration::from_millis(config.builds.reconcile_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Build)?;
-    let execution_reconciler = ExecutionReconciler::with_schedule(
-        Arc::clone(&executions),
-        Arc::clone(&operation_repository),
-        Duration::from_millis(config.executions.reconcile_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::Execution)?;
-    let agent_execution_reconciler = AgentExecutionReconciler::with_schedule(
-        Arc::clone(&agents),
-        Arc::clone(&operation_repository),
-        Duration::from_millis(config.executions.reconcile_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::AgentExecution)?;
-    let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
-    let operation_reconciler = OperationReconciler::new(
-        Arc::new(ReconcileOperationsHandler::new(
-            operation_repository.clone(),
-            operation_engine,
-        )),
-        100,
-    );
-    let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(
-        operation_reconciler,
-        &flow,
-        operation_interval,
-        operation_lease,
-    )
-    .map_err(|error| ControlPlaneStartupError::Framework(BootError::Internal(error.to_string())))?;
-    let outbox_relay = build_outbox_relay(
-        &config,
-        executor.clone(),
-        event_publisher.clone(),
-        Arc::clone(&notifications),
-        Arc::clone(&memberships),
-    )?;
-    let run_operations = config.server.role.runs_workers();
-    let run_relay = config.server.role.runs_relay();
-    let log_retention_worker = LogRetentionWorker::new(
-        Arc::clone(&log_retention_repository),
-        Arc::clone(&log_chunks),
-        Duration::from_millis(config.logs.retention_ms),
-        Duration::from_millis(config.logs.retention_poll_ms),
-        config.logs.retention_batch_size,
-    )
-    .map_err(ControlPlaneStartupError::LogStorage)?;
-    let log_compaction_worker = LogCompactionWorker::new(
-        log_retention_repository,
-        Duration::from_millis(config.logs.tombstone_retention_ms),
-        Duration::from_millis(config.logs.tombstone_compaction_poll_ms),
-        config.logs.tombstone_compaction_batch_size,
-    )
-    .map_err(ControlPlaneStartupError::LogStorage)?;
-    let node_drain_evacuation_reconciler = NodeDrainEvacuationReconciler::new(
-        draining_nodes,
-        Arc::clone(&node_pools),
-        replica_evacuations,
-        Arc::clone(&resource_claims),
-        Duration::from_millis(config.deployments.reconcile_interval_ms),
-        100,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::NodeControl)?;
-    let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
-        replica_retirements,
-        Arc::clone(&workload_runtime_control),
-        Arc::clone(&resource_claims),
-        Duration::from_millis(config.deployments.reconcile_interval_ms),
-        Duration::from_millis(config.deployments.command_ttl_ms),
-        Duration::from_millis(config.deployments.runtime_stop_timeout_ms),
-        Duration::from_millis(config.deployments.cleanup_timeout_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::NodeControl)?;
-    let workload_reconciler = WorkloadRuntimeReconciler::new(
-        workload_targets,
-        workload_runtime_control,
-        resource_claims,
-        Duration::from_millis(config.deployments.reconcile_interval_ms),
-        Duration::from_millis(config.deployments.command_ttl_ms),
-        Duration::from_millis(config.deployments.runtime_apply_timeout_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::NodeControl)?;
-    let replica_deployment_materializer = ReplicaDeploymentMaterializer::new(
-        replica_deployments,
-        Duration::from_millis(config.deployments.reconcile_interval_ms),
-        100,
-    )
-    .map_err(ControlPlaneStartupError::NodeControl)?;
-    let secret_rotation_restart_reconciler = SecretRotationRestartReconciler::new(
-        secret_rotation_restarts,
-        Duration::from_millis(config.deployments.reconcile_interval_ms),
-        100,
-        100,
-    )
-    .map_err(ControlPlaneStartupError::SecretRestart)?;
-    let readiness = match management.as_ref() {
-        Some(management) => infrastructure_readiness(
-            executor,
+    let outbox_relay = if run_relay {
+        Some(build_outbox_relay(
+            &config,
+            executor.clone(),
+            event_publisher.clone().ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "relay process is missing its event publisher".into(),
+                ))
+            })?,
+            Arc::clone(&notifications),
+            Arc::clone(&memberships),
+        )?)
+    } else {
+        None
+    };
+    let worker_gateway = if run_operations {
+        let gateway_observations: Arc<dyn IGatewayObservationQueue> =
+            Arc::new(FleetGatewayObservationQueue::new(Arc::clone(&node_control)));
+        Some(WorkerGatewayDependencies {
+            gateway_certificate_reconciler: GatewayCertificateReconciler::new_managed(
+                Arc::clone(&routes),
+                Arc::clone(&mcp_gateway_snapshots),
+                gateway_node_desired_state_planner.clone(),
+                Arc::clone(&route_commands),
+                Arc::clone(&gateway_certificate_authority),
+                deployment_route_compiler.clone(),
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                chrono_duration(config.edge.certificate_renewal_window_ms)?,
+                chrono_duration(config.edge.snapshot_renewal_window_ms)?,
+                chrono_duration(config.edge.command_ttl_ms)?,
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+            mcp_gateway_desired_state_reconciler: McpGatewayDesiredStateReconciler::new(
+                Arc::clone(&mcp_gateway_snapshots),
+                Arc::clone(&mcp_node_projection_planner),
+                deployment_route_compiler.clone(),
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                chrono_duration(config.edge.command_ttl_ms)?,
+                chrono::Duration::hours(24),
+                chrono_duration(config.edge.certificate_renewal_window_ms)?,
+                chrono_duration(config.edge.command_ttl_ms)?,
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+            mcp_gateway_snapshot_reconciler: McpGatewaySnapshotReconciler::new(
+                Arc::clone(&mcp_gateway_snapshots),
+                Arc::clone(&route_commands),
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+            mcp_credential_delivery_receipt_sweeper: McpCredentialDeliveryReceiptSweeper::new(
+                Arc::clone(&mcp_credentials),
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+            gateway_rollout_reconciler: GatewayRolloutReconciler::new(
+                Arc::clone(&routes),
+                Arc::clone(&route_commands),
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+            gateway_replica_recovery_reconciler: GatewayReplicaRecoveryReconciler::new(
+                Arc::clone(&routes),
+                gateway_observations,
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                chrono_duration(config.edge.command_ttl_ms)?,
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+            gateway_rollout_rollback_reconciler: GatewayRolloutRollbackReconciler::new_managed(
+                Arc::clone(&routes),
+                Arc::clone(&mcp_gateway_snapshots),
+                gateway_node_desired_state_planner.clone(),
+                GatewayRolloutRollbackCompiler::new(
+                    deployment_route_compiler.clone(),
+                    chrono_duration(config.edge.command_ttl_ms)?,
+                    chrono::Duration::hours(24),
+                )
+                .map_err(ControlPlaneStartupError::Edge)?,
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                100,
+            )
+            .map_err(ControlPlaneStartupError::Edge)?,
+        })
+    } else {
+        None
+    };
+    let worker_processes = if let Some(flow) = flow.as_ref() {
+        let build_run_reconciler = BuildRunReconciler::with_schedule(
+            Arc::clone(&builds),
+            Arc::clone(&operation_repository),
+            Duration::from_millis(config.builds.reconcile_interval_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::Build)?;
+        let execution_reconciler = ExecutionReconciler::with_schedule(
+            Arc::clone(&executions),
+            Arc::clone(&operation_repository),
+            Duration::from_millis(config.executions.reconcile_interval_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::Execution)?;
+        let agent_execution_reconciler = AgentExecutionReconciler::with_schedule(
+            Arc::clone(&agents),
+            Arc::clone(&operation_repository),
+            Duration::from_millis(config.executions.reconcile_interval_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::AgentExecution)?;
+        let operation_engine = Arc::new(FlowOperationEngine::new(flow.engine()));
+        let operation_reconciler = OperationReconciler::new(
+            Arc::new(ReconcileOperationsHandler::new(
+                operation_repository.clone(),
+                operation_engine,
+            )),
+            100,
+        );
+        let operation_coordinator = crate::infrastructure::FlowOperationCoordinator::new(
+            operation_reconciler,
             flow,
-            event_publisher,
+            operation_interval,
+            operation_lease,
+        )
+        .map_err(|error| {
+            ControlPlaneStartupError::Framework(BootError::Internal(error.to_string()))
+        })?;
+        let log_retention_worker = LogRetentionWorker::new(
+            Arc::clone(&log_retention_repository),
+            Arc::clone(&log_chunks),
+            Duration::from_millis(config.logs.retention_ms),
+            Duration::from_millis(config.logs.retention_poll_ms),
+            config.logs.retention_batch_size,
+        )
+        .map_err(ControlPlaneStartupError::LogStorage)?;
+        let log_compaction_worker = LogCompactionWorker::new(
+            log_retention_repository,
+            Duration::from_millis(config.logs.tombstone_retention_ms),
+            Duration::from_millis(config.logs.tombstone_compaction_poll_ms),
+            config.logs.tombstone_compaction_batch_size,
+        )
+        .map_err(ControlPlaneStartupError::LogStorage)?;
+        let node_drain_evacuation_reconciler = NodeDrainEvacuationReconciler::new(
+            draining_nodes,
+            Arc::clone(&node_pools),
+            replica_evacuations,
+            Arc::clone(&resource_claims),
+            Duration::from_millis(config.deployments.reconcile_interval_ms),
+            100,
+            100,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
+            replica_retirements,
+            Arc::clone(&workload_runtime_control),
+            Arc::clone(&resource_claims),
+            Duration::from_millis(config.deployments.reconcile_interval_ms),
+            Duration::from_millis(config.deployments.command_ttl_ms),
+            Duration::from_millis(config.deployments.runtime_stop_timeout_ms),
+            Duration::from_millis(config.deployments.cleanup_timeout_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        let workload_reconciler = WorkloadRuntimeReconciler::new(
+            workload_targets,
+            workload_runtime_control,
+            resource_claims,
+            Duration::from_millis(config.deployments.reconcile_interval_ms),
+            Duration::from_millis(config.deployments.command_ttl_ms),
+            Duration::from_millis(config.deployments.runtime_apply_timeout_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        let replica_deployment_materializer = ReplicaDeploymentMaterializer::new(
+            replica_deployments,
+            Duration::from_millis(config.deployments.reconcile_interval_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::NodeControl)?;
+        let secret_rotation_restart_reconciler = SecretRotationRestartReconciler::new(
+            secret_rotation_restarts,
+            Duration::from_millis(config.deployments.reconcile_interval_ms),
+            100,
+            100,
+        )
+        .map_err(ControlPlaneStartupError::SecretRestart)?;
+        let (workflow_run_reconciler, human_task_coordinator, human_task_resume_worker) =
+            worker_workflow.ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "worker process is missing its workflow capability bundle".into(),
+                ))
+            })?;
+        let WorkerGatewayDependencies {
+            gateway_certificate_reconciler,
+            mcp_gateway_desired_state_reconciler,
+            mcp_gateway_snapshot_reconciler,
+            mcp_credential_delivery_receipt_sweeper,
+            gateway_rollout_reconciler,
+            gateway_replica_recovery_reconciler,
+            gateway_rollout_rollback_reconciler,
+        } = worker_gateway.ok_or_else(|| {
+            ControlPlaneStartupError::Framework(BootError::Internal(
+                "worker process is missing its Gateway capability bundle".into(),
+            ))
+        })?;
+        Some(ControlPlaneWorkers::worker(
+            build_run_reconciler,
+            execution_reconciler,
+            agent_execution_reconciler,
+            workflow_run_reconciler,
+            human_task_coordinator,
+            human_task_resume_worker,
+            github_authority_reconciler,
+            operation_coordinator,
+            gateway_certificate_reconciler,
+            mcp_gateway_desired_state_reconciler,
+            mcp_gateway_snapshot_reconciler,
+            mcp_credential_delivery_receipt_sweeper,
+            gateway_rollout_reconciler,
+            gateway_replica_recovery_reconciler,
+            gateway_rollout_rollback_reconciler,
+            secret_rotation_restart_reconciler,
+            node_drain_evacuation_reconciler,
+            replica_deployment_materializer,
+            replica_retirement_reconciler,
+            workload_reconciler,
+            log_retention_worker,
+            log_compaction_worker,
+            outbound_notification_consumer,
+        ))
+    } else {
+        None
+    };
+    let readiness = match management.as_ref() {
+        Some(management) if run_operations => infrastructure_readiness(
+            executor,
+            flow.clone().ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "worker process is missing Flow execution infrastructure".into(),
+                ))
+            })?,
+            event_publisher.clone().ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "worker process is missing its event publisher".into(),
+                ))
+            })?,
+            Arc::clone(&management.certificate_authority),
+            Arc::clone(&gateway_certificate_authority),
+            Arc::clone(&key_encryption),
+            Arc::clone(&log_chunks),
+        ),
+        Some(management) => api_readiness(
+            executor,
+            management_flow_reader.clone().ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "API process is missing Flow read infrastructure".into(),
+                ))
+            })?,
             Arc::clone(&management.certificate_authority),
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&key_encryption),
@@ -1181,104 +1312,102 @@ async fn build_full_application(
         ),
         None => worker_readiness(
             executor,
-            flow,
-            event_publisher,
+            flow.clone().ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "worker process is missing Flow execution infrastructure".into(),
+                ))
+            })?,
+            event_publisher.ok_or_else(|| {
+                ControlPlaneStartupError::Framework(BootError::Internal(
+                    "worker process is missing its event publisher".into(),
+                ))
+            })?,
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&key_encryption),
             Arc::clone(&log_chunks),
         ),
     };
-    let application = build_application_with_health(
-        config,
-        ApplicationDependencies {
-            management,
-            organizations,
-            api_tokens,
-            memberships,
-            membership_invitations,
-            resource_grants,
-            oidc_identity,
-            resource_authorization_decisions,
-            projects: projects.clone(),
-            environments: projects,
-            ontologies,
-            workflow_definitions,
-            workflow_goals,
-            workflow_runs,
-            human_tasks,
-            workflow_run_history,
-            workflow_run_variables,
-            forms,
-            form_semantic_core,
-            search,
-            audit_records,
-            notifications,
-            outbound_notifications,
-            connector_profiles,
-            durable_cell_applications,
-            durable_cell_deployments,
-            oci_artifacts: durable_cell_artifacts,
-            plugin_registries,
-            plugin_enrollment_authorizer,
-            assets,
-            workloads,
-            builds,
-            executions,
-            execution_templates,
-            agents,
-            routes,
-            mcp_credentials,
-            secrets,
-            sources,
-            source_webhooks,
-            source_subscriptions,
-            github_connections,
-            github_installation_tokens,
-            secret_encryption: Arc::clone(&key_encryption),
-            route_targets,
-            route_commands,
-            mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
-            gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
-            operations: operation_repository,
-            nodes,
-            node_pools,
-            node_control,
-            log_chunks,
-            readiness,
-        },
-    )?;
-    Ok(ControlPlane::new(
-        application,
-        ControlPlaneWorkers::new(
-            run_operations.then_some(build_run_reconciler),
-            run_operations.then_some(execution_reconciler),
-            run_operations.then_some(agent_execution_reconciler),
-            run_operations.then_some(workflow_run_reconciler),
-            run_operations.then_some(human_task_coordinator),
-            run_operations.then_some(human_task_resume_worker),
-            run_operations.then_some(github_authority_reconciler),
-            run_operations.then_some(operation_coordinator),
-            run_operations.then_some(gateway_certificate_reconciler),
-            run_operations.then_some(mcp_gateway_desired_state_reconciler),
-            run_operations.then_some(mcp_gateway_snapshot_reconciler),
-            run_operations.then_some(mcp_credential_delivery_receipt_sweeper),
-            run_operations.then_some(gateway_rollout_reconciler),
-            run_operations.then_some(gateway_replica_recovery_reconciler),
-            run_operations.then_some(gateway_rollout_rollback_reconciler),
-            run_operations.then_some(secret_rotation_restart_reconciler),
-            run_operations.then_some(node_drain_evacuation_reconciler),
-            run_operations.then_some(replica_deployment_materializer),
-            run_operations.then_some(replica_retirement_reconciler),
-            run_operations.then_some(workload_reconciler),
-            run_operations.then_some(log_retention_worker),
-            run_operations.then_some(log_compaction_worker),
-            run_operations
-                .then_some(outbound_notification_consumer)
-                .flatten(),
-            run_relay.then_some(outbox_relay),
-            node_control_server,
-        ),
-    ))
+    let application = if let Some(management) = management {
+        build_management_application_with_health(
+            config.clone(),
+            ManagementApplicationDependencies {
+                management,
+                organizations,
+                api_tokens,
+                memberships,
+                membership_invitations,
+                resource_grants,
+                oidc_identity,
+                resource_authorization_decisions,
+                projects: projects.clone(),
+                environments: projects,
+                ontologies,
+                workflow_definitions,
+                workflow_goals,
+                workflow_runs,
+                human_tasks,
+                workflow_run_history: workflow_run_history.ok_or_else(|| {
+                    ControlPlaneStartupError::Framework(BootError::Internal(
+                        "management process is missing its Flow history reader".into(),
+                    ))
+                })?,
+                workflow_run_variables: workflow_run_variables.ok_or_else(|| {
+                    ControlPlaneStartupError::Framework(BootError::Internal(
+                        "management process is missing its Flow variable reader".into(),
+                    ))
+                })?,
+                forms,
+                form_semantic_core,
+                search,
+                audit_records,
+                notifications,
+                outbound_notifications,
+                connector_profiles,
+                durable_cell_applications,
+                durable_cell_deployments,
+                oci_artifacts: durable_cell_artifacts,
+                plugin_registries,
+                plugin_enrollment_authorizer,
+                assets,
+                workloads,
+                builds,
+                executions,
+                execution_templates,
+                agents,
+                routes,
+                mcp_credentials,
+                secrets,
+                sources,
+                source_webhooks,
+                source_subscriptions,
+                github_connections,
+                github_installation_tokens,
+                secret_encryption: Arc::clone(&key_encryption),
+                route_targets,
+                route_commands,
+                mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
+                gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
+                operations: operation_repository,
+                nodes,
+                node_pools,
+                node_control,
+                log_chunks,
+                readiness,
+            },
+        )?
+    } else {
+        build_process_status_application(&config, readiness)?
+    };
+    Ok(ControlPlane::new(application, {
+        let mut workers = worker_processes.unwrap_or_default();
+        if let Some(outbox_relay) = outbox_relay {
+            workers = workers.with_relay(outbox_relay);
+        }
+        if let Some(node_control_server) = node_control_server {
+            workers = workers.with_node_control(node_control_server);
+        }
+        workers
+    }))
 }
 
 async fn build_relay_application(
@@ -1350,8 +1479,18 @@ struct ManagementSurfaceDependencies {
     bootstrap_credential: BootstrapCredential,
 }
 
-struct ApplicationDependencies {
-    management: Option<ManagementSurfaceDependencies>,
+struct WorkerGatewayDependencies {
+    gateway_certificate_reconciler: GatewayCertificateReconciler,
+    mcp_gateway_desired_state_reconciler: McpGatewayDesiredStateReconciler,
+    mcp_gateway_snapshot_reconciler: McpGatewaySnapshotReconciler,
+    mcp_credential_delivery_receipt_sweeper: McpCredentialDeliveryReceiptSweeper,
+    gateway_rollout_reconciler: GatewayRolloutReconciler,
+    gateway_replica_recovery_reconciler: GatewayReplicaRecoveryReconciler,
+    gateway_rollout_rollback_reconciler: GatewayRolloutRollbackReconciler,
+}
+
+struct ManagementApplicationDependencies {
+    management: ManagementSurfaceDependencies,
     organizations: Arc<dyn IOrganizationRepository>,
     api_tokens: Arc<dyn IApiTokenRepository>,
     memberships: Arc<dyn IMembershipRepository>,
@@ -1407,20 +1546,17 @@ struct ApplicationDependencies {
     readiness: HealthModule,
 }
 
-fn build_application_with_health(
+fn build_management_application_with_health(
     config: CloudConfig,
-    dependencies: ApplicationDependencies,
+    dependencies: ManagementApplicationDependencies,
 ) -> Result<BootApplication> {
-    if config.server.role.serves_management_api() != dependencies.management.is_some() {
+    if !config.server.role.serves_management_api() {
         return Err(BootError::Internal(
-            "process role and management dependency capability disagree".into(),
+            "a non-management process cannot acquire management dependencies".into(),
         ));
     }
-    if !config.server.role.serves_management_api() {
-        return build_process_status_application(&config, dependencies.readiness);
-    }
 
-    let ApplicationDependencies {
+    let ManagementApplicationDependencies {
         management,
         organizations,
         api_tokens,
@@ -1491,9 +1627,7 @@ fn build_application_with_health(
         gateway_projector,
         certificate_authority,
         bootstrap_credential,
-    } = management.ok_or_else(|| {
-        BootError::Internal("management process is missing its capability bundle".into())
-    })?;
+    } = management;
     let operation_resource_access = Arc::new(OperationResourceAccessResolver::new(
         Arc::clone(&workloads),
         Arc::clone(&builds),
@@ -2827,6 +2961,73 @@ fn infrastructure_readiness(
     })
 }
 
+fn api_readiness(
+    executor: PostgresExecutor,
+    flow: FlowReadInfrastructure,
+    certificate_authority: Arc<dyn ICertificateAuthority>,
+    gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
+    key_encryption: Arc<dyn ISecretEncryptionService>,
+    log_chunks: Arc<dyn ILogChunkStore>,
+) -> HealthModule {
+    postgres_readiness(executor)
+        .indicator("flow", move || {
+            let flow = flow.clone();
+            async move { Ok(flow.health().await) }
+        })
+        .indicator("certificate-authority", move || {
+            let certificate_authority = certificate_authority.clone();
+            async move {
+                match certificate_authority.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+        .indicator("gateway-certificate-authority", move || {
+            let gateway_certificate_authority = gateway_certificate_authority.clone();
+            async move {
+                match gateway_certificate_authority.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+        .indicator("key-encryption", move || {
+            let key_encryption = key_encryption.clone();
+            async move {
+                match key_encryption.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+        .indicator("log-storage", move || {
+            let log_chunks = log_chunks.clone();
+            async move {
+                match log_chunks.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+}
+
 fn worker_readiness(
     executor: PostgresExecutor,
     flow: crate::infrastructure::FlowInfrastructure,
@@ -2882,24 +3083,26 @@ fn worker_readiness(
 }
 
 fn relay_readiness(executor: PostgresExecutor, events: Arc<dyn IEventPublisher>) -> HealthModule {
+    postgres_readiness(executor).indicator("events", move || {
+        let events = events.clone();
+        async move {
+            match events.health().await {
+                Ok(true) => Ok(HealthIndicatorResult::up()),
+                Ok(false) => Ok(HealthIndicatorResult::down()),
+                Err(error) => {
+                    Ok(HealthIndicatorResult::down().with_detail_value("error", error.to_string()))
+                }
+            }
+        }
+    })
+}
+
+fn postgres_readiness(executor: PostgresExecutor) -> HealthModule {
     HealthModule::new("readiness")
         .with_route("/health/ready")
         .indicator("postgres", move || {
             let executor = executor.clone();
             async move { Ok(postgres_health(executor).await) }
-        })
-        .indicator("events", move || {
-            let events = events.clone();
-            async move {
-                match events.health().await {
-                    Ok(true) => Ok(HealthIndicatorResult::up()),
-                    Ok(false) => Ok(HealthIndicatorResult::down()),
-                    Err(error) => {
-                        Ok(HealthIndicatorResult::down()
-                            .with_detail_value("error", error.to_string()))
-                    }
-                }
-            }
         })
 }
 

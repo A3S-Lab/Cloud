@@ -1742,10 +1742,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     });
     let notifications: Arc<dyn INotificationRepository> = notification_repository.clone();
     let outbound_notifications: Arc<dyn IOutboundNotificationRepository> = notification_repository;
-    build_application_with_health(
+    build_management_application_with_health(
         config(),
-        ApplicationDependencies {
-            management: Some(ManagementSurfaceDependencies {
+        ManagementApplicationDependencies {
+            management: ManagementSurfaceDependencies {
                 oidc_provider: oidc_provider.unwrap_or(Arc::new(
                     OpenIdConnectProviderService::new(&[]).map_err(BootError::Internal)?,
                 )),
@@ -1769,7 +1769,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 certificate_authority: Arc::new(TestCertificateAuthority),
                 bootstrap_credential: BootstrapCredential::new(BOOTSTRAP_TOKEN)
                     .map_err(BootError::Internal)?,
-            }),
+            },
             organizations: identity.clone(),
             api_tokens: identity.clone(),
             memberships: identity.clone(),

@@ -61,9 +61,13 @@ The code on `main` separates implemented mechanics from released capability:
   Relay processes expose only process status. Relay constructs only
   PostgreSQL, NATS, Outbox, and its notification projection. Worker omits the
   complete management capability bundle, including bootstrap, OIDC, webhook,
-  node-CA, plugin-catalog, and management route adapters. Real PostgreSQL 17
-  plus NATS gates retain both boundaries; complete API/Worker infrastructure
-  separation remains an `H0.4` exit requirement.
+  node-CA, plugin-catalog, and management route adapters. API owns management
+  routes, node control, and a query-only A3S Flow history adapter; it does not
+  connect NATS or construct Boot Flow queues, workflow runtimes, reconcilers,
+  checkout, or build staging. Real PostgreSQL 17 API plus PostgreSQL/NATS
+  Worker and Relay gates retain all three boundaries. Extracting the remaining
+  shared PostgreSQL adapter factory is structural follow-up, not another
+  execution or persistence mechanism.
 - **Implemented / one compute path** — Sources, assets, builds, finite
   Executions, Workloads, Fleet, outbound Node Agent control, Edge snapshots,
   Runtime, and Box already compose. Current Box/Gateway real-provider
@@ -145,7 +149,8 @@ preservation register.
 - A3S Box for node-local workload and build execution
 - The pinned A3S Gateway revision for routed services
 - Bun only when developing the TypeScript client or CLI
-- NATS JetStream for production and every split API, worker, or relay process;
+- NATS JetStream for every event-owning production `all`, worker, or relay
+  process; a dedicated API process owns no event transport;
   the in-process A3S Event provider is development all-in-one only
 
 Redis is not required and is never a durable business, workflow, queue,
@@ -271,10 +276,15 @@ it does not require API, Flow, Runtime, Box, Vault, Gateway, or log-storage
 providers. Worker readiness is exactly PostgreSQL, NATS, Flow, Gateway
 certificate authority, key encryption, and log storage. Its composition does
 not resolve the bootstrap or webhook credentials and does not create the node
-CA, node-control server identity, or plugin-catalog state. The API role still
-uses the shared full composition root and therefore initializes some
-Worker-owned infrastructure; `H0.4` remains incomplete until typed API and
-Worker composition roots remove that final dependency overlap.
+CA, node-control server identity, or plugin-catalog state. API readiness is
+exactly PostgreSQL, query-only Flow history, the node and Gateway certificate
+authorities, key encryption, and log storage. API does not own event transport:
+it neither resolves NATS nor constructs the Outbox relay or notification
+consumer. Its Flow adapter reuses the sole A3S Flow PostgreSQL event store and
+projection engine but cannot execute workflows or steps. Worker construction
+owns checkout, build staging, runtime registration, the Boot task queue, and
+the complete reconciler set. `all` composes those same typed capabilities; it
+does not introduce a third path.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as executable references.

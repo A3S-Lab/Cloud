@@ -278,6 +278,16 @@ async fn postgres_notifications_are_deduplicated_personal_and_atomic() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_api_role_has_only_management_dependencies_and_routes() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_api_role_composition)
+        .await
+        .expect("PostgreSQL-only API composition gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_relay_role_has_only_its_owned_dependencies_and_routes() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
@@ -870,6 +880,51 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
     assert_split_role_surface(&relay, "relay", &["events", "postgres"]).await
 }
 
+async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
+    let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
+    let state = tempfile::tempdir()?;
+    let mut api_config = config();
+    configure_split_role(&mut api_config, state.path(), ProcessRole::Api, "API");
+    api_config.auth.bootstrap_token_env = BOOTSTRAP_ENV.into();
+    let unused_nats_env = format!(
+        "A3S_CLOUD_API_UNUSED_NATS_{}",
+        Uuid::new_v4().simple().to_string().to_uppercase()
+    );
+    api_config.events.nats_url_env = unused_nats_env.clone();
+    assert!(
+        std::env::var_os(&unused_nats_env).is_none(),
+        "API composition gate requires an unresolved NATS URL"
+    );
+
+    let api =
+        build_application_with_source_resolver(api_config, Arc::new(OfflineCommitSourceResolver))
+            .await?;
+    assert_api_role_surface(
+        &api,
+        &[
+            "certificate-authority",
+            "flow",
+            "gateway-certificate-authority",
+            "key-encryption",
+            "log-storage",
+            "postgres",
+        ],
+    )
+    .await?;
+    for relative in [
+        "worker/source-checkouts",
+        "worker/build-inputs",
+        "worker/build-outputs",
+    ] {
+        assert!(
+            !state.path().join(relative).exists(),
+            "API initialized worker-owned state {relative}"
+        );
+    }
+    Ok(())
+}
+
 async fn exercise_worker_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let state = tempfile::tempdir()?;
@@ -944,7 +999,65 @@ fn configure_split_role(
         .join("gateway/managed-snapshot.json")
         .display()
         .to_string();
+    config.sources.checkout_dir = state.join("worker/source-checkouts").display().to_string();
+    config.builds.input_staging_dir = state.join("worker/build-inputs").display().to_string();
+    config.builds.output_staging_dir = state.join("worker/build-outputs").display().to_string();
     unused_bootstrap_env
+}
+
+async fn assert_api_role_surface(
+    application: &ControlPlane,
+    expected_readiness_checks: &[&str],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let readiness = application
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    let readiness_body = response_json(&readiness)?;
+    assert_eq!(readiness.status(), 200, "{readiness_body}");
+    let readiness_checks = readiness_body["data"]["checks"]
+        .as_object()
+        .ok_or_else(|| std::io::Error::other("API readiness checks are not an object"))?;
+    assert_eq!(
+        readiness_checks
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        expected_readiness_checks.iter().copied().collect()
+    );
+
+    let platform = application
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/platform")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(response_json(&platform)?["data"]["role"], "api");
+    let openapi = application
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/openapi.json")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(
+        openapi.status(),
+        200,
+        "API must expose its management contract"
+    );
+    let organizations = application
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/organizations")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_ne!(
+        organizations.status(),
+        404,
+        "API must register management routes"
+    );
+    Ok(())
 }
 
 async fn assert_split_role_surface(

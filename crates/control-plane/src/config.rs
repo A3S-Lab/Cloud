@@ -39,6 +39,10 @@ impl ProcessRole {
     pub(crate) const fn runs_relay(self) -> bool {
         matches!(self, Self::All | Self::Relay)
     }
+
+    pub(crate) const fn owns_event_transport(self) -> bool {
+        self.runs_workers() || self.runs_relay()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1096,11 +1100,12 @@ impl CloudConfig {
             ));
         }
         if self.events.provider == EventProviderKind::Memory
+            && self.server.role.owns_event_transport()
             && (self.security.profile != SecurityProfile::Development
                 || self.server.role != ProcessRole::All)
         {
             return Err(ConfigError::Invalid(
-                "events.provider memory is allowed only for the development all-in-one process; production and split process roles require nats"
+                "events.provider memory is allowed only for the development all-in-one process or an API process that does not own event transport; every event-owning production or split role requires nats"
                     .into(),
             ));
         }
@@ -2562,8 +2567,8 @@ security {
     }
 
     #[test]
-    fn memory_event_delivery_is_development_all_in_one_only() {
-        const ERROR: &str = "invalid Cloud config: events.provider memory is allowed only for the development all-in-one process; production and split process roles require nats";
+    fn memory_event_delivery_is_limited_to_event_transport_owners() {
+        const ERROR: &str = "invalid Cloud config: events.provider memory is allowed only for the development all-in-one process or an API process that does not own event transport; every event-owning production or split role requires nats";
 
         let valid = platform_valid();
         let mut production = CloudConfig::parse(&valid).expect("development all-in-one config");
@@ -2576,7 +2581,13 @@ security {
             ERROR
         );
 
-        for role in ["api", "worker", "relay"] {
+        let api = valid.replace("role = \"all\"", "role = \"api\"");
+        assert!(
+            CloudConfig::parse(&api).is_ok(),
+            "API does not own event transport and must not require NATS"
+        );
+
+        for role in ["worker", "relay"] {
             let memory = valid.replace("role = \"all\"", &format!("role = \"{role}\""));
             assert_eq!(
                 CloudConfig::parse(&memory)

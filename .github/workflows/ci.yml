@@ -106,6 +106,13 @@ jobs:
           postgres_notifications_are_deduplicated_personal_and_atomic
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify the PostgreSQL-only API process composition
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_api_role_has_only_management_dependencies_and_routes
+          -- --exact --nocapture --test-threads=1
+
       - name: Start checksum-pinned NATS notification fixture
         env:
           NATS_SERVER_VERSION: 2.12.12

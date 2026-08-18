@@ -155,9 +155,9 @@ Management MCP, provider, recovery, and evidence contracts.
 - Put every external middleware behind a typed application port and test its
   real provider; backend names never enter domain decisions.
 - Permit the process-local A3S Event adapter only in the development
-  all-in-one process. Production and every split API, worker, or relay role
-  require NATS JetStream so integration facts cannot disappear at a process
-  boundary.
+  all-in-one process or a dedicated API that owns no event transport. Every
+  event-owning production `all`, worker, or relay role requires NATS JetStream
+  so integration facts cannot disappear at a process boundary.
 - Compose the shared A3S Box Runtime driver directly. Do not add another Box
   lifecycle adapter, provider selector, or Docker-compatible fallback.
 - Compile local inference only to the A3S Power Service contract. An engine
@@ -3899,7 +3899,7 @@ reconciliation, process death, and provider recovery.
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, one generation-fenced group Deployment/operation with exact member and plan bindings, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS for every production or split role, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only composition root, and removes the typed management capability bundle and its local state from Worker. Complete API/Worker infrastructure isolation plus ACL-native Box-hosted installation/upgrade and highly available API, worker/reconciler, relay, Gateway, migration, and dependency wiring remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. ACL-native Box-hosted installation/upgrade, HA API/worker/relay/Gateway, migration jobs, dependency orchestration, and smaller typed PostgreSQL adapter families remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; process/node loss preserves leadership fencing and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
 The implemented `H0.1` foundation introduces `WorkloadControl`,
@@ -4217,11 +4217,14 @@ transactional Outbox, and its notification projection. Worker now omits the
 typed management capability bundle, including bootstrap, OIDC, webhook,
 node-CA, plugin-catalog, domain-verification, and management application
 adapters. Its exact readiness set is PostgreSQL, NATS, Flow, Gateway
-certificate authority, key encryption, and log storage. The shared full
-composition root still initializes some Worker-owned infrastructure for API
-and some common repository adapters for both roles; later slices must finish
-that dependency-ownership split without duplicating repositories or domain
-mechanisms.
+certificate authority, key encryption, and log storage. API owns no event
+transport, does not resolve NATS, and uses the sole A3S Flow PostgreSQL store
+through a query-only adapter with no Boot queue, task manager, or execution
+authority. Checkout, build staging, evidence signing, runtime registration,
+Flow coordination, and every reconciler are Worker-only constructions. The
+shared composition function still instantiates common PostgreSQL repository
+adapters for both roles; smaller typed adapter families may improve
+maintainability but must not duplicate a repository or domain mechanism.
 PostgreSQL, NATS JetStream,
 S3-compatible storage, profile-conditional Redis, and the OpenTelemetry
 Collector remain replaceable dependencies with explicit health and recovery
@@ -4250,14 +4253,24 @@ immutable-object and hosted-Git persistence share one platform-aware
 directory-sync primitive; neither behavior can diverge by call site or host
 OS.
 
+The API boundary is retained before NATS starts by
+`postgres_api_role_has_only_management_dependencies_and_routes`. It uses an
+isolated PostgreSQL 17 database, a deliberately unresolved random NATS URL
+environment name, and exact API readiness containing PostgreSQL, query-only
+Flow, node and Gateway certificate authorities, key encryption, and log
+storage. It requires management/OpenAPI registration and proves that source
+checkout plus build input/output staging directories were never created. A
+source gate separately forbids the read adapter from acquiring a Boot queue,
+task manager, or incompatible-history retirement writer.
+
 ### Work
 
-- Split the current full composition root into typed common-data, API, and
-  Worker bundles. API must stop constructing Worker-only Flow, Gateway-CA,
-  log-storage, and reconciliation dependencies; Worker must construct only
-  dependencies reachable from registered workers. Keep each repository and
-  provider adapter single-owned rather than copying constructors between
-  roles.
+- Extract smaller typed PostgreSQL adapter families from the shared
+  composition function without duplicating any repository implementation.
+  Side-effectful API, Worker, and Relay infrastructure is already
+  role-reachable: API owns query-only Flow plus its node-control providers,
+  Worker owns executable Flow/build/reconciliation, and Relay owns Outbox
+  publication.
 - Extend the verified replica identity, capacity, anti-affinity, stateless
   evacuation, and generation-fenced Fleet member removal with operator-visible
   stateful drain blocking once `S0` supplies prior-writer fence evidence.

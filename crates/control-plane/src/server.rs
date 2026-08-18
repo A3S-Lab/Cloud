@@ -31,31 +31,35 @@ pub struct ControlPlane {
 
 #[derive(Default)]
 pub(crate) struct ControlPlaneWorkers {
-    build_run_reconciler: Option<BuildRunReconciler>,
-    execution_reconciler: Option<ExecutionReconciler>,
-    agent_execution_reconciler: Option<AgentExecutionReconciler>,
-    workflow_run_reconciler: Option<WorkflowRunReconciler>,
-    human_task_coordinator: Option<HumanTaskCoordinator>,
-    human_task_resume_worker: Option<HumanTaskResumeWorker>,
-    github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
-    operation_coordinator: Option<FlowOperationCoordinator>,
-    gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
-    mcp_gateway_desired_state_reconciler: Option<McpGatewayDesiredStateReconciler>,
-    mcp_gateway_snapshot_reconciler: Option<McpGatewaySnapshotReconciler>,
-    mcp_credential_delivery_receipt_sweeper: Option<McpCredentialDeliveryReceiptSweeper>,
-    gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
-    gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
-    gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
-    secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
-    node_drain_evacuation_reconciler: Option<NodeDrainEvacuationReconciler>,
-    replica_deployment_materializer: Option<ReplicaDeploymentMaterializer>,
-    replica_retirement_reconciler: Option<ReplicaRetirementReconciler>,
-    workload_reconciler: Option<WorkloadRuntimeReconciler>,
-    log_retention_worker: Option<LogRetentionWorker>,
-    log_compaction_worker: Option<LogCompactionWorker>,
-    outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
+    worker: Option<WorkerProcesses>,
     outbox_relay: Option<OutboxRelay>,
     node_control_server: Option<NodeControlServer>,
+}
+
+struct WorkerProcesses {
+    build_run_reconciler: BuildRunReconciler,
+    execution_reconciler: ExecutionReconciler,
+    agent_execution_reconciler: AgentExecutionReconciler,
+    workflow_run_reconciler: WorkflowRunReconciler,
+    human_task_coordinator: HumanTaskCoordinator,
+    human_task_resume_worker: HumanTaskResumeWorker,
+    github_authority_reconciler: GithubConnectionAuthorityReconciler,
+    operation_coordinator: FlowOperationCoordinator,
+    gateway_certificate_reconciler: GatewayCertificateReconciler,
+    mcp_gateway_desired_state_reconciler: McpGatewayDesiredStateReconciler,
+    mcp_gateway_snapshot_reconciler: McpGatewaySnapshotReconciler,
+    mcp_credential_delivery_receipt_sweeper: McpCredentialDeliveryReceiptSweeper,
+    gateway_rollout_reconciler: GatewayRolloutReconciler,
+    gateway_replica_recovery_reconciler: GatewayReplicaRecoveryReconciler,
+    gateway_rollout_rollback_reconciler: GatewayRolloutRollbackReconciler,
+    secret_rotation_restart_reconciler: SecretRotationRestartReconciler,
+    node_drain_evacuation_reconciler: NodeDrainEvacuationReconciler,
+    replica_deployment_materializer: ReplicaDeploymentMaterializer,
+    replica_retirement_reconciler: ReplicaRetirementReconciler,
+    workload_reconciler: WorkloadRuntimeReconciler,
+    log_retention_worker: LogRetentionWorker,
+    log_compaction_worker: LogCompactionWorker,
+    outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
 }
 
 impl ControlPlaneWorkers {
@@ -67,60 +71,69 @@ impl ControlPlaneWorkers {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new(
-        build_run_reconciler: Option<BuildRunReconciler>,
-        execution_reconciler: Option<ExecutionReconciler>,
-        agent_execution_reconciler: Option<AgentExecutionReconciler>,
-        workflow_run_reconciler: Option<WorkflowRunReconciler>,
-        human_task_coordinator: Option<HumanTaskCoordinator>,
-        human_task_resume_worker: Option<HumanTaskResumeWorker>,
-        github_authority_reconciler: Option<GithubConnectionAuthorityReconciler>,
-        operation_coordinator: Option<FlowOperationCoordinator>,
-        gateway_certificate_reconciler: Option<GatewayCertificateReconciler>,
-        mcp_gateway_desired_state_reconciler: Option<McpGatewayDesiredStateReconciler>,
-        mcp_gateway_snapshot_reconciler: Option<McpGatewaySnapshotReconciler>,
-        mcp_credential_delivery_receipt_sweeper: Option<McpCredentialDeliveryReceiptSweeper>,
-        gateway_rollout_reconciler: Option<GatewayRolloutReconciler>,
-        gateway_replica_recovery_reconciler: Option<GatewayReplicaRecoveryReconciler>,
-        gateway_rollout_rollback_reconciler: Option<GatewayRolloutRollbackReconciler>,
-        secret_rotation_restart_reconciler: Option<SecretRotationRestartReconciler>,
-        node_drain_evacuation_reconciler: Option<NodeDrainEvacuationReconciler>,
-        replica_deployment_materializer: Option<ReplicaDeploymentMaterializer>,
-        replica_retirement_reconciler: Option<ReplicaRetirementReconciler>,
-        workload_reconciler: Option<WorkloadRuntimeReconciler>,
-        log_retention_worker: Option<LogRetentionWorker>,
-        log_compaction_worker: Option<LogCompactionWorker>,
+    pub(crate) fn worker(
+        build_run_reconciler: BuildRunReconciler,
+        execution_reconciler: ExecutionReconciler,
+        agent_execution_reconciler: AgentExecutionReconciler,
+        workflow_run_reconciler: WorkflowRunReconciler,
+        human_task_coordinator: HumanTaskCoordinator,
+        human_task_resume_worker: HumanTaskResumeWorker,
+        github_authority_reconciler: GithubConnectionAuthorityReconciler,
+        operation_coordinator: FlowOperationCoordinator,
+        gateway_certificate_reconciler: GatewayCertificateReconciler,
+        mcp_gateway_desired_state_reconciler: McpGatewayDesiredStateReconciler,
+        mcp_gateway_snapshot_reconciler: McpGatewaySnapshotReconciler,
+        mcp_credential_delivery_receipt_sweeper: McpCredentialDeliveryReceiptSweeper,
+        gateway_rollout_reconciler: GatewayRolloutReconciler,
+        gateway_replica_recovery_reconciler: GatewayReplicaRecoveryReconciler,
+        gateway_rollout_rollback_reconciler: GatewayRolloutRollbackReconciler,
+        secret_rotation_restart_reconciler: SecretRotationRestartReconciler,
+        node_drain_evacuation_reconciler: NodeDrainEvacuationReconciler,
+        replica_deployment_materializer: ReplicaDeploymentMaterializer,
+        replica_retirement_reconciler: ReplicaRetirementReconciler,
+        workload_reconciler: WorkloadRuntimeReconciler,
+        log_retention_worker: LogRetentionWorker,
+        log_compaction_worker: LogCompactionWorker,
         outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
-        outbox_relay: Option<OutboxRelay>,
-        node_control_server: Option<NodeControlServer>,
     ) -> Self {
         Self {
-            build_run_reconciler,
-            execution_reconciler,
-            agent_execution_reconciler,
-            workflow_run_reconciler,
-            human_task_coordinator,
-            human_task_resume_worker,
-            github_authority_reconciler,
-            operation_coordinator,
-            gateway_certificate_reconciler,
-            mcp_gateway_desired_state_reconciler,
-            mcp_gateway_snapshot_reconciler,
-            mcp_credential_delivery_receipt_sweeper,
-            gateway_rollout_reconciler,
-            gateway_replica_recovery_reconciler,
-            gateway_rollout_rollback_reconciler,
-            secret_rotation_restart_reconciler,
-            node_drain_evacuation_reconciler,
-            replica_deployment_materializer,
-            replica_retirement_reconciler,
-            workload_reconciler,
-            log_retention_worker,
-            log_compaction_worker,
-            outbound_notification_consumer,
-            outbox_relay,
-            node_control_server,
+            worker: Some(WorkerProcesses {
+                build_run_reconciler,
+                execution_reconciler,
+                agent_execution_reconciler,
+                workflow_run_reconciler,
+                human_task_coordinator,
+                human_task_resume_worker,
+                github_authority_reconciler,
+                operation_coordinator,
+                gateway_certificate_reconciler,
+                mcp_gateway_desired_state_reconciler,
+                mcp_gateway_snapshot_reconciler,
+                mcp_credential_delivery_receipt_sweeper,
+                gateway_rollout_reconciler,
+                gateway_replica_recovery_reconciler,
+                gateway_rollout_rollback_reconciler,
+                secret_rotation_restart_reconciler,
+                node_drain_evacuation_reconciler,
+                replica_deployment_materializer,
+                replica_retirement_reconciler,
+                workload_reconciler,
+                log_retention_worker,
+                log_compaction_worker,
+                outbound_notification_consumer,
+            }),
+            ..Self::default()
         }
+    }
+
+    pub(crate) fn with_relay(mut self, outbox_relay: OutboxRelay) -> Self {
+        self.outbox_relay = Some(outbox_relay);
+        self
+    }
+
+    pub(crate) fn with_node_control(mut self, node_control_server: NodeControlServer) -> Self {
+        self.node_control_server = Some(node_control_server);
+        self
     }
 }
 
@@ -238,189 +251,172 @@ impl ControlPlane {
         }
         let (shutdown_sender, shutdown_receiver) = tokio::sync::watch::channel(false);
         let mut workers = JoinSet::new();
-        if let Some(reconciler) = self.workers.build_run_reconciler {
+        if let Some(worker_processes) = self.workers.worker {
+            let WorkerProcesses {
+                build_run_reconciler,
+                execution_reconciler,
+                agent_execution_reconciler,
+                workflow_run_reconciler,
+                human_task_coordinator,
+                human_task_resume_worker,
+                github_authority_reconciler,
+                operation_coordinator,
+                gateway_certificate_reconciler,
+                mcp_gateway_desired_state_reconciler,
+                mcp_gateway_snapshot_reconciler,
+                mcp_credential_delivery_receipt_sweeper,
+                gateway_rollout_reconciler,
+                gateway_replica_recovery_reconciler,
+                gateway_rollout_rollback_reconciler,
+                secret_rotation_restart_reconciler,
+                node_drain_evacuation_reconciler,
+                replica_deployment_materializer,
+                replica_retirement_reconciler,
+                workload_reconciler,
+                log_retention_worker,
+                log_compaction_worker,
+                outbound_notification_consumer,
+            } = worker_processes;
             spawn_worker(
                 &mut workers,
                 "build-run reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| build_run_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.execution_reconciler {
             spawn_worker(
                 &mut workers,
                 "execution reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| execution_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.agent_execution_reconciler {
             spawn_worker(
                 &mut workers,
                 "Agent execution reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| agent_execution_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.workflow_run_reconciler {
             spawn_worker(
                 &mut workers,
                 "WorkflowRun reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| workflow_run_reconciler.run(shutdown),
             );
-        }
-        if let Some(coordinator) = self.workers.human_task_coordinator {
             spawn_worker(
                 &mut workers,
                 "HumanTask coordinator",
                 shutdown_receiver.clone(),
-                move |shutdown| coordinator.run(shutdown),
+                move |shutdown| human_task_coordinator.run(shutdown),
             );
-        }
-        if let Some(worker) = self.workers.human_task_resume_worker {
             spawn_worker(
                 &mut workers,
                 "HumanTask resume worker",
                 shutdown_receiver.clone(),
-                move |shutdown| worker.run(shutdown),
+                move |shutdown| human_task_resume_worker.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.github_authority_reconciler {
             spawn_worker(
                 &mut workers,
                 "GitHub authority reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| github_authority_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.gateway_certificate_reconciler {
             spawn_worker(
                 &mut workers,
                 "Gateway certificate reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| gateway_certificate_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.mcp_gateway_desired_state_reconciler {
             spawn_worker(
                 &mut workers,
                 "MCP Gateway desired-state reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| mcp_gateway_desired_state_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.mcp_gateway_snapshot_reconciler {
             spawn_worker(
                 &mut workers,
                 "MCP Gateway snapshot reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| mcp_gateway_snapshot_reconciler.run(shutdown),
             );
-        }
-        if let Some(worker) = self.workers.mcp_credential_delivery_receipt_sweeper {
             spawn_worker(
                 &mut workers,
                 "MCP credential receipt sweeper",
                 shutdown_receiver.clone(),
-                move |shutdown| worker.run(shutdown),
+                move |shutdown| mcp_credential_delivery_receipt_sweeper.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.gateway_rollout_reconciler {
             spawn_worker(
                 &mut workers,
                 "Gateway rollout reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| gateway_rollout_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.gateway_replica_recovery_reconciler {
             spawn_worker(
                 &mut workers,
                 "Gateway replica recovery reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| gateway_replica_recovery_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.gateway_rollout_rollback_reconciler {
             spawn_worker(
                 &mut workers,
                 "Gateway rollout rollback reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| gateway_rollout_rollback_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.secret_rotation_restart_reconciler {
             spawn_worker(
                 &mut workers,
                 "Secret rotation restart reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| secret_rotation_restart_reconciler.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.node_drain_evacuation_reconciler {
             spawn_worker(
                 &mut workers,
                 "node-drain evacuation reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| node_drain_evacuation_reconciler.run(shutdown),
             );
-        }
-        if let Some(materializer) = self.workers.replica_deployment_materializer {
             spawn_worker(
                 &mut workers,
                 "replica deployment materializer",
                 shutdown_receiver.clone(),
-                move |shutdown| materializer.run(shutdown),
+                move |shutdown| replica_deployment_materializer.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.replica_retirement_reconciler {
             spawn_worker(
                 &mut workers,
                 "replica retirement reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| replica_retirement_reconciler.run(shutdown),
             );
-        }
-        if let Some(coordinator) = self.workers.operation_coordinator {
             spawn_fallible_worker(
                 &mut workers,
                 "Operation Flow coordinator",
                 shutdown_receiver.clone(),
-                move |shutdown| coordinator.run(shutdown),
+                move |shutdown| operation_coordinator.run(shutdown),
             );
-        }
-        if let Some(reconciler) = self.workers.workload_reconciler {
             spawn_worker(
                 &mut workers,
                 "Workload Runtime reconciler",
                 shutdown_receiver.clone(),
-                move |shutdown| reconciler.run(shutdown),
+                move |shutdown| workload_reconciler.run(shutdown),
             );
-        }
-        if let Some(worker) = self.workers.log_retention_worker {
             spawn_worker(
                 &mut workers,
                 "log retention worker",
                 shutdown_receiver.clone(),
-                move |shutdown| worker.run(shutdown),
+                move |shutdown| log_retention_worker.run(shutdown),
             );
-        }
-        if let Some(worker) = self.workers.log_compaction_worker {
             spawn_worker(
                 &mut workers,
                 "log compaction worker",
                 shutdown_receiver.clone(),
-                move |shutdown| worker.run(shutdown),
+                move |shutdown| log_compaction_worker.run(shutdown),
             );
-        }
-        if let Some(consumer) = self.workers.outbound_notification_consumer {
-            spawn_fallible_worker(
-                &mut workers,
-                "outbound notification A3S Event consumer",
-                shutdown_receiver.clone(),
-                move |shutdown| consumer.run(shutdown),
-            );
+            if let Some(consumer) = outbound_notification_consumer {
+                spawn_fallible_worker(
+                    &mut workers,
+                    "outbound notification A3S Event consumer",
+                    shutdown_receiver.clone(),
+                    move |shutdown| consumer.run(shutdown),
+                );
+            }
         }
         if let Some(relay) = self.workers.outbox_relay {
             spawn_worker(

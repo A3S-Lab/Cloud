@@ -104,7 +104,7 @@ async fn production_composition_revalidates_the_role_contract_before_io() -> Res
     };
     assert_eq!(
         error.to_string(),
-        "invalid Cloud config: events.provider memory is allowed only for the development all-in-one process; production and split process roles require nats"
+        "invalid Cloud config: events.provider memory is allowed only for the development all-in-one process or an API process that does not own event transport; every event-owning production or split role requires nats"
     );
     Ok(())
 }
@@ -160,15 +160,68 @@ fn relay_composition_has_one_closed_dependency_set() {
 }
 
 #[test]
+fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
+    let application = include_str!("../../app.rs");
+    let worker_flow = application
+        .split_once("let flow = if run_operations {")
+        .and_then(|(_, tail)| tail.split_once("\n    let management_flow_reader ="))
+        .map(|(body, _)| body)
+        .expect("worker Flow composition root");
+    for required in [
+        "GitSourceCheckout::new(",
+        "OciBuildOutputValidator::new(",
+        "build_evidence_signer(",
+        "FlowRuntimeRouter::new(",
+        "connect_flow(",
+    ] {
+        assert!(
+            worker_flow.contains(required),
+            "worker Flow composition lost required capability {required}"
+        );
+    }
+    assert!(
+        application.contains(
+            "if config.server.role.owns_event_transport() {\n        Some(event_publisher(&config).await?)"
+        ),
+        "API must not acquire an event publisher"
+    );
+    assert!(
+        application.contains("Some(FlowReadInfrastructure::connect(&postgres_url).await?)"),
+        "API must acquire the query-only Flow boundary"
+    );
+
+    let flow = include_str!("../../infrastructure/flow.rs");
+    let reader = flow
+        .split_once("impl FlowReadInfrastructure {")
+        .and_then(|(_, tail)| {
+            tail.split_once("\n}\n\npub(crate) fn cloud_runtime_build_compatibility")
+        })
+        .map(|(body, _)| body)
+        .expect("Flow read infrastructure implementation");
+    assert!(reader.contains("PostgresEventStore::connect("));
+    for forbidden in [
+        "PostgresQueueBackend::connect(",
+        "BootFlowTaskManager::new(",
+        "retire_incompatible_build_workflows(",
+    ] {
+        assert!(
+            !reader.contains(forbidden),
+            "API Flow reader acquired worker capability {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn process_roles_have_one_closed_capability_matrix() {
-    for (role, management, workers, relay) in [
-        (ProcessRole::All, true, true, true),
-        (ProcessRole::Api, true, false, false),
-        (ProcessRole::Worker, false, true, false),
-        (ProcessRole::Relay, false, false, true),
+    for (role, management, workers, relay, events) in [
+        (ProcessRole::All, true, true, true, true),
+        (ProcessRole::Api, true, false, false, false),
+        (ProcessRole::Worker, false, true, false, true),
+        (ProcessRole::Relay, false, false, true, true),
     ] {
         assert_eq!(role.serves_management_api(), management, "{role:?}");
         assert_eq!(role.runs_workers(), workers, "{role:?}");
         assert_eq!(role.runs_relay(), relay, "{role:?}");
+        assert_eq!(role.owns_event_transport(), events, "{role:?}");
     }
 }
