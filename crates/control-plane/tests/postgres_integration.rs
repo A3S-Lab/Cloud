@@ -278,6 +278,19 @@ async fn postgres_notifications_are_deduplicated_personal_and_atomic() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_relay_role_has_only_its_owned_dependencies_and_routes() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    if std::env::var("A3S_CLOUD_TEST_NATS_URL").is_err() {
+        return;
+    }
+    run_isolated_postgres(&admin_url, exercise_relay_role_composition)
+        .await
+        .expect("PostgreSQL and NATS relay composition gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_connector_profiles_are_exact_replay_safe_and_immutable() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
         return;
@@ -832,6 +845,76 @@ where
             std::panic::resume_unwind(panic_payload)
         }
     }
+}
+
+async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
+    let state = tempfile::tempdir()?;
+    let mut relay_config = config();
+    configure_ephemeral_application_state(&mut relay_config, state.path());
+    relay_config.server.role = ProcessRole::Relay;
+    relay_config.events.provider = EventProviderKind::Nats;
+    relay_config.events.nats_url_env = "A3S_CLOUD_TEST_NATS_URL".into();
+    relay_config.events.stream_name = format!(
+        "A3S_CLOUD_RELAY_{}",
+        Uuid::new_v4().simple().to_string().to_uppercase()
+    );
+    relay_config.auth.bootstrap_token_env = format!(
+        "A3S_CLOUD_RELAY_UNUSED_{}",
+        Uuid::new_v4().simple().to_string().to_uppercase()
+    );
+    relay_config.edge.certificate_directory = state
+        .path()
+        .join("gateway/certificates")
+        .display()
+        .to_string();
+    relay_config.edge.managed_state_file = state
+        .path()
+        .join("gateway/managed-snapshot.json")
+        .display()
+        .to_string();
+
+    let relay = build_application(relay_config).await?;
+    let readiness = relay
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    let readiness_body = response_json(&readiness)?;
+    assert_eq!(readiness.status(), 200, "{readiness_body}");
+    let readiness_checks = readiness_body["data"]["checks"]
+        .as_object()
+        .ok_or_else(|| std::io::Error::other("relay readiness checks are not an object"))?;
+    assert_eq!(
+        readiness_checks
+            .keys()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        std::collections::BTreeSet::from(["events", "postgres"])
+    );
+
+    let platform = relay
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/platform")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    let platform_body = response_json(&platform)?;
+    assert_eq!(platform.status(), 200, "{platform_body}");
+    assert_eq!(platform_body["data"]["role"], "relay");
+
+    for path in [
+        "/api/v1/openapi.json",
+        "/api/v1/organizations",
+        "/api/v1/mcp",
+    ] {
+        let response = relay
+            .call(BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"))
+            .await?;
+        assert_eq!(response.status(), 404, "relay exposed {path}");
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

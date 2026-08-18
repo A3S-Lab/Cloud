@@ -425,14 +425,17 @@ externally registered route set:
 | `api` | REST, SSE, Management MCP, and node-control endpoints |
 | `delivery` | Planned `APP0` published application API, embed/MCP facade, and shared cursor/SSE projection; no management or worker authority |
 | `worker` | Flow advancement, reconciliation, scheduling, and cleanup; HTTP exposes process identity and health only |
-| `relay` | Transactional Outbox delivery through A3S Event; HTTP exposes process identity and health only |
+| `relay` | Transactional Outbox delivery through A3S Event; initializes only PostgreSQL, NATS, the existing notification projector, and process-status HTTP |
 
 The Node Agent is a separate process because it crosses a machine and trust
 boundary. Gateway, Runtime, Box, and workload processes remain independently
 versioned components. Cloud ships no management Web UI or static SPA server;
 all product management enters through `all` or `api`. A worker or relay never
 registers REST, OpenAPI, or Management MCP product routes merely to obtain a
-health listener.
+health listener. The dedicated relay also does not initialize Flow, Runtime,
+Box, OIDC, GitHub, Vault, Gateway certificate, or log-object providers. Its
+readiness is the conjunction of the PostgreSQL and A3S Event dependencies it
+actually uses.
 
 ## 6. Control-plane modular monolith and DDD boundaries
 

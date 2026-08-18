@@ -143,6 +143,15 @@ jobs:
           postgres_notifications_are_deduplicated_personal_and_atomic
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify the closed relay process composition
+        env:
+          A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_relay_role_has_only_its_owned_dependencies_and_routes
+          -- --exact --nocapture --test-threads=1
+
       - name: Stop checksum-pinned NATS notification fixture
         if: always()
         run: |

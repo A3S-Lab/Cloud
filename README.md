@@ -255,7 +255,10 @@ ACL. Configuration is parsed only through `a3s-acl`.
 `server.role = "all"` or `"api"` owns the management REST/OpenAPI/MCP
 surface. Dedicated `"worker"` and `"relay"` processes expose only liveness,
 readiness, and their `/platform` identity; they cannot become accidental
-management API replicas.
+management API replicas. The relay composition initializes only PostgreSQL,
+NATS, the existing Outbox/notification projection, and those status routes;
+it does not require API, Flow, Runtime, Box, Vault, Gateway, or log-storage
+providers.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as executable references.

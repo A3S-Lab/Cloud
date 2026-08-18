@@ -108,3 +108,52 @@ async fn production_composition_revalidates_the_role_contract_before_io() -> Res
     );
     Ok(())
 }
+
+#[test]
+fn relay_composition_has_one_closed_dependency_set() {
+    let production = include_str!("../../app.rs");
+    let relay = production
+        .split_once("async fn build_relay_application(")
+        .and_then(|(_, tail)| tail.split_once("\nfn build_outbox_relay("))
+        .map(|(body, _)| body)
+        .expect("relay composition root");
+
+    for required in [
+        "connect_and_migrate(",
+        "event_publisher(",
+        "build_outbox_relay(",
+        "relay_readiness(",
+        "ControlPlaneWorkers::relay(",
+    ] {
+        assert!(
+            relay.contains(required),
+            "relay composition lost required authority {required}"
+        );
+    }
+    for forbidden in [
+        "connect_flow(",
+        "security_providers(",
+        "build_evidence_signer(",
+        "gateway_certificate_authority(",
+        "log_chunk_store(",
+        "bootstrap_token(",
+        "GithubSourceResolver::new(",
+        "OpenIdConnectProviderService::new(",
+        "OutboxRelay::new(",
+    ] {
+        assert!(
+            !relay.contains(forbidden),
+            "relay composition acquired unrelated dependency {forbidden}"
+        );
+    }
+    assert_eq!(
+        production.matches("OutboxRelay::new(").count(),
+        1,
+        "all and relay roles must share one Outbox construction mechanism"
+    );
+    assert_eq!(
+        production.matches("OutboxRelayConfig {").count(),
+        1,
+        "all and relay roles must share one Outbox timing projection"
+    );
+}

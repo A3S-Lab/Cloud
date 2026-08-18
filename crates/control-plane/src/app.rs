@@ -237,7 +237,10 @@ use crate::presentation::{
 };
 use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
-    config::{EventProviderKind, LogStorageProviderKind, SecurityProfile, SecurityProviderKind},
+    config::{
+        EventProviderKind, LogStorageProviderKind, ProcessRole, SecurityProfile,
+        SecurityProviderKind,
+    },
     infrastructure::{
         connect_and_migrate, postgres_health, FlowRuntimeRouter, PostgresBootstrapError,
     },
@@ -309,13 +312,7 @@ pub enum ControlPlaneStartupError {
 pub async fn build_application(
     config: CloudConfig,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
-    let source_resolver: Arc<dyn ISourceResolver> = Arc::new(
-        GithubSourceResolver::new(Duration::from_millis(
-            config.sources.github_request_timeout_ms,
-        ))
-        .map_err(ControlPlaneStartupError::Sources)?,
-    );
-    build_application_with_source_resolver(config, source_resolver).await
+    build_application_with_overrides(config, None, None).await
 }
 
 #[doc(hidden)]
@@ -323,12 +320,7 @@ pub async fn build_application_with_source_resolver(
     config: CloudConfig,
     source_resolver: Arc<dyn ISourceResolver>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
-    let oidc_provider: Arc<dyn IOidcProviderService> = Arc::new(
-        OpenIdConnectProviderService::new(&config.auth.oidc_providers)
-            .map_err(ControlPlaneStartupError::Auth)?,
-    );
-    build_application_with_source_resolver_and_oidc_provider(config, source_resolver, oidc_provider)
-        .await
+    build_application_with_overrides(config, Some(source_resolver), None).await
 }
 
 #[doc(hidden)]
@@ -337,7 +329,43 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
     source_resolver: Arc<dyn ISourceResolver>,
     oidc_provider: Arc<dyn IOidcProviderService>,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    build_application_with_overrides(config, Some(source_resolver), Some(oidc_provider)).await
+}
+
+async fn build_application_with_overrides(
+    config: CloudConfig,
+    source_resolver: Option<Arc<dyn ISourceResolver>>,
+    oidc_provider: Option<Arc<dyn IOidcProviderService>>,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     config.validate()?;
+    if config.server.role == ProcessRole::Relay {
+        return build_relay_application(config).await;
+    }
+
+    let source_resolver = match source_resolver {
+        Some(source_resolver) => source_resolver,
+        None => Arc::new(
+            GithubSourceResolver::new(Duration::from_millis(
+                config.sources.github_request_timeout_ms,
+            ))
+            .map_err(ControlPlaneStartupError::Sources)?,
+        ),
+    };
+    let oidc_provider = match oidc_provider {
+        Some(oidc_provider) => oidc_provider,
+        None => Arc::new(
+            OpenIdConnectProviderService::new(&config.auth.oidc_providers)
+                .map_err(ControlPlaneStartupError::Auth)?,
+        ),
+    };
+    build_full_application(config, source_resolver, oidc_provider).await
+}
+
+async fn build_full_application(
+    config: CloudConfig,
+    source_resolver: Arc<dyn ISourceResolver>,
+    oidc_provider: Arc<dyn IOidcProviderService>,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let source_webhook_verifier: Arc<dyn ISourceWebhookVerifier> = Arc::new(
         GithubWebhookVerifier::new(
             config.sources.github_webhook_secret_env.clone(),
@@ -1035,23 +1063,13 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
         operation_lease,
     )
     .map_err(|error| ControlPlaneStartupError::Framework(BootError::Internal(error.to_string())))?;
-    let outbox_relay = OutboxRelay::new(
-        Arc::new(PostgresOutboxRepository::new(executor.clone())),
+    let outbox_relay = build_outbox_relay(
+        &config,
+        executor.clone(),
         event_publisher.clone(),
-        OutboxRelayConfig {
-            batch_size: config.events.batch_size,
-            poll_interval: Duration::from_millis(config.events.poll_interval_ms),
-            lease_duration: Duration::from_millis(config.events.lease_ms),
-            publish_timeout: Duration::from_millis(config.events.publish_timeout_ms),
-            initial_backoff: Duration::from_millis(config.events.retry_initial_ms),
-            maximum_backoff: Duration::from_millis(config.events.retry_max_ms),
-        },
-    )
-    .map_err(ControlPlaneStartupError::Outbox)?
-    .with_projector(Arc::new(OutboxNotificationProjector::new(
         Arc::clone(&notifications),
         Arc::clone(&memberships),
-    )));
+    )?;
     let run_operations = config.server.role.runs_workers();
     let run_relay = config.server.role.runs_relay();
     let log_retention_worker = LogRetentionWorker::new(
@@ -1225,6 +1243,58 @@ pub async fn build_application_with_source_resolver_and_oidc_provider(
             node_control_server,
         ),
     ))
+}
+
+async fn build_relay_application(
+    config: CloudConfig,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    let postgres_url = config.postgres_url()?;
+    let executor = connect_and_migrate(&postgres_url, config.postgres.max_connections).await?;
+    let event_publisher = event_publisher(&config).await?;
+    let identity = Arc::new(PostgresIdentityRepository::new(executor.clone()));
+    let memberships: Arc<dyn IMembershipRepository> = identity;
+    let notification_repository = Arc::new(PostgresNotificationRepository::new(executor.clone()));
+    let notifications: Arc<dyn INotificationRepository> = notification_repository;
+    let outbox_relay = build_outbox_relay(
+        &config,
+        executor.clone(),
+        event_publisher.clone(),
+        notifications,
+        memberships,
+    )?;
+    let readiness = relay_readiness(executor, event_publisher);
+    let application = build_process_status_application(&config, readiness)?;
+    Ok(ControlPlane::new(
+        application,
+        ControlPlaneWorkers::relay(outbox_relay),
+    ))
+}
+
+fn build_outbox_relay(
+    config: &CloudConfig,
+    executor: PostgresExecutor,
+    events: Arc<dyn IEventPublisher>,
+    notifications: Arc<dyn INotificationRepository>,
+    memberships: Arc<dyn IMembershipRepository>,
+) -> std::result::Result<OutboxRelay, ControlPlaneStartupError> {
+    let relay = OutboxRelay::new(
+        Arc::new(PostgresOutboxRepository::new(executor)),
+        events,
+        OutboxRelayConfig {
+            batch_size: config.events.batch_size,
+            poll_interval: Duration::from_millis(config.events.poll_interval_ms),
+            lease_duration: Duration::from_millis(config.events.lease_ms),
+            publish_timeout: Duration::from_millis(config.events.publish_timeout_ms),
+            initial_backoff: Duration::from_millis(config.events.retry_initial_ms),
+            maximum_backoff: Duration::from_millis(config.events.retry_max_ms),
+        },
+    )
+    .map_err(ControlPlaneStartupError::Outbox)?
+    .with_projector(Arc::new(OutboxNotificationProjector::new(
+        notifications,
+        memberships,
+    )));
+    Ok(relay)
 }
 
 struct ApplicationDependencies {
@@ -2685,28 +2755,10 @@ fn infrastructure_readiness(
     key_encryption: Arc<dyn ISecretEncryptionService>,
     log_chunks: Arc<dyn ILogChunkStore>,
 ) -> HealthModule {
-    HealthModule::new("readiness")
-        .with_route("/health/ready")
-        .indicator("postgres", move || {
-            let executor = executor.clone();
-            async move { Ok(postgres_health(executor).await) }
-        })
+    relay_readiness(executor, events)
         .indicator("flow", move || {
             let flow = flow.clone();
             async move { Ok(flow.health().await) }
-        })
-        .indicator("events", move || {
-            let events = events.clone();
-            async move {
-                match events.health().await {
-                    Ok(true) => Ok(HealthIndicatorResult::up()),
-                    Ok(false) => Ok(HealthIndicatorResult::down()),
-                    Err(error) => {
-                        Ok(HealthIndicatorResult::down()
-                            .with_detail_value("error", error.to_string()))
-                    }
-                }
-            }
         })
         .indicator("certificate-authority", move || {
             let certificate_authority = certificate_authority.clone();
@@ -2751,6 +2803,28 @@ fn infrastructure_readiness(
             let log_chunks = log_chunks.clone();
             async move {
                 match log_chunks.health().await {
+                    Ok(true) => Ok(HealthIndicatorResult::up()),
+                    Ok(false) => Ok(HealthIndicatorResult::down()),
+                    Err(error) => {
+                        Ok(HealthIndicatorResult::down()
+                            .with_detail_value("error", error.to_string()))
+                    }
+                }
+            }
+        })
+}
+
+fn relay_readiness(executor: PostgresExecutor, events: Arc<dyn IEventPublisher>) -> HealthModule {
+    HealthModule::new("readiness")
+        .with_route("/health/ready")
+        .indicator("postgres", move || {
+            let executor = executor.clone();
+            async move { Ok(postgres_health(executor).await) }
+        })
+        .indicator("events", move || {
+            let events = events.clone();
+            async move {
+                match events.health().await {
                     Ok(true) => Ok(HealthIndicatorResult::up()),
                     Ok(false) => Ok(HealthIndicatorResult::down()),
                     Err(error) => {

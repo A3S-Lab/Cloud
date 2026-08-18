@@ -29,6 +29,7 @@ pub struct ControlPlane {
     workers: ControlPlaneWorkers,
 }
 
+#[derive(Default)]
 pub(crate) struct ControlPlaneWorkers {
     build_run_reconciler: Option<BuildRunReconciler>,
     execution_reconciler: Option<ExecutionReconciler>,
@@ -58,6 +59,13 @@ pub(crate) struct ControlPlaneWorkers {
 }
 
 impl ControlPlaneWorkers {
+    pub(crate) fn relay(outbox_relay: OutboxRelay) -> Self {
+        Self {
+            outbox_relay: Some(outbox_relay),
+            ..Self::default()
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         build_run_reconciler: Option<BuildRunReconciler>,
