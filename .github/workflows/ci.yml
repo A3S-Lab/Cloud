@@ -59,7 +59,9 @@ jobs:
             -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
             exit 0
           fi
-          detail=$(tail -n 120 "$log")
+          # GitHub check annotations retain only a small message prefix. Keep the
+          # diagnostic tail within that limit so the actual failure remains public.
+          detail=$(tail -c 3000 "$log")
           detail=${detail//'%'/'%25'}
           detail=${detail//$'\r'/'%0D'}
           detail=${detail//$'\n'/'%0A'}
@@ -170,7 +172,7 @@ jobs:
             -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
             exit 0
           fi
-          detail=$(tail -n 120 "$log")
+          detail=$(tail -c 3000 "$log")
           detail=${detail//'%'/'%25'}
           detail=${detail//$'\r'/'%0D'}
           detail=${detail//$'\n'/'%0A'}
@@ -239,7 +241,7 @@ jobs:
             -- --nocapture --test-threads=1 2>&1 | tee "$log"; then
             exit 0
           fi
-          detail=$(tail -n 80 "$log")
+          detail=$(tail -c 3000 "$log")
           detail=${detail//'%'/'%25'}
           detail=${detail//$'\r'/'%0D'}
           detail=${detail//$'\n'/'%0A'}
