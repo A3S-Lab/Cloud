@@ -152,11 +152,30 @@ jobs:
         env:
           A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
           A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER: "1"
-        run: >-
-          cargo test --locked -p a3s-cloud-control-plane
-          --test postgres_integration
-          postgres_foundation_is_migrated_atomic_and_idempotent
-          -- --exact --nocapture --test-threads=1
+          RUST_BACKTRACE: "1"
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-f0-foundation.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_foundation_is_migrated_atomic_and_idempotent \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -n 120 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=F0 foundation provider gate failed::$detail"
+          exit 1
+
+      - name: Upload F0 foundation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f0-foundation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-f0-foundation.log
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Certify durable NATS notification delivery and terminal replay
         env:

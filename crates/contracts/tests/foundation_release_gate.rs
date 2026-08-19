@@ -30,10 +30,15 @@ fn f0_provider_recertification_is_mandatory_in_ci() {
     for required in [
         "A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222",
         "A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER: \"1\"",
+        "RUST_BACKTRACE: \"1\"",
         "cargo test --locked -p a3s-cloud-control-plane",
         "--test postgres_integration",
         FOUNDATION_PROVIDER_TEST,
         "-- --exact --nocapture --test-threads=1",
+        "a3s-cloud-f0-foundation.log",
+        "::error title=F0 foundation provider gate failed::",
+        "name: f0-foundation-${{ github.run_id }}-${{ github.run_attempt }}",
+        "if-no-files-found: error",
     ] {
         assert!(
             gate.contains(required),
