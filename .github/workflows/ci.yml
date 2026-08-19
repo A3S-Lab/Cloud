@@ -148,6 +148,16 @@ jobs:
           cat "${RUNNER_TEMP}/a3s-cloud-notification-nats.log"
           exit 1
 
+      - name: Certify the F0 PostgreSQL and Event foundation
+        env:
+          A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
+          A3S_CLOUD_TEST_OFFLINE_SOURCE_RESOLVER: "1"
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          postgres_foundation_is_migrated_atomic_and_idempotent
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify durable NATS notification delivery and terminal replay
         env:
           A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222

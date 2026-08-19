@@ -412,7 +412,7 @@ supersede those claims rather than acting as a second live status source.
 | BX0 | In progress | `BX0.1` and the complete `BX0.2` lifecycle, recovery, hard-resource Claim, cancellation, and abnormal-interruption cleanup path are verified on the exact Runtime/Box pair. `BX0.3` now has Runtime-owned typed Service TCP endpoints, Box-owned generation-fenced forwarding and HTTP/TCP/command probes, one stateless Cloud-to-Gateway origin adapter, one real Cloud health consumer gate, one authenticated Cloud-to-Box adapter for restart-safe environment/file Secrets, log redaction, and pull-only registry credentials, one Artifact port that reuses the existing node cache plus Box's sole VolumeStore for Artifact/Volume/tmpfs mounts and Task-output publication, a composite allocation gate that binds Box's complete advertised Resources profile to Cloud's existing inventory-bound Claim lifecycle, and an ACL-native SEV-SNP composition that consumes generation-bound Box attestation while keeping simulation distinct from hardware evidence. Complete Sandbox plus hardware-backed MicroVM/TEE isolation, builds, and the clean-host loop keep `BX0.3` through `BX0.5` open in A3S-Lab/Cloud#85 and A3S-Lab/Box#172 |
 | PW0 | Planned | ACL-native Power and Box MicroVM/TEE integration is tracked by A3S-Lab/Power#3; no Cloud inference capability is claimed yet |
 | R0 | Historical | General Task and Service behavior passed against the retired provider; Box conformance is required |
-| F0 | Re-certification required | The last complete evidence set covered isolated PostgreSQL migrations, tenancy, idempotency, local/NATS outbox, A3S Flow `0.12.0` history, A3S Boot `0.2.0` PostgreSQL task management, A3S ORM `0.3.0`, queue-failure readiness, and the nine-boundary persistent Build Flow `SIGKILL` gates. The current exact lock moves Cloud and Code to the same Flow `1.0.0` release for the shared DAG compiler and durable execution protocol. The former Flow `0.11.0`/`0.13.1` split is closed; the upgraded composition must still pass the same gates before this row returns to `Verified` |
+| F0 | Re-certification in CI | The mandatory real PostgreSQL 17 plus local/NATS foundation gate now exercises tenancy, idempotency, one-run Operation reconciliation, lost Outbox acknowledgement recovery, API envelopes, and migration apply/checksum/rollback/concurrency against A3S Flow `1.0.0`, A3S Boot `0.2.0`, and A3S ORM `0.3.1`. Queue-failure readiness and the nine-boundary persistent Build Flow `SIGKILL` gates remain retained. The row returns to `Verified` after the new gate passes on `main` |
 | N0 | Historical | Outbound mTLS protocol, durable command journal, replay, provider reattachment, and lost-provider recovery passed against the retired provider; Box re-certification is required |
 | D0 | Historical | Digest-pinned apply and health, restart recovery, failed-update retention, cancellation cleanup, and registry resolution passed against the retired provider; Box re-certification is required |
 | E0 | Historical | Route, Gateway, Secret, log, update, rollback, interface, and crash-boundary behaviors passed against the retired provider; the complete clean-host loop must be reproduced without Docker or a compatible daemon |
@@ -776,9 +776,11 @@ commit and query tenant-scoped desired state.
   `queue-postgres`, and
   A3S ORM `0.3.1`-backed PostgreSQL stores. Flow events live in `a3s_flow`; Boot
   task state lives in `a3s_boot`; Cloud business tables remain separately
-  owned. The last complete `F0` evidence used Flow `0.12.0`, so the upgraded
-  lock remains under recertification. Code `7.0.1` now resolves the same exact
-  Flow release, so the former transitive version split is closed.
+  owned. The complete foundation suite is now a mandatory real PostgreSQL 17
+  plus local/NATS provider gate; the upgraded lock remains under
+  re-certification until that gate first passes on `main`. Code `7.0.1`
+  resolves the same exact Flow release, so the former transitive version split
+  is closed.
 - The root source override pins every ACL `0.3.0` consumer, including Cloud,
   Code, and Box, to exact ACL revision `5317e166`; a contract test rejects a
   second source for the same A3S package version. Use/Search still pull ACL
