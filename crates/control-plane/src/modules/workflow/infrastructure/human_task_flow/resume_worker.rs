@@ -440,16 +440,16 @@ mod tests {
             lease_expires_at: timestamp(10, 2),
         };
         delivery.validate().expect("delivery");
-        let timeout = FlowEventEnvelope {
-            run_id: delivery.record.resume_payload.flow_run_id.clone(),
-            sequence: 11,
-            event_id: Uuid::now_v7(),
-            timestamp: timestamp(10, 0),
-            event: FlowEvent::RunTimedOut {
+        let timeout = FlowEventEnvelope::new(
+            delivery.record.resume_payload.flow_run_id.clone(),
+            11,
+            Uuid::now_v7(),
+            timestamp(10, 0),
+            FlowEvent::RunTimedOut {
                 deadline: timestamp(10, 0),
                 reason: Some("WorkflowRun exceeded its immutable deadline".into()),
             },
-        };
+        );
         let receipt = receipt_for_delivery(&delivery, &timeout).expect("terminal receipt");
         assert_eq!(receipt.disposition(), FlowResumeDisposition::RunTimedOut);
 
@@ -502,15 +502,15 @@ mod tests {
             lease_expires_at: timestamp(8, 6),
         };
         delivery.validate().expect("delivery");
-        let cancelled = FlowEventEnvelope {
-            run_id: delivery.record.resume_payload.flow_run_id.clone(),
-            sequence: 11,
-            event_id: Uuid::now_v7(),
-            timestamp: timestamp(8, 4),
-            event: FlowEvent::RunCancelled {
+        let cancelled = FlowEventEnvelope::new(
+            delivery.record.resume_payload.flow_run_id.clone(),
+            11,
+            Uuid::now_v7(),
+            timestamp(8, 4),
+            FlowEvent::RunCancelled {
                 reason: Some("operator request".into()),
             },
-        };
+        );
         let receipt = receipt_for_delivery(&delivery, &cancelled).expect("terminal receipt");
         assert_eq!(receipt.disposition(), FlowResumeDisposition::RunCancelled);
 

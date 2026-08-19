@@ -562,17 +562,17 @@ mod tests {
     }
 
     fn invocation(input: &WorkflowRunInput, history: Vec<FlowEventEnvelope>) -> WorkflowInvocation {
-        WorkflowInvocation {
-            run_id: input.workflow_run_id.to_string(),
-            spec: WorkflowSpec::rust_embedded(
+        WorkflowInvocation::new(
+            input.workflow_run_id.to_string(),
+            WorkflowSpec::rust_embedded(
                 WORKFLOW_RUN_FLOW_NAME,
                 WORKFLOW_RUN_FLOW_VERSION,
                 "cloud",
                 "workflow_run",
             ),
-            input: serde_json::to_value(input).expect("WorkflowRun input JSON"),
+            serde_json::to_value(input).expect("WorkflowRun input JSON"),
             history,
-        }
+        )
     }
 
     fn envelope(
@@ -581,12 +581,12 @@ mod tests {
         timestamp: chrono::DateTime<chrono::Utc>,
         event: FlowEvent,
     ) -> FlowEventEnvelope {
-        FlowEventEnvelope {
-            run_id: input.workflow_run_id.to_string(),
+        FlowEventEnvelope::new(
+            input.workflow_run_id.to_string(),
             sequence,
-            event_id: Uuid::now_v7(),
+            Uuid::now_v7(),
             timestamp,
             event,
-        }
+        )
     }
 }

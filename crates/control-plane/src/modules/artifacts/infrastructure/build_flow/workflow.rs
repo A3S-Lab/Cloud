@@ -616,6 +616,9 @@ enum TerminalIntent {
     Cancellation,
 }
 
+// These short-lived control results return RuntimeCommand immediately; boxing
+// it would add a heap allocation to every dispatch, wait, or cleanup transition.
+#[allow(clippy::large_enum_variant)]
 enum Progress<T> {
     Ready(T),
     Failure(String),
@@ -623,11 +626,13 @@ enum Progress<T> {
     Command(RuntimeCommand),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum CleanupProgress {
     Ready(chrono::DateTime<chrono::Utc>),
     Command(RuntimeCommand),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum CleanupObserveProgress {
     Ready(chrono::DateTime<chrono::Utc>),
     Advance {

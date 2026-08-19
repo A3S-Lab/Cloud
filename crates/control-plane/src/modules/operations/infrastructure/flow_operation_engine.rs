@@ -109,6 +109,12 @@ fn snapshot_to_projection(
         WorkflowRunStatus::Completed => OperationStatus::Succeeded,
         WorkflowRunStatus::Failed => OperationStatus::Failed,
         WorkflowRunStatus::Cancelled => OperationStatus::Cancelled,
+        status => {
+            return Err(OperationEngineError::Unavailable(format!(
+                "Flow run {:?} has an unsupported status {status:?}",
+                snapshot.run_id
+            )))
+        }
     };
     Ok(OperationProjection {
         operation_id,
@@ -137,7 +143,6 @@ fn map_flow_error(error: FlowError) -> OperationEngineError {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::collections::BTreeMap;
 
     #[test]
     fn completed_cleanup_projects_the_operation_as_cancelled() {
@@ -169,11 +174,9 @@ mod tests {
     #[test]
     fn cleanup_aware_cancellation_remains_non_terminal_until_flow_finishes() {
         let operation_id = OperationId::new();
-        let projection = snapshot_to_projection(WorkflowRunSnapshot {
-            status: WorkflowRunStatus::Cancelling,
-            ..completed_snapshot(operation_id, json!({}))
-        })
-        .expect("project cancelling operation");
+        let mut snapshot = completed_snapshot(operation_id, json!({}));
+        snapshot.status = WorkflowRunStatus::Cancelling;
+        let projection = snapshot_to_projection(snapshot).expect("project cancelling operation");
 
         assert_eq!(projection.status, OperationStatus::Cancelling);
         assert!(!projection.status.is_terminal());
@@ -183,21 +186,22 @@ mod tests {
         operation_id: OperationId,
         output: serde_json::Value,
     ) -> WorkflowRunSnapshot {
-        WorkflowRunSnapshot {
-            run_id: operation_id.to_string(),
-            spec: WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main"),
-            input: json!({}),
-            status: WorkflowRunStatus::Completed,
-            steps: BTreeMap::new(),
-            waits: BTreeMap::new(),
-            hooks: BTreeMap::new(),
-            cancellation: None,
-            progress: Vec::new(),
-            child_operations: BTreeMap::new(),
-            output: Some(output),
-            error: None,
-            terminal_outcome: None,
-            last_sequence: 3,
-        }
+        serde_json::from_value(json!({
+            "run_id": operation_id.to_string(),
+            "spec": WorkflowSpec::rust_embedded("cloud.deployment", "2", "a3s-cloud", "main"),
+            "input": {},
+            "status": "completed",
+            "steps": {},
+            "waits": {},
+            "hooks": {},
+            "cancellation": null,
+            "progress": [],
+            "child_operations": {},
+            "output": output,
+            "error": null,
+            "terminal_outcome": null,
+            "last_sequence": 3
+        }))
+        .expect("test Flow snapshot JSON")
     }
 }

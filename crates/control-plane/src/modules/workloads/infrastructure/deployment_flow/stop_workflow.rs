@@ -619,6 +619,9 @@ fn timestamp_millis(value: DateTime<Utc>) -> a3s_flow::Result<u64> {
         .map_err(|_| FlowError::Runtime("Runtime stop deadline is before the Unix epoch".into()))
 }
 
+// This short-lived control result returns RuntimeCommand immediately; boxing it
+// would add a heap allocation to every stop or wait transition.
+#[allow(clippy::large_enum_variant)]
 enum StopProgress {
     Ready(DateTime<Utc>),
     Failed(String),

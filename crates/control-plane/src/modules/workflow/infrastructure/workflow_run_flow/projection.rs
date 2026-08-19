@@ -103,6 +103,12 @@ pub fn project_workflow_run_record(
                     HookStatus::Disposed | HookStatus::Cancelled => {
                         WorkflowStepProjectionStatus::Cancelled
                     }
+                    status => {
+                        return Err(format!(
+                            "Workflow human-decision hook {:?} has unsupported status {status:?}",
+                            hook.hook_id
+                        ))
+                    }
                 };
                 let result = if hook.status == HookStatus::Received {
                     Some(
@@ -153,6 +159,12 @@ pub fn project_workflow_run_record(
                     HookStatus::Disposed | HookStatus::Cancelled => {
                         WorkflowStepProjectionStatus::Cancelled
                     }
+                    status => {
+                        return Err(format!(
+                            "Workflow execution hook {:?} has unsupported status {status:?}",
+                            hook.hook_id
+                        ))
+                    }
                 };
                 let result = if step_status == WorkflowStepProjectionStatus::Completed {
                     Some(
@@ -195,6 +207,11 @@ pub fn project_workflow_run_record(
                     StepStatus::Completed => WorkflowStepProjectionStatus::Completed,
                     StepStatus::Failed => WorkflowStepProjectionStatus::Failed,
                     StepStatus::Cancelled => WorkflowStepProjectionStatus::Cancelled,
+                    status => {
+                        return Err(format!(
+                            "Flow step {durable_step_id:?} has unsupported status {status:?}"
+                        ))
+                    }
                 };
                 let result = flow_step
                     .output
@@ -610,6 +627,10 @@ fn project_run_state(
                 ),
             )),
         },
+        status => Err(format!(
+            "Flow run {:?} has unsupported status {status:?}",
+            snapshot.run_id
+        )),
     }
 }
 
@@ -903,6 +924,14 @@ fn summarize_event(
             json!({"hookId": hook_id, "payload": "redacted"}),
         ),
         FlowEvent::HookDisposed { hook_id } => (None, None, json!({"hookId": hook_id})),
+        event => (
+            None,
+            None,
+            json!({
+                "eventKey": event.event_key(),
+                "projection": "unsupported"
+            }),
+        ),
     };
     Ok(WorkflowRunHistoryEvent {
         sequence: envelope.sequence,

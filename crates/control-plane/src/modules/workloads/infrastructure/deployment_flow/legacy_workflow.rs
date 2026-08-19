@@ -456,12 +456,16 @@ fn failure_command(
     ))
 }
 
+// These short-lived control results return RuntimeCommand immediately; boxing
+// it would add a heap allocation to every dispatch, wait, or cleanup transition.
+#[allow(clippy::large_enum_variant)]
 enum Progress<T> {
     Ready(T),
     Cancellation,
     Command(RuntimeCommand),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum CleanupProgress {
     Ready(chrono::DateTime<chrono::Utc>),
     Retry {

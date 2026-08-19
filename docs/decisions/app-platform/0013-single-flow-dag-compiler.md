@@ -42,11 +42,11 @@ queue, and command types. Those execution types remain confined to Cloud's
 existing infrastructure and Operations integration.
 
 The dependency target is one Flow revision per Cloud build. At acceptance,
-`a3s-code-core` still brings Flow `0.11.0` transitively for its own protocol
-crate while Cloud pins Flow `0.13.1`. This is an explicit compatibility debt,
-not a second Cloud orchestration authority. The owning Code release must
-converge that transitive dependency before the upgraded `F0` composition can
-be recertified; Cloud must not fork, patch, or copy Code to hide the mismatch.
+`a3s-code-core` still brought Flow `0.11.0` transitively while Cloud pinned
+Flow `0.13.1`. The Flow `1.0.0-rc.1` qualification closes that compatibility
+debt: Cloud and Code `7.0.1` now resolve the same exact Flow revision. The
+upgraded `F0` composition still requires re-certification; Cloud must not fork,
+patch, or copy Code to hide future mismatches.
 
 ## Consequences
 

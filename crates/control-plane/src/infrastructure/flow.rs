@@ -854,22 +854,16 @@ mod tests {
     }
 
     fn workflow(name: &str, version: &str) -> WorkflowInvocation {
-        WorkflowInvocation {
-            run_id: "run-1".into(),
-            spec: WorkflowSpec::rust_embedded(name, version, "cloud", "run"),
-            input: json!({}),
-            history: Vec::new(),
-        }
+        WorkflowInvocation::new(
+            "run-1",
+            WorkflowSpec::rust_embedded(name, version, "cloud", "run"),
+            json!({}),
+            Vec::new(),
+        )
     }
 
     fn step(name: &str) -> StepInvocation {
-        StepInvocation {
-            run_id: "run-1".into(),
-            step_id: "step-1".into(),
-            step_name: name.into(),
-            input: json!({}),
-            history: Vec::new(),
-        }
+        StepInvocation::new("run-1", "step-1", name, json!({}), Vec::new())
     }
 
     fn router() -> FlowRuntimeRouter {

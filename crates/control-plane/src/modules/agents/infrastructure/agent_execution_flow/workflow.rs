@@ -149,6 +149,9 @@ fn next_attempt(value: u32) -> a3s_flow::Result<u32> {
         .ok_or_else(|| FlowError::Runtime("Agent execution Flow attempt overflowed".into()))
 }
 
+// This short-lived control result returns RuntimeCommand immediately; boxing it
+// would add a heap allocation to every dispatch or wait transition.
+#[allow(clippy::large_enum_variant)]
 enum Progress<T> {
     Ready(T),
     Terminal(CompletedAgentExecution),

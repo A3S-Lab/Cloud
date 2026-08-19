@@ -3,6 +3,7 @@ use std::fs;
 use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
+const FLOW_V1_RC_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=878df66915ca9c1c8c5454b0872043937b60f0e7#878df66915ca9c1c8c5454b0872043937b60f0e7";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LockedPackage {
@@ -44,16 +45,10 @@ fn a3s_dependency_version_debt_does_not_expand() {
         .into_iter()
         .filter(|(_, versions)| versions.len() > 1)
         .collect::<BTreeMap<_, _>>();
-    let expected = BTreeMap::from([
-        (
-            "a3s-acl".to_owned(),
-            BTreeSet::from(["0.2.2".to_owned(), "0.3.0".to_owned()]),
-        ),
-        (
-            "a3s-flow".to_owned(),
-            BTreeSet::from(["0.11.0".to_owned(), "0.13.1".to_owned()]),
-        ),
-    ]);
+    let expected = BTreeMap::from([(
+        "a3s-acl".to_owned(),
+        BTreeSet::from(["0.2.2".to_owned(), "0.3.0".to_owned()]),
+    )]);
     assert_eq!(
         duplicates, expected,
         "the root lock changed its explicit A3S version-debt budget; converge an existing debt or document its owning upstream before changing this guard"
@@ -68,6 +63,21 @@ fn acl_v0_3_uses_the_box_compatible_exact_revision() {
         .map(|package| package.source)
         .collect::<BTreeSet<_>>();
     assert_eq!(sources, BTreeSet::from([ACL_V0_3_SOURCE.to_owned()]));
+}
+
+#[test]
+fn flow_uses_the_qualified_release_candidate_revision() {
+    let packages = locked_a3s_packages()
+        .into_iter()
+        .filter(|package| package.name == "a3s-flow")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        packages.len(),
+        1,
+        "Cloud must resolve exactly one Flow package"
+    );
+    assert_eq!(packages[0].version, "1.0.0-rc.1");
+    assert_eq!(packages[0].source, FLOW_V1_RC_SOURCE);
 }
 
 fn locked_a3s_packages() -> Vec<LockedPackage> {

@@ -1561,11 +1561,12 @@ Dependency identity is also an authority boundary. The root lock permits only
 one source for a given A3S package name and version. Cloud, Code, and Box now
 resolve A3S ACL `0.3.0` from the exact ACL revision
 `5317e166222495585909d81f2caffdca90273c99`; resolving that same version from
-both crates.io and Git is rejected by a contract test. Two upstream version
-debts remain explicit: A3S Use/Search still require ACL `0.2.2`, and the pinned
-Code release still requires Flow `0.11.0` while Cloud requires Flow `0.13.1`.
-The owning upstream releases must converge those constraints before `F0` can
-return to `Verified`; Cloud does not copy or fork their implementations.
+both crates.io and Git is rejected by a contract test. One upstream version
+debt remains explicit: A3S Use/Search still require ACL `0.2.2`. Cloud and Code
+now resolve the same exact Flow `1.0.0-rc.1` candidate, closing the former Flow
+`0.11.0`/`0.13.1` split without copying or forking the implementation. The
+candidate still requires the complete `F0` re-certification before that gate
+can return to `Verified`.
 
 Evolution follows these rules:
 
