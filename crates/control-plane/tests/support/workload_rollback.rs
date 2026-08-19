@@ -1,5 +1,8 @@
 use a3s_boot::{BootRequest, HttpMethod};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::DeploymentId;
+use a3s_cloud_control_plane::modules::workloads::application::{
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+};
 use a3s_cloud_control_plane::modules::workloads::{
     IWorkloadRepository, PostgresWorkloadRepository,
 };
@@ -90,8 +93,8 @@ pub async fn accept_and_cancel(
             .bind(Uuid::parse_str(&rollback_operation_id)?),
         )
         .await?;
-    assert_eq!(rollback_operation.0, "cloud.deployment");
-    assert_eq!(rollback_operation.1, "3");
+    assert_eq!(rollback_operation.0, DEPLOYMENT_WORKFLOW_NAME);
+    assert_eq!(rollback_operation.1, DEPLOYMENT_WORKFLOW_VERSION);
     assert_eq!(
         rollback_operation.2["rollbackSourceRevisionId"],
         source_revision_id
