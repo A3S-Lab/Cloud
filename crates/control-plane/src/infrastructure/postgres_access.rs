@@ -1,8 +1,15 @@
 use super::flow::{BOOT_SCHEMA, FLOW_SCHEMA};
-use a3s_orm::{PostgresError, PostgresExecutor};
+use a3s_orm::{
+    CompiledQuery, Executor, PostgresError, PostgresExecutor, PostgresTransactionOptions,
+    Transaction,
+};
+use std::time::Duration;
 
 const MIGRATION_LEDGER: &str = "a3s_orm_migrations";
 const SERVING_SCHEMAS: [&str; 3] = ["public", FLOW_SCHEMA, BOOT_SCHEMA];
+const SERVING_ACCESS_LOCK_NAMESPACE: &str = "a3s.cloud.postgres";
+const SERVING_ACCESS_LOCK_KEY: &str = "serving-access";
+const SERVING_ACCESS_LOCK_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) enum PostgresServingAccessError {
     MissingRole,
@@ -70,7 +77,6 @@ pub(super) async fn reconcile_postgres_serving_access(
     executor: &PostgresExecutor,
     plan: &PostgresServingAccessPlan,
 ) -> Result<(), PostgresError> {
-    let mut client = executor.connection().await?;
     let database = &plan.database;
     let role = &plan.role;
     let schemas = SERVING_SCHEMAS
@@ -89,36 +95,58 @@ pub(super) async fn reconcile_postgres_serving_access(
     // default grants. Revoke legacy global and schema-scoped defaults before
     // granting only current objects. Migration ledgers stay readable for
     // admission but cannot be changed by a serving credential.
-    let statements = format!(
-        "ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON TABLES FROM {role};
-         ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON SEQUENCES FROM {role};
-         ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {role};
-         ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON SCHEMAS FROM {role};
-         ALTER DEFAULT PRIVILEGES IN SCHEMA {schemas} REVOKE ALL PRIVILEGES ON TABLES FROM {role};
-         ALTER DEFAULT PRIVILEGES IN SCHEMA {schemas} REVOKE ALL PRIVILEGES ON SEQUENCES FROM {role};
-         ALTER DEFAULT PRIVILEGES IN SCHEMA {schemas} REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {role};
-         REVOKE CONNECT, TEMPORARY ON DATABASE {database} FROM PUBLIC;
-         REVOKE ALL PRIVILEGES ON DATABASE {database} FROM {role};
-         GRANT CONNECT ON DATABASE {database} TO {role};
-         REVOKE CREATE ON SCHEMA {schemas} FROM PUBLIC;
-         REVOKE ALL PRIVILEGES ON SCHEMA {schemas} FROM {role};
-         GRANT USAGE ON SCHEMA {schemas} TO {role};
-         REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA {schemas} FROM {role};
-         GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schemas} TO {role};
-         REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA {schemas} FROM {role};
-         GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA {schemas} TO {role};
-         REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA {schemas} FROM {role};
-         GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schemas} TO {role};
-         REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE {ledgers} FROM {role};
-         GRANT SELECT ON TABLE {ledgers} TO {role};"
-    );
-    let transaction = client
-        .transaction()
-        .await
-        .map_err(PostgresError::Database)?;
+    let statements = [
+        format!("ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON TABLES FROM {role}"),
+        format!("ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON SEQUENCES FROM {role}"),
+        format!("ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {role}"),
+        format!("ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON SCHEMAS FROM {role}"),
+        format!(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA {schemas} REVOKE ALL PRIVILEGES ON TABLES FROM {role}"
+        ),
+        format!(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA {schemas} REVOKE ALL PRIVILEGES ON SEQUENCES FROM {role}"
+        ),
+        format!(
+            "ALTER DEFAULT PRIVILEGES IN SCHEMA {schemas} REVOKE ALL PRIVILEGES ON FUNCTIONS FROM {role}"
+        ),
+        format!("REVOKE CONNECT, TEMPORARY ON DATABASE {database} FROM PUBLIC"),
+        format!("REVOKE ALL PRIVILEGES ON DATABASE {database} FROM {role}"),
+        format!("GRANT CONNECT ON DATABASE {database} TO {role}"),
+        format!("REVOKE CREATE ON SCHEMA {schemas} FROM PUBLIC"),
+        format!("REVOKE ALL PRIVILEGES ON SCHEMA {schemas} FROM {role}"),
+        format!("GRANT USAGE ON SCHEMA {schemas} TO {role}"),
+        format!("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA {schemas} FROM {role}"),
+        format!(
+            "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA {schemas} TO {role}"
+        ),
+        format!(
+            "REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA {schemas} FROM {role}"
+        ),
+        format!(
+            "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA {schemas} TO {role}"
+        ),
+        format!("REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA {schemas} FROM {role}"),
+        format!("GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA {schemas} TO {role}"),
+        format!(
+            "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE {ledgers} FROM {role}"
+        ),
+        format!("GRANT SELECT ON TABLE {ledgers} TO {role}"),
+    ];
+    let transaction = executor
+        .begin_with(
+            PostgresTransactionOptions::new().with_lock_timeout(SERVING_ACCESS_LOCK_TIMEOUT),
+        )
+        .await?;
     transaction
-        .batch_execute(&statements)
-        .await
-        .map_err(PostgresError::Database)?;
-    transaction.commit().await.map_err(PostgresError::Database)
+        .advisory_xact_lock(SERVING_ACCESS_LOCK_NAMESPACE, SERVING_ACCESS_LOCK_KEY)
+        .await?;
+    for sql in statements {
+        transaction
+            .execute(&CompiledQuery {
+                sql,
+                parameters: Vec::new(),
+            })
+            .await?;
+    }
+    transaction.commit().await
 }

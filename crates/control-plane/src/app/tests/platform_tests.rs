@@ -564,7 +564,10 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         "pg_catalog.pg_roles",
         "pg_has_role($1::name, current_user::text, 'MEMBER')",
         "rolbypassrls",
-        ".transaction()",
+        ".begin_with(",
+        "PostgresTransactionOptions::new()",
+        ".with_lock_timeout(SERVING_ACCESS_LOCK_TIMEOUT)",
+        ".advisory_xact_lock(SERVING_ACCESS_LOCK_NAMESPACE, SERVING_ACCESS_LOCK_KEY)",
         "transaction.commit()",
     ] {
         assert!(
@@ -575,6 +578,16 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
     assert!(
         !serving_access.contains("ALTER DEFAULT PRIVILEGES GRANT"),
         "serving access must not install broad default grants"
+    );
+    let serving_access_lock = serving_access
+        .find(".advisory_xact_lock(SERVING_ACCESS_LOCK_NAMESPACE, SERVING_ACCESS_LOCK_KEY)")
+        .expect("serving-access reconciliation lock");
+    let serving_access_mutation = serving_access
+        .find(".execute(&CompiledQuery {")
+        .expect("serving-access privilege mutation");
+    assert!(
+        serving_access_lock < serving_access_mutation,
+        "serving-access reconciliation must serialize before mutating PostgreSQL privileges"
     );
     for forbidden in [
         "verify_schema_manifest",
