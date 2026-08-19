@@ -26,8 +26,8 @@
       "code": "F0",
       "name": "Foundation",
       "outcome": "Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API",
-      "status": "In progress; the mandatory PostgreSQL 17 plus local/NATS provider gate now re-certifies the exact Flow `1.0.0`, Boot `0.2.0`, and ORM `0.3.1` composition, including tenancy, idempotency, reconciliation, Outbox recovery, API envelopes, and migration authority; awaiting its first passing `main` run before returning to `Verified`",
-      "statusKind": "in-progress"
+      "status": "Verified; the [2026-08-19 `main` PostgreSQL 17 plus local/NATS provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175) passes the exact Flow `1.0.0`, Boot `0.2.0`, and ORM `0.3.1` composition, including tenancy, idempotency, one-run reconciliation, lost-Outbox-ack recovery, API envelopes, and migration apply/checksum/rollback/concurrency authority",
+      "statusKind": "verified"
     },
     {
       "code": "N0",
