@@ -4201,7 +4201,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             )
             .await?;
         let first_attempt = nats_relay.run_once().await?;
-        assert_eq!(first_attempt.claimed, 1);
+        assert_eq!(first_attempt.claimed, 2);
+        assert_eq!(first_attempt.published, 1);
         assert_eq!(first_attempt.failures.len(), 1);
         executor
             .pool()
@@ -4213,17 +4214,35 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             )
             .await?;
         tokio::time::sleep(Duration::from_millis(5)).await;
-        assert_eq!(nats_relay.run_once().await?.published, 1);
-        let received = tokio::time::timeout(Duration::from_secs(2), subscription.next())
-            .await??
-            .ok_or("NATS subscription closed before receiving the event")?;
-        assert_eq!(received.event.event_type, "identity.organization.created");
+        let retry = nats_relay.run_once().await?;
+        assert_eq!(retry.claimed, 1);
+        assert_eq!(retry.published, 1);
+        assert!(retry.failures.is_empty());
+        assert_eq!(nats_relay.run_once().await?.claimed, 0);
+
+        let mut received_event_types = std::collections::BTreeSet::new();
+        let mut received_event_ids = std::collections::BTreeSet::new();
+        for _ in 0..2 {
+            let received = tokio::time::timeout(Duration::from_secs(2), subscription.next())
+                .await??
+                .ok_or("NATS subscription closed before receiving the event")?;
+            received_event_types.insert(received.event.event_type);
+            received_event_ids.insert(received.event.id);
+        }
+        assert_eq!(
+            received_event_types,
+            std::collections::BTreeSet::from([
+                "identity.membership.created".to_owned(),
+                "identity.organization.created".to_owned(),
+            ])
+        );
+        assert_eq!(received_event_ids.len(), 2);
         assert!(
             tokio::time::timeout(Duration::from_millis(100), subscription.next())
                 .await
                 .is_err()
         );
-        assert_eq!(nats_bus.info().await?.messages, 1);
+        assert_eq!(nats_bus.info().await?.messages, 2);
     }
 
     executor
