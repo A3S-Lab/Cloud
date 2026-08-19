@@ -3,7 +3,8 @@ use std::fs;
 use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
-const FLOW_V1_RC_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=878df66915ca9c1c8c5454b0872043937b60f0e7#878df66915ca9c1c8c5454b0872043937b60f0e7";
+const FLOW_V1_RC_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=f6efdf777325dc407bea429674837d24bb77787a#f6efdf777325dc407bea429674837d24bb77787a";
+const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=f178da81872eeccb8aa62d3a86617b95b791aa32#f178da81872eeccb8aa62d3a86617b95b791aa32";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LockedPackage {
@@ -78,6 +79,21 @@ fn flow_uses_the_qualified_release_candidate_revision() {
     );
     assert_eq!(packages[0].version, "1.0.0-rc.1");
     assert_eq!(packages[0].source, FLOW_V1_RC_SOURCE);
+}
+
+#[test]
+fn orm_uses_the_schema_admission_revision_required_by_flow() {
+    let packages = locked_a3s_packages()
+        .into_iter()
+        .filter(|package| package.name == "a3s-orm")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        packages.len(),
+        1,
+        "Cloud must resolve exactly one ORM package"
+    );
+    assert_eq!(packages[0].version, "0.3.0");
+    assert_eq!(packages[0].source, ORM_SCHEMA_ADMISSION_SOURCE);
 }
 
 fn locked_a3s_packages() -> Vec<LockedPackage> {

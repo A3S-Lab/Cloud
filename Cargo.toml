@@ -27,14 +27,14 @@ a3s-boot = { version = "=0.2.0", default-features = false, features = [
 ] }
 a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "5a823c7a980dee15fcaf34c092ac417d65853589" }
 a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "5a823c7a980dee15fcaf34c092ac417d65853589", default-features = false, features = ["build", "vm"] }
-a3s-code-core = { version = "=7.0.1", git = "https://github.com/A3S-Lab/Code.git", rev = "ffaa69769975d896de02de4b3bb39f5623045c62", default-features = false }
+a3s-code-core = { version = "=7.0.1", git = "https://github.com/A3S-Lab/Code.git", rev = "db0165c0b99fa3ad2b5b45852653d4bc93f26880", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
-a3s-flow = { version = "=1.0.0-rc.1", git = "https://github.com/A3S-Lab/Flow.git", rev = "878df66915ca9c1c8c5454b0872043937b60f0e7", default-features = false, features = ["boot", "postgres"] }
+a3s-flow = { version = "=1.0.0-rc.1", git = "https://github.com/A3S-Lab/Flow.git", rev = "f6efdf777325dc407bea429674837d24bb77787a", default-features = false, features = ["boot", "postgres"] }
 a3s-form-core = { version = "=0.1.0", git = "https://github.com/A3S-Lab/Form.git", rev = "8d73dba5e88ded0de7ae0e1c7b1e599a5d9134de" }
-a3s-orm = { version = "=0.3.0", git = "https://github.com/A3S-Lab/ORM.git", rev = "b04ab197deeebe23acbd5dd922f734032622368f", default-features = false, features = ["postgres"] }
+a3s-orm = { version = "=0.3.0", git = "https://github.com/A3S-Lab/ORM.git", rev = "f178da81872eeccb8aa62d3a86617b95b791aa32", default-features = false, features = ["postgres"] }
 a3s-runtime = { version = "=0.2.0", git = "https://github.com/A3S-Lab/Runtime.git", rev = "061cde95e16eb4cbd9f58724e6cbb60de6ace77e" }
-a3s-use-core = { version = "=0.2.3", git = "https://github.com/A3S-Lab/Use.git", rev = "09ec2b1243c01b4de86338610cd71fbd8b1aec43" }
-a3s-use-extension = { version = "=0.3.2", git = "https://github.com/A3S-Lab/Use.git", rev = "09ec2b1243c01b4de86338610cd71fbd8b1aec43" }
+a3s-use-core = { version = "=0.2.3", git = "https://github.com/A3S-Lab/Use.git", rev = "5efbd038ab70deed9677e90ed5049e348197c761" }
+a3s-use-extension = { version = "=0.3.2", git = "https://github.com/A3S-Lab/Use.git", rev = "5efbd038ab70deed9677e90ed5049e348197c761" }
 aes-gcm = "0.10"
 argon2 = "0.5"
 async-trait = "0.1"
@@ -96,7 +96,7 @@ zeroize = "1"
 
 [patch.crates-io]
 a3s-acl = { git = "https://github.com/A3S-Lab/ACL.git", rev = "5317e166222495585909d81f2caffdca90273c99" }
-a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "b04ab197deeebe23acbd5dd922f734032622368f" }
+a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "f178da81872eeccb8aa62d3a86617b95b791aa32" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
