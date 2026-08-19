@@ -51,11 +51,20 @@ jobs:
           toolchain: 1.88.0
 
       - name: Certify one-shot PostgreSQL schema authority
-        run: >-
-          cargo test --locked -p a3s-cloud-control-plane
-          --test postgres_integration
-          postgres_schema_migration_is_one_shot_and_service_startup_is_read_only
-          -- --exact --nocapture --test-threads=1
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-postgres-schema-authority.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_schema_migration_is_one_shot_and_service_startup_is_read_only \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -n 120 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=PostgreSQL schema authority gate failed::$detail"
+          exit 1
 
       - name: Migrate and verify stable replica sets
         run: >-

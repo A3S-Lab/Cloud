@@ -617,10 +617,16 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         c0_migration_position < c0_serving_position,
         "C0 conformance must migrate before it starts serving"
     );
-    assert!(
-        c0_conformance.contains("A3S_CLOUD_POSTGRES_MIGRATION_URL=\"$postgres_url\""),
-        "C0 migrator must receive the migration credential"
-    );
+    for required in [
+        "create role a3s_cloud_serving login nosuperuser nocreatedb nocreaterole noreplication nobypassrls",
+        "A3S_CLOUD_POSTGRES_MIGRATION_URL=\"$migration_postgres_url\"",
+        "A3S_CLOUD_POSTGRES_URL=\"$serving_postgres_url\"",
+    ] {
+        assert!(
+            c0_conformance.contains(required),
+            "C0 conformance lost its distinct PostgreSQL capability boundary: {required}"
+        );
+    }
     assert!(
         c0_conformance.contains("-u A3S_CLOUD_POSTGRES_MIGRATION_URL"),
         "C0 serving process must explicitly discard the migration credential"

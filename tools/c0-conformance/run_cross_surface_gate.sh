@@ -187,6 +187,7 @@ if [[ $scenario == cross-surface ]]; then
 fi
 
 postgres_password="c0_$(openssl rand -hex 16)"
+postgres_serving_password="c0_serving_$(openssl rand -hex 16)"
 run_box pull "$POSTGRES_IMAGE" >"$evidence_directory/postgres-pull.log"
 run_box run "$POSTGRES_IMAGE" \
   --isolation sandbox \
@@ -233,6 +234,12 @@ postgres_version="$(run_box exec "$postgres_box" -- postgres --version)"
 [[ $postgres_version == *"PostgreSQL) 17."* ]] || die "PostgreSQL major version is not 17"
 printf '%s\n' "$postgres_version" >"$evidence_directory/postgres-version.txt"
 
+# The generated fixture password contains only lowercase ASCII, digits, and
+# underscores, so it cannot terminate the SQL literal. The production package
+# uses psql variables instead; this fixture keeps the role setup observable
+# through the existing Box exec boundary.
+postgres_query "create role a3s_cloud_serving login nosuperuser nocreatedb nocreaterole noreplication nobypassrls password '$postgres_serving_password'"
+
 run_box_forwarder port-forward "$postgres_box" \
   --host-port "$POSTGRES_PORT" \
   --guest-port 5432 \
@@ -264,9 +271,10 @@ bootstrap_token="$(openssl rand -hex 32)"
 admin_token="a3s_$(openssl rand -hex 32)"
 restricted_token="a3s_$(openssl rand -hex 32)"
 github_webhook_secret="$(openssl rand -hex 32)"
-postgres_url="postgres://a3s_cloud:$postgres_password@127.0.0.1:$POSTGRES_PORT/a3s_cloud"
+migration_postgres_url="postgres://a3s_cloud:$postgres_password@127.0.0.1:$POSTGRES_PORT/a3s_cloud"
+serving_postgres_url="postgres://a3s_cloud_serving:$postgres_serving_password@127.0.0.1:$POSTGRES_PORT/a3s_cloud"
 
-A3S_CLOUD_POSTGRES_MIGRATION_URL="$postgres_url" \
+A3S_CLOUD_POSTGRES_MIGRATION_URL="$migration_postgres_url" \
   "$migration_binary" "$cloud_root/config/cloud.acl" \
   >"$evidence_directory/postgres-migration.log" 2>&1
 grep -q '^A3S Cloud PostgreSQL migrations applied: 001' \
@@ -279,7 +287,7 @@ grep -q '^A3S Cloud PostgreSQL migrations applied: 001' \
     -u A3S_CLOUD_POSTGRES_MIGRATION_URL \
     A3S_CLOUD_BOOTSTRAP_TOKEN="$bootstrap_token" \
     A3S_CLOUD_GITHUB_WEBHOOK_SECRET="$github_webhook_secret" \
-    A3S_CLOUD_POSTGRES_URL="$postgres_url" \
+    A3S_CLOUD_POSTGRES_URL="$serving_postgres_url" \
     RUST_LOG=info \
     "$api_binary" "$cloud_root/config/cloud.acl"
 ) >"$evidence_directory/cloud-api.log" 2>&1 &
