@@ -289,6 +289,8 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
     let server = include_str!("../../main.rs");
     let migrator = include_str!("../../bin/a3s-cloud-migrate.rs");
     let development = include_str!("../../../../../tools/dev/run_cloud.sh");
+    let c0_conformance =
+        include_str!("../../../../../tools/c0-conformance/run_cross_surface_gate.sh");
     let persistence = include_str!("../../infrastructure/postgres.rs");
 
     assert_eq!(
@@ -343,6 +345,17 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
     assert!(
         migration_position < serving_position,
         "development startup must migrate before it starts serving"
+    );
+
+    let c0_migration_position = c0_conformance
+        .find("\"$migration_binary\" \"$cloud_root/config/cloud.acl\"")
+        .expect("C0 conformance must run the one-shot migration");
+    let c0_serving_position = c0_conformance
+        .find("\"$api_binary\" \"$cloud_root/config/cloud.acl\"")
+        .expect("C0 conformance must start the serving process");
+    assert!(
+        c0_migration_position < c0_serving_position,
+        "C0 conformance must migrate before it starts serving"
     );
 }
 

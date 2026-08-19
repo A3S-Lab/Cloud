@@ -178,8 +178,10 @@ fi
 )
 
 api_binary="$target_directory/debug/a3s-cloud-control-plane"
+migration_binary="$target_directory/debug/a3s-cloud-migrate"
 cli_binary="$cloud_root/cli/dist/a3s-cloud"
 [[ -x $api_binary ]] || die "Cloud API binary was not built"
+[[ -x $migration_binary ]] || die "Cloud PostgreSQL migrator was not built"
 if [[ $scenario == cross-surface ]]; then
   [[ -x $cli_binary ]] || die "compiled Cloud CLI was not built"
 fi
@@ -263,6 +265,13 @@ admin_token="a3s_$(openssl rand -hex 32)"
 restricted_token="a3s_$(openssl rand -hex 32)"
 github_webhook_secret="$(openssl rand -hex 32)"
 postgres_url="postgres://a3s_cloud:$postgres_password@127.0.0.1:$POSTGRES_PORT/a3s_cloud"
+
+A3S_CLOUD_POSTGRES_URL="$postgres_url" \
+  "$migration_binary" "$cloud_root/config/cloud.acl" \
+  >"$evidence_directory/postgres-migration.log" 2>&1
+grep -q '^A3S Cloud PostgreSQL migrations applied: 001' \
+  "$evidence_directory/postgres-migration.log" ||
+  die "one-shot PostgreSQL migration did not report a fresh-schema apply"
 
 (
   cd "$run_directory"
