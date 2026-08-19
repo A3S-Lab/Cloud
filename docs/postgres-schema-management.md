@@ -18,14 +18,22 @@ transport, repository family, or provider client. API, Worker, Relay, and
 `all` use only read-only admission constructors and cannot create or alter
 schema objects.
 
-The one closed Cloud ACL names two credential references:
+The one closed Cloud ACL names two credential references and one non-secret
+role identifier:
 
 - `postgres.migration_url_env` is resolved only by `a3s-cloud-migrate`;
-- `postgres.serving_url_env` is resolved only by API, Worker, Relay, or `all`.
+- `postgres.serving_url_env` is resolved only by API, Worker, Relay, or `all`;
+- `postgres.serving_role` names the database role whose access the migrator
+  must reconcile after every owner manifest.
 
-The reference names must differ. The former shared `postgres.url_env` field is
-not a compatibility alias and fails ACL admission. A process does not resolve
-the other capability's credential merely to compare secret values.
+The reference names must differ, and the role must be a canonical lowercase
+PostgreSQL identifier. The former shared `postgres.url_env` field is not a
+compatibility alias and fails ACL admission. A process does not resolve the
+other capability's credential merely to compare secret values. The migrator
+queries only its own PostgreSQL `current_user` and the role catalog; a missing
+serving role, an identity collision, migration-role membership, or an
+administrative serving attribute (`SUPERUSER`, `CREATEDB`, `CREATEROLE`,
+`REPLICATION`, or `BYPASSRLS`) fails before any owner manifest runs.
 
 This separation prevents a serving replica from becoming an implicit
 installer and keeps migration execution in one existing mechanism rather than
@@ -54,6 +62,8 @@ A production installation or upgrade must preserve this sequence:
 2. stop before migration if the release notes require an incompatible
    contract phase;
 3. run the exact target release's `a3s-cloud-migrate` job to successful exit;
+   after the Cloud, Flow, and Boot owner manifests, it reconciles serving
+   access to their current objects;
 4. start target API, Worker, and Relay replicas;
 5. retain old replicas only while every applied change is expand-compatible;
 6. drain old replicas before any later contract migration removes their
@@ -63,7 +73,26 @@ Re-running the exact migrator is safe. Concurrent jobs converge through the
 A3S ORM advisory lock in each component schema. One process may apply Cloud
 versions while another later wins the Flow or Boot component lock; the union
 of their evidence contains each pending version once, and a subsequent replay
-reports the complete installation current.
+reports the complete installation current. Serving-access statements are
+idempotent and run after every replay, including when no migration version is
+pending. They grant database connection, known-schema usage, ordinary table
+DML, sequence access, and function execution across `public`, `a3s_flow`, and
+`a3s_boot`. They revoke schema creation and table mutation on each
+`a3s_orm_migrations` ledger, then grant ledger SELECT for serving admission.
+The Cloud database is dedicated: reconciliation removes `CONNECT` and
+`TEMPORARY` from PostgreSQL `PUBLIC`, removes any extra direct privileges from
+the serving role, then grants only its required set. Privileges inherited
+through unrelated role membership remain a database-administrator boundary;
+membership in the active migration role is rejected by preflight.
+
+The coordinator deliberately does not install PostgreSQL default grants. It
+revokes legacy global and schema-scoped defaults for the serving role before
+each current-object replay, so installations created by an older bootstrap
+script converge to the same policy. Objects become serving-visible only after
+an owner migration completes and the same job reconciles the resulting current
+object set. This removes the bootstrap-only grant path, prevents future
+unrelated objects from inheriting broad authority, and keeps the migration
+ledgers outside the DML grant.
 
 ## Serving-process admission
 
@@ -87,21 +116,29 @@ change; compatibility remains an installer/release obligation.
 
 ## Remaining production boundary
 
-The executable boundary, PostgreSQL 17 concurrency/admission gate, and the
-[ACL-native Box baseline](../deploy/production/README.md) are implemented. On
-a new checked-in PostgreSQL volume the installer creates a migration owner and
-a non-DDL serving role, records schema-wide default grants for future
-migration-owned objects, transfers ownership to a non-superuser migrator,
-disables bootstrap-superuser login, projects only the migration URL to the
-terminating unit, projects only the serving URL to API/Worker/Relay, and
-encodes PostgreSQL health -> migration success -> serving startup.
+The executable boundary, PostgreSQL 17 concurrency/admission/grant-replay gate,
+and the [ACL-native Box baseline](../deploy/production/README.md) are
+implemented. On a new checked-in PostgreSQL volume the installer creates a
+migration owner and a non-DDL serving role, transfers ownership to a
+non-superuser migrator, disables bootstrap-superuser login, projects only the
+migration URL to the terminating unit, projects only the serving URL to
+API/Worker/Relay, and encodes PostgreSQL health -> migration and access
+reconciliation -> serving startup.
 
-`H0.4` remains open for existing or externally managed database grant
-reconciliation, password rotation, clean-host evidence, PostgreSQL failover,
-backup/restore, contract migration, replicated process placement, and the
-independently versioned Gateway installation.
+The same job supports an existing or externally managed database when its
+administrator first creates the ACL-named serving role and gives the migration
+principal ownership or sufficient grant authority over the target database and
+the three owner schemas. Because the target is dedicated, unrelated database
+users must receive any required connection privilege explicitly. Recreating a
+serving role is recovered by rerunning the migrator. Account creation, password
+material, role membership, and credential rotation remain
+database-administrator responsibilities; Cloud never resolves the serving
+password from the migration process.
+
+`H0.4` remains open for retained credential-rotation evidence, clean-host
+evidence, PostgreSQL failover, backup/restore, contract migration, replicated
+process placement, and the independently versioned Gateway installation.
 
 Those installation duties must use the same A3S ORM migration mechanism and
 the existing component-scoped ledgers. They must not introduce another grant
-runner inside Cloud, migration runner, copied manifest, or mutable
-schema-version authority.
+runner, migration runner, copied manifest, or mutable schema-version authority.

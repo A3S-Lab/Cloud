@@ -84,16 +84,24 @@ The code on `main` separates implemented mechanics from released capability:
   PostgreSQL 17 gate concurrently starts two migrator processes and proves one
   atomic apply plus one idempotent replay; the development launcher follows
   the same migrate-then-serve order. The sole Cloud ACL names distinct serving
-  and migration credential references. Serving roles resolve only
-  `serving_url_env`; the migrator resolves only `migration_url_env`, and the
+  and migration credential references plus the non-secret `serving_role`.
+  Serving processes resolve only `serving_url_env`; the migrator resolves only
+  `migration_url_env`, then reconciles CONNECT, schema, table, sequence, and
+  function access after all three owner manifests. Migration ledgers remain
+  read-only to the serving role. Before applying any migration it also proves
+  that the named role exists, differs from PostgreSQL `current_user`, has no
+  migration-role membership, and has no administrative attributes. Legacy
+  global/schema default grants are revoked before current-object replay. The
   former shared `url_env` field is rejected rather than retained as an alias.
 - **Implemented foundation / ACL-native Box installation** — one checked-in
   Box Compose ACL uses the exact transient Secret boundary, one shared Cloud
   ACL, a non-widening role selector, PostgreSQL/NATS health, an idempotent
   migration job, and API/Worker/Relay startup ordering. New PostgreSQL volumes
-  receive distinct migration-owner and non-DDL serving roles. HA placement,
-  managed-database rotation/reconciliation, Gateway packaging, and retained
-  upgrade/failover/restore evidence remain open.
+  receive distinct migration-owner and non-DDL serving roles; the same
+  migration job replays serving access for new, existing, and externally
+  managed databases. HA placement, operator credential-rotation evidence,
+  Gateway packaging, and retained upgrade/failover/restore evidence remain
+  open.
 - **Implemented / one deployment storage topology** — API and Worker construct
   one filesystem or S3-compatible immutable-object root and derive the
   `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
@@ -359,11 +367,13 @@ performs only manifest admission and ordinary PostgreSQL health checks.
 The closed ACL gives these process roots different credential references, and
 repository launchers remove the migration variable before starting a serving
 process. The checked-in Box baseline provisions separate migration-owner and
-serving roles on a new PostgreSQL volume, applies cross-schema default
-DDL-versus-DML grants, removes bootstrap superuser authority from the migration
-path by disabling bootstrap login, and exposes only the applicable URL to each
-unit. Existing managed-database grant reconciliation and retained
-failure/restore evidence remain open.
+serving roles on a new PostgreSQL volume, removes bootstrap superuser authority
+from the migration path by disabling bootstrap login, and exposes only the
+applicable URL to each unit. After every Cloud/Flow/Boot owner migration, that
+same terminating process reconciles current cross-schema DML access and
+read-only migration-ledger admission for the ACL-named serving role. No
+bootstrap-only default grants or second grant runner exist. Operator credential
+rotation and retained failure/restore evidence remain open.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as development references,

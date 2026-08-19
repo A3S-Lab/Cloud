@@ -437,10 +437,12 @@ through A3S ORM. It cannot serve HTTP, advance Flow, publish events, construct
 repositories, or initialize providers. A serving role cannot acquire migration
 authority by changing `server.role`.
 The single ACL names distinct `postgres.migration_url_env` and
-`postgres.serving_url_env` references. The migrator resolves only the former;
-every serving composition root resolves only the latter. ACL admission rejects
-equal reference names and the former shared `url_env` field, so capability
-separation cannot silently fall back to the old configuration shape.
+`postgres.serving_url_env` references plus the non-secret
+`postgres.serving_role`. The migrator resolves only the migration credential;
+every serving composition root resolves only the serving credential. ACL
+admission rejects equal reference names, noncanonical role identifiers, and
+the former shared `url_env` field, so capability separation cannot silently
+fall back to the old configuration shape.
 
 The Node Agent is a separate process because it crosses a machine and trust
 boundary. Gateway, Runtime, Box, and workload processes remain independently
@@ -490,10 +492,14 @@ closed Cloud ACL is narrowed into API/Worker/Relay units without cloned
 configuration, a terminating migration unit is ordered after PostgreSQL health
 and before serving, and Box's sole transient Secret mechanism exposes only the
 applicable credential. A new local PostgreSQL volume receives distinct
-migration-owner and serving roles plus cross-schema default DDL-versus-DML
-grants, transfers ownership to the non-superuser migrator, then disables
-bootstrap-superuser login.
-Production HA, managed-database grant reconciliation, Gateway placement, rotation,
+migration-owner and serving roles, transfers ownership to the non-superuser
+migrator, then disables bootstrap-superuser login. After all three owner
+manifests, the same terminating process reconciles current schema, table,
+sequence, and function privileges for the ACL-named serving role while keeping
+all migration ledgers read-only. The replay works for new, existing, and
+externally managed databases, revokes legacy default grants instead of
+installing new ones, and uses no second-runner path. Production HA, Gateway
+placement, operator credential rotation,
 failover, backup/restore, and clean-Linux evidence remain substantive `H0.4`
 boundaries.
 
@@ -823,8 +829,16 @@ with the exact checksum before constructing product capabilities.
 The same closed ACL names the two capability references, but each composition
 root resolves only one: `migration_url_env` for the terminating job and
 `serving_url_env` for long-lived roles. Equal reference names and the old
-shared field fail configuration admission; actual database grants remain an
-installer-owned production boundary.
+shared field fail configuration admission. The ACL also names one canonical,
+non-secret `serving_role`. After Cloud, Flow, and Boot finish their owner
+migrations, the same process reconciles that role's access to the current
+objects in `public`, `a3s_flow`, and `a3s_boot`. It revokes schema creation and
+migration-ledger writes, so admission can read version evidence without being
+able to forge it. Before schema mutation, a catalog preflight proves the role
+exists, differs from the migration connection's `current_user`, does not
+inherit that role, and has no database-administration attributes. Role
+provisioning and credential rotation remain database-administrator
+responsibilities rather than a second Cloud controller.
 
 The admission rule is intentionally subset-based: an older serving binary may
 observe additional later records while every release change remains
@@ -1500,9 +1514,11 @@ because both instances converge through the A3S ORM lock and ledger. Production
 composition resolves distinct ACL-named migration and serving credential
 references without a legacy shared alias. The checked-in single-host Box
 baseline now binds those references to distinct new-volume schema-owner and
-serving principals, applies default DDL-versus-DML grants, and enforces per-unit
-Secret exposure. Completion still requires managed-database reconciliation,
-rotation, replicated placement, Gateway installation, and retained upgrade,
+serving principals and enforces per-unit Secret exposure. The sole migration
+job replays current cross-schema serving grants after every owner manifest,
+including on an existing or externally managed database, and keeps all three
+migration ledgers read-only. Completion still requires operator rotation
+evidence, replicated placement, Gateway installation, and retained upgrade,
 rollback, failover, backup, and restore evidence.
 
 ### 15.2 Failure behavior

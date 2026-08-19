@@ -3902,7 +3902,7 @@ reconciliation, process death, and provider recovery.
 | `H0.1` | Verified | Inference-neutral managed-owner reference, one durable replica/member, effective placement policy, versioned Fleet inventory, generic hard-resource requirements and full claim/fencing state machine | Concurrent create/reconcile/replay produces one provider unit for one replica generation; a claim is not reusable until release or trusted fencing evidence is durable |
 | `H0.2` | Verified | Logical Gateway scopes, cardinality-one complete target sets, generation-bound private service endpoints, Gateway projection, exact acknowledgement and rollback | A private endpoint becomes eligible only after workload health and the exact target-set acknowledgement; restart cannot expose a stale generation, and a route cannot publish without a same-environment DomainClaim/scope binding |
 | `H0.3` | Foundation in progress | Multi-node replica sets, generation-fenced node-pool membership, bounded atomic multi-Claim reservation, durable placement-group identity and immutable multi-member execution plans, one generation-fenced group Deployment/operation with exact member and plan bindings, gang preparation/compensation, drain/evacuation, anti-affinity, cluster-private networking, and independently placed Gateways | Real-node scale, drain, safe member removal, partition, partial group preparation, stale-node return, and Gateway separation converge without a duplicate unit, claim, member, or stale target |
-| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. One I/O-free, role-selected PostgreSQL adapter factory owns every repository constructor and bounded-context families project each multi-port concrete repository from one instance. The terminating `a3s-cloud-migrate` executable is the sole migration process root: it applies Cloud's manifest and delegates Flow/Boot owner manifests through one A3S ORM mechanism; serving constructors only verify their component-scoped ledger subsets and accept later expand-compatible records. The sole ACL requires distinct migration/serving credential references and each process root resolves only its own reference. One deployment-level object client now owns all immutable-byte namespaces; production requires shared HTTPS S3, while migration `121` create-once binds its secret-free identity and the Hosted Git filesystem UUID in PostgreSQL so replica drift fails startup. The first ACL-native Box package now shares one Cloud ACL across non-widening API/worker/relay role selection, uses Box's sole tmpfs Secret projection, provisions distinct new-volume PostgreSQL roles/cross-schema default grants, transfers database ownership to the non-superuser migrator, disables bootstrap-superuser login, publishes API and node-control ports, and orders health -> migration -> serving. HA API/worker/relay/Gateway placement, managed-database grant/rotation workflows, dependency failover, retained upgrade/rollback evidence, and storage-migration procedures remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; replicated object/Git storage plus process/node loss preserve topology identity, leadership fencing, and the configured Gateway readiness threshold without Kubernetes or Docker |
+| `H0.4` | Foundation in progress | Closed role-to-capability wiring requires NATS only for event-owning `all`/worker/relay processes, limits worker/relay HTTP to process status, gives Relay a PostgreSQL/NATS/Outbox-only root, gives API a PostgreSQL-backed query-only Flow adapter with no NATS/Boot queue/runtime/reconciler/build staging, and removes the typed management capability and local state from Worker. One I/O-free, role-selected PostgreSQL adapter factory owns every repository constructor and bounded-context families project each multi-port concrete repository from one instance. The terminating `a3s-cloud-migrate` executable is the sole migration process root: it applies Cloud's manifest and delegates Flow/Boot owner manifests through one A3S ORM mechanism; serving constructors only verify their component-scoped ledger subsets and accept later expand-compatible records. The sole ACL requires distinct migration/serving credential references plus one canonical serving role. Each process root resolves only its own credential; after all owner manifests the migration job revokes legacy default grants, replays current database/schema/table/sequence/function access, revokes migration-ledger writes, and supports new, existing, or externally managed databases without installing default grants or a second grant runner. One deployment-level object client now owns all immutable-byte namespaces; production requires shared HTTPS S3, while migration `121` create-once binds its secret-free identity and the Hosted Git filesystem UUID in PostgreSQL so replica drift fails startup. The first ACL-native Box package shares one Cloud ACL across non-widening API/worker/relay role selection, uses Box's sole tmpfs Secret projection, provisions distinct new-volume PostgreSQL roles, transfers database ownership to the non-superuser migrator, disables bootstrap-superuser login, publishes API and node-control ports, and orders health -> migration/access reconciliation -> serving. HA API/worker/relay/Gateway placement, operator credential-rotation evidence, dependency failover, retained upgrade/rollback evidence, and storage-migration procedures remain | Clean-Linux install and upgrade gates cover process identities, least privilege, availability policy, private networking, migrations, and rollback; replicated object/Git storage plus process/node loss preserve topology identity, leadership fencing, and the configured Gateway readiness threshold without Kubernetes or Docker |
 | `H0.5` | Planned | The sole Workloads autoscaling controller plus quotas, telemetry, load limits, disaster recovery and operational hardening | Stale, missing, duplicated and bursty metrics remain within configured bounds; load, failover, restore and backlog gates meet published limits without an alternative scaling path |
 
 The implemented `H0.1` foundation introduces `WorkloadControl`,
@@ -4221,14 +4221,19 @@ the old shared field is rejected, and repository launchers discard the
 migration variable before serving. The first versioned Box-hosted installation
 slice now shares one ACL across a capability-narrowed API/Worker/Relay split,
 uses Box's sole transient Secret projection, provisions separate migration and
-serving roles/cross-schema default grants on a new PostgreSQL volume, transfers
-ownership to the non-superuser migrator, disables bootstrap-superuser login,
-publishes management and node-control ports, and orders PostgreSQL health, the
-one-shot migration, then serving. Managed/external database grant
-reconciliation, rotation, HA dependency orchestration, Gateway packaging, and
-retained install/upgrade/rollback evidence remain open. The current role
-boundary keeps management routes on `all`/`api` and process-status routes on dedicated
-workers/relays. The Relay initializes only PostgreSQL, NATS JetStream, the
+serving roles on a new PostgreSQL volume, transfers ownership to the
+non-superuser migrator, disables bootstrap-superuser login, publishes
+management and node-control ports, and orders PostgreSQL health, the one-shot
+migration/access reconciliation, then serving. The ACL names the canonical
+serving role. After all three owner manifests, the same terminating job grants
+current database/schema/table/sequence/function access and revokes writes to
+the migration ledgers. This idempotent replay supports pre-provisioned managed
+databases and role recreation without installing default grants or another
+runner. Operator credential rotation, HA dependency orchestration, Gateway
+packaging, and retained install/upgrade/rollback evidence remain open. The
+current role boundary keeps management routes on `all`/`api` and process-status
+routes on dedicated workers/relays. The Relay initializes only PostgreSQL,
+NATS JetStream, the
 transactional Outbox, and its notification projection. Worker now omits the
 typed management capability bundle, including bootstrap, OIDC, webhook,
 node-CA, plugin-catalog, domain-verification, and management application
@@ -4260,9 +4265,13 @@ PostgreSQL 17 gate starts from an empty database, proves serving startup creates
 no ledger or business table, then launches two real migration executables
 concurrently: A3S ORM serializes each component manifest and their combined
 evidence contains every pending version exactly once, even if work is split
-between processes; the next replay is fully current. The required deployment order is PostgreSQL health,
-successful one-shot migration, removal of the migration credential, then
-serving startup. See
+between processes; the next replay is fully current. The same gate creates
+objects after the first run, proves no broad default privilege leaks to the
+serving role, replays current-object access, injects grant drift, and proves a
+second replay restores DML while keeping every migration ledger read-only. The
+required deployment order is PostgreSQL health, successful one-shot migration
+and access reconciliation, removal of the migration credential, then serving
+startup. See
 [PostgreSQL schema management](postgres-schema-management.md) for the commands,
 failure contract, and remaining packaging boundary.
 

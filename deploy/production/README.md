@@ -65,15 +65,22 @@ then creates exactly two runtime login roles:
 
 - `a3s_cloud_migrator` is created without superuser, role-creation, or
   database-creation capability and owns the database and future schema objects;
-- `a3s_cloud_serving` receives schema usage plus ordinary table, sequence, and
-  function privileges across `public`, `a3s_flow`, and `a3s_boot` through
-  PostgreSQL default privileges, without role or database creation authority.
+- `a3s_cloud_serving` is created without superuser, role-creation, database-
+  creation, replication, row-security bypass, or schema-creation authority.
 
 The script transfers database ownership to `a3s_cloud_migrator` and changes
 `a3s_cloud_bootstrap` to `NOLOGIN` before initialization completes. PostgreSQL
 requires its bootstrap identity to retain the superuser attribute, so disabling
 login is the enforceable boundary; no Cloud runtime unit receives that
-credential.
+credential. The initialization script does not grant application access or
+install default privileges. After Cloud, Flow, and Boot migrations finish, the
+terminating `a3s-cloud-migrate` process is the sole access reconciler for the
+ACL-named `a3s_cloud_serving` role. It grants current database/schema/table/
+sequence/function access, removes default and extra direct privileges, revokes
+database connection/temporary-table access from `PUBLIC`, and keeps every
+`a3s_orm_migrations` ledger read-only. The packaged database is dedicated to
+Cloud; any separately managed operational role must receive its required
+database privileges explicitly.
 
 Set independent passwords and URLs. Percent-encode passwords when embedding
 them in a PostgreSQL URL:
@@ -91,8 +98,9 @@ export A3S_CLOUD_POSTGRES_URL='postgres://a3s_cloud_serving:<encoded-password>@p
 The PostgreSQL image runs initialization scripts only for a new data volume.
 After successful initialization the bootstrap password cannot open a login
 session because its role is `NOLOGIN`. Credential rotation on an existing
-installation is an explicit database operation; deleting the volume is not a
-rotation procedure.
+installation is an explicit database-administrator operation; deleting the
+volume is not a rotation procedure. Rerun `a3s-cloud-migrate` after recreating
+the serving role so its current-object grants are restored.
 
 ## Role-specific credentials
 
@@ -127,8 +135,9 @@ a3s-box compose -f compose.acl up -d
 
 Every Secret-backed service is refreshed on `compose up`, so a successful
 upgrade re-resolves credentials, runs the target image's idempotent A3S ORM
-migration coordinator for the Cloud, Flow, and Boot owner manifests, and only
-then replaces serving units. A rollback may select an older
+migration coordinator for the Cloud, Flow, and Boot owner manifests, reconciles
+the ACL-named serving role against their current objects, and only then replaces
+serving units. A rollback may select an older
 image only while all later applied migrations remain expand-compatible; this
 package does not invent down migrations.
 

@@ -92,6 +92,7 @@ pub struct AssetsConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresConfig {
+    pub serving_role: String,
     pub serving_url_env: String,
     pub migration_url_env: String,
     pub max_connections: usize,
@@ -500,7 +501,12 @@ impl CloudConfig {
         let postgres = one_block(&document, "postgres")?;
         validate_block(
             postgres,
-            &["serving_url_env", "migration_url_env", "max_connections"],
+            &[
+                "serving_role",
+                "serving_url_env",
+                "migration_url_env",
+                "max_connections",
+            ],
         )?;
         let auth = one_block(&document, "auth")?;
         let oidc_providers = parse_oidc_providers(auth)?;
@@ -735,6 +741,7 @@ impl CloudConfig {
                 max_retries: integer(objects, "max_retries")?,
             },
             postgres: PostgresConfig {
+                serving_role: string(postgres, "serving_role")?,
                 serving_url_env: string(postgres, "serving_url_env")?,
                 migration_url_env: string(postgres, "migration_url_env")?,
                 max_connections: integer(postgres, "max_connections")?,
@@ -1059,6 +1066,12 @@ impl CloudConfig {
         if !valid_data_path(&self.objects.local_dir) {
             return Err(ConfigError::Invalid(
                 "objects.local_dir must be a normalized nonempty data path".into(),
+            ));
+        }
+        if !valid_postgres_role_name(&self.postgres.serving_role) {
+            return Err(ConfigError::Invalid(
+                "postgres.serving_role must be a lowercase PostgreSQL identifier up to 63 bytes and cannot use a reserved role name"
+                    .into(),
             ));
         }
         if !valid_env_name(&self.postgres.serving_url_env) {
@@ -1744,6 +1757,21 @@ fn valid_env_name(value: &str) -> bool {
             .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit() || byte == b'_')
 }
 
+pub(crate) fn valid_postgres_role_name(value: &str) -> bool {
+    let mut bytes = value.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    value.len() <= 63
+        && !value.starts_with("pg_")
+        && !matches!(
+            value,
+            "public" | "current_role" | "current_user" | "session_user"
+        )
+        && (first.is_ascii_lowercase() || first == b'_')
+        && bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
 fn valid_github_app_slug(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 100
@@ -2088,6 +2116,7 @@ objects {
   max_retries = 3
 }
 postgres {
+  serving_role = "a3s_cloud_serving"
   serving_url_env = "A3S_CLOUD_POSTGRES_URL"
   migration_url_env = "A3S_CLOUD_POSTGRES_MIGRATION_URL"
   max_connections = 16
@@ -2273,6 +2302,7 @@ security {
         let config = CloudConfig::parse(VALID).expect("valid config");
         assert_eq!(config.server.role, ProcessRole::All);
         assert_eq!(config.server_address().expect("address").port(), 8080);
+        assert_eq!(config.postgres.serving_role, "a3s_cloud_serving");
         assert_eq!(config.postgres.serving_url_env, "A3S_CLOUD_POSTGRES_URL");
         assert_eq!(
             config.postgres.migration_url_env,
@@ -2394,6 +2424,27 @@ security {
                 .to_string(),
             "invalid Cloud config: postgres.serving_url_env and postgres.migration_url_env must be distinct credential references"
         );
+
+        for invalid_role in [
+            "a3s-cloud-serving",
+            "A3S_CLOUD_SERVING",
+            "pg_cloud_serving",
+            "public",
+            "current_user",
+            "9cloud_serving",
+            "",
+        ] {
+            let invalid = VALID.replace(
+                "serving_role = \"a3s_cloud_serving\"",
+                &format!("serving_role = {invalid_role:?}"),
+            );
+            assert_eq!(
+                CloudConfig::parse(&invalid)
+                    .expect_err("noncanonical serving role must fail ACL admission")
+                    .to_string(),
+                "invalid Cloud config: postgres.serving_role must be a lowercase PostgreSQL identifier up to 63 bytes and cannot use a reserved role name"
+            );
+        }
     }
 
     #[test]
@@ -2408,6 +2459,7 @@ security {
             8080
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.postgres.serving_role, "a3s_cloud_serving");
         assert_eq!(config.postgres.serving_url_env, "A3S_CLOUD_POSTGRES_URL");
         assert_eq!(
             config.postgres.migration_url_env,

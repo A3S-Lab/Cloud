@@ -18,6 +18,21 @@ pub(super) const SERVICE_MEMBER_TOKEN: &str =
 pub(super) const PRIVILEGE_ESCALATION_TOKEN: &str =
     "a3s_0000000000000000000000000000000000000000000000000000000000000000";
 
+pub(super) fn serving_role_for_url(database_url: &str) -> Result<String, PostgresBootstrapError> {
+    let parsed = url::Url::parse(database_url).map_err(|error| {
+        PostgresBootstrapError::ComponentConfiguration(format!(
+            "invalid isolated PostgreSQL URL: {error}"
+        ))
+    })?;
+    let database_name = parsed.path().trim_start_matches('/');
+    if database_name.is_empty() || database_name.contains('/') {
+        return Err(PostgresBootstrapError::ComponentConfiguration(
+            "isolated PostgreSQL URL must name exactly one database".into(),
+        ));
+    }
+    Ok(format!("{database_name}_serving"))
+}
+
 pub(super) struct EnvironmentOverride {
     name: &'static str,
     previous: Option<OsString>,
@@ -45,6 +60,7 @@ pub(super) struct IsolatedPostgresDatabase {
     admin_url: String,
     database_name: String,
     database_url: String,
+    serving_role: String,
 }
 
 impl IsolatedPostgresDatabase {
@@ -52,19 +68,38 @@ impl IsolatedPostgresDatabase {
         let database_name = format!("a3s_cloud_test_{}", Uuid::new_v4().simple());
         let mut database_url = url::Url::parse(admin_url)?;
         database_url.set_path(&format!("/{database_name}"));
+        let serving_role = format!("{database_name}_serving");
 
         let admin = PostgresExecutor::connect_no_tls(admin_url, 2)?;
-        admin
-            .pool()
-            .get()
-            .await?
+        let connection = admin.pool().get().await?;
+        connection
             .batch_execute(&format!("create database \"{database_name}\""))
             .await?;
+        if let Err(source) = connection
+            .batch_execute(&format!(
+                "create role \"{serving_role}\" nologin nosuperuser nocreatedb nocreaterole noreplication"
+            ))
+            .await
+        {
+            let cleanup = connection
+                .batch_execute(&format!(
+                    "drop database if exists \"{database_name}\" with (force)"
+                ))
+                .await;
+            return match cleanup {
+                Ok(()) => Err(source.into()),
+                Err(cleanup_error) => Err(std::io::Error::other(format!(
+                    "could not create isolated serving role: {source}; database cleanup also failed: {cleanup_error}"
+                ))
+                .into()),
+            };
+        }
 
         Ok(Self {
             admin_url: admin_url.to_owned(),
             database_name,
             database_url: database_url.to_string(),
+            serving_role,
         })
     }
 
@@ -75,23 +110,38 @@ impl IsolatedPostgresDatabase {
     pub(super) async fn cleanup(&self) -> Result<(), Box<dyn std::error::Error>> {
         let admin = PostgresExecutor::connect_no_tls(&self.admin_url, 2)?;
         let connection = admin.pool().get().await?;
-        connection
+        let database_cleanup = connection
             .batch_execute(&format!(
                 "drop database if exists \"{}\" with (force)",
                 self.database_name
             ))
-            .await?;
+            .await;
+        let role_cleanup = connection
+            .batch_execute(&format!("drop role if exists \"{}\"", self.serving_role))
+            .await;
+        match (database_cleanup, role_cleanup) {
+            (Ok(()), Ok(())) => {}
+            (Err(database_error), Ok(())) => return Err(database_error.into()),
+            (Ok(()), Err(role_error)) => return Err(role_error.into()),
+            (Err(database_error), Err(role_error)) => {
+                return Err(std::io::Error::other(format!(
+                    "isolated database cleanup failed: {database_error}; role cleanup also failed: {role_error}"
+                ))
+                .into());
+            }
+        }
         let row = connection
             .query_one(
-                "select exists(select 1 from pg_database where datname = $1)",
-                &[&self.database_name],
+                "select exists(select 1 from pg_database where datname = $1), exists(select 1 from pg_roles where rolname = $2)",
+                &[&self.database_name, &self.serving_role],
             )
             .await?;
         let database_still_exists: bool = row.get(0);
-        if database_still_exists {
+        let role_still_exists: bool = row.get(1);
+        if database_still_exists || role_still_exists {
             return Err(std::io::Error::other(format!(
-                "isolated PostgreSQL database {} still exists after cleanup",
-                self.database_name
+                "isolated PostgreSQL resources still exist after cleanup (database={}, role={})",
+                self.database_name, self.serving_role
             ))
             .into());
         }
@@ -233,6 +283,7 @@ pub(super) fn config() -> CloudConfig {
             max_retries: 3,
         },
         postgres: PostgresConfig {
+            serving_role: "a3s_cloud_serving".into(),
             serving_url_env: URL_ENV.into(),
             migration_url_env: "A3S_CLOUD_INTEGRATION_POSTGRES_MIGRATION_URL".into(),
             max_connections: 8,

@@ -16,8 +16,9 @@ const POSTGRES_URL_ENV: &str = "A3S_CLOUD_TEST_POSTGRES_URL";
 async fn migrate_and_connect_for_test(
     url: &str,
     max_connections: usize,
+    serving_role: &str,
 ) -> Result<PostgresExecutor, PostgresBootstrapError> {
-    migrate_postgres(url, max_connections).await?;
+    migrate_postgres(url, max_connections, serving_role).await?;
     connect_postgres(url, max_connections).await
 }
 
@@ -28,38 +29,65 @@ async fn postgres_search_uses_registered_tenant_projections(
         return Ok(());
     };
     let database_name = format!("a3s_cloud_search_test_{}", Uuid::new_v4().simple());
+    let serving_role = format!("{database_name}_serving");
     let mut database_url = url::Url::parse(&admin_url)?;
     database_url.set_path(&format!("/{database_name}"));
     let admin = PostgresExecutor::connect_no_tls(&admin_url, 2)?;
-    admin
-        .pool()
-        .get()
-        .await?
+    let admin_connection = admin.pool().get().await?;
+    admin_connection
         .batch_execute(&format!("create database \"{database_name}\""))
         .await?;
+    if let Err(source) = admin_connection
+        .batch_execute(&format!(
+            "create role \"{serving_role}\" nologin nosuperuser nocreatedb nocreaterole noreplication"
+        ))
+        .await
+    {
+        let _ = admin_connection
+            .batch_execute(&format!(
+                "drop database if exists \"{database_name}\" with (force)"
+            ))
+            .await;
+        return Err(source.into());
+    }
 
-    let test_result = exercise_search(database_url.as_str()).await;
-    let cleanup_result = admin
-        .pool()
-        .get()
-        .await?
+    let test_result = exercise_search(database_url.as_str(), &serving_role).await;
+    let database_cleanup = admin_connection
         .batch_execute(&format!(
             "drop database if exists \"{database_name}\" with (force)"
         ))
         .await;
-    match (test_result, cleanup_result) {
-        (Ok(()), Ok(())) => Ok(()),
-        (Err(error), Ok(())) => Err(error),
-        (Ok(()), Err(error)) => Err(error.into()),
-        (Err(test_error), Err(cleanup_error)) => Err(std::io::Error::other(format!(
-            "search integration failed: {test_error}; cleanup failed: {cleanup_error}"
+    let role_cleanup = admin_connection
+        .batch_execute(&format!("drop role if exists \"{serving_role}\""))
+        .await;
+    let cleanup_errors = [
+        database_cleanup.err().map(|error| error.to_string()),
+        role_cleanup.err().map(|error| error.to_string()),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
+    match (test_result, cleanup_errors.is_empty()) {
+        (Ok(()), true) => Ok(()),
+        (Err(error), true) => Err(error),
+        (Ok(()), false) => Err(std::io::Error::other(format!(
+            "search cleanup failed: {}",
+            cleanup_errors.join("; ")
+        ))
+        .into()),
+        (Err(test_error), false) => Err(std::io::Error::other(format!(
+            "search integration failed: {test_error}; cleanup failed: {}",
+            cleanup_errors.join("; ")
         ))
         .into()),
     }
 }
 
-async fn exercise_search(database_url: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let executor = migrate_and_connect_for_test(database_url, 4).await?;
+async fn exercise_search(
+    database_url: &str,
+    serving_role: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(database_url, 4, serving_role).await?;
     let database = Database::new(PostgresDialect, executor.clone());
     let allowed_organization = OrganizationId::new();
     let denied_organization = OrganizationId::new();

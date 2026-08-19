@@ -12,7 +12,7 @@ use a3s_cloud_control_plane::config::{
 };
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
-    PostgresBootstrapError,
+    PostgresBootstrapError, PostgresMigrationReport,
 };
 use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
@@ -60,8 +60,16 @@ async fn migrate_and_connect_for_test(
     url: &str,
     max_connections: usize,
 ) -> Result<PostgresExecutor, PostgresBootstrapError> {
-    migrate_postgres(url, max_connections).await?;
+    migrate_for_test(url, max_connections).await?;
     connect_postgres(url, max_connections).await
+}
+
+async fn migrate_for_test(
+    url: &str,
+    max_connections: usize,
+) -> Result<PostgresMigrationReport, PostgresBootstrapError> {
+    let serving_role = serving_role_for_url(url)?;
+    migrate_postgres(url, max_connections, &serving_role).await
 }
 
 #[path = "support/activation_retirement_crash.rs"]
@@ -894,7 +902,7 @@ where
 }
 
 async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
-    migrate_postgres(&url, 4).await?;
+    migrate_for_test(&url, 4).await?;
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let state = tempfile::tempdir()?;
     let mut relay_config = config();
@@ -905,7 +913,7 @@ async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std:
 }
 
 async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
-    migrate_postgres(&url, 4).await?;
+    migrate_for_test(&url, 4).await?;
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
     let state = tempfile::tempdir()?;
@@ -998,7 +1006,7 @@ async fn exercise_api_role_composition(url: String) -> Result<(), Box<dyn std::e
 }
 
 async fn exercise_worker_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {
-    migrate_postgres(&url, 4).await?;
+    migrate_for_test(&url, 4).await?;
     let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
     let state = tempfile::tempdir()?;
     let mut worker_config = config();
@@ -1635,6 +1643,80 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
     );
 
     let admin = PostgresExecutor::connect_no_tls(&url, 2)?;
+    let migration_role: String = admin
+        .connection()
+        .await?
+        .query_one("select current_user::text", &[])
+        .await?
+        .get(0);
+    let serving_role = serving_role_for_url(&url)?;
+    let role_identifiers = admin
+        .connection()
+        .await?
+        .query_one(
+            "select quote_ident($1::text), quote_ident($2::text)",
+            &[&migration_role, &serving_role],
+        )
+        .await?;
+    let quoted_migration_role: String = role_identifiers.get(0);
+    let quoted_serving_role: String = role_identifiers.get(1);
+    let collision = migrate_postgres(&url, 2, &migration_role)
+        .await
+        .expect_err("the serving and migration identities must differ before migration");
+    assert!(
+        matches!(
+            &collision,
+            PostgresBootstrapError::ServingRoleMatchesMigration(role) if role == &migration_role
+        ),
+        "unexpected serving-role collision error: {collision}"
+    );
+    let missing_role = format!("a3s_cloud_missing_{}", Uuid::new_v4().simple());
+    let missing = migrate_postgres(&url, 2, &missing_role)
+        .await
+        .expect_err("a missing serving role must fail before migration");
+    assert!(
+        matches!(
+            &missing,
+            PostgresBootstrapError::ServingRoleMissing(role) if role == &missing_role
+        ),
+        "unexpected missing serving-role error: {missing}"
+    );
+    let role_admin = admin.connection().await?;
+    role_admin
+        .batch_execute(&format!("alter role {quoted_serving_role} createdb"))
+        .await?;
+    let privileged = migrate_for_test(&url, 2)
+        .await
+        .expect_err("an administrative serving role must fail before migration");
+    assert!(
+        matches!(
+            &privileged,
+            PostgresBootstrapError::ServingRoleIsPrivileged(role) if role == &serving_role
+        ),
+        "unexpected privileged serving-role error: {privileged}"
+    );
+    role_admin
+        .batch_execute(&format!(
+            "alter role {quoted_serving_role} nocreatedb;
+             grant {quoted_migration_role} to {quoted_serving_role}"
+        ))
+        .await?;
+    let inherited = migrate_for_test(&url, 2)
+        .await
+        .expect_err("migration-role membership must fail before migration");
+    assert!(
+        matches!(
+            &inherited,
+            PostgresBootstrapError::ServingRoleInheritsMigration(role) if role == &serving_role
+        ),
+        "unexpected inherited migration-role error: {inherited}"
+    );
+    role_admin
+        .batch_execute(&format!(
+            "revoke {quoted_migration_role} from {quoted_serving_role}"
+        ))
+        .await?;
+
     let admin_database = Database::new(PostgresDialect, admin);
     let migration_table = admin_database
         .fetch_one_as(sql_query::<Option<String>>(
@@ -1655,8 +1737,19 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         "a failed serving-process startup changed the business schema"
     );
 
-    let config_path =
+    let shipped_config_path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/cloud.acl");
+    let migration_config_dir = tempfile::tempdir()?;
+    let config_path = migration_config_dir.path().join("cloud.acl");
+    let shipped_config = std::fs::read_to_string(&shipped_config_path)?;
+    let migration_config = shipped_config.replace(
+        "serving_role = \"a3s_cloud_serving\"",
+        &format!("serving_role = {serving_role:?}"),
+    );
+    if migration_config == shipped_config {
+        return Err("shipped ACL does not declare the serving role".into());
+    }
+    std::fs::write(&config_path, migration_config)?;
     let mut left = tokio::process::Command::new(env!("CARGO_BIN_EXE_a3s-cloud-migrate"));
     left.arg(&config_path)
         .env("A3S_CLOUD_POSTGRES_MIGRATION_URL", &url);
@@ -1679,7 +1772,7 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
     assert!(
         outputs.iter().all(|output| {
             output.contains("A3S Cloud PostgreSQL migrations applied:")
-                || output.contains("schema is already up to date")
+                || output.contains("schema and serving access are already reconciled")
         }),
         "concurrent one-shot migrators returned unexpected output: {outputs:?}"
     );
@@ -1696,14 +1789,78 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
             "concurrent one-shot migrators lost component migration evidence {required}: {outputs:?}"
         );
     }
-    let replay = migrate_postgres(&url, 4).await?;
+    let executor = connect_postgres(&url, 4).await?;
+    let access_client = executor.connection().await?;
+    let quoted_role: String = access_client
+        .query_one("select quote_ident($1::text)", &[&serving_role])
+        .await?
+        .get(0);
+    access_client
+        .batch_execute(
+            "create table public.a3s_cloud_serving_access_probe (
+               id bigserial primary key
+             );
+             create function public.a3s_cloud_serving_access_probe_fn()
+               returns integer language sql as $$ select 1 $$;
+             revoke execute on function public.a3s_cloud_serving_access_probe_fn() from public;",
+        )
+        .await?;
+    assert_serving_probe_is_not_implicitly_granted(
+        &executor,
+        &serving_role,
+        "public.a3s_cloud_serving_access_probe",
+        "public.a3s_cloud_serving_access_probe_id_seq",
+        "public.a3s_cloud_serving_access_probe_fn()",
+    )
+    .await?;
+    access_client
+        .batch_execute(&format!(
+            "ALTER DEFAULT PRIVILEGES GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO {quoted_role};
+             ALTER DEFAULT PRIVILEGES GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO {quoted_role};
+             ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO {quoted_role};
+             ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS TO {quoted_role};"
+        ))
+        .await?;
+
+    let replay = migrate_for_test(&url, 4).await?;
     assert!(
         replay.is_up_to_date(),
-        "the A3S ORM migrator did not replay idempotently"
+        "the A3S ORM migrator and serving-access coordinator did not replay idempotently"
     );
 
-    let executor = connect_postgres(&url, 4).await?;
-    let database = Database::new(PostgresDialect, executor);
+    access_client
+        .batch_execute(
+            "create table public.a3s_cloud_default_privilege_probe (
+               id bigserial primary key
+             );
+             create function public.a3s_cloud_default_privilege_probe_fn()
+               returns integer language sql as $$ select 2 $$;
+             revoke execute on function public.a3s_cloud_default_privilege_probe_fn() from public;",
+        )
+        .await?;
+    assert_serving_probe_is_not_implicitly_granted(
+        &executor,
+        &serving_role,
+        "public.a3s_cloud_default_privilege_probe",
+        "public.a3s_cloud_default_privilege_probe_id_seq",
+        "public.a3s_cloud_default_privilege_probe_fn()",
+    )
+    .await?;
+
+    access_client
+        .batch_execute(&format!(
+            "REVOKE USAGE ON SCHEMA public, a3s_flow, a3s_boot FROM {quoted_role};
+             GRANT CREATE ON SCHEMA public TO {quoted_role};
+             REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE public.a3s_cloud_serving_access_probe FROM {quoted_role};
+             REVOKE USAGE, SELECT, UPDATE ON SEQUENCE public.a3s_cloud_serving_access_probe_id_seq FROM {quoted_role};
+             REVOKE EXECUTE ON FUNCTION public.a3s_cloud_serving_access_probe_fn() FROM {quoted_role};
+             GRANT INSERT, UPDATE, DELETE ON TABLE public.a3s_orm_migrations TO {quoted_role};"
+        ))
+        .await?;
+    migrate_for_test(&url, 4).await?;
+    assert_serving_access_reconciled(&executor, &serving_role).await?;
+
+    let database = Database::new(PostgresDialect, executor.clone());
     let migration_count = database
         .fetch_one_as(sql_query::<i64>(
             "select count(*) from a3s_orm_migrations where version <= '121'",
@@ -1783,6 +1940,103 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
             .contains("required migration \"121\" has not been applied"),
         "unexpected missing-migration admission error: {error}"
     );
+    Ok(())
+}
+
+async fn assert_serving_probe_is_not_implicitly_granted(
+    executor: &PostgresExecutor,
+    serving_role: &str,
+    table: &str,
+    sequence: &str,
+    function: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = executor
+        .connection()
+        .await?
+        .query_one(
+            "select
+               has_table_privilege($1::text, $2::text, 'SELECT'),
+               has_sequence_privilege($1::text, $3::text, 'USAGE'),
+               has_function_privilege($1::text, $4::text, 'EXECUTE')",
+            &[&serving_role, &table, &sequence, &function],
+        )
+        .await?;
+    assert!(
+        !(row.get::<_, bool>(0) || row.get::<_, bool>(1) || row.get::<_, bool>(2)),
+        "serving access leaked through PostgreSQL default privileges"
+    );
+    Ok(())
+}
+
+async fn assert_serving_access_reconciled(
+    executor: &PostgresExecutor,
+    serving_role: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let row = executor
+        .connection()
+        .await?
+        .query_one(
+            "select
+               has_database_privilege($1::text, current_database(), 'CONNECT')
+                 and not has_database_privilege($1::text, current_database(), 'CREATE')
+                 and not has_database_privilege($1::text, current_database(), 'TEMPORARY'),
+               has_schema_privilege($1::text, 'public', 'USAGE')
+                 and has_schema_privilege($1::text, 'a3s_flow', 'USAGE')
+                 and has_schema_privilege($1::text, 'a3s_boot', 'USAGE'),
+               not has_schema_privilege($1::text, 'public', 'CREATE')
+                 and not has_schema_privilege($1::text, 'a3s_flow', 'CREATE')
+                 and not has_schema_privilege($1::text, 'a3s_boot', 'CREATE'),
+               (select count(*) > 0 and coalesce(bool_and(
+                  has_table_privilege($1::text, format('%I.%I', schemaname, tablename), 'SELECT')
+                  and has_table_privilege($1::text, format('%I.%I', schemaname, tablename), 'INSERT')
+                  and has_table_privilege($1::text, format('%I.%I', schemaname, tablename), 'UPDATE')
+                  and has_table_privilege($1::text, format('%I.%I', schemaname, tablename), 'DELETE')
+               ), false) from pg_tables
+                 where schemaname in ('public', 'a3s_flow', 'a3s_boot')
+                   and tablename <> 'a3s_orm_migrations'),
+               has_table_privilege($1::text, 'public.a3s_orm_migrations', 'SELECT')
+                 and has_table_privilege($1::text, 'a3s_flow.a3s_orm_migrations', 'SELECT')
+                 and has_table_privilege($1::text, 'a3s_boot.a3s_orm_migrations', 'SELECT'),
+               not (
+                 has_table_privilege($1::text, 'public.a3s_orm_migrations', 'INSERT')
+                 or has_table_privilege($1::text, 'public.a3s_orm_migrations', 'UPDATE')
+                 or has_table_privilege($1::text, 'public.a3s_orm_migrations', 'DELETE')
+                 or has_table_privilege($1::text, 'a3s_flow.a3s_orm_migrations', 'INSERT')
+                 or has_table_privilege($1::text, 'a3s_flow.a3s_orm_migrations', 'UPDATE')
+                 or has_table_privilege($1::text, 'a3s_flow.a3s_orm_migrations', 'DELETE')
+                 or has_table_privilege($1::text, 'a3s_boot.a3s_orm_migrations', 'INSERT')
+                 or has_table_privilege($1::text, 'a3s_boot.a3s_orm_migrations', 'UPDATE')
+                 or has_table_privilege($1::text, 'a3s_boot.a3s_orm_migrations', 'DELETE')
+               ),
+               has_sequence_privilege($1::text, 'public.a3s_cloud_serving_access_probe_id_seq', 'USAGE')
+                 and has_sequence_privilege($1::text, 'public.a3s_cloud_serving_access_probe_id_seq', 'SELECT')
+                 and has_sequence_privilege($1::text, 'public.a3s_cloud_serving_access_probe_id_seq', 'UPDATE')
+                 and has_sequence_privilege($1::text, 'public.a3s_cloud_default_privilege_probe_id_seq', 'USAGE')
+                 and has_sequence_privilege($1::text, 'public.a3s_cloud_default_privilege_probe_id_seq', 'SELECT')
+                 and has_sequence_privilege($1::text, 'public.a3s_cloud_default_privilege_probe_id_seq', 'UPDATE'),
+               has_function_privilege($1::text, 'public.a3s_cloud_serving_access_probe_fn()', 'EXECUTE')
+                 and has_function_privilege($1::text, 'public.a3s_cloud_default_privilege_probe_fn()', 'EXECUTE')",
+            &[&serving_role],
+        )
+        .await?;
+    for (index, boundary) in [
+        "database connect",
+        "schema usage",
+        "schema create revocation",
+        "business-table DML",
+        "migration-ledger read",
+        "migration-ledger write revocation",
+        "sequence access",
+        "function execution",
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert!(
+            row.get::<_, bool>(index),
+            "serving-access reconciliation lost {boundary}"
+        );
+    }
     Ok(())
 }
 

@@ -128,12 +128,15 @@ fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
     assert!(!canonical.contains("postgres://"));
     assert!(!canonical.contains("serving password"));
 
+    let cloud_acl = CloudConfig::parse(include_str!("../../../../../deploy/production/cloud.acl"))
+        .expect("production Cloud ACL");
+    assert_eq!(cloud_acl.postgres.serving_role, "a3s_cloud_serving");
+
     let postgres_init = include_str!("../../../../../deploy/production/postgres-init.sh");
     for required in [
-        "GRANT USAGE ON SCHEMAS TO a3s_cloud_serving",
-        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO a3s_cloud_serving",
-        "GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO a3s_cloud_serving",
         "ALTER ROLE a3s_cloud_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION",
+        "ALTER ROLE a3s_cloud_serving LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION",
+        "NOREPLICATION NOBYPASSRLS",
         "ALTER DATABASE %I OWNER TO a3s_cloud_migrator",
         "ALTER ROLE %I NOLOGIN",
     ] {
@@ -142,13 +145,10 @@ fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
             "PostgreSQL bootstrap lost the least-privilege boundary {required}"
         );
     }
-    assert!(
-        !postgres_init.contains("IN SCHEMA public"),
-        "serving grants must cover Cloud-owned component schemas, not only public"
-    );
     for forbidden in [
-        "GRANT CREATE",
-        "GRANT ALL",
+        "GRANT ",
+        "REVOKE ",
+        "ALTER DEFAULT PRIVILEGES",
         "a3s_cloud_serving CREATEDB",
         "a3s_cloud_serving CREATEROLE",
         "a3s_cloud_serving SUPERUSER",
@@ -452,6 +452,7 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
     let c0_conformance =
         include_str!("../../../../../tools/c0-conformance/run_cross_surface_gate.sh");
     let persistence = include_str!("../../infrastructure/postgres.rs");
+    let serving_access = include_str!("../../infrastructure/postgres_access.rs");
 
     assert_eq!(
         application.matches("connect_postgres(").count(),
@@ -481,7 +482,9 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
 
     for required in [
         "migration_postgres_url()",
-        "migrate_postgres(&migration_postgres_url",
+        "migrate_postgres(",
+        "&migration_postgres_url,",
+        "&config.postgres.serving_role",
         "report.is_up_to_date()",
         "report.applied.join",
     ] {
@@ -515,14 +518,64 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         "Cloud serving admission must reuse the ORM manifest verifier"
     );
     for required in [
+        "prepare_postgres_serving_access(&executor, serving_role)",
         "migrate_postgres_flow(&flow_executor)",
         "migrate_postgres_queue(&boot_executor)",
+        "reconcile_postgres_serving_access(&executor, &serving_access)",
     ] {
         assert!(
             persistence.contains(required),
             "the Cloud migration root stopped delegating component schema ownership through {required}"
         );
     }
+    let boot_migration = persistence
+        .find("migrate_postgres_queue(&boot_executor)")
+        .expect("Boot owner migration delegation");
+    let serving_access_preflight = persistence
+        .find("prepare_postgres_serving_access(&executor, serving_role)")
+        .expect("serving-access preflight");
+    let cloud_migration = persistence
+        .find(".run(cloud_migrations())")
+        .expect("Cloud owner migration");
+    let access_reconciliation = persistence
+        .find("reconcile_postgres_serving_access(&executor, &serving_access)")
+        .expect("serving-access reconciliation");
+    assert!(
+        serving_access_preflight < cloud_migration,
+        "missing or colliding serving roles must fail before schema mutation"
+    );
+    assert!(
+        boot_migration < access_reconciliation,
+        "serving access must reconcile only after every owner migration"
+    );
+    for required in [
+        "GRANT CONNECT ON DATABASE",
+        "GRANT USAGE ON SCHEMA",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA",
+        "GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA",
+        "GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA",
+        "REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE",
+        "GRANT SELECT ON TABLE",
+        "ALTER DEFAULT PRIVILEGES REVOKE ALL PRIVILEGES ON TABLES",
+        "ALTER DEFAULT PRIVILEGES IN SCHEMA",
+        "REVOKE CONNECT, TEMPORARY ON DATABASE",
+        "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA",
+        "current_user::text",
+        "pg_catalog.pg_roles",
+        "pg_has_role",
+        "rolbypassrls",
+        ".transaction()",
+        "transaction.commit()",
+    ] {
+        assert!(
+            serving_access.contains(required),
+            "serving-access coordinator lost {required}"
+        );
+    }
+    assert!(
+        !serving_access.contains("ALTER DEFAULT PRIVILEGES GRANT"),
+        "serving access must not install broad default grants"
+    );
     for forbidden in [
         "verify_schema_manifest",
         "expected_schema_manifest",

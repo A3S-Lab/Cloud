@@ -1,5 +1,9 @@
 use super::flow::{scoped_postgres_url, BOOT_SCHEMA, FLOW_SCHEMA};
+use super::postgres_access::{
+    prepare_postgres_serving_access, reconcile_postgres_serving_access, PostgresServingAccessError,
+};
 use super::postgres_schema::{AuditRecords, IdempotencyRecords, OutboxEvents};
+use crate::config::valid_postgres_role_name;
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, RepositoryError,
 };
@@ -44,6 +48,20 @@ pub enum PostgresBootstrapError {
     FlowMigration(#[source] FlowError),
     #[error("could not migrate the A3S Boot PostgreSQL schema: {0}")]
     BootMigration(#[source] BootError),
+    #[error(
+        "invalid PostgreSQL serving role {0:?}; expected a lowercase identifier up to 63 bytes without a reserved role name"
+    )]
+    InvalidServingRole(String),
+    #[error("PostgreSQL serving role {0:?} does not exist")]
+    ServingRoleMissing(String),
+    #[error("PostgreSQL serving role {0:?} is also the migration role")]
+    ServingRoleMatchesMigration(String),
+    #[error("PostgreSQL serving role {0:?} is a member of the migration role")]
+    ServingRoleInheritsMigration(String),
+    #[error("PostgreSQL serving role {0:?} has administrative role attributes")]
+    ServingRoleIsPrivileged(String),
+    #[error("could not reconcile PostgreSQL serving access: {0}")]
+    ServingAccess(#[source] PostgresError),
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -96,8 +114,33 @@ pub async fn connect_postgres(
 pub async fn migrate_postgres(
     url: &str,
     max_connections: usize,
+    serving_role: &str,
 ) -> Result<PostgresMigrationReport, PostgresBootstrapError> {
+    if !valid_postgres_role_name(serving_role) {
+        return Err(PostgresBootstrapError::InvalidServingRole(
+            serving_role.to_owned(),
+        ));
+    }
     let executor = PostgresExecutor::connect_no_tls(url, max_connections)?;
+    let serving_access = prepare_postgres_serving_access(&executor, serving_role)
+        .await
+        .map_err(|error| match error {
+            PostgresServingAccessError::MissingRole => {
+                PostgresBootstrapError::ServingRoleMissing(serving_role.to_owned())
+            }
+            PostgresServingAccessError::MigrationRoleCollision => {
+                PostgresBootstrapError::ServingRoleMatchesMigration(serving_role.to_owned())
+            }
+            PostgresServingAccessError::MigrationRoleMembership => {
+                PostgresBootstrapError::ServingRoleInheritsMigration(serving_role.to_owned())
+            }
+            PostgresServingAccessError::PrivilegedRole => {
+                PostgresBootstrapError::ServingRoleIsPrivileged(serving_role.to_owned())
+            }
+            PostgresServingAccessError::Database(error) => {
+                PostgresBootstrapError::ServingAccess(error)
+            }
+        })?;
     let cloud_report = Migrator::new(executor.clone())
         .run(cloud_migrations())
         .await?;
@@ -116,6 +159,9 @@ pub async fn migrate_postgres(
     let boot_report = migrate_postgres_queue(&boot_executor)
         .await
         .map_err(PostgresBootstrapError::BootMigration)?;
+    reconcile_postgres_serving_access(&executor, &serving_access)
+        .await
+        .map_err(PostgresBootstrapError::ServingAccess)?;
 
     let mut applied = cloud_report.applied;
     applied.extend(

@@ -228,31 +228,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn postgres_binding_is_create_only_exact_and_conflict_detecting_when_available() {
+    async fn postgres_binding_is_create_only_exact_and_conflict_detecting_when_available(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let Ok(url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL") else {
-            return;
+            return Ok(());
         };
-        crate::infrastructure::migrate_postgres(&url, 2)
-            .await
-            .expect("migrate PostgreSQL");
-        let executor = crate::infrastructure::connect_postgres(&url, 2)
-            .await
-            .expect("connect PostgreSQL");
-        let name = format!("test-{}", uuid::Uuid::now_v7());
-        let first = InfrastructureBinding::new(&name, "a3s.cloud.test-topology.v1", b"provider-a")
-            .expect("first binding");
-        bind_infrastructure(&executor, first.clone())
-            .await
-            .expect("first write");
-        bind_infrastructure(&executor, first)
-            .await
-            .expect("exact replay");
-        let changed =
-            InfrastructureBinding::new(&name, "a3s.cloud.test-topology.v1", b"provider-b")
-                .expect("changed binding");
-        assert!(matches!(
-            bind_infrastructure(&executor, changed).await,
-            Err(InfrastructureBindingError::Conflict(conflict)) if conflict == name
-        ));
+        let serving_role = format!(
+            "a3s_cloud_topology_serving_{}",
+            uuid::Uuid::new_v4().simple()
+        );
+        let admin = PostgresExecutor::connect_no_tls(&url, 2)?;
+        let admin_client = admin.connection().await?;
+        admin_client
+            .batch_execute(&format!(
+                "create role \"{serving_role}\" nologin nosuperuser nocreatedb nocreaterole noreplication"
+            ))
+            .await?;
+
+        let test_result = async {
+            crate::infrastructure::migrate_postgres(&url, 2, &serving_role).await?;
+            let executor = crate::infrastructure::connect_postgres(&url, 2).await?;
+            let name = format!("test-{}", uuid::Uuid::now_v7());
+            let first =
+                InfrastructureBinding::new(&name, "a3s.cloud.test-topology.v1", b"provider-a")?;
+            bind_infrastructure(&executor, first.clone()).await?;
+            bind_infrastructure(&executor, first).await?;
+            let changed =
+                InfrastructureBinding::new(&name, "a3s.cloud.test-topology.v1", b"provider-b")?;
+            if !matches!(
+                bind_infrastructure(&executor, changed).await,
+                Err(InfrastructureBindingError::Conflict(conflict)) if conflict == name
+            ) {
+                return Err(std::io::Error::other(
+                    "changed infrastructure binding did not fail with an exact conflict",
+                )
+                .into());
+            }
+            Ok::<(), Box<dyn std::error::Error>>(())
+        }
+        .await;
+        let cleanup = admin_client
+            .batch_execute(&format!(
+                "drop owned by \"{serving_role}\"; drop role \"{serving_role}\""
+            ))
+            .await;
+        match (test_result, cleanup) {
+            (Ok(()), Ok(())) => Ok(()),
+            (Err(error), Ok(())) => Err(error),
+            (Ok(()), Err(error)) => Err(error.into()),
+            (Err(test_error), Err(cleanup_error)) => Err(std::io::Error::other(format!(
+                "topology binding test failed: {test_error}; serving-role cleanup also failed: {cleanup_error}"
+            ))
+            .into()),
+        }
     }
 }

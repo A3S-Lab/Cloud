@@ -49,6 +49,7 @@ objects {
 }
 
 postgres {
+  serving_role = "a3s_cloud_serving"
   serving_url_env = "A3S_CLOUD_POSTGRES_URL"
   migration_url_env = "A3S_CLOUD_POSTGRES_MIGRATION_URL"
   max_connections = 16

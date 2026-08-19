@@ -5,6 +5,7 @@ mod immutable_object;
 mod oci_registry_client;
 mod operation_resource_access;
 mod postgres;
+mod postgres_access;
 mod postgres_schema;
 mod topology_binding;
 mod vault_client;
