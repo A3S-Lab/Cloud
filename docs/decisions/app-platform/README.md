@@ -20,7 +20,8 @@ AI application platform parity manifest.
 | [0013](0013-single-flow-dag-compiler.md) | Reuse A3S Flow as the sole portable DAG structural compiler while Cloud retains ACL and product semantics |
 | [0014](0014-exact-flow-runtime-registry.md) | Route every Flow workflow and step through one startup-validated exact registry with no default runtime |
 | [0015](0015-versioned-flow-runtime-builds.md) | Give each deployed Flow replay-code generation one explicit build identity and admit older generations only by declaration |
+| [0016](0016-deterministic-composite-frames.md) | Reduce exact child Workflow inputs and outputs through one deterministic composite frame without adding another orchestrator |
 
-All fifteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
+All sixteen decisions are normative for `APP0`, `K0`, `AUT0`, and the remaining
 `W0` application-platform work. A later change requires a superseding decision
 and a new parity-manifest revision; it cannot silently reinterpret `v1`.

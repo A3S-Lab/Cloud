@@ -98,7 +98,7 @@ fn v2_run_input_rejects_version_and_variable_contract_drift() {
 }
 
 #[test]
-fn runtime_v2_requires_exact_default_material_and_rejects_external_variable_ownership() {
+fn runtime_v2_admits_composite_frames_but_rejects_external_variable_ownership() {
     let input = typed_variable_workflow_run_input().expect("valid v2 WorkflowRun input");
     let base = input
         .variable_contract
@@ -159,10 +159,8 @@ fn runtime_v2_requires_exact_default_material_and_rejects_external_variable_owne
         });
     let composite_contract = WorkflowVariableContract::from_spec(composite_spec)
         .expect("valid composite-local contract");
-    let composite_error =
-        validate_runtime_variable_contract(&composite_contract, None, &input.plan)
-            .expect_err("runtime must reject composite-local state");
-    assert!(composite_error.contains("composite_local"));
+    validate_runtime_variable_contract(&composite_contract, None, &input.plan)
+        .expect("composite-local state is admitted for the deterministic frame reducer");
 
     let mut application_spec = base;
     application_spec

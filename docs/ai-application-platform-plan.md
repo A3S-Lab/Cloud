@@ -688,20 +688,22 @@ The recommended sequence is:
    toolkit/authoring outcome, node, plugin outcome, Knowledge outcome,
    publication channel, monitor outcome, and enterprise outcome with one owner,
    owning gate, dependencies, availability, and typed evidence. Strict tests
-   reject inventory/schema drift and false public claims. All twelve
+   reject inventory/schema drift and false public claims. All sixteen
    application-platform decisions covering Flow preservation, application
    delivery, descriptors, triggers, Files, Knowledge, typed variables, Plan v2,
    discovery, Flow-derived variable inspection, and digest-bound variable
-   defaults plus revision-bound composite policy are accepted and versioned.
+   defaults, revision-bound composite policy, the single Flow DAG compiler,
+   exact runtime registry, versioned runtime builds, and deterministic
+   composite frames are accepted and versioned.
    The exact digest-bound 23-node
    profile ACL and read-only project-authorized discovery projection are also
    implemented without creating a registry writer or execution authority.
 2. **Finish the W0 semantic foundation.** Retain protected WorkflowRun and
    HumanTask surfaces, revision-owned exact descriptors and Plan v2 pins,
    typed-variable foundations, digest-bound defaults, Flow-derived inspection,
-   built-in discovery, multi-output aggregation, and bounded composite
-   policy/child bindings; complete composite frames/exports and Flow-backed
-   Iteration/Loop dispatch,
+   built-in discovery, multi-output aggregation, bounded composite
+   policy/child bindings, and the component-only frame/export reducer; complete
+   Flow-backed Iteration/Loop dispatch and ordered reconstruction,
    Applications-owned variables, the Answer event contract, node error
    branches/fallback, and retained Flow replay tests. Prove any proposed Flow
    primitive is genuinely missing before changing Flow.

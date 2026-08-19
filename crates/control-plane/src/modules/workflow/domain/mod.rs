@@ -7,6 +7,7 @@ pub mod repositories;
 pub mod services;
 mod validation;
 pub mod value_objects;
+mod workflow_composite_frame;
 mod workflow_composite_regions;
 mod workflow_contract;
 mod workflow_goal_contract;
@@ -19,6 +20,7 @@ mod workflow_step_descriptor;
 mod workflow_step_descriptor_bindings;
 mod workflow_variable_contract;
 mod workflow_variable_defaults;
+mod workflow_variable_materialization;
 
 pub(crate) use workflow_run_contract::validate_runtime_variable_contract;
 
@@ -56,6 +58,7 @@ pub use repositories::{
     IWorkflowRunRepository, OntologyRecord, ReviseOntologyWrite, ReviseWorkflowDefinitionWrite,
     WorkflowDefinitionRecord, WorkflowGoalRecord, WorkflowRunRecord,
 };
+pub(crate) use services::inspect_workflow_run_variables;
 pub use services::{
     diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,
     CompiledWorkflowGoal, CompiledWorkflowRun, HumanTaskCancellationAuthority,
@@ -68,14 +71,16 @@ pub use services::{
     HUMAN_TASK_CANCELLATION_AUTHORITY_API_VERSION, HUMAN_TASK_DEADLINE_AUTHORITY_API_VERSION,
     WORKFLOW_RUN_VARIABLE_INSPECTION_MAX_BYTES, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
 };
-pub(crate) use services::{
-    inspect_workflow_run_variables, lookup_workflow_variable_path, materialize_workflow_variables,
-};
 pub use value_objects::{
     AssignmentPolicyRef, OntologyMigrationPolicy, OntologyName,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_DIGEST,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_ID,
     WORKFLOW_ORGANIZATION_MEMBER_ASSIGNMENT_POLICY_REVISION,
+};
+pub use workflow_composite_frame::{
+    WorkflowCompositeFrame, WorkflowCompositeFrameMode, WorkflowCompositeFrameRequest,
+    WorkflowCompositeFrameResult, WORKFLOW_COMPOSITE_FRAME_MAX_BYTES,
+    WORKFLOW_COMPOSITE_FRAME_RESULT_SCHEMA, WORKFLOW_COMPOSITE_FRAME_SCHEMA,
 };
 pub use workflow_composite_regions::{
     WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
@@ -148,11 +153,16 @@ pub use workflow_variable_defaults::{
     WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES, WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
     WORKFLOW_VARIABLE_DEFAULT_MAX_VALUE_BYTES,
 };
+pub(crate) use workflow_variable_materialization::{
+    materialize_workflow_variables, project_workflow_variable_reads,
+};
 
 #[cfg(test)]
 mod authority_tests;
 #[cfg(test)]
 mod human_task_contract_tests;
+#[cfg(test)]
+mod workflow_composite_frame_tests;
 #[cfg(test)]
 mod workflow_composite_regions_tests;
 #[cfg(test)]
