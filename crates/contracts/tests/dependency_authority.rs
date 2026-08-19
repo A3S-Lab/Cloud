@@ -112,8 +112,46 @@ fn orm_uses_the_schema_admission_revision_required_by_flow_and_boot() {
     assert_eq!(packages[0].source, ORM_SCHEMA_ADMISSION_SOURCE);
 }
 
+#[test]
+fn box_provider_gate_uses_the_locked_box_revision() {
+    let repository = repository_root();
+    let provider_revision =
+        fs::read_to_string(repository.join("tools/box-conformance/box-revision"))
+            .expect("read Box provider revision");
+    let provider_revision = provider_revision.trim();
+    assert!(
+        provider_revision.len() == 40
+            && provider_revision
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit()),
+        "Box provider revision must be a full hexadecimal commit"
+    );
+
+    let packages = locked_a3s_packages()
+        .into_iter()
+        .filter(|package| package.name.starts_with("a3s-box-"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        packages
+            .iter()
+            .map(|package| package.name.as_str())
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from(["a3s-box-core", "a3s-box-netproxy", "a3s-box-runtime"]),
+        "the locked Box package closure changed"
+    );
+    let expected_source_suffix = format!("?rev={provider_revision}#{provider_revision}");
+    for package in packages {
+        assert!(
+            package.source.ends_with(&expected_source_suffix),
+            "{} is not locked to the Box provider revision {provider_revision}: {}",
+            package.name,
+            package.source
+        );
+    }
+}
+
 fn locked_a3s_packages() -> Vec<LockedPackage> {
-    let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let repository = repository_root();
     let lock = fs::read_to_string(repository.join("Cargo.lock")).expect("read root Cargo.lock");
     lock.split("[[package]]")
         .skip(1)
@@ -129,6 +167,10 @@ fn locked_a3s_packages() -> Vec<LockedPackage> {
             })
         })
         .collect()
+}
+
+fn repository_root() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
 fn quoted_field(record: &str, field: &str) -> Option<String> {
