@@ -43,7 +43,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-core"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=ca9111c827508db62f77670f739bce915a275330#ca9111c827508db62f77670f739bce915a275330"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=d65b8190df52713d2cf0f2375c97babc22f0da71#d65b8190df52713d2cf0f2375c97babc22f0da71"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -64,7 +64,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-netproxy"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=ca9111c827508db62f77670f739bce915a275330#ca9111c827508db62f77670f739bce915a275330"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=d65b8190df52713d2cf0f2375c97babc22f0da71#d65b8190df52713d2cf0f2375c97babc22f0da71"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -75,7 +75,7 @@ dependencies = [
 [[package]]
 name = "a3s-box-runtime"
 version = "3.2.0"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=ca9111c827508db62f77670f739bce915a275330#ca9111c827508db62f77670f739bce915a275330"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=d65b8190df52713d2cf0f2375c97babc22f0da71#d65b8190df52713d2cf0f2375c97babc22f0da71"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-box-core",
@@ -248,7 +248,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "7.0.1"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=6b0fa2f9f2716817b93f42a23a3942be6634f1dc#6b0fa2f9f2716817b93f42a23a3942be6634f1dc"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=120946e71b113e217d02152a5b0092ed63b909e6#120946e71b113e217d02152a5b0092ed63b909e6"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -526,7 +526,7 @@ dependencies = [
 [[package]]
 name = "a3s-use-core"
 version = "0.2.3"
-source = "git+https://github.com/A3S-Lab/Use.git?rev=8d45bd43cb19fe3813b559c8839051406830ce4b#8d45bd43cb19fe3813b559c8839051406830ce4b"
+source = "git+https://github.com/A3S-Lab/Use.git?rev=2b30b2c69055b9c38fc1128c5b3d308ebdc946cc#2b30b2c69055b9c38fc1128c5b3d308ebdc946cc"
 dependencies = [
  "async-trait",
  "olpc-cjson",
@@ -544,7 +544,7 @@ dependencies = [
 [[package]]
 name = "a3s-use-extension"
 version = "0.3.2"
-source = "git+https://github.com/A3S-Lab/Use.git?rev=8d45bd43cb19fe3813b559c8839051406830ce4b#8d45bd43cb19fe3813b559c8839051406830ce4b"
+source = "git+https://github.com/A3S-Lab/Use.git?rev=2b30b2c69055b9c38fc1128c5b3d308ebdc946cc#2b30b2c69055b9c38fc1128c5b3d308ebdc946cc"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-use-core",

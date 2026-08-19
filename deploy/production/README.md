@@ -27,7 +27,7 @@ role cannot be changed or widened by that argument.
 ## Required inputs
 
 Use Linux A3S Box at exact revision
-`ca9111c827508db62f77670f739bce915a275330` or a later release that retains its
+`d65b8190df52713d2cf0f2375c97babc22f0da71` or a later release that retains its
 Compose `secret_environment` contract. The Cloud image must be digest-pinned
 and contain:
 
