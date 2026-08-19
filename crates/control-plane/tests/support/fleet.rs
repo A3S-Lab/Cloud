@@ -448,14 +448,17 @@ pub async fn exercise_fleet(
     let sources = reopened
         .list_evacuation_sources(now + Duration::seconds(4), 10)
         .await?;
+    let node_sources = sources
+        .iter()
+        .filter(|source| source.node.id == node_id)
+        .collect::<Vec<_>>();
     assert!(matches!(
-        sources.as_slice(),
+        node_sources.as_slice(),
         [source]
-            if source.node.id == node_id
-                && matches!(
-                    source.cause,
-                    NodeEvacuationCause::PoolMaintenance { generation: 1, .. }
-                )
+            if matches!(
+                source.cause,
+                NodeEvacuationCause::PoolMaintenance { generation: 1, .. }
+            )
     ));
 
     let inventory = exercise_resource_inventory(

@@ -51,10 +51,10 @@ The code on `main` separates implemented mechanics from released capability:
   New Operations pin replay generation `a3s-cloud-workflows@2`; the former
   `@1` generation is admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
-  The stable release converges Cloud and Code on one Flow revision. A mandatory
-  real PostgreSQL 17 plus local/NATS gate now re-runs the complete `F0`
-  foundation suite against that exact lock; `F0` returns to `Verified` after
-  the new gate first passes on `main`.
+  The stable release converges Cloud and Code on one Flow revision. The
+  [2026-08-19 `main` PostgreSQL 17 plus local/NATS gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175)
+  passes the complete foundation suite against that exact lock, so `F0` is
+  `Verified` again.
 - **Implemented / stable management contract** — committed
   [OpenAPI `1.39.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
