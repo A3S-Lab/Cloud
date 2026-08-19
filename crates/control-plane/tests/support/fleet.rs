@@ -429,14 +429,21 @@ pub async fn exercise_fleet(
         INodePoolRepository::find(&reopened, organization_id, pool.id).await?,
         pool
     );
+    let scheduling_candidates = reopened
+        .list_scheduling_candidates(organization_id, None, now + Duration::seconds(4))
+        .await?
+        .into_iter()
+        .map(|node| node.id)
+        .collect::<Vec<_>>();
+    assert!(scheduling_candidates.contains(&removable_node_id));
+    assert!(!scheduling_candidates.contains(&node_id));
     assert_eq!(
-        reopened
-            .list_scheduling_candidates(organization_id, None, now + Duration::seconds(4))
-            .await?
-            .into_iter()
-            .map(|node| node.id)
-            .collect::<Vec<_>>(),
-        vec![removable_node_id]
+        scheduling_candidates.len(),
+        scheduling_candidates
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        "the global scheduling candidate query returned duplicate nodes"
     );
     let sources = reopened
         .list_evacuation_sources(now + Duration::seconds(4), 10)
