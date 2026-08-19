@@ -562,7 +562,7 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         "REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA",
         "current_user::text",
         "pg_catalog.pg_roles",
-        "pg_has_role",
+        "pg_has_role($1::name, current_user::text, 'MEMBER')",
         "rolbypassrls",
         ".transaction()",
         "transaction.commit()",

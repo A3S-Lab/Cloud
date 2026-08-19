@@ -37,7 +37,7 @@ pub(super) async fn prepare_postgres_serving_access(
                ) from pg_catalog.pg_roles where rolname = $1), false),
                case
                  when exists(select 1 from pg_catalog.pg_roles where rolname = $1)
-                 then pg_has_role($1::text, current_user::text, 'MEMBER')
+                 then pg_has_role($1::name, current_user::text, 'MEMBER')
                  else false
                end",
             &[&serving_role],
