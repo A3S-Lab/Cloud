@@ -14,22 +14,37 @@ route, background worker, event transport, repository family, or provider
 client. API, Worker, Relay, and `all` call only `connect_postgres`, which reads
 the migration ledger and cannot create or alter schema objects.
 
+The one closed Cloud ACL names two credential references:
+
+- `postgres.migration_url_env` is resolved only by `a3s-cloud-migrate`;
+- `postgres.serving_url_env` is resolved only by API, Worker, Relay, or `all`.
+
+The reference names must differ. The former shared `postgres.url_env` field is
+not a compatibility alias and fails ACL admission. A process does not resolve
+the other capability's credential merely to compare secret values.
+
 This separation prevents a serving replica from becoming an implicit
 installer and keeps migration execution in one existing mechanism rather than
 adding a Cloud lock, migration table, or retry loop.
 
 ## Run order
 
-With the closed Cloud ACL and PostgreSQL credential available through its
-named environment variable, run:
+With the closed Cloud ACL and credentials available through its named
+environment variables, run:
 
 ```bash
+export A3S_CLOUD_POSTGRES_MIGRATION_URL="postgres://cloud_migrator:replace-me@127.0.0.1:5432/a3s_cloud"
 cargo run -p a3s-cloud-control-plane --bin a3s-cloud-migrate -- config/cloud.acl
+
+unset A3S_CLOUD_POSTGRES_MIGRATION_URL
+export A3S_CLOUD_POSTGRES_URL="postgres://cloud_serving:replace-me@127.0.0.1:5432/a3s_cloud"
 cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ```
 
-The repository development launcher performs the same order. A production
-installation or upgrade must preserve this sequence:
+The repository development launcher performs the same order and removes the
+migration variable before it replaces itself with the serving process. For
+local development only, it may assign both distinct references the same URL.
+A production installation or upgrade must preserve this sequence:
 
 1. make PostgreSQL reachable and prove backup/restore readiness;
 2. stop before migration if the release notes require an incompatible
@@ -65,9 +80,20 @@ change; compatibility remains an installer/release obligation.
 ## Remaining production boundary
 
 The executable boundary and PostgreSQL 17 concurrency/admission gate are
-implemented. `H0.4` remains open until the ACL-native Box installation gives
-the migration job and serving roles distinct least-privilege PostgreSQL
-principals, packages their exact upgrade/rollback order, and retains clean
-Linux, failover, backup, restore, and contract-migration evidence. Those
-installation duties must use the same A3S ORM migration ledger; they must not
-introduce another migration runner or mutable schema version authority.
+implemented. The ACL and composition roots now separate the two credential
+references, but this does not prove that their URL values identify distinct
+database principals or that PostgreSQL grants enforce the boundary. `H0.4`
+remains open until the ACL-native Box installation:
+
+- provisions a migration principal with the schema ownership/DDL needed by
+  the A3S ORM manifest and ledger;
+- provisions serving principals with ordinary application DML and schema
+  usage but no schema mutation authority;
+- exposes only the applicable credential to each packaged unit;
+- packages the exact upgrade/rollback order; and
+- retains clean Linux, failover, backup, restore, and contract-migration
+  evidence.
+
+Those installation duties must use the same A3S ORM migration ledger. They
+must not introduce another grant runner inside Cloud, migration runner, or
+mutable schema-version authority.

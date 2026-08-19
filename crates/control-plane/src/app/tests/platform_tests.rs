@@ -298,6 +298,15 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         2,
         "API/Worker and Relay must share the read-only schema-admitting connection path"
     );
+    assert_eq!(
+        application.matches("serving_postgres_url()").count(),
+        2,
+        "each serving PostgreSQL composition root must resolve only the serving credential"
+    );
+    assert!(
+        !application.contains("migration_postgres_url()"),
+        "a serving composition root acquired the migration credential"
+    );
     for (name, source) in [
         ("serving application", application),
         ("HTTP server", server),
@@ -311,7 +320,8 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
     }
 
     for required in [
-        "migrate_postgres(&postgres_url",
+        "migration_postgres_url()",
+        "migrate_postgres(&migration_postgres_url",
         "report.is_up_to_date()",
         "report.applied.join",
     ] {
@@ -321,6 +331,7 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         );
     }
     for forbidden in [
+        "serving_postgres_url()",
         "build_application(",
         "AxumAdapter",
         ".serve",
@@ -346,6 +357,15 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         migration_position < serving_position,
         "development startup must migrate before it starts serving"
     );
+    for required in [
+        "A3S_CLOUD_POSTGRES_MIGRATION_URL=\"$migration_postgres_url\"",
+        "unset A3S_CLOUD_POSTGRES_MIGRATION_URL",
+    ] {
+        assert!(
+            development.contains(required),
+            "development startup lost PostgreSQL credential isolation: {required}"
+        );
+    }
 
     let c0_migration_position = c0_conformance
         .find("\"$migration_binary\" \"$cloud_root/config/cloud.acl\"")
@@ -356,6 +376,14 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
     assert!(
         c0_migration_position < c0_serving_position,
         "C0 conformance must migrate before it starts serving"
+    );
+    assert!(
+        c0_conformance.contains("A3S_CLOUD_POSTGRES_MIGRATION_URL=\"$postgres_url\""),
+        "C0 migrator must receive the migration credential"
+    );
+    assert!(
+        c0_conformance.contains("-u A3S_CLOUD_POSTGRES_MIGRATION_URL"),
+        "C0 serving process must explicitly discard the migration credential"
     );
 }
 
@@ -386,7 +414,7 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
         "API must not acquire an event publisher"
     );
     assert!(
-        application.contains("Some(FlowReadInfrastructure::connect(&postgres_url).await?)"),
+        application.contains("Some(FlowReadInfrastructure::connect(&serving_postgres_url).await?)"),
         "API must acquire the query-only Flow boundary"
     );
 

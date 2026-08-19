@@ -269,6 +269,7 @@ second entry in an authority row must be redesigned before implementation.
 | Tenant plugin registry enrollment and desired assignment | Cloud Plugins context in PostgreSQL | Asset kinds, node-local receipts, catalog caches, or Use capability snapshots as tenant intent |
 | Plugin catalog, package trust, immutable generation, grant, binding, and capability lifecycle | Shared A3S Use Plugin Manager and its canonical contracts | Cloud installer, TUF implementation, package/grant/binding tables, capability registry, surface reconciler, or universal plugin action RPC |
 | Relational access | A3S ORM | Raw SQL, direct database drivers, or a context-local data-access layer |
+| PostgreSQL schema execution | One terminating `a3s-cloud-migrate` composition root using the A3S ORM ledger and ACL-named migration credential reference | Serving-process DDL, another ledger/runner, a shared credential reference, or resolving both secrets in one process |
 | PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; bounded-context families project one concrete repository instance to every implemented port | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or persistence behavior in composition |
 | Long-running work | A3S Flow plus Operations | Agent controller, build queue, workflow engine, or ad-hoc retry loop |
 | Flow runtime dispatch | One startup-validated exact registry assembled from owner-provided workflow and step identities | Prefix routing, an implicit default runtime, duplicate step ownership, or discovering collisions only after work is dispatched |
@@ -434,6 +435,11 @@ terminating deployment process with exactly one capability: apply the compiled
 Cloud SQL manifest through the A3S ORM migrator. It cannot serve HTTP, advance
 Flow, publish events, construct repositories, or initialize providers. A
 serving role cannot acquire migration authority by changing `server.role`.
+The single ACL names distinct `postgres.migration_url_env` and
+`postgres.serving_url_env` references. The migrator resolves only the former;
+every serving composition root resolves only the latter. ACL admission rejects
+equal reference names and the former shared `url_env` field, so capability
+separation cannot silently fall back to the old configuration shape.
 
 The Node Agent is a separate process because it crosses a machine and trust
 boundary. Gateway, Runtime, Box, and workload processes remain independently
@@ -480,9 +486,11 @@ A source architecture gate rejects direct repository constructors in the
 process root and requires exactly one constructor rule per concrete adapter.
 Production HA, migration-job packaging, installation, and dependency
 orchestration remain substantive `H0.4` boundaries. The one-shot migration
-executable and serving-process admission boundary are implemented; Box
-packaging, separate least-privilege PostgreSQL principals, upgrade/rollback
-choreography, and retained clean-Linux evidence remain open.
+executable, serving-process admission boundary, and distinct ACL credential
+references are implemented. Box packaging must still provision different
+least-privilege PostgreSQL principals and grants, expose only the applicable
+credential to each unit, encode upgrade/rollback choreography, and retain
+clean-Linux evidence.
 
 Gateway certificate and managed-state paths describe the target Gateway
 runtime, not the control-plane host. ACL admission and snapshot compilation
@@ -807,6 +815,11 @@ applies pending SQL atomically, and writes version/checksum records. API,
 Worker, Relay, and `all` never invoke the migrator. Their PostgreSQL connection
 path reads the ledger and requires every migration compiled into that binary
 with the exact checksum before constructing product capabilities.
+The same closed ACL names the two capability references, but each composition
+root resolves only one: `migration_url_env` for the terminating job and
+`serving_url_env` for long-lived roles. Equal reference names and the old
+shared field fail configuration admission; actual database grants remain an
+installer-owned production boundary.
 
 The admission rule is intentionally subset-based: an older serving binary may
 observe additional later records while every release change remains
@@ -1479,8 +1492,11 @@ without Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility daemon.
 PostgreSQL must become healthy before the one-shot migrator runs; serving roles
 start only after that job exits successfully. A duplicate job is harmless
 because both instances converge through the A3S ORM lock and ledger. Production
-completion still requires distinct schema-owner and serving principals plus
-retained upgrade, rollback, failover, backup, and restore evidence.
+composition already resolves distinct ACL-named migration and serving
+credential references without a legacy shared alias. Completion still requires
+Box to bind those references to distinct schema-owner and serving principals,
+enforce DDL versus DML grants and per-unit environment exposure, and retain
+upgrade, rollback, failover, backup, and restore evidence.
 
 ### 15.2 Failure behavior
 

@@ -1658,9 +1658,12 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
     let config_path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/cloud.acl");
     let mut left = tokio::process::Command::new(env!("CARGO_BIN_EXE_a3s-cloud-migrate"));
-    left.arg(&config_path).env("A3S_CLOUD_POSTGRES_URL", &url);
+    left.arg(&config_path)
+        .env("A3S_CLOUD_POSTGRES_MIGRATION_URL", &url);
     let mut right = tokio::process::Command::new(env!("CARGO_BIN_EXE_a3s-cloud-migrate"));
-    right.arg(&config_path).env("A3S_CLOUD_POSTGRES_URL", &url);
+    right
+        .arg(&config_path)
+        .env("A3S_CLOUD_POSTGRES_MIGRATION_URL", &url);
     let (left, right) = tokio::join!(left.output(), right.output());
     let mut outputs = Vec::new();
     for migration in [left?, right?] {

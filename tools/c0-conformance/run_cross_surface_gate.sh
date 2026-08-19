@@ -266,7 +266,7 @@ restricted_token="a3s_$(openssl rand -hex 32)"
 github_webhook_secret="$(openssl rand -hex 32)"
 postgres_url="postgres://a3s_cloud:$postgres_password@127.0.0.1:$POSTGRES_PORT/a3s_cloud"
 
-A3S_CLOUD_POSTGRES_URL="$postgres_url" \
+A3S_CLOUD_POSTGRES_MIGRATION_URL="$postgres_url" \
   "$migration_binary" "$cloud_root/config/cloud.acl" \
   >"$evidence_directory/postgres-migration.log" 2>&1
 grep -q '^A3S Cloud PostgreSQL migrations applied: 001' \
@@ -276,6 +276,7 @@ grep -q '^A3S Cloud PostgreSQL migrations applied: 001' \
 (
   cd "$run_directory"
   exec env \
+    -u A3S_CLOUD_POSTGRES_MIGRATION_URL \
     A3S_CLOUD_BOOTSTRAP_TOKEN="$bootstrap_token" \
     A3S_CLOUD_GITHUB_WEBHOOK_SECRET="$github_webhook_secret" \
     A3S_CLOUD_POSTGRES_URL="$postgres_url" \

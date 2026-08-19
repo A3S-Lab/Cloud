@@ -24,7 +24,7 @@ pub async fn exercise_resource_grant_matrix(
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_TOKEN_ENV, BOOTSTRAP_TOKEN_VALUE);
     let state = tempfile::tempdir()?;
     let mut application_config = config();
-    application_config.postgres.url_env = POSTGRES_URL_ENV.into();
+    application_config.postgres.serving_url_env = POSTGRES_URL_ENV.into();
     application_config.auth.bootstrap_token_env = BOOTSTRAP_TOKEN_ENV.into();
     configure_ephemeral_application_state(&mut application_config, state.path());
     let app = build_application(application_config).await?;

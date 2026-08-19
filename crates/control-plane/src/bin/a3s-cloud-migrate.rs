@@ -6,8 +6,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .nth(1)
         .unwrap_or_else(|| "config/cloud.acl".to_owned());
     let config = CloudConfig::load(path)?;
-    let postgres_url = config.postgres_url()?;
-    let report = migrate_postgres(&postgres_url, config.postgres.max_connections).await?;
+    let migration_postgres_url = config.migration_postgres_url()?;
+    let report = migrate_postgres(&migration_postgres_url, config.postgres.max_connections).await?;
 
     if report.is_up_to_date() {
         println!("A3S Cloud PostgreSQL schema is already up to date");

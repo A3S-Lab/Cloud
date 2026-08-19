@@ -80,7 +80,10 @@ The code on `main` separates implemented mechanics from released capability:
   altered schemas fail before any product capability is constructed. A real
   PostgreSQL 17 gate concurrently starts two migrator processes and proves one
   atomic apply plus one idempotent replay; the development launcher follows
-  the same migrate-then-serve order.
+  the same migrate-then-serve order. The sole Cloud ACL names distinct serving
+  and migration credential references. Serving roles resolve only
+  `serving_url_env`; the migrator resolves only `migration_url_env`, and the
+  former shared `url_env` field is rejected rather than retained as an alias.
 - **Implemented / one deployment storage topology** — API and Worker construct
   one filesystem or S3-compatible immutable-object root and derive the
   `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
@@ -146,6 +149,7 @@ preservation register.
 | Concern | Sole authority | Duplicate mechanism deliberately absent |
 | --- | --- | --- |
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
+| PostgreSQL schema execution | The terminating `a3s-cloud-migrate` process through the sole A3S ORM ledger and migration credential reference | Serving-process DDL, a second migration runner/ledger, or one shared credential reference |
 | PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; each bounded-context family projects one concrete repository instance to all of its ports | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or SQL/migrations in composition |
 | Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
 | Flow runtime dispatch | One startup-validated registry of exact workflow name/version and exact step name | Prefix routing, a default product runtime, duplicate ownership, or collision discovery after serving starts |
@@ -184,6 +188,8 @@ session, lock, or replay authority.
 
 ```bash
 export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:replace-me@127.0.0.1:5432/a3s_cloud"
+# Local development may point the distinct migration reference at the same database user.
+export A3S_CLOUD_POSTGRES_MIGRATION_URL="$A3S_CLOUD_POSTGRES_URL"
 export A3S_CLOUD_BOOTSTRAP_TOKEN="replace-with-at-least-32-random-characters"
 export A3S_CLOUD_GITHUB_WEBHOOK_SECRET="replace-with-32-to-512-random-bytes"
 
@@ -194,7 +200,9 @@ cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 Serving processes never run migrations. Run the one-shot migrator after
 PostgreSQL becomes reachable and before starting or upgrading any API, Worker,
 Relay, or `all` process. A serving process fails closed if its required schema
-manifest is absent or altered. See the
+manifest is absent or altered. Production must provide distinct migration and
+serving principals through the two ACL references; the development shortcut
+above is not a production least-privilege setup. See the
 [PostgreSQL schema-management contract](docs/postgres-schema-management.md)
 for rolling-upgrade and failure rules. The development all-in-one profile
 listens on `127.0.0.1:8080` and may use the in-memory A3S Event provider.
@@ -328,6 +336,10 @@ deployment step with no HTTP routes, worker, event transport, object client,
 or domain adapter. It delegates locking, transactional application, checksum
 recording, and concurrent replay to the single A3S ORM migrator. Every serving
 role performs only manifest admission and ordinary PostgreSQL health checks.
+The closed ACL gives these process roots different credential references, and
+repository launchers remove the migration variable before starting a serving
+process; production Box packaging must still enforce distinct database users
+and grants.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
 [`config/node.example.acl`](config/node.example.acl) as executable references.

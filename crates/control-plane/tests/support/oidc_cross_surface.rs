@@ -107,7 +107,7 @@ pub async fn exercise_oidc_cross_surface(
     let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_TOKEN_ENV, BOOTSTRAP_TOKEN_VALUE);
     let state_directory = tempfile::tempdir()?;
     let mut application_config = config();
-    application_config.postgres.url_env = POSTGRES_URL_ENV.into();
+    application_config.postgres.serving_url_env = POSTGRES_URL_ENV.into();
     application_config.auth.bootstrap_token_env = BOOTSTRAP_TOKEN_ENV.into();
     configure_ephemeral_application_state(&mut application_config, state_directory.path());
     let provider = Arc::new(CrossSurfaceOidcProvider::default());

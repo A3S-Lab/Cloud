@@ -233,7 +233,8 @@ pub(super) fn config() -> CloudConfig {
             max_retries: 3,
         },
         postgres: PostgresConfig {
-            url_env: URL_ENV.into(),
+            serving_url_env: URL_ENV.into(),
+            migration_url_env: "A3S_CLOUD_INTEGRATION_POSTGRES_MIGRATION_URL".into(),
             max_connections: 8,
         },
         auth: AuthConfig {

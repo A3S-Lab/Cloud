@@ -364,8 +364,8 @@ async fn build_api_worker_application(
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
     let run_operations = config.server.role.runs_workers();
     let run_relay = config.server.role.runs_relay();
-    let postgres_url = config.postgres_url()?;
-    let executor = connect_postgres(&postgres_url, config.postgres.max_connections).await?;
+    let serving_postgres_url = config.serving_postgres_url()?;
+    let executor = connect_postgres(&serving_postgres_url, config.postgres.max_connections).await?;
     let object_storage = object_storage(&config)?;
     if !object_storage
         .health()
@@ -790,7 +790,7 @@ async fn build_api_worker_application(
         )?;
         Some(
             crate::infrastructure::connect_flow(
-                &postgres_url,
+                &serving_postgres_url,
                 Arc::new(flow_runtime),
                 QueueOptions::new()
                     .with_poll_interval(operation_interval)
@@ -802,7 +802,7 @@ async fn build_api_worker_application(
         None
     };
     let management_flow_reader = if management_adapters.is_some() && flow.is_none() {
-        Some(FlowReadInfrastructure::connect(&postgres_url).await?)
+        Some(FlowReadInfrastructure::connect(&serving_postgres_url).await?)
     } else {
         None
     };
@@ -1401,8 +1401,8 @@ async fn build_api_worker_application(
 async fn build_relay_application(
     config: CloudConfig,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
-    let postgres_url = config.postgres_url()?;
-    let executor = connect_postgres(&postgres_url, config.postgres.max_connections).await?;
+    let serving_postgres_url = config.serving_postgres_url()?;
+    let executor = connect_postgres(&serving_postgres_url, config.postgres.max_connections).await?;
     let event_publisher = event_publisher(&config).await?;
     let RelayPostgresAdapters {
         memberships,

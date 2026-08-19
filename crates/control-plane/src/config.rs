@@ -83,7 +83,8 @@ pub struct AssetsConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PostgresConfig {
-    pub url_env: String,
+    pub serving_url_env: String,
+    pub migration_url_env: String,
     pub max_connections: usize,
 }
 
@@ -488,7 +489,10 @@ impl CloudConfig {
             ],
         )?;
         let postgres = one_block(&document, "postgres")?;
-        validate_block(postgres, &["url_env", "max_connections"])?;
+        validate_block(
+            postgres,
+            &["serving_url_env", "migration_url_env", "max_connections"],
+        )?;
         let auth = one_block(&document, "auth")?;
         let oidc_providers = parse_oidc_providers(auth)?;
         let events = one_block(&document, "events")?;
@@ -722,7 +726,8 @@ impl CloudConfig {
                 max_retries: integer(objects, "max_retries")?,
             },
             postgres: PostgresConfig {
-                url_env: string(postgres, "url_env")?,
+                serving_url_env: string(postgres, "serving_url_env")?,
+                migration_url_env: string(postgres, "migration_url_env")?,
                 max_connections: integer(postgres, "max_connections")?,
             },
             auth: AuthConfig {
@@ -1030,9 +1035,20 @@ impl CloudConfig {
                 "objects.local_dir must be a normalized nonempty data path".into(),
             ));
         }
-        if !valid_env_name(&self.postgres.url_env) {
+        if !valid_env_name(&self.postgres.serving_url_env) {
             return Err(ConfigError::Invalid(
-                "postgres.url_env must be an uppercase environment variable name".into(),
+                "postgres.serving_url_env must be an uppercase environment variable name".into(),
+            ));
+        }
+        if !valid_env_name(&self.postgres.migration_url_env) {
+            return Err(ConfigError::Invalid(
+                "postgres.migration_url_env must be an uppercase environment variable name".into(),
+            ));
+        }
+        if self.postgres.serving_url_env == self.postgres.migration_url_env {
+            return Err(ConfigError::Invalid(
+                "postgres.serving_url_env and postgres.migration_url_env must be distinct credential references"
+                    .into(),
             ));
         }
         if self.postgres.max_connections == 0 || self.postgres.max_connections > 1024 {
@@ -1528,13 +1544,12 @@ impl CloudConfig {
             .map_err(|error| ConfigError::Invalid(format!("invalid node-control address: {error}")))
     }
 
-    pub fn postgres_url(&self) -> Result<String, ConfigError> {
-        std::env::var(&self.postgres.url_env).map_err(|_| {
-            ConfigError::Invalid(format!(
-                "required environment variable {:?} is not set",
-                self.postgres.url_env
-            ))
-        })
+    pub fn serving_postgres_url(&self) -> Result<String, ConfigError> {
+        required_environment(&self.postgres.serving_url_env)
+    }
+
+    pub fn migration_postgres_url(&self) -> Result<String, ConfigError> {
+        required_environment(&self.postgres.migration_url_env)
     }
 
     pub fn nats_url(&self) -> Result<Option<String>, ConfigError> {
@@ -2046,7 +2061,11 @@ objects {
   retry_timeout_ms = 60000
   max_retries = 3
 }
-postgres { url_env = "A3S_CLOUD_POSTGRES_URL" max_connections = 16 }
+postgres {
+  serving_url_env = "A3S_CLOUD_POSTGRES_URL"
+  migration_url_env = "A3S_CLOUD_POSTGRES_MIGRATION_URL"
+  max_connections = 16
+}
 auth {
   bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN"
   oidc_provider "workforce" {
@@ -2228,6 +2247,11 @@ security {
         let config = CloudConfig::parse(VALID).expect("valid config");
         assert_eq!(config.server.role, ProcessRole::All);
         assert_eq!(config.server_address().expect("address").port(), 8080);
+        assert_eq!(config.postgres.serving_url_env, "A3S_CLOUD_POSTGRES_URL");
+        assert_eq!(
+            config.postgres.migration_url_env,
+            "A3S_CLOUD_POSTGRES_MIGRATION_URL"
+        );
         assert_eq!(config.postgres.max_connections, 16);
         assert_eq!(config.auth.bootstrap_token_env, "A3S_CLOUD_BOOTSTRAP_TOKEN");
         assert_eq!(config.auth.oidc_providers.len(), 1);
@@ -2282,6 +2306,29 @@ security {
     }
 
     #[test]
+    fn postgres_credentials_are_closed_and_capability_separated() {
+        let legacy = VALID.replace(
+            "serving_url_env = \"A3S_CLOUD_POSTGRES_URL\"",
+            "url_env = \"A3S_CLOUD_POSTGRES_URL\"",
+        );
+        assert!(
+            CloudConfig::parse(&legacy).is_err(),
+            "the former shared credential field must not remain as a compatibility alias"
+        );
+
+        let shared_reference = VALID.replace(
+            "migration_url_env = \"A3S_CLOUD_POSTGRES_MIGRATION_URL\"",
+            "migration_url_env = \"A3S_CLOUD_POSTGRES_URL\"",
+        );
+        assert_eq!(
+            CloudConfig::parse(&shared_reference)
+                .expect_err("migration and serving credential references must differ")
+                .to_string(),
+            "invalid Cloud config: postgres.serving_url_env and postgres.migration_url_env must be distinct credential references"
+        );
+    }
+
+    #[test]
     fn loads_shipped_cloud_acl() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../config/cloud.acl");
         let config = CloudConfig::load(&path)
@@ -2293,6 +2340,11 @@ security {
             8080
         );
         assert_eq!(config.events.provider, EventProviderKind::Memory);
+        assert_eq!(config.postgres.serving_url_env, "A3S_CLOUD_POSTGRES_URL");
+        assert_eq!(
+            config.postgres.migration_url_env,
+            "A3S_CLOUD_POSTGRES_MIGRATION_URL"
+        );
         assert_eq!(config.human_tasks.resume_lease_ms, 30_000);
         assert!(config.auth.oidc_providers.is_empty());
         assert_eq!(config.sources.github_request_timeout_ms, 10_000);

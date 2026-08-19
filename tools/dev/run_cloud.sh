@@ -48,6 +48,7 @@ if [[ -z ${A3S_CLOUD_POSTGRES_URL:-} ]]; then
     up --detach --timeout 120
   export A3S_CLOUD_POSTGRES_URL='postgres://a3s_cloud:a3s_cloud@127.0.0.1:54320/a3s_cloud'
 fi
+migration_postgres_url="${A3S_CLOUD_POSTGRES_MIGRATION_URL:-$A3S_CLOUD_POSTGRES_URL}"
 
 generated_bootstrap_token=false
 if [[ -z ${A3S_CLOUD_BOOTSTRAP_TOKEN:-} ]]; then
@@ -70,7 +71,9 @@ fi
 api_bin="${A3S_CLOUD_DEV_API_BIN:-$target_directory/debug/a3s-cloud-control-plane}"
 migration_bin="${A3S_CLOUD_DEV_MIGRATION_BIN:-$target_directory/debug/a3s-cloud-migrate}"
 cd "$repository_root"
-"$migration_bin" config/cloud.acl
+A3S_CLOUD_POSTGRES_MIGRATION_URL="$migration_postgres_url" \
+  "$migration_bin" config/cloud.acl
+unset A3S_CLOUD_POSTGRES_MIGRATION_URL
 printf '%s\n' \
   'A3S Cloud control-plane API is starting:' \
   '  API: http://127.0.0.1:8080/api/v1'
