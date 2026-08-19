@@ -8,6 +8,7 @@ pub mod services;
 mod validation;
 pub mod value_objects;
 mod workflow_composite_frame;
+mod workflow_composite_region_result;
 mod workflow_composite_regions;
 mod workflow_contract;
 mod workflow_goal_contract;
@@ -81,6 +82,11 @@ pub use workflow_composite_frame::{
     WorkflowCompositeFrame, WorkflowCompositeFrameMode, WorkflowCompositeFrameRequest,
     WorkflowCompositeFrameResult, WORKFLOW_COMPOSITE_FRAME_MAX_BYTES,
     WORKFLOW_COMPOSITE_FRAME_RESULT_SCHEMA, WORKFLOW_COMPOSITE_FRAME_SCHEMA,
+};
+pub use workflow_composite_region_result::{
+    WorkflowCompositeFrameResolution, WorkflowCompositeRegionResult,
+    WorkflowCompositeRegionResultRequest, WORKFLOW_COMPOSITE_REGION_RESULT_MAX_BYTES,
+    WORKFLOW_COMPOSITE_REGION_RESULT_SCHEMA,
 };
 pub use workflow_composite_regions::{
     WorkflowCompositeRegionPolicy, WorkflowCompositeRegions, WorkflowCompositeRegionsSpec,
@@ -163,6 +169,8 @@ mod authority_tests;
 mod human_task_contract_tests;
 #[cfg(test)]
 mod workflow_composite_frame_tests;
+#[cfg(test)]
+mod workflow_composite_region_result_tests;
 #[cfg(test)]
 mod workflow_composite_regions_tests;
 #[cfg(test)]

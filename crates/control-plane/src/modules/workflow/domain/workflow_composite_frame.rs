@@ -501,7 +501,7 @@ fn validate_request_authority(
     validate_plan_bindings(plan, &request.plan_digest, regions, variables)
 }
 
-fn validate_plan_bindings(
+pub(super) fn validate_plan_bindings(
     plan: &WorkflowPlan,
     expected_digest: &Sha256Digest,
     regions: &WorkflowCompositeRegions,

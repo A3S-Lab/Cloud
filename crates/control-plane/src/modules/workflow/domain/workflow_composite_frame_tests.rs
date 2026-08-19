@@ -6,18 +6,18 @@ use crate::modules::shared_kernel::domain::{
 use serde_json::json;
 use std::collections::BTreeMap;
 
-struct Fixture {
-    plan: WorkflowPlan,
-    regions: WorkflowCompositeRegions,
-    variables: WorkflowVariableContract,
-    request: WorkflowCompositeFrameRequest,
+pub(super) struct Fixture {
+    pub(super) plan: WorkflowPlan,
+    pub(super) regions: WorkflowCompositeRegions,
+    pub(super) variables: WorkflowVariableContract,
+    pub(super) request: WorkflowCompositeFrameRequest,
 }
 
 fn digest(character: char) -> Sha256Digest {
     Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64))).expect("digest")
 }
 
-fn plan_digest(plan: &WorkflowPlan) -> Sha256Digest {
+pub(super) fn plan_digest(plan: &WorkflowPlan) -> Sha256Digest {
     Sha256Digest::from_bytes(
         &canonical_json_bounded(plan, WORKFLOW_PLAN_MAX_BYTES, "test plan").expect("plan bytes"),
     )
@@ -54,7 +54,7 @@ fn declaration(
     }
 }
 
-fn fixture() -> Fixture {
+pub(super) fn fixture() -> Fixture {
     let definition_id = WorkflowDefinitionId::new();
     let child_definition_id = WorkflowDefinitionId::new();
     let child_revision_id = WorkflowRevisionId::new();

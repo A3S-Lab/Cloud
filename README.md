@@ -301,9 +301,9 @@ creating their own control planes:
    Foundations exist; current Box/Gateway recertification remains.
 2. **Workflow Orchestration** compiles ontology-defined goals and typed graphs
    into recoverable execution. `W0.1` is implemented, `W0.2` is verified, and
-   `W0.3` includes a deterministic component-only composite frame/export
-   reducer; Flow-backed Iteration/Loop dispatch and later `W0` slices remain in
-   progress and unavailable.
+   `W0.3` includes deterministic component-only composite frame/export and
+   ordinal region reducers; Flow-backed Iteration/Loop dispatch and later `W0`
+   slices remain in progress and unavailable.
 3. **Agent Factory** turns heterogeneous Harness implementations into
    immutable, evaluated, deployable Agent products. `A1.0` is verified and
    `A1.1` is implemented; native Code integration verification remains.
