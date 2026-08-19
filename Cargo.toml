@@ -25,8 +25,8 @@ a3s-boot = { version = "=0.2.0", default-features = false, features = [
     "queue-postgres",
     "security",
 ] }
-a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "5a823c7a980dee15fcaf34c092ac417d65853589" }
-a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "5a823c7a980dee15fcaf34c092ac417d65853589", default-features = false, features = ["build", "vm"] }
+a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "ca9111c827508db62f77670f739bce915a275330" }
+a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "ca9111c827508db62f77670f739bce915a275330", default-features = false, features = ["build", "vm"] }
 a3s-code-core = { version = "=7.0.1", git = "https://github.com/A3S-Lab/Code.git", rev = "db0165c0b99fa3ad2b5b45852653d4bc93f26880", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
 a3s-flow = { version = "=1.0.0-rc.1", git = "https://github.com/A3S-Lab/Flow.git", rev = "f6efdf777325dc407bea429674837d24bb77787a", default-features = false, features = ["boot", "postgres"] }
@@ -96,6 +96,7 @@ zeroize = "1"
 
 [patch.crates-io]
 a3s-acl = { git = "https://github.com/A3S-Lab/ACL.git", rev = "5317e166222495585909d81f2caffdca90273c99" }
+a3s-boot = { git = "https://github.com/A3S-Lab/Boot.git", rev = "01fc1c4df359a35f19fab42c1d5370f3ee07b781" }
 a3s-orm = { git = "https://github.com/A3S-Lab/ORM.git", rev = "f178da81872eeccb8aa62d3a86617b95b791aa32" }
 
 [workspace.lints.rust]

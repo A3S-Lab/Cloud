@@ -858,10 +858,64 @@ fn summarize_event(
             json!({"error": error}),
         ),
         FlowEvent::RunHostShutdown { reason } => (None, None, json!({"reason": reason})),
+        FlowEvent::RunContinuedAsNew {
+            successor_run_id, ..
+        } => (
+            None,
+            None,
+            json!({
+                "successorRunId": successor_run_id,
+                "input": "redacted",
+            }),
+        ),
         FlowEvent::RunProgressRecorded { progress } => {
             (None, None, serde_json::to_value(progress)?)
         }
         FlowEvent::ChildOperationLinked { child } => (None, None, serde_json::to_value(child)?),
+        FlowEvent::ChildWorkflowRequested {
+            child_id,
+            child_run_id,
+            spec,
+            cancellation_policy,
+            ..
+        } => (
+            None,
+            None,
+            json!({
+                "childId": child_id,
+                "childRunId": child_run_id,
+                "workflowName": spec.name,
+                "workflowVersion": spec.version,
+                "runtimeBuildId": spec.runtime_build_id,
+                "cancellationPolicy": cancellation_policy,
+                "input": "redacted",
+            }),
+        ),
+        FlowEvent::ChildWorkflowResolved { child_id, outcome } => {
+            (None, None, json!({"childId": child_id, "outcome": outcome}))
+        }
+        FlowEvent::SignalReceived { signal } => (
+            None,
+            None,
+            json!({
+                "signalId": signal.signal_id,
+                "name": signal.name,
+                "payload": "redacted",
+            }),
+        ),
+        FlowEvent::SignalWaitCreated {
+            wait_id,
+            signal_name,
+        } => (
+            None,
+            None,
+            json!({"waitId": wait_id, "signalName": signal_name}),
+        ),
+        FlowEvent::SignalWaitCompleted { wait_id, signal_id } => (
+            None,
+            None,
+            json!({"waitId": wait_id, "signalId": signal_id}),
+        ),
         FlowEvent::StepCreated {
             step_id,
             step_name,
@@ -942,4 +996,47 @@ fn summarize_event(
         attempt,
         details,
     })
+}
+
+#[cfg(test)]
+mod history_summary_tests {
+    use super::*;
+    use a3s_flow::WorkflowSignal;
+    use uuid::Uuid;
+
+    fn envelope(event: FlowEvent) -> FlowEventEnvelope {
+        FlowEventEnvelope::new("run-1", 1, Uuid::now_v7(), Utc::now(), event)
+    }
+
+    #[test]
+    fn signal_history_preserves_identity_without_exposing_payload() {
+        let summary = summarize_event(&envelope(FlowEvent::SignalReceived {
+            signal: WorkflowSignal::new(
+                "signal-1",
+                "approval.received",
+                json!({"secret": "must-not-leak"}),
+            ),
+        }))
+        .expect("signal history summary");
+
+        assert_eq!(summary.event_key, "flow.signal.received");
+        assert_eq!(summary.details["signalId"], "signal-1");
+        assert_eq!(summary.details["name"], "approval.received");
+        assert_eq!(summary.details["payload"], "redacted");
+        assert!(!summary.details.to_string().contains("must-not-leak"));
+    }
+
+    #[test]
+    fn continuation_history_preserves_successor_without_exposing_input() {
+        let summary = summarize_event(&envelope(FlowEvent::RunContinuedAsNew {
+            successor_run_id: "run-2".into(),
+            input: json!({"secret": "must-not-leak"}),
+        }))
+        .expect("continuation history summary");
+
+        assert_eq!(summary.event_key, "flow.run.continued_as_new");
+        assert_eq!(summary.details["successorRunId"], "run-2");
+        assert_eq!(summary.details["input"], "redacted");
+        assert!(!summary.details.to_string().contains("must-not-leak"));
+    }
 }

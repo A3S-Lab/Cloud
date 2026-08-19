@@ -1,21 +1,20 @@
-use super::postgres_schema::{AuditRecords, IdempotencyRecords, MigrationRecords, OutboxEvents};
+use super::flow::{scoped_postgres_url, BOOT_SCHEMA, FLOW_SCHEMA};
+use super::postgres_schema::{AuditRecords, IdempotencyRecords, OutboxEvents};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, NodeId, OrganizationId, RepositoryError,
 };
-use a3s_boot::HealthIndicatorResult;
+use a3s_boot::{migrate_postgres_queue, BootError, HealthIndicatorResult};
 use a3s_cloud_contracts::DomainEventEnvelope;
+use a3s_flow::{migrate_postgres_flow, FlowError};
 use a3s_orm::migration::MigrationRunError;
 use a3s_orm::{
-    insert_into, select_from, Database, DecodeError, Executor, FromRow, Migration, Migrator,
-    OrderDirection, PostgresDialect, PostgresError, PostgresExecutor, PostgresMigrationError,
-    PostgresTransaction, PostgresTransactionError, Query,
+    insert_into, select_from, DecodeError, Executor, FromRow, Migration, Migrator, PostgresDialect,
+    PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
+    PostgresTransactionError, Query,
 };
 use chrono::{DateTime, Utc};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
-use std::sync::OnceLock;
 use uuid::Uuid;
 
 pub(crate) struct AuditWrite {
@@ -35,8 +34,27 @@ pub enum PostgresBootstrapError {
     Connect(#[from] PostgresError),
     #[error("could not migrate PostgreSQL: {0}")]
     Migrate(#[from] MigrationRunError<PostgresMigrationError>),
-    #[error("PostgreSQL did not become ready: {0}")]
-    Readiness(String),
+    #[error(
+        "PostgreSQL schema admission failed: {0}; run a3s-cloud-migrate before starting a serving process"
+    )]
+    Admission(#[source] MigrationRunError<PostgresMigrationError>),
+    #[error("could not configure a component PostgreSQL schema: {0}")]
+    ComponentConfiguration(String),
+    #[error("could not migrate the A3S Flow PostgreSQL schema: {0}")]
+    FlowMigration(#[source] FlowError),
+    #[error("could not migrate the A3S Boot PostgreSQL schema: {0}")]
+    BootMigration(#[source] BootError),
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PostgresMigrationReport {
+    pub applied: Vec<String>,
+}
+
+impl PostgresMigrationReport {
+    pub fn is_up_to_date(&self) -> bool {
+        self.applied.is_empty()
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -78,13 +96,41 @@ pub async fn connect_postgres(
 pub async fn migrate_postgres(
     url: &str,
     max_connections: usize,
-) -> Result<a3s_orm::migration::MigrationReport, PostgresBootstrapError> {
+) -> Result<PostgresMigrationReport, PostgresBootstrapError> {
     let executor = PostgresExecutor::connect_no_tls(url, max_connections)?;
-    let report = Migrator::new(executor.clone())
+    let cloud_report = Migrator::new(executor.clone())
         .run(cloud_migrations())
         .await?;
     verify_postgres(&executor).await?;
-    Ok(report)
+
+    let flow_url = scoped_postgres_url(url, FLOW_SCHEMA)
+        .map_err(|error| PostgresBootstrapError::ComponentConfiguration(error.to_string()))?;
+    let flow_executor = PostgresExecutor::connect_no_tls(flow_url.as_str(), max_connections)?;
+    let flow_report = migrate_postgres_flow(&flow_executor)
+        .await
+        .map_err(PostgresBootstrapError::FlowMigration)?;
+
+    let boot_url = scoped_postgres_url(url, BOOT_SCHEMA)
+        .map_err(|error| PostgresBootstrapError::ComponentConfiguration(error.to_string()))?;
+    let boot_executor = PostgresExecutor::connect_no_tls(boot_url.as_str(), max_connections)?;
+    let boot_report = migrate_postgres_queue(&boot_executor)
+        .await
+        .map_err(PostgresBootstrapError::BootMigration)?;
+
+    let mut applied = cloud_report.applied;
+    applied.extend(
+        flow_report
+            .applied
+            .into_iter()
+            .map(|version| format!("{FLOW_SCHEMA}/{version}")),
+    );
+    applied.extend(
+        boot_report
+            .applied
+            .into_iter()
+            .map(|version| format!("{BOOT_SCHEMA}/{version}")),
+    );
+    Ok(PostgresMigrationReport { applied })
 }
 
 fn cloud_migrations() -> Vec<Migration> {
@@ -1061,17 +1107,10 @@ fn cloud_migrations() -> Vec<Migration> {
 }
 
 async fn verify_postgres(executor: &PostgresExecutor) -> Result<(), PostgresBootstrapError> {
-    let applied = Database::new(PostgresDialect, executor.clone())
-        .fetch_all_as(migration_manifest_query())
+    Migrator::new(executor.clone())
+        .verify_required(cloud_migrations())
         .await
-        .map_err(|error| {
-            PostgresBootstrapError::Readiness(format!(
-                "could not read the A3S ORM migration ledger: {error}; run a3s-cloud-migrate before starting a serving process"
-            ))
-        })?
-        .rows;
-    verify_schema_manifest(&applied, expected_schema_manifest())
-        .map_err(PostgresBootstrapError::Readiness)
+        .map_err(PostgresBootstrapError::Admission)
 }
 
 pub async fn postgres_health(executor: PostgresExecutor) -> HealthIndicatorResult {
@@ -1079,56 +1118,6 @@ pub async fn postgres_health(executor: PostgresExecutor) -> HealthIndicatorResul
         Ok(_) => HealthIndicatorResult::up(),
         Err(error) => HealthIndicatorResult::down().with_detail_value("error", error.to_string()),
     }
-}
-
-fn migration_manifest_query() -> a3s_orm::query::SelectQuery<MigrationRecords, (String, String)> {
-    select_from::<MigrationRecords>()
-        .select((MigrationRecords::version(), MigrationRecords::checksum()))
-        .order_by(MigrationRecords::version(), OrderDirection::Asc)
-}
-
-fn expected_schema_manifest() -> &'static [(String, String)] {
-    static MANIFEST: OnceLock<Vec<(String, String)>> = OnceLock::new();
-    MANIFEST.get_or_init(|| {
-        cloud_migrations()
-            .into_iter()
-            .map(|migration| {
-                let checksum = format!("{:x}", Sha256::digest(migration.up_sql().as_bytes()));
-                (migration.version().to_owned(), checksum)
-            })
-            .collect()
-    })
-}
-
-fn verify_schema_manifest(
-    applied: &[(String, String)],
-    expected: &[(String, String)],
-) -> Result<(), String> {
-    let mut applied_by_version = BTreeMap::new();
-    for (version, checksum) in applied {
-        if applied_by_version
-            .insert(version.as_str(), checksum.as_str())
-            .is_some()
-        {
-            return Err(format!(
-                "the A3S ORM migration ledger contains duplicate version {version:?}"
-            ));
-        }
-    }
-
-    for (version, checksum) in expected {
-        let Some(applied_checksum) = applied_by_version.get(version.as_str()) else {
-            return Err(format!(
-                "required migration {version} is absent; run a3s-cloud-migrate before starting a serving process"
-            ));
-        };
-        if *applied_checksum != checksum {
-            return Err(format!(
-                "required migration {version} has a checksum that does not match this Cloud build"
-            ));
-        }
-    }
-    Ok(())
 }
 
 pub(crate) async fn execute<Q>(
@@ -1361,46 +1350,6 @@ pub(crate) fn transaction_error(
         } => RepositoryError::Storage(format!(
             "PostgreSQL operation failed ({operation}) and rollback failed ({rollback})"
         )),
-    }
-}
-
-#[cfg(test)]
-mod postgres_schema_admission_tests {
-    use super::verify_schema_manifest;
-
-    #[test]
-    fn serving_schema_requires_its_exact_manifest_but_accepts_future_expansions() {
-        let expected = vec![
-            ("001".to_owned(), "checksum-001".to_owned()),
-            ("002".to_owned(), "checksum-002".to_owned()),
-        ];
-        let mut applied = expected.clone();
-        applied.push(("003".to_owned(), "future-checksum".to_owned()));
-        verify_schema_manifest(&applied, &expected)
-            .expect("a future expand migration must preserve rolling-upgrade admission");
-
-        let missing = vec![expected[0].clone()];
-        assert_eq!(
-            verify_schema_manifest(&missing, &expected).expect_err("missing migration"),
-            "required migration 002 is absent; run a3s-cloud-migrate before starting a serving process"
-        );
-
-        let mut changed = expected.clone();
-        changed[1].1 = "changed".into();
-        assert_eq!(
-            verify_schema_manifest(&changed, &expected).expect_err("changed migration"),
-            "required migration 002 has a checksum that does not match this Cloud build"
-        );
-
-        let duplicated = vec![
-            expected[0].clone(),
-            expected[0].clone(),
-            expected[1].clone(),
-        ];
-        assert_eq!(
-            verify_schema_manifest(&duplicated, &expected).expect_err("duplicate migration"),
-            "the A3S ORM migration ledger contains duplicate version \"001\""
-        );
     }
 }
 

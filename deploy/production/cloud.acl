@@ -1,0 +1,212 @@
+server {
+  host = "0.0.0.0"
+  port = 8080
+  role = "all"
+}
+
+node_control {
+  host = "0.0.0.0"
+  port = 8443
+  server_name = "a3s-cloud-api"
+  certificate_file = "/var/lib/a3s-cloud/security/node-control/server.pem"
+  private_key_file = "/var/lib/a3s-cloud/security/node-control/server-key.pem"
+  client_ca_file = "/var/lib/a3s-cloud/security/node-ca/ca.pem"
+  max_request_bytes = 20971520
+  tls_handshake_timeout_ms = 5000
+  request_body_timeout_ms = 10000
+}
+
+artifacts {
+  max_blob_bytes = 1073741824
+  transfer_timeout_ms = 900000
+}
+
+assets {
+  repository_dir = "/var/lib/a3s-cloud/assets"
+  git_command_timeout_ms = 120000
+  write_lease_ms = 180000
+  repository_quota_bytes = 1073741824
+  max_rpc_body_bytes = 67108864
+  backup_max_bytes = 1073741824
+}
+
+objects {
+  provider = "s3"
+  local_dir = "/var/lib/a3s-cloud/unused-local-objects"
+  endpoint = "https://s3.example.invalid"
+  region = "us-east-1"
+  bucket = "a3s-cloud-objects"
+  prefix = "cloud"
+  access_key_env = "A3S_CLOUD_S3_ACCESS_KEY_ID"
+  secret_key_env = "A3S_CLOUD_S3_SECRET_ACCESS_KEY"
+  session_token_env = ""
+  allow_http = false
+  virtual_hosted_style = false
+  request_timeout_ms = 30000
+  connect_timeout_ms = 5000
+  retry_timeout_ms = 60000
+  max_retries = 3
+}
+
+postgres {
+  serving_url_env = "A3S_CLOUD_POSTGRES_URL"
+  migration_url_env = "A3S_CLOUD_POSTGRES_MIGRATION_URL"
+  max_connections = 16
+}
+
+auth {
+  bootstrap_token_env = "A3S_CLOUD_BOOTSTRAP_TOKEN"
+}
+
+events {
+  provider = "nats"
+  nats_url_env = "A3S_CLOUD_NATS_URL"
+  stream_name = "A3S_CLOUD_EVENTS"
+  batch_size = 100
+  poll_interval_ms = 250
+  lease_ms = 10000
+  publish_timeout_ms = 3000
+  retry_initial_ms = 500
+  retry_max_ms = 30000
+}
+
+operations {
+  reconcile_interval_ms = 5000
+  lease_ms = 30000
+}
+
+human_tasks {
+  coordination_poll_interval_ms = 1000
+  coordination_batch_size = 100
+  resume_poll_interval_ms = 250
+  resume_batch_size = 100
+  resume_lease_ms = 30000
+  flow_operation_timeout_ms = 5000
+  retry_initial_ms = 500
+  retry_max_ms = 30000
+}
+
+deployments {
+  reconcile_interval_ms = 30000
+  command_ttl_ms = 180000
+  runtime_apply_timeout_ms = 120000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 600000
+  runtime_stop_timeout_ms = 60000
+  cleanup_poll_ms = 1000
+  cleanup_timeout_ms = 300000
+}
+
+executions {
+  reconcile_interval_ms = 1000
+  command_ttl_ms = 900000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 600000
+  cleanup_timeout_ms = 300000
+}
+
+builds {
+  reconcile_interval_ms = 1000
+  input_staging_dir = "/var/lib/a3s-cloud/build-input-staging"
+  input_max_entries = 100000
+  input_max_bytes = 536870912
+  output_staging_dir = "/var/lib/a3s-cloud/build-output-staging"
+  output_max_entries = 100000
+  output_max_expanded_bytes = 1073741824
+  oci_max_blobs = 10000
+  oci_max_bytes = 1073741824
+  command_ttl_ms = 900000
+  execution_timeout_ms = 600000
+  observation_poll_ms = 1000
+  convergence_timeout_ms = 1800000
+  cleanup_timeout_ms = 300000
+  output_max_bytes = 536870912
+  cache_max_bytes = 536870912
+}
+
+registry {
+  request_timeout_ms = 10000
+  insecure_hosts = []
+  publication_registry = "registry.example.invalid"
+  publication_repository_prefix = "a3s-cloud/builds"
+  publication_credential_env = "A3S_CLOUD_REGISTRY_CREDENTIAL"
+  publication_allow_anonymous = false
+  publication_timeout_ms = 600000
+}
+
+sources {
+  github_request_timeout_ms = 10000
+  github_webhook_secret_env = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+  github_webhook_max_body_bytes = 1048576
+  github_app_enabled = false
+  github_app_slug = ""
+  github_app_client_id = ""
+  github_app_client_secret_env = ""
+  github_app_private_key_env = ""
+  github_app_callback_url = ""
+  github_connection_state_ttl_ms = 600000
+  github_authority_reconcile_interval_ms = 10000
+  github_authority_poll_interval_ms = 300000
+  github_authority_retry_initial_ms = 1000
+  github_authority_retry_max_ms = 60000
+  github_authority_batch_size = 100
+  checkout_dir = "/var/lib/a3s-cloud/source-checkouts"
+  checkout_timeout_ms = 120000
+  checkout_max_files = 100000
+  checkout_max_bytes = 268435456
+  allowed_repositories = ["https://github.com/A3S-Lab/Cloud"]
+  denied_repositories = []
+}
+
+logs {
+  retention_ms = 604800000
+  retention_poll_ms = 60000
+  retention_batch_size = 256
+  tombstone_retention_ms = 2592000000
+  tombstone_compaction_poll_ms = 3600000
+  tombstone_compaction_batch_size = 1000
+}
+
+edge {
+  entrypoint_address = "0.0.0.0:8081"
+  management_address = "127.0.0.1:9090"
+  management_path_prefix = "/api/gateway"
+  management_auth_token_env = "A3S_GATEWAY_ADMIN_TOKEN"
+  domain_verification_timeout_ms = 5000
+  certificate_directory = "/var/lib/a3s-cloud/gateway/certificates"
+  managed_state_file = "/var/lib/a3s-gateway/managed-snapshot.json"
+  certificate_ttl_ms = 2592000000
+  certificate_renewal_window_ms = 604800000
+  snapshot_renewal_window_ms = 21600000
+  certificate_reconciliation_interval_ms = 60000
+  upstream_request_timeout_ms = 30000
+  command_ttl_ms = 180000
+}
+
+fleet {
+  heartbeat_interval_ms = 5000
+  heartbeat_timeout_ms = 20000
+  command_long_poll_ms = 25000
+  command_lease_ms = 30000
+  certificate_ttl_ms = 3600000
+  certificate_rotation_window_ms = 900000
+}
+
+security {
+  profile = "production"
+  state_dir = "/var/lib/a3s-cloud/security"
+  certificate_authority = "vault"
+  gateway_certificate_authority = "vault"
+  key_encryption = "vault"
+  build_evidence_signing = "vault"
+  vault_address_env = "A3S_CLOUD_VAULT_ADDR"
+  vault_token_env = "A3S_CLOUD_VAULT_TOKEN"
+  vault_pki_mount = "pki"
+  vault_pki_role = "a3s-cloud-node"
+  vault_gateway_pki_mount = "gateway-pki"
+  vault_gateway_pki_role = "a3s-cloud-gateway"
+  vault_transit_mount = "transit"
+  vault_transit_key = "a3s-cloud"
+  vault_build_evidence_signing_key = "a3s-cloud-build-evidence"
+  vault_timeout_ms = 5000
+}

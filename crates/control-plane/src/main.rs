@@ -1,5 +1,6 @@
 use a3s_boot::AxumAdapter;
 use a3s_cloud_control_plane::{build_application, CloudConfig};
+use std::ffi::OsString;
 
 const DEFAULT_API_BODY_LIMIT_BYTES: usize = 1024 * 1024;
 
@@ -13,10 +14,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .json()
         .init();
 
-    let path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "config/cloud.acl".to_owned());
-    let config = CloudConfig::load(path)?;
+    let mut arguments = std::env::args_os();
+    let executable = arguments
+        .next()
+        .unwrap_or_else(|| OsString::from("a3s-cloud-control-plane"));
+    let path = arguments
+        .next()
+        .unwrap_or_else(|| OsString::from("config/cloud.acl"));
+    let config = match (arguments.next(), arguments.next(), arguments.next()) {
+        (None, None, None) => CloudConfig::load(path)?,
+        (Some(flag), Some(role), None) if flag == "--role" => {
+            let role = role
+                .to_str()
+                .ok_or("packaged process role must be valid UTF-8")?;
+            CloudConfig::load(path)?.restrict_to_process_role(role)?
+        }
+        _ => {
+            return Err(format!(
+                "usage: {} [cloud.acl [--role all|api|worker|relay]]",
+                executable.to_string_lossy()
+            )
+            .into())
+        }
+    };
     let address = config.server_address()?;
     let body_limit = DEFAULT_API_BODY_LIMIT_BYTES
         .max(config.sources.github_webhook_max_body_bytes)

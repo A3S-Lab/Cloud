@@ -1676,25 +1676,26 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         }
         outputs.push(String::from_utf8(migration.stdout)?);
     }
-    assert_eq!(
-        outputs
-            .iter()
-            .filter(|output| {
-                output.contains("A3S Cloud PostgreSQL migrations applied: 001")
-                    && output.contains("121")
-            })
-            .count(),
-        1,
-        "concurrent one-shot migrators returned unexpected apply evidence: {outputs:?}"
+    assert!(
+        outputs.iter().all(|output| {
+            output.contains("A3S Cloud PostgreSQL migrations applied:")
+                || output.contains("schema is already up to date")
+        }),
+        "concurrent one-shot migrators returned unexpected output: {outputs:?}"
     );
-    assert_eq!(
-        outputs
-            .iter()
-            .filter(|output| output.contains("schema is already up to date"))
-            .count(),
-        1,
-        "concurrent one-shot migrators did not converge to one replay: {outputs:?}"
-    );
+    let combined_output = outputs.join("\n");
+    for required in [
+        "001",
+        "121",
+        "a3s_flow/a3s-flow-0001-events",
+        "a3s_flow/a3s-flow-0006-continue-as-new",
+        "a3s_boot/a3s-boot-0001-queue",
+    ] {
+        assert!(
+            combined_output.contains(required),
+            "concurrent one-shot migrators lost component migration evidence {required}: {outputs:?}"
+        );
+    }
     let replay = migrate_postgres(&url, 4).await?;
     assert!(
         replay.is_up_to_date(),
@@ -1709,6 +1710,18 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
         ))
         .await?;
     assert_eq!(migration_count, 121);
+    let flow_migration_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from a3s_flow.a3s_orm_migrations",
+        ))
+        .await?;
+    assert_eq!(flow_migration_count, 6);
+    let boot_migration_count = database
+        .fetch_one_as(sql_query::<i64>(
+            "select count(*) from a3s_boot.a3s_orm_migrations",
+        ))
+        .await?;
+    assert_eq!(boot_migration_count, 1);
     let required_checksum = database
         .fetch_one_as(sql_query::<String>(
             "select checksum from a3s_orm_migrations where version = '121'",
@@ -1744,7 +1757,7 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
     assert!(
         error
             .to_string()
-            .contains("required migration 121 has a checksum that does not match this Cloud build"),
+            .contains("migration \"121\" changed after it was applied"),
         "unexpected checksum admission error: {error}"
     );
 
@@ -1767,7 +1780,7 @@ async fn exercise_postgres_schema_authority(url: String) -> Result<(), Box<dyn s
     assert!(
         error
             .to_string()
-            .contains("required migration 121 is absent"),
+            .contains("required migration \"121\" has not been applied"),
         "unexpected missing-migration admission error: {error}"
     );
     Ok(())

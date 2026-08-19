@@ -1,5 +1,165 @@
 use super::*;
 
+#[test]
+fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
+    use a3s_box_core::compose::{normalize_compose, ComposeSourceFormat};
+
+    let source = include_str!("../../../../../deploy/production/compose.acl");
+    let environment = std::collections::HashMap::from([
+        (
+            "A3S_CLOUD_IMAGE".to_string(),
+            format!("ghcr.io/a3s-lab/cloud@sha256:{}", "a".repeat(64)),
+        ),
+        (
+            "A3S_CLOUD_VAULT_ADDR".to_string(),
+            "https://vault.example.invalid".to_string(),
+        ),
+    ]);
+    let normalized = normalize_compose(source, ComposeSourceFormat::Acl, &environment)
+        .expect("production Box ACL must normalize through Box itself");
+
+    assert_eq!(
+        normalized.services.keys().cloned().collect::<Vec<_>>(),
+        ["api", "migrate", "nats", "postgres", "relay", "worker"]
+    );
+    let migrator = &normalized.services["migrate"];
+    assert_eq!(
+        migrator.secret_environment,
+        std::collections::BTreeMap::from([(
+            "A3S_CLOUD_POSTGRES_MIGRATION_URL".to_string(),
+            "A3S_CLOUD_POSTGRES_MIGRATION_URL".to_string(),
+        )])
+    );
+    assert_eq!(migrator.depends_on["postgres"].condition, "service_healthy");
+    let postgres = &normalized.services["postgres"];
+    assert_eq!(
+        postgres
+            .environment
+            .get("POSTGRES_USER")
+            .map(String::as_str),
+        Some("a3s_cloud_bootstrap")
+    );
+    assert_eq!(
+        postgres.secret_environment,
+        std::collections::BTreeMap::from([
+            (
+                "A3S_CLOUD_POSTGRES_MIGRATION_PASSWORD".to_string(),
+                "A3S_CLOUD_POSTGRES_MIGRATION_PASSWORD".to_string(),
+            ),
+            (
+                "A3S_CLOUD_POSTGRES_SERVING_PASSWORD".to_string(),
+                "A3S_CLOUD_POSTGRES_SERVING_PASSWORD".to_string(),
+            ),
+            (
+                "POSTGRES_PASSWORD".to_string(),
+                "A3S_CLOUD_POSTGRES_BOOTSTRAP_PASSWORD".to_string(),
+            ),
+        ])
+    );
+    assert_eq!(normalized.services["api"].ports, ["8080:8080", "8443:8443"]);
+
+    for (service_name, role) in [("api", "api"), ("worker", "worker"), ("relay", "relay")] {
+        let service = &normalized.services[service_name];
+        assert_eq!(
+            service.command.as_deref(),
+            Some(
+                ["/etc/a3s-cloud/cloud.acl", "--role", role]
+                    .map(str::to_string)
+                    .as_slice()
+            )
+        );
+        assert_eq!(
+            service.depends_on["migrate"].condition,
+            "service_completed_successfully"
+        );
+        assert_eq!(
+            service
+                .secret_environment
+                .get("A3S_CLOUD_POSTGRES_URL")
+                .map(String::as_str),
+            Some("A3S_CLOUD_POSTGRES_URL")
+        );
+        assert!(!service
+            .secret_environment
+            .values()
+            .any(|source| source == "A3S_CLOUD_POSTGRES_MIGRATION_URL"));
+    }
+
+    let secret_names = |service_name: &str| {
+        normalized.services[service_name]
+            .secret_environment
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        secret_names("api"),
+        [
+            "A3S_CLOUD_BOOTSTRAP_TOKEN",
+            "A3S_CLOUD_GITHUB_WEBHOOK_SECRET",
+            "A3S_CLOUD_POSTGRES_URL",
+            "A3S_CLOUD_S3_ACCESS_KEY_ID",
+            "A3S_CLOUD_S3_SECRET_ACCESS_KEY",
+            "A3S_CLOUD_VAULT_TOKEN",
+        ],
+        "API Secret projection widened"
+    );
+    assert_eq!(
+        secret_names("worker"),
+        [
+            "A3S_CLOUD_NATS_URL",
+            "A3S_CLOUD_POSTGRES_URL",
+            "A3S_CLOUD_REGISTRY_CREDENTIAL",
+            "A3S_CLOUD_S3_ACCESS_KEY_ID",
+            "A3S_CLOUD_S3_SECRET_ACCESS_KEY",
+            "A3S_CLOUD_VAULT_TOKEN",
+        ],
+        "Worker Secret projection widened"
+    );
+    assert_eq!(
+        secret_names("relay"),
+        ["A3S_CLOUD_NATS_URL", "A3S_CLOUD_POSTGRES_URL"],
+        "Relay Secret projection widened"
+    );
+
+    let canonical = normalized
+        .to_canonical_json()
+        .expect("canonical production Box ACL");
+    assert!(!canonical.contains("postgres://"));
+    assert!(!canonical.contains("serving password"));
+
+    let postgres_init = include_str!("../../../../../deploy/production/postgres-init.sh");
+    for required in [
+        "GRANT USAGE ON SCHEMAS TO a3s_cloud_serving",
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO a3s_cloud_serving",
+        "GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO a3s_cloud_serving",
+        "ALTER ROLE a3s_cloud_migrator LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION",
+        "ALTER DATABASE %I OWNER TO a3s_cloud_migrator",
+        "ALTER ROLE %I NOLOGIN",
+    ] {
+        assert!(
+            postgres_init.contains(required),
+            "PostgreSQL bootstrap lost the least-privilege boundary {required}"
+        );
+    }
+    assert!(
+        !postgres_init.contains("IN SCHEMA public"),
+        "serving grants must cover Cloud-owned component schemas, not only public"
+    );
+    for forbidden in [
+        "GRANT CREATE",
+        "GRANT ALL",
+        "a3s_cloud_serving CREATEDB",
+        "a3s_cloud_serving CREATEROLE",
+        "a3s_cloud_serving SUPERUSER",
+    ] {
+        assert!(
+            !postgres_init.contains(forbidden),
+            "serving database authority widened through {forbidden}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn boot_shell_exposes_wrapped_platform_and_health_responses() -> Result<()> {
     let organizations = Arc::new(InMemoryIdentityRepository::new());
@@ -343,10 +503,37 @@ fn postgres_schema_mutation_has_one_non_serving_process_root() {
         );
     }
     assert_eq!(
-        persistence.matches("Migrator::new(").count(),
+        persistence.matches(".run(cloud_migrations())").count(),
         1,
-        "Cloud must delegate schema execution to exactly one A3S ORM migrator"
+        "Cloud must own exactly one migration manifest"
     );
+    assert_eq!(
+        persistence
+            .matches(".verify_required(cloud_migrations())")
+            .count(),
+        1,
+        "Cloud serving admission must reuse the ORM manifest verifier"
+    );
+    for required in [
+        "migrate_postgres_flow(&flow_executor)",
+        "migrate_postgres_queue(&boot_executor)",
+    ] {
+        assert!(
+            persistence.contains(required),
+            "the Cloud migration root stopped delegating component schema ownership through {required}"
+        );
+    }
+    for forbidden in [
+        "verify_schema_manifest",
+        "expected_schema_manifest",
+        "migration_manifest_query",
+        "MigrationRecords",
+    ] {
+        assert!(
+            !persistence.contains(forbidden),
+            "Cloud duplicated the ORM schema-admission mechanism through {forbidden}"
+        );
+    }
     let migration_position = development
         .find("\"$migration_bin\" config/cloud.acl")
         .expect("development launcher must run the one-shot migration");
@@ -426,7 +613,7 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
         })
         .map(|(body, _)| body)
         .expect("Flow read infrastructure implementation");
-    assert!(reader.contains("PostgresEventStore::connect("));
+    assert!(reader.contains("PostgresEventStore::connect_verified("));
     for forbidden in [
         "PostgresQueueBackend::connect(",
         "BootFlowTaskManager::new(",
@@ -435,6 +622,27 @@ fn api_and_worker_flow_capabilities_have_distinct_composition_roots() {
         assert!(
             !reader.contains(forbidden),
             "API Flow reader acquired worker capability {forbidden}"
+        );
+    }
+    assert_eq!(
+        flow.matches("PostgresEventStore::connect_verified(")
+            .count(),
+        2,
+        "API and worker Flow stores must use the same read-only schema admission"
+    );
+    assert_eq!(
+        flow.matches("PostgresQueueBackend::connect_verified(")
+            .count(),
+        1,
+        "only the worker must admit the Boot queue schema"
+    );
+    for forbidden in [
+        "PostgresEventStore::connect(",
+        "PostgresQueueBackend::connect(",
+    ] {
+        assert!(
+            !flow.contains(forbidden),
+            "a serving Flow composition root retained schema mutation through {forbidden}"
         );
     }
 }

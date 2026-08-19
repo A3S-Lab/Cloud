@@ -199,6 +199,26 @@ fn gateway_certificate_becomes_ready_only_after_issuance_and_exact_reload_ack() 
 }
 
 #[test]
+fn gateway_certificate_material_accepts_standard_pem_line_endings() {
+    let now = Utc::now();
+    for line_ending in ["\n", "\r\n"] {
+        let certificate_pem = format!(
+            "-----BEGIN CERTIFICATE-----{line_ending}dGVzdA=={line_ending}-----END CERTIFICATE-----{line_ending}"
+        );
+        GatewayCertificateMaterial {
+            serial_number: "01".into(),
+            fingerprint: format!("sha256:{}", "a".repeat(64)),
+            certificate_pem: certificate_pem.clone(),
+            ca_bundle_pem: certificate_pem,
+            issued_at: now,
+            expires_at: now + Duration::days(1),
+        }
+        .validate()
+        .expect("standard PEM line endings");
+    }
+}
+
+#[test]
 fn gateway_certificate_records_a_bounded_provisioning_failure() {
     let now = Utc::now();
     let certificate_id = GatewayCertificateId::new();

@@ -1,0 +1,188 @@
+service "postgres" {
+  image = "postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+  environment = {
+    POSTGRES_DB = "a3s_cloud"
+    POSTGRES_INITDB_ARGS = "--auth-host=scram-sha-256 --auth-local=peer"
+    POSTGRES_USER = "a3s_cloud_bootstrap"
+  }
+  secret_environment = {
+    A3S_CLOUD_POSTGRES_MIGRATION_PASSWORD = "A3S_CLOUD_POSTGRES_MIGRATION_PASSWORD"
+    A3S_CLOUD_POSTGRES_SERVING_PASSWORD = "A3S_CLOUD_POSTGRES_SERVING_PASSWORD"
+    POSTGRES_PASSWORD = "A3S_CLOUD_POSTGRES_BOOTSTRAP_PASSWORD"
+  }
+  volumes = [
+    "postgres-data:/var/lib/postgresql/data",
+    "./postgres-init.sh:/docker-entrypoint-initdb.d/10-a3s-cloud-roles.sh:ro",
+  ]
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "pg_isready --dbname=a3s_cloud --username=a3s_cloud_migrator",
+    ]
+    interval = "2s"
+    timeout = "3s"
+    retries = 30
+    start_period = "5s"
+  }
+}
+
+service "nats" {
+  image = "nats:2.11-alpine@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00"
+  command = ["--jetstream", "--store_dir=/data", "--http_port=8222"]
+  volumes = ["nats-data:/data"]
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "wget --quiet --output-document=- http://127.0.0.1:8222/healthz | grep ok",
+    ]
+    interval = "2s"
+    timeout = "3s"
+    retries = 30
+    start_period = "3s"
+  }
+}
+
+service "migrate" {
+  image = env("A3S_CLOUD_IMAGE")
+  entrypoint = ["/usr/local/bin/a3s-cloud-migrate"]
+  command = ["/etc/a3s-cloud/cloud.acl"]
+  volumes = ["./cloud.acl:/etc/a3s-cloud/cloud.acl:ro"]
+  secret_environment = {
+    A3S_CLOUD_POSTGRES_MIGRATION_URL = "A3S_CLOUD_POSTGRES_MIGRATION_URL"
+  }
+  depends_on = {
+    postgres = { condition = "service_healthy" }
+  }
+  restart = "no"
+}
+
+service "api" {
+  image = env("A3S_CLOUD_IMAGE")
+  entrypoint = ["/usr/local/bin/a3s-cloud-control-plane"]
+  command = ["/etc/a3s-cloud/cloud.acl", "--role", "api"]
+  environment = {
+    A3S_CLOUD_VAULT_ADDR = env("A3S_CLOUD_VAULT_ADDR")
+    RUST_LOG = "${A3S_CLOUD_RUST_LOG:-info}"
+  }
+  secret_environment = {
+    A3S_CLOUD_BOOTSTRAP_TOKEN = "A3S_CLOUD_BOOTSTRAP_TOKEN"
+    A3S_CLOUD_GITHUB_WEBHOOK_SECRET = "A3S_CLOUD_GITHUB_WEBHOOK_SECRET"
+    A3S_CLOUD_POSTGRES_URL = "A3S_CLOUD_POSTGRES_URL"
+    A3S_CLOUD_S3_ACCESS_KEY_ID = "A3S_CLOUD_S3_ACCESS_KEY_ID"
+    A3S_CLOUD_S3_SECRET_ACCESS_KEY = "A3S_CLOUD_S3_SECRET_ACCESS_KEY"
+    A3S_CLOUD_VAULT_TOKEN = "A3S_CLOUD_VAULT_TOKEN"
+  }
+  ports = [
+    "${A3S_CLOUD_API_PORT:-8080}:8080/tcp",
+    "${A3S_CLOUD_NODE_CONTROL_PORT:-8443}:8443/tcp",
+  ]
+  volumes = [
+    "./cloud.acl:/etc/a3s-cloud/cloud.acl:ro",
+    "asset-repositories:/var/lib/a3s-cloud/assets",
+    "security-state:/var/lib/a3s-cloud/security",
+  ]
+  depends_on = {
+    migrate = { condition = "service_completed_successfully" }
+  }
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "wget --quiet --spider http://127.0.0.1:8080/api/v1/health/ready",
+    ]
+    interval = "5s"
+    timeout = "3s"
+    retries = 30
+    start_period = "10s"
+  }
+}
+
+service "worker" {
+  image = env("A3S_CLOUD_IMAGE")
+  entrypoint = ["/usr/local/bin/a3s-cloud-control-plane"]
+  command = ["/etc/a3s-cloud/cloud.acl", "--role", "worker"]
+  environment = {
+    A3S_CLOUD_VAULT_ADDR = env("A3S_CLOUD_VAULT_ADDR")
+    RUST_LOG = "${A3S_CLOUD_RUST_LOG:-info}"
+  }
+  secret_environment = {
+    A3S_CLOUD_NATS_URL = "A3S_CLOUD_NATS_URL"
+    A3S_CLOUD_POSTGRES_URL = "A3S_CLOUD_POSTGRES_URL"
+    A3S_CLOUD_REGISTRY_CREDENTIAL = "A3S_CLOUD_REGISTRY_CREDENTIAL"
+    A3S_CLOUD_S3_ACCESS_KEY_ID = "A3S_CLOUD_S3_ACCESS_KEY_ID"
+    A3S_CLOUD_S3_SECRET_ACCESS_KEY = "A3S_CLOUD_S3_SECRET_ACCESS_KEY"
+    A3S_CLOUD_VAULT_TOKEN = "A3S_CLOUD_VAULT_TOKEN"
+  }
+  volumes = [
+    "./cloud.acl:/etc/a3s-cloud/cloud.acl:ro",
+    "asset-repositories:/var/lib/a3s-cloud/assets",
+    "security-state:/var/lib/a3s-cloud/security",
+  ]
+  depends_on = {
+    migrate = { condition = "service_completed_successfully" }
+    nats = { condition = "service_healthy" }
+  }
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "wget --quiet --spider http://127.0.0.1:8080/api/v1/health/ready",
+    ]
+    interval = "5s"
+    timeout = "3s"
+    retries = 30
+    start_period = "10s"
+  }
+}
+
+service "relay" {
+  image = env("A3S_CLOUD_IMAGE")
+  entrypoint = ["/usr/local/bin/a3s-cloud-control-plane"]
+  command = ["/etc/a3s-cloud/cloud.acl", "--role", "relay"]
+  environment = {
+    RUST_LOG = "${A3S_CLOUD_RUST_LOG:-info}"
+  }
+  secret_environment = {
+    A3S_CLOUD_NATS_URL = "A3S_CLOUD_NATS_URL"
+    A3S_CLOUD_POSTGRES_URL = "A3S_CLOUD_POSTGRES_URL"
+  }
+  volumes = ["./cloud.acl:/etc/a3s-cloud/cloud.acl:ro"]
+  depends_on = {
+    migrate = { condition = "service_completed_successfully" }
+    nats = { condition = "service_healthy" }
+  }
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "wget --quiet --spider http://127.0.0.1:8080/api/v1/health/ready",
+    ]
+    interval = "5s"
+    timeout = "3s"
+    retries = 30
+    start_period = "10s"
+  }
+}
+
+volume "postgres-data" {
+  driver = "local"
+}
+
+volume "nats-data" {
+  driver = "local"
+}
+
+volume "asset-repositories" {
+  driver = "local"
+}
+
+volume "security-state" {
+  driver = "local"
+}

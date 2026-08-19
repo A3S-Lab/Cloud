@@ -348,9 +348,13 @@ fn validate_sha256(value: &str) -> Result<(), String> {
 }
 
 fn validate_pem(label: &str, value: &str, kind: &str) -> Result<(), String> {
+    let lf_header = format!("-----BEGIN {kind}-----\n");
+    let crlf_header = format!("-----BEGIN {kind}-----\r\n");
+    let lf_footer = format!("-----END {kind}-----\n");
+    let crlf_footer = format!("-----END {kind}-----\r\n");
     if value.len() > 256 * 1024
-        || !value.starts_with(&format!("-----BEGIN {kind}-----\n"))
-        || !value.ends_with(&format!("-----END {kind}-----\n"))
+        || !(value.starts_with(&lf_header) || value.starts_with(&crlf_header))
+        || !(value.ends_with(&lf_footer) || value.ends_with(&crlf_footer))
         || value.contains('\0')
     {
         return Err(format!("{label} is not a bounded PEM value"));

@@ -161,6 +161,14 @@ impl GitCommandRunner {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .kill_on_drop(true);
+        // Git for Windows' HTTP transport cannot initialize Winsock after
+        // `env_clear` unless the operating-system root remains available.
+        // Preserve only this required platform value; caller configuration,
+        // credentials, and Git environment remain isolated.
+        #[cfg(windows)]
+        if let Some(system_root) = std::env::var_os("SystemRoot") {
+            command.env("SystemRoot", system_root);
+        }
         if let Some(header) = authentication_header.as_ref() {
             command
                 .env(GIT_HTTP_EXTRA_HEADER_ENV, header.as_str())

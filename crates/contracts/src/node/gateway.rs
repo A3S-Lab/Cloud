@@ -589,16 +589,28 @@ fn validate_dns_names(values: &[String]) -> Result<(), String> {
 
 fn validate_file_reference(label: &str, value: &str) -> Result<(), String> {
     validate_single_line(label, value, 4096)?;
-    if !value.starts_with('/') || value.split('/').any(|component| component == "..") {
+    let bytes = value.as_bytes();
+    let posix_absolute = value.starts_with('/');
+    let windows_drive_absolute = bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && matches!(bytes[2], b'/' | b'\\');
+    if !(posix_absolute || windows_drive_absolute)
+        || value.split(['/', '\\']).any(|component| component == "..")
+    {
         return Err(format!("{label} must be an absolute normalized path"));
     }
     Ok(())
 }
 
 fn validate_pem(label: &str, value: &str, kind: &str, maximum: usize) -> Result<(), String> {
+    let lf_header = format!("-----BEGIN {kind}-----\n");
+    let crlf_header = format!("-----BEGIN {kind}-----\r\n");
+    let lf_footer = format!("-----END {kind}-----\n");
+    let crlf_footer = format!("-----END {kind}-----\r\n");
     if value.len() > maximum
-        || !value.starts_with(&format!("-----BEGIN {kind}-----\n"))
-        || !value.ends_with(&format!("-----END {kind}-----\n"))
+        || !(value.starts_with(&lf_header) || value.starts_with(&crlf_header))
+        || !(value.ends_with(&lf_footer) || value.ends_with(&crlf_footer))
         || value.contains('\0')
     {
         return Err(format!("{label} must be a bounded PEM value"));

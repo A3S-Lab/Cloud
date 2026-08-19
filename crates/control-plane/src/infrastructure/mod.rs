@@ -21,7 +21,10 @@ pub use flow::{
 };
 #[cfg(test)]
 pub(crate) use immutable_object::DisposableS3TestContext;
-pub use postgres::{connect_postgres, migrate_postgres, postgres_health, PostgresBootstrapError};
+pub use postgres::{
+    connect_postgres, migrate_postgres, postgres_health, PostgresBootstrapError,
+    PostgresMigrationReport,
+};
 
 pub(crate) use durable_filesystem::{sync_directories, sync_directory, sync_file};
 pub(crate) use git::{GitCommandError, GitCommandRunner};

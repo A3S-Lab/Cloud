@@ -43,6 +43,15 @@ impl ProcessRole {
     pub(crate) const fn owns_event_transport(self) -> bool {
         self.runs_workers() || self.runs_relay()
     }
+
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Api => "api",
+            Self::Worker => "worker",
+            Self::Relay => "relay",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -908,6 +917,23 @@ impl CloudConfig {
         };
         config.validate()?;
         Ok(config)
+    }
+
+    /// Select one packaged process role without widening the role admitted by
+    /// the ACL. `all` is the only role that may be split into narrower units;
+    /// every other ACL role is an exact capability boundary.
+    pub fn restrict_to_process_role(mut self, value: &str) -> Result<Self, ConfigError> {
+        let selected = ProcessRole::parse(value)?;
+        if self.server.role != ProcessRole::All && self.server.role != selected {
+            return Err(ConfigError::Invalid(format!(
+                "server.role {:?} cannot be widened or changed to packaged role {:?}",
+                self.server.role.as_str(),
+                selected.as_str()
+            )));
+        }
+        self.server.role = selected;
+        self.validate()?;
+        Ok(self)
     }
 
     pub(crate) fn build_flow_config(
@@ -2303,6 +2329,48 @@ security {
             config.security.vault_build_evidence_signing_key,
             "a3s-cloud-build-evidence"
         );
+    }
+
+    #[test]
+    fn packaged_process_role_can_only_narrow_an_all_acl() {
+        let split = VALID.replace("provider = \"memory\"", "provider = \"nats\"");
+        for role in ["all", "api", "worker", "relay"] {
+            let config = CloudConfig::parse(&split)
+                .expect("split-role ACL")
+                .restrict_to_process_role(role)
+                .expect("role admitted by all capability envelope");
+            assert_eq!(config.server.role.as_str(), role);
+        }
+
+        let api = split.replace("role = \"all\"", "role = \"api\"");
+        let exact = CloudConfig::parse(&api)
+            .expect("API ACL")
+            .restrict_to_process_role("api")
+            .expect("exact packaged role");
+        assert_eq!(exact.server.role, ProcessRole::Api);
+
+        for forbidden in ["all", "worker", "relay"] {
+            let error = CloudConfig::parse(&api)
+                .expect("API ACL")
+                .restrict_to_process_role(forbidden)
+                .expect_err("a packaged unit cannot widen or change an exact ACL role");
+            assert!(error.to_string().contains("cannot be widened or changed"));
+        }
+    }
+
+    #[test]
+    fn shipped_production_acl_is_one_valid_split_role_envelope() {
+        let source = include_str!("../../../deploy/production/cloud.acl");
+        let config = CloudConfig::parse(source).expect("production Cloud ACL");
+        assert_eq!(config.server.role, ProcessRole::All);
+        assert_eq!(config.security.profile, SecurityProfile::Production);
+        assert_eq!(config.objects.provider, ObjectStorageProviderKind::S3);
+        for role in ["api", "worker", "relay"] {
+            CloudConfig::parse(source)
+                .expect("production Cloud ACL")
+                .restrict_to_process_role(role)
+                .expect("packaged split role");
+        }
     }
 
     #[test]

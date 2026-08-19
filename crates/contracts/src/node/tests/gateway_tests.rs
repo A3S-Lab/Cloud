@@ -313,6 +313,22 @@ fn gateway_certificate_request_rejects_ambiguous_names_and_paths() {
         "/key.pem",
     )
     .is_err());
+    assert!(GatewayCertificateRequest::new(
+        certificate_id,
+        vec!["api.example.com".into()],
+        r"C:\a3s\gateway\cert.pem",
+        r"C:\a3s\gateway\key.pem",
+    )
+    .is_ok());
+    for invalid in [r"C:relative\cert.pem", r"C:\a3s\..\cert.pem"] {
+        assert!(GatewayCertificateRequest::new(
+            certificate_id,
+            vec!["api.example.com".into()],
+            invalid,
+            r"C:\a3s\gateway\key.pem",
+        )
+        .is_err());
+    }
 }
 
 #[test]
@@ -336,4 +352,22 @@ fn gateway_certificate_signing_contract_never_accepts_or_debugs_a_private_key() 
         "-----BEGIN CERTIFICATE REQUEST-----\nPRIVATE KEY\n-----END CERTIFICATE REQUEST-----\n"
             .into();
     assert!(leaked.validate().is_err());
+}
+
+#[test]
+fn gateway_certificate_signing_contract_accepts_standard_pem_line_endings() {
+    for csr_pem in [
+        "-----BEGIN CERTIFICATE REQUEST-----\ndGVzdA==\n-----END CERTIFICATE REQUEST-----\n",
+        "-----BEGIN CERTIFICATE REQUEST-----\r\ndGVzdA==\r\n-----END CERTIFICATE REQUEST-----\r\n",
+    ] {
+        GatewayCertificateSigningRequest {
+            schema: GatewayCertificateSigningRequest::SCHEMA.into(),
+            certificate_id: Uuid::now_v7(),
+            node_id: Uuid::now_v7(),
+            csr_pem: csr_pem.into(),
+            requested_at: Utc::now(),
+        }
+        .validate()
+        .expect("standard PEM line endings");
+    }
 }

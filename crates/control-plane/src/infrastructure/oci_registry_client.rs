@@ -7,11 +7,14 @@ use reqwest::{Client, Method, Response, StatusCode, Url};
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Mutex;
 use tokio_util::io::ReaderStream;
 use zeroize::{Zeroize, Zeroizing};
 
 const MAX_TOKEN_RESPONSE_BYTES: usize = 1024 * 1024;
+const MAX_AUTHORIZATION_CACHE_ENTRIES: usize = 256;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum OciRegistryClientError {
@@ -31,6 +34,7 @@ pub(crate) enum OciRegistryClientError {
 pub(crate) struct OciRegistryClient {
     client: Client,
     insecure_hosts: BTreeSet<String>,
+    authorizations: Arc<Mutex<BTreeMap<AuthorizationCacheKey, CachedAuthorization>>>,
 }
 
 impl OciRegistryClient {
@@ -55,6 +59,7 @@ impl OciRegistryClient {
         Ok(Self {
             client,
             insecure_hosts,
+            authorizations: Arc::new(Mutex::new(BTreeMap::new())),
         })
     }
 
@@ -270,7 +275,23 @@ impl OciRegistryClient {
 
     async fn send(&self, request: RegistryRequest<'_>) -> Result<Response, OciRegistryClientError> {
         validate_actions(request.actions)?;
-        let response = self.send_once(&request, None).await?;
+        let cache_key = AuthorizationCacheKey::new(&request);
+        let cached = self.authorizations.lock().await.get(&cache_key).cloned();
+        let response = if let Some(cached) = cached {
+            if let Some(authorization) = cached.for_request(request.credential) {
+                let response = self.send_once(&request, Some(&authorization)).await?;
+                if response.status() != StatusCode::UNAUTHORIZED {
+                    return Ok(response);
+                }
+                self.authorizations.lock().await.remove(&cache_key);
+                response
+            } else {
+                self.authorizations.lock().await.remove(&cache_key);
+                self.send_once(&request, None).await?
+            }
+        } else {
+            self.send_once(&request, None).await?
+        };
         if response.status() != StatusCode::UNAUTHORIZED {
             return Ok(response);
         }
@@ -298,7 +319,31 @@ impl OciRegistryClient {
         } else {
             return Err(OciRegistryClientError::Unauthorized);
         };
-        self.send_once(&request, Some(&authorization)).await
+        let response = self.send_once(&request, Some(&authorization)).await?;
+        if !matches!(
+            response.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        ) {
+            self.remember_authorization(cache_key, CachedAuthorization::from(&authorization))
+                .await;
+        }
+        Ok(response)
+    }
+
+    async fn remember_authorization(
+        &self,
+        key: AuthorizationCacheKey,
+        authorization: CachedAuthorization,
+    ) {
+        let mut authorizations = self.authorizations.lock().await;
+        if !authorizations.contains_key(&key)
+            && authorizations.len() >= MAX_AUTHORIZATION_CACHE_ENTRIES
+        {
+            if let Some(evicted) = authorizations.keys().next().cloned() {
+                authorizations.remove(&evicted);
+            }
+        }
+        authorizations.insert(key, authorization);
     }
 
     async fn send_once(
@@ -481,6 +526,54 @@ enum RequestBody<'a> {
 enum RequestAuthorization<'a> {
     Basic(&'a RegistryCredentialMaterial),
     Bearer(Zeroizing<String>),
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct AuthorizationCacheKey {
+    origin: String,
+    repository: String,
+    actions: String,
+    username: Option<String>,
+}
+
+impl AuthorizationCacheKey {
+    fn new(request: &RegistryRequest<'_>) -> Self {
+        Self {
+            origin: request.url.origin().ascii_serialization(),
+            repository: request.repository.to_owned(),
+            actions: request.actions.to_owned(),
+            username: request
+                .credential
+                .map(|credential| credential.username().to_owned()),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum CachedAuthorization {
+    Basic,
+    Bearer(Zeroizing<String>),
+}
+
+impl CachedAuthorization {
+    fn for_request<'a>(
+        &self,
+        credential: Option<&'a RegistryCredentialMaterial>,
+    ) -> Option<RequestAuthorization<'a>> {
+        match self {
+            Self::Basic => credential.map(RequestAuthorization::Basic),
+            Self::Bearer(token) => Some(RequestAuthorization::Bearer(token.clone())),
+        }
+    }
+}
+
+impl From<&RequestAuthorization<'_>> for CachedAuthorization {
+    fn from(value: &RequestAuthorization<'_>) -> Self {
+        match value {
+            RequestAuthorization::Basic(_) => Self::Basic,
+            RequestAuthorization::Bearer(token) => Self::Bearer(token.clone()),
+        }
+    }
 }
 
 #[derive(Deserialize)]

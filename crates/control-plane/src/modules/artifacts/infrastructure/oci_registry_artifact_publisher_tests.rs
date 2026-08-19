@@ -120,7 +120,11 @@ async fn publishes_with_basic_and_bearer_registry_authentication(
         .await?;
         let publisher = fixture.publisher(&registry, Some(credential.name()))?;
         publisher.publish(&fixture.request(&registry)?).await?;
-        assert!(registry.state.anonymous_requests.load(Ordering::SeqCst) > 0);
+        assert_eq!(
+            registry.state.anonymous_requests.load(Ordering::SeqCst),
+            1,
+            "registry authentication must be negotiated once before request bodies are sent"
+        );
         assert!(registry.state.authenticated_requests.load(Ordering::SeqCst) > 0);
         if auth == AuthMode::Bearer {
             assert!(registry.state.token_requests.load(Ordering::SeqCst) > 0);

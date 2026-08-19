@@ -61,6 +61,7 @@ url.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+a3s-box-core.workspace = true
 a3s-cloud-node-agent = { path = "../node-agent" }
 tempfile = "3"
 tokio-tungstenite = "0.29"

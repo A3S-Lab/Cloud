@@ -331,6 +331,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all -- --check
 
+      - name: Validate production installation scripts
+        run: sh -n deploy/production/postgres-init.sh
+
       - name: Run tests
         run: cargo test --workspace --all-targets --locked
 

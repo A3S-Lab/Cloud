@@ -86,6 +86,13 @@ The code on `main` separates implemented mechanics from released capability:
   and migration credential references. Serving roles resolve only
   `serving_url_env`; the migrator resolves only `migration_url_env`, and the
   former shared `url_env` field is rejected rather than retained as an alias.
+- **Implemented foundation / ACL-native Box installation** — one checked-in
+  Box Compose ACL uses the exact transient Secret boundary, one shared Cloud
+  ACL, a non-widening role selector, PostgreSQL/NATS health, an idempotent
+  migration job, and API/Worker/Relay startup ordering. New PostgreSQL volumes
+  receive distinct migration-owner and non-DDL serving roles. HA placement,
+  managed-database rotation/reconciliation, Gateway packaging, and retained
+  upgrade/failover/restore evidence remain open.
 - **Implemented / one deployment storage topology** — API and Worker construct
   one filesystem or S3-compatible immutable-object root and derive the
   `logs`, `artifacts`, `asset-git-backups`, and `plugin-trust-roots`
@@ -151,7 +158,7 @@ preservation register.
 | Concern | Sole authority | Duplicate mechanism deliberately absent |
 | --- | --- | --- |
 | Desired state and projections | PostgreSQL through A3S ORM | Redis, streams, node journals, or local files as product truth |
-| PostgreSQL schema execution | The terminating `a3s-cloud-migrate` process through the sole A3S ORM ledger and migration credential reference | Serving-process DDL, a second migration runner/ledger, or one shared credential reference |
+| PostgreSQL schema execution | The terminating `a3s-cloud-migrate` process through one A3S ORM mechanism, with owner manifests and ledgers scoped to Cloud `public`, Flow `a3s_flow`, and Boot `a3s_boot` | Serving-process DDL, copied component SQL/admission logic, a second runner, or one shared credential reference |
 | PostgreSQL adapter composition | One role-selected, I/O-free `PostgresAdapterFactory`; each bounded-context family projects one concrete repository instance to all of its ports | Direct constructors in the process root, per-role repository factories, duplicate concrete instances inside one family, or SQL/migrations in composition |
 | Long-running coordination | A3S Flow plus Cloud Operations, driven by one `FlowOperationCoordinator` | Product-specific workflow engines, retry tables, schedulers, or an Operations-local timer |
 | Flow runtime dispatch | One startup-validated registry of exact workflow name/version and exact step name | Prefix routing, a default product runtime, duplicate ownership, or collision discovery after serving starts |
@@ -201,8 +208,9 @@ cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 
 Serving processes never run migrations. Run the one-shot migrator after
 PostgreSQL becomes reachable and before starting or upgrading any API, Worker,
-Relay, or `all` process. A serving process fails closed if its required schema
-manifest is absent or altered. Production must provide distinct migration and
+Relay, or `all` process. The migrator applies Cloud's manifest and delegates
+Flow and Boot manifests to their owner APIs. A serving process fails closed if
+any required component manifest is absent or altered. Production must provide distinct migration and
 serving principals through the two ACL references; the development shortcut
 above is not a production least-privilege setup. See the
 [PostgreSQL schema-management contract](docs/postgres-schema-management.md)
@@ -211,6 +219,13 @@ listens on `127.0.0.1:8080` and may use the in-memory A3S Event provider.
 Production and split-process topologies fail configuration validation unless
 they use NATS JetStream, because an in-process bus cannot cross an
 API/worker/relay boundary.
+
+The [Box-hosted production baseline](deploy/production/README.md) uses one
+shared closed Cloud ACL, narrows its `all` capability envelope into dedicated
+API/Worker/Relay units, runs the one-shot migrator first, and projects Secret
+values through Box's private tmpfs boundary. It is a single-host installation
+foundation; it does not claim the remaining HA, failover, backup/restore, or
+Gateway placement gates.
 
 ```bash
 curl http://127.0.0.1:8080/api/v1/health/live
@@ -336,15 +351,24 @@ does not introduce a third path.
 Schema migration is not a `server.role`. `a3s-cloud-migrate` is a terminating
 deployment step with no HTTP routes, worker, event transport, object client,
 or domain adapter. It delegates locking, transactional application, checksum
-recording, and concurrent replay to the single A3S ORM migrator. Every serving
-role performs only manifest admission and ordinary PostgreSQL health checks.
+recording, and concurrent replay to the sole A3S ORM migration mechanism.
+Cloud, Flow, and Boot retain separate owner manifests and component-scoped
+ledgers; Cloud does not copy their SQL or verification. Every serving role
+performs only manifest admission and ordinary PostgreSQL health checks.
 The closed ACL gives these process roots different credential references, and
 repository launchers remove the migration variable before starting a serving
-process; production Box packaging must still enforce distinct database users
-and grants.
+process. The checked-in Box baseline provisions separate migration-owner and
+serving roles on a new PostgreSQL volume, applies cross-schema default
+DDL-versus-DML grants, removes bootstrap superuser authority from the migration
+path by disabling bootstrap login, and exposes only the applicable URL to each
+unit. Existing managed-database grant reconciliation and retained
+failure/restore evidence remain open.
 
 Use [`config/cloud.acl`](config/cloud.acl) and
-[`config/node.example.acl`](config/node.example.acl) as executable references.
+[`config/node.example.acl`](config/node.example.acl) as development references,
+and [`deploy/production/compose.acl`](deploy/production/compose.acl) plus its
+single shared [`cloud.acl`](deploy/production/cloud.acl) as the Box-hosted
+installation baseline.
 
 ## Repository
 

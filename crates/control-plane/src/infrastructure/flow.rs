@@ -14,8 +14,8 @@ use std::time::Duration;
 use tokio::sync::watch;
 use url::Url;
 
-const FLOW_SCHEMA: &str = "a3s_flow";
-const BOOT_SCHEMA: &str = "a3s_boot";
+pub(crate) const FLOW_SCHEMA: &str = "a3s_flow";
+pub(crate) const BOOT_SCHEMA: &str = "a3s_boot";
 const FLOW_QUEUE: &str = "cloud-operations";
 const FLOW_TASK_RETRIES: u32 = 3;
 const QUEUE_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -573,13 +573,14 @@ impl FlowInfrastructure {
     ) -> Result<Self, FlowInfrastructureError> {
         let flow_url = scoped_postgres_url(database_url, FLOW_SCHEMA)?;
         let boot_url = scoped_postgres_url(database_url, BOOT_SCHEMA)?;
-        let store = Arc::new(PostgresEventStore::connect(flow_url.as_str()).await?);
+        let store = Arc::new(PostgresEventStore::connect_verified(flow_url.as_str()).await?);
         let engine = FlowEngine::builder(runtime)
             .with_store(store)
             .with_runtime_build_compatibility(cloud_runtime_build_compatibility()?)
             .build();
         let queue_backend =
-            PostgresQueueBackend::connect(boot_url.as_str(), FLOW_QUEUE, queue_options).await?;
+            PostgresQueueBackend::connect_verified(boot_url.as_str(), FLOW_QUEUE, queue_options)
+                .await?;
         let queue = Arc::new(Queue::new(FLOW_QUEUE, queue_backend.clone()));
         let task_policy = BootFlowTaskPolicy::new()
             .with_retry_policy(QueueRetryPolicy::fixed(
@@ -674,7 +675,7 @@ impl FlowInfrastructure {
 impl FlowReadInfrastructure {
     pub async fn connect(database_url: &str) -> Result<Self, FlowInfrastructureError> {
         let flow_url = scoped_postgres_url(database_url, FLOW_SCHEMA)?;
-        let store = Arc::new(PostgresEventStore::connect(flow_url.as_str()).await?);
+        let store = Arc::new(PostgresEventStore::connect_verified(flow_url.as_str()).await?);
         let engine = FlowEngine::builder(Arc::new(ReadOnlyFlowRuntime))
             .with_store(store)
             .with_runtime_build_compatibility(cloud_runtime_build_compatibility()?)
@@ -752,7 +753,10 @@ async fn retire_incompatible_build_workflows(engine: &FlowEngine) -> Result<usiz
     Ok(retired)
 }
 
-fn scoped_postgres_url(database_url: &str, schema: &str) -> Result<Url, FlowInfrastructureError> {
+pub(crate) fn scoped_postgres_url(
+    database_url: &str,
+    schema: &str,
+) -> Result<Url, FlowInfrastructureError> {
     let mut url = Url::parse(database_url)?;
     if url.query_pairs().any(|(key, _)| key == "options") {
         return Err(FlowInfrastructureError::ConflictingOptions);
