@@ -157,7 +157,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
 | `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
 | `R0` — Universal Runtime | General Task and Service contracts, durable identity, capability matching, and real provider conformance | Historical; Box re-certification pending |
-| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API | In progress; re-certification required because the last complete pass used Flow `0.12.0`, while the current exact lock moves Cloud and Code to the same Flow `1.0.0` release, startup-validates one exact workflow/step runtime registry, and pins one ACL `0.3.0` source with Boot `0.2.0` and ORM `0.3.1`; the remaining upstream ACL `0.2.2` constraint must converge |
+| `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API | In progress; the mandatory PostgreSQL 17 plus local/NATS provider gate now re-certifies the exact Flow `1.0.0`, Boot `0.2.0`, and ORM `0.3.1` composition, including tenancy, idempotency, reconciliation, Outbox recovery, API envelopes, and migration authority; awaiting its first passing `main` run before returning to `Verified` |
 | `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver | Historical; Box re-certification pending |
 | `D0` — OCI deployment | Immutable digest-pinned Workload revisions, scheduling, apply, health, activation, stop, cancellation, and recovery | Historical; Box re-certification pending |
 | `E0` — Reachable service | Managed TLS, complete Gateway snapshots, encrypted Secrets, durable ordered logs, immutable update, cloned rollback, interface operations, and a clean-host release loop | Historical; Box re-certification pending |
@@ -2210,11 +2210,11 @@ The default portfolio priority is:
 10. retain the implemented `W0.1` contracts, backend `W0.2` Ontology lifecycle,
     and `W0.3` definition/goal/deterministic-plan plus interaction-contract
     slices, Form draft/release lifecycle, HumanTask loop, and finite Execution
-    step; retain the last published Form/Flow `0.12.0`/Boot `0.2.0`/ORM `0.3.0`
-    evidence and recertify the exact Flow `1.0.0` compatibility lock, including
-    Flow convergence with the transitive Code dependency and ACL convergence
-    with the transitive Use/Search dependencies; retain native
-    submitted-value parity and protected
+    step; retain the exact Form `0.1.0`/Flow `1.0.0`/Boot `0.2.0`/ORM `0.3.1`
+    composition and its mandatory PostgreSQL plus local/NATS foundation gate;
+    retain the completed Flow convergence with the transitive Code dependency
+    and finish ACL convergence with the transitive Use/Search dependencies;
+    retain native submitted-value parity and protected
     submission, the implemented revision-owned semantic contract set, Plan v2
     exact pinning, initial typed-variable Flow projection, Flow-derived
     authorized variable inspection, digest-bound defaults, bounded composite

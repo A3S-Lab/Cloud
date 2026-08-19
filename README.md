@@ -51,9 +51,10 @@ The code on `main` separates implemented mechanics from released capability:
   New Operations pin replay generation `a3s-cloud-workflows@2`; the former
   `@1` generation is admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
-  The stable release converges Cloud and Code on one Flow revision. The last
-  retained complete `F0` certification used Flow `0.12.0`; the upgraded exact
-  lock must be recertified before `F0` returns to `Verified`.
+  The stable release converges Cloud and Code on one Flow revision. A mandatory
+  real PostgreSQL 17 plus local/NATS gate now re-runs the complete `F0`
+  foundation suite against that exact lock; `F0` returns to `Verified` after
+  the new gate first passes on `main`.
 - **Implemented / stable management contract** — committed
   [OpenAPI `1.39.0`](openapi/v1.json), maintained
   [TypeScript client](packages/cloud-client), [CLI](cli), and
