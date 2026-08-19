@@ -3,8 +3,9 @@ use std::fs;
 use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
-const FLOW_V1_RC_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=f6efdf777325dc407bea429674837d24bb77787a#f6efdf777325dc407bea429674837d24bb77787a";
-const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=f178da81872eeccb8aa62d3a86617b95b791aa32#f178da81872eeccb8aa62d3a86617b95b791aa32";
+const BOOT_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88";
+const FLOW_V1_SOURCE: &str = "git+https://github.com/A3S-Lab/Flow.git?rev=9a4d41d6eb2d08074483ceac349b4727c5874edb#9a4d41d6eb2d08074483ceac349b4727c5874edb";
+const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LockedPackage {
@@ -67,7 +68,22 @@ fn acl_v0_3_uses_the_box_compatible_exact_revision() {
 }
 
 #[test]
-fn flow_uses_the_qualified_release_candidate_revision() {
+fn boot_uses_the_schema_admission_revision() {
+    let packages = locked_a3s_packages()
+        .into_iter()
+        .filter(|package| package.name == "a3s-boot")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        packages.len(),
+        1,
+        "Cloud must resolve exactly one Boot package"
+    );
+    assert_eq!(packages[0].version, "0.2.0");
+    assert_eq!(packages[0].source, BOOT_SCHEMA_ADMISSION_SOURCE);
+}
+
+#[test]
+fn flow_uses_the_qualified_v1_revision() {
     let packages = locked_a3s_packages()
         .into_iter()
         .filter(|package| package.name == "a3s-flow")
@@ -77,12 +93,12 @@ fn flow_uses_the_qualified_release_candidate_revision() {
         1,
         "Cloud must resolve exactly one Flow package"
     );
-    assert_eq!(packages[0].version, "1.0.0-rc.1");
-    assert_eq!(packages[0].source, FLOW_V1_RC_SOURCE);
+    assert_eq!(packages[0].version, "1.0.0");
+    assert_eq!(packages[0].source, FLOW_V1_SOURCE);
 }
 
 #[test]
-fn orm_uses_the_schema_admission_revision_required_by_flow() {
+fn orm_uses_the_schema_admission_revision_required_by_flow_and_boot() {
     let packages = locked_a3s_packages()
         .into_iter()
         .filter(|package| package.name == "a3s-orm")
@@ -92,7 +108,7 @@ fn orm_uses_the_schema_admission_revision_required_by_flow() {
         1,
         "Cloud must resolve exactly one ORM package"
     );
-    assert_eq!(packages[0].version, "0.3.0");
+    assert_eq!(packages[0].version, "0.3.1");
     assert_eq!(packages[0].source, ORM_SCHEMA_ADMISSION_SOURCE);
 }
 

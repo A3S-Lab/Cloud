@@ -41,9 +41,9 @@ converges through one PostgreSQL authority and one durable execution path.
 The code on `main` separates implemented mechanics from released capability:
 
 - **Implemented / durable foundation update** — `main` pins the exact A3S Flow
-  `1.0.0-rc.1` candidate so Workflow ACL graphs reuse Flow's portable DAG
+  `1.0.0` release so Workflow ACL graphs reuse Flow's portable DAG
   compiler, while Boot
-  `0.2.0`, ORM `0.3.0`, the PostgreSQL queue, Operations, Outbox, audit, and
+  `0.2.0`, ORM `0.3.1`, the PostgreSQL queue, Operations, Outbox, audit, and
   replay remain the only durable path. One process-level supervisor observes
   every mandatory worker and fails serving on an unexpected exit or panic. A
   startup-validated exact registry owns every workflow name/version and step
@@ -51,7 +51,7 @@ The code on `main` separates implemented mechanics from released capability:
   New Operations pin replay generation `a3s-cloud-workflows@2`; the former
   `@1` generation is admitted only through the explicit Flow compatibility
   set, which readiness exposes with the remaining unpinned migration switch.
-  The candidate converges Cloud and Code on one Flow revision. The last
+  The stable release converges Cloud and Code on one Flow revision. The last
   retained complete `F0` certification used Flow `0.12.0`; the upgraded exact
   lock must be recertified before `F0` returns to `Verified`.
 - **Implemented / stable management contract** — committed
